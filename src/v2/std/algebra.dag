@@ -25,7 +25,6 @@ import std.algebra {
   Semigroup,
   Semiring,
 }
-import std.types { is_prefix_of }
 
 type ApproximateField<T> {
   add: fn(T, T) -> T
@@ -758,6 +757,22 @@ fn reduce_or<T>(xs: FreeMonoid<T>, fallback: T, combine: fn(T, T) -> T) -> T {
   match xs {
     Empty => fallback
     Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
+  }
+}
+
+fn is_prefix_of<T>(
+  prefix: FreeMonoid<T>,
+  xs: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: h_prefix, tail: t_prefix } =>
+      match xs {
+        Empty => false
+        Cons { head: h_xs, tail: t_xs } =>
+          eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
+      }
   }
 }
 

@@ -1,4 +1,4 @@
-use crate::module_path_index::parsed_dag_file::parse_dag_file_or_err;
+use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{self, sorted_fields, ExecutionMode, InterpContext, Value};
 use crate::v1_std_core::{authored_name_at, expr_call_func_at, expr_var_name_at, ExprData, Node};
@@ -101,12 +101,10 @@ fn test_decl_names_from_content(content: &str) -> Result<Vec<String>, String> {
         .collect()
 }
 
-fn analyze_to_surface(path: &Path, content: &str, entry: &str) -> Result<ModuleSurface, String> {
-    // Three formerly-collapsed None arms must stay distinct (DESIGN §5): parse
-    // refused, test-decl enumerate refused, or (via parse_dag_file_or_err) no module.
-    let parsed = parse_dag_file_or_err(path)?;
+fn analyze_to_surface(path: &Path, content: &str, entry: &str) -> Option<ModuleSurface> {
+    let parsed = parse_dag_file(path)?;
     let test_names: HashSet<String> = test_decl_names_from_content(content)
-        .map_err(|e| format!("enumerate test decls for {entry}: {e}"))?
+        .ok()?
         .into_iter()
         .collect();
     let si = parsed.source_indices.clone();
@@ -152,7 +150,7 @@ fn analyze_to_surface(path: &Path, content: &str, entry: &str) -> Result<ModuleS
             _ => {}
         }
     }
-    Ok(ModuleSurface {
+    Some(ModuleSurface {
         entry: entry.to_string(),
         test_fns,
         plain_fns,
@@ -285,10 +283,11 @@ fn collect_module_surfaces(roots: &[String]) -> Result<Vec<ModuleSurface>, Strin
                 continue;
             }
         };
-        match analyze_to_surface(&path, &content, &rel) {
-            Ok(surface) => surfaces.push(surface),
-            Err(cause) => failures.push(format!("{rel}: {cause}")),
-        }
+        let Some(surface) = analyze_to_surface(&path, &content, &rel) else {
+            failures.push(format!("parse failed: {rel}"));
+            continue;
+        };
+        surfaces.push(surface);
     }
     if !failures.is_empty() {
         return Err(format!(
@@ -450,7 +449,7 @@ pub(crate) fn module_surface_for_test(
     content: &str,
     entry: &str,
 ) -> Option<ModuleSurface> {
-    analyze_to_surface(path, content, entry).ok()
+    analyze_to_surface(path, content, entry)
 }
 
 pub(crate) fn invoke_orphan_plain_names(
@@ -536,8 +535,9 @@ mod test_module_hygiene_bridge_equivalence_tests {
             let path = Path::new(entry);
             let content = std::fs::read_to_string(path)
                 .map_err(|e| format!("orphan check read {entry}: {e}"))?;
-            let surface = analyze_to_surface(path, &content, entry)
-                .map_err(|cause| format!("orphan check: {entry}: {cause}"))?;
+            let Some(surface) = analyze_to_surface(path, &content, entry) else {
+                return Err(format!("orphan check: parse failed for {entry}"));
+            };
             surfaces.push(surface);
         }
         let roots = super::super::default_source_roots();
@@ -653,7 +653,7 @@ fn formerly_test_holds() -> Bool {
         let err =
             check_orphan_helpers_or_err(&[root]).expect_err("unparsable *_test.dag must refuse");
         assert!(
-            err.contains("parse error") || err.contains("garbage_unparsable_test.dag"),
+            err.contains("parse failed") || err.contains("garbage_unparsable_test.dag"),
             "must locate the parse failure: {err}"
         );
         let _ = std::fs::remove_dir_all(&dir);

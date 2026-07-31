@@ -1,7 +1,7 @@
 module test.claim.occurrence_binding_resolve_witness_test
 
 import std.types { Bool, SourceSpan }
-import std.algebra { Empty, Cons }
+import std.algebra { Empty }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceContainmentPath,
@@ -28,7 +28,6 @@ import std.occurrence_binding_resolve {
   binding_occurrence_from_reference,
   binding_candidate_from_declaration,
   resolve_reference_occurrence_binding,
-  module_path_binding_decide,
   OccurrenceReferenceBindingDecided,
   OccurrenceReferenceBindingTransportRefused,
 }
@@ -63,142 +62,98 @@ fn obr_fixture_index_entry(
   }
 }
 
-fn obr_unique_transport() -> OccurrenceTransport {
-  let span = obr_fixture_span(file: "unique.dag", start: 1, end: 2)
-  let decl_id = OccurrenceId { value: 10 }
-  let ref_id = OccurrenceId { value: 20 }
-  let decl_path = obr_fixture_path(ancestors: Empty, terminal: decl_id)
-  let ref_path = obr_fixture_path(
-    ancestors: Cons { head: decl_id, tail: Empty },
-    terminal: ref_id,
+fn obr_supplied_population_transport() -> OccurrenceTransport {
+  let span = obr_fixture_span(file: "supplied.dag", start: 1, end: 2)
+  let lexical_a = OccurrenceId { value: 10 }
+  let lexical_b = OccurrenceId { value: 11 }
+  let type_decl = OccurrenceId { value: 12 }
+  let lexical_ref = OccurrenceId { value: 20 }
+  let type_ref = OccurrenceId { value: 21 }
+  let lexical_a_path = obr_fixture_path(
+    ancestors: [OccurrenceId { value: 1 }],
+    terminal: lexical_a,
+  )
+  let lexical_b_path = obr_fixture_path(
+    ancestors: [OccurrenceId { value: 2 }],
+    terminal: lexical_b,
+  )
+  let type_decl_path = obr_fixture_path(
+    ancestors: [OccurrenceId { value: 3 }],
+    terminal: type_decl,
+  )
+  let lexical_ref_path = obr_fixture_path(
+    ancestors: [OccurrenceId { value: 4 }],
+    terminal: lexical_ref,
+  )
+  let type_ref_path = obr_fixture_path(
+    ancestors: [OccurrenceId { value: 5 }],
+    terminal: type_ref,
   )
   OccurrenceTransport {
     index: OccurrenceIndex {
       entries: [
         obr_fixture_index_entry(
-          occurrence: decl_id,
-          authored_name: "y",
+          occurrence: lexical_a,
+          authored_name: "x",
           span: span,
-          containment: decl_path,
+          containment: lexical_a_path,
         ),
         obr_fixture_index_entry(
-          occurrence: ref_id,
-          authored_name: "y",
+          occurrence: lexical_b,
+          authored_name: "x",
           span: span,
-          containment: ref_path,
+          containment: lexical_b_path,
+        ),
+        obr_fixture_index_entry(
+          occurrence: type_decl,
+          authored_name: "T",
+          span: span,
+          containment: type_decl_path,
+        ),
+        obr_fixture_index_entry(
+          occurrence: lexical_ref,
+          authored_name: "x",
+          span: span,
+          containment: lexical_ref_path,
+        ),
+        obr_fixture_index_entry(
+          occurrence: type_ref,
+          authored_name: "T",
+          span: span,
+          containment: type_ref_path,
         ),
       ],
     },
     declarations: [
       DeclarationOccurrence {
-        occurrence: decl_id,
-        containment: decl_path,
-        category: LexicalValueOccurrence,
-        diagnostic_span: span,
-      },
-    ],
-    references: [
-      ReferenceOccurrence {
-        occurrence: ref_id,
-        containment: ref_path,
-        category: LexicalValueOccurrence,
-        diagnostic_span: span,
-      },
-    ],
-  }
-}
-
-fn obr_ambiguous_transport() -> OccurrenceTransport {
-  let span = obr_fixture_span(file: "ambiguous.dag", start: 3, end: 4)
-  let pattern_id = OccurrenceId { value: 30 }
-  let let_id = OccurrenceId { value: 31 }
-  let ref_id = OccurrenceId { value: 32 }
-  let pattern_path = obr_fixture_path(
-    ancestors: Cons { head: OccurrenceId { value: 1 }, tail: Empty },
-    terminal: pattern_id,
-  )
-  let let_path = obr_fixture_path(
-    ancestors: Cons {
-      head: OccurrenceId { value: 1 },
-      tail: Cons { head: pattern_id, tail: Empty },
-    },
-    terminal: let_id,
-  )
-  let ref_path = obr_fixture_path(
-    ancestors: Cons {
-      head: OccurrenceId { value: 1 },
-      tail: Cons { head: pattern_id, tail: Cons { head: let_id, tail: Empty } },
-    },
-    terminal: ref_id,
-  )
-  OccurrenceTransport {
-    index: OccurrenceIndex {
-      entries: [
-        obr_fixture_index_entry(
-          occurrence: pattern_id,
-          authored_name: "y",
-          span: span,
-          containment: pattern_path,
-        ),
-        obr_fixture_index_entry(
-          occurrence: let_id,
-          authored_name: "y",
-          span: span,
-          containment: let_path,
-        ),
-        obr_fixture_index_entry(
-          occurrence: ref_id,
-          authored_name: "y",
-          span: span,
-          containment: ref_path,
-        ),
-      ],
-    },
-    declarations: [
-      DeclarationOccurrence {
-        occurrence: pattern_id,
-        containment: pattern_path,
+        occurrence: lexical_a,
+        containment: lexical_a_path,
         category: LexicalValueOccurrence,
         diagnostic_span: span,
       },
       DeclarationOccurrence {
-        occurrence: let_id,
-        containment: let_path,
+        occurrence: lexical_b,
+        containment: lexical_b_path,
         category: LexicalValueOccurrence,
+        diagnostic_span: span,
+      },
+      DeclarationOccurrence {
+        occurrence: type_decl,
+        containment: type_decl_path,
+        category: TypeOccurrence,
         diagnostic_span: span,
       },
     ],
     references: [
       ReferenceOccurrence {
-        occurrence: ref_id,
-        containment: ref_path,
+        occurrence: lexical_ref,
+        containment: lexical_ref_path,
         category: LexicalValueOccurrence,
         diagnostic_span: span,
       },
-    ],
-  }
-}
-
-fn obr_unbound_transport() -> OccurrenceTransport {
-  let span = obr_fixture_span(file: "unbound.dag", start: 5, end: 6)
-  let ref_id = OccurrenceId { value: 40 }
-  let ref_path = obr_fixture_path(ancestors: Empty, terminal: ref_id)
-  OccurrenceTransport {
-    index: OccurrenceIndex {
-      entries: [
-        obr_fixture_index_entry(
-          occurrence: ref_id,
-          authored_name: "missing",
-          span: span,
-          containment: ref_path,
-        ),
-      ],
-    },
-    declarations: [],
-    references: [
       ReferenceOccurrence {
-        occurrence: ref_id,
-        containment: ref_path,
+        occurrence: type_ref,
+        containment: type_ref_path,
         category: TypeOccurrence,
         diagnostic_span: span,
       },
@@ -206,257 +161,201 @@ fn obr_unbound_transport() -> OccurrenceTransport {
   }
 }
 
-test fn occurrence_binding_resolve_unique_reference_is_bound_holds() -> Bool {
-  let transport = obr_unique_transport()
-  let reference = transport.references |> first
-  match reference {
-    Present { value: ref } =>
-      match resolve_reference_occurrence_binding(
-        transport: transport,
-        occurrence: ref.occurrence,
-      ) {
-        OccurrenceReferenceBindingDecided {
-          result: OccurrenceBound { binding: _ },
-        } => true
-        _ => false
-      }
-    Absent => false
-  }
+fn obr_lexical_reference_id() -> OccurrenceId {
+  OccurrenceId { value: 20 }
 }
 
-test fn occurrence_binding_resolve_unbound_reference_refuses_holds() -> Bool {
-  let transport = obr_unbound_transport()
-  let reference = transport.references |> first
-  match reference {
-    Present { value: ref } =>
-      match resolve_reference_occurrence_binding(
-        transport: transport,
-        occurrence: ref.occurrence,
-      ) {
-        OccurrenceReferenceBindingDecided {
-          result: OccurrenceUnbound { occurrence: _ },
-        } => true
-        _ => false
-      }
-    Absent => false
-  }
+fn obr_type_reference_id() -> OccurrenceId {
+  OccurrenceId { value: 21 }
 }
 
-test fn occurrence_binding_resolve_ambiguous_reference_refuses_holds() -> Bool {
-  let transport = obr_ambiguous_transport()
-  let reference = transport.references |> first
-  match reference {
-    Present { value: ref } =>
-      match resolve_reference_occurrence_binding(
-        transport: transport,
-        occurrence: ref.occurrence,
-      ) {
-        OccurrenceReferenceBindingDecided {
-          result: OccurrenceAmbiguous {
-            occurrence: _,
-            candidates: AmbiguousBindingCandidates {
-              first: _,
-              second: _,
-              rest: Empty,
-            },
-          },
-        } => true
-        _ => false
-      }
-    Absent => false
-  }
-}
-
-test fn occurrence_binding_resolve_duplicate_candidates_remain_ambiguous_holds() -> Bool {
-  let transport = obr_unique_transport()
-  let reference = transport.references |> first
-  match reference {
-    Present { value: ref } =>
-      let declaration = transport.declarations |> first
-      match declaration {
-        Present { value: decl } =>
-          let duplicate = binding_candidate_from_declaration(declaration: decl)
-          match occurrence_binding_from_candidates(
-            occurrence: binding_occurrence_from_reference(reference: ref),
-            candidates: Cons {
-              head: duplicate,
-              tail: Cons { head: duplicate, tail: Empty },
-            },
-          ) {
-            OccurrenceAmbiguous {
-              occurrence: _,
-              candidates: AmbiguousBindingCandidates {
-                first: _,
-                second: _,
-                rest: Empty,
-              },
-            } => true
-            _ => false
-          }
-        Absent => false
-      }
-    Absent => false
-  }
-}
-
-test fn occurrence_binding_resolve_module_path_unique_owner_is_bound_holds() -> Bool {
-  match module_path_binding_decide(
-    env_module_path: "fixchain.mid.leaf",
-    owners: ["fixchain.mid"],
+test fn occurrence_binding_resolve_supplied_zero_is_unbound_holds() -> Bool {
+  match resolve_reference_occurrence_binding(
+    transport: obr_supplied_population_transport(),
+    occurrence: obr_lexical_reference_id(),
+    supplied_candidates: [],
   ) {
-    OccurrenceBound { binding: _ } => true
+    OccurrenceReferenceBindingDecided {
+      result: OccurrenceUnbound { occurrence: _ },
+    } => true
     _ => false
   }
 }
 
-test fn occurrence_binding_resolve_module_path_zero_owners_is_unbound_holds() -> Bool {
-  match module_path_binding_decide(
-    env_module_path: "fixchain.mid.leaf",
-    owners: [],
+test fn occurrence_binding_resolve_supplied_one_is_bound_with_exact_identity_holds() -> Bool {
+  match resolve_reference_occurrence_binding(
+    transport: obr_supplied_population_transport(),
+    occurrence: obr_lexical_reference_id(),
+    supplied_candidates: [OccurrenceId { value: 10 }],
   ) {
-    OccurrenceUnbound { occurrence: _ } => true
+    OccurrenceReferenceBindingDecided {
+      result: OccurrenceBound { binding: binding },
+    } =>
+      binding.containment.ancestors == [OccurrenceId { value: 1 }]
+        && binding.containment.terminal.value == 10
     _ => false
   }
 }
 
-test fn occurrence_binding_resolve_module_path_two_owners_is_ambiguous_holds() -> Bool {
-  match module_path_binding_decide(
-    env_module_path: "fixchain.mid.leaf",
-    owners: ["fixchain", "fixchain.mid"],
+test fn occurrence_binding_resolve_supplied_many_is_ambiguous_holds() -> Bool {
+  match resolve_reference_occurrence_binding(
+    transport: obr_supplied_population_transport(),
+    occurrence: obr_lexical_reference_id(),
+    supplied_candidates: [
+      OccurrenceId { value: 10 },
+      OccurrenceId { value: 11 },
+    ],
   ) {
-    OccurrenceAmbiguous {
-      occurrence: _,
-      candidates: AmbiguousBindingCandidates {
-        first: observed_first,
-        second: observed_second,
-        rest: Empty,
+    OccurrenceReferenceBindingDecided {
+      result: OccurrenceAmbiguous {
+        occurrence: _,
+        candidates: AmbiguousBindingCandidates {
+          first: first,
+          second: second,
+          rest: Empty,
+        },
       },
     } =>
-      observed_first.containment.terminal == "fixchain"
-        && observed_second.containment.terminal == "fixchain.mid"
+      first.containment.terminal.value == 10
+        && second.containment.terminal.value == 11
     _ => false
   }
 }
 
-test fn occurrence_binding_resolve_decide_is_the_single_fold_authority_holds() -> Bool {
-  let transport = obr_unique_transport()
+test fn occurrence_binding_resolve_duplicate_supplied_identity_remains_ambiguous_holds() -> Bool {
+  match resolve_reference_occurrence_binding(
+    transport: obr_supplied_population_transport(),
+    occurrence: obr_lexical_reference_id(),
+    supplied_candidates: [
+      OccurrenceId { value: 10 },
+      OccurrenceId { value: 10 },
+    ],
+  ) {
+    OccurrenceReferenceBindingDecided {
+      result: OccurrenceAmbiguous {
+        occurrence: _,
+        candidates: AmbiguousBindingCandidates {
+          first: first,
+          second: second,
+          rest: Empty,
+        },
+      },
+    } =>
+      first.containment.terminal.value == 10
+        && second.containment.terminal.value == 10
+    _ => false
+  }
+}
+
+test fn occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds() -> Bool {
+  match resolve_reference_occurrence_binding(
+    transport: obr_supplied_population_transport(),
+    occurrence: obr_type_reference_id(),
+    supplied_candidates: [OccurrenceId { value: 10 }],
+  ) {
+    OccurrenceReferenceBindingDecided {
+      result: OccurrenceUnbound { occurrence: _ },
+    } => true
+    _ => false
+  }
+}
+
+test fn occurrence_binding_resolve_direct_fold_is_the_single_decision_authority_holds() -> Bool {
+  let transport = obr_supplied_population_transport()
   let reference = transport.references |> first
+  let declaration = transport.declarations |> first
   match reference {
-    Present { value: ref } =>
-      let direct = resolve_reference_occurrence_binding(
-        transport: transport,
-        occurrence: ref.occurrence,
-      )
-      let manual = occurrence_binding_from_candidates(
-        occurrence: binding_occurrence_from_reference(reference: ref),
-        candidates: transport.declarations
-          |> map(binding_candidate_from_declaration),
-      )
-      match direct {
-        OccurrenceReferenceBindingDecided { result: decided } => decided == manual
-        OccurrenceReferenceBindingTransportRefused { refusal: _ } => false
-      }
     Absent => false
+    Present { value: ref } =>
+      match declaration {
+        Absent => false
+        Present { value: decl } =>
+          let direct = occurrence_binding_from_candidates(
+            occurrence: binding_occurrence_from_reference(reference: ref),
+            candidates: [binding_candidate_from_declaration(
+              declaration: decl,
+            )],
+          )
+          match resolve_reference_occurrence_binding(
+            transport: transport,
+            occurrence: ref.occurrence,
+            supplied_candidates: [decl.occurrence],
+          ) {
+            OccurrenceReferenceBindingDecided { result: decided } =>
+              decided == direct
+            OccurrenceReferenceBindingTransportRefused { refusal: _ } => false
+          }
+      }
   }
 }
 
 fn obr_duplicate_index_transport() -> OccurrenceTransport {
-  let span = obr_fixture_span(file: "duplicate.dag", start: 7, end: 8)
-  let decl_id = OccurrenceId { value: 50 }
-  let ref_id = OccurrenceId { value: 51 }
-  let decl_path = obr_fixture_path(ancestors: Empty, terminal: decl_id)
-  let ref_path = obr_fixture_path(
-    ancestors: Cons { head: decl_id, tail: Empty },
-    terminal: ref_id,
-  )
-  let entry = obr_fixture_index_entry(
-    occurrence: decl_id,
-    authored_name: "y",
-    span: span,
-    containment: decl_path,
-  )
-  OccurrenceTransport {
-    index: OccurrenceIndex {
-      entries: [
-        entry,
-        entry,
-        obr_fixture_index_entry(
-          occurrence: ref_id,
-          authored_name: "y",
-          span: span,
-          containment: ref_path,
-        ),
-      ],
-    },
-    declarations: [
-      DeclarationOccurrence {
-        occurrence: decl_id,
-        containment: decl_path,
-        category: LexicalValueOccurrence,
-        diagnostic_span: span,
-      },
-    ],
-    references: [
-      ReferenceOccurrence {
-        occurrence: ref_id,
-        containment: ref_path,
-        category: LexicalValueOccurrence,
-        diagnostic_span: span,
-      },
-    ],
+  let transport = obr_supplied_population_transport()
+  let entry = transport.index.entries |> first
+  match entry {
+    Absent => transport
+    Present { value: duplicate } =>
+      OccurrenceTransport {
+        index: OccurrenceIndex {
+          entries: [duplicate, duplicate],
+        },
+        declarations: transport.declarations,
+        references: transport.references,
+      }
   }
 }
 
 test fn occurrence_binding_resolve_malformed_transport_refuses_holds() -> Bool {
-  let transport = obr_duplicate_index_transport()
-  let reference = transport.references |> first
-  match reference {
-    Present { value: ref } =>
-      match resolve_reference_occurrence_binding(
-        transport: transport,
-        occurrence: ref.occurrence,
-      ) {
-        OccurrenceReferenceBindingTransportRefused {
-          refusal: DuplicateAuthoredOccurrenceIdentity {
-            occurrence: _,
-            diagnostic_span: _,
-          },
-        } => true
-        OccurrenceReferenceBindingDecided { result: _ } => false
-      }
-    Absent => false
+  match resolve_reference_occurrence_binding(
+    transport: obr_duplicate_index_transport(),
+    occurrence: obr_lexical_reference_id(),
+    supplied_candidates: [],
+  ) {
+    OccurrenceReferenceBindingTransportRefused {
+      refusal: DuplicateAuthoredOccurrenceIdentity {
+        occurrence: _,
+        diagnostic_span: _,
+      },
+    } => true
+    OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }
 
-test fn occurrence_binding_resolve_unknown_occurrence_refuses_holds() -> Bool {
-  let transport = obr_unique_transport()
+test fn occurrence_binding_resolve_unknown_reference_identity_refuses_holds() -> Bool {
   match resolve_reference_occurrence_binding(
-    transport: transport,
+    transport: obr_supplied_population_transport(),
     occurrence: OccurrenceId { value: 999 },
+    supplied_candidates: [],
   ) {
     OccurrenceReferenceBindingTransportRefused {
-      refusal: UnknownOccurrenceIdentity {
-        occurrence: observed,
-      },
+      refusal: UnknownOccurrenceIdentity { occurrence: observed },
     } => observed.value == 999
     OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }
 
-test fn occurrence_binding_resolve_declaration_id_is_not_a_reference_holds() -> Bool {
-  let transport = obr_unique_transport()
-  let declaration = transport.declarations |> first
-  match declaration {
-    Present { value: decl } =>
-      match resolve_reference_occurrence_binding(
-        transport: transport,
-        occurrence: decl.occurrence,
-      ) {
-        OccurrenceReferenceBindingTransportRefused {
-          refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ },
-        } => true
-        OccurrenceReferenceBindingDecided { result: _ } => false
-      }
-    Absent => false
+test fn occurrence_binding_resolve_unknown_supplied_candidate_identity_refuses_holds() -> Bool {
+  match resolve_reference_occurrence_binding(
+    transport: obr_supplied_population_transport(),
+    occurrence: obr_lexical_reference_id(),
+    supplied_candidates: [OccurrenceId { value: 999 }],
+  ) {
+    OccurrenceReferenceBindingTransportRefused {
+      refusal: UnknownOccurrenceIdentity { occurrence: observed },
+    } => observed.value == 999
+    OccurrenceReferenceBindingDecided { result: _ } => false
+  }
+}
+
+test fn occurrence_binding_resolve_reference_identity_is_not_a_candidate_holds() -> Bool {
+  match resolve_reference_occurrence_binding(
+    transport: obr_supplied_population_transport(),
+    occurrence: obr_lexical_reference_id(),
+    supplied_candidates: [obr_type_reference_id()],
+  ) {
+    OccurrenceReferenceBindingTransportRefused {
+      refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ },
+    } => true
+    OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }

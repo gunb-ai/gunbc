@@ -1,7 +1,7 @@
 module std.occurrence_binding_resolve
 
 import std.algebra { FreeMonoid, Empty }
-import std.types { String, Bool }
+import std.types { String, List }
 import std.occurrence_binding {
   ContainmentPath,
   BindingOccurrence,
@@ -19,23 +19,17 @@ import std.occurrence_identity {
   MissingAuthoredOccurrenceIdentity,
   UnknownOccurrenceIdentity,
   ValidatedOccurrenceTransport,
-  OccurrenceIndexEntry,
   DeclarationOccurrence,
   ReferenceOccurrence,
   OccurrenceCategoryBindingAdmissible,
   OccurrenceCategoryBindingInadmissible,
-  occurrence_containment_path_is_prefix_of,
   occurrence_category_binding_verdict,
   occurrence_transport_validate,
 }
 
-data occurrence_binding_resolve_authority_note: String = "THE one name-decision function for namespace canonical binding. Every type, value, and callee resolution path routes candidate populations through std.occurrence_binding occurrence_binding_from_candidates, called directly. There is no forwarding wrapper: occurrence_binding_decide was a signature-identical forwarder around that function, so it was a second public name for one decision -- the section 3 nickname this module exists to prevent, in the module that claims to prevent it (review 45443). Deleted; callers here and in the witness suite now name the authority. Candidate producers enumerate structurally admissible declarations; cardinality is never decided elsewhere."
+data occurrence_binding_resolve_authority_note: String = "THE one exact name-binding decision for a supplied candidate population. P1 validates transport and exact reference/declaration identities, excludes category-inadmissible declarations, converts the remaining exact declarations to BindingCandidate<OccurrenceId>, and calls std.occurrence_binding.occurrence_binding_from_candidates exactly once. It does not derive visibility, source order, spelling equivalence, or a candidate catalogue: those are the downstream structural-candidate producer's responsibility."
 
-data occurrence_binding_resolve_module_path_scaffold_note: String = "STAGED ADOPTION: module-path keyed candidate producers (global_bare chain, func parent closure) bridge owner module paths into BindingCandidate<String> containment paths until every production reference site threads exact OccurrenceContainmentPath identity from OccurrenceTransport. Cardinality still folds only through occurrence_binding_from_candidates."
-
-data occurrence_binding_resolve_module_path_scaffold_dissolve_on: String = "DISSOLVE-ON: type, value, and callee production consumers enumerate BindingCandidate<OccurrenceId> from OccurrenceTransport by execution; then delete module-path scaffold producers and both scaffold rows."
-
-data occurrence_binding_resolve_transport_boundary_note: String = "Transport validity is outside OccurrenceBindingResult (review 45043): malformed transports refuse as OccurrenceReferenceBindingTransportRefused before any Bound/Unbound/Ambiguous decision. ValidatedOccurrenceTransport.entries_by_id and .references_by_id are the indexed lookup authorities — resolvers never rescan OccurrenceIndex.entries per declaration, and reference_occurrence_by_id is a map_get on the carried index rather than a filter over the references list (review 45329). resolve_reference_occurrence_binding takes only OccurrenceId (review 45106): the ReferenceOccurrence row and authored segment are derived from the validated carrier — caller-supplied reference/segment facts cannot bypass that authority."
+data occurrence_binding_resolve_transport_boundary_note: String = "Transport validity is outside OccurrenceBindingResult: malformed transports or supplied identities that do not name the validated reference/declaration roles refuse as OccurrenceReferenceBindingTransportRefused before any Bound/Unbound/Ambiguous decision. ValidatedOccurrenceTransport entries_by_id, references_by_id, and declarations_by_id are the exact lookup authorities; the resolver never rescans a transported population."
 
 fn occurrence_containment_to_binding_path(
   path: OccurrenceContainmentPath
@@ -66,60 +60,74 @@ fn binding_candidate_from_declaration(
   }
 }
 
-fn occurrence_index_entry_for_declaration(
-  validated: ValidatedOccurrenceTransport,
-  declaration: DeclarationOccurrence
-) -> OccurrenceIndexEntry? {
-  map_get(validated.entries_by_id, declaration.occurrence.value)
+type OccurrenceCandidatePopulationBuild {
+  candidates: FreeMonoid<BindingCandidate<OccurrenceId>>
+  refusal: OccurrenceTransportRefusal?
 }
 
-fn declaration_exposed_on_reference_chain(
-  declaration: DeclarationOccurrence,
-  reference: ReferenceOccurrence
-) -> Bool {
-  occurrence_containment_path_is_prefix_of(
-    prefix: declaration.containment,
-    path: reference.containment,
-  )
-}
-
-fn binding_candidates_for_reference(
+fn binding_candidates_from_supplied_declarations(
   validated: ValidatedOccurrenceTransport,
   reference: ReferenceOccurrence,
-  segment: String
-) -> FreeMonoid<BindingCandidate<OccurrenceId>> {
+  supplied_candidates: List<OccurrenceId>
+) -> OccurrenceCandidatePopulationBuild {
   fold(
-    validated.declarations,
-    init: Empty,
-    f: (acc, declaration) =>
-      match occurrence_index_entry_for_declaration(
-        validated: validated,
-        declaration: declaration,
-      ) {
-        Absent => acc
-        Present { value: entry } =>
-          if entry.projection.authored_name != segment {
-            acc
-          } else if !declaration_exposed_on_reference_chain(
-            declaration: declaration,
-            reference: reference,
+    supplied_candidates,
+    init: OccurrenceCandidatePopulationBuild {
+      candidates: Empty,
+      refusal: none,
+    },
+    f: (build, candidate_occurrence) =>
+      match build.refusal {
+        Present { value: _ } => build
+        Absent =>
+          match map_get(
+            validated.entries_by_id,
+            candidate_occurrence.value,
           ) {
-            acc
-          } else {
-            match occurrence_category_binding_verdict(
-              reference: reference.category,
-              declaration: declaration.category,
-            ) {
-              OccurrenceCategoryBindingAdmissible =>
-                concat(
-                  acc,
-                  [binding_candidate_from_declaration(declaration: declaration)],
-                )
-              OccurrenceCategoryBindingInadmissible {
-                reference: _,
-                declaration: _,
-              } => acc
-            }
+            Absent =>
+              OccurrenceCandidatePopulationBuild {
+                candidates: build.candidates,
+                refusal: Present {
+                  value: UnknownOccurrenceIdentity {
+                    occurrence: candidate_occurrence,
+                  },
+                },
+              }
+            Present { value: entry } =>
+              match map_get(
+                validated.declarations_by_id,
+                candidate_occurrence.value,
+              ) {
+                Absent =>
+                  OccurrenceCandidatePopulationBuild {
+                    candidates: build.candidates,
+                    refusal: Present {
+                      value: MissingAuthoredOccurrenceIdentity {
+                        diagnostic_span: entry.projection.diagnostic_span,
+                      },
+                    },
+                  }
+                Present { value: declaration } =>
+                  match occurrence_category_binding_verdict(
+                    reference: reference.category,
+                    declaration: declaration.category,
+                  ) {
+                    OccurrenceCategoryBindingAdmissible =>
+                      OccurrenceCandidatePopulationBuild {
+                        candidates: concat(
+                          build.candidates,
+                          [binding_candidate_from_declaration(
+                            declaration: declaration,
+                          )],
+                        ),
+                        refusal: none,
+                      }
+                    OccurrenceCategoryBindingInadmissible {
+                      reference: _,
+                      declaration: _,
+                    } => build
+                  }
+              }
           }
       },
   )
@@ -142,7 +150,8 @@ fn reference_occurrence_by_id(
 
 fn resolve_reference_occurrence_binding_validated(
   validated: ValidatedOccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: OccurrenceId,
+  supplied_candidates: List<OccurrenceId>
 ) -> OccurrenceReferenceBindingOutcome {
   match map_get(validated.entries_by_id, occurrence.value) {
     Absent =>
@@ -167,15 +176,25 @@ fn resolve_reference_occurrence_binding_validated(
             },
           }
         Present { value: reference } =>
-          OccurrenceReferenceBindingDecided {
-            result: occurrence_binding_from_candidates(
-              occurrence: binding_occurrence_from_reference(reference: reference),
-              candidates: binding_candidates_for_reference(
-                validated: validated,
-                reference: reference,
-                segment: entry.projection.authored_name,
-              ),
-            ),
+          let build = binding_candidates_from_supplied_declarations(
+            validated: validated,
+            reference: reference,
+            supplied_candidates: supplied_candidates,
+          )
+          match build.refusal {
+            Present { value: refusal } =>
+              OccurrenceReferenceBindingTransportRefused {
+                refusal: refusal,
+              }
+            Absent =>
+              OccurrenceReferenceBindingDecided {
+                result: occurrence_binding_from_candidates(
+                  occurrence: binding_occurrence_from_reference(
+                    reference: reference,
+                  ),
+                  candidates: build.candidates,
+                ),
+              }
           }
       }
   }
@@ -183,7 +202,8 @@ fn resolve_reference_occurrence_binding_validated(
 
 fn resolve_reference_occurrence_binding(
   transport: OccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: OccurrenceId,
+  supplied_candidates: List<OccurrenceId>
 ) -> OccurrenceReferenceBindingOutcome {
   match occurrence_transport_validate(transport: transport) {
     OccurrenceTransportRefused { refusal: refusal } =>
@@ -192,34 +212,7 @@ fn resolve_reference_occurrence_binding(
       resolve_reference_occurrence_binding_validated(
         validated: validated,
         occurrence: occurrence,
+        supplied_candidates: supplied_candidates,
       )
   }
-}
-
-fn module_path_binding_occurrence(module_path: String) -> BindingOccurrence<String> {
-  BindingOccurrence {
-    containment: ContainmentPath {
-      ancestors: Empty,
-      terminal: module_path,
-    },
-  }
-}
-
-fn module_path_binding_candidate(owner: String) -> BindingCandidate<String> {
-  BindingCandidate {
-    containment: ContainmentPath {
-      ancestors: Empty,
-      terminal: owner,
-    },
-  }
-}
-
-fn module_path_binding_decide(
-  env_module_path: String,
-  owners: List<String>
-) -> OccurrenceBindingResult<String> {
-  occurrence_binding_from_candidates(
-    occurrence: module_path_binding_occurrence(module_path: env_module_path),
-    candidates: owners |> map(owner => module_path_binding_candidate(owner: owner)),
-  )
 }

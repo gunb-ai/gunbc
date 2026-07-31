@@ -38,10 +38,7 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareCandidate, GlobalBareLookupState, borrowed_generic_param_names,
-  global_bare_policy_candidate, global_bare_unique_chain_candidate,
-  lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last,
-  qualify_borrowed_type_names, symbol_index_lookup
+  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
 }
 
 import v1.compiler.infer_emit_info {
