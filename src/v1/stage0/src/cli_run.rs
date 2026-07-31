@@ -5206,11 +5206,22 @@ pub fn load_sources_for_entry_with_pool_index(
     entry_path: &str,
     primary_precedence: bool,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = if primary_precedence {
-        build_multi_entry_index_primary_precedence(source_roots)
-    } else {
-        build_multi_entry_index(source_roots)
-    };
+    if primary_precedence {
+        let index = build_multi_entry_index_primary_precedence(source_roots);
+        return load_sources_for_entry_with_pool(&index, entry_path);
+    }
+    // Strict pool policy routes through the process-shared index (DESIGN §3 —
+    // one index authority per (thread, canonical roots)). Before this, a
+    // `gunbc compile --entry` process built its closure index here, dropped it,
+    // and then the first compile-clean diagnostic classification rebuilt the
+    // SAME index inside resolve_entry_graph_shared to evaluate the
+    // compile_clean_diagnostic_policy row — a second full pool_parse of the
+    // corpus (measured: 5,450 pool_parse files for a 2,725-module pool, two
+    // tree censuses per root) to read one policy Bool. Same construction fn
+    // (build_multi_entry_index), same canonical roots key, so sharing is a
+    // cache hit, not a behavior change; primary-precedence keeps its own
+    // fresh build (process_shared_index only builds strict).
+    let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -9524,8 +9535,22 @@ fn reconcile_with_typed_cache(
     // misses reach the build below exactly as before.
     let symbol_index =
         build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
-    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
-        std::collections::HashMap::new();
+    // Whole-closure variant-owner base for merge_global_bare_variant_locals
+    // (merge_global_bare_variant_locals_cost_note in v1.compiler.infer): eligibility
+    // depends only on (global_bare, si), so it is computed once per symbol index —
+    // once here for the closure index, once per composed per-root index below —
+    // instead of rescanning the census inside every module's build_module_context.
+    let closure_variant_base = v1_compiler_infer::build_global_bare_variant_locals(
+        symbol_index.global_bare.clone(),
+        source_indices.clone(),
+    );
+    let mut tree_symbol_index_memo: std::collections::HashMap<
+        String,
+        (
+            Rc<SymbolIndex>,
+            Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+        ),
+    > = std::collections::HashMap::new();
     // Interface hashes of processed modules, for dependents' content keys — filled in
     // batch order (a batch's imports all live in earlier batches), read by
     // `typed_module_content_key` at each module's store lookup.
@@ -9626,7 +9651,7 @@ fn reconcile_with_typed_cache(
                         // Same-tree bare underlay for the module being typechecked
                         // (bare = own tree, qualified = whole pool); out-of-root
                         // modules keep the closure-only bare universe.
-                        let module_symbol_index =
+                        let (module_symbol_index, module_variant_base) =
                             match source_tree_root_of(&index.source_roots, &decl_file) {
                                 Some(root) => match tree_symbol_index_memo.get(&root) {
                                     Some(hit) => hit.clone(),
@@ -9636,11 +9661,20 @@ fn reconcile_with_typed_cache(
                                                 symbol_index.clone(),
                                                 tree_bare_census_for_root(index, &root)?,
                                             );
-                                        tree_symbol_index_memo.insert(root, composed.clone());
-                                        composed
+                                        // The composed index's global_bare = closure ∪ tree,
+                                        // so its variant base is computed from the composed
+                                        // map — once per root, beside the index it belongs to.
+                                        let base =
+                                            v1_compiler_infer::build_global_bare_variant_locals(
+                                                composed.global_bare.clone(),
+                                                source_indices.clone(),
+                                            );
+                                        tree_symbol_index_memo
+                                            .insert(root, (composed.clone(), base.clone()));
+                                        (composed, base)
                                     }
                                 },
-                                None => symbol_index.clone(),
+                                None => (symbol_index.clone(), closure_variant_base.clone()),
                             };
                         let computed = v1_compiler_infer::typecheck_module(
                             resolved.clone(),
@@ -9649,6 +9683,7 @@ fn reconcile_with_typed_cache(
                             source_indices.clone(),
                             intern_table.clone(),
                             module_symbol_index,
+                            module_variant_base,
                         );
                         // Per-module attribution for the typecheck-dominant resolves measured
                         // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
