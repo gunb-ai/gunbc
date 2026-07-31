@@ -251,7 +251,7 @@ fn ci_v1_compiler_tests_compile_gate_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_v1_compiler_tests_compile_gate_step_timeout_minutes }
   }
 }
 
@@ -444,6 +444,10 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
+data gunbc_ci_v1_compiler_tests_compile_gate_step_timeout_minutes: Int = 10
+
+data gunbc_ci_v1_compiler_tests_compile_gate_step_timeout_note: String = "Dedicated step budget for cargo check -p v1-compiler-tests --tests (re-enrolled 2026-07-31, ci_spec ci_v1_compiler_tests_compile_gate_note). NOT gunbc_ci_aux_step_timeout_minutes: cold fleet compile exceeded the 5m aux cap on run 30646205825 @ cc780e8 (v1-compiler still checking at t=4m03s when the step killed — cache-warm ~41s on the repair host, but a cold registry+target restore on srv1-04 pays full dependency compile before v1-compiler-tests links). 10m = 2x the observed cold envelope with headroom for fleet pressure; a check that exceeds it is a defect to diagnose, not headroom to grant."
+
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
 data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
@@ -459,7 +463,7 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_step_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
