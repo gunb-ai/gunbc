@@ -130,8 +130,9 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, FieldNotFound, InternalError, MethodExistenceUndecided, MethodNotFound,
-    MissingField, SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, FieldNotFound, InternalError, MethodExistenceFrontierAdmitted,
+    MethodExistenceUndecided, MethodNotFound, MissingField, SoleConstructorViolation, TypeMismatch,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2818,17 +2819,34 @@ pub fn method_pipe_map_keys_values_fallback(
                         )]),
                     })
                 } else {
-                    Rc::new(MethodPipeFallback {
-                        result_ty: error_type(),
-                        kernel_diags: Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
-                                method: method_name.clone(),
-                                receiver_type: recv_shape.clone(),
-                                span: span.clone(),
-                            }),
-                            scope.module_name.clone(),
-                        )]),
-                    })
+                    match unresolved_method_frontier_trigger(
+                        scope.module_name.clone(),
+                        method_name.clone(),
+                    ) {
+                        Some(trigger) => Rc::new(MethodPipeFallback {
+                            result_ty: error_type(),
+                            kernel_diags: Rc::new(vec![make_error_node(
+                                Rc::new(CompilerDiagnostic::MethodExistenceFrontierAdmitted {
+                                    method: method_name.clone(),
+                                    receiver_type: recv_shape.clone(),
+                                    trigger: trigger.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )]),
+                        }),
+                        None => Rc::new(MethodPipeFallback {
+                            result_ty: error_type(),
+                            kernel_diags: Rc::new(vec![make_error_node(
+                                Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
+                                    method: method_name.clone(),
+                                    receiver_type: recv_shape.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )]),
+                        }),
+                    }
                 }
             }
         }
@@ -2839,6 +2857,72 @@ pub fn method_existence_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
             "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. Three measured shapes live there — a where-refinement alias arriving as Product(NonEmptyStr) instead of peeling to its String base (8 correct .length() sites in extdeps/filesystem/linux.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), and a product FIELD holding a callable, the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. MethodExistenceUndecided carries that residue as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND NOT FIXED HERE, each a promotion trigger that would let the wall decide a non-kernel receiver: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UnresolvedMethodFrontierRow {
+    pub module_name: String,
+    pub method: String,
+    pub cause: String,
+    pub dissolution_trigger: String,
+}
+
+pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> {
+    Rc::new(vec![Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "v2.compiler.tokenize".to_string(),
+    method: "apply".to_string(),
+    cause: "receiver is a lambda parameter whose type is never inferred, so it arrives as Primitive() with no method surface. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.".to_string(),
+    dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "extdeps.filesystem.linux".to_string(),
+    method: "length".to_string(),
+    cause: "receiver is NonEmptyStr, declared `String where non_empty`, which arrives as Product(NonEmptyStr) instead of peeling to its String base — so String's algebra profile, which declares length, is never consulted.".to_string(),
+    dissolution_trigger: "where-refinement alias peeling in resolve_method_receiver_type, at which point the receiver is String, kernel-profiled and DECIDABLE".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "extdeps.dns.domain_name".to_string(),
+    method: "list_push".to_string(),
+    cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed Primitive(ok) — the VARIANT name rather than the field type.".to_string(),
+    dissolution_trigger: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "v1.compiler.trace".to_string(),
+    method: "map".to_string(),
+    cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as Product(SpanMapping) — the inner product — because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
+    dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "v2.std.compilers.target_model".to_string(),
+    method: "lookup".to_string(),
+    cause: "receiver is a bare type variable Primitive(T). This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.".to_string(),
+    dissolution_trigger: "primitive-realization-single-authority, giving every receiver a complete declared method surface".to_string(),
+})])
+}
+
+pub fn unresolved_method_frontier_trigger(module_name: String, method: String) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for r in unresolved_method_frontier().iter().cloned() {
+            if ((r.module_name.clone() == module_name.clone())
+                && (r.method.clone() == method.clone()))
+            {
+                __result.push(r);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(row) => Some(row.dissolution_trigger.clone()),
+        None => None,
+    }
+}
+
+pub fn unresolved_method_frontier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The declared frontier for method calls whose receiver establishes NO method surface (DESIGN §7 frontier discipline: a declared row with a reason and a migration trigger, countable and prioritizable, never a silent escape hatch). WHY THIS EXISTS RATHER THAN A BLANKET ADVISORY: MethodExistenceUndecided BLOCKS. Leaving the whole undecided class non-blocking meant emittable_graph still emitted code containing a method whose existence was never established — the same fail-open the wall claims to close, correctly refused twice in review (codex reviews 45357 and 45383). Blocking it outright was not available either: the corpus contains 17 such calls that are CORRECT and working, 7 of them the v2 tokenizer own LexMatchThunk { apply: fn(s) } idiom, so a blanket refusal would refuse the compiler v2 is migrating to — fabricating a refusal, which §5 forbids exactly as it forbids fabricating a success. The roster resolves the dilemma the way the project already resolves seed retention: enumerate the known set, give each row a cause and a trigger, and refuse EVERYTHING ELSE. The set is finite and can only shrink; a NEW unresolved method in any module not listed here is a hard MethodNotFound-class refusal, so no new fail-open can enter. Admitted rows still emit MethodExistenceFrontierAdmitted, which is counted and carries its own trigger, so the frequency stays observable rather than zeroed by construction (§5). Grain is (module, method) rather than a line-anchored site, because line numbers move and a stable key is what makes the row survivable; the cost is that a second unresolved `apply` inside v2.compiler.tokenize would also be admitted, which is a real if narrow widening and is why the rows name a trigger rather than a permanent exemption. Each row dissolves when its named defect is fixed; three of the four are receiver-type resolution defects reported to the compiler-correctness lane, and the fourth is the general primitive-identity join.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

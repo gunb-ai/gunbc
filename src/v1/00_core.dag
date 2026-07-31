@@ -157,6 +157,7 @@ type CompilerDiagnostic
   | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
   | MethodNotFound     { method: String, receiver_type: String, span: SourceSpan }
   | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
+  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
   | MissingField       { field: String, type_name: String, span: SourceSpan }
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
@@ -247,6 +248,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     FieldNotFound      { field: _, type_name: _, span: s }     => s
     MethodNotFound     { method: _, receiver_type: _, span: s } => s
     MethodExistenceUndecided { method: _, receiver_type: _, span: s } => s
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: s } => s
     MissingField       { field: _, type_name: _, span: s }     => s
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
@@ -276,7 +278,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     VariantNotFound    { variant: v, type_name: t, span: _ }      => concat("variant '", v, "' not found in type '", t, "'")
     FieldNotFound      { field: f, type_name: t, span: _ }        => concat("field '", f, "' not found in type '", t, "'")
     MethodNotFound     { method: m, receiver_type: t, span: _ }   => concat("method '", m, "' not found on receiver type '", t, "'")
-    MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' is under-resolved, so the method's existence is not established")
+    MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it")
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
     MissingField       { field: f, type_name: t, span: _ }        => concat("missing required field '", f, "' in literal of type '", t, "'")
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
@@ -308,7 +311,7 @@ fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
-    MethodExistenceUndecided { method: _, receiver_type: _, span: _ } => false
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => true
@@ -323,7 +326,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
     UnlistedImportUse { name: _, span: _ } => false
-    MethodExistenceUndecided { method: _, receiver_type: _, span: _ } => false
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     _ => true
   }
 }
@@ -331,7 +334,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => true
-    MethodExistenceUndecided { method: _, receiver_type: _, span: _ } => true
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false
