@@ -21,6 +21,12 @@ how that exact compiler reads that exact corpus; neither identity may float.
 
 ## Reproduce
 
+`namespace_census_reproduction_steps` in `gunbc.namespace_census_receipt` is the
+ordered workflow authority. The shell below is a `SCAFFOLD` projection of those typed
+intents. It dissolves when the canonical orchestration-to-bash emitter (bash-emit
+#5828) renders that step sequence; the model remains and the hand-authored block is
+deleted.
+
 A normal whole-tree compile follows transitive imports and reached only 1,634 of the
 2,746 declared modules, leaving 1,112 uncompiled. First create a detached worktree at
 the exact corpus commit. The corpus-reading tools verify `HEAD` and refuse any other

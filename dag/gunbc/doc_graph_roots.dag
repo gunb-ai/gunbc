@@ -115,9 +115,9 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "namespace_census_2026-07-31",
-    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "build_symbol_index_census_raw_nodes", field: WholeDeclaration },
-    additional_works: [],
-    dissolution: HasTrigger { text: "the compiler emits a canonical whole-corpus namespace receipt carrying provider cardinality and consumer-to-provider edges, superseding both this pinned historical receipt and its explicitly non-semantic regex brackets" },
+    primary_work: DeclarationRef { module_path: "gunbc.namespace_census_receipt", decl_name: "namespace_census_reproduction_steps", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v1.compiler.infer", decl_name: "build_symbol_index_census_raw_nodes", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the compiler emits a canonical whole-corpus namespace receipt carrying provider cardinality and consumer-to-provider edges, and namespace_census_reproduction_steps renders through canonical bash emission, superseding both this pinned historical receipt and its hand-authored shell projection" },
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
