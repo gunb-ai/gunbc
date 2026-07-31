@@ -8610,7 +8610,10 @@ pub struct CostPartitionRow {
 pub struct InclusiveCostRow {
     pub name: &'static str,
     pub nanos: u128,
-    /// The exclusive row this one is contained in.
+    /// The row this one is contained in — an exclusive row, or another inclusive row when
+    /// the sub-attribution nests (`load_bare_edge_index` ⊂ `load_bare_reference_closure` ⊂
+    /// `load`). Either way it is already counted at the exclusive level, so it never enters
+    /// the sum.
     pub contained_in: &'static str,
 }
 
@@ -33880,11 +33883,37 @@ mod exclusive_cost_partition_law {
         let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
         assert_eq!(p.sum_exclusive_nanos(), 300);
         assert_eq!(p.remainder_nanos, 700);
-        assert_eq!(p.inclusive.len(), 3);
-        assert!(p
+
+        // Exactly the three rewire sub-passes name `assembly_rewire` as their parent, and
+        // they account for all of it. Filtered rather than counting `p.inclusive` wholesale:
+        // other exclusive rows carry their own sub-rows, and a global count would make this
+        // control fail every time an unrelated row gains one -- which is what happened when
+        // the `load_*` sub-attribution landed.
+        let rewire: Vec<_> = p
             .inclusive
             .iter()
-            .all(|r| r.contained_in == "assembly_rewire"));
+            .filter(|r| r.contained_in == "assembly_rewire")
+            .collect();
+        assert_eq!(rewire.len(), 3);
+        assert_eq!(rewire.iter().map(|r| r.nanos).sum::<u128>(), 300);
+
+        // The invariant that actually matters, over every inclusive row from every parent:
+        // an inclusive row is contained in some other row (exclusive, or another inclusive
+        // row -- `load_bare_*` nest under `load_bare_reference_closure`, which nests under
+        // `load`), and is therefore already counted there. `sum_exclusive_nanos` above is
+        // 300, not 600, which is the double-count this control exists to catch.
+        let exclusive_names: Vec<&str> = p.exclusive.iter().map(|r| r.name).collect();
+        let inclusive_names: Vec<&str> = p.inclusive.iter().map(|r| r.name).collect();
+        for row in &p.inclusive {
+            assert!(
+                exclusive_names.contains(&row.contained_in)
+                    || inclusive_names.contains(&row.contained_in),
+                "inclusive row {} names a parent {} that is neither an exclusive nor an \
+                 inclusive row -- it would be attributed to nothing",
+                row.name,
+                row.contained_in
+            );
+        }
     }
 
     #[test]
