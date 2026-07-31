@@ -99,58 +99,6 @@ fn fnv1a64_structural_hex_digest(hex: String) -> Fnv1a64Structural? {
   }
 }
 
-fn oci_digest_algorithm_component_char_allowed(cp: Int) -> Bool {
-  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 122)
-}
-
-fn oci_digest_algorithm_separator_char_allowed(cp: Int) -> Bool {
-  cp == 43 || cp == 46 || cp == 95 || cp == 45
-}
-
-fn oci_digest_algorithm_syntax_valid(text: String, index: Int, in_component: Bool) -> Bool {
-  if index >= text.length() {
-    in_component
-  } else {
-    let cp = code_point(substring(s: text, start: index, end: index + 1))
-    if in_component {
-      if oci_digest_algorithm_component_char_allowed(cp: cp) {
-        oci_digest_algorithm_syntax_valid(
-          text: text,
-          index: index + 1,
-          in_component: true,
-        )
-      } else if oci_digest_algorithm_separator_char_allowed(cp: cp) {
-        oci_digest_algorithm_syntax_valid(
-          text: text,
-          index: index + 1,
-          in_component: false,
-        )
-      } else {
-        false
-      }
-    } else if oci_digest_algorithm_component_char_allowed(cp: cp) {
-      oci_digest_algorithm_syntax_valid(
-        text: text,
-        index: index + 1,
-        in_component: true,
-      )
-    } else {
-      false
-    }
-  }
-}
-
-fn oci_digest_algorithm_wire_holds(algorithm: String) -> Bool {
-  length(algorithm) > 0
-    && oci_digest_algorithm_syntax_valid(text: algorithm, index: 0, in_component: false)
-}
-
-fn oci_other_digest_algorithm_holds(value: String) -> Bool {
-  oci_digest_algorithm_wire_holds(algorithm: value)
-    && value != "sha256"
-    && value != "sha512"
-}
-
 fn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {
   Fnv1a64(structural)
 }

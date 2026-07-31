@@ -5,7 +5,6 @@ import std.content_hash {
   Sha256Digest,
   sha256_hex_digest,
   content_hash_validate_lower_hex_length,
-  oci_other_digest_algorithm_holds,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -48,6 +47,58 @@ fn oci_encoded_digest(text: String) -> NonEmptyStr? {
   } else {
     none
   }
+}
+
+fn oci_digest_algorithm_component_char_allowed(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 122)
+}
+
+fn oci_digest_algorithm_separator_char_allowed(cp: Int) -> Bool {
+  cp == 43 || cp == 46 || cp == 95 || cp == 45
+}
+
+fn oci_digest_algorithm_syntax_valid(text: String, index: Int, in_component: Bool) -> Bool {
+  if index >= text.length() {
+    in_component
+  } else {
+    let cp = code_point(substring(s: text, start: index, end: index + 1))
+    if in_component {
+      if oci_digest_algorithm_component_char_allowed(cp: cp) {
+        oci_digest_algorithm_syntax_valid(
+          text: text,
+          index: index + 1,
+          in_component: true,
+        )
+      } else if oci_digest_algorithm_separator_char_allowed(cp: cp) {
+        oci_digest_algorithm_syntax_valid(
+          text: text,
+          index: index + 1,
+          in_component: false,
+        )
+      } else {
+        false
+      }
+    } else if oci_digest_algorithm_component_char_allowed(cp: cp) {
+      oci_digest_algorithm_syntax_valid(
+        text: text,
+        index: index + 1,
+        in_component: true,
+      )
+    } else {
+      false
+    }
+  }
+}
+
+fn oci_digest_algorithm_wire_holds(algorithm: String) -> Bool {
+  length(algorithm) > 0
+    && oci_digest_algorithm_syntax_valid(text: algorithm, index: 0, in_component: false)
+}
+
+fn oci_other_digest_algorithm(value: String) -> Bool {
+  oci_digest_algorithm_wire_holds(algorithm: value)
+    && value != "sha256"
+    && value != "sha512"
 }
 
 type OciSha512DigestHex = String where lower_hex_128
@@ -120,7 +171,7 @@ fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
   } else {
     let algo = split(s: raw, delimiter: ":").first()
     let encoded = split(s: raw, delimiter: ":").skip(n: 1).first()
-    if !(oci_other_digest_algorithm_holds(value: algo)) {
+    if !(oci_other_digest_algorithm(value: algo)) {
       none
     } else {
       match oci_encoded_digest(text: encoded) {

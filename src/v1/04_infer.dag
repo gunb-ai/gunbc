@@ -4,8 +4,8 @@ import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
   content_hash_validate_lower_hex_length,
-  oci_other_digest_algorithm_holds,
 }
+import extdeps.container.oci.digest { oci_other_digest_algorithm }
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
@@ -1088,7 +1088,7 @@ fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> B
       value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 16),
     }
   } else if pred_name == "oci_other_digest_algorithm" {
-    Present { value: oci_other_digest_algorithm_holds(value: value) }
+    Present { value: oci_other_digest_algorithm(value: value) }
   } else {
     none
   }
