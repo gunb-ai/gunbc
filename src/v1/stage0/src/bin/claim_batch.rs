@@ -768,6 +768,27 @@ fn run() -> Result<ExitCode, ExitCode> {
             ms(st.assembly_emit_info),
             ms(st.reconcile_assembly),
         );
+        // The two lines above are INCLUSIVE-universe rows: they sum every resolve this
+        // thread ran, which is a strictly larger set than `[resolve-summary]`'s
+        // witness-entry resolves. The partition below reports against the span total that
+        // actually contains them, and refuses rather than quoting a share off the mismatch.
+        let partition = v1_compiler::cli_run::exclusive_cost_partition();
+        eprintln!(
+            "[cost-partition] {}",
+            v1_compiler::cli_run::render_exclusive_cost_partition_json(
+                &partition,
+                &[
+                    (
+                        "witness_entry_resolve_wall_nanos",
+                        timings.resolve_ms.saturating_mul(1_000_000),
+                    ),
+                    (
+                        "witness_eval_wall_nanos",
+                        timings.witness_ms.saturating_mul(1_000_000),
+                    ),
+                ],
+            )
+        );
     }
 
     emit_rss_measurement("per-shard-peak-rss");
