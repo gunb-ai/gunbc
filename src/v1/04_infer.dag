@@ -602,11 +602,18 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 
-fn explicit_return_conformance_diags(expected: Node?, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
-  match expected {
-    Present { value: declared } => declared_type_conformance_diags(declared: declared, produced: produced, span: span, scope: scope)
-    Absent => []
-  }
+fn collect_explicit_return_types(n: Node) -> List<Node> {
+  concat(
+    match n.expr_data {
+      ExprReturn => [resolved_type(n: return_value(texpr: n))]
+      _ => []
+    },
+    n.children |> flat_map(c => collect_explicit_return_types(n: c)))
+}
+
+fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: InferScope) -> List<ErrorNode> {
+  collect_explicit_return_types(n: body_typed)
+    |> flat_map(produced => declared_type_conformance_diags(declared: declared, produced: produced, span: body_typed.span, scope: scope))
 }
 
 data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. The declared return reaches the return site as the `expected` already threaded from infer_item; where a return sits in a position that carries no expected type, this yields no judgment rather than a guessed one."
@@ -3675,9 +3682,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let ret_texpr = make_expr_node(expr_data: ExprReturn, children: [inner_result.typed], inferred: inner_result.typed.inferred, span: span)
       InferResult {
         typed: ret_texpr,
-        diagnostics: concat(
-          inner_result.diagnostics,
-          explicit_return_conformance_diags(expected: expected, produced: resolved_type(n: inner_result.typed), span: span, scope: scope))
+        diagnostics: inner_result.diagnostics
       }
 
     _ =>
@@ -6451,7 +6456,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_diags = body_result.diagnostics
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     let return_conformance_diags = if item.inferred != none {
-      declared_type_conformance_diags(declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope)
+      concat(
+        declared_type_conformance_diags(declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
+        explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
     } else { [] }
 
     let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), source_indices: scope.type_env.source_indices)
@@ -6477,7 +6484,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_typed = body_result.typed
     let body_diags = concat(
       body_result.diagnostics,
-      declared_type_conformance_diags(declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope)
+      concat(
+        declared_type_conformance_diags(declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
+        explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
     )
     TypedItemResult {
       item: Node {
