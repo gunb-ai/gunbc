@@ -1,31 +1,4 @@
 module test.claim.realization_schedule_critical_path
-import std.verification {
-  NanosecondDuration,
-  nanosecond_duration,
-  nanosecond_duration_count,
-}
-import std.realization_measurement {
-  schedule_batch_critical_path,
-  schedule_critical_path_time,
-  cost_account_measured_from_schedule_critical_path,
-  time_measure_list_total,
-}
-import std.realization_schedule {
-  CostBasis,
-  cost_account_time_count,
-}
-import std.nat {
-  nat_compare,
-  nat_max,
-}
-import std.algebra {
-  Greater,
-  Equal,
-}
-import v2.std.live_tree {
-  LiveTreeDisposition,
-  SubstrateInputsOnly,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

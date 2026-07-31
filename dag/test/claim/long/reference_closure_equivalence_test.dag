@@ -1,9 +1,6 @@
 module test.claim.long.reference_closure_equivalence
-import v2.lens.module_graph {
-  module_graph_exclude_substrings,
-  no_paths,
-}
-import gunbc.ci_layer_roots { witness_layer_roots }
+
+import v2.lens.module_graph { no_paths, module_graph_exclude_substrings }
 
 data expected_conformance_closure: FreeMonoid<String> = [
   "dag/test/claim/module_graph/conformance_imports_only.dag",

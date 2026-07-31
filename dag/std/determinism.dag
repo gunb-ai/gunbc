@@ -1,10 +1,5 @@
 module std.determinism
-import std.perturbation {
-  PerturbationVerdict,
-  ResponseConsistent,
-  ResponseViolation,
-}
-import std.decl_ref { DeclarationRef }
+
 
 type Determinism
   = Deterministic

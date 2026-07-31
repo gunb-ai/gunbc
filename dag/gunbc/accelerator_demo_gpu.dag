@@ -1,40 +1,5 @@
 module gunbc.accelerator_demo_gpu
-import std.types {
-  String,
-  Bool,
-  Int,
-  NonEmptyStr,
-}
-import extdeps.communication.medium {
-  DecodeFidelity,
-  Lossless,
-  Lossy,
-}
-import std.numerical_contract {
-  NumericalContract,
-  IntegerExact,
-  FloatApproximate,
-  FmaContractionPermitted,
-  FmaContractionRefused,
-  integer_exact_contract,
-  float_contract,
-}
-import std.approximate_field { ToNearestEven }
-import extdeps.gpu.types {
-  GpuModelCatalogRow,
-  GpuComputeCapability,
-}
-import extdeps.gpu.apple { apple_m5_gpu_catalog }
-import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
-import extdeps.languages.gpu.wgsl.kernel {
-  wgsl_kernel_target_medium_name,
-  wgsl_relu_mul_add_int_kernel_source,
-  wgsl_relu_mul_add_float_kernel_source,
-}
-import std.measure {
-  hardware_thread_count_value,
-  bandwidth_count,
-}
+
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {

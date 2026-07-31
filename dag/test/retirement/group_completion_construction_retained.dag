@@ -1,8 +1,5 @@
 module test.retirement.group_completion_construction_retained
-import test.retirement.model {
-  RetainedNonMigratable,
-  TestModuleRetirement,
-}
+
 
 data group_completion_construction_retention: TestModuleRetirement = TestModuleRetirement {
   module: "group_completion_construction_test.rs",

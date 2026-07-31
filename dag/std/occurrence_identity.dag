@@ -1,7 +1,7 @@
 module std.occurrence_identity
 
 import std.algebra { FreeMonoid }
-import std.types { Bool, Int, String, SourceSpan, is_prefix_of }
+import std.types { Bool, Int, String, SourceSpan }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 
@@ -40,81 +40,6 @@ type OccurrenceCategory
   | NamespaceSegmentOccurrence
   | FieldOccurrence
   | MethodOccurrence
-
-type OccurrenceCategoryBindingVerdict
-  = OccurrenceCategoryBindingAdmissible
-  | OccurrenceCategoryBindingInadmissible {
-      reference: OccurrenceCategory,
-      declaration: OccurrenceCategory,
-    }
-
-data occurrence_category_binding_verdict_note: String = "Canonical reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct."
-
-fn occurrence_category_binding_verdict(
-  reference: OccurrenceCategory,
-  declaration: OccurrenceCategory
-) -> OccurrenceCategoryBindingVerdict {
-  match reference {
-    TypeOccurrence =>
-      match declaration {
-        TypeOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    LexicalValueOccurrence =>
-      match declaration {
-        LexicalValueOccurrence => OccurrenceCategoryBindingAdmissible
-        CallableOccurrence => OccurrenceCategoryBindingAdmissible
-        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    CallableOccurrence =>
-      match declaration {
-        CallableOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    ConstructorOccurrence =>
-      match declaration {
-        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    FieldOccurrence =>
-      match declaration {
-        FieldOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    MethodOccurrence =>
-      match declaration {
-        MethodOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    NamespaceSegmentOccurrence =>
-      match declaration {
-        NamespaceSegmentOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-  }
-}
 
 type OccurrenceProjection {
   occurrence: OccurrenceId
@@ -210,7 +135,6 @@ type OccurrenceTransportRefusal
       observed: OccurrenceCategory,
       diagnostic_span: SourceSpan,
     }
-  | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
 
 data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority."
 
@@ -281,25 +205,6 @@ fn occurrence_containment_paths_equal(
 ) -> Bool {
   left.ancestors == right.ancestors &&
   left.terminal.value == right.terminal.value
-}
-
-data occurrence_containment_path_query_note: String = "Canonical containment-path query (review 44814): occurrence_containment_path_is_prefix_of is the ONE surface for prefix tests over OccurrenceContainmentPath. It flattens ancestors++terminal and consumes std.types.is_prefix_of (review 45014 / review 45081) — never ancestor-membership alone (that admitted [A]→X as a prefix of [B,X]→Y).\n\nDELETED, NOT MOVED: occurrence_containment_path_contains_ancestor was the sibling ancestor-membership surface this row used to name. The review 45014 / 45081 correction is exactly what orphaned it — once prefix stopped consulting ancestor membership alone, nothing called it, and a corpus-wide check (dag, src/v2, src/v1) found zero consumers: its own declaration, this note, and its own generated emission. Deleting it completes that correction rather than leaving a dead second surface beside the one authority (review 45409, DESIGN section 5 dead-scaffold wall).\n\nWHY DELETED RATHER THAN ROUTED THROUGH A CANONICAL any: the review proposed folding it onto v2.std.algebra's any. That would be a section 3 inversion -- any exists ONLY in src/v2/std/algebra.dag, module v2.std.algebra, which is the v2 compiler's private copy of std; dag/std/algebra.dag, the std authority, has no any. Making std.occurrence_identity import v2.std.algebra would point the authority at a copy of itself. With zero consumers there is no surface to preserve, so deletion is both the smaller change and the correct one; if an ancestor-membership query is ever needed again it should arrive with its consumer, and any should be lifted into std.algebra first."
-
-fn occurrence_containment_path_id_sequence(
-  path: OccurrenceContainmentPath
-) -> List<OccurrenceId> {
-  path.ancestors |> list_push(path.terminal)
-}
-
-fn occurrence_containment_path_is_prefix_of(
-  prefix: OccurrenceContainmentPath,
-  path: OccurrenceContainmentPath
-) -> Bool {
-  is_prefix_of(
-    prefix: occurrence_containment_path_id_sequence(path: prefix),
-    xs: occurrence_containment_path_id_sequence(path: path),
-    eq: occurrence_id_eq,
-  )
 }
 
 type OccurrenceTransportIndexBuild {
@@ -533,34 +438,21 @@ fn reference_occurrence_refusal(
   }
 }
 
-type ValidatedOccurrenceTransport {
-  entries_by_id: Map<Int, OccurrenceIndexEntry>
-  references_by_id: Map<Int, ReferenceOccurrence>
-  declarations: List<DeclarationOccurrence>
-  references: List<ReferenceOccurrence>
-}
-
-type OccurrenceTransportValidation
-  = OccurrenceTransportValidated { transport: ValidatedOccurrenceTransport }
-  | OccurrenceTransportRefused { refusal: OccurrenceTransportRefusal }
-
-data occurrence_transport_validation_authority_note: String = "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id and references_by_id are the indexed authorities. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries, and never rescan the declarations/references lists, per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation. references_by_id is carried rather than rebuilt (review 45329): validation already builds it to decide declaration refusals, so dropping it from the carrier forced reference lookup to re-derive the same index by a linear filter over references — a second representation of a fact this boundary already owns, and the exact rescan the sentence above forbids. The declarations/references lists remain on the carrier because refusal folds consume them in order; they are not a lookup path."
-
-fn occurrence_transport_validate(
+fn occurrence_transport_refusal(
   transport: OccurrenceTransport
-) -> OccurrenceTransportValidation {
+) -> OccurrenceTransportRefusal? {
   let index_build = occurrence_transport_index_build(
     index: transport.index
   )
   match index_build.refusal {
-    Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+    Present { value: refusal } => Present { value: refusal }
     Absent =>
       let role_index_build = occurrence_transport_role_index_build(
         declarations: transport.declarations,
         references: transport.references
       )
       match role_index_build.refusal {
-        Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+        Present { value: refusal } => Present { value: refusal }
         Absent =>
           let declaration_refusal = fold(
             transport.declarations,
@@ -576,9 +468,9 @@ fn occurrence_transport_validate(
               }
           )
           match declaration_refusal {
-            Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+            Present { value: refusal } => Present { value: refusal }
             Absent =>
-              let reference_refusal = fold(
+              fold(
                 transport.references,
                 init: none,
                 f: (refusal, reference) =>
@@ -591,27 +483,7 @@ fn occurrence_transport_validate(
                     )
                   }
               )
-              match reference_refusal {
-                Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
-                Absent => OccurrenceTransportValidated {
-                  transport: ValidatedOccurrenceTransport {
-                    entries_by_id: index_build.entries_by_id,
-                    references_by_id: role_index_build.references_by_id,
-                    declarations: transport.declarations,
-                    references: transport.references,
-                  },
-                }
-              }
           }
       }
-  }
-}
-
-fn occurrence_transport_refusal(
-  transport: OccurrenceTransport
-) -> OccurrenceTransportRefusal? {
-  match occurrence_transport_validate(transport: transport) {
-    OccurrenceTransportRefused { refusal: refusal } => Present { value: refusal }
-    OccurrenceTransportValidated { transport: _ } => none
   }
 }

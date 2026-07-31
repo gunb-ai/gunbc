@@ -133,7 +133,7 @@ pub fn resolve_modules_with_occurrence_transport(
                 imports_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |acc: _, m: Rc<Node>| {
+            |acc: Rc<ResolveAccum>, m: Rc<Node>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let result = resolve_module_imports(
@@ -513,7 +513,7 @@ pub fn check_duplicate_modules(
                 seen_names: v1_rt::rc_empty_map::<String, bool>(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |state: _, m: Rc<Node>| {
+            |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
                 let is_dup = v1_rt::map_has(&state.seen_names.clone(), m_name.clone());
                 if is_dup.clone() {

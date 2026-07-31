@@ -1,6 +1,5 @@
 module extdeps.filesystem.mock_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data filesystem_mock_case_write_committed: PublishedMockCase = PublishedMockCase {
   operation_key: "Filesystem.Write",

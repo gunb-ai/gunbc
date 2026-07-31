@@ -1,17 +1,12 @@
 module extdeps.cloud.hetzner
+
 import std.roster_frontier {
   FrontierRow,
   TriggerProse,
   decl_ref,
   frontier_row_decl,
 }
-import extdeps.toolchain.types { Architecture }
-import std.measure {
-  ByteSize,
-  HardwareThreadCount,
-  MoneyAmountMicro,
-}
-import std.currency { CurrencyCode }
+
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

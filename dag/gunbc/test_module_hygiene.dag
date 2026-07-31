@@ -2,7 +2,7 @@ module gunbc.test_module_hygiene
 
 import std.types { String, Bool, List }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
+import v2.workflow.floor_discovery_producer { floor_discovery_scan_test_decl_names }
 
 data test_module_hygiene_authority_note: String = "U2 orphan enroll-or-refuse + U3 file-grain expand authority (proud-wren-892). Pure fold over ModuleSurface — refs are already-extracted local names (call + bare-var). Host realizes parse Node→surface, FS walk, and interpreter transport (cli_run/test_module_hygiene_bridge.rs). Equivalence: dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag + cli_run.rs test_module_hygiene_bridge_equivalence_tests. ROADMAP node v1-test-hygiene-producer-retirement: seed producer deleted; bind is gunbc.test_module_hygiene.orphan_plain_names_or_refuse."
 

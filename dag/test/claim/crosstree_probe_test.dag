@@ -1,5 +1,5 @@
 module test.claim.crosstree_probe
-import v2.std.live_tree { LiveTreeDisposition }
+
 
 data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 

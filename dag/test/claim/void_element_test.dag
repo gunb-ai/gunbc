@@ -1,13 +1,8 @@
 module test.claim.void_element
-import std.markup {
-  Element,
-  Fragment,
-  FragmentText,
-  attr,
-}
+
+import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { serialize_html_source }
 import extdeps.languages.react_jsx { serialize_jsx_component }
-import v2.std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,8 +1,5 @@
 module test.retirement.e0308_mechanical_trio_retained
-import test.retirement.model {
-  RetainedNonMigratable,
-  TestModuleRetirement,
-}
+
 
 data e0308_mechanical_trio_retention: TestModuleRetirement = TestModuleRetirement {
   module: "e0308_mechanical_trio_test.rs",

@@ -1,51 +1,5 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
-import v2.lens.complexity_accumulator_copy {
-  BindsComputed,
-  BindsFresh,
-  Finding,
-  LetBinding,
-  LetBindingFact,
-  PortBareName,
-  PortComputedExpression,
-  PortMissing,
-  PortPureLiteral,
-  PortReading,
-  Poly2Suspect,
-  Unclassifiable,
-  any_port_carries_carrier,
-  classify_call,
-  let_binding_fact_for,
-  resolve_port_reading,
-  symbol_in
-}
-import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  dag_lex_token_symbol,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
-}
-import std.algebra { Cons, Empty }
-import v2.compiler.fold_lowering { fold_call_to_loop, fold_family_head }
-import v2.std.algebra { list_append, list_map, list_reverse }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Ambiguous,
-  Edge,
-  Found,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  loop_carrier_binder_target
-}
-import v2.std.node_query { find_named_child }
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match v2.std.node_query.find_named_child(root: cap, name: name) {

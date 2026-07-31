@@ -1,43 +1,5 @@
 module test.claim.accelerator_demo_gpu_witness
-import gunbc.accelerator_demo_gpu {
-  witness_m5_gpu_execution_lane_count_grounded,
-  witness_rtx5090_execution_lane_count_grounded,
-  witness_rtx5090_memory_bandwidth_grounded,
-  witness_m5_memory_bandwidth_grounded,
-  witness_rtx5090_compute_capability_grounded,
-  witness_m5_has_no_compute_capability,
-  witness_integer_path_is_lossless,
-  witness_float_path_is_lossy_even_when_fma_refused,
-  witness_gpu_receipt_status_is_dormant,
-  witness_gpu_triptych_contains_three_panels,
-}
-import extdeps.languages.gpu.wgsl.kernel {
-  witness_wgsl_relu_mul_add_kernel_surface_shape,
-  witness_wgsl_reuses_simd_op_code_authority,
-  witness_wgsl_int_kernel_source_shape,
-  witness_wgsl_float_kernel_source_shape,
-  witness_wgsl_kernel_sources_grammar_scaffold_documented,
-}
-import extdeps.gpu.types {
-  Metal,
-  Cuda,
-  Rocm,
-  OpenCl,
-}
-import extdeps.gpu.apple { apple_m5_gpu_catalog }
-import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
-import extdeps.vendor.apple { apple }
-import extdeps.vendor.nvidia { nvidia }
-import extdeps.memory.types {
-  UnifiedShared,
-  Dram,
-  Hbm,
-}
-import std.types { Bool }
-import v2.std.live_tree {
-  LiveTreeDisposition,
-  SubstrateInputsOnly,
-}
+
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 

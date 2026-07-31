@@ -3927,7 +3927,7 @@ pub fn resolve_local_coproduct_wire_policy(
 pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
     modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, tm: _| {
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             let module_name = authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -4571,7 +4571,7 @@ pub fn build_shared_types(
             .cloned()
             .fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, summary: _| {
+                |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
                         summary.clone(),
@@ -4619,33 +4619,31 @@ pub struct OwnershipBuildResult {
 
 pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
-        let callable_set =
-            modules
-                .clone()
+        let callable_set = modules.clone().iter().cloned().fold(
+            v1_rt::rc_empty_set::<_>(),
+            |acc: _, m: Rc<TypedModule>| {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for item in m.items.clone().iter().cloned() {
+                        if (item.body.clone() != None) {
+                            __result.push(item);
+                        }
+                    }
+                    __result
+                })
                 .iter()
                 .cloned()
-                .fold(v1_rt::rc_empty_set::<_>(), |acc: _, m: _| {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != None) {
-                                __result.push(item);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: _, item: Rc<Node>| {
-                        v1_rt::rc_set_union(
-                            inner,
-                            collect_callable_refs(
-                                item.body.clone().clone().unwrap(),
-                                m.type_env.clone().source_indices.clone(),
-                            ),
-                        )
-                    })
-                });
+                .fold(acc, |inner: _, item: Rc<Node>| {
+                    v1_rt::rc_set_union(
+                        inner,
+                        collect_callable_refs(
+                            item.body.clone().clone().unwrap(),
+                            m.type_env.clone().source_indices.clone(),
+                        ),
+                    )
+                })
+            },
+        );
         let proofs = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
@@ -4710,7 +4708,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             }),
-            |acc: Rc<OwnershipBuildResult>, entry: _| {
+            |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let read_only = if v1_rt::set_contains(
@@ -4745,7 +4743,11 @@ pub fn group_unlisted_type_names(
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     diags.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: _| match (*en.diagnostic.clone()).clone() {
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
+            .diagnostic
+            .clone())
+        .clone()
+        {
             CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
                 let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
                     Some(v) => v.clone(),
@@ -4807,7 +4809,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         }
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, tm: _| {
+            |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
                 let svc_items = Rc::new({
                     let mut __result = Vec::new();
                     for item in tm.items.clone().iter().cloned() {
@@ -5200,7 +5202,7 @@ pub fn build_module_export_sets(
 ) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
     modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: _| {
+        |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: Rc<TypedModule>| {
             let m_name = authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -7193,7 +7195,7 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
     {
         let by_name = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: _, tm: _| {
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
                 let nm = authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -7206,7 +7208,7 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
         );
         let by_filename = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
-            |acc: _, tm: _| {
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
                 let fname = module_to_filename(authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -14343,18 +14345,17 @@ pub fn emit_func_def(
         );
         let body_scope = build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let body_scope =
-            uses.clone()
-                .iter()
-                .cloned()
-                .fold(body_scope.clone(), |s: _, u: Rc<Node>| {
-                    extend_scope(
-                        s,
-                        resource_use_name_at(u.clone(), si.clone()),
-                        resource_use_resource(u.clone()),
-                        Rc::new(SubValueRelation::SubValueUnknown),
-                    )
-                });
+        let body_scope = uses.clone().iter().cloned().fold(
+            body_scope.clone(),
+            |s: Rc<InferScope>, u: Rc<Node>| {
+                extend_scope(
+                    s,
+                    resource_use_name_at(u.clone(), si.clone()),
+                    resource_use_resource(u.clone()),
+                    Rc::new(SubValueRelation::SubValueUnknown),
+                )
+            },
+        );
         let body_str = emit_func_body(
             body.clone(),
             registry.clone(),
@@ -19751,7 +19752,7 @@ pub fn lambda_scope_from_children(
     )
     .iter()
     .cloned()
-    .fold(scope.clone(), |acc: _, pair: (i64, String)| {
+    .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
         let param_name = pair.1.clone();
         let param_type = match param_nodes
@@ -29407,7 +29408,7 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
 pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
     modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, tm: _| {
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             tm.items.clone().iter().cloned().fold(
                 acc,
                 |inner: Rc<HashMap<String, Rc<Node>>>, i: Rc<Node>| match i.body.clone() {

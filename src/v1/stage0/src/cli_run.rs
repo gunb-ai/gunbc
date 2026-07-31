@@ -15,17 +15,13 @@ use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
-    global_bare_chain_candidates, global_bare_unique_chain_candidate, lookup_binding_by_name,
-    lookup_type_by_name, qualified_all_but_last, symbol_index_insert, symbol_index_lookup,
-    GlobalBareLookupState, SymbolIndex, TypeEnv,
+    lookup_binding_by_name, lookup_type_by_name, qualified_all_but_last, symbol_index_insert,
+    symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
-use crate::v1_compiler_infer_occurrence_binding::{
-    module_path_owner_binding_decide, ModulePathBindingProjection,
-};
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -5850,31 +5846,18 @@ fn bare_reference_pull_paths_for_source(
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
-                    // Same chain+decide authority as inference / containment_resolve
-                    // (unique_on_chain_policy_note): zero on-chain never authorizes
-                    // whole-corpus search, including nearest-ancestor LCP widen.
                     GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path,
                         binding,
-                    } => global_bare_unique_chain_candidate(
-                        referencing_module.clone(),
-                        Rc::new(
-                            vec![Rc::new(crate::v1_compiler_infer_env::GlobalBareCandidate {
-                                module_path: module_path.clone(),
-                                binding: binding.clone(),
-                            })]
-                            .into(),
-                        ),
-                    )
-                    .and_then(|c| {
-                        if pullable(&c.binding) {
-                            Some(c.module_path.clone())
+                    } => {
+                        if pullable(binding) {
+                            Some(module_path.clone())
                         } else {
                             None
                         }
-                    }),
+                    }
                     GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
-                        global_bare_unique_chain_candidate(
+                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
                             referencing_module.clone(),
                             candidates.clone(),
                         )
@@ -15121,8 +15104,8 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
         return Ok(());
     }
     let (graph, indices) =
-        resolve_entry_graph_shared(source_roots, &floor_naming_hygiene_entry_anchored())
-            .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
+        resolve_entry_graph_shared(source_roots, &floor_discovery_producer_entry_anchored())
+            .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
         .iter()
@@ -15167,7 +15150,6 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
 }
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
-const FLOOR_NAMING_HYGIENE_ENTRY: &str = "src/v2/workflow/floor_naming_hygiene.dag";
 
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
@@ -15188,11 +15170,6 @@ const FLOOR_NAMING_HYGIENE_ENTRY: &str = "src/v2/workflow/floor_naming_hygiene.d
 /// anchoring plumbing when entry resolution stops reading cwd.
 fn floor_discovery_producer_entry_anchored() -> String {
     let anchored = process_workspace_root().join(FLOOR_DISCOVERY_PRODUCER_ENTRY);
-    anchored.to_string_lossy().into_owned()
-}
-
-fn floor_naming_hygiene_entry_anchored() -> String {
-    let anchored = process_workspace_root().join(FLOOR_NAMING_HYGIENE_ENTRY);
     anchored.to_string_lossy().into_owned()
 }
 
@@ -25242,79 +25219,19 @@ pub fn containment_resolve_fn_v1_for_module(
             module_path: owner,
             binding,
         }) => {
-            return match global_bare_unique_chain_candidate(
-                module_path.to_string(),
-                Rc::new(
-                    vec![Rc::new(crate::v1_compiler_infer_env::GlobalBareCandidate {
-                        module_path: owner.clone(),
-                        binding: binding.clone(),
-                    })]
-                    .into(),
-                ),
-            ) {
-                Some(cand) => {
-                    if is_fn_like_binding(
-                        &cand.binding.resolved,
-                        &cand.module_path,
-                        name,
-                        item_index,
-                    ) {
-                        ContainmentResolve::Hit {
-                            owner_module: cand.module_path.clone(),
-                            qualified_path: module_path_to_qualified_path(&cand.module_path, name),
-                            node_ptr: Rc::as_ptr(&cand.binding.resolved) as usize,
-                            via: ContainmentResolveVia::GlobalUnique,
-                            lexical_steps: 0,
-                        }
-                    } else {
-                        ContainmentResolve::Unresolved
-                    }
-                }
-                None => ContainmentResolve::Unresolved,
-            };
-        }
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates }) => {
-            let chain = crate::v1_compiler_infer_env::global_bare_chain_candidates(
-                module_path.to_string(),
-                candidates.clone(),
-            );
-            let owners: Rc<im::Vector<String>> =
-                Rc::new(chain.iter().map(|cand| cand.module_path.clone()).collect());
-            match (*module_path_owner_binding_decide(owners)).clone() {
-                ModulePathBindingProjection::ModulePathBindingMiss => {
-                    ContainmentResolve::Unresolved
-                }
-                ModulePathBindingProjection::ModulePathBindingHit { .. } => {
-                    if let Some(cand) =
-                        crate::v1_compiler_infer_env::global_bare_unique_chain_candidate(
-                            module_path.to_string(),
-                            candidates.clone(),
-                        )
-                    {
-                        if is_fn_like_binding(
-                            &cand.binding.resolved,
-                            &cand.module_path,
-                            name,
-                            item_index,
-                        ) {
-                            return ContainmentResolve::Hit {
-                                owner_module: cand.module_path.clone(),
-                                qualified_path: module_path_to_qualified_path(
-                                    &cand.module_path,
-                                    name,
-                                ),
-                                node_ptr: Rc::as_ptr(&cand.binding.resolved) as usize,
-                                via: ContainmentResolveVia::GlobalUnique,
-                                lexical_steps: 0,
-                            };
-                        }
-                    }
-                    ContainmentResolve::Unresolved
-                }
-                ModulePathBindingProjection::ModulePathBindingAmbiguous { .. } => {
-                    ContainmentResolve::Ambiguous
-                }
+            if is_fn_like_binding(&binding.resolved, owner, name, item_index) {
+                return ContainmentResolve::Hit {
+                    owner_module: owner.clone(),
+                    qualified_path: module_path_to_qualified_path(&owner, name),
+                    node_ptr: Rc::as_ptr(&binding.resolved) as usize,
+                    via: ContainmentResolveVia::GlobalUnique,
+                    lexical_steps: 0,
+                };
             }
+            ContainmentResolve::Unresolved
+        }
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }) => {
+            ContainmentResolve::Ambiguous
         }
         None => ContainmentResolve::Unresolved,
     }

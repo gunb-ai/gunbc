@@ -1,43 +1,5 @@
 module v2.compiler.body_producer_forward
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, length, list_append }
-import v2.std.collection {
-  List,
-}
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present,
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus,
-}
-import v2.extdeps.languages.dag {
-  dag_translation_rules_node,
-  parse_production_emitted_identity_optional,
-}
-import v2.std.grammar { grammar_relation_row_forward_production_selection }
-import v2.std.node {
-  Atom,
-  Arrow,
-  ComputationNode,
-  Node,
-  Symbol,
-  TypeNode,
-  node_synthetic,
-}
-import v2.std.logic { Bool }
-import v2.std.text { Int }
-
 data body_producer_forward_note: String = "General body producer forward fold (general-body-producer-design §3, wave2_prep_design §3): production-identity-keyed GrammarRelationRow selection at the normalize/body-producer seam — the forward reading of the same rows the emitter reads backward. First consumer of ObligationForwardDeterminism (exactly-one row per surface identity) and the production-identity selection helper grammar_relation_row_forward_production_selection. Behavior lowering (match/if/let/loop/…) dispatches through body_lower_fold in v2.compiler.body_lowering_fold until Slice 4 deletes that interim module wholesale. dissolve-on: body_lowering_fold.dag absent — this module owns the full forward slot-map apply."
 
 type BodyProducerForwardRow {

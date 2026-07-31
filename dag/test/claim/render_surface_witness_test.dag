@@ -1,31 +1,4 @@
 module test.claim.render_surface_witness
-import std.render {
-  Document,
-  Block,
-  Leaf,
-  Group,
-  Line,
-  Span,
-  SpanStyle,
-  RenderCapability,
-  Append,
-}
-import std.materialization_ladder { Frame }
-import std.symbols { Ascii }
-import extdeps.render.surface {
-  RenderTarget,
-  PlainTerminal,
-  GithubActions,
-  SurfaceEnv,
-  detect_target,
-  group_syntax,
-  resolve_group_syntax,
-  serialize_document,
-}
-import v2.std.live_tree {
-  LiveTreeDisposition,
-  SubstrateInputsOnly,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

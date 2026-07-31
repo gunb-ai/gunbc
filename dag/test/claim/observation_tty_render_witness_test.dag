@@ -1,39 +1,15 @@
 module test.claim.observation_tty_render_witness_test
-import v2.std.live_tree {
-  LiveTreeDisposition,
-  SubstrateInputsOnly,
-}
-import std.types {
-  Bool,
-  List,
-  NonEmptyStr,
-  String,
-}
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
-import std.symbols {
-  Ascii,
-  Emoji,
-  Spinner0,
-  StatusBlocked,
-  StatusFinal,
-  Tier,
-}
-import std.measure {
-  basis_point,
-  byte_size,
-  millisecond,
-  nanosecond,
-}
-import std.render {
-  Append,
-  CursorAction,
-  Overwrite,
-  RenderCapability,
-}
+import std.symbols { Tier, Emoji, Ascii, Spinner0, StatusBlocked, StatusFinal }
+import std.measure { nanosecond, millisecond, byte_size, basis_point }
+import std.render { CursorAction, Overwrite, Append, RenderCapability }
 import extdeps.render.ansi {
   ansi_carriage_return,
-  ansi_erase_entire_line,
   ansi_line_feed,
+  ansi_erase_entire_line,
 }
 import extdeps.render.terminal {
   DynamicLineClosed,
@@ -43,47 +19,47 @@ import extdeps.render.terminal {
   project_terminal_write,
 }
 import std.observation {
-  Ambient,
-  Anomaly,
-  AnomalyExpanded,
-  AttentionBasis,
+  ObservationSubject,
+  RunSegment,
   BatchSegment,
+  EntrySegment,
+  ModuleSegment,
+  PhaseSegment,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationEvent,
   Begin,
-  BlockedOn,
   Concluded,
   Done,
-  EntrySegment,
+  Refused,
   Failed,
   Final,
-  MeasuredUnavailable,
-  MeasuredValue,
-  MemoryBudget,
-  ModuleSegment,
+  AttentionBasis,
+  RoutineCollapsible,
+  SummaryAlwaysShown,
+  AnomalyExpanded,
+  Ambient,
   Notable,
-  ObservationEvent,
-  ObservationSubject,
-  PhaseSegment,
-  Refused,
+  Anomaly,
+  BlockedOn,
+  MemoryBudget,
   RemainingBounded,
   RemainingUnknown,
-  RoutineCollapsible,
-  RunSegment,
-  SummaryAlwaysShown,
 }
 import gunbc.observation_tty_render {
   PreambleFields,
-  TtyEmission,
-  TtyEmissionProjected,
-  TtyEmissionProjection,
-  TtyEmissionRefused,
-  tty_blocked_line,
+  tty_preamble_line,
   tty_cursor_action,
+  tty_group_line,
+  tty_blocked_line,
+  tty_final_line,
   tty_event_emission,
   tty_event_emission_under,
-  tty_final_line,
-  tty_group_line,
-  tty_preamble_line,
   tty_render_emission,
+  TtyEmission,
+  TtyEmissionProjection,
+  TtyEmissionProjected,
+  TtyEmissionRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

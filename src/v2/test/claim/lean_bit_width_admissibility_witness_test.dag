@@ -1,0 +1,23 @@
+module v2.test.claim.lean_bit_width_admissibility_witness
+
+
+import v2.extdeps.languages.lean { lean_admits_bit_width }
+import std.measure { BitWidth, bit_width, bit_width_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): fixed widths ground on std.measure.BitWidth via bit_width(count); lean_admits_bit_width is the per-language admissibility relation (8/16/32/64 admitted, 128 refused). No Bits8|Bits16|... variant homes in lean.dag."
+
+test fn lean_admits_catalog_fixed_widths() -> Bool {
+  lean_admits_bit_width(width: bit_width(count: 8))
+    && lean_admits_bit_width(width: bit_width(count: 16))
+    && lean_admits_bit_width(width: bit_width(count: 32))
+    && lean_admits_bit_width(width: bit_width(count: 64))
+}
+
+test fn lean_refuses_bits128_admissibility() -> Bool {
+  let w128: BitWidth = bit_width(count: 128)
+  !lean_admits_bit_width(width: w128) && bit_width_count(w128) == 128
+}

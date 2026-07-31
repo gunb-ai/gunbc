@@ -1,22 +1,4 @@
 module test.claim.readback_independence
-import v2.std.live_tree { LiveTreeDisposition }
-import gunbc.readback_independence {
-  ProbeEffectUnknown,
-  ReadBackProbe,
-  proc_swaps_read_probe,
-  readback_evidence_gate_accepts,
-  readback_evidence_trusting_widen_sketch,
-  readback_evidence_verdict,
-  readback_non_independent_probe_count,
-  readback_probe_is_independent,
-  readback_probe_roster,
-  sccache_show_stats_probe,
-  systemd_is_active_probe,
-  systemd_show_property_probe,
-}
-import gunbc.host_swap_backing { host_swap_backing_host_verdict }
-import gunbc.host_phase_status { observation_verdict_eq }
-import gunbc.fleet_intent_network { operator_host_srv3 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

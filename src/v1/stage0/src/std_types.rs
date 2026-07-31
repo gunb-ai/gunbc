@@ -223,51 +223,6 @@ pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
 
 pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
 
-pub fn free_monoid_prefix_query_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical FreeMonoid/List prefix query (DESIGN §2/§3): is_prefix_of is the single prefix walker over List (= FreeMonoid). Domain surfaces consume this — they do not re-walk Empty|Cons. Parameterized as List so stage0 Clone bounds fire via container_type_arity; FreeMonoid itself stays out of that map (enrolling it treated String=FreeMonoid<Char> as a container and broke Edge/String inference).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn is_prefix_of<T: Clone>(
-    prefix: Rc<Vec<T>>,
-    xs: Rc<Vec<T>>,
-    eq: impl Fn(T, T) -> bool + Clone,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match prefix.clone().first().cloned() {
-            None => true,
-            Some(h_prefix) => match xs.clone().first().cloned() {
-                None => false,
-                Some(h_xs) => {
-                    (eq(h_prefix.clone(), h_xs.clone())
-                        && is_prefix_of(
-                            Rc::new(
-                                prefix
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
-                            Rc::new(
-                                xs.clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
-                            eq.clone(),
-                        ))
-                }
-            },
-        }
-    })
-}
-
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.clone().iter().fold(0, |acc: i64, _: _| (acc + 1))
 }

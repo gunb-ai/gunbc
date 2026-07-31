@@ -1,26 +1,17 @@
 module test.claim.html_roundtrip
-import std.markup {
-  Element,
-  Fragment,
-  FragmentText,
-  MarkupBracket,
-  attr,
-}
+
+import std.markup { Fragment, Element, FragmentText, attr, MarkupBracket }
 import extdeps.languages.html {
-  IngestRejected,
-  IngestedNode,
-  canonical_html_spellings,
-  html_medium_lossless,
-  ingest_html_source,
-  ingest_html_source_with,
   serialize_html_source,
   serialize_html_source_with,
+  ingest_html_source,
+  ingest_html_source_with,
+  IngestedNode,
+  IngestRejected,
+  html_medium_lossless,
+  canonical_html_spellings,
 }
-import extdeps.communication.medium {
-  Lossless,
-  Lossy,
-}
-import v2.std.live_tree { LiveTreeDisposition }
+import extdeps.communication.medium { Lossless, Lossy }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

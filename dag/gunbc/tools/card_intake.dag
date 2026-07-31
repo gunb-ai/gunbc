@@ -1,38 +1,5 @@
 module gunbc.tools.card_intake
-import std.types {
-  FilePath,
-  NonEmptyStr,
-}
-import std.credentials {
-  CredentialSource,
-  EnvVar,
-}
-import std.disposition {
-  Disposition,
-  Scaffold,
-  SingleAuthority,
-}
-import std.decl_ref {
-  DeclarationRef,
-  WholeDeclaration,
-}
-import extdeps.llm.anthropic {
-  AnthropicChatMessage,
-  UserMessage,
-  UserTextBlock,
-  AnthropicImageBlock,
-  ImageSource,
-  Base64Image,
-  AnthropicImageMediaType,
-  ImageJpeg,
-}
 
-import extdeps.llm.anthropic_rest
-import extdeps.filesystem.filesystem_io
-import extdeps.tcgplayer.tcgplayer
-import extdeps.tcgplayer.catalog
-import extdeps.tcgplayer.pricing
-import extdeps.tcgplayer.store
 
 data tcgplayer_client_id_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }
 

@@ -1,39 +1,5 @@
 module test.claim.network_grounding
-import extdeps.dns.domain_name {
-  DnsLabel,
-  DomainName,
-}
-import extdeps.dhcp.v4 { HostName }
-import extdeps.network.ipv4 {
-  Ipv4Address,
-  ipv4_address,
-  parse_ipv4_address,
-  render_ipv4_address,
-}
-import v2.std.live_tree { LiveTreeDisposition }
-import extdeps.network.endpoint {
-  NetworkHost,
-  host_by_ipv4,
-  host_by_name,
-  render_network_host,
-  socket_address,
-}
-import extdeps.network.reach {
-  direct_lan,
-  fabric_tunnel,
-  proxy_jump,
-  reach_is_realizable,
-  reach_realizability,
-  reach_target,
-}
-import extdeps.network.address {
-  ip_address_is_loopback,
-  ip_address_is_v4,
-  ip_v4,
-  ip_v6,
-  render_ip_address,
-}
-import extdeps.network.ipv6 { ipv6_address }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

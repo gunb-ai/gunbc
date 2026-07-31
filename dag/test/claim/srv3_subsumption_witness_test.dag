@@ -1,57 +1,5 @@
 module test.claim.srv3_subsumption
-import product.placement_supply { HostIdentity }
-import gunbc.host_toolchain_ensure {
-  HostToolchainKind,
-  HostToolchainReach,
-  ResolvedHostToolchainReach,
-  host_toolchain_direct_access,
-  host_toolchain_ensure_reach,
-}
-import v2.std.live_tree { LiveTreeDisposition }
-import gunbc.bootstrap { Ownership }
-import extdeps.ssh { SshPublicKey }
-import v2.std.algebra { any }
-import gunbc.host_authorized_keys_reconcile {
-  authorized_key_identity,
-  authorized_key_identity_eq,
-  authorized_key_ownership,
-  authorized_key_value_eq,
-  host_authorized_keys_reconcile,
-  srv3_observed_authorized_keys,
-  srv3_observed_briansrls_srv1_key,
-  srv3_observed_node_orch_srv2_key,
-  srv4_observed_authorized_keys,
-}
-import gunbc.ci_deploy_access { ci_deploy_srv1_operator_access }
-import gunbc.fleet_ssh_access {
-  fleet_authorized_keys,
-  fleet_automation_ssh_key,
-  operator_macbook_ssh_key,
-}
-import gunbc.host_identity_access { host_identity_srv1_access }
-import std.types { list_length }
-import gunbc.membership_reconcile {
-  membership_reconcile,
-  membership_tally,
-}
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
-import extdeps.network.reach { reach_realizability }
-import extdeps.network.endpoint { render_network_host }
-import gunbc.fleet_reach {
-  srv2_lan_reach_host,
-  srv3_lan_reach_host,
-  srv3_reach,
-  srv3_reach_fabric_intended,
-  srv3_reach_is_realizable,
-  srv3_reach_target,
-}
-import gunbc.fleet_intent { srv3_host }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

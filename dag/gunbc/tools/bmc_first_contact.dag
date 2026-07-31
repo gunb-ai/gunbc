@@ -1,19 +1,4 @@
 module gunbc.tools.bmc_first_contact
-import extdeps.bmc.openbmc { openbmc_factory_login }
-import std.types {
-  NonEmptyStr,
-  String,
-  Secret,
-}
-import std.cache_interface { Network }
-import std.process {
-  ProcessExit,
-  ExitSuccess,
-  exit_failure,
-}
-
-import extdeps.shell
-import extdeps.bmc.http
 
 
 func bmc_first_contact() -> ProcessExit

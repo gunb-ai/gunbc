@@ -3,11 +3,8 @@
 
 use self::NodeOccurrenceIdentity::*;
 use self::OccurrenceCategory::*;
-use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceTransportRefusal::*;
-use self::OccurrenceTransportValidation::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_types::is_prefix_of;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, SourceSpan};
 use crate::v1_rt;
@@ -99,140 +96,6 @@ pub enum OccurrenceCategory {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum OccurrenceCategoryBindingVerdict {
-    OccurrenceCategoryBindingAdmissible,
-    OccurrenceCategoryBindingInadmissible {
-        reference: OccurrenceCategory,
-        declaration: OccurrenceCategory,
-    },
-}
-impl OccurrenceCategoryBindingVerdict {
-    pub fn reference(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => {
-                panic!("no reference on unit variant")
-            }
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                reference: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-    pub fn declaration(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => {
-                panic!("no declaration on unit variant")
-            }
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                declaration: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-}
-
-pub fn occurrence_category_binding_verdict_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_category_binding_verdict(
-    reference: OccurrenceCategory,
-    declaration: OccurrenceCategory,
-) -> Rc<OccurrenceCategoryBindingVerdict> {
-    match reference.clone() {
-        OccurrenceCategory::TypeOccurrence => match declaration.clone() {
-            OccurrenceCategory::TypeOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::LexicalValueOccurrence => match declaration.clone() {
-            OccurrenceCategory::LexicalValueOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            OccurrenceCategory::CallableOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            OccurrenceCategory::ConstructorOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::CallableOccurrence => match declaration.clone() {
-            OccurrenceCategory::CallableOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::ConstructorOccurrence => match declaration.clone() {
-            OccurrenceCategory::ConstructorOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::FieldOccurrence => match declaration.clone() {
-            OccurrenceCategory::FieldOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::MethodOccurrence => match declaration.clone() {
-            OccurrenceCategory::MethodOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::NamespaceSegmentOccurrence => match declaration.clone() {
-            OccurrenceCategory::NamespaceSegmentOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceProjection {
     pub occurrence: OccurrenceId,
     pub authored_name: String,
@@ -311,9 +174,28 @@ pub enum OccurrenceTransportRefusal {
         observed: OccurrenceCategory,
         diagnostic_span: Rc<SourceSpan>,
     },
-    UnknownOccurrenceIdentity {
-        occurrence: OccurrenceId,
-    },
+}
+impl OccurrenceTransportRefusal {
+    pub fn diagnostic_span(&self) -> Rc<SourceSpan> {
+        match self {
+            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+            OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+            OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
 }
 
 pub fn occurrence_identity_constructor_spelling_note() -> String {
@@ -422,32 +304,6 @@ pub fn occurrence_containment_paths_equal(
         && (left.terminal.clone().value.clone() == right.terminal.clone().value.clone()))
 }
 
-pub fn occurrence_containment_path_query_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical containment-path query (review 44814): occurrence_containment_path_is_prefix_of is the ONE surface for prefix tests over OccurrenceContainmentPath. It flattens ancestors++terminal and consumes std.types.is_prefix_of (review 45014 / review 45081) — never ancestor-membership alone (that admitted [A]→X as a prefix of [B,X]→Y).\n\nDELETED, NOT MOVED: occurrence_containment_path_contains_ancestor was the sibling ancestor-membership surface this row used to name. The review 45014 / 45081 correction is exactly what orphaned it — once prefix stopped consulting ancestor membership alone, nothing called it, and a corpus-wide check (dag, src/v2, src/v1) found zero consumers: its own declaration, this note, and its own generated emission. Deleting it completes that correction rather than leaving a dead second surface beside the one authority (review 45409, DESIGN section 5 dead-scaffold wall).\n\nWHY DELETED RATHER THAN ROUTED THROUGH A CANONICAL any: the review proposed folding it onto v2.std.algebra's any. That would be a section 3 inversion -- any exists ONLY in src/v2/std/algebra.dag, module v2.std.algebra, which is the v2 compiler's private copy of std; dag/std/algebra.dag, the std authority, has no any. Making std.occurrence_identity import v2.std.algebra would point the authority at a copy of itself. With zero consumers there is no surface to preserve, so deletion is both the smaller change and the correct one; if an ancestor-membership query is ever needed again it should arrive with its consumer, and any should be lifted into std.algebra first.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_containment_path_id_sequence(
-    path: Rc<OccurrenceContainmentPath>,
-) -> Rc<Vec<OccurrenceId>> {
-    v1_rt::rc_list_push(path.ancestors.clone(), path.terminal.clone())
-}
-
-pub fn occurrence_containment_path_is_prefix_of(
-    prefix: Rc<OccurrenceContainmentPath>,
-    path: Rc<OccurrenceContainmentPath>,
-) -> bool {
-    is_prefix_of(
-        occurrence_containment_path_id_sequence(prefix.clone()),
-        occurrence_containment_path_id_sequence(path.clone()),
-        occurrence_id_eq,
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceTransportIndexBuild {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
@@ -462,7 +318,10 @@ pub fn occurrence_transport_index_build(
             entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
             refusal: None,
         }),
-        |build: _, entry: _| match build.refusal.clone() {
+        |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
+            .refusal
+            .clone()
+        {
             Some(_) => build.clone(),
             None => match v1_rt::map_get(
                 &build.entries_by_id.clone(),
@@ -529,7 +388,8 @@ pub fn occurrence_transport_role_index_build(
                 references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
                 refusal: None,
             }),
-            |build: _, declaration: _| match build.refusal.clone() {
+            |build: Rc<OccurrenceTransportRoleIndexBuild>,
+             declaration: Rc<DeclarationOccurrence>| match build.refusal.clone() {
                 Some(_) => build.clone(),
                 None => match v1_rt::map_get(
                     &build.declarations_by_id.clone(),
@@ -561,7 +421,8 @@ pub fn occurrence_transport_role_index_build(
             Some(_) => declaration_build,
             None => references.clone().iter().cloned().fold(
                 declaration_build,
-                |build: _, reference: _| match build.refusal.clone() {
+                |build: Rc<OccurrenceTransportRoleIndexBuild>,
+                 reference: Rc<ReferenceOccurrence>| match build.refusal.clone() {
                     Some(_) => build.clone(),
                     None => match v1_rt::map_get(
                         &build.references_by_id.clone(),
@@ -677,59 +538,27 @@ pub fn reference_occurrence_refusal(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ValidatedOccurrenceTransport {
-    pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    pub references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
-    pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum OccurrenceTransportValidation {
-    OccurrenceTransportValidated {
-        transport: Rc<ValidatedOccurrenceTransport>,
-    },
-    OccurrenceTransportRefused {
-        refusal: Rc<OccurrenceTransportRefusal>,
-    },
-}
-
-pub fn occurrence_transport_validation_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id and references_by_id are the indexed authorities. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries, and never rescan the declarations/references lists, per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation. references_by_id is carried rather than rebuilt (review 45329): validation already builds it to decide declaration refusals, so dropping it from the carrier forced reference lookup to re-derive the same index by a linear filter over references — a second representation of a fact this boundary already owns, and the exact rescan the sentence above forbids. The declarations/references lists remain on the carrier because refusal folds consume them in order; they are not a lookup path.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_transport_validate(
+pub fn occurrence_transport_refusal(
     transport: Rc<OccurrenceTransport>,
-) -> Rc<OccurrenceTransportValidation> {
+) -> Option<Rc<OccurrenceTransportRefusal>> {
     {
         let index_build = occurrence_transport_index_build(transport.index.clone());
         match index_build.refusal.clone() {
-            Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
-                refusal: refusal.clone(),
-            }),
+            Some(refusal) => Some(refusal.clone()),
             None => {
                 let role_index_build = occurrence_transport_role_index_build(
                     transport.declarations.clone(),
                     transport.references.clone(),
                 );
                 match role_index_build.refusal.clone() {
-                    Some(refusal) => {
-                        Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
-                            refusal: refusal.clone(),
-                        })
-                    }
+                    Some(refusal) => Some(refusal.clone()),
                     None => {
                         let declaration_refusal =
                             transport.declarations.clone().iter().cloned().fold(
                                 None,
-                                |refusal: _, declaration: _| match refusal.clone() {
+                                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal
+                                    .clone()
+                                {
                                     Some(_) => refusal.clone(),
                                     None => declaration_occurrence_refusal(
                                         index_build.entries_by_id.clone(),
@@ -739,54 +568,25 @@ pub fn occurrence_transport_validate(
                                 },
                             );
                         match declaration_refusal.clone() {
-                            Some(refusal) => {
-                                Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
-                                    refusal: refusal.clone(),
-                                })
-                            }
-                            None => {
-                                let reference_refusal =
-                                    transport.references.clone().iter().cloned().fold(
-                                        None,
-                                        |refusal: _, reference: _| match refusal.clone() {
-                                            Some(_) => refusal.clone(),
-                                            None => reference_occurrence_refusal(
-                                                index_build.entries_by_id.clone(),
-                                                role_index_build.declarations_by_id.clone(),
-                                                reference.clone(),
-                                            ),
-                                        },
-                                    );
-                                match reference_refusal.clone() {
-    Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
-    refusal: refusal.clone(),
-}),
-    None => Rc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
-    transport: Rc::new(ValidatedOccurrenceTransport {
-    entries_by_id: index_build.entries_by_id.clone(),
-    references_by_id: role_index_build.references_by_id.clone(),
-    declarations: transport.declarations.clone(),
-    references: transport.references.clone(),
-}),
-}),
-}
-                            }
+                            Some(refusal) => Some(refusal.clone()),
+                            None => transport.references.clone().iter().cloned().fold(
+                                None,
+                                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal
+                                    .clone()
+                                {
+                                    Some(_) => refusal.clone(),
+                                    None => reference_occurrence_refusal(
+                                        index_build.entries_by_id.clone(),
+                                        role_index_build.declarations_by_id.clone(),
+                                        reference.clone(),
+                                    ),
+                                },
+                            ),
                         }
                     }
                 }
             }
         }
-    }
-}
-
-pub fn occurrence_transport_refusal(
-    transport: Rc<OccurrenceTransport>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
-    match (*occurrence_transport_validate(transport.clone())).clone() {
-        OccurrenceTransportValidation::OccurrenceTransportRefused {
-            refusal: refusal, ..
-        } => Some(refusal.clone()),
-        OccurrenceTransportValidation::OccurrenceTransportValidated { transport: _, .. } => None,
     }
 }
 

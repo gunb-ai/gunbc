@@ -1,35 +1,4 @@
 module test.claim.host_toolchain_components
-import v2.std.live_tree { LiveTreeDisposition }
-import gunbc.host_toolchain_components {
-  NotReachableOnSpawnPath,
-  ReachableOnSpawnPath,
-  floor_gate_component_requirements,
-  gate_finds_component_verdict,
-  host_gate_finds_component_verdict,
-  host_toolchain_completeness_verdict,
-  resolved_toolchain_has,
-  resolved_toolchain_missing,
-  rustup_component_add_on_miss_probe_sketch,
-  rustup_component_list_probe,
-  srv2_ghrunner_pinned_toolchain_has_rustfmt,
-  srv2_ghrunner_toolchain_after_fix,
-  srv2_ghrunner_toolchain_before_fix,
-  toolchain_completeness_fleet_unobserved_count,
-  toolchain_completeness_observed_verdict,
-  toolchain_completeness_verdict,
-}
-import gunbc.host_phase_status {
-  fleet_subsumption_hosts,
-  observation_verdict_eq,
-}
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-}
-import extdeps.rustup {
-  rustup_component_eq,
-  rustup_component_name,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

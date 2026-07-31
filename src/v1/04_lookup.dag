@@ -38,10 +38,7 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareCandidate, GlobalBareLookupState, borrowed_generic_param_names,
-  global_bare_policy_candidate, global_bare_unique_chain_candidate,
-  lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last,
-  qualify_borrowed_type_names, symbol_index_lookup
+  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
 }
 
 import v1.compiler.infer_emit_info {
@@ -115,14 +112,7 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
   } else {
     match map_get(type_env.symbol_index.global_bare, name) {
       Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        match global_bare_unique_chain_candidate(
-          env_module_path: type_env.module_path,
-          candidates: [GlobalBareCandidate { module_path: mp, binding: b }],
-        ) {
-          Present { value: cand } =>
-            Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
-          Absent => none
-        }
+        Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
       Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
         match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
           Present { value: cand } =>

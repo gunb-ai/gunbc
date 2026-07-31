@@ -1,6 +1,5 @@
 module extdeps.cloud.gcp.mock_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data gcloud_auth_mock_case_login: PublishedMockCase = PublishedMockCase {
   operation_key: "gcloud.Auth.Login",

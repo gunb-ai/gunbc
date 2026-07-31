@@ -1,9 +1,4 @@
 module test.claim.sccache_local_content_verified_on_read
-import std.cache_interface { CacheEvidence }
-import v2.std.live_tree { LiveTreeDisposition }
-import extdeps.realization.resolved_graph { resolved_graph_cache_facts }
-import extdeps.cache.sccache { sccache_local_facts }
-import extdeps.cache { sccache_local_projected }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

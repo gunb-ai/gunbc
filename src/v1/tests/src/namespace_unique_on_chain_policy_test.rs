@@ -1,23 +1,27 @@
-//! Canonical binding witness (namespace-canonical-binding / namespace-resolution-design.md §13):
-//! production global-bare and fn-parent cardinality always routes through the one
-//! `module_path_owner_binding_decide` fold on chain-filtered populations — no policy
-//! bracket may re-enable nearest-wins or first-hit silent picks on these paths
-//! (roadmap `namespace-canonical-binding` out_of_scope: no configuration switch).
+//! §8-step-4 discriminating witness (namespace-resolution-design.md §13, operator-ratified
+//! 2026-07-21): the executing v1 seed resolver carries a NameResolutionPolicy gate —
+//! default ON = NamespaceOnlyY strict unique-on-chain with typed `AmbiguousReference`
+//! refusals, OFF (host-bracketed) = ImportScoped (nearest-wins / first-hit, byte-for-byte).
+//!
+//! The homonym fixtures below are the discriminating inputs: the SAME sources compile
+//! clean under ImportScoped and refuse (typed, located, full candidate list) under
+//! NamespaceOnlyY — on both the type/value path (ancestor-chain homonym resolved by
+//! nearest-wins today) and the fn path (first-hit over `func_env.parents`, the
+//! `fn_parent_first_hit` silent-pick class, which had NO refusal arm at all).
+//! Controls pin the boundary: a chain-unique homonym still resolves under the strict
+//! policy, and a genuinely-unbound name stays `UnresolvedType` — the refusal is typed,
+//! never a blanket.
 
 use std::rc::Rc;
 
-use v1_compiler::cli_run::{containment_resolve_fn_v1_for_module, ContainmentResolve};
-use v1_compiler::std_occurrence_identity::{OccurrenceId, OccurrenceTransportRefusal};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_rt::{
     name_resolution_policy_is_namespace_only, name_resolution_policy_set_namespace_only,
 };
-use v1_compiler::v1_std_core::{
-    diagnostic_to_message, diagnostic_to_span, is_error_diagnostic, no_span, CompilerDiagnostic,
-};
+use v1_compiler::v1_std_core::{diagnostic_to_message, is_error_diagnostic};
 
-/// Panic-safe policy bracket: retained only to prove the host gate no longer bypasses
-/// canonical binding on the production paths this PR routes.
+/// Panic-safe policy bracket: save/restore the thread-local gate so ImportScoped cases
+/// bracket `false` explicitly and drop always restores the pre-test default.
 struct ResolutionPolicyGuard(bool);
 
 impl ResolutionPolicyGuard {
@@ -51,9 +55,12 @@ fn error_diag_messages(sources: Vec<Rc<SourceFile>>) -> Vec<String> {
         .collect()
 }
 
-/// Chain homonym on BOTH paths under `fixchain.mid.leaf`:
-/// - type/value path: bare `Homonym` — 2 binders on the chain → AmbiguousReference;
-/// - fn path: bare `pick()` with two glob imports → AmbiguousReference.
+/// Chain homonym on BOTH paths. `fixchain` and `fixchain.mid` are both ancestors of the
+/// referencing module `fixchain.mid.leaf`:
+/// - type/value path: bare `Homonym` — ImportScoped resolves nearest (`fixchain.mid`),
+///   NamespaceOnlyY sees 2 binders on the chain and refuses;
+/// - fn path: bare `pick()` with two glob imports both providing it — ImportScoped
+///   first-hits over the flat parent closure, NamespaceOnlyY refuses on 2 matches.
 fn homonym_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src(
@@ -79,6 +86,9 @@ fn homonym_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
+/// Control fixture: homonym whose candidates put EXACTLY ONE binder on the referencing
+/// chain (`Duo` in ancestor `fixchain.mid` vs non-ancestor `fixother`) — must resolve
+/// under BOTH policies (the strict rule is unique-on-chain, not no-homonyms-anywhere).
 fn unique_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src(
@@ -93,6 +103,11 @@ fn unique_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
+/// Control fixture: whole-pool homonym with ZERO binders on the referencing chain
+/// (`Stray` declared only in two non-ancestor siblings). ImportScoped already refuses
+/// (all-disjoint LCP tie) as `UnresolvedType`; NamespaceOnlyY refuses as the honest
+/// `AmbiguousReference` with the full pool — mirroring the census containment walk
+/// (lexical Unbound + whole-pool-ambiguous => Ambiguous, never a fabricated bind).
 fn zero_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src("fixother.dag", "module fixother\ntype Stray { a: Int }\n"),
@@ -104,16 +119,7 @@ fn zero_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
-fn single_off_chain_unique_fixture() -> Vec<Rc<SourceFile>> {
-    vec![
-        src("fixother.dag", "module fixother\ntype Solo { a: Int }\n"),
-        src(
-            "leaf.dag",
-            "module fixchain.mid.leaf\nfn use_solo(x: Solo) -> Solo { x }\n",
-        ),
-    ]
-}
-
+/// Control fixture: a genuinely-unbound name (declared nowhere).
 fn unbound_fixture() -> Vec<Rc<SourceFile>> {
     vec![src(
         "leaf.dag",
@@ -122,23 +128,18 @@ fn unbound_fixture() -> Vec<Rc<SourceFile>> {
 }
 
 #[test]
-fn policy_bracket_does_not_bypass_canonical_homonym_refusal() {
+fn import_scoped_default_resolves_homonym_fixture_clean() {
     let _guard = ResolutionPolicyGuard::set(false);
     let diags = error_diag_messages(homonym_fixture());
     assert!(
-        diags.iter().any(|m| m.contains("ambiguous reference 'Homonym'")),
-        "host policy bracket false must not restore nearest-wins for on-chain homonyms; got {diags:?}"
-    );
-    assert!(
-        diags
-            .iter()
-            .any(|m| m.contains("ambiguous reference 'pick'")),
-        "host policy bracket false must not restore first-hit fn resolution; got {diags:?}"
+        diags.is_empty(),
+        "ImportScoped policy (host bracket false) must preserve today's behavior verbatim \
+         (nearest-wins type resolution + first-hit fn resolution); got {diags:?}"
     );
 }
 
 #[test]
-fn canonical_refuses_chain_homonym_on_type_path() {
+fn namespace_only_refuses_chain_homonym_on_type_path() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     let homonym_refusals: Vec<&String> = diags
@@ -147,17 +148,18 @@ fn canonical_refuses_chain_homonym_on_type_path() {
         .collect();
     assert!(
         !homonym_refusals.is_empty(),
-        "2-binders-on-chain type homonym must refuse with AmbiguousReference; got {diags:?}"
+        "NamespaceOnlyY must refuse the 2-binders-on-chain type homonym with a typed \
+         AmbiguousReference; got {diags:?}"
     );
     let listing = homonym_refusals[0];
     assert!(
         listing.contains("fixchain.Homonym") && listing.contains("fixchain.mid.Homonym"),
-        "the refusal must carry the FULL candidate list; got {listing}"
+        "the refusal must carry the FULL candidate list (fix menu, §13); got {listing}"
     );
 }
 
 #[test]
-fn canonical_refuses_fn_parent_homonym_at_call_site() {
+fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     let pick_refusals: Vec<&String> = diags
@@ -166,7 +168,8 @@ fn canonical_refuses_fn_parent_homonym_at_call_site() {
         .collect();
     assert!(
         !pick_refusals.is_empty(),
-        "2-parent-matches fn homonym must refuse with AmbiguousReference; got {diags:?}"
+        "NamespaceOnlyY must refuse the 2-parent-matches fn homonym (the \
+         fn_parent_first_hit silent-pick class) with a typed AmbiguousReference; got {diags:?}"
     );
     let listing = pick_refusals[0];
     assert!(
@@ -176,173 +179,66 @@ fn canonical_refuses_fn_parent_homonym_at_call_site() {
 }
 
 #[test]
-fn unique_on_chain_still_resolves() {
+fn namespace_only_unique_on_chain_still_resolves() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unique_on_chain_fixture());
     assert!(
         diags.is_empty(),
-        "exactly-one-binder-on-chain must resolve; got {diags:?}"
+        "exactly-one-binder-on-chain must RESOLVE under NamespaceOnlyY (the strict rule \
+         is unique-on-chain, not no-homonyms-anywhere); got {diags:?}"
     );
 }
 
 #[test]
-fn zero_on_chain_homonym_is_unresolved_not_ambiguous() {
-    for namespace_only in [false, true] {
-        let _guard = ResolutionPolicyGuard::set(namespace_only);
-        let diags = error_diag_messages(zero_on_chain_fixture());
-        assert!(
-            diags.iter().any(|m| m.contains("unresolved type 'Stray'")),
-            "zero on-chain homonym must be UnresolvedType (policy={namespace_only}); got {diags:?}"
-        );
-        assert!(
-            !diags.iter().any(|m| m.contains("ambiguous")),
-            "zero on-chain must not widen to AmbiguousReference (policy={namespace_only}); got {diags:?}"
-        );
-    }
-}
-
-#[test]
-fn zero_on_chain_containment_census_matches_inference_unresolved() {
-    let _guard = ResolutionPolicyGuard::set(true);
-    let sources = zero_on_chain_fixture();
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
-    let graph = resolved.graph.as_ref().expect("graph");
-    let leaf = graph
-        .modules
-        .iter()
-        .find(|m| m.type_env.module_path == "fixchain.mid.leaf")
-        .expect("leaf module");
-    let containment = containment_resolve_fn_v1_for_module(
-        &leaf.type_env.symbol_index,
-        "fixchain.mid.leaf",
-        "Stray",
-        None,
+fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
+    let import_scoped = {
+        let _guard = ResolutionPolicyGuard::set(false);
+        error_diag_messages(zero_on_chain_fixture())
+    };
+    assert!(
+        import_scoped
+            .iter()
+            .any(|m| m.contains("unresolved type 'Stray'")),
+        "ImportScoped all-disjoint LCP tie refuses as UnresolvedType today; got {import_scoped:?}"
     );
     assert!(
-        matches!(containment, ContainmentResolve::Unresolved),
-        "containment census must mirror inference for zero on-chain homonym; got {containment:?}"
+        !import_scoped.iter().any(|m| m.contains("ambiguous")),
+        "ImportScoped bracket must not mint AmbiguousReference; got {import_scoped:?}"
     );
-}
 
-#[test]
-fn single_off_chain_unique_refuses_regardless_of_policy_bracket() {
-    for namespace_only in [false, true] {
-        let _guard = ResolutionPolicyGuard::set(namespace_only);
-        let diags = error_diag_messages(single_off_chain_unique_fixture());
-        assert!(
-            diags.iter().any(|m| m.contains("unresolved type 'Solo'")),
-            "corpus-unique off-chain name must refuse as UnresolvedType (policy={namespace_only}); got {diags:?}"
-        );
-        assert!(
-            !diags.iter().any(|m| m.contains("ambiguous")),
-            "single off-chain candidate is Unresolved, not Ambiguous (policy={namespace_only}); got {diags:?}"
-        );
-    }
-}
-
-#[test]
-fn single_off_chain_unique_containment_census_matches_inference() {
-    let _guard = ResolutionPolicyGuard::set(true);
-    let sources = single_off_chain_unique_fixture();
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
-    let graph = resolved.graph.as_ref().expect("graph");
-    let leaf = graph
-        .modules
+    let strict = {
+        let _guard = ResolutionPolicyGuard::set(true);
+        error_diag_messages(zero_on_chain_fixture())
+    };
+    let stray: Vec<&String> = strict
         .iter()
-        .find(|m| m.type_env.module_path == "fixchain.mid.leaf")
-        .expect("leaf module");
-    let containment = containment_resolve_fn_v1_for_module(
-        &leaf.type_env.symbol_index,
-        "fixchain.mid.leaf",
-        "Solo",
-        None,
+        .filter(|m| m.contains("ambiguous reference 'Stray'"))
+        .collect();
+    assert!(
+        !stray.is_empty(),
+        "NamespaceOnlyY labels the zero-on-chain whole-pool homonym honestly as \
+         Ambiguous (census walk parity), never a mislabeled UnresolvedType; got {strict:?}"
     );
     assert!(
-        matches!(containment, ContainmentResolve::Unresolved),
-        "containment census must mirror inference for corpus-unique off-chain name; got {containment:?}"
+        stray[0].contains("fixother.Stray") && stray[0].contains("fixother2.Stray"),
+        "the refusal must carry the full pool candidate list; got {}",
+        stray[0]
     );
 }
 
 #[test]
-fn genuinely_unbound_stays_unresolved_not_ambiguous() {
+fn namespace_only_keeps_genuinely_unbound_as_unresolved_not_ambiguous() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unbound_fixture());
     assert!(
         diags
             .iter()
             .any(|m| m.contains("unresolved type 'NoSuchTypeAnywhere'")),
-        "unbound name stays UnresolvedType; got {diags:?}"
+        "a name bound NOWHERE stays UnresolvedType under the strict policy \
+         (Ambiguous and Unresolved are distinct states, §5); got {diags:?}"
     );
     assert!(
         !diags.iter().any(|m| m.contains("ambiguous")),
         "no fabricated ambiguity for an unbound name; got {diags:?}"
-    );
-}
-
-/// `UnknownOccurrenceIdentity` is the one refusal in the transport that carries no
-/// authored span (the id is in neither index, so none exists — absence by construction).
-/// It must render through the corpus's single no-location authority, `no_span()`, and
-/// must NOT launder the occurrence id into a minted pseudo-file (review 45364).
-///
-/// Discriminating: this goes RED if the `<unknown-occurrence:N>` placeholder is
-/// reintroduced, because the assertions below reject any span whose file names the id.
-#[test]
-fn unknown_occurrence_refusal_renders_no_span_never_a_minted_pseudo_file() {
-    let diagnostic = Rc::new(CompilerDiagnostic::OccurrenceTransportViolation {
-        refusal: Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
-            occurrence: OccurrenceId { value: 4926 },
-        }),
-    });
-
-    let span = diagnostic_to_span(diagnostic.clone());
-
-    assert_eq!(
-        span,
-        no_span(),
-        "spanless refusal must render as the single no-location authority"
-    );
-    assert!(
-        !span.file.contains("4926"),
-        "span fabricated the occurrence id into a file name: {}",
-        span.file
-    );
-    assert!(
-        !span.file.contains("unknown-occurrence"),
-        "span minted a placeholder file name: {}",
-        span.file
-    );
-
-    // The identity is not lost — the message owns it, and is its only carrier.
-    assert!(
-        diagnostic_to_message(diagnostic).contains("4926"),
-        "occurrence identity must still be reported, via the message"
-    );
-}
-
-/// Span-carrying refusals are unaffected: they still report their authored location,
-/// so the fix above removed a fabrication rather than flattening real spans to nothing.
-#[test]
-fn span_carrying_refusal_still_reports_its_authored_span() {
-    let authored = v1_compiler::std_types::SourceSpan {
-        file: "dag/std/occurrence_identity.dag".to_string(),
-        start: 120,
-        end: 148,
-    };
-    let diagnostic = Rc::new(CompilerDiagnostic::OccurrenceTransportViolation {
-        refusal: Rc::new(
-            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                occurrence: OccurrenceId { value: 7 },
-                diagnostic_span: Rc::new(authored.clone()),
-            },
-        ),
-    });
-
-    let span = diagnostic_to_span(diagnostic);
-
-    assert_eq!(*span, authored, "authored spans must survive unchanged");
-    assert_ne!(
-        *span,
-        *no_span(),
-        "a real span must not collapse to no_span"
     );
 }

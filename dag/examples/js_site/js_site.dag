@@ -1,15 +1,5 @@
 module examples.js_site
-import std.markup {
-  Element,
-  Fragment,
-  FragmentText,
-  attr,
-}
-import std.decl_ref { DeclarationRef }
-import std.disposition {
-  Disposition,
-  Scaffold,
-}
+
 
 type JsSitePageId = Home | Browse | About
 

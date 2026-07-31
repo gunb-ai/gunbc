@@ -1,6 +1,5 @@
 module test.claim.resolution_divergence_silent_pick_gate_witness_test
-import v2.std.live_tree { LiveTreeDisposition }
-import tools.resolution_divergence_silent_pick_gate_witness_transport { run_resolution_divergence_silent_pick_gate_witness }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

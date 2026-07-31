@@ -1,73 +1,8 @@
 module v2.test.manual.find_witness_project_to_core_controls
 
-import std.algebra { Equal, Greater, Less }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  Rejected
-}
-import v2.std.find_witness {
-  CandidateSet,
-  PreservationPredicate,
-  UniqueOnly,
-  find_witness,
-  find_witness_derives
-}
-import v2.std.integer {
-  IntegerRangeInclusiveMin,
-  Signed,
-  Unsigned,
-  int16_interval_spec,
-  int32_interval_spec,
-  int8_interval_spec,
-  int_platform_interval_spec,
-  integer_concrete_zero,
-  integer_interval_bound_compare,
-  integer_interval_spec_contains,
-  integer_interval_spec_node,
-  integer_pointer_width_bound,
-  uint8_interval_spec,
-  uint_platform_interval_spec
-}
-import v2.std.integer_value_set {
-  integer_interval_value_set_node,
-  integer_unbounded_value_set_node,
-  integer_value_set_contains,
-  integer_value_set_strictly_contains
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.model_core {
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisSurfaceSpelling
-}
-import v2.std.node {
-  Atom,
-  Conj,
-  Disj,
-  Edge,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.refinement_widening_predicate {
-  refinement_widening_predicate_algebra_for_value_sets,
-  refinement_widening_preservation_holds
-}
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.test.fixture.derivable_coercion_task_id {
-  account_id_wrong_inhabitant_node,
-  derivable_coercion_candidate_closedness,
-  task_id_api_inhabitant_node,
-  task_id_db_inhabitant_node,
-  task_id_wire_inhabitant_node
-}
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {

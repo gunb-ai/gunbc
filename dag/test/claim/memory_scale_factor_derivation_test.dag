@@ -1,17 +1,5 @@
 module test.claim.memory_scale_factor_derivation
-import std.bit { Bool }
-import std.nat { Nat }
-import std.measure {
-  Scale,
-  Kibi,
-  Mebi,
-  Tebi,
-  memory_scale_factor_bytes,
-}
-import v2.std.live_tree {
-  LiveTreeDisposition,
-  SubstrateInputsOnly,
-}
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

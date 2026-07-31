@@ -1,19 +1,4 @@
 module test.claim.hetzner_cost_quote_witness
-import std.bit { Bool }
-import std.nat { Nat }
-import extdeps.cloud.hetzner { cax41_catalog }
-import gunbc.ci_fleet {
-  per_second_billed_cost_quote,
-  cost_estimate_unit_price_micros,
-  PerSecondBilled,
-  OwnedMarginalZero,
-  Metered,
-  DeveloperAttention,
-}
-import v2.std.live_tree {
-  LiveTreeDisposition,
-  SubstrateInputsOnly,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
