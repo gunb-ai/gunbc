@@ -350,8 +350,11 @@ of the missing machinery have working precedent:
   observation carries only a digest, so the observed member is built by taking the desired member
   and replacing *only* the observed field. Deploy wants the same move — observe the artifact's
   content identity, keep everything else from desired.
-- **The apply site — `gunbc.host_effect_realize`** already runs reconciles inside srvN apply
-  (`:990`, `:1076`), which is the "bmc/srvN apply" process named in the direction.
+- **The apply site — `gunbc.host_effect_realize`** already runs reconciles inside srvN apply:
+  `srv3_toolchain_ensure_reconcile` (called from
+  `srv3_realize_os_install_actuator_toolchain_ensure_body`) and
+  `provision_build_cache_reconcile` (called from `realize_provision_build_cache_body`). That is the
+  "bmc/srvN apply" process named in the direction.
 
 So 2a and 2c are **patterned work**, not new mechanism.
 
