@@ -129,10 +129,16 @@ fn parse_json_literal_at(s: String, i: Int, lit: String, v: JsonValue) -> JsonPa
   }
 }
 
+data json_exhaustive_match_note: String = "The matches over JsonValue below name every variant instead of closing with a wildcard, and that is the point rather than a style choice: JsonValue is a CLOSED coproduct, so a wildcard throws away the one thing closing it buys - that adding a seventh variant BREAKS every reader and forces a decision at each. Under a wildcard the new variant silently acquires whatever the catch-all does, which here would mean a new kind of document quietly reading as `not an object` or as the empty string. The non-fold-residue lens counts exactly this shape (src/v2/lens/non_fold_residue, a wildcard arm over a closed-coproduct PARAMETER), and it counted these two when they first landed; they are written out rather than rostered because the residue is removable, and a roster row is for residue that is not."
+
 fn json_string_value_or_empty(v: JsonValue) -> String {
   match v {
     JsonString { value: sv } => sv
-    _ => ""
+    JsonNull => ""
+    JsonBool { value: _ } => ""
+    JsonNumber { lexeme: _ } => ""
+    JsonArray { elements: _ } => ""
+    JsonObject { members: _ } => ""
   }
 }
 
@@ -161,7 +167,11 @@ fn json_object_unique_member(v: JsonValue, key: String) -> JsonMemberLookup {
         JsonMemberDuplicated { count: n }
       }
     }
-    _ => JsonMemberNotAnObject
+    JsonNull => JsonMemberNotAnObject
+    JsonBool { value: _ } => JsonMemberNotAnObject
+    JsonNumber { lexeme: _ } => JsonMemberNotAnObject
+    JsonString { value: _ } => JsonMemberNotAnObject
+    JsonArray { elements: _ } => JsonMemberNotAnObject
   }
 }
 
