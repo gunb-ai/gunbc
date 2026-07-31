@@ -1,7 +1,0 @@
-module v2.extdeps.languages.overflow_action
-
-data overflow_action_homonym_note: String = "OverflowAction homonym lift within src/v2/extdeps/languages only: java.dag and rust.dag imported this byte-identical type (PanicOnOverflow | TwoComplementWrap) instead of sharing one module. Proved here: OverflowAction is the sole type name in src/v2; variant owner count for TwoComplementWrap reduced from three declarations (dag/extdeps/languages/rust/primitives.dag IntegerOverflow, src/v2 rust, src/v2 java) to two (this module + dag primitives — file-local, unimported). Corpus-wide variant singularity is NOT claimed: the ambiguity axis is variant names, and dag/extdeps/languages/rust/primitives.dag still declares TwoComplementWrap under IntegerOverflow (three variants: TwoComplementWrap | Saturating | Trap — richer vocabulary than OverflowAction's two). Seam consolidation (OverflowAction vs IntegerOverflow nickname) is out of scope for this surface. No std authority covers integer overflow disposition at this grain."
-
-type OverflowAction
-  = PanicOnOverflow
-  | TwoComplementWrap

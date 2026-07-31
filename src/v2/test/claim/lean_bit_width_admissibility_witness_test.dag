@@ -1,33 +1,38 @@
 module v2.test.claim.lean_bit_width_admissibility_witness
 
 
-import v2.extdeps.languages.lean {
-  lean_admits_bit_width,
-  lean_bit_width_node,
-  lean_width_inadmissible_node
-}
+import v2.extdeps.languages.lean { lean_admit_bit_width }
 import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): fixed widths ground on std.measure.BitWidth via bit_width(count); lean_admits_bit_width is the per-language admissibility relation (8/16/32/64 admitted, 128 refused). No Bits8|Bits16|... variant homes in lean.dag."
+data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): BitWidth admission is LeanBitWidthAdmission; FixedIntScalar carries only LeanAdmittedBitWidth via LeanFixedWidth (128 cannot reach width projection). RED: lean_admit_bit_width(128) is Refused with the genuine width pinned."
 
-test fn lean_admits_catalog_fixed_widths() -> Bool {
-  lean_admits_bit_width(width: bit_width(count: 8))
-    && lean_admits_bit_width(width: bit_width(count: 16))
-    && lean_admits_bit_width(width: bit_width(count: 32))
-    && lean_admits_bit_width(width: bit_width(count: 64))
+test fn lean_admit_accepts_catalog_fixed_widths() -> Bool {
+  match lean_admit_bit_width(width: bit_width(count: 8)) {
+    LeanBitWidthAccepted { width: _ } =>
+      match lean_admit_bit_width(width: bit_width(count: 16)) {
+        LeanBitWidthAccepted { width: _ } =>
+          match lean_admit_bit_width(width: bit_width(count: 32)) {
+            LeanBitWidthAccepted { width: _ } =>
+              match lean_admit_bit_width(width: bit_width(count: 64)) {
+                LeanBitWidthAccepted { width: _ } => true
+                LeanBitWidthRefused { width: _ } => false
+              }
+            LeanBitWidthRefused { width: _ } => false
+          }
+        LeanBitWidthRefused { width: _ } => false
+      }
+    LeanBitWidthRefused { width: _ } => false
+  }
 }
 
-test fn lean_refuses_bits128_admissibility() -> Bool {
+test fn lean_admit_refuses_bits128() -> Bool {
   let w128: BitWidth = bit_width(count: 128)
-  !lean_admits_bit_width(width: w128) && bit_width_count(w128) == 128
-}
-
-test fn lean_inadmissible_width_projects_refusal_node() -> Bool {
-  let w128: BitWidth = bit_width(count: 128)
-  !lean_admits_bit_width(width: w128)
-    && lean_bit_width_node(width: w128) == lean_width_inadmissible_node()
+  match lean_admit_bit_width(width: w128) {
+    LeanBitWidthRefused { width: refused } => bit_width_count(refused) == 128
+    LeanBitWidthAccepted { width: _ } => false
+  }
 }

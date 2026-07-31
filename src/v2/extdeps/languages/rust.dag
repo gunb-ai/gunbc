@@ -1,5 +1,4 @@
 module v2.extdeps.languages.rust
-import v2.extdeps.languages.overflow_action { OverflowAction }
 import std.trait_derive_shape {
   ReprDeriveClone,
   ReprDeriveDebug,
@@ -423,6 +422,10 @@ type RustCost {
   instruction_cost: Int
   allocation_cost: Int
 }
+
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap
 
 type RustIntegerOverflowDisposition<IRCarrier> {
   ir_carrier: IRCarrier
