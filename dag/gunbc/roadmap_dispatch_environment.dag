@@ -38,7 +38,7 @@ import gunbc.roadmap_execution_contract {
   ContractCloses,
   contract_closure,
 }
-import extdeps.languages.json.grammar { json_text_parseable }
+import extdeps.languages.json.parse { json_text_parseable }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
