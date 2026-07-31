@@ -546,6 +546,7 @@ fn reference_occurrence_refusal(
 
 type ValidatedOccurrenceTransport {
   entries_by_id: Map<Int, OccurrenceIndexEntry>
+  references_by_id: Map<Int, ReferenceOccurrence>
   declarations: List<DeclarationOccurrence>
   references: List<ReferenceOccurrence>
 }
@@ -554,7 +555,7 @@ type OccurrenceTransportValidation
   = OccurrenceTransportValidated { transport: ValidatedOccurrenceTransport }
   | OccurrenceTransportRefused { refusal: OccurrenceTransportRefusal }
 
-data occurrence_transport_validation_authority_note: String = "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id is the indexed authority. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation."
+data occurrence_transport_validation_authority_note: String = "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id and references_by_id are the indexed authorities. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries, and never rescan the declarations/references lists, per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation. references_by_id is carried rather than rebuilt (review 45329): validation already builds it to decide declaration refusals, so dropping it from the carrier forced reference lookup to re-derive the same index by a linear filter over references — a second representation of a fact this boundary already owns, and the exact rescan the sentence above forbids. The declarations/references lists remain on the carrier because refusal folds consume them in order; they are not a lookup path."
 
 fn occurrence_transport_validate(
   transport: OccurrenceTransport
@@ -606,6 +607,7 @@ fn occurrence_transport_validate(
                 Absent => OccurrenceTransportValidated {
                   transport: ValidatedOccurrenceTransport {
                     entries_by_id: index_build.entries_by_id,
+                    references_by_id: role_index_build.references_by_id,
                     declarations: transport.declarations,
                     references: transport.references,
                   },

@@ -693,6 +693,7 @@ pub fn reference_occurrence_refusal(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValidatedOccurrenceTransport {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    pub references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
     pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
     pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 }
@@ -711,7 +712,7 @@ pub enum OccurrenceTransportValidation {
 pub fn occurrence_transport_validation_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id is the indexed authority. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation.".to_string()
+            "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id and references_by_id are the indexed authorities. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries, and never rescan the declarations/references lists, per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation. references_by_id is carried rather than rebuilt (review 45329): validation already builds it to decide declaration refusals, so dropping it from the carrier forced reference lookup to re-derive the same index by a linear filter over references — a second representation of a fact this boundary already owns, and the exact rescan the sentence above forbids. The declarations/references lists remain on the carrier because refusal folds consume them in order; they are not a lookup path.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -776,6 +777,7 @@ pub fn occurrence_transport_validate(
     None => Rc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
     transport: Rc::new(ValidatedOccurrenceTransport {
     entries_by_id: index_build.entries_by_id.clone(),
+    references_by_id: role_index_build.references_by_id.clone(),
     declarations: transport.declarations.clone(),
     references: transport.references.clone(),
 }),
