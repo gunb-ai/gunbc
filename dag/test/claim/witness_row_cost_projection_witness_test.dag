@@ -16,6 +16,7 @@ import gunbc.witness_row_cost {
   witness_cost_seed_done_event,
   witness_cost_seed_refused_event,
   witness_cost_seed_failed_event,
+  witness_cost_seed_timed_out_event,
   witness_cost_warm,
   witness_cost_rss_unavailable_cause,
   witness_cost_native_production_note,
@@ -467,6 +468,66 @@ fn exact_nanosecond_projection_and_same_millisecond_order_holds() -> Bool {
   }
 }
 
+fn seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() -> Bool {
+  let entry = sample_entry()
+  let events: List<ObservationEvent> = [
+    witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
+    witness_cost_seed_timed_out_event(
+      entry: entry,
+      module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
+      function: "killed_at_deadline" as NonEmptyStr,
+      eval: witness_wall_ms(count: 900794),
+      budget: millisecond(count: 900000),
+      elapsed: millisecond(count: 900001)
+    )
+  ]
+  match project_witness_cost_receipt(events: events) {
+    WitnessCostProjectionRefused { cause: _ } => false
+    WitnessCostProjectionComplete { rows: rows } =>
+      count(rows) == 1 &&
+      fold(rows, init: false, f: (acc, row) =>
+        acc || match row.outcome {
+          TimedOut { budget: b, elapsed: e } =>
+            millisecond_count(m: b) == 900000 && millisecond_count(m: e) == 900001
+          Done => false
+          Refused { diagnostic: _ } => false
+          Failed { error: _, output: _ } => false
+          Skipped { reason: _ } => false
+          Final { shown_failures: _ } => false
+        }
+      )
+  }
+}
+
+fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
+  let entry = sample_entry()
+  let killed = witness_cost_seed_timed_out_event(
+    entry: entry,
+    module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
+    function: "killed" as NonEmptyStr,
+    eval: witness_wall_ms(count: 5),
+    budget: millisecond(count: 4),
+    elapsed: millisecond(count: 5)
+  )
+  match project_witness_cost_receipt(events: [
+    witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 10)),
+    killed
+  ]) {
+    WitnessCostProjectionRefused { cause: _ } => false
+    WitnessCostProjectionComplete { rows: rows } =>
+      fold(rows, init: true, f: (acc, row) =>
+        acc && match row.outcome {
+          Done => false
+          Failed { error: _, output: _ } => false
+          Refused { diagnostic: _ } => false
+          TimedOut { budget: _, elapsed: _ } => true
+          Skipped { reason: _ } => false
+          Final { shown_failures: _ } => false
+        }
+      )
+  }
+}
+
 test fn witness_row_cost_projection_holds() -> Bool {
   two_events_project_one_exact_tsv_row_holds() &&
   missing_parent_resolve_refuses_holds() &&
@@ -480,5 +541,7 @@ test fn witness_row_cost_projection_holds() -> Bool {
   duplicate_declaration_identity_refuses_holds() &&
   non_concluded_timing_event_refuses_holds() &&
   native_seed_events_preserve_order_outcome_and_perturbation_holds() &&
-  exact_nanosecond_projection_and_same_millisecond_order_holds()
+  exact_nanosecond_projection_and_same_millisecond_order_holds() &&
+  seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() &&
+  timed_out_red_control_is_neither_done_nor_failed_holds()
 }

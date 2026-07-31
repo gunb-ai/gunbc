@@ -5998,12 +5998,52 @@ fn load_sources(
     load_compile_clean_entry_sources(source_roots, &mei, None)
 }
 
+/// Which budget a `ClaimOutcome::TimedOut` blew. The two are measured on different
+/// clocks and are not interchangeable: `Cpu` is thread CPU time (the stride-poll
+/// metric, so a witness slowed by cold I/O or governor time-slicing is not
+/// misclassified), `Wall` is whole-receipt wall time (emit + cargo subprocess I/O
+/// counts). Collapsing them would conflate two states with different remedies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetKind {
+    Cpu,
+    Wall,
+}
+
+impl BudgetKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            BudgetKind::Cpu => "cpu",
+            BudgetKind::Wall => "wall",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     Pass,
     Fail,
-    NotBool { got: String },
-    RuntimeError { message: String },
+    NotBool {
+        got: String,
+    },
+    RuntimeError {
+        message: String,
+    },
+    /// A budget refusal, with the pair that explains it kept as data.
+    ///
+    /// This used to be a `RuntimeError` holding `format!("{}", InterpError::…)`. That
+    /// flattened the typed `{elapsed_ms, budget_ms}` at the seam, and the floor then
+    /// recovered the classification by substring-matching the very prose it had just
+    /// produced (`falsifier_failure_mode`'s `.contains("eval budget exceeded")`). One
+    /// fact in two representations, the second guessed back from the first — and the
+    /// classifier's fallback arm is `WitnessRed`, so rewording the message silently
+    /// reclassified a budget refusal as a witness failure. Keeping the pair typed lets
+    /// the mode be read off the value, and lets the receipt project a real
+    /// `std.observation` `TimedOut { budget, elapsed }` instead of an opaque string.
+    TimedOut {
+        elapsed_ms: u64,
+        budget_ms: u64,
+        kind: BudgetKind,
+    },
 }
 
 pub fn resolve_entry_graph(
@@ -10837,14 +10877,10 @@ fn budget_completion_outcome(
 ) -> ClaimOutcome {
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if cpu_nanos > u128::from(budget_ms) * 1_000_000 => {
-            ClaimOutcome::RuntimeError {
-                message: format!(
-                    "{}",
-                    v1_interpreter::InterpError::EvalBudgetExceeded {
-                        elapsed_ms: (cpu_nanos / 1_000_000) as u64,
-                        budget_ms,
-                    }
-                ),
+            ClaimOutcome::TimedOut {
+                elapsed_ms: (cpu_nanos / 1_000_000) as u64,
+                budget_ms,
+                kind: BudgetKind::Cpu,
             }
         }
         (_, o) => o,
@@ -10861,14 +10897,10 @@ fn wall_budget_completion_outcome(
 ) -> ClaimOutcome {
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
-            ClaimOutcome::RuntimeError {
-                message: format!(
-                    "{}",
-                    v1_interpreter::InterpError::WitnessWallBudgetExceeded {
-                        elapsed_ms: (wall_nanos / 1_000_000) as u64,
-                        budget_ms,
-                    }
-                ),
+            ClaimOutcome::TimedOut {
+                elapsed_ms: (wall_nanos / 1_000_000) as u64,
+                budget_ms,
+                kind: BudgetKind::Wall,
             }
         }
         (_, o) => o,
@@ -10884,14 +10916,21 @@ mod budget_completion_tests {
         // The stride-poll blind spot: a witness burning over-budget CPU in fewer than
         // 4096 dispatches must still refuse at completion, never green silently. The
         // third arg is CPU nanos (6ms CPU > 5ms budget), matching the stride-poll metric.
+        // The pair is asserted as DATA, not as prose. It used to be `format!`ed into a
+        // RuntimeError message and this test matched a substring of it — which is exactly
+        // the coupling that let a reworded message silently change the floor's failure
+        // classification downstream.
         match budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000) {
-            ClaimOutcome::RuntimeError { message } => {
-                assert!(
-                    message.contains("eval budget exceeded"),
-                    "typed refusal expected; got {message}"
-                );
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => {
+                assert_eq!(budget_ms, 5);
+                assert_eq!(elapsed_ms, 6);
+                assert_eq!(kind, BudgetKind::Cpu, "CPU budget must not report as wall");
             }
-            other => panic!("expected RuntimeError, got {other:?}"),
+            other => panic!("expected TimedOut, got {other:?}"),
         }
     }
 
@@ -10922,14 +10961,46 @@ mod budget_completion_tests {
     #[test]
     fn pass_over_wall_budget_converts_to_typed_refusal() {
         match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
-            ClaimOutcome::RuntimeError { message } => {
-                assert!(
-                    message.contains("witness receipt wall budget exceeded"),
-                    "typed refusal expected; got {message}"
-                );
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => {
+                assert_eq!(budget_ms, 600);
+                assert_eq!(elapsed_ms, 601_000);
+                assert_eq!(kind, BudgetKind::Wall, "wall budget must not report as CPU");
             }
-            other => panic!("expected RuntimeError, got {other:?}"),
+            other => panic!("expected TimedOut, got {other:?}"),
         }
+    }
+
+    /// The two clocks must stay distinguishable. A CPU kill and a wall kill have different
+    /// remedies — a witness burning CPU is over the fast-lane classification, a witness over
+    /// wall may simply be waiting on subprocess I/O — so collapsing them to one "timed out"
+    /// would be a state-space conflation, which is the defect class this variant exists to
+    /// end rather than relocate.
+    #[test]
+    fn cpu_and_wall_kills_do_not_collapse_into_one_state() {
+        let cpu = budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000);
+        let wall = wall_budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000);
+        assert_ne!(
+            cpu, wall,
+            "identical numbers on different clocks must not be the same value"
+        );
+        assert!(matches!(
+            cpu,
+            ClaimOutcome::TimedOut {
+                kind: BudgetKind::Cpu,
+                ..
+            }
+        ));
+        assert!(matches!(
+            wall,
+            ClaimOutcome::TimedOut {
+                kind: BudgetKind::Wall,
+                ..
+            }
+        ));
     }
 }
 
@@ -13348,6 +13419,35 @@ pub fn project_witness_cost_receipt(
                         Value::Str(format!("runtime error: {message}")),
                     ));
                     "witness_cost_seed_failed_event"
+                }
+                // A deadline-killed row is TimedOut, never Failed: its recorded wall is a
+                // CEILING, not a cost, and anything reading it as a completed duration
+                // reads a fabricated value. Both Millisecond carriers are built by calling
+                // the authored `millisecond` constructor across the boundary rather than
+                // assembling a Value::Record here, so the constructor stays the single
+                // authority for the carrier's shape.
+                ClaimOutcome::TimedOut {
+                    elapsed_ms,
+                    budget_ms,
+                    ..
+                } => {
+                    for (name, ms) in [("budget", *budget_ms), ("elapsed", *elapsed_ms)] {
+                        let carrier = run_in_context_with_args(
+                            &ctx,
+                            "millisecond",
+                            &[(Some("count".to_string()), Value::Int(ms as i64))],
+                            false,
+                        )
+                        .map_err(|e| {
+                            format!(
+                                "[witness-row-cost] REFUSED: millisecond({ms}) for {name} failed \
+                                 on {}::{}: {e}",
+                                outcome.entry, outcome.function
+                            )
+                        })?;
+                        args.push((Some(name.to_string()), carrier));
+                    }
+                    "witness_cost_seed_timed_out_event"
                 }
             };
             events.push(
@@ -18032,6 +18132,22 @@ fn run_discovery_rows(
             ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
+            )),
+            // Rendered so the elapsed value is never mistaken for a completed duration:
+            // the row was killed AT the budget, so this is a ceiling, not a cost. The
+            // clock (cpu vs wall) is named because the two have different remedies.
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => summary.failures.push(format!(
+                "{} ({}) killed at its {} budget: {}ms elapsed > {}ms budget \
+                 (elapsed is a ceiling, not a completed duration)",
+                row.function,
+                row.entry,
+                kind.label(),
+                elapsed_ms,
+                budget_ms
             )),
         }
     }
