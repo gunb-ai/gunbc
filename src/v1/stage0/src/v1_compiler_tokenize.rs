@@ -852,6 +852,15 @@ pub fn escape_code_point_table_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn escape_receipt_seed_growth_mark() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, and it is counted here rather than left silent. WHAT IT CARRIES: the escape decode table, the malformed-\\x decline, the retained unknown-escape passthrough, and the cost separation that reds at 14.2x against the pre-migration implementation — the discriminating half of this lane's oracle, which a corpus equivalence check cannot supply because equivalence is satisfied by changing nothing. WHY HAND RUST AND NOT A .dag WITNESS: the .dag form is a claim witness, and enrolling one bumps gunbc.ci_spec's ci_floor_declared_resolve_count, which that gate's own note reserves for an operator-signed line; a session cannot raise it for its own receipt. So this is a DEFERRAL with a named owner, not a preference. It does not enter the hand-maintained stage0 ratchet: hand_maintained_stage0_filenames is built from seed-retained and emitter-produced `pub mod` basenames under src/v1/stage0/src/, and a tests/ target is not a crate module. DISSOLVES ON either trigger, whichever comes first: the resolve-count line is signed and these four claims move to a dag/test/claim witness over the same tokenize entry point; or the v1 terminal deletion path reaches this tree, at which point the coverage must be carried per the v1-test-migration bar and the file deletes with src/v1. Precedent for this shape: namespace_occurrence_serde_seed_test_dissolution.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn hex_escape_note() -> String {
     thread_local! {
         static CACHED: String = {
