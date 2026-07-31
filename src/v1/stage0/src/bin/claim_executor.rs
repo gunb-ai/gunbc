@@ -487,13 +487,81 @@ fn resolve_floor_batch_stop_policy(
     }
 }
 
+/// The residency class a runnable declares (`std.realization_schedule`
+/// `RunnableMemoryClass`). A structural marker, not a quantity — the operator ruling
+/// that retired predicted-peak byte constants stands, and this carries only the
+/// Negligible/Substantial fact co-residence structure keys on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ParsedMemoryClass {
+    Negligible,
+    Substantial,
+}
+
+/// THE WHOLE PROFILE, retained. `std.realization_schedule.RunnableResourceProfile`
+/// declares four facts; the parser used to keep two — `heavy_whole_tree_resolve` (as
+/// `use_walk_memo`) and `execution_mode` — and drop `spawns_host_compiler` and the
+/// memory class at parse time. That was invisible while only the ordinary batch path
+/// consumed profiles, because the ordinary path happens to need exactly the two that
+/// survived. It stops being invisible the moment ONE executor serves both populations:
+/// a shared `run_stage` cannot enforce a stage's declared resource contract against
+/// facts the parse threw away, so the arm-time validator could wall the heavy-resolve
+/// case and nothing else (review 2026-07-30, naming this the run_stage prerequisite).
+///
+/// Retained as a unit rather than as four sibling fields on the runnable so that adding
+/// a fifth profile fact is one edit here, not a fifth thing to remember to thread.
+/// Whether the plan actually DESCRIBED this runnable's resources, or the parse supplied
+/// fail-closed values because no profile was present. Hermetic is genuinely conservative
+/// for effects, but `heavy_whole_tree_resolve: false`, `spawns_host_compiler: false` and
+/// `memory: Negligible` are OPTIMISTIC assertions about work nobody described — and once
+/// a profileless ClaimRef becomes the same SingleClaim variant an explicitly-profiled one
+/// does, the stage validator cannot tell "declared Negligible" from "nothing declared"
+/// (review 2026-07-31). A pure but whole-tree-heavy ClaimRef would enter a stage looking
+/// negligible. Absence is therefore its own state, and stages refuse it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ParsedProfileProvenance {
+    Declared,
+    Undeclared,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct ParsedRunnableProfile {
+    provenance: ParsedProfileProvenance,
+    heavy_whole_tree_resolve: bool,
+    spawns_host_compiler: bool,
+    memory: ParsedMemoryClass,
+    execution_mode: ExecutionMode,
+}
+
+impl ParsedRunnableProfile {
+    /// The fail-closed profile for a runnable that declares none (`ClaimRef`, which
+    /// carries no profile field at all). Mirrors
+    /// `runnable_resource_profile_negligible`: Hermetic envelope, no host compiler, no
+    /// heavy resolve. An undeclared runnable that actually needs live effects refuses
+    /// loudly at the effect boundary rather than silently dispatching them.
+    fn undeclared() -> Self {
+        ParsedRunnableProfile {
+            provenance: ParsedProfileProvenance::Undeclared,
+            heavy_whole_tree_resolve: false,
+            spawns_host_compiler: false,
+            memory: ParsedMemoryClass::Negligible,
+            execution_mode: ExecutionMode::Hermetic,
+        }
+    }
+
+    /// True when this runnable is heavier than the negligible-admission class stages are
+    /// currently sized for — either it spawns a host compiler or it declares substantial
+    /// residency. Read by the stage admissibility validator.
+    fn is_substantial_or_spawns_compiler(&self) -> bool {
+        self.spawns_host_compiler || matches!(self.memory, ParsedMemoryClass::Substantial)
+    }
+}
+
 #[derive(Clone)]
 enum Runnable {
     SingleClaim {
         entry: String,
         function: String,
-        use_walk_memo: bool,
-        execution_mode: ExecutionMode,
+        profile: ParsedRunnableProfile,
     },
     DiscoveryBatch {
         source_roots: Vec<String>,
@@ -647,16 +715,96 @@ fn str_field(
     }
 }
 
+/// Parse the whole `RunnableResourceProfile`. An ABSENT profile field yields the
+/// fail-closed undeclared profile; a profile that EXISTS but omits a field is a
+/// REFUSAL, not a default — the `node_frontier_selection` precedent, so a stale plan
+/// must redeclare its semantics rather than inherit them silently. `execution_mode`
+/// keeps its own parser because its absent-vs-malformed split is already stated there.
+fn parsed_runnable_profile_from_field(
+    profile: Option<&Value>,
+    owner: &str,
+    ctx: &InterpContext,
+) -> Result<ParsedRunnableProfile, String> {
+    let execution_mode = execution_mode_from_profile_field(profile, owner, ctx)?;
+    let fields = match profile {
+        Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+        // No profile at all: every axis takes its fail-closed value. execution_mode
+        // above has already resolved to Hermetic for the same reason.
+        _ => return Ok(ParsedRunnableProfile::undeclared()),
+    };
+    let heavy_whole_tree_resolve = match ctx.field(fields, "heavy_whole_tree_resolve") {
+        Some(Value::Bool(b)) => *b,
+        Some(other) => {
+            return Err(format!(
+                "{owner}.profile.heavy_whole_tree_resolve must be a Bool, got {}",
+                ctx.format_value(other)
+            ))
+        }
+        None => {
+            return Err(format!(
+                "{owner}.profile omits `heavy_whole_tree_resolve` — a profile that exists \
+                 declares every axis; a stale plan redeclares rather than inheriting"
+            ))
+        }
+    };
+    let spawns_host_compiler = match ctx.field(fields, "spawns_host_compiler") {
+        Some(Value::Bool(b)) => *b,
+        Some(other) => {
+            return Err(format!(
+                "{owner}.profile.spawns_host_compiler must be a Bool, got {}",
+                ctx.format_value(other)
+            ))
+        }
+        None => {
+            return Err(format!(
+                "{owner}.profile omits `spawns_host_compiler` — a profile that exists \
+                 declares every axis; a stale plan redeclares rather than inheriting"
+            ))
+        }
+    };
+    let memory = match ctx.field(fields, "memory") {
+        Some(Value::Variant { variant_name, .. })
+            if ctx.sym_eq(*variant_name, "RunnableMemoryNegligible") =>
+        {
+            ParsedMemoryClass::Negligible
+        }
+        Some(Value::Variant { variant_name, .. })
+            if ctx.sym_eq(*variant_name, "RunnableMemorySubstantial") =>
+        {
+            ParsedMemoryClass::Substantial
+        }
+        Some(other) => {
+            return Err(format!(
+                "{owner}.profile.memory must be RunnableMemoryNegligible or \
+                 RunnableMemorySubstantial, got {}",
+                ctx.format_value(other)
+            ))
+        }
+        None => {
+            return Err(format!(
+                "{owner}.profile omits `memory` — a profile that exists declares every \
+                 axis; a stale plan redeclares rather than inheriting"
+            ))
+        }
+    };
+    Ok(ParsedRunnableProfile {
+        provenance: ParsedProfileProvenance::Declared,
+        heavy_whole_tree_resolve,
+        spawns_host_compiler,
+        memory,
+        execution_mode,
+    })
+}
+
 fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, String> {
     match value {
         Value::Record { type_name, fields } if ctx.sym_eq(*type_name, "ClaimRef") => {
             Ok(Runnable::SingleClaim {
                 entry: str_field(fields, "entry", "ClaimRef", ctx)?,
                 function: str_field(fields, "function", "ClaimRef", ctx)?,
-                use_walk_memo: false,
-                // ClaimRef carries no profile: fail-closed envelope (see
-                // execution_mode_from_profile_field).
-                execution_mode: ExecutionMode::Hermetic,
+                // ClaimRef carries no profile at all: fail-closed on every axis
+                // (ParsedRunnableProfile::undeclared).
+                profile: ParsedRunnableProfile::undeclared(),
             })
         }
         Value::Variant {
@@ -666,24 +814,13 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
         } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => {
             let entry = str_field(fields, "entry", "RunnableSingleClaim", ctx)?;
             let function = str_field(fields, "function", "RunnableSingleClaim", ctx)?;
-            let profile = ctx.field(fields, "profile");
-            let use_walk_memo = match profile {
-                Some(Value::Record { fields: pf, .. })
-                | Some(Value::Variant { fields: pf, .. }) => {
-                    matches!(
-                        ctx.field(pf, "heavy_whole_tree_resolve"),
-                        Some(Value::Bool(true))
-                    )
-                }
-                _ => false,
-            };
-            let execution_mode =
-                execution_mode_from_profile_field(profile, "RunnableSingleClaim", ctx)?;
+            let profile_value = ctx.field(fields, "profile");
+            let profile =
+                parsed_runnable_profile_from_field(profile_value, "RunnableSingleClaim", ctx)?;
             Ok(Runnable::SingleClaim {
                 entry,
                 function,
-                use_walk_memo,
-                execution_mode,
+                profile,
             })
         }
         Value::Variant {
@@ -1012,9 +1149,10 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
             Runnable::SingleClaim {
                 entry,
                 function,
-                use_walk_memo,
-                execution_mode,
+                profile,
             } => {
+                let use_walk_memo = &profile.heavy_whole_tree_resolve;
+                let execution_mode = &profile.execution_mode;
                 let unit_key = (entry.clone(), *execution_mode);
                 if let Some(&idx) = entry_to_unit.get(&unit_key) {
                     if let BatchUnit::SharedClaims {
@@ -3195,6 +3333,167 @@ fn write_witness_row_cost_drift_receipt_at(
     true
 }
 
+/// ONE stage's own receipt, written before the next stage begins. The aggregate receipt
+/// below cannot substitute for it: written only after the whole sequence, it does not
+/// exist for stage N while stage N+1 is running, and a process death between the two
+/// loses every stage that had in fact completed. Per-stage, the disk state answers
+/// "which stages ran, and what did each cost" at any instant.
+///
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `std.types` `path_segment_is_safe`,
+/// the single law for "safe as ONE path segment"). This mirrors that predicate clause for
+/// clause because the executor is the Rust seed and cannot call the `.dag` surface at the
+/// point it observes the environment. It is a REALIZATION of that authority, not a second
+/// rule: if the two ever disagree, the `.dag` predicate is right and this is the defect.
+/// dissolve-on: the executor's env observation running as a modeled effect, at which point
+/// the branding constructor `gunbc.merge_admission.walk_attempt_id` is the only gate and
+/// this function deletes.
+fn walk_attempt_id_segment_is_safe(raw: &str) -> bool {
+    !(raw.is_empty()
+        || raw == "."
+        || raw == ".."
+        || raw.contains('/')
+        || raw.contains('\\')
+        || raw.contains('\n')
+        || raw.contains('\r')
+        || raw.contains('\0'))
+}
+
+/// Observe the walk-attempt identity, per `gunbc.merge_admission`
+/// `merge_admission_attempt_scope_note`: derived from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT +
+/// GITHUB_JOB on GitHub, or supplied explicitly as GUNBC_WALK_ATTEMPT_ID off it.
+///
+/// REFUSES rather than defaulting. The ruling names the exact failure this prevents: "never
+/// a silent constant like a bare local, which would make every local run one attempt and
+/// the wrong-attempt refusal unreachable off CI". A default here would not be a convenience,
+/// it would disable the identity check everywhere except GitHub — the absorbing fallback in
+/// its purest form, since nothing would ever report that identity had been fabricated.
+///
+/// GUNBC_WALK_ATTEMPT_ID is NOT an escape hatch: it supplies a required input that the
+/// environment did not, and a value that fails the segment law still refuses. There is no
+/// value of it that makes a refusal not fire.
+fn observe_walk_attempt_id() -> Result<String, String> {
+    compose_walk_attempt_id(
+        &std::env::var("GUNBC_WALK_ATTEMPT_ID").unwrap_or_default(),
+        &std::env::var("GITHUB_RUN_ID").unwrap_or_default(),
+        &std::env::var("GITHUB_RUN_ATTEMPT").unwrap_or_default(),
+        &std::env::var("GITHUB_JOB").unwrap_or_default(),
+    )
+}
+
+/// The PURE half, split from the observation above for the same reason
+/// `gunbc.merge_admission_produce` splits them ("Pure composition of the walk-attempt
+/// identity from its parts; the ENV OBSERVATION lives with the wet entry"). It is also what
+/// makes the refusals reachable by a test: process env is global, so a test that set it
+/// would race every other test in the binary, and a rule that can only be exercised by a
+/// racing test is a rule nobody checks.
+fn compose_walk_attempt_id(
+    explicit: &str,
+    run_id: &str,
+    run_attempt: &str,
+    job: &str,
+) -> Result<String, String> {
+    if !explicit.trim().is_empty() {
+        return if walk_attempt_id_segment_is_safe(explicit) {
+            Ok(explicit.to_string())
+        } else {
+            Err(format!(
+                "GUNBC_WALK_ATTEMPT_ID={explicit:?} is not a safe path segment (std.types path_segment_is_safe: non-empty, not `.`/`..`, no `/` `\\` CR LF NUL)"
+            ))
+        };
+    }
+    if run_id.is_empty() || run_attempt.is_empty() || job.is_empty() {
+        return Err(
+            "no walk-attempt identity: GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT/GITHUB_JOB are not all \
+             present and GUNBC_WALK_ATTEMPT_ID was not supplied. On-success stages write \
+             attempt-scoped receipts, so an unidentified walk refuses here rather than \
+             stamping a receipt no consumer could tell apart from another run's"
+                .to_string(),
+        );
+    }
+    let composed = format!("{run_id}-{run_attempt}-{job}");
+    if walk_attempt_id_segment_is_safe(&composed) {
+        Ok(composed)
+    } else {
+        Err(format!(
+            "composed walk-attempt identity {composed:?} is not a safe path segment (std.types path_segment_is_safe)"
+        ))
+    }
+}
+
+fn write_on_success_stage_receipt(
+    stage_index: usize,
+    passed: bool,
+    run: &StageRun,
+    declared_stage_count: usize,
+    attempt_id: &str,
+) -> bool {
+    let mut resolves: u64 = 0;
+    for r in &run.results {
+        if r.resolve_nanos > 0 {
+            resolves += 1;
+        }
+    }
+    let mut body = String::new();
+    // IDENTITY FIRST, IN THE PAYLOAD. `gunbc.merge_admission`
+    // `merge_admission_attempt_scope_note`: "the receipt carries the walk-attempt identity
+    // in the PAYLOAD, not just the path ... path identity alone is not enough, because a
+    // misrouted read must fail on the content too". A receipt from another attempt is not
+    // stale-or-fresh, it is NOT THE SUBJECT, and a consumer that reads this file by path
+    // must be able to discover that from the bytes it just read.
+    body.push_str(&format!("attempt_id={attempt_id}\n"));
+    body.push_str(&format!("stage_index={}\n", stage_index + 1));
+    body.push_str(&format!("stage_count={declared_stage_count}\n"));
+    body.push_str(&format!(
+        "outcome={}\n",
+        if passed { "passed" } else { "failed" }
+    ));
+    body.push_str(&format!("claims={}\n", run.results.len()));
+    body.push_str(&format!("unit_count={}\n", run.unit_count));
+    body.push_str(&format!("resolves={resolves}\n"));
+    body.push_str(&format!("wall_ms={}\n", run.wall_nanos / 1_000_000));
+    // Recorded rather than omitted so a future DECLARED stage clamp shows up as a value
+    // change here instead of a new field a reader has to notice.
+    body.push_str(&format!(
+        "clamp_ms={}\n",
+        match run.clamp_ms {
+            Some(ms) => ms.to_string(),
+            None => "none".to_string(),
+        }
+    ));
+    for r in &run.results {
+        body.push_str(&format!(
+            "claim\t{}\t{}\t{}\n",
+            r.function,
+            if r.ok { "passed" } else { "failed" },
+            r.wall_nanos / 1_000_000
+        ));
+    }
+    // Path scoping is HYGIENE, not the wall — the same ruling is explicit that "correctness
+    // never depends on cleaning a shared path". It earns its keep by keeping two attempts on
+    // one reused workspace (self-hosted runners do reuse `target/`) from overwriting each
+    // other's evidence; the payload check above is what makes a misroute detectable.
+    let base = std::path::Path::new("target").join(format!("floor-attempt-{attempt_id}"));
+    let base = base.as_path();
+    let path = base.join(format!("on-success-stage-{}-receipt.tsv", stage_index + 1));
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write on-success stage {} receipt {}: {e} — stage fails closed here",
+            stage_index + 1,
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] on-success stage {}: {} claim(s), {} resolve(s), {}ms (receipt: {})",
+        stage_index + 1,
+        run.results.len(),
+        resolves,
+        run.wall_nanos / 1_000_000,
+        path.display()
+    );
+    true
+}
+
 /// The on-success stage receipt — a SEPARATE receipt class from the ordinary floor
 /// receipts, by lifecycle (ruling 2026-07-30): stages run only after the ordinary
 /// receipts finalized, so their resolves and walls are not part of the population
@@ -3424,12 +3723,11 @@ fn memo_path_entry_keys(
         .iter()
         .flatten()
         .filter_map(|r| match r {
-            Runnable::SingleClaim {
-                entry,
-                use_walk_memo: true,
-                execution_mode,
-                ..
-            } if !entry.is_empty() => Some((entry.clone(), *execution_mode)),
+            Runnable::SingleClaim { entry, profile, .. }
+                if profile.heavy_whole_tree_resolve && !entry.is_empty() =>
+            {
+                Some((entry.clone(), profile.execution_mode))
+            }
             _ => None,
         })
         .collect()
@@ -3496,8 +3794,7 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
                 Runnable::SingleClaim {
                     entry,
                     function,
-                    use_walk_memo,
-                    ..
+                    profile,
                 } => {
                     if entry.trim().is_empty() || function.trim().is_empty() {
                         refusals.push(format!(
@@ -3505,21 +3802,90 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
                             si + 1
                         ));
                     }
-                    // `use_walk_memo` is the parsed form of the profile's
-                    // heavy_whole_tree_resolve. It is the ONE resource fact the Rust
-                    // Runnable retains — spawns_host_compiler and the memory class are
-                    // consumed at parse time and not carried — so this validator can
-                    // wall the heavy-resolve case and no more. Walling the other two
-                    // requires retaining them on Runnable, which lands with the
-                    // run_stage extraction that gives stages governor admission
-                    // (std.realization_schedule walk_plan_note names the gap).
-                    if *use_walk_memo {
+                    // THE PROFILE WALL. Two distinct classes refuse, for two distinct
+                    // reasons; neither is the reason an earlier draft of this function
+                    // gave, and the correction matters because it changed the code.
+                    //
+                    // (1) HEAVY WHOLE-TREE RESOLVE still refuses, and the claim that
+                    // run_stage made this safe was WRONG (review 2026-07-31). The
+                    // reasoning was "stages now go through the same lane partition, so a
+                    // heavy claim takes the memo lane exactly as it would in a batch."
+                    // The partition is shared; the ADMISSION is not. `batch_unit_lane`
+                    // routes a heavy unit — and every unit sharing its entry — to
+                    // UnitLane::Memo, and the memo lane runs through
+                    // `run_memo_shared_claims`, which takes no governor and acquires no
+                    // AdmittedSlot. Only `run_batch_unit`, on the spawned lane, does
+                    // (the single acquire_blocking site in this file). So a heavy stage
+                    // claim would resolve and evaluate on the main thread, unadmitted,
+                    // while spawned units hold slots — exactly the unbounded stacking
+                    // the governor exists to prevent.
+                    //
+                    // Wrapping the memo call in an ordinary slot would NOT be the fix
+                    // either: the slot would release while the resolved InterpContext
+                    // stays resident in `stage_memo` for every later stage.
+                    //
+                    // AND THE OBVIOUS REPAIR — hold an AdmittedSlot for the memoized
+                    // context's lifetime, released on drop — DEADLOCKS. An earlier draft
+                    // of this comment named exactly that as "the real fix", which
+                    // understated it in the same direction as the mistake above
+                    // (operator review 2026-07-31, probed against `decide_admission`).
+                    // `AdmittedSlot` is a CONCURRENCY slot, not a memory reservation:
+                    // it increments `active`, which is compared against `target_width`.
+                    // A resident hold pins `active >= 1` forever, so the progress floor
+                    // (`active == 0` admits unconditionally) never fires and every later
+                    // admission returns Hold(WindowFull). `target_width` only grows in
+                    // `note_completion`, which needs a completion, which needs an
+                    // admission — nothing breaks the cycle. This is not a corner case:
+                    // the runner starts at `target_width=1`. A resident hold that also
+                    // skips `note_first_cost_paid` leaves `undigested > 0`, which holds
+                    // admissions even after width grows.
+                    //
+                    // So the dissolve-on is NOT "a lease" as a standalone change. It is
+                    // SPLITTING the governor's single `active` counter into two
+                    // resources — an execution slot (paced, width-bounded) and a
+                    // resident memory reservation (counted against the memory budget,
+                    // NOT against width) — after which a lease is expressible. That
+                    // touches the path standing between the floor and the exit-137 OOM
+                    // kills, so it is its own work with its own receipt, not a step
+                    // inside a feature lane. Until then this refuses.
+                    // (0) NO PROFILE AT ALL refuses first: the values below would be the
+                    // parse's fail-closed fillers, not the plan's statements, and reading
+                    // a wall off invented facts is worse than having no wall.
+                    if matches!(profile.provenance, ParsedProfileProvenance::Undeclared) {
                         refusals.push(format!(
-                            "on-success stage {} claim {} declares a heavy whole-tree resolve — \
-                             stages do not yet run through governor admission, so it refuses \
-                             rather than bypassing it",
+                            "on-success stage {} claim {} carries no resource profile — \
+                             stages admit only claims whose resources the plan declared; \
+                             an absent profile is not a negligible one",
                             si + 1,
                             function
+                        ));
+                    }
+                    if profile.heavy_whole_tree_resolve {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} declares a heavy whole-tree resolve — \
+                             the memo lane it would take runs unadmitted (no AdmittedSlot), so \
+                             it refuses rather than resolving a whole tree outside governor \
+                             admission; dissolves on a resident lease tied to the memoized \
+                             context's lifetime",
+                            si + 1,
+                            function
+                        ));
+                    }
+                    // (2) HOST-COMPILER OR SUBSTANTIAL RESIDENCY refuses because stages
+                    // carry no declared cost clamp — `gunbc_ci_floor_batch_clamp_params`
+                    // indexes the ORDINARY batches — so such a claim would run unclamped
+                    // until the outer workflow timeout. This wall is newly expressible:
+                    // the parse used to discard both facts.
+                    if profile.is_substantial_or_spawns_compiler() {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} declares spawns_host_compiler={} \
+                             memory={:?} — stages carry no declared cost clamp, so a \
+                             host-compiler or substantial-residency claim refuses rather \
+                             than running unclamped",
+                            si + 1,
+                            function,
+                            profile.spawns_host_compiler,
+                            profile.memory
                         ));
                     }
                 }
@@ -3626,6 +3992,289 @@ fn validate_floor_finalization(
     refusals
 }
 
+/// THE CONCURRENCY PRIMITIVE, extracted so the contract is reachable by a test.
+///
+/// `walk_plan_note` states that members WITHIN a stage run concurrently — that is why
+/// anything sequential must be one claim whose body sequences its steps, or two
+/// singleton stages. While the spawn and the join were inlined in the batch loop, that
+/// promise was checkable only by reading the code, and the first attempt at success
+/// stages promised it while executing serially. Split out, the two halves each get a
+/// latch control: members really do overlap, and the join really does wait for all of
+/// them.
+///
+/// The join half is what makes the stage BARRIER real. Stage N+1 cannot begin early
+/// because `run_walk`'s stage loop is sequential by construction — each iteration takes
+/// `&mut stage_memo`, so two iterations cannot overlap — which reduces "stage N+1 waits
+/// for every stage-N member" to "this join returns only after every member completed".
+fn spawn_units(
+    work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>>,
+) -> Vec<thread::JoinHandle<Vec<ClaimResult>>> {
+    work.into_iter()
+        .map(|w| thread::spawn(move || w()))
+        .collect()
+}
+
+/// Join every spawned unit, returning its results and whether any thread panicked. A
+/// panic is collected rather than propagated so the caller can still close its
+/// host-effect group and report the fault as infra rather than as a claim verdict.
+fn join_units(handles: Vec<thread::JoinHandle<Vec<ClaimResult>>>) -> (Vec<ClaimResult>, bool) {
+    let mut results = Vec::new();
+    let mut panicked = false;
+    for handle in handles {
+        match handle.join() {
+            Ok(unit_results) => results.extend(unit_results),
+            Err(_) => panicked = true,
+        }
+    }
+    (results, panicked)
+}
+
+/// Which of the walk's two populations a stage belongs to. It selects LABELS only —
+/// the execution path below is byte-identical for both, which is the entire point of
+/// the extraction (`std.realization_schedule.walk_plan_note`). Ordering and failure
+/// policy live in the callers, where the two populations genuinely differ.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StagePopulation {
+    OrdinaryBatch,
+    OnSuccessStage,
+}
+
+impl StagePopulation {
+    /// Prose label used in progress lines and PASS/FAIL prefixes.
+    fn label(self) -> &'static str {
+        match self {
+            StagePopulation::OrdinaryBatch => "batch",
+            StagePopulation::OnSuccessStage => "on-success stage",
+        }
+    }
+
+    /// Hyphenated form for phase names, which carry no spaces.
+    fn phase_slug(self) -> &'static str {
+        match self {
+            StagePopulation::OrdinaryBatch => "batch",
+            StagePopulation::OnSuccessStage => "on-success-stage",
+        }
+    }
+}
+
+/// What one stage produced. Verdicts are deliberately NOT classified here: the caller
+/// decides what a failure means, because that is precisely where the two populations
+/// differ (`FloorBatchStopPolicy` for the ordinary floor, unconditional fail-fast
+/// between stages).
+struct StageRun {
+    results: Vec<ClaimResult>,
+    /// The heartbeat label this stage armed the feed with. Returned rather than
+    /// recomputed by the caller: one derivation, one call.
+    label: String,
+    wall_nanos: u128,
+    /// Runtime unit count the clamp used (discovery witnesses + gate rows).
+    unit_count: u128,
+    /// The derived clamp actually computed, or None when the plan declares no clamp
+    /// params for this population.
+    clamp_ms: Option<u128>,
+    /// A worker thread panicked — an infra fault, distinct from a claim verdict.
+    thread_panicked: bool,
+    /// The stage exceeded its derived clamp. Already printed as a typed refusal.
+    over_budget: bool,
+}
+
+/// ONE stage of a walk, and the SINGLE execution path both populations share.
+///
+/// Groups the runnables into resolve-units, partitions them across the unit lanes
+/// (`batch_unit_lane`), spawns the eligible ones — where `run_batch_unit` takes a
+/// governor slot for the unit's lifetime — runs the memo and main-thread lanes on this
+/// thread while the spawned ones work, joins everything, and applies the derived cost
+/// clamp. It returns only once every member has finished, so the barrier is structural
+/// rather than a convention each caller has to remember.
+///
+/// It deliberately does NOT print PASS/FAIL, classify failures, or write receipts.
+/// Folding either population's ordering law in here would put one population's policy
+/// inside the other's executor, which is the fork this extraction exists to close.
+#[allow(clippy::too_many_arguments)]
+fn run_stage(
+    source_roots: &[String],
+    stage: &[Runnable],
+    population: StagePopulation,
+    index: usize,
+    feed_index: u64,
+    memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
+    governor: &Arc<MemoryGovernor>,
+    fast_lane_eval_budget_ms: Option<u64>,
+    falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
+    clamp_params: Option<(u128, u128)>,
+    budget_tighten_ms: Option<u128>,
+) -> StageRun {
+    let units = group_batch_units(stage);
+    // Arm the observation heartbeat feed at stage-enter: discovery leaves entry_total
+    // pending (filled when the roster's entry-group count is known); SingleClaim arms
+    // immediately with the claim count. Never a fabricated 0-of-0.
+    let label = batch_heartbeat_label(stage);
+    let entry_total = if stage
+        .iter()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+    {
+        None
+    } else if stage.is_empty() {
+        None
+    } else {
+        Some(stage.len() as u64)
+    };
+    heartbeat_feed_enter_batch(feed_index, &label, entry_total);
+    eprintln!(
+        "claim_executor: {} {} — {} node(s) in {} resolve-group(s), governor target_width={}",
+        population.label(),
+        index + 1,
+        stage.len(),
+        units.len(),
+        governor.current_target_width()
+    );
+    let stage_start = Instant::now();
+    // Partition units into lanes (decision table: `batch_unit_lane`): memo and Discovery
+    // units stay on the main thread; others spawn.
+    let mut memo_units: Vec<BatchUnit> = Vec::new();
+    let mut main_thread_units: Vec<BatchUnit> = Vec::new();
+    let mut thread_units: Vec<BatchUnit> = Vec::new();
+    for unit in units {
+        match batch_unit_lane(&unit, memo, memo_path_entries) {
+            UnitLane::Memo => memo_units.push(unit),
+            UnitLane::MainThread => main_thread_units.push(unit),
+            UnitLane::Spawned => thread_units.push(unit),
+        }
+    }
+    // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/`[shell]`
+    // trace lines stream to stderr from the worker threads INSIDE the group, while the
+    // scannable PASS/FAIL summary is deferred to AFTER the group closes (the caller
+    // prints it) so it stays outside the collapsed section. GitHub Actions renders this
+    // as a collapsible `::group::`; a plain terminal as a header. Threads cannot
+    // interleave group markers (one open/close on the main thread spans the whole
+    // stage), so it is sound under parallel unit threads.
+    let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
+    if grouped {
+        set_phase(
+            FloorPhase::HostEffect,
+            &format!("{}-{}-host-effects", population.phase_slug(), index + 1),
+        );
+        v1_compiler::v1_interpreter::group_begin(&format!(
+            "{} {} host-effects",
+            population.label(),
+            index + 1
+        ));
+    }
+    let spawned: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = thread_units
+        .into_iter()
+        .map(|unit| {
+            let roots = source_roots.to_vec();
+            let unit_governor = governor.clone();
+            let wet_budgets = falsifier_self_host_wet_budgets.clone();
+            let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
+                run_batch_unit(
+                    roots,
+                    unit,
+                    unit_governor,
+                    fast_lane_eval_budget_ms,
+                    wet_budgets,
+                )
+            });
+            boxed
+        })
+        .collect();
+    let handles = spawn_units(spawned);
+    // Run memo units on the main thread while spawned threads are working.
+    let mut memo_results: Vec<ClaimResult> = Vec::new();
+    for unit in memo_units {
+        if let BatchUnit::SharedClaims {
+            entry,
+            functions,
+            execution_mode,
+            ..
+        } = unit
+        {
+            let results =
+                run_memo_shared_claims(source_roots, &entry, &functions, execution_mode, memo);
+            memo_results.extend(results);
+        }
+    }
+    // Discovery pumps on the main thread (see the partition above): the pump's
+    // `process_shared_index` is this thread's — the one the eager compile-clean receipt
+    // install warmed — so the corpus reads the gate's typed store.
+    for unit in main_thread_units {
+        memo_results.extend(run_batch_unit(
+            source_roots.to_vec(),
+            unit,
+            governor.clone(),
+            fast_lane_eval_budget_ms,
+            falsifier_self_host_wet_budgets.clone(),
+        ));
+    }
+    // Collect all results before returning — the caller's PASS/FAIL prints must land
+    // after `group_end`, and a thread panic still has to close the group.
+    let mut results: Vec<ClaimResult> = memo_results;
+    let (joined, thread_panicked) = join_units(handles);
+    results.extend(joined);
+    if grouped {
+        v1_compiler::v1_interpreter::group_end();
+    }
+    // SingleClaim path: discovery advances the feed via `index_schedule_entry_completed`;
+    // gate stages have no schedule retention, so each claim result is the per-entry tick.
+    if !stage
+        .iter()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+    {
+        for _ in &results {
+            heartbeat_feed_entry_completed();
+        }
+    }
+    let wall_nanos = stage_start.elapsed().as_nanos();
+    // THE COST WALL (Piece 3 derived clamp): the per-stage clamp is overhead + runtime
+    // unit count * rate, computed HERE where the affected-set-selected count is known
+    // (the schedule holds one opaque discovery runnable; the count is runtime).
+    // Over-clamp is a typed, located refusal that reds the walk; it never widens (no
+    // rerun, no scope change, no cap raise). Witness verdicts inside the stage stand as
+    // evaluated — the clamp is an admission/scheduling fact, not a verdict term. A
+    // population whose plan declares no clamp params gets None and is not clamped;
+    // nothing is fabricated for it.
+    let unit_count = batch_runtime_unit_count(&results);
+    let clamp_ms: Option<u128> = clamp_params.map(|(overhead_ms, rate_ms)| {
+        let mut clamp = overhead_ms + unit_count * rate_ms;
+        if let Some(t) = budget_tighten_ms {
+            clamp = clamp.min(t);
+        }
+        clamp
+    });
+    let mut over_budget = false;
+    if let Some(clamp) = clamp_ms {
+        let wall_ms = wall_nanos / 1_000_000;
+        if wall_ms > clamp {
+            over_budget = true;
+            println!(
+                "{}",
+                paint(
+                    &format!(
+                        "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                        population.phase_slug(),
+                        index + 1,
+                        wall_ms,
+                        clamp,
+                        unit_count,
+                        index
+                    ),
+                    sgr::ERROR
+                )
+            );
+        }
+    }
+    StageRun {
+        results,
+        label,
+        wall_nanos,
+        unit_count,
+        clamp_ms,
+        thread_panicked,
+        over_budget,
+    }
+}
+
 fn run_walk(
     source_roots: &[String],
     plan_site: &str,
@@ -3640,6 +4289,13 @@ fn run_walk(
     budget_tighten_ms: Option<u128>,
     falsifier_cadence: bool,
     witness_row_cost_basis_path: &Path,
+    // The observed walk-attempt identity. `None` is legitimate ONLY for a plan with no
+    // on-success stages: nothing writes an attempt-scoped receipt, so nothing needs the
+    // identity. With stages present the arm-time check has already refused an unidentified
+    // walk, so `None` here is unreachable — and the stage loop still treats it as a typed
+    // refusal rather than unwrapping, because "unreachable by an invariant elsewhere" is
+    // the assumption that stops being true when someone adds a second caller.
+    walk_attempt_id: Option<&str>,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -3660,129 +4316,29 @@ fn run_walk(
     let memo_path_entries = memo_path_entry_keys(batches);
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
-        let units = group_batch_units(batch);
-        // Arm the observation heartbeat feed at batch-enter: discovery leaves
-        // entry_total pending (filled when the roster's entry-group count is known);
-        // SingleClaim arms immediately with the claim count. Never a fabricated 0-of-0.
-        let label = batch_heartbeat_label(batch);
-        let entry_total = if batch
-            .iter()
-            .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
-        {
-            None
-        } else if batch.is_empty() {
-            None
-        } else {
-            Some(batch.len() as u64)
-        };
-        heartbeat_feed_enter_batch(bi as u64, &label, entry_total);
-        eprintln!(
-            "claim_executor: batch {} — {} node(s) in {} resolve-group(s), governor target_width={}",
-            bi + 1,
-            batch.len(),
-            units.len(),
-            governor.current_target_width()
+        let StageRun {
+            results: batch_results,
+            label,
+            wall_nanos: batch_wall_nanos,
+            unit_count: batch_unit_count,
+            clamp_ms: batch_clamp_ms,
+            thread_panicked,
+            over_budget,
+        } = run_stage(
+            source_roots,
+            batch,
+            StagePopulation::OrdinaryBatch,
+            bi,
+            bi as u64,
+            &mut walk_memo,
+            &memo_path_entries,
+            governor,
+            fast_lane_eval_budget_ms,
+            &falsifier_self_host_wet_budgets,
+            batch_clamp_params.and_then(|p| p.get(bi)).copied(),
+            budget_tighten_ms,
         );
-        let batch_start = Instant::now();
-        // Partition units into lanes (decision table: `batch_unit_lane`): memo and
-        // Discovery units stay on the main thread; others spawn.
-        let mut memo_units: Vec<BatchUnit> = Vec::new();
-        let mut main_thread_units: Vec<BatchUnit> = Vec::new();
-        let mut thread_units: Vec<BatchUnit> = Vec::new();
-        for unit in units {
-            match batch_unit_lane(&unit, &walk_memo, &memo_path_entries) {
-                UnitLane::Memo => memo_units.push(unit),
-                UnitLane::MainThread => main_thread_units.push(unit),
-                UnitLane::Spawned => thread_units.push(unit),
-            }
-        }
-        // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/
-        // `[shell]` trace lines stream to stderr from the worker threads INSIDE the
-        // group, while the scannable PASS/FAIL summary is deferred to AFTER the group
-        // closes (below) so it stays outside the collapsed section. GitHub Actions
-        // renders this as a collapsible `::group::`; a plain terminal as a header.
-        // Threads can't interleave group markers (one open/close on the main thread
-        // spans the whole batch), so it is sound under parallel unit threads.
-        let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
-        if grouped {
-            set_phase(
-                FloorPhase::HostEffect,
-                &format!("batch-{}-host-effects", bi + 1),
-            );
-            v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
-        }
-        let handles: Vec<_> = thread_units
-            .into_iter()
-            .map(|unit| {
-                let roots = source_roots.to_vec();
-                let unit_governor = governor.clone();
-                let wet_budgets = falsifier_self_host_wet_budgets.clone();
-                thread::spawn(move || {
-                    run_batch_unit(
-                        roots,
-                        unit,
-                        unit_governor,
-                        fast_lane_eval_budget_ms,
-                        wet_budgets,
-                    )
-                })
-            })
-            .collect();
-        // Run memo units on the main thread while spawned threads are working.
-        let mut memo_results: Vec<ClaimResult> = Vec::new();
-        for unit in memo_units {
-            if let BatchUnit::SharedClaims {
-                entry,
-                functions,
-                execution_mode,
-                ..
-            } = unit
-            {
-                let results = run_memo_shared_claims(
-                    source_roots,
-                    &entry,
-                    &functions,
-                    execution_mode,
-                    &mut walk_memo,
-                );
-                memo_results.extend(results);
-            }
-        }
-        // Discovery pumps on the main thread (see the partition above): the pump's
-        // `process_shared_index` is this thread's — the one the eager compile-clean
-        // receipt install warmed — so the corpus reads the gate's typed store.
-        for unit in main_thread_units {
-            memo_results.extend(run_batch_unit(
-                source_roots.to_vec(),
-                unit,
-                governor.clone(),
-                fast_lane_eval_budget_ms,
-                falsifier_self_host_wet_budgets.clone(),
-            ));
-        }
-        // Collect all results before printing any PASS/FAIL — the prints must land
-        // after `group_end`, and a thread panic still has to close the group.
-        let mut batch_results: Vec<ClaimResult> = memo_results;
-        let mut thread_panicked = false;
-        for handle in handles {
-            match handle.join() {
-                Ok(results) => batch_results.extend(results),
-                Err(_) => thread_panicked = true,
-            }
-        }
-        if grouped {
-            v1_compiler::v1_interpreter::group_end();
-        }
         for result in &batch_results {
-            // SingleClaim path: discovery advances the feed via
-            // `index_schedule_entry_completed`; gate batches have no schedule
-            // retention, so each claim result is the per-entry completed tick.
-            if !batch
-                .iter()
-                .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
-            {
-                heartbeat_feed_entry_completed();
-            }
             if result.ok {
                 println!(
                     "{}",
@@ -3827,43 +4383,10 @@ fn run_walk(
             });
             any_failed = true;
         }
-        let batch_wall_nanos = batch_start.elapsed().as_nanos();
-        // THE COST WALL (Piece 3 derived clamp): the per-batch clamp is overhead + runtime unit
-        // count * rate, computed HERE where the affected-set-selected count is known (the schedule
-        // holds one opaque discovery runnable; the count is runtime). Over-clamp is a typed, located
-        // refusal that reds the walk; it never widens (no rerun, no scope change, no cap raise).
-        // Witness verdicts inside the batch stand as evaluated (the clamp is an admission/scheduling
-        // fact, not a verdict term — carrier note has the ruling split).
-        let batch_unit_count = batch_runtime_unit_count(&batch_results);
-        let batch_clamp_ms: Option<u128> =
-            batch_clamp_params
-                .and_then(|p| p.get(bi))
-                .map(|&(overhead_ms, rate_ms)| {
-                    let mut clamp = overhead_ms + batch_unit_count * rate_ms;
-                    if let Some(t) = budget_tighten_ms {
-                        clamp = clamp.min(t);
-                    }
-                    clamp
-                });
-        if let Some(clamp_ms) = batch_clamp_ms {
-            let wall_ms = batch_wall_nanos / 1_000_000;
-            if wall_ms > clamp_ms {
-                println!(
-                    "{}",
-                    paint(
-                        &format!(
-                            "✗ FLOOR-BATCH-OVER-BUDGET batch={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
-                            bi + 1,
-                            wall_ms,
-                            clamp_ms,
-                            batch_unit_count,
-                            bi
-                        ),
-                        sgr::ERROR
-                    )
-                );
-                any_failed = true;
-            }
+        // The clamp refusal itself printed inside `run_stage`; the verdict term belongs
+        // to the ordinary floor, so it is applied here where that failure state lives.
+        if over_budget {
+            any_failed = true;
         }
         batch_records.push(BatchRecord {
             batch_index: bi,
@@ -3874,19 +4397,41 @@ fn run_walk(
             label: label.clone(),
             selection_tag: batch_selection_tag(batch),
         });
+        // LOCAL, not aggregate. This used to test the cumulative `any_failed`, so under
+        // FullLedger every batch after the first failure was announced as "batch N had
+        // failures" whether or not it had any — the same local-versus-aggregate
+        // conflation that made the falsifier alert misattribute green components
+        // (review 2026-07-31). The stop DECISION is still the walk's, because
+        // StopBeforeDependents must halt on any prior failure; only the message is local.
+        let this_batch_failed = thread_panicked
+            || over_budget
+            || batch_records
+                .last()
+                .map(|r| r.results.iter().any(|x| !x.ok))
+                .unwrap_or(false);
         if any_failed {
             match stop_policy {
                 FloorBatchStopPolicy::StopBeforeDependents => {
                     eprintln!(
-                        "claim_executor: batch {} had failures — stopping before dependent batches",
-                        bi + 1
+                        "claim_executor: stopping before dependent batches (batch {} {})",
+                        bi + 1,
+                        if this_batch_failed {
+                            "failed"
+                        } else {
+                            "green; an earlier batch failed"
+                        }
                     );
                     break;
                 }
                 FloorBatchStopPolicy::FullLedger => {
                     eprintln!(
-                        "claim_executor: batch {} had failures — continuing (FullLedger stop policy)",
-                        bi + 1
+                        "claim_executor: continuing (FullLedger stop policy) — batch {} {}",
+                        bi + 1,
+                        if this_batch_failed {
+                            "failed"
+                        } else {
+                            "green; an earlier batch failed"
+                        }
                     );
                 }
             }
@@ -3959,13 +4504,14 @@ fn run_walk(
     }
     // On-success stages: run only on a fully-green ordinary floor; each stage is a
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
-    // is an ordinary-floor policy and never applies between stages. Members execute
-    // serially in-process (run_memo_shared_claims) with a stage-local memo, so one
-    // entry shared by several stages resolves once and is reused; intra-stage order is
-    // NOT part of the contract (walk_plan_note) — anything sequential must be one
-    // claim, and serial execution here merely provides more order than is promised.
-    // Their memo contexts drop AFTER write_materialization_receipt above, so stage
-    // materialization is structurally NOT folded into the floor receipt.
+    // is an ordinary-floor policy and never applies between stages. Members run through
+    // `run_stage`, the SAME executor the ordinary batches use — same unit grouping, same
+    // lane partition, same governor admission — so a stage's members are concurrent
+    // exactly as the contract says, and nothing reaches a weaker route. The two
+    // populations differ here only in ordering and failure policy, which is the whole
+    // claim of the extraction. Their memo contexts drop AFTER
+    // write_materialization_receipt above, so stage materialization is structurally NOT
+    // folded into the floor receipt.
     let mut on_success_failed = false;
     if !on_success_stages.is_empty() {
         if ordinary_failed {
@@ -3980,77 +4526,126 @@ fn run_walk(
             let mut stage_resolves: u64 = 0;
             let mut stage_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
                 std::collections::HashMap::new();
+            // The stage population's own memo-path set. The stage memo is SEPARATE from
+            // `walk_memo` by lifecycle, not by accident: stage contexts must drop after
+            // `write_materialization_receipt` above so stage materialization is
+            // structurally not folded into the floor receipt. One entry shared by several
+            // stages still resolves once, within that separate map.
+            let stage_memo_path_entries = memo_path_entry_keys(on_success_stages);
             for (si, stage) in on_success_stages.iter().enumerate() {
-                let mut stage_failed = false;
-                for runnable in stage {
-                    match runnable {
-                        Runnable::SingleClaim {
-                            entry,
-                            function,
-                            execution_mode,
-                            ..
-                        } => {
-                            let results = run_memo_shared_claims(
-                                source_roots,
-                                entry,
-                                std::slice::from_ref(function),
-                                *execution_mode,
-                                &mut stage_memo,
-                            );
-                            for r in results {
-                                if r.resolve_nanos > 0 {
-                                    stage_resolves += 1;
-                                }
-                                if r.ok {
-                                    eprintln!(
-                                        "{}",
-                                        format_args!(
-                                            "\u{2713} PASS [on-success stage {}] {}",
-                                            si + 1,
-                                            r.function
-                                        )
-                                    );
-                                } else {
-                                    stage_failed = true;
-                                    eprintln!(
-                                        "\u{2717} FAIL [on-success stage {}] {} ({})",
-                                        si + 1,
-                                        r.function,
-                                        r.detail
-                                    );
-                                    failure_details.push(format!(
-                                        "on-success stage {} fn={} detail={}",
-                                        si + 1,
-                                        r.function,
-                                        r.detail
-                                    ));
-                                }
-                            }
-                        }
-                        other => {
-                            // Typed refusal, never a widen: stages admit single claims
-                            // only. A discovery batch in a postcondition position has
-                            // no defined green-only meaning.
-                            stage_failed = true;
-                            let label = match other {
-                                Runnable::DiscoveryBatch { .. } => "RunnableDiscoveryBatch",
-                                Runnable::SingleClaim { .. } => unreachable!(),
-                            };
-                            eprintln!(
-                                "\u{2717} FAIL [on-success stage {}] {} refused: on-success \
-                                 stages admit RunnableSingleClaim only",
-                                si + 1,
-                                label
-                            );
-                            failure_details.push(format!(
-                                "on-success stage {} refused non-claim runnable {}",
-                                si + 1,
-                                label
-                            ));
-                        }
+                let run = run_stage(
+                    source_roots,
+                    stage,
+                    StagePopulation::OnSuccessStage,
+                    si,
+                    (batches.len() + si) as u64,
+                    &mut stage_memo,
+                    &stage_memo_path_entries,
+                    governor,
+                    fast_lane_eval_budget_ms,
+                    &falsifier_self_host_wet_budgets,
+                    // Stages declare no clamp params: `gunbc_ci_floor_batch_clamp_params`
+                    // indexes the ORDINARY batches, and reusing an ordinary batch's
+                    // overhead/rate for a stage would fabricate a budget nobody declared.
+                    // The arm-time validator refuses the profiles that would need one.
+                    None,
+                    budget_tighten_ms,
+                );
+                // A supplied clamp must have teeth. Stages pass None today (see the
+                // call above), so this is currently unreachable — it is wired now so that
+                // adding a declared stage clamp is a one-line change rather than a
+                // one-line change plus remembering this fold, which is exactly the kind of
+                // omission the ordinary path's own clamp handling had to be corrected for.
+                let mut stage_failed = run.thread_panicked || run.over_budget;
+                if run.over_budget {
+                    failure_details.push(format!(
+                        "on-success stage {} exceeded its declared clamp",
+                        si + 1
+                    ));
+                }
+                if run.thread_panicked {
+                    println!(
+                        "{}",
+                        paint(
+                            &format!(
+                                "✗ FAIL [on-success stage {}] <claim thread panicked>",
+                                si + 1
+                            ),
+                            sgr::ERROR
+                        )
+                    );
+                    failure_details.push(format!("on-success stage {} infra=thread_panic", si + 1));
+                    infra_faults.push(InfraFault::ClaimThreadPanicked {
+                        batch_index: batches.len() + si + 1,
+                    });
+                }
+                for r in &run.results {
+                    if r.resolve_nanos > 0 {
+                        stage_resolves += 1;
+                    }
+                    if r.ok {
+                        println!(
+                            "{}",
+                            paint(
+                                &format!("✓ PASS [on-success stage {}] {}", si + 1, r.function),
+                                sgr::SUCCESS
+                            )
+                        );
+                    } else {
+                        stage_failed = true;
+                        println!(
+                            "{}",
+                            paint(
+                                &format!(
+                                    "✗ FAIL [on-success stage {}] {} ({})",
+                                    si + 1,
+                                    r.function,
+                                    r.detail
+                                ),
+                                sgr::ERROR
+                            )
+                        );
+                        failure_details.push(format!(
+                            "on-success stage {} fn={} detail={}",
+                            si + 1,
+                            r.function,
+                            r.detail
+                        ));
                     }
                 }
                 stage_rows.push((si, !stage_failed));
+                // THIS stage's receipt, written BEFORE the next stage begins. The
+                // aggregate receipt below cannot substitute: written only after the whole
+                // sequence, it does not exist for stage N while stage N+1 runs, and a
+                // process death between the two loses every stage that had in fact
+                // completed. A receipt that cannot be written is itself a stage failure.
+                let receipt_written = match walk_attempt_id {
+                    Some(attempt) => write_on_success_stage_receipt(
+                        si,
+                        !stage_failed,
+                        &run,
+                        on_success_stages.len(),
+                        attempt,
+                    ),
+                    None => {
+                        eprintln!(
+                            "claim_executor: on-success stage {} has no walk-attempt identity — \
+                             refusing to write an unidentifiable receipt (arm-time observation \
+                             should have refused this walk already; reaching here means a caller \
+                             ran stages without observing identity)",
+                            si + 1
+                        );
+                        false
+                    }
+                };
+                if !receipt_written {
+                    stage_failed = true;
+                    failure_details
+                        .push(format!("on-success stage {} receipt write failed", si + 1));
+                    if let Some(last) = stage_rows.last_mut() {
+                        last.1 = false;
+                    }
+                }
                 if stage_failed {
                     on_success_failed = true;
                     eprintln!(
@@ -4061,6 +4656,7 @@ fn run_walk(
                     break;
                 }
             }
+
             if !write_on_success_receipt(
                 &stage_rows,
                 stage_resolves,
@@ -4230,8 +4826,7 @@ fn run_perturb_check(
                     Runnable::SingleClaim {
                         entry,
                         function,
-                        use_walk_memo,
-                        execution_mode,
+                        profile,
                     } => Runnable::SingleClaim {
                         entry: if entry.is_empty() {
                             entry.clone()
@@ -4241,8 +4836,7 @@ fn run_perturb_check(
                                 .into_owned()
                         },
                         function: function.clone(),
-                        use_walk_memo: *use_walk_memo,
-                        execution_mode: *execution_mode,
+                        profile: *profile,
                     },
                     Runnable::DiscoveryBatch {
                         source_roots: roots,
@@ -4286,6 +4880,9 @@ fn run_perturb_check(
         None,
         false,
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        // The perturb re-walk passes `&[]` for stages, so no attempt-scoped receipt is
+        // written and no identity is owed.
+        None,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -4502,6 +5099,22 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
+    // Walk-attempt identity, observed at the SAME altitude and for the same reason as the
+    // shape refusal above: a walk that cannot identify itself cannot write a receipt anyone
+    // can attribute, and that is knowable now rather than after a 20-30 minute floor. Only
+    // demanded when stages exist — a plan with no on-success stages writes no attempt-scoped
+    // receipt, so requiring identity of it would be a refusal with no subject.
+    let walk_attempt_id: Option<String> = if on_success_stages.is_empty() {
+        None
+    } else {
+        match observe_walk_attempt_id() {
+            Ok(id) => Some(id),
+            Err(msg) => {
+                eprintln!("claim_executor: ON-SUCCESS-STAGE-REFUSED: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    };
     // Floor finalization is carried BY the plan value (walk_finalization_note) — the
     // name-keyed read this replaces was the same seed-roster convention the carrier
     // was built to remove, reintroduced and then caught in review.
@@ -4741,6 +5354,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         budget_tighten_ms,
         plan_function == "gunbc_falsifier_plan",
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        walk_attempt_id.as_deref(),
     );
     // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
     // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
@@ -5442,14 +6056,24 @@ mod tests {
         let cheap = |f: &str| Runnable::SingleClaim {
             entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
             function: f.to_string(),
-            use_walk_memo: false,
-            execution_mode: ExecutionMode::Wet,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
         };
         let heavy = Runnable::SingleClaim {
             entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
             function: "dag_compile_clean_gate_passes".to_string(),
-            use_walk_memo: true,
-            execution_mode: ExecutionMode::Wet,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: true,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
         };
         let batches = vec![
             vec![
@@ -5492,15 +6116,25 @@ mod tests {
         let batches = vec![vec![Runnable::SingleClaim {
             entry: "dag/x.dag".to_string(),
             function: "f".to_string(),
-            use_walk_memo: true,
-            execution_mode: ExecutionMode::Wet,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: true,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
         }]];
         let keys = memo_path_entry_keys(&batches);
         let hermetic_units = group_batch_units(&[Runnable::SingleClaim {
             entry: "dag/x.dag".to_string(),
             function: "g".to_string(),
-            use_walk_memo: false,
-            execution_mode: ExecutionMode::Hermetic,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Hermetic,
+            },
         }]);
         let empty_memo = std::collections::HashMap::new();
         assert_eq!(
@@ -6284,8 +6918,13 @@ mod tests {
         Runnable::SingleClaim {
             entry: entry.to_string(),
             function: function.to_string(),
-            use_walk_memo: false,
-            execution_mode: ExecutionMode::Hermetic,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Hermetic,
+            },
         }
     }
 
@@ -6826,6 +7465,207 @@ mod tests {
             result.detail.contains("witness row-cost receipt refused"),
             "receipt refusal must also be present, got: {}",
             result.detail
+        );
+    }
+
+    fn latch_result(function: &str) -> ClaimResult {
+        ClaimResult {
+            function: function.to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+        }
+    }
+
+    /// LATCH, not timing. Each member increments a shared counter, then waits on a
+    /// condvar until the counter reaches 2 — which can only happen if the OTHER member
+    /// is already running. Under a serial executor the first member waits forever for a
+    /// peer that has not been started, so the bounded wait expires and `observed_peer`
+    /// stays false. The bound is a deadlock detector, never the assertion: the assertion
+    /// is that each member SAW the other, which no amount of slowness can fake and no
+    /// amount of speed can satisfy serially.
+    #[test]
+    fn stage_members_actually_overlap() {
+        use std::sync::{Arc, Condvar, Mutex};
+
+        let state = Arc::new((Mutex::new(0usize), Condvar::new()));
+        let observed_peer = Arc::new(Mutex::new(vec![false, false]));
+
+        let work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = (0..2)
+            .map(|i| {
+                let state = state.clone();
+                let observed = observed_peer.clone();
+                let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
+                    let (lock, cvar) = &*state;
+                    let mut count = lock.lock().unwrap();
+                    *count += 1;
+                    cvar.notify_all();
+                    let mut saw_peer = *count == 2;
+                    while !saw_peer {
+                        let (guard, timeout) = cvar
+                            .wait_timeout(count, std::time::Duration::from_secs(10))
+                            .unwrap();
+                        count = guard;
+                        saw_peer = *count == 2;
+                        if timeout.timed_out() {
+                            break;
+                        }
+                    }
+                    observed.lock().unwrap()[i] = saw_peer;
+                    vec![latch_result(&format!("member-{i}"))]
+                });
+                boxed
+            })
+            .collect();
+
+        let (results, panicked) = join_units(spawn_units(work));
+        assert!(!panicked, "no member should panic");
+        assert_eq!(results.len(), 2, "both members must report");
+        let observed = observed_peer.lock().unwrap();
+        assert!(
+            observed[0] && observed[1],
+            "each member must observe the other running concurrently; \
+             serial execution leaves one or both false: {observed:?}"
+        );
+    }
+
+    /// The other half of the barrier: the join returns only after EVERY member finished.
+    /// The slow member sets a flag last; if `join_units` returned early, the flag would
+    /// still be false when the assertion runs, and the result count would be short.
+    /// Together with the stage loop's sequential `&mut stage_memo` borrow, this is what
+    /// makes "stage N+1 cannot begin before every stage-N member completed" true.
+    #[test]
+    fn join_waits_for_every_member_before_returning() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let finished = Arc::new(AtomicUsize::new(0));
+        let members = 4usize;
+        let work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = (0..members)
+            .map(|i| {
+                let finished = finished.clone();
+                let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
+                    // Staggered so at least one member is still running well after the
+                    // others have returned — the case an early join would expose.
+                    std::thread::sleep(std::time::Duration::from_millis(20 * (i as u64 + 1)));
+                    finished.fetch_add(1, Ordering::SeqCst);
+                    vec![latch_result(&format!("member-{i}"))]
+                });
+                boxed
+            })
+            .collect();
+
+        let (results, panicked) = join_units(spawn_units(work));
+        assert!(!panicked);
+        assert_eq!(
+            finished.load(Ordering::SeqCst),
+            members,
+            "join must not return before every member completed"
+        );
+        assert_eq!(
+            results.len(),
+            members,
+            "every member's results must be collected"
+        );
+    }
+
+    /// A panicking member is collected as an INFRA fault, not silently dropped and not
+    /// propagated: the caller still needs to close its host-effect group and report the
+    /// fault distinctly from a claim verdict. The surviving members' results still come
+    /// back, so one bad unit does not erase the stage's evidence.
+    #[test]
+    fn join_reports_a_panicking_member_without_losing_the_others() {
+        let work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = vec![
+            Box::new(|| vec![latch_result("ok-member")]),
+            Box::new(|| panic!("member exploded")),
+        ];
+        let (results, panicked) = join_units(spawn_units(work));
+        assert!(panicked, "a panicking member must be reported");
+        assert_eq!(
+            results.len(),
+            1,
+            "the surviving member's results must still be collected"
+        );
+    }
+
+    // ---- walk-attempt identity ----
+    //
+    // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
+    // not merely as "not equal to the good value". The positive controls exist so the
+    // negatives are discriminating: a `compose_walk_attempt_id` that refused everything
+    // would pass every Err assertion and fail these.
+
+    #[test]
+    fn attempt_identity_composes_from_the_github_triple() {
+        assert_eq!(
+            compose_walk_attempt_id("", "30654655022", "1", "ci").unwrap(),
+            "30654655022-1-ci"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_prefers_the_explicit_value() {
+        assert_eq!(
+            compose_walk_attempt_id("local-probe-7", "30654655022", "1", "ci").unwrap(),
+            "local-probe-7",
+            "an explicitly supplied identity must win over the ambient GitHub triple"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_refuses_rather_than_defaulting_when_absent() {
+        // THE load-bearing control. The ruling forbids "a silent constant like a bare
+        // local, which would make every local run one attempt and the wrong-attempt
+        // refusal unreachable off CI". If someone ever adds a default, this reds.
+        let refusal = compose_walk_attempt_id("", "", "", "")
+            .expect_err("an unidentified walk must refuse, never default");
+        assert!(
+            refusal.contains("GUNBC_WALK_ATTEMPT_ID"),
+            "the refusal must name the input that would satisfy it, got: {refusal}"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_refuses_a_partial_github_triple() {
+        // A partial triple is the shape a non-`ci` job or a changed workflow produces.
+        // Composing from it would silently collide two jobs of one run onto one identity.
+        for (run_id, attempt, job) in [
+            ("30654655022", "1", ""),
+            ("30654655022", "", "ci"),
+            ("", "1", "ci"),
+        ] {
+            assert!(
+                compose_walk_attempt_id("", run_id, attempt, job).is_err(),
+                "partial triple ({run_id:?},{attempt:?},{job:?}) must refuse"
+            );
+        }
+    }
+
+    #[test]
+    fn attempt_identity_refuses_every_unsafe_path_segment() {
+        // Mirrors `std.types.path_segment_is_safe` clause for clause. `..` and `/` are the
+        // escapes that would let a receipt be written outside its attempt directory; CR and
+        // LF are the ones that would split the line-oriented receipt written under that
+        // name, so two lines could be forged from one field.
+        for bad in ["", ".", "..", "a/b", "a\\b", "a\nb", "a\rb", "a\0b"] {
+            assert!(
+                compose_walk_attempt_id(bad, "run", "1", "ci").is_err() || bad.trim().is_empty(),
+                "unsafe explicit segment {bad:?} must refuse"
+            );
+            assert!(
+                !walk_attempt_id_segment_is_safe(bad),
+                "segment {bad:?} must not be considered safe"
+            );
+        }
+        assert!(
+            walk_attempt_id_segment_is_safe("30654655022-1-ci"),
+            "a real composed identity must be accepted — else the negatives above prove nothing"
         );
     }
 }

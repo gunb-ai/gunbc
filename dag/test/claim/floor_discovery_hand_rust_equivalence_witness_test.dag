@@ -7,6 +7,9 @@ import gunbc.floor_discovery_scaffold {
   floor_discovery_equivalence_test_sidecar_misplaced,
   floor_discovery_equivalence_test_scan_wire_contract,
   floor_discovery_equivalence_test_narrowed_corpus_control,
+  floor_naming_hygiene_entry_hand_rust_loc_delta_net,
+  floor_naming_hygiene_entry_hand_rust_census_note,
+  floor_naming_hygiene_entry_hand_rust_discriminator,
 }
 import v2.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
@@ -23,21 +26,22 @@ import v2.workflow.floor_discovery_producer {
   FloorDiscoveryAccepted,
   FloorDiscoveryRefused,
   discover_floor_corpus_rows_from_host_facts,
-  floor_discovery_scan_test_decl_names,
   floor_discovery_content_has_wire_contract_decl,
   floor_discovery_wire_contract_sidecar_refusal_for_content,
   floor_discovery_entry_live_tree_disposition_refusal_for_content,
-  floor_filename_hygiene_refusal_for_paths,
   floor_discovery_sidecar_refusal_reason,
   floor_discovery_surface_text_scan_scaffold,
   floor_discovery_surface_text_scan_dissolve_on
 }
 import v2.workflow.floor_naming_hygiene {
+  floor_filename_hygiene_refusal_for_paths,
+  floor_discovery_scan_test_decl_names,
   floor_test_sidecar_suffix,
   floor_wire_contract_sidecar_suffix
 }
 import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.collection {
   List,
   fold_list
@@ -54,6 +58,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data floor_discovery_hand_rust_equivalence_note: String = "Executes floor_discovery_producer.dag on fixtures (owned-data transport projection, filename hygiene, test-decl scan, wire-contract scan/sidecar, sidecar placement) with RED perturbation controls. Producer authority is exercised here; Rust bridge cross-checks (discover_floor_witness_roster, scan_wire_contract_decl_names) are named in gunbc.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests in cli_run.rs on the same fixture spellings."
+
+test fn floor_naming_hygiene_entry_hand_rust_growth_is_censused() -> Bool {
+  floor_naming_hygiene_entry_hand_rust_loc_delta_net == 6
+    && floor_naming_hygiene_entry_hand_rust_discriminator ==
+      "floor_naming_hygiene_entry_anchored"
+    && string_contains(
+      s: floor_naming_hygiene_entry_hand_rust_census_note,
+      pattern: "src/v1/stage0/src/cli_run.rs",
+    )
+    && string_contains(
+      s: floor_naming_hygiene_entry_hand_rust_census_note,
+      pattern: "DISSOLVE-ON",
+    )
+    && string_contains(
+      s: floor_naming_hygiene_entry_hand_rust_census_note,
+      pattern: "v1-hand-queue-drain",
+    )
+}
 
 data fixture_witness_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
 data fixture_witness_function: String = "floor_discovery_roster_fixture_witness"
@@ -186,7 +208,14 @@ test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
 
 test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
   match floor_discovery_surface_text_scan_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Scaffold {
+      dissolves_to: SingleAuthority,
+      bind: DeclarationRef {
+        module_path: "v2.workflow.floor_naming_hygiene",
+        decl_name: "floor_discovery_scan_test_decl_names",
+        field: WholeDeclaration
+      }
+    } => true
     _ => false
   }
 }
