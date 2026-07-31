@@ -1,0 +1,133 @@
+module v2.test.manual.infer_self_grounding_probe
+
+import v2.compiler.infer {
+  InferredTree,
+  canonical_grounding_for_node,
+  infer
+}
+import v2.std.constraints { CanonicalGrounding }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node {
+  Atom,
+  Bind,
+  ComputationNode,
+  Conj,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode,
+  Value
+}
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+fn probe_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_value_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_transform_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_bind_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn probe_yes() -> Node {
+  probe_atom(s: ^probe_yes_marker)
+}
+
+fn probe_no() -> Node {
+  probe_atom(s: ^probe_no_marker)
+}
+
+fn probe_bool_node(b: Bool) -> Node {
+  if b { probe_yes() } else { probe_no() }
+}
+
+fn probe_infer_accepts(root: Node) -> Bool {
+  match infer(tree: root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn probe_grounding_evidence_is_source(root: Node) -> Bool {
+  match infer(tree: root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match canonical_grounding_for_node(tree: tree, node: root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: g, diagnostics: _ } =>
+          g.witness.structural.evidence == root
+      }
+  }
+}
+
+data probe_infer_accepts_value_leaf: TestClaim = EqualsClaim {
+  label: "probe: infer accepts a bare ComputationNode{Value} leaf",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: probe_bool_node(b: probe_infer_accepts(root: probe_value_node())),
+  rhs: probe_yes(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data probe_infer_accepts_transform_leaf: TestClaim = EqualsClaim {
+  label: "probe: infer accepts a bare ComputationNode{Transform} leaf",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: probe_bool_node(b: probe_infer_accepts(root: probe_transform_node())),
+  rhs: probe_yes(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data probe_infer_accepts_bind_leaf: TestClaim = EqualsClaim {
+  label: "probe: infer accepts a bare ComputationNode{Bind} leaf",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: probe_bool_node(b: probe_infer_accepts(root: probe_bind_node())),
+  rhs: probe_yes(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data probe_conj_grounding_evidence_is_source: TestClaim = EqualsClaim {
+  label: "probe: TypeNode{Conj} canonical grounding evidence IS the source node (self-grounding leak)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: probe_bool_node(b: probe_grounding_evidence_is_source(root: probe_conj_node())),
+  rhs: probe_yes(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
