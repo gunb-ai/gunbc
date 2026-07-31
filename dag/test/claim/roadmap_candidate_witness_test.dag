@@ -1,0 +1,326 @@
+module test.claim.roadmap_candidate_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Int, CommitSha, ContentHash, List }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState,
+  ProviderNotStarted, ProviderStarting, ProviderRunning,
+  ProviderCompleted, ProviderFailed, ProviderEventsRefused,
+}
+import gunbc.roadmap_candidate {
+  WorktreeCleanliness, WorktreeClean, WorktreeDirty, WorktreeCleanlinessUnknown,
+  HeadObservation, HeadAt, HeadUnknown,
+  BranchObservation, BranchAt, BranchUnknown,
+  CandidateMint, CandidateReady, CandidateRefused,
+  CandidateRefusalCause,
+  TurnNotTerminal, TurnDidNotSucceed,
+  CandidateWorktreeDirty, CandidateCleanlinessUnknown,
+  CandidateHeadUnknown, CandidateBranchUnknown,
+  CandidateBranchMismatch, CandidateCriteriaAbsent,
+  worktree_cleanliness_from_status,
+  head_from_rev_parse,
+  mint_candidate,
+  candidate_detail,
+}
+
+data witness_scope_note: String = "CANDIDATE MINTING IS A CONSTRUCTION GATE, so what is claimed here is that the gate REFUSES, arm by arm, and that each refusal is the one the situation warrants. A witness that only proved the happy path would pass against a function that returned CandidateReady unconditionally — which is exactly the shape the previous attempt-grain model had, since it never asked these questions at all.\\n\\nThe pure gate is total over values a caller already holds, so every arm is reachable with no git, no worktree and no process. The impure half is the two argv shapes extdeps.git already owns."
+
+data fixture_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data fixture_base: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data fixture_digest: ContentHash = "cafebabe" as ContentHash
+data fixture_branch: String = "dispatch/some-node-a7"
+
+fn ready_inputs_with(
+  turn: ProviderExecutionState,
+  cleanliness: WorktreeCleanliness,
+  head: HeadObservation,
+  observed_branch: BranchObservation,
+  criteria: ContentHash?,
+) -> CandidateMint {
+  mint_candidate(
+    node_id: "some-node" as RoadmapNodeId,
+    criteria_digest: criteria,
+    attempt_key: "a7",
+    turn_key: "t2",
+    expected_branch: fixture_branch,
+    base_revision: fixture_base,
+    turn: turn,
+    cleanliness: cleanliness,
+    head: head,
+    observed_branch: observed_branch,
+  )
+}
+
+fn all_good() -> CandidateMint {
+  ready_inputs_with(
+    turn: ProviderCompleted { activity: "done" },
+    cleanliness: WorktreeClean,
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Present { value: fixture_digest },
+  )
+}
+
+fn refusal_cause_of(mint: CandidateMint) -> CandidateRefusalCause? {
+  match mint {
+    CandidateReady {
+      node_id: _, criteria_digest: _, attempt_key: _, turn_key: _,
+      branch: _, base_revision: _, candidate_revision: _,
+    } => Absent
+    CandidateRefused { cause } => Present { value: cause }
+  }
+}
+
+data positive_control_note: String = "THE POSITIVE CONTROL EXISTS SO THE REFUSAL CLAIMS MEAN SOMETHING. Every claim below asserts that some input is refused; without a case proving that a fully satisfied observation is ACCEPTED, all of them would pass against a gate that refused unconditionally — which is a real failure mode for a construction gate, and a worse one than a leaky gate because it looks maximally safe."
+
+test fn a_clean_terminal_on_branch_turn_mints_the_observed_revision() -> Bool {
+  match all_good() {
+    CandidateReady {
+      node_id, criteria_digest, attempt_key, turn_key,
+      branch, base_revision, candidate_revision,
+    } =>
+      (node_id as String) == "some-node"
+        && (criteria_digest as String) == (fixture_digest as String)
+        && attempt_key == "a7"
+        && turn_key == "t2"
+        && branch == fixture_branch
+        && (base_revision as String) == (fixture_base as String)
+        && (candidate_revision as String) == (fixture_head as String)
+    CandidateRefused { cause: _ } => false
+  }
+}
+
+data dirty_is_not_a_candidate_note: String = "A dirty worktree is refused rather than minted-with-a-warning, because the uncommitted content is precisely the part no revision names: a verdict about the observed HEAD would be a verdict about something other than what the worker made. The refusal carries the entries so the operator can see WHAT is uncommitted without leaving the row."
+
+test fn a_dirty_worktree_refuses_and_names_what_is_uncommitted() -> Bool {
+  let mint = ready_inputs_with(
+    turn: ProviderCompleted { activity: "done" },
+    cleanliness: WorktreeDirty { entries: " M dag/gunbc/roadmap_candidate.dag" },
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Present { value: fixture_digest },
+  )
+  match refusal_cause_of(mint: mint) {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        CandidateWorktreeDirty { entries } =>
+          string_contains(s: entries, pattern: "roadmap_candidate.dag")
+        TurnNotTerminal { state: _ } => false
+        TurnDidNotSucceed { detail: _ } => false
+        CandidateCleanlinessUnknown { detail: _ } => false
+        CandidateHeadUnknown { detail: _ } => false
+        CandidateBranchUnknown { detail: _ } => false
+        CandidateBranchMismatch { expected: _, observed: _ } => false
+        CandidateCriteriaAbsent { node_id: _ } => false
+      }
+  }
+}
+
+data unknown_is_not_dirty_note: String = "THE DISCRIMINATION THAT KEEPS THE GATE HONEST. An unreadable worktree status must NOT collapse into dirty. Both refuse, so a witness asserting only 'it refused' would pass against the collapse — and the collapse is the tempting one, because answering 'assume dirty' is the arm that looks conservative. It is the ⊤-as-ignorance conflation: 'the tree has changes' and 'I could not find out' have different remedies, and only the first is fixed by committing."
+
+test fn an_unreadable_status_is_its_own_refusal_not_dirty() -> Bool {
+  let mint = ready_inputs_with(
+    turn: ProviderCompleted { activity: "done" },
+    cleanliness: WorktreeCleanlinessUnknown { detail: "transport closed" },
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Present { value: fixture_digest },
+  )
+  match refusal_cause_of(mint: mint) {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        CandidateCleanlinessUnknown { detail } =>
+          string_contains(s: detail, pattern: "transport closed")
+        CandidateWorktreeDirty { entries: _ } => false
+        TurnNotTerminal { state: _ } => false
+        TurnDidNotSucceed { detail: _ } => false
+        CandidateHeadUnknown { detail: _ } => false
+        CandidateBranchUnknown { detail: _ } => false
+        CandidateBranchMismatch { expected: _, observed: _ } => false
+        CandidateCriteriaAbsent { node_id: _ } => false
+      }
+  }
+}
+
+data turn_precedes_tree_note: String = "ORDER IS PART OF THE CONTRACT. A running turn is checked before the worktree, because a tree that is dirty WHILE the worker is still editing is the normal state, not a fault — reporting it as the reason would send the operator to fix something that is not broken. This case makes both wrong at once and pins which one is reported."
+
+test fn a_running_turn_is_reported_before_a_dirty_tree() -> Bool {
+  let mint = ready_inputs_with(
+    turn: ProviderRunning { activity: "editing files" },
+    cleanliness: WorktreeDirty { entries: " M something.dag" },
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Present { value: fixture_digest },
+  )
+  match refusal_cause_of(mint: mint) {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        TurnNotTerminal { state } => string_contains(s: state, pattern: "editing files")
+        CandidateWorktreeDirty { entries: _ } => false
+        TurnDidNotSucceed { detail: _ } => false
+        CandidateCleanlinessUnknown { detail: _ } => false
+        CandidateHeadUnknown { detail: _ } => false
+        CandidateBranchUnknown { detail: _ } => false
+        CandidateBranchMismatch { expected: _, observed: _ } => false
+        CandidateCriteriaAbsent { node_id: _ } => false
+      }
+  }
+}
+
+test fn a_failed_turn_refuses_with_its_detail() -> Bool {
+  let mint = ready_inputs_with(
+    turn: ProviderFailed { activity: "run", detail: "provider exited 1" },
+    cleanliness: WorktreeClean,
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Present { value: fixture_digest },
+  )
+  match refusal_cause_of(mint: mint) {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        TurnDidNotSucceed { detail } => string_contains(s: detail, pattern: "exited 1")
+        TurnNotTerminal { state: _ } => false
+        CandidateWorktreeDirty { entries: _ } => false
+        CandidateCleanlinessUnknown { detail: _ } => false
+        CandidateHeadUnknown { detail: _ } => false
+        CandidateBranchUnknown { detail: _ } => false
+        CandidateBranchMismatch { expected: _, observed: _ } => false
+        CandidateCriteriaAbsent { node_id: _ } => false
+      }
+  }
+}
+
+data branch_mismatch_note: String = "The mismatch refusal names BOTH sides, because either one can be the thing that is wrong — the worktree may have been switched, or the attempt key may have produced a branch nobody checked out. A refusal naming only the observed branch would leave the operator unable to tell which."
+
+test fn a_worktree_on_another_branch_refuses_naming_both_sides() -> Bool {
+  let mint = ready_inputs_with(
+    turn: ProviderCompleted { activity: "done" },
+    cleanliness: WorktreeClean,
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: "main" },
+    criteria: Present { value: fixture_digest },
+  )
+  match refusal_cause_of(mint: mint) {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        CandidateBranchMismatch { expected, observed } =>
+          expected == fixture_branch && observed == "main"
+        TurnNotTerminal { state: _ } => false
+        TurnDidNotSucceed { detail: _ } => false
+        CandidateWorktreeDirty { entries: _ } => false
+        CandidateCleanlinessUnknown { detail: _ } => false
+        CandidateHeadUnknown { detail: _ } => false
+        CandidateBranchUnknown { detail: _ } => false
+        CandidateCriteriaAbsent { node_id: _ } => false
+      }
+  }
+}
+
+test fn an_unreadable_head_refuses() -> Bool {
+  let mint = ready_inputs_with(
+    turn: ProviderCompleted { activity: "done" },
+    cleanliness: WorktreeClean,
+    head: HeadUnknown { detail: "not a git repository" },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Present { value: fixture_digest },
+  )
+  match refusal_cause_of(mint: mint) {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        CandidateHeadUnknown { detail } =>
+          string_contains(s: detail, pattern: "not a git repository")
+        TurnNotTerminal { state: _ } => false
+        TurnDidNotSucceed { detail: _ } => false
+        CandidateWorktreeDirty { entries: _ } => false
+        CandidateCleanlinessUnknown { detail: _ } => false
+        CandidateBranchUnknown { detail: _ } => false
+        CandidateBranchMismatch { expected: _, observed: _ } => false
+        CandidateCriteriaAbsent { node_id: _ } => false
+      }
+  }
+}
+
+data criteria_absent_note: String = "A node with no ticket has no criteria digest, and a candidate that cannot name the criteria it was produced against cannot be audited later — Goal Audit asks whether this exact candidate satisfies the CURRENT criteria, which is only answerable if the candidate recorded which criteria it was built for. So absence refuses rather than substituting a zero digest, which would make an unauditable candidate look auditable."
+
+test fn a_node_without_criteria_cannot_mint_a_candidate() -> Bool {
+  let mint = ready_inputs_with(
+    turn: ProviderCompleted { activity: "done" },
+    cleanliness: WorktreeClean,
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Absent,
+  )
+  match refusal_cause_of(mint: mint) {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        CandidateCriteriaAbsent { node_id } => node_id == "some-node"
+        TurnNotTerminal { state: _ } => false
+        TurnDidNotSucceed { detail: _ } => false
+        CandidateWorktreeDirty { entries: _ } => false
+        CandidateCleanlinessUnknown { detail: _ } => false
+        CandidateHeadUnknown { detail: _ } => false
+        CandidateBranchUnknown { detail: _ } => false
+        CandidateBranchMismatch { expected: _, observed: _ } => false
+      }
+  }
+}
+
+data porcelain_parse_note: String = "The parse is claimed separately from the gate because it is where the git contract enters. Empty output means clean is a fact about `git status --porcelain`, not about this model, and the three-way split must survive a reader who assumes non-zero exit implies dirty."
+
+test fn empty_porcelain_is_clean_nonempty_is_dirty_and_failure_is_unknown() -> Bool {
+  let clean = worktree_cleanliness_from_status(success: true, stdout: "\n")
+  let dirty = worktree_cleanliness_from_status(success: true, stdout: " M a.dag\n?? b.dag\n")
+  let unknown = worktree_cleanliness_from_status(success: false, stdout: "fatal: not a git repo")
+  let clean_ok = match clean {
+    WorktreeClean => true
+    WorktreeDirty { entries: _ } => false
+    WorktreeCleanlinessUnknown { detail: _ } => false
+  }
+  let dirty_ok = match dirty {
+    WorktreeDirty { entries } => string_contains(s: entries, pattern: "?? b.dag")
+    WorktreeClean => false
+    WorktreeCleanlinessUnknown { detail: _ } => false
+  }
+  let unknown_ok = match unknown {
+    WorktreeCleanlinessUnknown { detail } => string_contains(s: detail, pattern: "not a git repo")
+    WorktreeClean => false
+    WorktreeDirty { entries: _ } => false
+  }
+  clean_ok && dirty_ok && unknown_ok
+}
+
+test fn a_successful_rev_parse_with_no_output_is_unknown_not_an_empty_revision() -> Bool {
+  let empty = head_from_rev_parse(success: true, stdout: "  \n")
+  let real = head_from_rev_parse(success: true, stdout: "  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
+  let empty_ok = match empty {
+    HeadUnknown { detail: _ } => true
+    HeadAt { revision: _ } => false
+  }
+  let real_ok = match real {
+    HeadAt { revision } => (revision as String) == (fixture_head as String)
+    HeadUnknown { detail: _ } => false
+  }
+  empty_ok && real_ok
+}
+
+test fn the_detail_surface_reports_the_revision_on_success_and_the_cause_on_refusal() -> Bool {
+  let ok = candidate_detail(mint: all_good())
+  let dirty = candidate_detail(mint: ready_inputs_with(
+    turn: ProviderCompleted { activity: "done" },
+    cleanliness: WorktreeDirty { entries: " M x.dag" },
+    head: HeadAt { revision: fixture_head },
+    observed_branch: BranchAt { name: fixture_branch },
+    criteria: Present { value: fixture_digest },
+  ))
+  string_contains(s: ok, pattern: fixture_head as String)
+    && string_contains(s: ok, pattern: "turn t2")
+    && string_contains(s: dirty, pattern: "uncommitted work")
+    && !string_contains(s: dirty, pattern: fixture_head as String)
+}

@@ -1,0 +1,213 @@
+module gunbc.roadmap_candidate
+
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, ContentHash, FilePath }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState,
+  ProviderNotStarted, ProviderStarting, ProviderRunning,
+  ProviderCompleted, ProviderFailed, ProviderEventsRefused,
+}
+
+data candidate_grain_note: String = "THE GRAIN THE WORKFLOW DID NOT HAVE (operator ruling, 2026-07-31). Environment and Workspace are facts about an ATTEMPT; Agent is a fact about one worker TURN; Verify, Publish, Review and Goal Audit are facts about a CANDIDATE — one exact immutable committed state produced by one terminal turn. The previous model had only the attempt, so all seven obligations were projected at attempt grain and the pipeline was implicitly one-shot: one attempt, one worker run, one final worktree state, one verification.\\n\\nWHY THAT CANNOT CARRY A REVIEW LOOP. Review returns findings, the worker revises, and a second candidate appears in the SAME worktree on the SAME branch. Under attempt grain, candidate 1's verdict is still sitting there while the tree contains candidate 2 — the verdict silently changes what it is about. Nothing is lying; the model simply has no place to record which state was judged.\\n\\nSo a candidate is minted, never assumed, and every downstream receipt binds the same subject: node identity, criteria digest, attempt, turn, candidate revision. A new candidate starts a new evidence round rather than invalidating the old one — candidate 1's verdicts remain true about candidate 1, and are the reason candidate 2 exists."
+
+data cleanliness_is_a_precondition_note: String = "CLEANLINESS IS A CONSTRUCTION PRECONDITION, NOT A RECORDED FIELD. CandidateReady carries no `clean` flag, because a flag is a second representation of something the constructor already decided, and a second representation can disagree with the first. There is no way to hold a CandidateReady describing a dirty tree — not because a validator rejects it, but because the only function that produces one refuses before it is built.\\n\\nThe same reasoning removes the tempting `warning` arm. A dirty worktree is not a candidate with a caveat: the uncommitted content is precisely the part no revision names, so a verdict about that revision would be a verdict about something other than what the worker made. Untracked files count as dirty for the same reason — git status --porcelain already excludes ignored paths, so anything it reports is work the candidate does not contain.\\n\\nThe judgment itself was already being made inline at gunbc.roadmap_dashboard_instance_apply (trim of the porcelain stdout, compared against the empty string, before a reset). Modelling it here gives it one home; that site is a candidate to consume this rather than keep its own copy."
+
+type WorktreeCleanliness
+  = WorktreeClean
+  | WorktreeDirty { entries: String }
+  | WorktreeCleanlinessUnknown { detail: String }
+
+type HeadObservation
+  = HeadAt { revision: CommitSha }
+  | HeadUnknown { detail: String }
+
+type BranchObservation
+  = BranchAt { name: String }
+  | BranchUnknown { detail: String }
+
+data porcelain_emptiness_note: String = "Empty porcelain output is the clean signal, and it is read from a SUCCESSFUL run only. An unreadable status is its own arm rather than a pessimistic dirty, because the two have different remedies — a dirty tree is fixed by committing, an unreadable one by repairing the worktree or the transport — and because collapsing them would let a broken observation masquerade as an observed fact about the tree. That is the ⊤-as-ignorance conflation DESIGN §5 names, in the direction that looks safe."
+
+fn worktree_cleanliness_from_status(success: Bool, stdout: String) -> WorktreeCleanliness {
+  if !success {
+    WorktreeCleanlinessUnknown {
+      detail: join(["git status --porcelain did not succeed: ", trim(stdout)], ""),
+    }
+  } else if trim(stdout) == "" {
+    WorktreeClean
+  } else {
+    WorktreeDirty { entries: trim(stdout) }
+  }
+}
+
+fn head_from_rev_parse(success: Bool, stdout: String) -> HeadObservation {
+  if !success {
+    HeadUnknown {
+      detail: join(["git rev-parse HEAD did not succeed: ", trim(stdout)], ""),
+    }
+  } else if trim(stdout) == "" {
+    HeadUnknown { detail: "git rev-parse HEAD produced no revision" }
+  } else {
+    HeadAt { revision: trim(stdout) as CommitSha }
+  }
+}
+
+fn branch_from_rev_parse(success: Bool, stdout: String) -> BranchObservation {
+  if !success {
+    BranchUnknown {
+      detail: join(["git rev-parse --abbrev-ref HEAD did not succeed: ", trim(stdout)], ""),
+    }
+  } else if trim(stdout) == "" {
+    BranchUnknown { detail: "git rev-parse --abbrev-ref HEAD produced no branch" }
+  } else {
+    BranchAt { name: trim(stdout) }
+  }
+}
+
+type CandidateRefusalCause
+  = TurnNotTerminal { state: String }
+  | TurnDidNotSucceed { detail: String }
+  | CandidateWorktreeDirty { entries: String }
+  | CandidateCleanlinessUnknown { detail: String }
+  | CandidateHeadUnknown { detail: String }
+  | CandidateBranchUnknown { detail: String }
+  | CandidateBranchMismatch { expected: String, observed: String }
+  | CandidateCriteriaAbsent { node_id: String }
+
+type CandidateMint
+  = CandidateReady {
+      node_id: RoadmapNodeId,
+      criteria_digest: ContentHash,
+      attempt_key: String,
+      turn_key: String,
+      branch: String,
+      base_revision: CommitSha,
+      candidate_revision: CommitSha,
+    }
+  | CandidateRefused { cause: CandidateRefusalCause }
+
+data branch_binding_note: String = "THE OBSERVED REVISION MUST BELONG TO THIS ATTEMPT, which is why the branch is compared rather than trusted. The worktree path and the branch name are both derived from the attempt key, so a HEAD read from the right path on the wrong branch means something moved the checkout — a stray switch, a reused worktree, a hand-run command. Minting a candidate from it would bind this attempt's node and criteria to a revision produced under different conditions, and every later receipt would carry that false subject forward.\\n\\nA mismatch is therefore a refusal naming both sides, not a silent adoption of whatever was found. This is the one check that cannot be recovered downstream: a wrong revision is indistinguishable from a right one once it has been written into a receipt."
+
+fn turn_terminality_refusal(turn: ProviderExecutionState) -> CandidateRefusalCause? {
+  match turn {
+    ProviderNotStarted => Present { value: TurnNotTerminal { state: "not started" } }
+    ProviderStarting { activity } => Present { value: TurnNotTerminal { state: activity } }
+    ProviderRunning { activity } => Present { value: TurnNotTerminal { state: activity } }
+    ProviderCompleted { activity: _ } => Absent
+    ProviderFailed { activity: _, detail } =>
+      Present { value: TurnDidNotSucceed { detail: detail } }
+    ProviderEventsRefused { activity: _, detail } =>
+      Present { value: TurnDidNotSucceed { detail: detail } }
+  }
+}
+
+fn mint_candidate(
+  node_id: RoadmapNodeId,
+  criteria_digest: ContentHash?,
+  attempt_key: String,
+  turn_key: String,
+  expected_branch: String,
+  base_revision: CommitSha,
+  turn: ProviderExecutionState,
+  cleanliness: WorktreeCleanliness,
+  head: HeadObservation,
+  observed_branch: BranchObservation,
+) -> CandidateMint {
+  match turn_terminality_refusal(turn: turn) {
+    Present { value: cause } => CandidateRefused { cause: cause }
+    Absent =>
+      match cleanliness {
+        WorktreeCleanlinessUnknown { detail } =>
+          CandidateRefused { cause: CandidateCleanlinessUnknown { detail: detail } }
+        WorktreeDirty { entries } =>
+          CandidateRefused { cause: CandidateWorktreeDirty { entries: entries } }
+        WorktreeClean =>
+          match head {
+            HeadUnknown { detail } =>
+              CandidateRefused { cause: CandidateHeadUnknown { detail: detail } }
+            HeadAt { revision } =>
+              match observed_branch {
+                BranchUnknown { detail } =>
+                  CandidateRefused { cause: CandidateBranchUnknown { detail: detail } }
+                BranchAt { name } =>
+                  if name != expected_branch {
+                    CandidateRefused {
+                      cause: CandidateBranchMismatch {
+                        expected: expected_branch,
+                        observed: name,
+                      },
+                    }
+                  } else {
+                    match criteria_digest {
+                      Absent =>
+                        CandidateRefused {
+                          cause: CandidateCriteriaAbsent { node_id: node_id as String },
+                        }
+                      Present { value: digest } =>
+                        CandidateReady {
+                          node_id: node_id,
+                          criteria_digest: digest,
+                          attempt_key: attempt_key,
+                          turn_key: turn_key,
+                          branch: expected_branch,
+                          base_revision: base_revision,
+                          candidate_revision: revision,
+                        }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+data candidate_detail_note: String = "The reason surface is derived from the refusal rather than authored beside it, so a new cause cannot render as a stale sentence. Each detail names what was observed and what would change it, because the operator reading this row is deciding whether to wait, re-dispatch, or intervene by hand — and those three responses differ per cause."
+
+fn candidate_refusal_detail(cause: CandidateRefusalCause) -> String {
+  match cause {
+    TurnNotTerminal { state } =>
+      join(["the worker turn has not finished (", state, ")"], "")
+    TurnDidNotSucceed { detail } =>
+      join(["the worker turn did not succeed: ", detail], "")
+    CandidateWorktreeDirty { entries } =>
+      join([
+        "the worktree has uncommitted work, so no revision names what the worker made: ",
+        entries,
+      ], "")
+    CandidateCleanlinessUnknown { detail } =>
+      join(["the worktree state could not be read: ", detail], "")
+    CandidateHeadUnknown { detail } =>
+      join(["HEAD could not be read: ", detail], "")
+    CandidateBranchUnknown { detail } =>
+      join(["the checked-out branch could not be read: ", detail], "")
+    CandidateBranchMismatch { expected, observed } =>
+      join([
+        "the worktree is on ",
+        observed,
+        " but this attempt owns ",
+        expected,
+        ", so its HEAD is not this attempt's work",
+      ], "")
+    CandidateCriteriaAbsent { node_id } =>
+      join([
+        "the roadmap node ",
+        node_id,
+        " carries no ticket, so there is no criteria digest to bind the candidate to",
+      ], "")
+  }
+}
+
+fn candidate_detail(mint: CandidateMint) -> String {
+  match mint {
+    CandidateReady {
+      node_id: _,
+      criteria_digest: _,
+      attempt_key: _,
+      turn_key,
+      branch: _,
+      base_revision: _,
+      candidate_revision,
+    } =>
+      join(["candidate ", candidate_revision as String, " from turn ", turn_key], "")
+    CandidateRefused { cause } => candidate_refusal_detail(cause: cause)
+  }
+}
