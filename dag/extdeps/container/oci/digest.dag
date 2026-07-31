@@ -202,12 +202,12 @@ fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
         none
       } else {
         match oci_encoded_digest(text: parts.encoded) {
-          Present { value: encoded } =>
+          Present { value: _ } =>
             Present {
               value: OciOtherDigest(
                 OciOtherDigestBody {
                   algorithm: parts.algorithm as OciOtherDigestAlgorithm,
-                  encoded: encoded as OciOtherDigestEncoded,
+                  encoded: parts.encoded as OciOtherDigestEncoded,
                 },
               )
             }

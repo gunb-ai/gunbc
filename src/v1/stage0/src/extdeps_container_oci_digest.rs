@@ -259,12 +259,12 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                         None
                     } else {
                         match oci_encoded_digest(parts.encoded.clone()) {
-                            Some(encoded) => Some(Rc::new(OciContentDigest::OciOtherDigest(
-                                Rc::new(OciOtherDigestBody {
+                            Some(_) => Some(Rc::new(OciContentDigest::OciOtherDigest(Rc::new(
+                                OciOtherDigestBody {
                                     algorithm: parts.algorithm.clone(),
                                     encoded: panic!("unsupported cast from String to NonEmptyStr"),
-                                }),
-                            ))),
+                                },
+                            )))),
                             None => None,
                         }
                     }
