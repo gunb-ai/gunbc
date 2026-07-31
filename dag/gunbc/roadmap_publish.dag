@@ -1,0 +1,176 @@
+module gunbc.roadmap_publish
+
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
+import extdeps.github.pulls {
+  PullRequest,
+  PullRequestState, Open,
+  PullReview,
+  ReviewState, Approved, ChangesRequested, Commented, Pending, Dismissed,
+}
+
+data publish_producer_note: String = "THE PRODUCER THE PUBLICATION AND REVIEW SEGMENTS DID NOT HAVE. roadmap_attempt_workflow_stage_note declares seven obligations and says Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. roadmap_verify.dag grounded the first of those four. This grounds the next two, and they arrive together because they are one observation: a review verdict is meaningless without the pull request it is about, and the pull request is only reachable from the attempt's branch.\\n\\nIT IS INSTANTIATION, NOT INVENTION. extdeps.github.pulls already models PullRequest, PullRequestRef, PullReview and ReviewState against the cited upstream, gunbc.tools.review already calls Get/ListReviews/Diff through the same Bearer config, and the mock corpus already keys all seven operations. What was missing was nothing at the extdeps layer and everything at the join: no function anywhere took an attempt's branch and returned the pull request it became.\\n\\nTHE BELT OBSERVES, IT DOES NOT PUBLISH (operator ruling, 2026-07-31). Nothing here pushes a branch or opens a pull request. Publication concludes on remote READ-BACK of an action the worker or agent performed, which keeps the belt a reconciler rather than making it an author — the same posture gunbc.membership_reconcile takes toward every other member it manages. Making the belt push would be a deliberate responsibility change with its own authorization story, not an implementation convenience."
+
+data publication_arms_note: String = "ABSENT AND REFUSED ARE DIFFERENT ANSWERS AND THE ARMS SAY SO, for the same reason roadmap_verify's outcome arms split Failed from Refused. PublicationAbsent means the pull request list was READ and this branch is not in it — the agent has not opened one yet, which is ordinary progress and not a fault. PublicationRefused means the list could not be read at all: a missing token, a rate limit, a transport that did not deliver. Collapsing them would report 'no pull request yet' for an expired credential, sending an operator to chase an agent that is waiting on nothing.\\n\\nThe head sha rides on the observed arm because it is the whole point of the observation. A pull request number identifies a conversation; the head sha identifies the CANDIDATE, and every downstream judgment — review verdicts, audit, acceptance — is about a candidate rather than about a conversation."
+
+type PublicationOutcome
+  = PublicationObserved {
+      branch: NonEmptyStr,
+      pr_number: Int,
+      head_sha: CommitSha,
+      url: NonEmptyStr,
+      draft: Bool,
+    }
+  | PublicationAbsent {
+      branch: NonEmptyStr,
+      open_pull_requests_seen: Int,
+    }
+  | PublicationRefused {
+      branch: NonEmptyStr,
+      reason: String,
+    }
+
+fn pull_request_for_branch(pulls: List<PullRequest>, branch: NonEmptyStr) -> PullRequest? {
+  first(filter(pulls, p => (p.head.ref as String) == (branch as String)))
+}
+
+fn observe_publication(
+  owner: String,
+  repo: String,
+  branch: NonEmptyStr,
+) -> PublicationOutcome {
+  let listed = github.Pulls.List(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    state: Open,
+  )
+  match pull_request_for_branch(pulls: listed.pulls, branch: branch) {
+    Absent =>
+      PublicationAbsent {
+        branch: branch,
+        open_pull_requests_seen: count(listed.pulls),
+      }
+    Present { value: pr } =>
+      PublicationObserved {
+        branch: branch,
+        pr_number: pr.number,
+        head_sha: pr.head.sha,
+        url: pr.html_url,
+        draft: pr.draft,
+      }
+  }
+}
+
+data review_at_head_note: String = "A REVIEW IS A VERDICT ON A COMMIT, NOT ON A PULL REQUEST, and ReviewStale exists so the difference is visible rather than assumed. PullReview carries commit_id, so 'approved' always meant 'approved THIS commit' in the upstream model; what the roadmap lacked was any consumer that read it. GitHub only dismisses stale approvals when a branch is configured to, so an approval that predates the current head is a live, returnable fact about an older candidate — and treating it as a verdict on the present one is how a reviewed-then-rewritten branch passes review without anyone reviewing what shipped.\\n\\nSo the arms are four, not two. ReviewAtHead means verdicts exist FOR this sha. ReviewStale means verdicts exist for some other sha and none for this one — the branch moved after review, which is a specific and recoverable situation with a specific remedy (re-request). ReviewAbsent means no verdicts at all. ReviewRefused means the list could not be read, which is never evidence about the review.\\n\\nWHAT THIS DELIBERATELY DOES NOT DECIDE is whether the verdicts it counts are INDEPENDENT of the author. That is a policy question over typed reviewer identity and it is not answerable from a count of states — two approvals may share an authoring agent, a provider account, or an operator. The counts here are the observation; the discharge rule is a separate decision that consumes them, and fusing the two would bury a policy in a projection."
+
+type ReviewOutcome
+  = ReviewAtHead {
+      head_sha: CommitSha,
+      approvals: Int,
+      changes_requested: Int,
+      commented: Int,
+    }
+  | ReviewStale {
+      head_sha: CommitSha,
+      reviews_at_other_revisions: Int,
+    }
+  | ReviewAbsent {
+      head_sha: CommitSha,
+    }
+  | ReviewRefused {
+      reason: String,
+    }
+
+fn reviews_in_state(reviews: List<PullReview>, want: ReviewState) -> Int {
+  count(filter(reviews, r => review_state_key(state: r.state) == review_state_key(state: want)))
+}
+
+fn review_state_key(state: ReviewState) -> String {
+  match state {
+    Pending => "pending"
+    Commented => "commented"
+    Approved => "approved"
+    ChangesRequested => "changes_requested"
+    Dismissed => "dismissed"
+  }
+}
+
+fn observe_review(
+  owner: String,
+  repo: String,
+  pr_number: Int,
+  head_sha: CommitSha,
+) -> ReviewOutcome {
+  let listed = github.Pulls.ListReviews(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    pull_number: pr_number,
+  )
+  let at_head = filter(listed.reviews, r => (r.commit_id as String) == (head_sha as String))
+  if count(at_head) > 0 {
+    ReviewAtHead {
+      head_sha: head_sha,
+      approvals: reviews_in_state(reviews: at_head, want: Approved),
+      changes_requested: reviews_in_state(reviews: at_head, want: ChangesRequested),
+      commented: reviews_in_state(reviews: at_head, want: Commented),
+    }
+  } else if count(listed.reviews) > 0 {
+    ReviewStale {
+      head_sha: head_sha,
+      reviews_at_other_revisions: count(listed.reviews),
+    }
+  } else {
+    ReviewAbsent { head_sha: head_sha }
+  }
+}
+
+data publication_detail_note: String = "The segment detail is derived from the outcome rather than authored beside it, so a new arm cannot render as a stale sentence. These strings are what the row strip's reason surface shows an operator, and gunbc.roadmap_component's reason_surface_producers_note is the rule they obey: a located reason belongs on a surface the operator reads, never only in a title attribute."
+
+fn publication_detail(outcome: PublicationOutcome) -> String {
+  match outcome {
+    PublicationObserved { branch: _, pr_number, head_sha, url: _, draft } =>
+      join([
+        if draft { "draft pull request #" } else { "pull request #" },
+        to_string(pr_number),
+        " at ",
+        head_sha as String,
+      ], "")
+    PublicationAbsent { branch, open_pull_requests_seen } =>
+      join([
+        "no open pull request for ",
+        branch as String,
+        " (",
+        to_string(open_pull_requests_seen),
+        " open pull requests read)",
+      ], "")
+    PublicationRefused { branch: _, reason } =>
+      join(["publication could not be observed: ", reason], "")
+  }
+}
+
+fn review_detail(outcome: ReviewOutcome) -> String {
+  match outcome {
+    ReviewAtHead { head_sha, approvals, changes_requested, commented } =>
+      join([
+        to_string(approvals),
+        " approving, ",
+        to_string(changes_requested),
+        " requesting changes, ",
+        to_string(commented),
+        " commenting, at ",
+        head_sha as String,
+      ], "")
+    ReviewStale { head_sha, reviews_at_other_revisions } =>
+      join([
+        to_string(reviews_at_other_revisions),
+        " review(s) exist but none at the current head ",
+        head_sha as String,
+        " — the branch moved after review",
+      ], "")
+    ReviewAbsent { head_sha } =>
+      join(["no review at ", head_sha as String], "")
+    ReviewRefused { reason } =>
+      join(["review could not be observed: ", reason], "")
+  }
+}
