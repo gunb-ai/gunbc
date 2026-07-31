@@ -2,7 +2,9 @@ module v2.std.value_carrier
 
 import v2.std.node { Symbol }
 
-type PersistenceKind = Ephemeral | Persistent
+type PriorVersionDisposition = PriorVersionInvalidated | PriorVersionPreserved
+
+data prior_version_disposition_note: String = "A value carrier's update discipline is stated by what happens to the value before the update: PriorVersionPreserved means the prior value remains usable after an updated value is produced; PriorVersionInvalidated means it does not. This is distinct from extdeps.storage.types.PersistenceKind, which describes the lifecycle of a storage device or medium."
 
 type CarrierCost {
   update_work: String
@@ -12,21 +14,21 @@ type CarrierCost {
 type CarrierDeclaration {
   collection: Symbol
   carrier: Symbol
-  persistence: PersistenceKind
+  prior_version: PriorVersionDisposition
   cost: CarrierCost
 }
 
 data map_carrier: CarrierDeclaration = {
   collection: ^map_collection,
   carrier: ^hash_array_mapped_trie,
-  persistence: Persistent,
+  prior_version: PriorVersionPreserved,
   cost: { update_work: "log32 n", lookup_work: "log32 n" }
 }
 
 data list_carrier: CarrierDeclaration = {
   collection: ^list_collection,
   carrier: ^relaxed_radix_balanced_tree,
-  persistence: Persistent,
+  prior_version: PriorVersionPreserved,
   cost: { update_work: "log n", lookup_work: "log n" }
 }
 

@@ -3,9 +3,9 @@ module v2.test.std_grounding.value_carrier_laws
 import v2.std.collection { empty_map, map_insert }
 import v2.std.runtime { ReferenceIdentical, StructurallyCompared, identity_evidence_equal }
 import v2.std.value_carrier {
-  Ephemeral,
   FieldNames,
-  Persistent,
+  PriorVersionInvalidated,
+  PriorVersionPreserved,
   TypeNames,
   VariantNames,
   field_name_interning,
@@ -59,16 +59,16 @@ test fn identity_law1_projection_holds() -> Bool {
   ref_identical && compared_equal && !compared_distinct
 }
 
-test fn declared_carriers_are_persistent_holds() -> Bool {
-  let map_persistent = match map_carrier.persistence {
-    Persistent => true
-    Ephemeral => false
+test fn declared_carriers_preserve_prior_versions_holds() -> Bool {
+  let map_preserves = match map_carrier.prior_version {
+    PriorVersionPreserved => true
+    PriorVersionInvalidated => false
   }
-  let list_persistent = match list_carrier.persistence {
-    Persistent => true
-    Ephemeral => false
+  let list_preserves = match list_carrier.prior_version {
+    PriorVersionPreserved => true
+    PriorVersionInvalidated => false
   }
-  map_persistent && list_persistent
+  map_preserves && list_preserves
 }
 
 test fn name_interning_covers_all_domains_holds() -> Bool {
