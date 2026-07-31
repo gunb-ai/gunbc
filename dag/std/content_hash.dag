@@ -46,33 +46,17 @@ fn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structu
   Fnv1a64Structural { digest: digest }
 }
 
-fn content_hash_lower_hex_nibble(cp: Int) -> Int? {
-  if cp >= 48 && cp <= 57 {
-    Present { value: cp - 48 }
-  } else if cp >= 97 && cp <= 102 {
-    Present { value: cp - 87 }
-  } else {
-    none
-  }
+fn content_hash_is_lower_hex_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
 }
 
-fn content_hash_validate_lower_hex_syntax(text: String, index: Int) -> Bool {
-  if index >= text.length() {
-    true
-  } else {
-    match content_hash_lower_hex_nibble(
-      cp: code_point(substring(s: text, start: index, end: index + 1)),
-    ) {
-      Present { value: _ } =>
-        content_hash_validate_lower_hex_syntax(text: text, index: index + 1)
-      Absent => false
-    }
-  }
+fn content_hash_validate_lower_hex_syntax(text: String) -> Bool {
+  text |> chars |> all(c => content_hash_is_lower_hex_code_point(cp: c))
 }
 
 fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits: Int) -> Bool {
   text.length() == expected_hex_digits
-    && content_hash_validate_lower_hex_syntax(text: text, index: 0)
+    && content_hash_validate_lower_hex_syntax(text: text)
 }
 
 fn sha256_hex_digest(hex: String) -> Sha256Digest? {
