@@ -519,20 +519,64 @@ mod compiler_tests {
                         && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
                     "MethodExistenceUndecided must BLOCK both typecheck and the interpreter — a non-blocking undecided judgment is exactly the fail-open the wall exists to close"
                 );
-                // The listed half: same source, same method, only the module differs.
-                let listed = compile_one("listed.dag", frontier_src("extdeps.dns.domain_name", "list_push"));
-                let admitted: Vec<_> = listed.diagnostics.iter()
-                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }))
-                    .collect();
+                // The SHAPE is part of the key, and this is the half that answers
+                // codex review 45398: the module and the method both match a declared
+                // row, and the call is STILL refused, because the receiver does not
+                // fail to resolve in the way the row was measured on. A (module, method)
+                // key passed this input; that is the fail-open the third component closes.
+                let listed_wrong_shape = compile_one("listed.dag", frontier_src("extdeps.dns.domain_name", "list_push"));
                 assert!(
-                    !admitted.is_empty(),
-                    "a declared frontier row must admit its own (module, method) as a COUNTED advisory, got: {:?}",
-                    listed.diagnostics
+                    listed_wrong_shape.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceUndecided { .. })),
+                    "a declared row must NOT admit a new call in the same module on a receiver whose shape it was never measured on, got: {:?}",
+                    listed_wrong_shape.diagnostics
                 );
+                // The admission half, checked against the frontier data itself rather
+                // than a synthetic source, because the residual shapes (an unnamed
+                // lambda-parameter receiver, a coproduct payload typed as its variant)
+                // are upstream resolution defects that cannot be conjured on demand.
+                // Every declared row must be admitted by its own exact key, and
+                // perturbing ANY of the three components must withdraw the admission.
+                let rows = crate::v1_compiler_infer::unresolved_method_frontier();
+                assert!(!rows.is_empty(), "the frontier must be a declared, countable roster");
+                for r in rows.iter() {
+                    assert!(
+                        crate::v1_compiler_infer::unresolved_method_frontier_trigger(
+                            r.module_name.clone(), r.method.clone(), r.receiver_shape.clone()).is_some(),
+                        "row {}/{}/{} must be admitted by its own key", r.module_name, r.method, r.receiver_shape
+                    );
+                    for perturbed in [
+                        (format!("{}.other", r.module_name), r.method.clone(), r.receiver_shape.clone()),
+                        (r.module_name.clone(), format!("{}_other", r.method), r.receiver_shape.clone()),
+                        (r.module_name.clone(), r.method.clone(), format!("Product(Other{})", r.receiver_shape.len())),
+                    ] {
+                        assert!(
+                            crate::v1_compiler_infer::unresolved_method_frontier_trigger(
+                                perturbed.0.clone(), perturbed.1.clone(), perturbed.2.clone()).is_none(),
+                            "perturbing the key to {:?} must WITHDRAW the admission — each component is load-bearing", perturbed
+                        );
+                    }
+                }
+                // DISCRIMINATING RED for where_refinement_receiver_peel_note. A
+                // where-refinement alias reached method lookup as Product(<alias>)
+                // because resolve_method_receiver_type short-circuits on Conj, so the
+                // base's algebra profile was never consulted. The peel must make the
+                // receiver decidable in BOTH directions on the SAME alias — a green
+                // that only proves the refusal stopped is indistinguishable from
+                // deleting the wall.
+                let peel_src = |call: &str| {
+                    format!("module peel\ntype Tight = String where non_empty\nfn f(s: Tight) -> Int {{ s |> {} }}\n", call)
+                };
+                let peel_green = compile_one("peel_green.dag", peel_src("count"));
                 assert!(
-                    listed.diagnostics.iter().all(|d| !matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceUndecided { .. })),
-                    "the declared row must convert the refusal, not sit beside it, got: {:?}",
-                    listed.diagnostics
+                    peel_green.diagnostics.is_empty(),
+                    "a method on the refinement's String base must RESOLVE once the base is peeled — no diagnostic of any severity, got: {:?}",
+                    peel_green.diagnostics
+                );
+                let peel_red = compile_one("peel_red.dag", peel_src("filter_map(x => x)"));
+                assert!(
+                    peel_red.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. })),
+                    "peeling must make the receiver DECIDABLE, not merely quiet: a method absent from the peeled base must refuse as MethodNotFound rather than resting in the frontier, got: {:?}",
+                    peel_red.diagnostics
                 );
             })
             .expect("failed to spawn thread")

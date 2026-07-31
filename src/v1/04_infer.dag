@@ -866,8 +866,28 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv
     && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
 }
 
+fn is_where_refinement_type(ty: Node) -> Bool {
+  ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1
+}
+
+fn where_refinement_chain(ty: Node, type_env: TypeEnv) -> List<Node> {
+  if is_where_refinement_type(ty: ty) {
+    match ty.children |> first {
+      Present { value: base } =>
+        let base_resolved = match lookup_type_for(env: type_env, node: base) {
+          Present { value: resolved } => resolved
+          Absent => base
+        }
+        concat([ty], where_refinement_chain(ty: base_resolved, type_env: type_env))
+      Absent => [ty]
+    }
+  } else {
+    [ty]
+  }
+}
+
 fn type_expr_where_refinement_predicates(ty: Node) -> List<Node> {
-  if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
+  if is_where_refinement_type(ty: ty) {
     match ty.type_annotation {
       Present { value: annot } =>
         match annot.connective {
@@ -880,21 +900,15 @@ fn type_expr_where_refinement_predicates(ty: Node) -> List<Node> {
 }
 
 fn type_where_refinement_predicates_transitive(ty: Node, type_env: TypeEnv) -> List<Node> {
-  let immediate = type_expr_where_refinement_predicates(ty: ty)
-  let inherited = if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
-    match ty.children |> first {
-      Present { value: base } =>
-        let base_resolved = match lookup_type_for(env: type_env, node: base) {
-          Present { value: resolved } => resolved
-          Absent => base
-        }
-        type_where_refinement_predicates_transitive(ty: base_resolved, type_env: type_env)
-      Absent => []
-    }
-  } else {
-    []
+  where_refinement_chain(ty: ty, type_env: type_env)
+    |> flat_map(link => type_expr_where_refinement_predicates(ty: link))
+}
+
+fn peel_where_refinement_base(ty: Node, type_env: TypeEnv) -> Node {
+  match where_refinement_chain(ty: ty, type_env: type_env) |> last {
+    Present { value: ground } => ground
+    Absent => ty
   }
-  concat(immediate, inherited)
 }
 
 fn where_predicate_name_at(pred: Node, source_indices: Map<String, NewlineIndex>) -> String {
@@ -1690,25 +1704,9 @@ fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scop
   }
 }
 
-data method_existence_wall_note: String = "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. Three measured shapes live there — a where-refinement alias arriving as Product(NonEmptyStr) instead of peeling to its String base (8 correct .length() sites in extdeps/filesystem/linux.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), and a product FIELD holding a callable, the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. MethodExistenceUndecided carries that residue as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND NOT FIXED HERE, each a promotion trigger that would let the wall decide a non-kernel receiver: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted."
+data method_existence_wall_note: String = "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. THE LARGEST MEASURED CLASS WAS NOT UNDECIDABLE AT ALL AND IS NOW DECIDED — a where-refinement alias arrived as Product(NonEmptyStr) only because resolve_method_receiver_type short-circuits on Conj and never peeled to the String base; peeling it (where_refinement_receiver_peel_note) moved 12 corpus sites out of this residue in both directions at once, resolving the correct .length() calls AND making a bogus method on a branded string a hard MethodNotFound. What remains genuinely has no surface: a lambda parameter whose type never propagates so the receiver has no authored name at all (the LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag and the StoreObjectFold lambdas in extdeps/git/object_store.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), a bare type variable, and an Optional whose cardinality is dropped before lookup so the inner product is what arrives. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. MethodExistenceUndecided carries that residue as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. THE UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT, one fixed here and the rest left as promotion triggers that would each let the wall decide a further non-kernel receiver: (1) FIXED — a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup; (2) a lambda parameter receiver whose type never propagates from the declared fn type it is bound under; (3) a coproduct payload binding typed as the VARIANT name rather than the field type; (4) an optional receiver whose cardinality is dropped so the inner product reaches lookup in place of Optional own surface. Each is carried as a row in unresolved_method_frontier, keyed on the receiver shape that is the evidence for it. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted."
 
-fn peel_where_refinement_base(ty: Node, type_env: TypeEnv) -> Node {
-  if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
-    match ty.children |> first {
-      Present { value: base } =>
-        let base_resolved = match lookup_type_for(env: type_env, node: base) {
-          Present { value: resolved } => resolved
-          Absent => base
-        }
-        peel_where_refinement_base(ty: base_resolved, type_env: type_env)
-      Absent => ty
-    }
-  } else {
-    ty
-  }
-}
-
-data where_refinement_receiver_peel_note: String = "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and it is a REUSE rather than a new relation (§3): the walk is exactly the one type_where_refinement_predicates_transitive already performs to collect inherited predicates — same shape test, same lookup_type_for base resolution, same recursion — so the refinement chain has ONE traversal authority and this is its second consumer. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal."
+data where_refinement_receiver_peel_note: String = "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and the FIRST version of it was a §3 violation that this note asserted its way past — worth recording, because the note is where the defect actually lived. It hand-rolled a second recursive walker over the Conj/annotation/single-child shape and then CLAIMED, in this sentence, that the refinement chain had one traversal authority and the peel was its second consumer. Both walkers independently encoded the shape test, the lookup_type_for base resolution and the recursion, so they could drift apart silently; the prose asserted the property instead of the code establishing it (codex review 45410). The repair is the extraction the claim described: where_refinement_chain is the one walk, it yields the refinement chain from the surface alias down to its ground base, and it has exactly two consumers — type_where_refinement_predicates_transitive flat_maps the immediate predicates over the chain, and peel_where_refinement_base takes its last link. The shape test itself is is_where_refinement_type, held once. Now there is one traversal authority, and it is one because the code says so. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal."
 
 type UnresolvedMethodFrontierRow {
   module_name: String
