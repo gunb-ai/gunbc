@@ -1,11 +1,15 @@
 module v2.compiler.eval
 
 import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
   InferredFacts,
   InferredTree,
-  canonical_grounding_admits_infer_facts,
   infer_facts_lookup_miss_diagnostic,
+  inferred_facts_canonical_admitted,
+  inferred_facts_cover_node,
   inferred_facts_descent,
+  inferred_facts_grounding_derived,
   inferred_facts_resolved_type
 }
 import std.algebra { Cons, Empty }
@@ -780,18 +784,33 @@ fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> Ha
   }
 }
 
+fn eval_grounding_not_derived_digest_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^eval_grounding_not_derived_digest_tag } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn inferred_facts_digest(facts: InferredFacts) -> Hash {
-  let g = facts.grounding
-  combine_hash(
-    a: content_hash(n: g.node),
-    b: combine_hash(
-      a: combine_hash(
-        a: structural_property_witness_digest(w: g.witness.structural),
-        b: structural_property_witness_digest(w: g.witness.closedness)
-      ),
-      b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
-    )
-  )
+  match facts.grounding {
+    DerivedGrounding { grounding: g } =>
+      combine_hash(
+        a: content_hash(n: g.node),
+        b: combine_hash(
+          a: combine_hash(
+            a: structural_property_witness_digest(w: g.witness.structural),
+            b: structural_property_witness_digest(w: g.witness.closedness)
+          ),
+          b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+        )
+      )
+    GroundingNotDerived { node: _ } =>
+      combine_hash(
+        a: content_hash(n: eval_grounding_not_derived_digest_node()),
+        b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+      )
+  }
 }
 
 fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
@@ -979,13 +998,19 @@ fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<In
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
-      if facts.grounding.node != node {
+      if !inferred_facts_grounding_derived(facts: facts) {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
+          )
+        }
+      } else if !inferred_facts_cover_node(facts: facts, node: node) {
         Rejected {
           diagnostics: diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_grounding_node_mismatch, node: node)
           )
         }
-      } else if !canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
+      } else if !inferred_facts_canonical_admitted(facts: facts) {
         Rejected {
           diagnostics: diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
@@ -1052,21 +1077,28 @@ fn eval_runtime_value_acceptance_witness(
   value: RuntimeValue
 ) -> RuntimeValueAcceptanceWitness {
   RuntimeValueAcceptanceWitness {
-    resolved_type: if inferred_facts_resolved_type(facts: facts) == runtime_value_resolved_type(value: value) {
-      Holds { value: runtime_value_resolved_type(value: value) }
-    } else {
-      Violates {
-        diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
-      }
+    resolved_type: match inferred_facts_resolved_type(facts: facts) {
+      Violates { diagnostic: _ } =>
+        Violates {
+          diagnostic: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
+        }
+      Holds { value: declared } =>
+        if declared == runtime_value_resolved_type(value: value) {
+          Holds { value: runtime_value_resolved_type(value: value) }
+        } else {
+          Violates {
+            diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
+          }
+        }
     },
-    inhabitance: if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
+    inhabitance: if inferred_facts_canonical_admitted(facts: facts) {
       Holds { value: facts }
     } else {
       Violates {
         diagnostic: eval_diagnostic(reason: ^eval_rejected_inhabitance_mismatch, node: node)
       }
     },
-    canonical: if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
+    canonical: if inferred_facts_canonical_admitted(facts: facts) {
       Holds { value: facts }
     } else {
       Violates {
