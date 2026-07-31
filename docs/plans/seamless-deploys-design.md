@@ -71,7 +71,10 @@ Earlier corrections, retained:
 - *Item 4's dependency* was stated inconsistently (review 45241) — one section had handover
   downstream of both readiness and reconciliation, while two others said item 3 is unnecessary for
   the headline. The single authoritative statement is now the dependency graph in §5: **slice 4
-  requires slice 3, and nothing else in this ticket gates anything.**
+  requires slice 3, and nothing else in this ticket gates anything.** *(Superseded by review 45297:
+  that last edge was itself unsupported — socket activation queues in the kernel and consumes no
+  READY signal, so **item 4 has no prerequisite either**. The ticket now has zero cross-item
+  dependencies; see §5.)*
 
 **A note on how this note cites.** Receipts below name **module + declaration**, not `file:line`.
 That is not a style preference — it is a defect this document demonstrated on itself. The first
@@ -200,7 +203,7 @@ permanent and correct, and it is what makes a *genuine* srv1 outage legible — 
 1 should be justified as *"the refusal tells the truth"*, not as *"this is how we fix the deploy
 banner"*. Both fixes are worth having; they do not stack the way the brief's ordering implies.
 
-### Concept B — *Two readiness facts, one of them wrongly asserted* (item 2, and it is the keystone for item 4)
+### Concept B — *Two readiness facts, one of them wrongly asserted* (item 2)
 
 **Corrected (review 45229).** An earlier draft of this section called readiness "modeled twice" and
 proposed `sd_notify` as a §3 *de-fork* that would let the healthz poll be argued down. That framing
@@ -240,11 +243,16 @@ caused the 2026-07-24 incident it is *weaker* than what exists today. So:
 **What item 2 is actually worth, stated honestly.** Its value is (a) systemd stops lying to its own
 consumers about F1 — today the misled parties are a human at `systemctl status`, systemd's ordering
 and `Restart=` semantics, and any future consumer (I checked `host_hygiene_reaper.dag` and
-`oomd_install.dag`; neither targets this unit, so the blast radius today is small); and (b) it is
-the **prerequisite for item 4**, because you cannot sequence a handover without a trustworthy
-"the replacement has bound" signal, and the healthz poll cannot serve that role — it runs in the
-deploy job, not on the host. What item 2 is *not* is a way to dissolve the poll or to stop
-re-calibrating the bound; only the deep fix in §4 does that.
+`oomd_install.dag`; neither targets this unit, so the blast radius today is small); and (b) it gives every
+*other* consumer of "is it up" an answer it can trust — systemd's own ordering, a human at
+`systemctl status`, and any future dependent unit.
+
+**What item 2 is not** (corrected after review 45297): it is **not** a prerequisite for item 4. An
+earlier version of this paragraph claimed it was, on the reasoning that a handover cannot be
+sequenced without a trustworthy "the replacement has bound" signal. That is true of a *two-instance*
+handover, which this note does not propose — under socket activation the kernel queues and nothing
+reads READY (§2, *Item 4 depends on nothing in this ticket*). Nor is item 2 a way to dissolve the
+healthz poll or stop re-calibrating the bound; only the deep fix in §4 does that.
 
 ### Concept C — *The deploy does not reconcile; it applies* (item 3)
 
@@ -436,31 +444,40 @@ Two consequences worth stating up front, both good:
   answer conflated with ⊤-as-ignorance), and it would silently restore today's behaviour while
   looking like a fix. `ObservationUnavailable` should be a typed, located, **counted** refusal.
 
-### Item 4 (handover) is downstream of B **only**; C is an independent scope reducer
+### Item 4 (handover) depends on nothing in this ticket
 
-**Corrected (review 45241).** An earlier draft headed this section *"downstream of B and C"* and
-treated the two jointly. That contradicted §2 Concept B, which names item 2 alone as the handover
-prerequisite, and — read as a plan — it would have gated the handover work on reconciliation it does
-not depend on. Stated unambiguously, once:
+**Corrected twice, and the second correction removes the last edge.** Review 45241 fixed a heading
+that read *"downstream of B and C"*; review 45291's drain finding then made the residual mechanism
+concrete; and **review 45297 showed the remaining `4 → B` edge was never real either.**
 
-*(Scope note, so this is not misread: item 3 is **in scope and not droppable** per the operator
-direction in §2 Concept C. That is a question of priority, and it is orthogonal to the question of
-dependency settled here — item 4 does not **depend on** item 3, which is why the two can proceed in
-parallel. An earlier version of this paragraph cited a since-answered §7 q3 to argue item 3 was
-unnecessary; that cross-reference is retired.)*
+**Why the false edge existed, since the mistake is instructive.** I wrote that handover means *"move
+traffic when the replacement is ready"*, which is true of a **two-instance** handover — run the new
+one alongside, switch traffic when it signals READY. That mechanism genuinely consumes `sd_notify`.
+But it is not the mechanism this note proposes. Under socket activation **the kernel does the
+queueing and there is no switch to time**: systemd holds the listening socket across the restart,
+new connections accumulate in the backlog, and the replacement drains them when it reaches
+`accept()`. Nothing reads READY. I inherited the dependency from a generic notion of handover rather
+than deriving it from the realization I actually chose — which is precisely the error of asserting a
+dependency the mechanism does not have.
 
-- **B is a prerequisite.** Handover means *move traffic when the replacement is ready*, and there is
-  no trustworthy "the replacement has bound" signal without it. Item 4 cannot be built correctly
-  first.
+So, stated once and authoritatively: **item 4 has no prerequisite in this ticket.**
+
+- **B is not a prerequisite.** `sd_notify` makes systemd's F1 assertion honest, which is worth doing
+  on its own merits (§2 Concept B) and is what lets *other* consumers trust "is it up" — but no part
+  of the socket-activation handover consumes it. Item 4 can be built first.
 - **C is not a prerequisite** — it is independent, and in *function* a scope reducer (which says
-  nothing about its priority: it is in scope and not droppable, §2 Concept C). C changes *how often* a handover
-  runs, never *whether it works*. A handover built with C still outstanding is correct — it simply
-  performs on all ~40 deploys/day rather than on the subset that changed something. Nothing in item
-  4's design reads any reconciliation fact.
+  nothing about its priority: it is in scope and not droppable, §2 Concept C). C changes *how often*
+  a handover runs, never *whether it works*. Nothing in item 4's design reads a reconciliation fact.
 
-So the dependency edge is **4 → B**, and C sits beside it. This matters for sequencing because C is
-now the most expensive item in the ticket (two load-bearing carrier changes, §2 Concept C) and the
-only one that does not serve the headline: gating item 4 on it would buy nothing and cost the most.
+**Coordination consequence worth carrying into slice 4's build, not a dependency.** Socket activation
+changes the *failure mode* of the deploy's own readiness probe. Today an unbound port gives
+connection-refused, which is `HealthzProbeFailed`. With systemd holding the socket, a probe's
+`connect()` succeeds immediately and the request then **waits** for the replacement to reach
+`accept()` — so the refusal that fires during a slow start changes shape, and the poll's behaviour
+becomes dependent on the probe transport's timeout rather than on a prompt refusal. That wants
+verifying against the actual probe transport when slice 4 is built; it is not established here, and
+it is an argument for doing slice 3 *alongside* slice 4 (so the deploy has an honest READY signal
+instead of inferring from a blocking probe) — an argument about convenience, not about dependency.
 
 Socket activation (§3) is then one candidate realization for covering the residual window, not the
 whole answer.
@@ -568,14 +585,22 @@ Two observations on that dependency:
 
 ```
 slice 1                  — no dependencies
-slice 3  →  slice 4      — the ONLY hard edge in this ticket
-slice 2a →  2b →  2c     — internally ordered, and independent of 1, 3, 4
+slice 3                  — no dependencies
+slice 4                  — no dependencies
+slice 2a →  2b →  2c     — internally ordered; the ONLY ordering in this ticket
 ```
 
-There is exactly **one** cross-item dependency: **slice 4 requires slice 3**, because a handover
-needs a trustworthy "the replacement has bound" signal. Everything else is independent. In
-particular **slice 2 (item 3) gates nothing** — it is a scope reducer that changes how often a
-handover runs, never whether it works (§2, *Item 4 is downstream of B only*).
+**There are no cross-item dependencies.** The last one — `slice 3 → slice 4` — was removed after
+review 45297 showed it was never supported by the proposed mechanism: socket activation queues in
+the kernel and nothing consumes `sd_notify`'s READY (§2, *Item 4 depends on nothing in this
+ticket*). The only ordering that survives is **internal to slice 2**, and there it is load-bearing:
+2c without 2a never deploys, 2c without 2b deploys the files but not the service.
+
+Consequences for planning: any of 1, 3, 4 can be built first or in parallel, **slice 2 gates
+nothing**, and nothing gates slice 4 — so the headline work is reachable immediately, subject only
+to the seed decision (§7 q4) that all of slices 3 and 4 rest on. Two coordination notes that are
+*not* edges: slice 4 changes the readiness probe's failure mode (§2), and a `.socket` member added
+by slice 4 needs the same bundle as its siblings if slice 2 has landed (boundary amendment).
 
 **Recommended order — revised 2026-07-30 by operator direction.** An earlier version ordered this
 headline-first/cost-last and offered to drop item 3. That is superseded: deploy reconciling to
@@ -584,6 +609,13 @@ droppable**. It still gates nothing — the graph above is unchanged, and slices
 for it — but it is no longer the item to cut under pressure. Slice 1 stays first because it is
 hours of work and independently correct; slice 2 can proceed in parallel with 3/4 since they share
 no seam.
+
+**This numbering is preference, not requirement** (sharpened after review 45297, which removed the
+last dependency): with zero cross-item edges, *any* of these can go first. In particular **slice 4
+need not wait for slice 3** — if the headline is the priority, slice 4 is the slice that delivers it
+and can be built immediately. The order below simply front-loads the cheapest independently-correct
+work. Slices 3 and 4 share the seed seam (§7 q4), so they are worth *designing* together even when
+built apart.
 
 1. **Slice 1 — de-conflate the observation outcome (item 1).** Give the transport arm its own
    sentence, stating what was observed and not asserting a cause. No timing change, no deployment
@@ -660,7 +692,8 @@ Adopting the brief's, and adding the ones the analysis surfaced:
 2. **Item 2's re-cut** (revised after review 45229). Do you agree with the F1/F2 split — systemd's
    `Type=simple` wrongly asserts F1 and `sd_notify` fixes *that*, while F2 (serving this deploy's
    tree) is irreducible and the digest check survives untouched? The practical consequence is that
-   item 2 buys the handover prerequisite, not a smaller poll.
+   item 2 buys an honest answer for systemd's own consumers — **not** a smaller poll, and (corrected
+   after review 45297) **not** a prerequisite for item 4 either.
 3. ~~**Item 3's cost** — is it in scope?~~ **ANSWERED 2026-07-30 (operator).** Deploy should use the
    existing apply/delete/reconcile process (bmc/srvN apply) and deploy the minimal items needed to
    reach intent. So item 3 is **in scope and not droppable**, and the two carrier changes it needs
