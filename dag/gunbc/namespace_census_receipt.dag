@@ -4,8 +4,10 @@ import std.types { String, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-type NamespaceCensusCompilerBinding
-  = PinnedReceiptCompilerBinary
+type NamespaceCensusCompilerBinding {
+  summary_sha256_key: String,
+  summary_bytes_key: String,
+}
 
 type NamespaceCensusCompileInvocation {
   compiler: NamespaceCensusCompilerBinding,
@@ -42,7 +44,10 @@ data namespace_census_reproduction_steps: List<NamespaceCensusReproductionStep> 
 ]
 
 data namespace_census_compile_invocation: NamespaceCensusCompileInvocation = NamespaceCensusCompileInvocation {
-  compiler: PinnedReceiptCompilerBinary,
+  compiler: NamespaceCensusCompilerBinding {
+    summary_sha256_key: "inputs.compiler_binary_sha256",
+    summary_bytes_key: "inputs.compiler_binary_bytes",
+  },
   subcommand: "compile",
   source_roots: ["dag", "src/v2", "/tmp/namespace-census"],
   entry: "/tmp/namespace-census/complete_population_root.dag",
