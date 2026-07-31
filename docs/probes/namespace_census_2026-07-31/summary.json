@@ -42,6 +42,7 @@
     "compiler_binary_sha256": "87538a75c2b56111f9ab1440336b858ee8618cd7892758f9c21c5af0655a68b6",
     "compiler_source_commit": "b222f079a0425a4015718175dd7f41a55b76b759",
     "corpus_commit": "0337fb27c039a800a1aff4b80140d6dbf027e595",
+    "declared_corpus_modules": 2746,
     "raw_log_sha256": "06289db522ff4cbf1613d07219e6241fe1d92994710e2fc871ad82c3de19823f"
   },
   "regex_bound": {

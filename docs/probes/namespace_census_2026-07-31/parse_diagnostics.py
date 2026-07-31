@@ -8,6 +8,8 @@ import json
 import pathlib
 import re
 
+from receipt_common import load_summary
+
 HEADER = re.compile(r"^v2 self-compile produced (\d+) hard diagnostic\(s\):$")
 LOCATION = r" \([^()]+:\d+-\d+\)$"
 PATTERNS = {
@@ -31,13 +33,6 @@ SINGLETONS = (
     re.compile(r"^non-exhaustive match: missing variant\(s\) .+" + LOCATION),
 )
 NOISE = re.compile(r"^(indexed |resolved |\[census\]|◐|✓|✗|◷|\s*$)")
-EXPECTED = {
-    "unresolved_name": 17112,
-    "ambiguous_variant_synthetic_root_diagnostic": 324,
-    "no_field": 594,
-    "type_mismatch": 12,
-    "singleton": 6,
-}
 POPULATION = (
     ("function", re.compile(r"^function '([^']+)' not found in scope \(([^:]+):\d+-\d+\)$")),
     ("variable", re.compile(r"^undefined variable '([^']+)' \(([^:]+):\d+-\d+\)$")),
@@ -50,13 +45,16 @@ POPULATION = (
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("log", type=pathlib.Path)
-    parser.add_argument("--expected-sha256")
+    parser.add_argument("result_json", type=pathlib.Path)
+    parser.add_argument("--summary-json", type=pathlib.Path, required=True)
     parser.add_argument("--population-json", type=pathlib.Path)
     parser.add_argument("--ambiguity-json", type=pathlib.Path)
     args = parser.parse_args()
+    summary = load_summary(args.summary_json)
     raw = args.log.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
-    if args.expected_sha256 and digest != args.expected_sha256:
+    expected_digest = summary["inputs"]["raw_log_sha256"]
+    if digest != expected_digest:
         raise SystemExit(f"raw log digest mismatch: {digest}")
 
     counts: collections.Counter[str] = collections.Counter()
@@ -108,30 +106,31 @@ def main() -> None:
 
     if unparsed:
         raise SystemExit("unparsed diagnostics:\n" + "\n".join(unparsed[:20]))
-    if headers != [18048]:
-        raise SystemExit(f"expected one 18048 header, got {headers}")
-    normalized = {key: counts[key] for key in EXPECTED}
-    if normalized != EXPECTED:
-        raise SystemExit(f"classification drift: {normalized}")
+    if len(headers) != 1:
+        raise SystemExit(f"expected exactly one compiler diagnostic header, got {headers}")
+    normalized = {key: counts[key] for key in PATTERNS}
+    normalized["singleton"] = counts["singleton"]
     classified = sum(normalized.values())
     if classified != headers[0]:
         raise SystemExit(f"classification sum {classified} != compiler total {headers[0]}")
-    if len(population) != EXPECTED["unresolved_name"]:
+    if len(population) != normalized["unresolved_name"]:
         raise SystemExit(f"population extraction drift: {len(population)}")
     if args.population_json:
         args.population_json.write_text(json.dumps({"rows": population}, indent=2) + "\n")
-    if len(ambiguities) != EXPECTED["ambiguous_variant_synthetic_root_diagnostic"]:
+    if len(ambiguities) != normalized["ambiguous_variant_synthetic_root_diagnostic"]:
         raise SystemExit(f"ambiguity extraction drift: {len(ambiguities)}")
     if args.ambiguity_json:
         args.ambiguity_json.write_text(json.dumps({"occurrences": ambiguities}, indent=2) + "\n")
-    print(json.dumps({
+    result = {
         "authority": "compiler-authoritative",
         "compiler_reported_hard_diagnostics": headers[0],
         "classification": normalized,
         "classification_sum": classified,
         "header_lines": 1,
         "raw_log_sha256": digest,
-    }, indent=2, sort_keys=True))
+    }
+    args.result_json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

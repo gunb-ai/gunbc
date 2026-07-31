@@ -20,13 +20,20 @@ how that exact compiler reads that exact corpus; neither identity may float.
 ## Reproduce
 
 A normal whole-tree compile follows transitive imports and reached only 1,634 of the
-2,746 declared modules, leaving 1,112 uncompiled. Generate an uncommitted third
-source root whose one module brace-lessly imports every declared module:
+2,746 declared modules, leaving 1,112 uncompiled. First create a detached worktree at
+the exact corpus commit. The corpus-reading tools verify `HEAD` and refuse any other
+checkout; `.` below is never the moving PR checkout:
 
 ```sh
+RECEIPT_TOOLS="$(pwd)/docs/probes/namespace_census_2026-07-31"
+RECEIPT_SUMMARY="$(pwd)/docs/probes/namespace_census_2026-07-31/summary.json"
+git worktree add --detach /tmp/namespace-census-corpus \
+  0337fb27c039a800a1aff4b80140d6dbf027e595
+cd /tmp/namespace-census-corpus
 mkdir -p /tmp/namespace-census /tmp/namespace-census-output
-python3 docs/probes/namespace_census_2026-07-31/generate_root.py \
-  . /tmp/namespace-census/complete_population_root.dag
+python3 "$RECEIPT_TOOLS/generate_root.py" \
+  . /tmp/namespace-census/complete_population_root.dag \
+  --summary-json "$RECEIPT_SUMMARY"
 /path/to/pinned/gunbc compile \
   --source-root dag \
   --source-root src/v2 \
@@ -47,22 +54,35 @@ Then verify the raw identity and classify every diagnostic, failing closed on an
 new line shape:
 
 ```sh
-python3 docs/probes/namespace_census_2026-07-31/parse_diagnostics.py \
+python3 "$RECEIPT_TOOLS/parse_diagnostics.py" \
   /tmp/namespace-census/pop_stderr.log \
-  --expected-sha256 06289db522ff4cbf1613d07219e6241fe1d92994710e2fc871ad82c3de19823f \
+  /tmp/namespace-census/parser-result.json \
+  --summary-json "$RECEIPT_SUMMARY" \
   --population-json /tmp/namespace-census/population.json \
   --ambiguity-json /tmp/namespace-census/ambiguity.json
-python3 docs/probes/namespace_census_2026-07-31/provider_bounds.py \
-  . /tmp/namespace-census/population.json
-python3 docs/probes/namespace_census_2026-07-31/classify_ambiguity.py \
+python3 "$RECEIPT_TOOLS/provider_bounds.py" \
+  . /tmp/namespace-census/population.json \
+  /tmp/namespace-census/provider-result.json \
+  --summary-json "$RECEIPT_SUMMARY"
+python3 "$RECEIPT_TOOLS/classify_ambiguity.py" \
   /tmp/namespace-census/ambiguity.json /tmp/namespace-census/ambiguity-classified.json
-python3 docs/probes/namespace_census_2026-07-31/classify_ambiguity_covisibility.py \
+python3 "$RECEIPT_TOOLS/classify_ambiguity_covisibility.py" \
   . /tmp/namespace-census/pop_stderr.log \
+  /tmp/namespace-census/ambiguity-covisibility.json \
+  --summary-json "$RECEIPT_SUMMARY"
+python3 "$RECEIPT_TOOLS/verify_receipt.py" \
+  "$RECEIPT_SUMMARY" /path/to/pinned/gunbc \
+  /tmp/namespace-census/complete_population_root.dag \
+  /tmp/namespace-census/parser-result.json \
+  /tmp/namespace-census/provider-result.json \
+  /tmp/namespace-census/ambiguity-classified.json \
   /tmp/namespace-census/ambiguity-covisibility.json
 ```
 
-The normalized parser output must equal `summary.json`'s compiler-authoritative
-classification. The provider script must reproduce its regex-bound brackets.
+`summary.json` is the single expected-value authority. The classifiers derive facts
+without embedding receipt totals; `verify_receipt.py` compares every result, the raw
+log digest, the compiler binary identity, and the generated-root population to that
+one authority. Any drift is a nonzero exit.
 
 ## Classification-total witness
 

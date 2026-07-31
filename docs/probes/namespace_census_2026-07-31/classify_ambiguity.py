@@ -30,7 +30,7 @@ def classify(first: str, second: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("ambiguity_json", type=pathlib.Path)
-    parser.add_argument("output", type=pathlib.Path, nargs="?")
+    parser.add_argument("output", type=pathlib.Path)
     args = parser.parse_args()
     occurrences = json.loads(args.ambiguity_json.read_text())["occurrences"]
     decisions = collections.OrderedDict()
@@ -47,17 +47,12 @@ def main() -> None:
     occurrence_counts = collections.Counter()
     for row in rows:
         occurrence_counts[row["class"]] += row["occurrences"]
-    expected_decisions = {"A_SELF": 30, "B_PARALLEL_TOWER": 63, "C_TRUE_HOMONYM": 222}
-    expected_occurrences = {"A_SELF": 34, "B_PARALLEL_TOWER": 63, "C_TRUE_HOMONYM": 227}
-    if dict(decision_counts) != expected_decisions or dict(occurrence_counts) != expected_occurrences:
-        raise SystemExit("inferred grouping drift")
-    if sum(decision_counts.values()) != 315 or sum(occurrence_counts.values()) != 324:
+    if sum(decision_counts.values()) != len(rows) or sum(occurrence_counts.values()) != len(occurrences):
         raise SystemExit("inferred grouping sum invariant failed")
     result = {"authority": "inferred-grouping", "decision_key": "variant + unordered candidate pair",
               "decisions": rows, "decision_counts": dict(decision_counts),
               "occurrence_counts": dict(occurrence_counts)}
-    if args.output:
-        args.output.write_text(json.dumps(result, indent=2) + "\n")
+    args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({key: value for key, value in result.items() if key != "decisions"},
                      indent=2, sort_keys=True))
 

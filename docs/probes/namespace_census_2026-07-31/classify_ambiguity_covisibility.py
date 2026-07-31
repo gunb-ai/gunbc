@@ -10,27 +10,14 @@ import argparse
 import json
 import pathlib
 import re
-import subprocess
 
-CORPUS_COMMIT = "0337fb27c039a800a1aff4b80140d6dbf027e595"
+from receipt_common import load_summary, require_pinned_repo
+
 AMBIGUITY = re.compile(
     r"variant '([^']+)' appears in both '([^']+)' and '([^']+)' \(([^:]+):\d+-\d+\)"
 )
 BRACELESS_IMPORT = re.compile(r"^\s*import\s+[\w.]+\s*$", re.MULTILINE)
-EXPECTED = {"CoVisible": 42, "BracelessUndecided": 1, "PoolReach": 281}
-
-
-def corpus_file(repo: pathlib.Path, path: str) -> str:
-    result = subprocess.run(
-        ["git", "show", f"{CORPUS_COMMIT}:{path}"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise SystemExit(f"cannot read pinned corpus file {path}: {result.stderr.strip()}")
-    return result.stdout
+BUCKET_NAMES = ("CoVisible", "BracelessUndecided", "PoolReach")
 
 
 def main() -> None:
@@ -38,18 +25,19 @@ def main() -> None:
     parser.add_argument("repo", type=pathlib.Path)
     parser.add_argument("log", type=pathlib.Path)
     parser.add_argument("output", type=pathlib.Path)
+    parser.add_argument("--summary-json", type=pathlib.Path, required=True)
     args = parser.parse_args()
+    summary = load_summary(args.summary_json)
+    repo = require_pinned_repo(args.repo, summary)
 
     occurrences = []
     for line in args.log.read_text(encoding="utf-8", errors="replace").splitlines():
         match = AMBIGUITY.fullmatch(line)
         if match:
             occurrences.append(match.groups())
-    contents = {
-        site: corpus_file(args.repo.resolve(), site)
-        for site in sorted({occurrence[3] for occurrence in occurrences})
-    }
-    buckets = {name: [] for name in EXPECTED}
+    contents = {site: (repo / site).read_text(encoding="utf-8", errors="replace")
+                for site in sorted({occurrence[3] for occurrence in occurrences})}
+    buckets = {name: [] for name in BUCKET_NAMES}
     for variant, first, second, site in occurrences:
         source = contents[site]
         if all(re.search(r"\b" + re.escape(owner) + r"\b", source) for owner in (first, second)):
@@ -65,11 +53,9 @@ def main() -> None:
     total = sum(counts.values())
     if total != len(occurrences):
         raise SystemExit(f"partition lost rows: {total} != {len(occurrences)}")
-    if counts != EXPECTED or total != 324:
-        raise SystemExit(f"co-visibility partition drift: {counts}, total={total}")
     result = {
         "authority": "inferred-instrument-analysis",
-        "corpus_commit": CORPUS_COMMIT,
+        "corpus_commit": summary["inputs"]["corpus_commit"],
         "synthetic_root_ambiguity_diagnostics": total,
         "counts": counts,
         "real_ambiguity_lower_bound": None,

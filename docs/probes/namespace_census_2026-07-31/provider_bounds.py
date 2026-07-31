@@ -7,6 +7,8 @@ import json
 import pathlib
 import re
 
+from receipt_common import load_summary, require_pinned_repo
+
 TYPE = re.compile(r"^type\s+([A-Za-z_][A-Za-z0-9_]*)")
 DATA = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\s*:")
 FUNCTION = re.compile(r"^(?:fn|test\s+fn)\s+([A-Za-z_][A-Za-z0-9_]*)")
@@ -67,21 +69,24 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("repo", type=pathlib.Path)
     parser.add_argument("population_json", type=pathlib.Path)
+    parser.add_argument("output", type=pathlib.Path)
+    parser.add_argument("--summary-json", type=pathlib.Path, required=True)
     args = parser.parse_args()
-    declarations, modules = catalogue(args.repo.resolve())
+    summary = load_summary(args.summary_json)
+    repo = require_pinned_repo(args.repo, summary)
+    declarations, modules = catalogue(repo)
     rows = json.loads(args.population_json.read_text())["rows"]
     by_name = collections.defaultdict(set)
     for (name, _category), providers in declarations.items():
         by_name[name].update(providers)
     strict = measure(rows, lambda row: declarations.get((row["symbol"], row["category"]), set()), modules)
     agnostic = measure(rows, lambda row: by_name.get(row["symbol"], set()), modules)
-    expected = {"mechanical_share_percent": [60.7, 81.6], "unique_provider_edges": [2197, 2717]}
     actual = {"mechanical_share_percent": [agnostic["mechanical_share_percent"], strict["mechanical_share_percent"]],
               "unique_provider_edges": [agnostic["unique_provider_edges"], strict["unique_provider_edges"]]}
-    if actual != expected:
-        raise SystemExit(f"regex-bound drift: {actual}")
-    print(json.dumps({"authority": "regex-bound", "category_agnostic": agnostic,
-                      "category_strict": strict, "bracket": actual}, indent=2, sort_keys=True))
+    result = {"authority": "regex-bound", "category_agnostic": agnostic,
+              "category_strict": strict, "bracket": actual}
+    args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

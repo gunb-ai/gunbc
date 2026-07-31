@@ -5,6 +5,8 @@ import argparse
 import pathlib
 import re
 
+from receipt_common import load_summary, require_pinned_repo
+
 MODULE = re.compile(r"^module\s+([A-Za-z0-9_.]+)\s*$", re.MULTILINE)
 
 
@@ -27,12 +29,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("repo", type=pathlib.Path)
     parser.add_argument("output", type=pathlib.Path)
-    parser.add_argument("--expected-modules", type=int, default=2746)
+    parser.add_argument("--summary-json", type=pathlib.Path, required=True)
     args = parser.parse_args()
 
-    modules = declared_modules(args.repo.resolve())
-    if len(modules) != args.expected_modules:
-        raise SystemExit(f"expected {args.expected_modules} modules, found {len(modules)}")
+    summary = load_summary(args.summary_json)
+    repo = require_pinned_repo(args.repo, summary)
+    modules = declared_modules(repo)
+    expected_modules = summary["inputs"]["declared_corpus_modules"]
+    if len(modules) != expected_modules:
+        raise SystemExit(f"expected {expected_modules} modules, found {len(modules)}")
     body = ["module namespace_census.complete_population_root", ""]
     body.extend(f"import {module}" for module in modules)
     body.extend(("", 'data census_root: String = "complete"', ""))
