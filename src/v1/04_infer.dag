@@ -24,6 +24,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
+  FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -1868,10 +1869,9 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
 }
 
 fn frontier_diag_matches_row(d: CompilerDiagnostic, method: String, receiver_shape: String) -> Bool {
-  match d {
-    ReceiverTypeUnestablished { method: m, span: _ } => m == method && receiver_shape == "Primitive()"
-    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: _, span: _ } => m == method && t == receiver_shape
-    _ => false
+  match diagnostic_frontier_occurrence_key(d: d) {
+    Present { value: key } => key.method == method && key.receiver_shape == receiver_shape
+    Absent => false
   }
 }
 

@@ -161,22 +161,22 @@ use crate::v1_std_core::VarBindingKind::{
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
     binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
-    default_ident_span, diagnostic_to_span, empty_intern_table, error_type, expr_call_func_at,
-    expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
-    expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
-    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
-    find_child_named, find_property_string, float_type, foreach_body, foreach_collection,
-    foreach_variable_at, generic_param_name_at, has_child_named, has_inferred, if_condition,
-    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
-    is_container_type, is_error_diagnostic, is_property_contraction, is_tree_size_reducing,
-    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
-    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    default_ident_span, diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table,
+    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
+    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
+    field_node_type_expr, find_child_named, find_property_string, float_type, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_container_type, is_error_diagnostic, is_property_contraction,
+    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
+    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
     qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
@@ -186,8 +186,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
     ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    StringPart, UnaryOpKind, VarBindingKind,
+    FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3167,16 +3167,12 @@ pub fn frontier_diag_matches_row(
     method: String,
     receiver_shape: String,
 ) -> bool {
-    match (*d.clone()).clone() {
-        CompilerDiagnostic::ReceiverTypeUnestablished { method: m, .. } => {
-            ((m.clone() == method.clone()) && (receiver_shape.clone() == "Primitive()".to_string()))
+    match diagnostic_frontier_occurrence_key(d.clone()) {
+        Some(key) => {
+            ((key.method.clone() == method.clone())
+                && (key.receiver_shape.clone() == receiver_shape.clone()))
         }
-        CompilerDiagnostic::MethodExistenceFrontierAdmitted {
-            method: m,
-            receiver_type: t,
-            ..
-        } => ((m.clone() == method.clone()) && (t.clone() == receiver_shape.clone())),
-        _ => false,
+        None => false,
     }
 }
 

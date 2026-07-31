@@ -611,6 +611,43 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
         || (reason.clone() == "string predicate not implemented".to_string()))
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontierOccurrenceKey {
+    pub method: String,
+    pub receiver_shape: String,
+}
+
+pub fn diagnostic_frontier_occurrence_key(
+    d: Rc<CompilerDiagnostic>,
+) -> Option<Rc<FrontierOccurrenceKey>> {
+    match (*d.clone()).clone() {
+        CompilerDiagnostic::ReceiverTypeUnestablished { method: m, .. } => {
+            Some(Rc::new(FrontierOccurrenceKey {
+                method: m.clone(),
+                receiver_shape: "Primitive()".to_string(),
+            }))
+        }
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted {
+            method: m,
+            receiver_type: t,
+            ..
+        } => Some(Rc::new(FrontierOccurrenceKey {
+            method: m.clone(),
+            receiver_shape: t.clone(),
+        })),
+        _ => None,
+    }
+}
+
+pub fn diagnostic_frontier_occurrence_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,

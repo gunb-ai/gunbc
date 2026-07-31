@@ -315,6 +315,23 @@ fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
     || reason == "string predicate not implemented"
 }
 
+type FrontierOccurrenceKey {
+  method: String
+  receiver_shape: String
+}
+
+fn diagnostic_frontier_occurrence_key(d: CompilerDiagnostic) -> FrontierOccurrenceKey? {
+  match d {
+    ReceiverTypeUnestablished { method: m, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: "Primitive()" } }
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: _, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: t } }
+    _ => none
+  }
+}
+
+data diagnostic_frontier_occurrence_key_note: String = "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins."
+
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
