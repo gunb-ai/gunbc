@@ -21,6 +21,10 @@ type UInt128 = Compose<UInt, MachineWidth<128>>
 type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = Nat
 
+type Signedness
+  = Signed
+  | Unsigned
+
 type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
