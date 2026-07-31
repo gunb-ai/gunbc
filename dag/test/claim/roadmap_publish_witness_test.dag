@@ -1,21 +1,15 @@
 module test.claim.roadmap_publish_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List }
-import extdeps.github.pulls {
-  PullRequest, PullRequestRef, PullRequestState, Open,
-  PullReview, ReviewState, Approved, ChangesRequested, Commented,
-}
+import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open }
 import extdeps.github.github { GitHubUser, UserType, User }
 import gunbc.roadmap_publish {
   PublicationOutcome, PublicationObserved, PublicationAbsent,
-  ReviewOutcome, ReviewAtHead, ReviewStale, ReviewAbsent,
   publication_from_pulls,
-  review_from_reviews,
   publication_detail,
-  review_detail,
 }
 
-data witness_scope_note: String = "THE PRODUCER LANDED WITH NO EXECUTING CONSUMER and this closes that (review 45531). gunbc.roadmap_verify shipped beside roadmap_verify_witness_test; this module's first cut shipped with a manual probe that was deleted, so its green-by-execution claim rested on evidence nobody else could re-run — which is the specification-without-execution trap stated exactly.\\n\\nWhat is claimed here is the CLASSIFICATION, not the fetch. publication_from_pulls and review_from_reviews are pure and total over values the caller already holds, so every arm is reachable from constructed inputs with no network and no token. The impure wrappers are one line each and carry no decisions.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls. A change that broke the REST call while leaving the classification intact would keep these green. That gap belongs to the effect-frontier enrollment the PR body names, not to this file."
+data witness_scope_note: String = "THE PRODUCER LANDED WITH NO EXECUTING CONSUMER and this closes that (review 45531). gunbc.roadmap_verify shipped beside roadmap_verify_witness_test; this module's first cut shipped with a manual probe that was deleted, so its green-by-execution claim rested on evidence nobody else could re-run — which is the specification-without-execution trap stated exactly.\\n\\nWhat is claimed here is the CLASSIFICATION, not the fetch. publication_from_pulls is pure and total over values the caller already holds, so every arm is reachable from constructed inputs with no network and no token. The impure wrapper is one line and carries no decisions.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls. A change that broke the REST call while leaving the classification intact would keep these green. That gap belongs to the effect-frontier enrollment the PR body names, not to this file."
 
 data fixture_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data fixture_older: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -38,16 +32,6 @@ fn fixture_pull(number: Int, branch: String, sha: CommitSha, draft: Bool) -> Pul
     updated_at: "2026-07-31T00:00:00Z",
     merged_at: Absent,
     draft: draft,
-  }
-}
-
-fn fixture_review(id: Int, state: ReviewState, sha: CommitSha) -> PullReview {
-  PullReview {
-    id: id,
-    body: "a verdict",
-    state: state,
-    commit_id: sha,
-    html_url: "https://github.com/gunb-ai/gunbc/pull/1#r1" as NonEmptyStr,
   }
 }
 
@@ -86,57 +70,9 @@ test fn publication_absent_on_an_empty_list_reads_zero() -> Bool {
   }
 }
 
-data exact_head_note: String = "THE CLAIM THE ROADMAP DID NOT HAVE. PullReview carries commit_id, so an approval was always a verdict on one commit; nothing read it. These three claims pin the discrimination in both directions — a verdict AT the head counts, a verdict at any OTHER revision is Stale and contributes nothing to the approval count, and no verdicts at all is Absent.\\n\\nStale is the load-bearing one. A function that ignored commit_id entirely would pass the at-head claim and the absent claim, and fail only this: two approvals on an older revision must NOT read as two approvals on the candidate."
+data head_sha_rides_the_observation_note: String = "THE HEAD SHA IS THE POINT, so it is asserted rather than carried untested. A pull request number identifies a conversation; the head sha identifies the CANDIDATE, and every downstream judgment the roadmap makes — review, audit, acceptance — is about a candidate. An implementation that returned the pull request without its head sha would satisfy the branch-selection claim above and still leave every consumer unable to say what was judged."
 
-test fn review_counts_only_verdicts_at_the_exact_head() -> Bool {
-  let reviews = [
-    fixture_review(id: 1, state: Approved, sha: fixture_head),
-    fixture_review(id: 2, state: ChangesRequested, sha: fixture_head),
-    fixture_review(id: 3, state: Commented, sha: fixture_head),
-    fixture_review(id: 4, state: Approved, sha: fixture_older),
-  ]
-  match review_from_reviews(reviews: reviews, head_sha: fixture_head) {
-    ReviewAtHead { head_sha: _, approvals, changes_requested, commented } =>
-      approvals == 1 && changes_requested == 1 && commented == 1
-    ReviewStale { head_sha: _, reviews_at_other_revisions: _ } => false
-    ReviewAbsent { head_sha: _ } => false
-  }
-}
-
-test fn reviews_on_an_older_revision_are_stale_not_approval() -> Bool {
-  let reviews = [
-    fixture_review(id: 1, state: Approved, sha: fixture_older),
-    fixture_review(id: 2, state: Approved, sha: fixture_older),
-  ]
-  match review_from_reviews(reviews: reviews, head_sha: fixture_head) {
-    ReviewAtHead { head_sha: _, approvals: _, changes_requested: _, commented: _ } => false
-    ReviewStale { head_sha, reviews_at_other_revisions } =>
-      (head_sha as String) == (fixture_head as String) && reviews_at_other_revisions == 2
-    ReviewAbsent { head_sha: _ } => false
-  }
-}
-
-test fn no_reviews_at_all_is_absent_not_stale() -> Bool {
-  match review_from_reviews(reviews: [], head_sha: fixture_head) {
-    ReviewAtHead { head_sha: _, approvals: _, changes_requested: _, commented: _ } => false
-    ReviewStale { head_sha: _, reviews_at_other_revisions: _ } => false
-    ReviewAbsent { head_sha } => (head_sha as String) == (fixture_head as String)
-  }
-}
-
-data detail_derivation_note: String = "The rendered detail is what an operator reads on the row strip, so it is claimed rather than assumed. The stale arm must SAY that the branch moved — a detail reading 'no review' for a branch that has two approvals on an older revision would be true and useless, and would hide exactly the situation the arm exists to surface."
-
-test fn stale_detail_names_the_situation_not_just_the_absence() -> Bool {
-  let stale = review_detail(outcome: review_from_reviews(
-    reviews: [fixture_review(id: 1, state: Approved, sha: fixture_older)],
-    head_sha: fixture_head,
-  ))
-  let absent = review_detail(outcome: review_from_reviews(reviews: [], head_sha: fixture_head))
-  string_contains(s: stale, pattern: "none at the current head")
-    && string_contains(s: stale, pattern: "branch moved after review")
-    && !string_contains(s: absent, pattern: "branch moved after review")
-    && string_contains(s: absent, pattern: "no review at")
-}
+data detail_derivation_note: String = "The rendered detail is what an operator reads on the row strip, so it is claimed rather than assumed. Draft is the discriminating axis: a detail that read the same for a draft and a ready pull request would be true and useless, because whether the candidate is offered for judgment at all is the thing Publication exists to report."
 
 test fn publication_detail_distinguishes_draft_from_ready() -> Bool {
   let as_draft = publication_detail(outcome: publication_from_pulls(
@@ -150,4 +86,5 @@ test fn publication_detail_distinguishes_draft_from_ready() -> Bool {
   string_contains(s: as_draft, pattern: "draft pull request #22")
     && !string_contains(s: as_ready, pattern: "draft")
     && string_contains(s: as_ready, pattern: "pull request #22")
+    && string_contains(s: as_ready, pattern: fixture_head as String)
 }

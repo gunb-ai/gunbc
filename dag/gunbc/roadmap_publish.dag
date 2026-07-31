@@ -4,15 +4,15 @@ import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
 import extdeps.github.pulls {
   PullRequest,
   PullRequestState, Open,
-  PullReview,
-  ReviewState, Approved, ChangesRequested, Commented,
 }
 
-data publish_producer_note: String = "THE PRODUCER THE PUBLICATION AND REVIEW SEGMENTS DID NOT HAVE. roadmap_attempt_workflow_stage_note declares seven obligations and says Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. roadmap_verify.dag grounded the first of those four. This grounds the next two, and they arrive together because they are one observation: a review verdict is meaningless without the pull request it is about, and the pull request is only reachable from the attempt's branch.\\n\\nIT IS INSTANTIATION, NOT INVENTION. extdeps.github.pulls already models PullRequest, PullRequestRef, PullReview and ReviewState against the cited upstream, gunbc.tools.review already calls Get/ListReviews/Diff through the same Bearer config, and the mock corpus already keys all seven operations. What was missing was nothing at the extdeps layer and everything at the join: no function anywhere took an attempt's branch and returned the pull request it became.\\n\\nTHE BELT OBSERVES, IT DOES NOT PUBLISH (operator ruling, 2026-07-31). Nothing here pushes a branch or opens a pull request. Publication concludes on remote READ-BACK of an action the worker or agent performed, which keeps the belt a reconciler rather than making it an author — the same posture gunbc.membership_reconcile takes toward every other member it manages. Making the belt push would be a deliberate responsibility change with its own authorization story, not an implementation convenience."
+data publish_producer_note: String = "THE PRODUCER THE PUBLICATION SEGMENT DID NOT HAVE. roadmap_attempt_workflow_stage_note declares seven obligations and says Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. roadmap_verify.dag grounded the first. This grounds Publication, and only Publication.\\n\\nIT IS INSTANTIATION, NOT INVENTION. extdeps.github.pulls already models PullRequest and PullRequestRef against the cited upstream, and the mock corpus already keys the operations. What was missing was nothing at the extdeps layer and everything at the join: no function anywhere took an attempt's branch and returned the pull request it became.\\n\\nTHE BELT OBSERVES, IT DOES NOT PUBLISH (operator ruling, 2026-07-31). Nothing here pushes a branch or opens a pull request. Publication concludes on remote READ-BACK of an action the worker or agent performed, which keeps the belt a reconciler rather than making it an author — the same posture gunbc.membership_reconcile takes toward every other member it manages. Making the belt push would be a deliberate responsibility change with its own authorization story, not an implementation convenience."
 
-data publication_arms_note: String = "ABSENT IS NOT A FAILURE, AND THERE IS NO REFUSAL ARM BECAUSE THE SUBSTRATE CANNOT BUILD ONE. PublicationAbsent means the pull request list was READ and this branch is not in it — the agent has not opened one yet, which is ordinary progress. It carries the number of open pull requests it saw, which is what makes it a real negative observation rather than a failed one: a caller can tell 'read 9, none matched' from 'read nothing'.\\n\\nAn earlier draft of this module declared PublicationRefused and ReviewRefused for the failure case — a missing token, a rate limit, a transport that did not deliver — and NEVER CONSTRUCTED EITHER (review 45531). That is specification without the behaviour it documents, and the reviewer was right to reject it. The arms are deleted rather than left standing, because a declared-but-unreachable refusal is exactly the shape that lets a reader believe a failure is handled when it is not.\\n\\nWHY IT COULD NOT BE BUILT, stated so the gap is countable rather than implied: v1_interpreter turns every non-2xx response AND every transport error into an untyped InterpError::TypeError, so the `401 => GitHubErrorShape` arms extdeps.github.pulls declares are dead at runtime. There is no value for a .dag caller to match on. A failed observation therefore RAISES rather than returning, and a caller that needs to distinguish it must do so at its own boundary.\\n\\nDISSOLVES ON the interpreter surfacing a declared error-response arm as a value; at that point the refusal arms return here and the observe functions below stop being able to raise.\\n\\nThe head sha rides on the observed arm because it is the whole point. A pull request number identifies a conversation; the head sha identifies the CANDIDATE, and every downstream judgment — review verdicts, audit, acceptance — is about a candidate."
+data review_is_not_observed_here_note: String = "REVIEW IS PRODUCED BY THE ROADMAP, NOT OBSERVED FROM A FORGE (operator ruling, 2026-07-31), and this module deliberately stops at Publication because of it.\\n\\nAn earlier cut of this file classified pull-request review verdicts read from github.Pulls.ListReviews, on the assumption that the Review obligation meant the forge's review of the candidate. It does not. The roadmap's Review stage is a review the roadmap TRIGGERS — from its own UI, against the item's candidate — whose findings are routed back to the worker so it can iterate. That is a control loop the belt drives, not a remote fact the belt reads, and the two have opposite shapes: an observation concludes, a loop continues.\\n\\nThe measured fact that made the error visible rather than merely theoretical: every review in this repository is produced by a system that never writes to the forge, so github.Pulls.ListReviews returns an empty list for every pull request here. A classifier over that surface would have answered 'no review' forever and never once looked wrong — the observation would have been perfectly stable and perfectly meaningless.\\n\\nReview's producer therefore belongs with the trigger that runs it, and gunbc.tools.review and gunbc.tools.review_codex — two forked, unconsumed LLM review agents that differ only by provider — are its prior art, not this module."
 
-data observation_is_split_from_classification_note: String = "THE CALL AND THE JUDGMENT ARE TWO FUNCTIONS, which is what makes the judgment testable at all. publication_from_pulls and review_from_reviews are pure and total over values a caller already holds; observe_publication and observe_review are thin impure wrappers that fetch and delegate. Before the split there was one function doing both, so nothing in the corpus could execute the classification without reaching GitHub — and the module landed with no witness at all (review 45531).\\n\\nThis is the same shape gunbc.roadmap_verify's witness already relies on: it claims the outcome-to-disposition mapping and the receipt projection, and never runs a process to do it."
+data publication_arms_note: String = "ABSENT IS NOT A FAILURE, AND THERE IS NO REFUSAL ARM BECAUSE THE SUBSTRATE CANNOT BUILD ONE. PublicationAbsent means the pull request list was READ and this branch is not in it — the agent has not opened one yet, which is ordinary progress. It carries the number of open pull requests it saw, which is what makes it a real negative observation rather than a failed one: a caller can tell 'read 9, none matched' from 'read nothing'.\\n\\nAn earlier draft of this module declared PublicationRefused for the failure case — a missing token, a rate limit, a transport that did not deliver — and NEVER CONSTRUCTED EITHER (review 45531). That is specification without the behaviour it documents, and the reviewer was right to reject it. The arms are deleted rather than left standing, because a declared-but-unreachable refusal is exactly the shape that lets a reader believe a failure is handled when it is not.\\n\\nWHY IT COULD NOT BE BUILT, stated so the gap is countable rather than implied: v1_interpreter turns every non-2xx response AND every transport error into an untyped InterpError::TypeError, so the `401 => GitHubErrorShape` arms extdeps.github.pulls declares are dead at runtime. There is no value for a .dag caller to match on. A failed observation therefore RAISES rather than returning, and a caller that needs to distinguish it must do so at its own boundary.\\n\\nDISSOLVES ON the interpreter surfacing a declared error-response arm as a value; at that point the refusal arms return here and the observe functions below stop being able to raise.\\n\\nThe head sha rides on the observed arm because it is the whole point. A pull request number identifies a conversation; the head sha identifies the CANDIDATE, and every downstream judgment — review verdicts, audit, acceptance — is about a candidate."
+
+data observation_is_split_from_classification_note: String = "THE CALL AND THE JUDGMENT ARE TWO FUNCTIONS, which is what makes the judgment testable at all. publication_from_pulls is pure and total over values a caller already holds; observe_publication is a thin impure wrapper that fetches and delegates. Before the split there was one function doing both, so nothing in the corpus could execute the classification without reaching GitHub — and the module landed with no witness at all (review 45531).\\n\\nThis is the same shape gunbc.roadmap_verify's witness already relies on: it claims the outcome-to-disposition mapping and the receipt projection, and never runs a process to do it."
 
 
 type PublicationOutcome
@@ -64,62 +64,6 @@ fn observe_publication(
   publication_from_pulls(pulls: listed.pulls, branch: branch)
 }
 
-data review_at_head_note: String = "A REVIEW IS A VERDICT ON A COMMIT, NOT ON A PULL REQUEST, and ReviewStale exists so the difference is visible rather than assumed. PullReview carries commit_id, so 'approved' always meant 'approved THIS commit' in the upstream model; what the roadmap lacked was any consumer that read it. GitHub only dismisses stale approvals when a branch is configured to, so an approval that predates the current head is a live, returnable fact about an older candidate — and treating it as a verdict on the present one is how a reviewed-then-rewritten branch passes review without anyone reviewing what shipped.\\n\\nThree arms, not four. ReviewAtHead means verdicts exist FOR this sha. ReviewStale means verdicts exist for some other sha and none for this one — the branch moved after review, a specific situation with a specific remedy. ReviewAbsent means no verdicts at all. The refusal arm is absent for the reason publication_arms_note gives: a failed read raises rather than returning a value.\\n\\nWHAT THIS DELIBERATELY DOES NOT DECIDE is whether the verdicts it counts are INDEPENDENT of the author. That is a policy question over typed reviewer identity and it is not answerable from a count of states — two approvals may share an authoring agent, a provider account, or an operator. The counts here are the observation; the discharge rule is a separate decision that consumes them, and fusing the two would bury a policy in a projection."
-
-
-type ReviewOutcome
-  = ReviewAtHead {
-      head_sha: CommitSha,
-      approvals: Int,
-      changes_requested: Int,
-      commented: Int,
-    }
-  | ReviewStale {
-      head_sha: CommitSha,
-      reviews_at_other_revisions: Int,
-    }
-  | ReviewAbsent {
-      head_sha: CommitSha,
-    }
-
-fn reviews_in_state(reviews: List<PullReview>, want: ReviewState) -> Int {
-  count(filter(reviews, r => r.state == want))
-}
-
-fn review_from_reviews(reviews: List<PullReview>, head_sha: CommitSha) -> ReviewOutcome {
-  let at_head = filter(reviews, r => (r.commit_id as String) == (head_sha as String))
-  if count(at_head) > 0 {
-    ReviewAtHead {
-      head_sha: head_sha,
-      approvals: reviews_in_state(reviews: at_head, want: Approved),
-      changes_requested: reviews_in_state(reviews: at_head, want: ChangesRequested),
-      commented: reviews_in_state(reviews: at_head, want: Commented),
-    }
-  } else if count(reviews) > 0 {
-    ReviewStale {
-      head_sha: head_sha,
-      reviews_at_other_revisions: count(reviews),
-    }
-  } else {
-    ReviewAbsent { head_sha: head_sha }
-  }
-}
-
-fn observe_review(
-  owner: String,
-  repo: String,
-  pr_number: Int,
-  head_sha: CommitSha,
-) -> ReviewOutcome {
-  let listed = github.Pulls.ListReviews(
-    auth_token: "",
-    owner: owner,
-    repo: repo,
-    pull_number: pr_number,
-  )
-  review_from_reviews(reviews: listed.reviews, head_sha: head_sha)
-}
-
 data publication_detail_note: String = "The segment detail is derived from the outcome rather than authored beside it, so a new arm cannot render as a stale sentence. These strings are what the row strip's reason surface shows an operator, and gunbc.roadmap_component's reason_surface_producers_note is the rule they obey: a located reason belongs on a surface the operator reads, never only in a title attribute."
 
 fn publication_detail(outcome: PublicationOutcome) -> String {
@@ -139,29 +83,5 @@ fn publication_detail(outcome: PublicationOutcome) -> String {
         to_string(open_pull_requests_seen),
         " open pull requests read)",
       ], "")
-  }
-}
-
-fn review_detail(outcome: ReviewOutcome) -> String {
-  match outcome {
-    ReviewAtHead { head_sha, approvals, changes_requested, commented } =>
-      join([
-        to_string(approvals),
-        " approving, ",
-        to_string(changes_requested),
-        " requesting changes, ",
-        to_string(commented),
-        " commenting, at ",
-        head_sha as String,
-      ], "")
-    ReviewStale { head_sha, reviews_at_other_revisions } =>
-      join([
-        to_string(reviews_at_other_revisions),
-        " review(s) exist but none at the current head ",
-        head_sha as String,
-        " — the branch moved after review",
-      ], "")
-    ReviewAbsent { head_sha } =>
-      join(["no review at ", head_sha as String], "")
   }
 }
