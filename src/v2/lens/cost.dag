@@ -46,7 +46,7 @@ import v2.std.node {
   Value,
   fold_node
 }
-import v2.std.nat { Nat, Succ, Zero, nat_add, nat_compare }
+import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.witness { Holds, Violates, Witness }
 
 type SizeVariable {

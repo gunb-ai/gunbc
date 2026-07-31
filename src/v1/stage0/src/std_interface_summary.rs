@@ -161,25 +161,8 @@ pub fn typed_module_key_note() -> NonEmptyStr {
     CACHED.with(|c: &NonEmptyStr| c.clone())
 }
 
-<<<<<<< Updated upstream
 pub fn typed_module_key(interface_key: ContentHash, compiler_identity: NonEmptyStr) -> ContentHash {
     content_hash_tagged(
-=======
-pub fn typed_module_key_v1_seed_bridge_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Seed-retained hand-Rust bridge (review 45298; receipt extended review 45554): src/v1/stage0/src/cli_run.rs typed_module_content_key is the v1 host realization of std.interface_summary.module_key and typed_module_key — reconcile-path digest strings are coerced through std.content_hash.fnv1a64_structural_hex_digest (via local structural_from_wire) before the .dag authority runs, because the v1 store boundary still carries interface hashes as digest strings. Invalid wire (wrong length, non-lowercase hex) returns Absent and typed_module_content_key refuses with panic — never unchecked structural_content_hash. DELETE SCAFFOLD — not a new digest concept; string→Fnv1a64Structural coercion the authority already requires. CENSUS SHRINK — one call site (typed_module_content_key). WITNESS — cli_run typed_module_content_key_tests fnv1a64_structural_hex_digest_refuses_invalid_wire / fnv1a64_structural_hex_digest_accepts_valid_wire (discriminating RED: uppercase and short hex → None); key-term store controls unchanged. EXPLICIT DEFERRAL — dissolves when cross-entry typed-module memo routes through emitted typed_module_key end-to-end without cli_run string wrapping; ROADMAP row 'Make native materialization the shared execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and gunbc.v1_deletion_plan ^witness_realization_kernel; aligns with docs/plans/cross-entry-typed-module-memo-sketch.md Half B.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn typed_module_key(
-    interface_key: Rc<Fnv1a64Structural>,
-    compiler_identity: Rc<Fnv1a64Structural>,
-) -> Rc<Fnv1a64Structural> {
-    content_hash_tagged_structural(
->>>>>>> Stashed changes
         "typed-module-compiler".to_string(),
         content_hash_combine(interface_key.clone(), compiler_identity.clone()),
     )

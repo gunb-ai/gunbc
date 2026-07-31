@@ -715,7 +715,6 @@ the population **derived from the census's path axes or completeness-witnessed a
 them**, so a strongest-path-only reading is a red, not an oversight); `GuaranteeMeasurement`
 (an executed probe/witness receipt, **with a named consumer in `Accepted`**); and
 `GuaranteeDisposition` **derived per path, never stored** — `Unmeasured |
-<<<<<<< Updated upstream
 BelowFloor{evidence} | FrontierAccepted{diagnostic, accepted_boundary, evidence} |
 OnLadder{rung, evidence} | OutsideModeledGuarantee{reason}` — folded to class state as
 below-floor dominates, then frontier, then unmeasured, then the **minimum rung across
@@ -730,14 +729,6 @@ no stored `current_rung` column, so a transcribed rung is *unrepresentable* rath
 lens-caught (corrected per review 45367: an earlier draft of this stage listed
 `current_rung` as a carrier field, which would have reintroduced exactly the
 rung-inflation class §1b forbids). What survives as checks: an `OnLadder` disposition's
-=======
-BelowFloor{evidence} | OnLadder{rung, evidence} | OutsideModeledGuarantee{reason}` — folded
-to class state as below-floor dominates, then unmeasured, then the **minimum rung across
-paths**. There is no stored `current_rung` column, so a transcribed rung is
-*unrepresentable* rather than lens-caught (corrected per review 45367: an earlier draft of
-this stage listed `current_rung` as a carrier field, which would have reintroduced exactly
-the rung-inflation class §1b forbids). What survives as checks: an `OnLadder` disposition's
->>>>>>> Stashed changes
 evidence refs must execute (honesty — v2's generic self-grounding is the day-one
 below-target disposition), and a class below its ceiling with no `next_rung_trigger` reds
 (stall). The five recovered fragment-vocabularies (§3's lattice, `wall
@@ -752,7 +743,6 @@ IS that thread's missing claims list, not a second taxonomy beside it; and per �
 authority is `.dag` rows projected into DESIGN.md, never hand-edited prose. Historical
 claims enter `Required` + `Gap` (mode-2 rule, §2).
 
-<<<<<<< Updated upstream
 **Stage 1c — baseline prevalence, anchored** (split out of the old Stage 7 per the first
 verdict; anchored per the post-merge verdict): the whole-corpus floor rerun bucketed by
 ladder position, keyed to the carrier's class ids — the honest *before* picture, pinned to
@@ -761,12 +751,6 @@ implementation state). Content-addressing the baseline is what makes it reproduc
 the in-flight branches merge — requiring every implementation node to wait on an unanchored
 live-tree measurement would be fragile, so the walls sequence after the baseline *node*
 without racing the live tree.
-=======
-**Stage 1c — baseline prevalence, before any wall** (split out of the old Stage 7 per the
-operator's verdict): the whole-corpus floor rerun bucketed by ladder position, keyed to the
-carrier's class ids — the honest *before* picture. Each wall node's roadmap edge on the
-baseline node encodes that a wall landing first would pollute it.
->>>>>>> Stashed changes
 
 **Stage 2 — close the ordinary premises (wall-now set):** method/callable existence; exact
 call labels and counts (the §4 application-arity row); return/`data`/field/generic
@@ -780,7 +764,6 @@ which dual-path resolutions are the *same* primitive — otherwise `map` resolvi
 registry and algebra template reds the whole corpus on day one and the wall gets reverted
 exactly the way the 104 preserved the exemption.
 
-<<<<<<< Updated upstream
 **Stage 2 measured amendment (2026-07-31, tidy-deer-730's receipts on OPEN gunbc#7484;
 sequencing re-ruled by the post-merge verdict):** the open candidate carries a narrow
 per-receiver method-existence wall over **kernel receivers** (six REDs/positive controls,
@@ -797,25 +780,6 @@ one primitive represented twice from two genuinely ambiguous candidates, so it g
 encode exactly that: `floor-method-ambiguity-wall ← primitive-identity-join`, while
 `floor-method-existence-wall` follows the anchored baseline only. The two resolution
 defects are §11 item 8; receiver normalization is the wall's first slice.
-=======
-**Stage 2 measured amendment (2026-07-31, tidy-deer-730 on gunbc#7484):** a narrow
-per-receiver method-existence wall over **kernel receivers** has landed (six REDs/positive
-controls, regen divergence 0). What keeps it narrow, measured: (a) two receiver-type
-resolution defects — a where-refinement alias arrives as its brand, unpeeled to the base;
-a pattern-destructured coproduct payload arrives typed as the *variant name* rather than
-the field type — and (b) the primitive-identity fork itself: the kernel algebra profiles
-disagree with interpreter dispatch (`String` and `Map` declare `length` but not `count`
-while the interpreter dispatches `length`/`count`/`size`). So the Stage-5 join is a
-**prerequisite of the general method wall, not a follow-on** — the roadmap edges encode
-`floor-method-existence-wall ← primitive-identity-join`, correcting this section's
-original order; the two resolution defects are §11 item 8.
-
-**Stage 3 — one cardinality vertical slice** (§4b: connect the 2026-07-04 operator
-direction + the scoped lattice plan + the manual value-level fold specimens; acceptance =
-the operator's scenario refusing at the seam, with the nonempty-proof positive control
-compiling; the construction-wall candidate is gated on the §11 item 1a `sole_constructor`
-audit — a declared roadmap edge, not prose).
->>>>>>> Stashed changes
 
 **Stage 3 — one cardinality vertical slice** (§4b: connect the 2026-07-04 operator
 direction + the scoped lattice plan + the manual value-level fold specimens; acceptance =
@@ -844,7 +808,6 @@ target-realization completeness — NOT zero-resolution, per the Stage-2 nuance)
 `v2.*`/`v1.compiler.*`, classify every failure, fix, delete; the unsourced 104 is neither a
 blocker nor a promise).
 
-<<<<<<< Updated upstream
 **Stage 6b — the acceptance-completeness door (`compiler-accepted-obligation-closure`,
 added per the post-merge verdict):** the terminal P0 wall making the carrier the contract
 rather than observability — every `Required` guarantee path has exactly one live consumer,
@@ -863,10 +826,3 @@ classifier — statically-decidable / runtime-value-dependent / external-boundar
 resource-budget / capability-not-grounded / interpreter-defect — re-run after the declared
 climbs land and **diffed against the anchored baseline**, so each wall's landing is a
 measured before/after receipt, never an assumed win.
-=======
-**Stage 7 — residual prevalence, measured last** (the baseline half moved to Stage 1c per
-the operator's verdict): the same bucketing classifier — statically-decidable /
-runtime-value-dependent / external-boundary / resource-budget / capability-not-grounded /
-interpreter-defect — re-run after the declared climbs land and **diffed against the
-baseline**, so each wall's landing is a measured before/after receipt, never an assumed win.
->>>>>>> Stashed changes
