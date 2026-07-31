@@ -1,0 +1,19 @@
+module tools.artifact_div_probe
+
+fn probe_len(a: GeneratedArtifact) -> Int {
+  string_length(s: artifact_generate(a: a))
+}
+
+func probe_ci() -> Int { probe_len(a: CiYamlArtifact) }
+func probe_falsifier() -> Int { probe_len(a: FalsifierYamlArtifact) }
+func probe_gitignore() -> Int { probe_len(a: GitignoreArtifact) }
+func probe_roadmap() -> Int { probe_len(a: RoadmapArtifact) }
+func probe_design() -> Int { probe_len(a: DesignArtifact) }
+func probe_prepush() -> Int { probe_len(a: GithooksPrePushArtifact) }
+func probe_precommit() -> Int { probe_len(a: GithooksPreCommitArtifact) }
+func probe_runner_deploy() -> Int { probe_len(a: RunnerDeployArtifact) }
+func probe_crate_layout_dag() -> Int { probe_len(a: Stage0CrateLayoutGeneratedDagArtifact) }
+func probe_crate_layout_rs() -> Int { probe_len(a: Stage0CrateLayoutGeneratedRsArtifact) }
+func probe_crate_partition() -> Int { probe_len(a: Stage0CratePartitionGeneratedDagArtifact) }
+func probe_live_apply() -> Int { probe_len(a: LiveDeployApplyScriptArtifact) }
+func probe_live_retract() -> Int { probe_len(a: LiveDeployRetractScriptArtifact) }
