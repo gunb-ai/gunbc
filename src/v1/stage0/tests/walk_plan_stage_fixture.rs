@@ -101,12 +101,14 @@ fn walk_plan_stage_overlap_barrier_production_path() {
         out.combined()
     );
     assert!(
-        out.stdout.contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_a_holds"),
+        out.stdout
+            .contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_a_holds"),
         "overlap peer A must pass;\n{}",
         out.combined()
     );
     assert!(
-        out.stdout.contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_b_holds"),
+        out.stdout
+            .contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_b_holds"),
         "overlap peer B must pass;\n{}",
         out.combined()
     );
@@ -115,12 +117,14 @@ fn walk_plan_stage_overlap_barrier_production_path() {
         "stage-1 per-stage receipt must exist before stage 2"
     );
     assert!(
-        out.stdout.contains("PASS [on-success stage 2] walk_plan_stage_barrier_witness_holds"),
+        out.stdout
+            .contains("PASS [on-success stage 2] walk_plan_stage_barrier_witness_holds"),
         "barrier witness must read stage-1 receipt;\n{}",
         out.combined()
     );
     assert_eq!(
-        out.code, 0,
+        out.code,
+        0,
         "overlap+barrier plan must exit zero;\n{}",
         out.combined()
     );
@@ -142,7 +146,12 @@ fn walk_plan_stage_failure_blocks_stage2() {
         !marker.exists(),
         "stage-2 marker must not exist when stage-1 claim is red"
     );
-    assert_ne!(out.code, 0, "failure plan must exit nonzero;\n{}", out.combined());
+    assert_ne!(
+        out.code,
+        0,
+        "failure plan must exit nonzero;\n{}",
+        out.combined()
+    );
 }
 
 #[test]
@@ -171,7 +180,12 @@ fn walk_plan_stage_panic_blocks_stage2() {
         !marker.exists(),
         "stage-2 marker must not exist when stage-1 thread panicked"
     );
-    assert_ne!(out.code, 0, "panic plan must exit nonzero;\n{}", out.combined());
+    assert_ne!(
+        out.code,
+        0,
+        "panic plan must exit nonzero;\n{}",
+        out.combined()
+    );
 }
 
 #[test]
@@ -182,7 +196,8 @@ fn walk_plan_stage_receipt_refusal_blocks_stage2() {
     let _ = std::fs::remove_file(&marker);
     let out = run_fixture_plan("walk_plan_stage_receipt_refusal_barrier_plan");
     assert!(
-        out.stdout.contains("PASS [on-success stage 1] walk_plan_stage_receipt_refusal_poison_holds"),
+        out.stdout
+            .contains("PASS [on-success stage 1] walk_plan_stage_receipt_refusal_poison_holds"),
         "poison claim must pass before receipt write is attempted;\n{}",
         out.combined()
     );
@@ -201,7 +216,8 @@ fn walk_plan_stage_receipt_refusal_blocks_stage2() {
         "stage-2 marker must not exist when stage-1 receipt write refused"
     );
     assert_ne!(
-        out.code, 0,
+        out.code,
+        0,
         "receipt-refusal plan must exit nonzero;\n{}",
         out.combined()
     );

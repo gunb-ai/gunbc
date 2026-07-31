@@ -318,15 +318,6 @@ pub fn walk_plan_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn walk_plan_run_stage_claim_executor_seed_deferral() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "§7 seed-retained HAND-RUST transport for the shared walk-stage executor in claim_executor (PR #7499 run_stage extraction, carried on the #7503 fixture branch). WHAT IS ADDED: `run_stage` / `StageRun` / `StagePopulation` / `spawn_units` / `join_units` — one executor path for BOTH WalkPlan populations (unit grouping, `batch_unit_lane` partition, governor admission for spawned units, structural stage barrier join, per-stage receipt write). WHAT IS NOT IN RUST: schedule shape, population ordering law, `FloorBatchStopPolicy`, runnable profiles, or finalization policy — all remain `.dag` authorities (`walk_plan_note`, `gunbc.ci_spec`, `std.realization_schedule`). CENSUS SHRINK: deletes the duplicated inline on-success-stage runner that previously forked grouping/admission/join from the ordinary batch loop; the net line growth is the in-process latch controls (`stage_members_actually_overlap`, `join_waits_for_every_member_before_returning`, `join_reports_a_panicking_member_without_losing_the_others`) plus the production-path fixture harness in `walk_plan_stage_fixture.rs`. DISSOLVES WHEN the witness-realization / self-host frontier emits the walk executor kernel from modeled schedule facts (docs/plans/witness-realization-plan.md) and claim_executor's stage loop retires to emitted Rust proven green-by-execution against the same discriminating controls.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn walk_finalization_note() -> String {
     thread_local! {
         static CACHED: String = {
