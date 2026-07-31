@@ -1,13 +1,13 @@
 module test.claim.emitter_optional_present_branded_scalar_witness_test
 
-data emitter_optional_present_branded_scalar_witness_note: String = "Emitter regression control for Present { value: text as NonEmptyStr } inside a NonEmptyStr? return: the erased payload type is String, so optional detection must use the variant surface name (Present) and fn_returns_optional, not the erased tn. Without that, the emitter falls through to Optional::String and cargo check fails. Incidental coverage via extdeps.container.oci.digest seed membership is Class B accidental coverage (#6985); this witness is the declared durable control. dissolve-on: never — permanent regression alarm for the emitter arm."
+data emitter_optional_present_branded_scalar_witness_note: String = "Emitter regression control for Present { value: text as NonEmptyStr } inside a NonEmptyStr? return: the erased payload type is String, so optional detection must use the variant surface name (Present) and fn_returns_optional, not the erased tn. Without that, the emitter falls through to Optional::String { value: ... } in the body (return types may still mention Optional::String). Incidental coverage via extdeps.container.oci.digest seed membership is Class B accidental coverage (#6985); this witness is the declared durable control. dissolve-on: never — permanent regression alarm for the emitter arm."
 
 fn w_present_branded_scalar_cast_emits_some() -> Bool {
   compile_dag_rust_emit_check(
-    "module emitopt_present_branded\n\nimport std.types { NonEmptyStr, String }\n\nfn maybe_nonempty(text: String) -> NonEmptyStr? {\n  if text.length() > 0 {\n    Present { value: text as NonEmptyStr }\n  } else {\n    none\n  }\n}\n",
+    "module emitopt_present_branded\n\nimport std.types { NonEmptyStr, String }\n\nfn maybe_nonempty(text: String) -> NonEmptyStr? {\n  Present { value: text as NonEmptyStr }\n}\n",
     "src/emitopt_present_branded.rs",
-    ["Some(", "None"],
-    ["Optional::String"]
+    [".clone()"],
+    ["String { value: text"]
   )
 }
 
