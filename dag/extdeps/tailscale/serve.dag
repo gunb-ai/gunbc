@@ -12,6 +12,73 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data serve_endpoint_identity_note: String = "THE CONFIGURATION KEY, which this module previously did not carry. EnableBackground took a local port and nothing else, so two deployments on one node were indistinguishable to the model while being indistinguishable to tailscale for a different reason: a bare `serve --bg <port>` binds the DEFAULT HTTPS listener at the ROOT mount path, so the second one issued rebinds `/` from the first backend to the second. The model could not express the difference because it did not carry the thing tailscale actually keys on.\\n\\nThe upstream tells you what the key is by what `off` requires. Per tailscale.com/kb/1242, turning one mapping off is the original command with `off` appended, and 'in off commands, the <target> argument is optional, but all original flags are required' — so the identity is (listener port x mount path x service), not the backend. That is why the backend is a field here rather than the identity: two endpoints differing only in backend are the SAME endpoint being reassigned, which is exactly the collision.\\n\\nThe root mount is a distinct VARIANT rather than a path string of \\\"/\\\", because the upstream spells them differently — the root is the absence of --set-path, not --set-path=/ — and the docs do not state that --set-path=/ is accepted at all. Inventing that equivalence would be the same uncited capability claim this module is being corrected for."
+
+type TailscaleServeMount
+  = ServeRootMount
+  | ServeSetPath { path: NonEmptyStr }
+
+type TailscaleServeEndpoint {
+  https_port: Port
+  mount: TailscaleServeMount
+  backend: NonEmptyStr
+}
+
+fn tailscale_serve_mount_argv(mount: TailscaleServeMount) -> List<String> {
+  match mount {
+    ServeRootMount => []
+    ServeSetPath { path } => [concat("--set-path=", path as String)]
+  }
+}
+
+fn tailscale_serve_endpoint_flags(endpoint: TailscaleServeEndpoint) -> List<String> {
+  concat(
+    [concat("--https=", to_string(endpoint.https_port))],
+    tailscale_serve_mount_argv(mount: endpoint.mount),
+  )
+}
+
+data serve_off_replays_the_flags_note: String = "OFF IS THE SAME COMMAND WITH off APPENDED, which is why this projects from the same endpoint value rather than being authored beside it. The upstream requires every original flag on the off form, so an off argv built from a second spelling of the endpoint would silently fail to match the mapping it meant to remove — removing nothing, reporting success. Deriving both directions from one value makes that unwritable.\\n\\nThe target is omitted deliberately: the docs state it is optional on off commands, and including it would add a second thing that has to agree."
+
+fn tailscale_serve_enable_argv(endpoint: TailscaleServeEndpoint) -> List<String> {
+  concat(
+    concat(["serve", "--bg"], tailscale_serve_endpoint_flags(endpoint: endpoint)),
+    [endpoint.backend as String],
+  )
+}
+
+fn tailscale_serve_off_argv(endpoint: TailscaleServeEndpoint) -> List<String> {
+  concat(
+    concat(["serve"], tailscale_serve_endpoint_flags(endpoint: endpoint)),
+    ["off"],
+  )
+}
+
+data serve_scoped_removal_capability_note: String = "SCOPED REMOVAL IS A VERSION-OBSERVED CAPABILITY, NOT A CONSTANT — and the constant it replaces was wrong. This module's consumer previously asserted that tailscale serve has no per-port removal and only a node-global reset, built a refusal arm on that premise, and cited nothing. The upstream documents scoped removal via `off`, and separately notes that the Serve CLI CHANGED in client 1.52 (review, 2026-07-30; tailscale.com/kb/1242).\\n\\nSo the capability is a fact about the client on a particular host at a particular time. srv1 was measured at 1.98.3, which is above the boundary — but a fleet-wide claim from one measured host is the same shape as the claim being retracted, and srv2/srv3 are unmeasured. The verdict is therefore three-valued: an unobserved version is neither capable nor incapable, and it must refuse BEFORE mutating rather than after, because the failure it guards is a teardown that silently removes nothing.\\n\\nThe boundary is stated as the version the upstream itself names, not as a version this repo picked."
+
+data tailscale_scoped_serve_off_minimum_major: Int = 1
+data tailscale_scoped_serve_off_minimum_minor: Int = 52
+
+type TailscaleServeCapability
+  = ScopedRemovalSupported { observed: NonEmptyStr }
+  | ScopedRemovalUnsupported { observed: NonEmptyStr }
+  | ScopedRemovalUnobserved { reason: String }
+
+fn tailscale_scoped_removal_capability(
+  major: Int,
+  minor: Int,
+  observed: NonEmptyStr,
+) -> TailscaleServeCapability {
+  if major > tailscale_scoped_serve_off_minimum_major {
+    ScopedRemovalSupported { observed: observed }
+  } else if major == tailscale_scoped_serve_off_minimum_major
+      && minor >= tailscale_scoped_serve_off_minimum_minor {
+    ScopedRemovalSupported { observed: observed }
+  } else {
+    ScopedRemovalUnsupported { observed: observed }
+  }
+}
+
 service tailscale.Serve {
   operation EnableBackground {
     input { local_port: Port }
