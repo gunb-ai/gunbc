@@ -1733,11 +1733,27 @@ fn eval_plan(
     eval_plan_in_ctx(&plan_ctx, plan_entry, plan_function)
 }
 
+/// An infrastructure fault the walk observed directly, kept as data.
+///
+/// The walk KNOWS a claim thread panicked — `handle.join()` returned `Err`. That fact used
+/// to survive only as the rendered line `"batch=N infra=thread_panic"`, which
+/// `falsifier_failure_mode` then recovered by matching its own `"infra="` prefix: a typed
+/// fact formatted into prose and grepped back out, the same round-trip the budget refusal
+/// used to make. The panic PAYLOAD is genuinely lost (`Err(_)` discards it), but *that a
+/// thread panicked* is not lost — so the classification reads this, and the rendered line
+/// goes back to being for humans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InfraFault {
+    ClaimThreadPanicked { batch_index: usize },
+}
+
 struct WalkOutcome {
     any_failed: bool,
     batches_run: usize,
     /// Failed claim details collected across the walk (for typed terminal classification).
     failure_details: Vec<String>,
+    /// Infra faults observed structurally, never re-derived from `failure_details` text.
+    infra_faults: Vec<InfraFault>,
 }
 
 /// Render a floor phase-completion line through the single-authority observation
@@ -3298,6 +3314,7 @@ fn run_walk(
     let mut any_failed = false;
     let mut batches_run = 0usize;
     let mut failure_details: Vec<String> = Vec::new();
+    let mut infra_faults: Vec<InfraFault> = Vec::new();
     let walk_start = Instant::now();
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
@@ -3475,6 +3492,9 @@ fn run_walk(
                 )
             );
             failure_details.push(format!("batch={} infra=thread_panic", bi + 1));
+            infra_faults.push(InfraFault::ClaimThreadPanicked {
+                batch_index: bi + 1,
+            });
             any_failed = true;
         }
         let batch_wall_nanos = batch_start.elapsed().as_nanos();
@@ -3724,6 +3744,7 @@ fn run_walk(
         any_failed: ordinary_failed || on_success_failed,
         batches_run,
         failure_details,
+        infra_faults,
     }
 }
 
@@ -4398,7 +4419,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     emit_cgroup_measurement("floor adaptive-width");
     v1_compiler::v1_interpreter::group_end();
     if outcome.any_failed {
-        emit_falsifier_failure_class(&outcome.failure_details);
+        emit_falsifier_failure_class(&outcome.failure_details, &outcome.infra_faults);
     }
     floor_terminal_fast_exit(walk_exit_code(outcome.any_failed))
 }
@@ -4415,9 +4436,24 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     }) {
         "BudgetExceeded"
     } else if details.iter().any(|d| {
-        d.contains("infra=")
-            || d.contains("thread_panic")
-            || d.contains("Resource temporarily unavailable")
+        // THIS LIST IS A FORK, and that is the defect — not the individual substrings.
+        //
+        // `gunbc.ci_failure_class` already models this properly: `InfraSignature` is a
+        // closed sum whose match text is DERIVED from cited upstream authorities —
+        // `errno_strerror(EAGAIN)`, `spawn_outcome_log_fragment(SpawnFailed)`, the sccache
+        // fragments, `runner_lifecycle_log_fragment(ShutdownReceived)` — each carrying an
+        // `infra_signature_origin` naming where the text comes from. That authority has no
+        // production consumer today (`classify_failure_reason` is reached only by witness
+        // tests), while this hand-typed list is the one that actually runs.
+        //
+        // So the fix is to make this consume `gunbc.ci_failure_class`, not to hand-edit the
+        // fork. An earlier revision of this change deleted the "failed to spawn" arm on the
+        // grounds that no producer reachable from THIS input emits it — the interpreter's
+        // spawn failure says "failed to execute". That evidence was about this surface only;
+        // the model declares `ProcessSpawnFailure` a live signature whose site is the build
+        // log. Editing one side of a fork on surface-local evidence widens the divergence
+        // instead of closing it, so the arm is restored and the fork is recorded here.
+        d.contains("Resource temporarily unavailable")
             || d.contains("failed to spawn")
             || d.contains("sccache")
     }) {
@@ -4425,6 +4461,18 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     } else {
         "WitnessRed"
     }
+}
+
+/// Classification with the walk's structurally-observed faults taking precedence.
+///
+/// An observed `InfraFault` settles the mode outright: the walk saw the panic, so nothing
+/// downstream needs to infer it from rendered text. The string path below it remains for
+/// genuinely external message text only.
+fn falsifier_failure_mode_with_faults(details: &[String], faults: &[InfraFault]) -> &'static str {
+    if !faults.is_empty() {
+        return "Infra";
+    }
+    falsifier_failure_mode(details)
 }
 
 /// Projection of a failure mode into the `gunbc.ci_failure_class` vocabulary. `Structural`
@@ -4446,9 +4494,9 @@ fn ci_failure_class_arm(mode: &str) -> String {
     }
 }
 
-fn emit_falsifier_failure_class(details: &[String]) {
+fn emit_falsifier_failure_class(details: &[String], faults: &[InfraFault]) {
     let joined = details.join(" | ");
-    let mode = falsifier_failure_mode(details);
+    let mode = falsifier_failure_mode_with_faults(details, faults);
     eprintln!("[falsifier-failure-class] mode={mode}");
     if details.is_empty() {
         eprintln!("[falsifier-failure-class] detail=<receipt/write failure or empty ledger>");
@@ -4533,6 +4581,7 @@ mod tests {
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 })
                 .collect(),
         }
@@ -4776,12 +4825,38 @@ mod tests {
             ]),
             "BudgetExceeded"
         );
+        // The walk's own infra fact is now read STRUCTURALLY, not grepped out of the line
+        // the walk itself formatted. Both directions are asserted so the move from text to
+        // value is proven rather than assumed: the same text alone no longer classifies as
+        // Infra, and the observed fault classifies as Infra regardless of the text.
+        let panic_text: Vec<String> = vec![
+            "batch=2 infra=thread_panic".into(),
+            "batch=1 fn=x detail=stale digest".into(),
+        ];
         assert_eq!(
-            falsifier_failure_mode(&[
-                "batch=2 infra=thread_panic".into(),
-                "batch=1 fn=x detail=stale digest".into()
-            ]),
+            falsifier_failure_mode(&panic_text),
+            "WitnessRed",
+            "the rendered line is for humans now — it must not carry the classification"
+        );
+        assert_eq!(
+            falsifier_failure_mode_with_faults(
+                &panic_text,
+                &[InfraFault::ClaimThreadPanicked { batch_index: 2 }]
+            ),
             "Infra"
+        );
+        assert_eq!(
+            falsifier_failure_mode_with_faults(
+                &["batch=1 fn=x detail=nothing resembling infra".into()],
+                &[InfraFault::ClaimThreadPanicked { batch_index: 1 }]
+            ),
+            "Infra",
+            "an observed fault settles the mode even when no text hints at it"
+        );
+        // And no fault means no Infra, whatever the prose says.
+        assert_eq!(
+            falsifier_failure_mode_with_faults(&panic_text, &[]),
+            "WitnessRed"
         );
         assert_eq!(
             falsifier_failure_mode(&[
