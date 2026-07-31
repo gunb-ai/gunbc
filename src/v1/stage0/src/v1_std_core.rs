@@ -611,6 +611,15 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
         || (reason.clone() == "string predicate not implemented".to_string()))
 }
 
+pub fn compiler_diagnostic_seed_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the five variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded): hand-written fn count in cli_run.rs is 742 at origin/main and 742 on this branch, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs` is 13 added lines containing zero `fn` — so the hand-Rust CARRIER census is flat and only arm count moved. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontierOccurrenceKey {
     pub method: String,

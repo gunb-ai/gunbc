@@ -1001,19 +1001,27 @@ pub fn type_mismatch_error(
 
 pub fn collect_explicit_return_types(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        v1_rt::concat(
-            match (*n.expr_data.clone()).clone() {
-                ExprData::ExprReturn => Rc::new(vec![resolved_type(return_value(n.clone()))]),
-                _ => Rc::new(vec![]),
-            },
-            Rc::new({
+        match (*n.expr_data.clone()).clone() {
+            ExprData::ExprLambda => Rc::new(vec![]),
+            ExprData::ExprReturn => v1_rt::concat(
+                Rc::new(vec![resolved_type(return_value(n.clone()))]),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result
+                            .extend((*collect_explicit_return_types(c.clone())).iter().cloned());
+                    }
+                    __result
+                }),
+            ),
+            _ => Rc::new({
                 let mut __result = Vec::new();
                 for c in n.children.clone().iter().cloned() {
                     __result.extend((*collect_explicit_return_types(c.clone())).iter().cloned());
                 }
                 __result
             }),
-        )
+        }
     })
 }
 
@@ -1046,7 +1054,7 @@ pub fn explicit_return_conformance_diags(
 pub fn explicit_return_conformance_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. The declared return reaches the return site as the `expected` already threaded from infer_item; where a return sits in a position that carries no expected type, this yields no judgment rather than a guessed one.".to_string()
+            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

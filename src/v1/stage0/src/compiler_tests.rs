@@ -664,6 +664,26 @@ mod compiler_tests {
                     under_budget.is_empty(),
                     "fewer occurrences must never red: fixing a call lowers the count, and a partial closure legitimately sees fewer"
                 );
+                // DISCRIMINATING PAIR for the early-return walk. An early return is a
+                // second exit from the same declaration and must meet its declared
+                // type; a return inside a nested LAMBDA belongs to the lambda's own
+                // callable return, so checking it against the enclosing declaration
+                // fabricates a refusal — the mirror image of the hole the walk closes
+                // (codex reviews 45472 and 45481, both confirmed by execution).
+                let early_return = compile_one("early_return.dag",
+                    "module early_return\nfn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }\n".to_string());
+                assert!(
+                    early_return.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. })),
+                    "an early return of the wrong type must refuse — the trailing expression conforming says nothing about the other exit, got: {:?}",
+                    early_return.diagnostics
+                );
+                let lambda_return = compile_one("lambda_return.dag",
+                    "module lambda_return\nfn apply_it(g: fn(Int) -> String, v: Int) -> String { g(v) }\nfn outer(v: Int) -> Int { apply_it(g: x => { return \"inner\" }, v: v) 1 }\n".to_string());
+                assert!(
+                    lambda_return.diagnostics.iter().all(|d| !matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. })),
+                    "a return inside a nested lambda belongs to the LAMBDA's declared return, not the enclosing function's — checking it here fabricates a refusal, got: {:?}",
+                    lambda_return.diagnostics
+                );
                 let peel_red = compile_one("peel_red.dag", peel_src("filter_map(x => x)"));
                 assert!(
                     peel_red.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. })),
