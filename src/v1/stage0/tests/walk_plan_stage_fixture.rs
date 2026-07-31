@@ -96,6 +96,7 @@ fn walk_plan_stage_overlap_barrier_production_path() {
 }
 
 #[test]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
 fn walk_plan_stage_failure_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
@@ -113,6 +114,7 @@ fn walk_plan_stage_failure_blocks_stage2() {
 }
 
 #[test]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
 fn walk_plan_stage_panic_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
@@ -130,6 +132,7 @@ fn walk_plan_stage_panic_blocks_stage2() {
 }
 
 #[test]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
 fn walk_plan_stage_receipt_refusal_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
