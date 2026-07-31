@@ -6,6 +6,15 @@ import gunbc.managed_directory {
   managed_directory_mode_octal,
   attempt_state_directory_at,
 }
+import extdeps.tailscale.serve {
+  tailscale_serve_enable_argv,
+  tailscale_serve_off_argv,
+  TailscaleServeCapability,
+  ScopedRemovalSupported,
+  ScopedRemovalUnsupported,
+  ScopedRemovalUnobserved,
+}
+import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
@@ -29,7 +38,6 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path,
 }
 import gunbc.ownership { Ownership }
-import extdeps.exec.command { shell_quote }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -234,33 +242,20 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   ], ""))
 }
 
-data tailscale_teardown_cannot_be_scoped_note: String = "THE TEARDOWN WAS A GLOBAL RESET AND THERE IS NO SCOPED ALTERNATIVE. `sudo -n tailscale serve reset` removes the ENTIRE serve configuration for the node, so retracting a lab removed production's routing along with its own. That was invisible while one deployment existed per host and became a live hazard the moment placement became a parameter — the same shape as the shared serve binary, found by the same review and missed by the same path-disjointness witness (review, 2026-07-30).\\n\\nIT CANNOT SIMPLY BE FIXED, because the CLI offers no per-port removal. `tailscale serve --help` on this host lists exactly three top-level forms — serve <target>, serve status, serve reset — plus service-level subcommands (drain, clear, advertise) that operate on advertised Services rather than on a port mapping this deployment created. There is no `serve <port> off`.\\n\\nSo the arm REFUSES rather than widening. A global reset issued to remove one mapping is the absorbing fallback stated exactly: the precise operation is unavailable, so the superset runs and nothing is missed — while another deployment's routing is destroyed and the retract reports success. A typed, loud refusal leaves the route in place and tells the operator what it could not do, which is recoverable; the reset is not.\\n\\nDISSOLVES ON either tailscale gaining a scoped removal, or this deployment learning whether it is the sole serve mapping on the host — at which point a reset is provably safe and can run unconditionally."
-
-data live_deploy_tailscale_teardown_refused_poison: String = "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__ tailscale serve exposes no per-port removal (only a node-global `serve reset`), so this retract will not remove the mapping: doing so would delete every other deployment's routing on this host. Remove it deliberately, or dissolve this refusal by teaching the deployment whether it owns the only mapping (DESIGN 5: refuse, never widen)"
-
-data refusal_command_quoting_note: String = "THE REFUSAL ARM EMITTED A BASH SYNTAX ERROR AND THEREFORE DID NOT REFUSE (review 45173, confirmed by running bash -n on the emitted script). The poison text contains an apostrophe — deployment's routing — and this constructor wrapped it in single quotes by concatenation. A POSIX single-quoted string cannot contain a single quote, so the shell read the apostrophe as CLOSING the string, then reopened at the next quote and hit EOF unterminated. The text also carries backticks around serve reset, which land in the resulting unquoted stretch as command substitution.\n\nThe consequence is worse than a garbled message. Under set -euo pipefail the parse error aborts the whole script at that line, so every teardown step after it — systemd disable and removal, daemon-reload, worktree and binary removal, tree-sync teardown — silently never ran, and neither did the refusal message the arm exists to print. An arm designed to stop the line instead dropped the rest of the line on the floor.\n\nThe fix consumes the shared POSIX authority rather than hand-spelling quotes: extdeps.exec.command.shell_quote splits on the quote character and rejoins through the close-escape-reopen form, which is the one correct spelling and already what tmux_staged_provider_start_note instructs callers to use for exactly this reason. Hand-concatenating quotes at a call site is how this class recurs, and the git_pathspec_exclude_note records the same lesson from the same failure — a shell word quoted by hand, caught by bash -n."
-
-fn tailscale_teardown_refusal_command() -> String {
-  concat("echo ", concat(shell_quote(arg: live_deploy_tailscale_teardown_refused_poison), " >&2; false"))
-}
+data tailscale_apply_is_unconditional_note: String = "THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve command in `if ! tailscale serve status | grep -q \':<port>\'`, which is a pseudo-observation twice over: it greps unstructured status text for a port number that appears nowhere in the configuration key, and a mapping for a DIFFERENT deployment on the same port would satisfy it — so the guard skipped precisely when another deployment held the endpoint, which is the collision it looked like it was preventing.\\n\\nThere is nothing to guard. Configuring an endpoint to a backend it already has is a no-op at the upstream, because the endpoint IS the key; issuing it twice cannot produce a second mapping. So the correct number of observations here is zero, and the replacement for a wrong observation is not a better observation but no observation at all.\\n\\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply and the teardown cannot disagree about the flags — which is the property the upstream `off` form actually requires."
 
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
-  let port = deployment_plan_listen_port(spec: spec)
-  If {
-    cond: Not { inner: ExitZero {
-      run: Run {
-        command: concat("sudo -n tailscale serve status 2>/dev/null | grep -q ':", to_string(port), "'"),
-        env: [],
-        redirect: Absent,
-        capture: Absent
-      }
-    } },
-    then_: Pipeline {
-      steps: [deploy_raw(command: concat("sudo -n tailscale serve --bg ", to_string(port)))],
-      on_failure: FailFast
-    },
-    else_: Absent
-  }
+  deploy_raw(command: join(
+    concat(["sudo", "-n", "tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
+    " ",
+  ))
+}
+
+fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join(
+    concat(["sudo", "-n", "tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
+    " ",
+  ))
 }
 
 data emit_deploy_principal_note: String = "The deploy principal on srv1 is the UNPRIVILEGED CI-runner account — DeployRunnerPrincipal.job_user grounds on gunbc.fleet_posix_accounts FleetAccountCiRunner (ghrunner, uid 1001); unit_user=root is NOT the authorization principal. Exactly the six NOPASSWD sudo grants that fleet_posix_ci_runner_sudo_grants() enumerates (apt-get, install, visudo, systemctl, tailscale, rm) — NOT root, and no blessed-helper grant (#7011 realization). The prior note here claimed ROOT from a hand ssh verification (parent lane 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed 2026-07-02) — a DESIGN 3 fork of the principal fact — and reality sided with the authority: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES/chgrp-EPERM into the service-user-owned tree. The corrected realization stays INSIDE the granted set: directories and the binary install with -o/-g service-user via the granted install (ownership at creation, never a chown fixup — the root-writes-then-chown two-step is dissolved, the wrongly-owned intermediate state unwritable); the tree sync runs AS the service user through gunbc-tree-sync.service (a oneshot unit, User=service-user, installed and started via the granted install+systemctl — the owner writes its own tree); teardown rm goes through the granted rm. Deploy authorization is runtime-present: live_deploy_fold runs deploy_mutation_gate before host_effect_apply, and the gate observes ReadEffectivePosixPrincipal plus SudoNopasswdExecuteProbe / SudoNopasswdGrantListProbe through typed service-op argv transports. The roster selects grant-list verification for package-managed tailscale, whose binary may be absent before ensure. The former gunbc.ci_deploy_access_emit in-script duplicate is deleted; these committed scripts are HostReconciler projections, not standalone authorization entrypoints. Their shared preamble only installs the roster-derived /etc/sudoers.d/gunbc-deploy after the typed gate has permitted execution. RESIDUE (named): emit-construction refusal of bare rsync/chown outside the granted set rides the effect-namespace-grants lane. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
@@ -351,7 +346,7 @@ data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
     TailscaleServeMapping => [
-      deploy_raw(command: tailscale_teardown_refusal_command()),
+      tailscale_serve_teardown_step(spec: spec),
     ]
     SystemdUnit => [
       deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
@@ -430,27 +425,25 @@ fn apply_intent_from_effects(
   }
 }
 
-data refusal_must_not_precede_sibling_teardowns_note: String = "A REFUSAL ON ONE ARTIFACT WAS SILENTLY BLOCKING EVERY OTHER TEARDOWN (review 45016, proven by execution: set -euo pipefail with a leading `false` aborts and no later line runs). Retract order is the reverse of apply order, and TailscaleServeMapping is applied LAST — so it was torn down FIRST, and its refusal arm ends in `false`. Under FailFast that aborted the pipeline at the first teardown, so the systemd unit, the worktree root, the serve binary, the tree-sync files and the repo tree were never removed. EVERY retract, production and twin, tore down nothing.\\n\\nThis is a DIFFERENT defect from the quoting bug fixed beside it, with the same symptom, and fixing the quoting did not fix it: a syntactically valid `false` aborts a fail-fast pipeline just as effectively as a parse error. Two independent causes of one silent outcome is exactly why the emitted artifact needs oracles beyond byte-equality with its golden.\\n\\nTHE ORDERING IS NOT HAND-EDITED, because the retract order is DERIVED — deployment_owned_steps_retract_order reverses what this spec actually applied, and re-transcribing a list here would reinstate the two-places-one-fact defect that derivation removed. Instead the effects are PARTITIONED: teardowns that can act, in their derived reverse-apply order, then teardowns that refuse. A refusal cannot be emitted before a real teardown because the partition puts it in the second group, so the class is closed by construction rather than by choosing a lucky order.\\n\\nWHY REFUSING LAST IS FAIL-CLOSED, and emitting the refusal without `false` would not be: the refusal must still stop the line, and it now does so AFTER the removable artifacts are gone and BEFORE the `verdict=converged` receipt — so the retract removes everything it legitimately can, never widens to the node-global tailscale reset, exits nonzero, and never prints a convergence receipt while the mapping is still live. Dropping the `false` to let the pipeline finish would print that receipt, which is the fabricated-success arm §5 forbids."
+data ordering_partition_deleted_note: String = "THE PARTITION THAT PROTECTED SIBLING TEARDOWNS IS DELETED BECAUSE ITS SUBJECT IS GONE. review 45016 found that a refusal arm ending in `false` aborted the whole fail-fast retract at the FIRST teardown, so the unit, worktree root, serve binary, tree-sync files and repo tree were never removed — every retract, production and twin, tore down nothing. The repair sorted refusing teardowns after acting ones, which was correct for the model as it then stood.\\n\\nThat model was wrong one layer up. The only refusing owned artifact was TailscaleServeMapping, and it refused on an uncited claim that the CLI has no scoped removal. With the endpoint modeled, its teardown ACTS, and no owned artifact refuses — so the partition sorts a list by a predicate that is now constant, which is a node whose validation cannot fail.\\n\\nThe class it guarded is closed differently and more strongly: a retract for a host whose client cannot do scoped removal is not EMITTED at all (retract_capability_refusal), so a stop-the-line arm cannot appear among the teardowns in the first place, and there is no ordering left to get right. Keeping the partition would preserve the shape of a fix for a defect that no longer has a way to occur, which is exactly the dead-scaffold class."
 
-data teardown_ordering_projection_note: String = "THE ORDERING KEY, and deliberately nothing more. Which members refuse teardown is a modeling fact answered by gunbc.live_deploy.spec's deployment_step_teardown_disposition; what this emitter needs is the Bool that filter takes, and the only judgement it makes is that a refusal must sort after everything that acts. An upsert never stops the line, which is why it sorts with the actors.\\n\\nIt is a projection of the disposition rather than a second reading of the model (review 45217): the kinds are not enumerated here, so a new artifact kind changes exactly one match, in the module that owns the coproduct, and this function keeps working without being visited. The predecessor inlined all three coproducts here and would have gone stale silently."
-
-fn deploy_teardown_stops_the_line(effect: MemberEffect<DeploymentStep>) -> Bool {
-  match effect {
-    EffectUpsert { member: _ } => false
-    EffectTeardown { member: step } =>
-      match deployment_step_teardown_disposition(step: step) {
-        TeardownActs => false
-        TeardownRefuses { cause: _ } => true
-      }
-  }
+fn retract_unsupported_client_poison(observed: String) -> String {
+  concat(
+    "__GUNBC_DEPLOY_REFUSED__ live-deploy retract NOT EMITTED: this target's tailscale client is ",
+    concat(
+      observed,
+      ", below the 1.52 release that introduced scoped `serve <flags> off`. Removing the serve mapping would require the node-global reset, which destroys every other deployment's routing on this host — so no retract artifact is produced (DESIGN 5: refuse, never widen)",
+    ),
+  )
 }
 
-fn retract_effects_acting_before_refusing(
-  effects: List<MemberEffect<DeploymentStep>>,
-) -> List<MemberEffect<DeploymentStep>> {
+fn retract_unobserved_client_poison(reason: String) -> String {
   concat(
-    effects |> filter(e => !deploy_teardown_stops_the_line(effect: e)),
-    effects |> filter(e => deploy_teardown_stops_the_line(effect: e)),
+    "__GUNBC_DEPLOY_REFUSED__ live-deploy retract NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
+    concat(
+      reason,
+      "), so whether scoped `serve <flags> off` exists on it is unknown. An unobserved version is not a capable one; observe the client and record it on the target (DESIGN 5: refuse, never widen)",
+    ),
   )
 }
 
@@ -476,7 +469,7 @@ fn retract_intent_from_effects(
         deploy_apply_preamble_steps(access: access),
         concat(
           flat_map(
-            retract_effects_acting_before_refusing(effects: effects),
+            effects,
             e => emit_deploy_member_effect(effect: e, spec: spec),
           ),
           [
@@ -516,6 +509,17 @@ fn live_deploy_apply_script_for(spec: DeploymentSpec) -> String {
 }
 
 fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
+  match spec.target.tailscale_client {
+    ScopedRemovalUnsupported { observed: v } =>
+      retract_unsupported_client_poison(observed: semver_version_label(v: v))
+    ScopedRemovalUnobserved { reason: r } =>
+      retract_unobserved_client_poison(reason: r)
+    ScopedRemovalSupported { observed: _ } =>
+      live_deploy_retract_script_with_scoped_removal(spec: spec)
+  }
+}
+
+fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessJobPrincipalRefused { refusal: r } =>
       deploy_access_job_principal_refused_emit_poison(refusal: r)
@@ -561,7 +565,7 @@ fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String 
   emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
 
-data emitted_shell_parseability_oracle_note: String = "THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than left implicit (review, 2026-07-30). The refusal-arm defect established that a byte-equality golden gate and target-language VALIDITY are different oracle families, and only the first exists over these two artifacts. What landed in response was a string-shape claim about one call site — the escape form present, the raw apostrophe absent — which closes that site and says nothing about the next hand-quoted one.\\n\\nSo the class is open and this row names its closure rather than implying the point fix covered it. The repo already has the machinery: a bounded bash grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves short.\\n\\nDISSOLVES ON: both generated deploy scripts parsed by an executing consumer on every emit, with a discriminating RED that reverts the shell_quote call site to concatenation and goes red on the parse rather than on a string shape. Until then, a quoting defect in a NEW call site here ships green, and that is the honest bound on what the existing claims prove."
+data emitted_shell_parseability_oracle_note: String = "THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than left implicit (review, 2026-07-30). The refusal-arm defect established that a byte-equality golden gate and target-language VALIDITY are different oracle families, and only the first exists over these two artifacts. What landed in response was a string-shape claim about one call site — the escape form present, the raw apostrophe absent — which closes that site and says nothing about the next hand-quoted one.\\n\\nSo the class is open and this row names its closure rather than implying the point fix covered it. The repo already has the machinery: a bounded bash grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves short.\\n\\nThe point fix it described is now gone with its subject: the arm that needed quoting was the tailscale teardown refusal, and that refusal was itself built on a false claim about the CLI, so the emitter no longer quotes anything by hand. That REMOVES a call site; it does not close the class, and the bound is now worse rather than better — with no hand-quoted site left in this module, nothing here would red if the next one were introduced.\\n\\nDISSOLVES ON: both generated deploy scripts parsed by an executing consumer on every emit, with a discriminating RED that introduces a hand-concatenated quote at any call site and goes red on the parse rather than on a string shape. The shared authority itself stays independently witnessed at shell_quote_escapes_an_embedded_apostrophe, which does not depend on this module having a caller."
 
 data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

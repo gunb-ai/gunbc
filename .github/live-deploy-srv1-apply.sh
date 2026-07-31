@@ -63,5 +63,5 @@ sudo -n install -m 0644 "$_gunbc_stage/gunbc-roadmap.service" /etc/systemd/syste
 sudo -n systemctl daemon-reload
 sudo -n systemctl enable gunbc-roadmap.service
 sudo -n systemctl restart gunbc-roadmap.service
-if ! sudo -n tailscale serve status 2>/dev/null | grep -q ':8080'; then sudo -n tailscale serve --bg 8080; fi
+sudo -n tailscale serve --bg --https=443 8080
 echo live-deploy-receipt host=srv1 fold=apply verdict=converged

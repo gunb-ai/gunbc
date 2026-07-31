@@ -7,6 +7,19 @@ import extdeps.apt {
   package_tailscale,
   package_tmux,
 }
+import extdeps.version.semver { SemVerVersion }
+import extdeps.tailscale.serve {
+  tailscale_scoped_removal_capability,
+  TailscaleServeEndpoint,
+  TailscaleServeMount,
+  ServeRootMount,
+  ServeSetPath,
+  TailscaleServeCapability,
+  ScopedRemovalSupported,
+  ScopedRemovalUnsupported,
+  ScopedRemovalUnobserved,
+  tailscale_serve_endpoint_key,
+}
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
   srv1_tailscale_endpoint,
@@ -66,11 +79,10 @@ fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
   }
 }
 
-data teardown_disposition_note: String = "WHETHER A MEMBER CAN BE TORN DOWN IS A FACT ABOUT THE MEMBER, so it lives here beside deployment_step_ownership rather than as a predicate in the emitter (review 45217). The emitter previously classified this by hand-walking three coproducts in one Boolean — MemberEffect, then DeploymentStep, then OwnedArtifactKind — which put a fact about the deployment model inside the thing that renders it, and encoded the model's storage shape as recursion in a reusable predicate. Adding an artifact kind then meant remembering to visit the emitter, and the answer was a bare true with no way to ask WHY.\\n\\nThe two refusals are not the same refusal and the cause says so, grounded on the ownership axis this module already models rather than a fresh vocabulary. An ensured dependency is outside ownership entirely — tailscale and tmux were installed for the host, not for this deployment, so removing them is not this retract's business at any scope. The tailscale serve mapping IS owned, and the refusal is that the only removal the CLI offers is node-global: acting would exceed the ownership rather than fall outside it. One says not mine, the other says mine but the tool has no scoped verb, and they dissolve on different triggers.\\n\\nThe disposition is per-layer and total, so a new OwnedArtifactKind cannot inherit a teardown answer by omission — the match fails to compile until the new kind states its own."
+data teardown_disposition_note: String = "WHETHER A MEMBER CAN BE TORN DOWN IS A FACT ABOUT THE MEMBER, so it lives here beside deployment_step_ownership rather than as a predicate in the emitter (review 45217). The emitter previously classified this by hand-walking three coproducts in one Boolean — MemberEffect, then DeploymentStep, then OwnedArtifactKind — which put a fact about the deployment model inside the thing that renders it, and encoded the model's storage shape as recursion in a reusable predicate. Adding an artifact kind then meant remembering to visit the emitter, and the answer was a bare true with no way to ask WHY.\\n\\nEVERY OWNED ARTIFACT NOW ACTS, and the second refusal cause is deleted with the claim that justified it. TailscaleServeMapping used to answer TeardownRefuses of TeardownWouldExceedOwnership on the premise that the CLI offers no per-port removal and only a node-global reset. That premise was false and uncited: the upstream documents scoped removal via `off` (extdeps.tailscale.serve, review 2026-07-30). Once the mapping is modeled as the endpoint tailscale actually keys on, its teardown replays that endpoint with `off` and removes exactly what this deployment created — so the arm is an ordinary teardown, not a refusal, and TeardownWouldExceedOwnership had exactly one inhabitant which was wrong.\\n\\nWhat survives is the refusal that was always correct and is about ownership rather than tooling: an ensured dependency is outside ownership entirely — tailscale and tmux were installed for the host, not for this deployment, so removing them is not this retract's business at any scope.\\n\\nThe disposition is per-layer and total, so a new OwnedArtifactKind cannot inherit a teardown answer by omission — the match fails to compile until the new kind states its own."
 
 type TeardownRefusalCause
-  = TeardownOutsideOwnership
-  | TeardownWouldExceedOwnership
+  = | TeardownOutsideOwnership
 
 type TeardownDisposition
   = TeardownActs
@@ -83,7 +95,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     DispatchWorktreeRoot => TeardownActs
     AttemptStateRoot => TeardownActs
     SystemdUnit => TeardownActs
-    TailscaleServeMapping => TeardownRefuses { cause: TeardownWouldExceedOwnership }
+    TailscaleServeMapping => TeardownActs
   }
 }
 
@@ -94,12 +106,15 @@ fn deployment_step_teardown_disposition(step: DeploymentStep) -> TeardownDisposi
   }
 }
 
+data target_carries_the_observed_client_note: String = "SCOPED TEARDOWN IS A PROPERTY OF THE CLIENT ON THIS MACHINE, so it is a field of the target rather than a constant in the emitter. The tailscale Serve CLI CHANGED in client 1.52, so `serve <flags> off` is available on some hosts and not others, and the previous code answered the question with a data row asserting it for every host at every time.\\n\\nsrv1 was measured at 1.98.3 and its row says so, with the measurement carried as the observed string rather than as a Bool — a verdict that has forgotten what it was computed from cannot be re-checked when the host is upgraded. srv2 and srv3 are ScopedRemovalUnobserved, which is NOT a claim that they lack the capability: it is the statement that nobody looked. Collapsing that to either pole is the two-states-one-label defect this whole change is repairing, and asserting the fleet from one measured host is the same shape as the claim being retracted (operator, 2026-07-30).\\n\\nTHE REFUSAL FIRES AT EMIT, NOT AT RUN. A retract script is simply not produced for a target whose client is unobserved or too old, so there is no arm in the emitted shell that could stop the line halfway through a teardown, and no ordering question about where such an arm would sit. Refusing before mutation is what the operator required, and refusing before EMISSION is the construction-side reading of it: the dangerous artifact does not exist rather than existing and declining to run."
+
 type DeploymentHostTarget {
   host: ComputeHost
   ssh_host: NonEmptyStr
   tailscale_endpoint: NetworkEndpoint
   tailnet_domain: NonEmptyStr?
   os_package_manager: OsPackageManager
+  tailscale_client: TailscaleServeCapability
 }
 
 data deployment_service_handler_note: String = "serve_function WAS DROPPED HERE AND THE EMITTER FELL BACK TO A LITERAL. HostDashboardInstance carries it — the instance IS the choice of which handler answers — and this record simply did not have the field, so emit_systemd_unit_doc hardcoded --function roadmap_serve_handle. That literal binds srv1_live_dashboard_instance().\\n\\nThe consequence is worse than a wrong flag. A deployed srv1_lab twin would listen on the lab port, work out of the lab tree, own the lab unit — and then IDENTIFY AND OPERATE AS PRODUCTION, because the handler is what selects the instance. Every path-level check passes; the process is simply serving the wrong dashboard. A path-disjointness witness cannot see it, which is exactly why the twin proof had to move from declared members to emitted effects (review, 2026-07-30).\\n\\nCarrying it makes the fallback impossible rather than unlikely: the emitter has no literal to reach for, because the field it needs is only obtainable from the instance."
@@ -117,9 +132,11 @@ data deployment_placement_axis_note: String = "A DEPLOYMENT IS (WHAT × WHERE), 
 
 data deployment_unit_naming_note: String = "THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL. Deriving it from instance_id is what this module should eventually do — it is what dashboard_instance_service_session_name already does for the tmux session, and derivation is what makes a collision unwritable instead of merely unlikely. But srv1-live is RUNNING as gunbc-roadmap.service right now, and instance_id srv1-live derives gunbc-srv1-live.service. Deriving here would rename a live unit as a side effect of an abstraction change: the next apply installs the new unit while the old one keeps serving, and retract then targets the new path and orphans the running process.\\n\\nSo the caller states them. srv1_live_deployment_names preserves production byte-identically and carries the reason with it; derived_deployment_names is the shape new instances use, and it is a real function rather than a comment so the second deployment does not re-litigate the question. Nothing inherits a default silently — deployment_spec_for takes identity as a required parameter.\\n\\nDISSOLVES ON: a scheduled unit rename for srv1-live (stop old, install derived, verify health, remove old), after which srv1 passes derived_deployment_names like everyone else and this row deletes. Until then the collision guard is the witness that every declared spec has a distinct unit name, path and port — validation standing where a construction wall belongs, and marked as such rather than presented as the wall."
 
+data tailscale_serve_path_was_not_an_endpoint_note: String = "THIS FIELD USED TO BE A NAME NOTHING CONFIGURED, and that is the whole of the twin-collision defect. tailscale_serve_path held \\\"tailscale-serve\\\" for production and \\\"tailscale-serve-srv1-lab\\\" for the twin — two distinct strings, which is exactly what the member-path disjointness witness checked and exactly why it passed. The emitter referenced the field zero times. It emitted `tailscale serve --bg <port>` from the port alone, and a bare serve binds the DEFAULT HTTPS listener at the ROOT mount, so both deployments configured the SAME endpoint and the twin's apply silently repointed production's routing at the lab (review, 2026-07-30).\\n\\nSo the disjointness was real and meaningless: the model's identity axis and tailscale's configuration key were unrelated quantities, and no witness over the former could observe a collision in the latter. This is not a check that was too weak — it is a check of the wrong thing, which no strengthening would have fixed.\\n\\nThe field is now the endpoint ITSELF, imported from extdeps.tailscale.serve where the upstream key is modeled. Two consequences follow by construction rather than by witness: the emitter cannot fall back to a port-only spelling because the port-only operation no longer exists, and the member path is a PROJECTION of the endpoint (tailscale_serve_endpoint_key), so member-path disjointness and endpoint disjointness became the same statement instead of two that could disagree."
+
 type DeploymentNames {
   unit_name: NonEmptyStr
-  tailscale_serve_path: NonEmptyStr
+  tailscale_serve_endpoint: TailscaleServeEndpoint
   tree_sync_unit_name: NonEmptyStr
   tree_sync_env_path: NonEmptyStr
 }
@@ -128,10 +145,18 @@ fn deployment_systemd_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", names.unit_name as String], "") as NonEmptyStr
 }
 
+data tailscale_default_https_port: Port = 443
+
+data derived_mount_is_the_instance_namespace_note: String = "THE MOUNT PATH IS NAMESPACED BY instance_id, which is the same axis that already namespaces the instance root, the repo root, the serve binary, the listen port, the worktree root, the unit name and the tmux session. The twin's endpoint is /srv1-lab because the twin IS srv1-lab, so two instances cannot produce one endpoint without sharing an identity the instance registry already forbids — the collision is unwritable rather than merely witnessed (operator: use literal namespacing in the repo, 2026-07-30).\\n\\nHand-picking a mount would have re-created the defect this replaces. tailscale_serve_path was hand-picked too, and being distinct is precisely what it was: distinct, unconsumed, and unrelated to the thing tailscale keys on. A second hand-picked string differs only in being the right KIND of string, and the next instance would re-litigate it.\\n\\nDISSOLVES ON the containment tree becoming the naming authority (namespace-only resolution): instance_id is itself a flat identifier, so this derivation is namespacing by string prefix where namespacing by position is the end state. The mount then projects from the instance's position rather than from its name, and this function stops spelling a separator."
+
 fn derived_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
   DeploymentNames {
     unit_name: join(["gunbc-", instance.instance_id as String, ".service"], "") as NonEmptyStr,
-    tailscale_serve_path: join(["tailscale-serve-", instance.instance_id as String], "") as NonEmptyStr,
+    tailscale_serve_endpoint: TailscaleServeEndpoint {
+      https_port: tailscale_default_https_port,
+      mount: ServeSetPath { path: join(["/", instance.instance_id as String], "") as NonEmptyStr },
+      backend: to_string(instance.listen_port) as NonEmptyStr,
+    },
     tree_sync_unit_name: join(["gunbc-", instance.instance_id as String, "-tree-sync.service"], "") as NonEmptyStr,
     tree_sync_env_path: join(["/etc/gunbc-", instance.instance_id as String, "-tree-sync.env"], "") as NonEmptyStr,
   }
@@ -140,13 +165,19 @@ fn derived_deployment_names(instance: HostDashboardInstance) -> DeploymentNames 
 data srv1_live_deployment_names_note: String = "PRODUCTION'S NAMES AS THEY ACTUALLY ARE ON THE MACHINE, not as the derivation would mint them. srv1-live runs as gunbc-roadmap.service and owns the tailscale mapping named tailscale-serve; the derivation produces gunbc-srv1-live.service and tailscale-serve-srv1-live. Both differences would be silent renames — the apply installs under the new name while the old unit keeps serving, and retract then removes the new one and orphans the running process. Neither belongs in a change whose purpose is to make placement a parameter."
 
 data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
-data tailscale_serve_owned_path: NonEmptyStr = "tailscale-serve"
+data production_keeps_the_root_mount_note: String = "PRODUCTION STAYS ON THE ROOT MOUNT, and it is the one place a derived mount would be wrong. srv1-live is serving https://srv1.tailecbe08.ts.net/ today; giving it --set-path=/srv1-live would move the dashboard to a different URL as a side effect of an abstraction change, which is the same silent-rename hazard deployment_unit_naming_note refuses for the unit name and refuses here for the same reason.\\n\\nThe root mount is therefore a DECLARED PLACEMENT for production and derived for everyone else — the identical shape, and the identical stop, as gunbc-roadmap.service.\\n\\nThe backend is NOT transcribed. It reads the instance's listen_port, so this row states only what genuinely differs from the derivation (the mount) and inherits everything else; a literal 8080 here would be a live-state transcription of the kind swept in #7464. That is why this became a function of the instance rather than staying a nullary data row.\\n\\nWHAT DOES CHANGE ON THE WIRE: the emitted command gains an explicit --https=443 where it previously passed the port alone. That is not byte-preservation and is not claimed as such. It is required, because the upstream `off` form demands every original flag, so a mapping applied without the listener flag cannot state the listener flag when removing itself. 443 is the listener production already serves on, so the resulting mapping is the one that is live.\\n\\nDISSOLVES ON the same scheduled migration as the unit name: once srv1-live moves to its derived names it takes a derived mount with them, and this function collapses into derived_deployment_names."
 
-data srv1_live_deployment_names: DeploymentNames = DeploymentNames {
-  unit_name: gunbc_roadmap_unit_name,
-  tailscale_serve_path: tailscale_serve_owned_path,
-  tree_sync_unit_name: gunbc_tree_sync_unit_name,
-  tree_sync_env_path: gunbc_tree_sync_env_path,
+fn srv1_live_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
+  DeploymentNames {
+    unit_name: gunbc_roadmap_unit_name,
+    tailscale_serve_endpoint: TailscaleServeEndpoint {
+      https_port: tailscale_default_https_port,
+      mount: ServeRootMount,
+      backend: to_string(instance.listen_port) as NonEmptyStr,
+    },
+    tree_sync_unit_name: gunbc_tree_sync_unit_name,
+    tree_sync_env_path: gunbc_tree_sync_env_path,
+  }
 }
 
 data gunbc_tree_sync_note: String = "gunbc-tree-sync.service is the GunbcSourceTree member's sync TRANSPORT, not an independent member: a oneshot unit running AS the service user (the tree's owner writes its own tree — ownership by construction, no chown), installed/started by the deploy through the granted install+systemctl channel because the ci-runner principal holds no rsync grant and no write access to the service-user-owned tree (emit_deploy_principal_note). Its EnvironmentFile carries the runner checkout path (varies per runner slot), written by the apply at run time. Both files are owned host state and are torn down with the tree in the GunbcSourceTree teardown arm."
@@ -185,7 +216,7 @@ fn deployment_owned_steps(
     DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: instance.dispatch_worktree_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: AttemptStateRoot, path: instance.dispatch_attempt_state_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
-    DeploymentArtifactStep { kind: TailscaleServeMapping, path: names.tailscale_serve_path },
+    DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_endpoint_key(endpoint: names.tailscale_serve_endpoint) },
   ]
 }
 
@@ -227,7 +258,20 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
     os_package_manager: srv1_os_package_manager(),
+    tailscale_client: srv1_observed_tailscale_client(),
   }
+}
+
+data srv1_tailscale_client_observed_version: SemVerVersion = SemVerVersion {
+  major: 1,
+  minor: 98,
+  patch: 3,
+  pre_release: [],
+  build: [],
+}
+
+fn srv1_observed_tailscale_client() -> TailscaleServeCapability {
+  tailscale_scoped_removal_capability(observed: srv1_tailscale_client_observed_version)
 }
 
 fn deployment_service_config(
@@ -266,7 +310,7 @@ fn deployment_spec_srv1() -> DeploymentSpec {
   deployment_spec_for(
     instance: srv1_live_dashboard_instance(),
     target: deployment_srv1_target(),
-    names: srv1_live_deployment_names,
+    names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
   )
 }
 

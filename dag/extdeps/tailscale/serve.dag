@@ -1,6 +1,8 @@
 module extdeps.tailscale.serve
 
-import std.types { NonEmptyStr, Port, Bool, String }
+import std.types { NonEmptyStr, Port, String, List }
+import std.algebra { Less, Equal, Greater }
+import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -54,46 +56,38 @@ fn tailscale_serve_off_argv(endpoint: TailscaleServeEndpoint) -> List<String> {
   )
 }
 
-data serve_scoped_removal_capability_note: String = "SCOPED REMOVAL IS A VERSION-OBSERVED CAPABILITY, NOT A CONSTANT — and the constant it replaces was wrong. This module's consumer previously asserted that tailscale serve has no per-port removal and only a node-global reset, built a refusal arm on that premise, and cited nothing. The upstream documents scoped removal via `off`, and separately notes that the Serve CLI CHANGED in client 1.52 (review, 2026-07-30; tailscale.com/kb/1242).\\n\\nSo the capability is a fact about the client on a particular host at a particular time. srv1 was measured at 1.98.3, which is above the boundary — but a fleet-wide claim from one measured host is the same shape as the claim being retracted, and srv2/srv3 are unmeasured. The verdict is therefore three-valued: an unobserved version is neither capable nor incapable, and it must refuse BEFORE mutating rather than after, because the failure it guards is a teardown that silently removes nothing.\\n\\nThe boundary is stated as the version the upstream itself names, not as a version this repo picked."
+data serve_scoped_removal_capability_note: String = "SCOPED REMOVAL IS A VERSION-OBSERVED CAPABILITY, NOT A CONSTANT — and the constant it replaces was wrong. This module's consumer previously asserted that tailscale serve has no per-port removal and only a node-global reset, built a refusal arm on that premise, and cited nothing. The upstream documents scoped removal via `off`, and separately notes that the Serve CLI CHANGED in client 1.52 (review, 2026-07-30; tailscale.com/kb/1242).\\n\\nSo the capability is a fact about the client installed on a particular host at a particular time, which is why it is a function of an observed version rather than a row. The verdict is three-valued because an unobserved version is neither capable nor incapable, and collapsing that to either pole is what produced the false claim above. A consumer must refuse BEFORE mutating rather than after, because the failure this guards is a teardown that silently removes nothing and reports success.\\n\\nThe boundary is stated as the version the upstream itself names, not as a version this repo picked."
 
-data tailscale_scoped_serve_off_minimum_major: Int = 1
-data tailscale_scoped_serve_off_minimum_minor: Int = 52
+data tailscale_scoped_serve_off_minimum: SemVerVersion = SemVerVersion {
+  major: 1,
+  minor: 52,
+  patch: 0,
+  pre_release: [],
+  build: [],
+}
 
 type TailscaleServeCapability
-  = ScopedRemovalSupported { observed: NonEmptyStr }
-  | ScopedRemovalUnsupported { observed: NonEmptyStr }
+  = ScopedRemovalSupported { observed: SemVerVersion }
+  | ScopedRemovalUnsupported { observed: SemVerVersion }
   | ScopedRemovalUnobserved { reason: String }
 
-fn tailscale_scoped_removal_capability(
-  major: Int,
-  minor: Int,
-  observed: NonEmptyStr,
-) -> TailscaleServeCapability {
-  if major > tailscale_scoped_serve_off_minimum_major {
-    ScopedRemovalSupported { observed: observed }
-  } else if major == tailscale_scoped_serve_off_minimum_major
-      && minor >= tailscale_scoped_serve_off_minimum_minor {
-    ScopedRemovalSupported { observed: observed }
-  } else {
-    ScopedRemovalUnsupported { observed: observed }
+data capability_carries_the_version_not_a_bool_note: String = "THE VERDICT CARRIES WHAT IT WAS COMPUTED FROM. A Bool capability cannot be re-derived when the boundary moves or the host is upgraded, and cannot say WHICH client it is describing — so the observed version rides on both decided arms and only the undecided arm carries prose.\\n\\nIt is a SemVerVersion rather than the version string tailscale prints, grounded on extdeps.version.semver, because an earlier draft of this row held both a display string and a parsed major/minor pair — two representations of one fact, free to disagree, which is the exact defect class this module is being repaired for. The label is a projection (semver_version_label), so there is nothing to keep in sync.\\n\\nComparison is semver_compare rather than a hand-written major/minor ladder, for the same reason: the ordering is already modeled, and a second ladder would be a second answer."
+
+fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServeCapability {
+  match semver_compare(a: observed, b: tailscale_scoped_serve_off_minimum) {
+    Less => ScopedRemovalUnsupported { observed: observed }
+    Equal => ScopedRemovalSupported { observed: observed }
+    Greater => ScopedRemovalSupported { observed: observed }
   }
 }
 
-service tailscale.Serve {
-  operation EnableBackground {
-    input { local_port: Port }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["tailscale", "serve", "--bg", "{local_port}"] }
-    exit {
-      0 => Unit
-      nonzero => String "tailscale serve failed"
-    }
-  }
+fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
+}
 
+data enable_background_deleted_note: String = "EnableBackground IS DELETED RATHER THAN CORRECTED. It took a local port and shaped the literal argv `serve --bg \{local_port\}`, which is precisely the unscoped root-mount rebind described above — the operation whose every invocation on a second deployment silently steals `/` from the first. Correcting it in place would have meant a template with a conditional flag, which the argv template form cannot express; carrying it beside the endpoint fns would have left two spellings of one operation, the fork this module is being repaired for.\\n\\nSo the enable argv is a fn (the established form for conditional argv — see extdeps.llm.cursor_cli), and the collision shape is unwritable because it no longer exists. It had zero consumers at deletion: the one caller that mattered hand-built the same string in the emitter instead of consuming this module at all."
+
+service tailscale.Serve {
   operation Status {
     input {}
     output { stdout: String from "stdout" }
