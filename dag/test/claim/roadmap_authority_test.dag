@@ -13,6 +13,8 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
+}
+import gunbc.roadmap_spawner {
   roadmap_rendered_ghost_count,
   roadmap_ghost_node_red_probe_count,
   roadmap_altered_copy_red_probe_count,

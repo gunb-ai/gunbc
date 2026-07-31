@@ -28,9 +28,6 @@ import gunbc.roadmap_model {
   ManualAcceptance,
   section_group,
   section_prose,
-  SectionElement,
-  Prose,
-  Group,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
@@ -2133,75 +2130,6 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
   ]
 }
 
-data roadmap_rendered_containment_note: String = "RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — and membership is the WHOLE NODE VALUE, never the identity alone. The 2026-07-31 operator verdict on gunbc#7489 found the guarantee-ladder nodes rendered from a section-local list outside declared_roadmap_nodes() — a second roadmap universe: uncounted, receipt-unreachable, invisible to active_roadmap_nodes() and the identity/endpoint/acyclicity witnesses. The section was deleted and the nodes joined the declared graph; the predicates below close the CLASS: every node any rendered document carries must be value-equal to a declared node or a projection-derived closing-contract task. Identity-only membership was the first cut and review 45406 correctly refused it: an altered copy reusing a declared identity would pass as sanctioned while forking the content — the drifting duplicate authority this wall exists to prevent (DESIGN 3), accepted instead of refused (DESIGN 5). Two RED probes, each a synthetic document the wall must red: a fresh-identity ghost, and an altered copy of a real declared node (same identity, one field changed — derived from the canonical node so the probe itself duplicates no literals). Neither probe node enters the declared graph, so the identity registry stays untouched; the altered-copy probe returns 0 if its anchor node ever disappears, failing its witness loudly rather than vacuously passing."
-
-fn document_rendered_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
-  concat(doc.lead_lanes, doc.sections)
-    |> flat_map(s => s.elements |> flat_map(e => match e {
-      Prose { prose: _ } => []
-      Group { group } => group.nodes
-    }))
-}
-
-fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
-  let sanctioned = concat(declared_roadmap_nodes(), closing_contract_task_nodes())
-  document_rendered_nodes(doc: doc)
-    |> filter(n => !any(sanctioned, s => s == n))
-    |> count
-}
-
-fn roadmap_altered_copy_red_probe_count() -> Int {
-  match declared_roadmap_nodes() |> filter(n => (n.node as String) == "ladder-claims-carrier") |> first {
-    Absent => 0
-    Present { value: n } => {
-      let altered = RoadmapNode {
-        identity: n.identity,
-        node: n.node,
-        line: n.line,
-        carriers: n.carriers,
-        sizing: n.sizing,
-        execution: n.execution,
-        owner: "SYNTHETIC-altered-copy-probe",
-        signoff: n.signoff,
-      }
-      let base = roadmap_authority_for(focus: NoFocus)
-      roadmap_rendered_ghost_count(doc: RoadmapDocument {
-        preamble: base.preamble,
-        lead_lanes: base.lead_lanes,
-        sections: concat(base.sections, [RoadmapSection {
-          title: "SYNTHETIC altered-copy section (test probe only)",
-          elements: [section_group(label: "", nodes: [altered], edges: [])],
-        }]),
-      })
-    }
-  }
-}
-
-fn roadmap_ghost_node_red_probe_count() -> Int {
-  let ghost = active_sized(identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
-    owner: "compiler-guarantee",
-    path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
-    t: fields(
-      headline: "SYNTHETIC: a rendered node that no declared authority carries",
-      boundary: "Negative control for the containment witness — never declared, never rendered outside the probe.",
-      displaced_cost: "None; this row exists to be caught.",
-      first_slice: "None.",
-      red_control: "Its own detection: the containment predicate must count exactly this node.",
-      out_of_scope: "Everything.",
-      handback: "None."
-    ))
-  let base = roadmap_authority_for(focus: NoFocus)
-  roadmap_rendered_ghost_count(doc: RoadmapDocument {
-    preamble: base.preamble,
-    lead_lanes: base.lead_lanes,
-    sections: concat(base.sections, [RoadmapSection {
-      title: "SYNTHETIC ghost section (test probe only)",
-      elements: [section_group(label: "", nodes: [ghost], edges: [])],
-    }]),
-  })
-}
 
 fn roadmap_authority() -> RoadmapDocument {
   RoadmapDocument {
