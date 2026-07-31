@@ -1,0 +1,8 @@
+module v2.test.fixture.walk_plan_stage.stage2_marker
+
+import extdeps.shell.exec { TransportScript }
+
+test fn walk_plan_stage_stage2_marker_holds() -> Bool {
+  let result = shell.Exec.Run(script: "touch target/walk_plan_stage_stage2_ran" as TransportScript)
+  result.success
+}

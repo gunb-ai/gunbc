@@ -1,0 +1,10 @@
+module v2.test.fixture.walk_plan_stage.overlap_peer_b
+
+import extdeps.shell.exec { TransportScript }
+
+data walk_plan_stage_overlap_peer_b_script: String = "set -euo pipefail\nDIR=target/walk_plan_stage_overlap\nmkdir -p \"$DIR\"\ntouch \"$DIR/entered_b\"\nfor i in $(seq 1 2400); do\n  if [ -f \"$DIR/entered_a\" ]; then\n    exit 0\n  fi\n  sleep 0.05\ndone\nexit 1\n"
+
+test fn walk_plan_stage_overlap_peer_b_holds() -> Bool {
+  let result = shell.Exec.Run(script: walk_plan_stage_overlap_peer_b_script as TransportScript)
+  result.success
+}

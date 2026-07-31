@@ -1,0 +1,10 @@
+module v2.test.fixture.walk_plan_stage.receipt_refusal_poison
+
+import extdeps.shell.exec { TransportScript }
+
+data walk_plan_stage_receipt_refusal_poison_script: String = "mkdir -p target && rm -rf target/floor-on-success-stage-1-receipt.tsv && mkdir target/floor-on-success-stage-1-receipt.tsv"
+
+test fn walk_plan_stage_receipt_refusal_poison_holds() -> Bool {
+  let result = shell.Exec.Run(script: walk_plan_stage_receipt_refusal_poison_script as TransportScript)
+  result.success
+}

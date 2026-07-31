@@ -1,0 +1,17 @@
+module v2.test.fixture.walk_plan_stage.barrier_witness
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+test fn walk_plan_stage_barrier_witness_holds() -> Bool {
+  let receipt = Filesystem.Read(path: "target/floor-on-success-stage-1-receipt.tsv")
+  receipt.success
+    && string_contains(s: receipt.content, pattern: "outcome=passed")
+    && string_contains(
+      s: receipt.content,
+      pattern: "claim\twalk_plan_stage_overlap_peer_a_holds\tpassed"
+    )
+    && string_contains(
+      s: receipt.content,
+      pattern: "claim\twalk_plan_stage_overlap_peer_b_holds\tpassed"
+    )
+}
