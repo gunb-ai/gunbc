@@ -8,6 +8,7 @@ data cardinality_refinement_unresolved_citation_note: String = "6 positional cit
 
 fn cardinality_refinement_body() -> List<MarkdownBlock> {
   [
+    p(text: cardinality_refinement_unresolved_citation_note),
     p(text: "**Status:** scoping (Feature-1 from the byte-grounding thread). **DESIGN.md + carriers are authority** (§6 no parallel ledger); each item dissolves into a wired parser/checker change + a green witness when it lands."),
     p(text: "**Verified against the live tree 2026-06-22.** Line numbers are receipts; re-check before acting."),
     h2(text: "0. Thesis — cardinality is ONE axis, and it is the *decidable* refinement fragment"),

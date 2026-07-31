@@ -8,6 +8,7 @@ data format_model_reconciliation_unresolved_citation_note: String = "4 positiona
 
 fn format_model_reconciliation_body() -> List<MarkdownBlock> {
   [
+    p(text: format_model_reconciliation_unresolved_citation_note),
     BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was forked across three models, and no text format routes serialization through any of them today. DESIGN refs: §2 (one concept every scale — decompress the leaf, map to existing carriers, reduce duplicates), §3 (single authority — field-by-field decomposition onto ConfigFormat, CommentSyntax, LayoutProtocol; delete uninhabited scaffolds), §5 (construction over validation — the swap test is execution-grounded), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
     p(text: "**Status:** planning tracker · **`.dag` carrier is authority** (§6). Linked from `ROADMAP.md` §6 cross-media band. Carrier facts verified against the live tree 2026-06-30. **Code keystone:** still-wolf-292 / PR #6045 (C1) — this doc captures only; no serializer code here."),
     h2(text: "1. The fork — three models, zero routed serializers"),
