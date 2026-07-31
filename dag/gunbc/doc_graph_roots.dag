@@ -65,6 +65,12 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "seamless-deploys-design",
+    work: DeclarationRef { module_path: "gunbc.live_deploy.service_ready", decl_name: "live_deploy_service_ready_poll_bound_reason", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "all four items the note models are landed or retired: the observation-outcome de-conflation, the systemd F1 readiness assertion, the deploy reconcile (comparable artifact value, service de-fused from the unit file, observed provider), and the handover. Registers as a gunbc.plan.Plan row if the design freezes before they land; deletes outright if they land first. The reasoning and receipts live in the note, not here." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "inner-cost-lanes-scoping",
     primary_work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
     additional_works: [],
