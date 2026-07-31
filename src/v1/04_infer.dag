@@ -1,5 +1,11 @@
 module v1.compiler.infer
-import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_validate_lower_hex_length,
+  oci_other_digest_algorithm_holds,
+}
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
@@ -96,7 +102,7 @@ import v1.compiler.infer_env {
   lookup_binding_by_name, binding_declares_name
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
-import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 import std.interface_summary {
   InterfaceSummary,
   ExportEntry,
@@ -1045,6 +1051,11 @@ fn where_refinement_is_int_literal_predicate(pred_name: String) -> Bool {
 
 fn where_refinement_is_string_literal_predicate(pred_name: String) -> Bool {
   pred_name == "non_empty"
+    || pred_name == "lower_hex_64"
+    || pred_name == "lower_hex_40"
+    || pred_name == "lower_hex_128"
+    || pred_name == "lower_hex_16"
+    || pred_name == "oci_other_digest_algorithm"
 }
 
 fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
@@ -1060,6 +1071,24 @@ fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
 fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> Bool? {
   if pred_name == "non_empty" {
     Present { value: string_length(s: value) > 0 }
+  } else if pred_name == "lower_hex_64" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 64),
+    }
+  } else if pred_name == "lower_hex_40" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 40),
+    }
+  } else if pred_name == "lower_hex_128" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 128),
+    }
+  } else if pred_name == "lower_hex_16" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 16),
+    }
+  } else if pred_name == "oci_other_digest_algorithm" {
+    Present { value: oci_other_digest_algorithm_holds(value: value) }
   } else {
     none
   }
@@ -6630,16 +6659,16 @@ fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
   }
 }
 
-fn fn_signature_fingerprint(item: Node, source_indices: Map<String, NewlineIndex>) -> ContentHash {
+fn fn_signature_fingerprint(item: Node, source_indices: Map<String, NewlineIndex>) -> Fnv1a64Structural {
   let params_acc = fold(item.params, init: content_hash_atom(value: "v1-interface-fn-sig-v0"), f: (acc, p) =>
-    content_hash_combine(
+    content_hash_combine_structural(
       left: acc,
       right: content_hash_atom(value: resolved_type_name(n: p, source_indices: source_indices))
     )
   )
   match item.inferred {
     Present { value: Resolved { node: rt } } =>
-      content_hash_combine(
+      content_hash_combine_structural(
         left: params_acc,
         right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: rt))
       )
@@ -6659,9 +6688,9 @@ fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, 
               name: name,
               kind: kind,
               contract: signature_contract(
-                signature: content_hash_tagged(
+                signature: content_hash_tagged_structural(
                   tag: "v1-interface-fn-sig-v0",
-                  payload: content_hash_combine(
+                  payload: content_hash_combine_structural(
                     left: content_hash_atom(value: name),
                     right: fn_signature_fingerprint(item: item, source_indices: source_indices)
                   )
@@ -6677,9 +6706,9 @@ fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, 
                   name: name,
                   kind: kind,
                   contract: signature_contract(
-                    signature: content_hash_tagged(
+                    signature: content_hash_tagged_structural(
                       tag: "v1-interface-sig-v0",
-                      payload: content_hash_combine(
+                      payload: content_hash_combine_structural(
                         left: content_hash_atom(value: binding.name),
                         right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: binding.resolved))
                       )

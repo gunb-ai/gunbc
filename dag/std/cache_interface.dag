@@ -1,6 +1,7 @@
 module std.cache_interface
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
+import std.types { NonEmptyStr, Bool, Int, LogicalTime }
+import std.content_hash { ContentHash }
 import std.measure { Nano, ByteSize }
 
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }

@@ -1,10 +1,25 @@
 module gunbc.merge_admission_produce
 
-import std.types { NonEmptyStr, ContentHash, CommitSha, String, Int, List, Bool, GitRef }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_sha1_object_id, git_sha256_object_id }
+import std.types { NonEmptyStr, CommitSha, String, Int, List, Bool, GitRef }
+import std.content_hash {
+  serialize_content_hash,
+  as_content_hash_structural,
+  fnv1a64_structural_hex_digest,
+}
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.merge_admission {
+  TestedSubject,
+  MergeAdmissionReceiptV2,
+  MergeAdmissionReceipt,
+  WalkAttemptId,
+  walk_attempt_id,
+  mint_merge_admission_receipt,
+  current_gate_roster_hash,
+  GateRosterHash,
+  gate_roster_hash_from_structural,
+}
 import gunbc.cli_invoke {
   SourceRootBare,
   gunbc_bin_name,
@@ -14,21 +29,25 @@ import gunbc.cli_invoke {
   source_roots_shell_flags,
 }
 import extdeps.git
+import extdeps.git.object_store {
+  GitObjectId,
+  GitSha1ObjectId,
+  GitSha256ObjectId,
+  GitObjectFormatSha1,
+  GitObjectFormatSha256,
+  git_decode_object_id_text,
+  git_sha1_object_id,
+  git_sha256_object_id,
+  git_object_id_wire_hex,
+  GitObjectIdTextDecoded,
+  GitObjectIdTextRefused,
+}
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_wire_label,
   parse_check_conclusion,
   Success,
   Failure,
-}
-import gunbc.merge_admission {
-  TestedSubject,
-  WalkAttemptId,
-  walk_attempt_id,
-  MergeAdmissionReceiptV2,
-  MergeAdmissionReceipt,
-  mint_merge_admission_receipt,
-  current_gate_roster_hash,
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 
@@ -70,10 +89,12 @@ fn compose_explicit_walk_attempt_id(explicit: String) -> WalkAttemptId? {
 
 data git_object_id_wire_note: String = "A Git object id on the wire carries its FORMAT, because the type does: <format>:<hex>. An anonymous hex string would be exactly the defect DESIGN's ContentHash-family residue records — a value whose family the reader has to guess — and a repository mid SHA-1/SHA-256 transition is precisely when guessing wrong is possible. This fn owns ONLY the <format>:<hex> spelling; whether the hex is a well-formed object id of that family is extdeps.git.object_store's question, answered by git_sha1_object_id / git_sha256_object_id, which check exact length and canonical lowercase hex. An earlier cut cast the suffix straight into the brand, so sha1:x, sha1:not-hex and a 64-digit value labelled sha1 all parsed (review 2026-07-30) — family without length and syntax is not identification."
 
+data gate_roster_hash_wire_note: String = "Gate roster hash wire is the serialized fnv1a64 structural fingerprint (16 lowercase hex digits — atom_identity_hash / hash_combine wire form). parse_gate_roster_hash_wire routes through std.content_hash.fnv1a64_structural_hex_digest (exact length plus lowercase-hex syntax) before branding as GateRosterHash; blank, malformed, or wrong-length receipt lines refuse the whole receipt (review 45474). An earlier cut cast arbitrary text to NonEmptyStr via structural_content_hash unchecked."
+
 fn render_git_object_id_wire(oid: GitObjectId) -> String {
   match oid {
-    GitSha1ObjectId { digest } => concat("sha1:", digest as String)
-    GitSha256ObjectId { digest } => concat("sha256:", digest as String)
+    GitSha1ObjectId { digest: _ } => concat("sha1:", git_object_id_wire_hex(oid: oid) as String)
+    GitSha256ObjectId { digest: _ } => concat("sha256:", git_object_id_wire_hex(oid: oid) as String)
   }
 }
 
@@ -100,7 +121,7 @@ fn render_tested_subject_wire(subject: TestedSubject) -> String {
       concat(subject.base_ref, "
 ")
     ),
-    concat(concat(render_git_object_id_wire(oid: subject.base_tree), "
+    concat(concat(render_git_object_id_wire(oid: subject.base_tree_hash), "
 "), subject.head_sha)
   )
 }
@@ -126,7 +147,7 @@ fn parse_tested_subject_wire(text: String) -> TestedSubject? {
               value: TestedSubject {
                 attempt_id: attempt,
                 base_ref: lines.skip(n: 2).first(),
-                base_tree: tree,
+                base_tree_hash: tree,
                 head_sha: lines.skip(n: 4).first(),
               }
             }
@@ -143,8 +164,8 @@ fn render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2) -> String {
       concat(concat(merge_admission_receipt_schema_v2, "
 "), concat(receipt.attempt_id as String, "
 ")),
-      concat(concat(render_git_object_id_wire(oid: receipt.tested_base_tree), "
-"), concat(receipt.gate_roster_hash, "
+      concat(concat(render_git_object_id_wire(oid: receipt.tested_base_tree_hash), "
+"), concat(render_gate_roster_hash_wire(hash: receipt.gate_roster_hash), "
 "))
     ),
     concat(concat(check_conclusion_wire_label(c: receipt.conclusion), "
@@ -195,29 +216,33 @@ fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
             match parse_check_conclusion(raw: lines.skip(n: 4).first()) {
               Absent => none
               Present { value: conclusion } =>
-                match receipt_wire_v2_pr_number(lines: lines) {
-                  WirePrMalformed => none
-                  WirePrAbsent =>
-                    Present {
-                      value: MergeAdmissionReceiptV2 {
-                        attempt_id: attempt,
-                        pr_number: none,
-                        tested_head_sha: lines.skip(n: 5).first(),
-                        tested_base_tree: tree,
-                        gate_roster_hash: lines.skip(n: 3).first(),
-                        conclusion: conclusion,
-                      }
-                    }
-                  WirePrPresent { value: n } =>
-                    Present {
-                      value: MergeAdmissionReceiptV2 {
-                        attempt_id: attempt,
-                        pr_number: Present { value: n },
-                        tested_head_sha: lines.skip(n: 5).first(),
-                        tested_base_tree: tree,
-                        gate_roster_hash: lines.skip(n: 3).first(),
-                        conclusion: conclusion,
-                      }
+                match parse_gate_roster_hash_wire(line: lines.skip(n: 3).first()) {
+                  Absent => none
+                  Present { value: gate_roster_hash } =>
+                    match receipt_wire_v2_pr_number(lines: lines) {
+                      WirePrMalformed => none
+                      WirePrAbsent =>
+                        Present {
+                          value: MergeAdmissionReceiptV2 {
+                            attempt_id: attempt,
+                            pr_number: none,
+                            tested_head_sha: lines.skip(n: 5).first(),
+                            tested_base_tree_hash: tree,
+                            gate_roster_hash: gate_roster_hash,
+                            conclusion: conclusion,
+                          }
+                        }
+                      WirePrPresent { value: n } =>
+                        Present {
+                          value: MergeAdmissionReceiptV2 {
+                            attempt_id: attempt,
+                            pr_number: Present { value: n },
+                            tested_head_sha: lines.skip(n: 5).first(),
+                            tested_base_tree_hash: tree,
+                            gate_roster_hash: gate_roster_hash,
+                            conclusion: conclusion,
+                          }
+                        }
                     }
                 }
             }
@@ -234,8 +259,38 @@ fn shell_stdout_line(raw: String) -> String {
   trim(raw)
 }
 
+fn parse_gate_roster_hash_wire(line: String) -> GateRosterHash? {
+  match fnv1a64_structural_hex_digest(hex: shell_stdout_line(raw: line)) {
+    Present { value: structural } =>
+      Present { value: gate_roster_hash_from_structural(structural: structural) }
+    Absent => none
+  }
+}
+
+fn parse_git_tree_object_id(hex: String) -> GitObjectId? {
+  if length(hex) == 40 {
+    match git_decode_object_id_text(format: GitObjectFormatSha1, text: hex) {
+      GitObjectIdTextDecoded { oid } =>
+        Present { value: oid }
+      GitObjectIdTextRefused { cause: _ } => none
+    }
+  } else if length(hex) == 64 {
+    match git_decode_object_id_text(format: GitObjectFormatSha256, text: hex) {
+      GitObjectIdTextDecoded { oid } =>
+        Present { value: oid }
+      GitObjectIdTextRefused { cause: _ } => none
+    }
+  } else {
+    none
+  }
+}
+
+fn render_gate_roster_hash_wire(hash: GateRosterHash) -> String {
+  serialize_content_hash(hash: as_content_hash_structural(structural: hash)) as String
+}
+
 type MergeTargetTreeHashObservation
-  = MergeTargetTreeHashOk { hash: ContentHash }
+  = MergeTargetTreeHashOk { hash: GitObjectId }
   | MergeTargetTreeHashRefused { ref: String, cause: String }
 
 fn merge_target_tree_hash_show_tree_refusal_cause(stderr: String) -> String {
@@ -262,7 +317,15 @@ fn observe_merge_target_tree_hash(ref: GitRef) -> MergeTargetTreeHashObservation
         cause: "git.Core.ShowTree exited 0 but stdout tree hash was empty",
       }
     } else {
-      MergeTargetTreeHashOk { hash: hash as ContentHash }
+      match parse_git_tree_object_id(hex: hash) {
+        Present { value: tree_hash } =>
+          MergeTargetTreeHashOk { hash: tree_hash }
+        Absent =>
+          MergeTargetTreeHashRefused {
+            ref: ref as String,
+            cause: "git.Core.ShowTree stdout is not a canonical git object id",
+          }
+      }
     }
   }
 }
@@ -278,8 +341,8 @@ fn render_receipt_wire_with_pr_line(receipt: MergeAdmissionReceipt, pr_line: Str
   concat(
     concat(
       concat(
-        concat(receipt.base_tree_hash, "\n"),
-        concat(receipt.gate_roster_hash, "\n")
+        concat(git_object_id_wire_hex(oid: receipt.base_tree_hash), "\n"),
+        concat(render_gate_roster_hash_wire(hash: receipt.gate_roster_hash), "\n")
       ),
       concat(check_conclusion_wire_label(c: receipt.conclusion), "\n")
     ),
@@ -291,8 +354,8 @@ fn render_receipt_wire(receipt: MergeAdmissionReceipt) -> String {
   let core = concat(
     concat(
       concat(
-        concat(receipt.base_tree_hash, "\n"),
-        concat(receipt.gate_roster_hash, "\n")
+        concat(git_object_id_wire_hex(oid: receipt.base_tree_hash), "\n"),
+        concat(render_gate_roster_hash_wire(hash: receipt.gate_roster_hash), "\n")
       ),
       concat(check_conclusion_wire_label(c: receipt.conclusion), "\n")
     ),
@@ -323,14 +386,22 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
   } else {
     match parse_check_conclusion(raw: lines.skip(n: 2).first()) {
       Present { value: conclusion } =>
-        Present {
-          value: MergeAdmissionReceipt {
-            pr_number: wire_pr_number_from_lines(lines: lines),
-            head_sha: lines.skip(n: 3).first(),
-            base_tree_hash: lines.first(),
-            gate_roster_hash: lines.skip(n: 1).first(),
-            conclusion: conclusion,
-          }
+        match parse_git_tree_object_id(hex: lines.first()) {
+          Present { value: base_tree_hash } =>
+            match parse_gate_roster_hash_wire(line: lines.skip(n: 1).first()) {
+              Absent => none
+              Present { value: gate_roster_hash } =>
+                Present {
+                  value: MergeAdmissionReceipt {
+                    pr_number: wire_pr_number_from_lines(lines: lines),
+                    head_sha: lines.skip(n: 3).first(),
+                    base_tree_hash: base_tree_hash,
+                    gate_roster_hash: gate_roster_hash,
+                    conclusion: conclusion,
+                  }
+                }
+            }
+          Absent => none
         }
       Absent => none
     }
@@ -401,7 +472,7 @@ fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
 fn stamp_floor_receipt(
   pr_number: Int?,
   head_sha: CommitSha,
-  base_tree_hash: ContentHash,
+  base_tree_hash: GitObjectId,
   floor_exit_code: Int,
 ) -> MergeAdmissionReceipt {
   stamp_floor_receipt_with_conclusion(
@@ -415,7 +486,7 @@ fn stamp_floor_receipt(
 fn stamp_floor_receipt_with_conclusion(
   pr_number: Int?,
   head_sha: CommitSha,
-  base_tree_hash: ContentHash,
+  base_tree_hash: GitObjectId,
   conclusion: CheckConclusion,
 ) -> MergeAdmissionReceipt {
   mint_merge_admission_receipt(

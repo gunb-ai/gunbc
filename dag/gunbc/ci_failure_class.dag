@@ -1,7 +1,7 @@
 module gunbc.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.types { ContentHash, String }
+import std.types { String }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
@@ -15,7 +15,9 @@ import extdeps.github.ci_runner { RunnerLifecycleSignal, ShutdownReceived, runne
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
   merge_admission_would_block,
+  GateRosterHash,
 }
+import extdeps.git.object_store { GitObjectId }
 
 type InfraSignature
   = ResourceTemporarilyUnavailable
@@ -173,8 +175,8 @@ fn merge_freshness_verdict_is_consumed_to_block() -> Bool {
 
 fn merge_admission_blocks_merge(
   receipt: MergeAdmissionReceipt,
-  merge_target_tree_hash: ContentHash,
-  current_roster_hash: ContentHash,
+  merge_target_tree_hash: GitObjectId,
+  current_roster_hash: GateRosterHash,
 ) -> Bool {
   merge_freshness_verdict_is_consumed_to_block()
     && merge_admission_would_block(

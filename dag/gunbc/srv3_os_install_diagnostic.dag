@@ -1,6 +1,11 @@
 module gunbc.srv3_os_install_diagnostic
 
-import std.types { NonEmptyStr, Bool, Int, String, ContentHash, Milliseconds, List }
+import std.types { NonEmptyStr, Bool, Int, String, Milliseconds, List }
+import std.content_hash {
+  ContentHash,
+  as_content_hash_structural,
+  fnv1a64_structural_hex_digest,
+}
 import std.measure { ByteSize, byte_size, Millisecond }
 import std.disposition { Disposition, Terminal }
 import extdeps.bmc.types {
@@ -1180,14 +1185,18 @@ fn parse_serve_port_observation(stdout: String, intent: OsInstallAttemptIntent) 
   }
 }
 
-fn parse_observe_content_hash_observed(stdout: String) -> ContentHash {
+fn parse_observe_content_hash_observed(stdout: String) -> ContentHash? {
   let parts = split(s: stdout, delimiter: "content_hash_observed=")
   if parts.length() <= 1 {
-    "content-hash-unobserved" as ContentHash
+    none
   } else {
     let tail = parts.skip(n: 1).first()
     let line = split(s: tail, delimiter: "\n").first()
-    split(s: line, delimiter: " ").first() as ContentHash
+    match fnv1a64_structural_hex_digest(hex: split(s: line, delimiter: " ").first()) {
+      Present { value: structural } =>
+        Present { value: as_content_hash_structural(structural: structural) }
+      Absent => none
+    }
   }
 }
 
@@ -1200,7 +1209,10 @@ fn parse_serve_iso_observation(stdout: String, intent: OsInstallAttemptIntent) -
       IsoPresent { observed_content_hash: intent.iso_content_hash }
     } else {
       if string_contains(s: stdout, pattern: "iso=mismatch") {
-        IsoPresent { observed_content_hash: parse_observe_content_hash_observed(stdout: stdout) }
+        match parse_observe_content_hash_observed(stdout: stdout) {
+          Present { value: observed } => IsoPresent { observed_content_hash: observed }
+          Absent => IsoMissing
+        }
       } else {
         IsoMissing
       }

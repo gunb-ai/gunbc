@@ -1,0 +1,322 @@
+module test.claim.content_hash_family_grounded_witness
+
+import std.types { NonEmptyStr, Bool, String }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  Sha256Digest,
+  Sha256DigestHex,
+  Sha1Digest,
+  Sha1DigestHex,
+  content_hash_of_value,
+  content_hash_from_structural_digest,
+  content_hash_eq_structural,
+  content_hash_eq_cryptographic,
+  content_hash_eq_sha1,
+  sha256_hex_digest,
+  sha1_hex_digest,
+  as_content_hash_cryptographic,
+  as_content_hash_sha1,
+  content_hash_family,
+  compare_content_hash,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  Fnv1a64StructuralFamily,
+  Sha256Family,
+  Sha1Family,
+  serialize_content_hash,
+}
+import extdeps.git.object_store { git_sha1_object_id, git_object_id_content_hash, GitSha1ObjectId }
+import extdeps.crypto.hash { sha256_digest, sha256_digest_content_hash }
+import extdeps.pin { Pin, ExactPin, admit_pin_integrity, PinIntegrityAdmitted }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.version { VersionIdentity }
+import extdeps.container.oci.descriptor { OciDescriptor, accept_descriptor, DescriptorAccepted }
+import extdeps.container.oci.digest {
+  OciContentDigest,
+  OciSha256Digest,
+  OciSha512Digest,
+  OciOtherDigest,
+  oci_content_digest_from_validated_sha256,
+  oci_sha256_content_digest,
+  parse_oci_content_digest_wire,
+}
+import extdeps.container.oci.media_types { media_type_oci_image_layer_v1_tar_gzip }
+
+data witness_note: String = "feature:content-hash-family-grounded Phase A — family coproduct, per-family eq, carrier construction walls (OciContentDigest/ GateRosterHash/ GitObjectId/ pin CrossFamilyIdentityIncomparable). Phase B (union `==` typecheck refusal) is dissolve-on remainder; R0 interpreter backstop receipted in content_hash_cross_family_eq_v1_seed_bridge_note."
+
+data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+fn witness_sha256_row() -> Sha256Digest {
+  Sha256Digest { hex: witness_sha256_hex as Sha256DigestHex }
+}
+
+fn witness_oci_sha256_row() -> OciContentDigest {
+  oci_content_digest_from_validated_sha256(
+    digest: Sha256Digest { hex: witness_sha256_hex as Sha256DigestHex },
+  )
+}
+data tool_pin_fixture: Pin<CliTool> = Pin {
+  subject: CliTool {
+    name: "cargo",
+    min_version: Absent,
+    installable_via: [SourceApt],
+  },
+  version: "1.93.0" as VersionIdentity,
+  expected_identity: content_hash_of_value(value: "cargo-structural-identity" as NonEmptyStr),
+  selection: ExactPin,
+}
+
+data structural_a: ContentHash = content_hash_of_value(value: "fp-a" as NonEmptyStr)
+data structural_b: ContentHash = content_hash_of_value(value: "fp-b" as NonEmptyStr)
+
+test fn content_hash_from_structural_digest_refuses_non_fingerprint_labels() -> Bool {
+  match content_hash_from_structural_digest(digest: "hash_c") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn content_hash_cited_sha256_literals_validate() -> Bool {
+  content_hash_cited_sha256_literal_validates(
+    hex: "88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986",
+  )
+    && content_hash_cited_sha256_literal_validates(
+      hex: "402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a",
+    )
+    && content_hash_cited_sha256_literal_validates(
+      hex: "5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299",
+    )
+    && content_hash_cited_sha256_literal_validates(hex: witness_sha256_hex)
+}
+
+fn content_hash_cited_sha256_literal_validates(hex: String) -> Bool {
+  match sha256_hex_digest(hex: hex) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn sha256_hex_digest_refuses_invalid_hex() -> Bool {
+  match sha256_hex_digest(hex: "x") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn sha1_hex_digest_refuses_invalid_hex() -> Bool {
+  match sha1_hex_digest(hex: "x") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn structural_family_eq_is_writable() -> Bool {
+  match structural_a {
+    Fnv1a64(a) => content_hash_eq_structural(left: a, right: a)
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+  }
+}
+
+test fn structural_family_eq_distinguishes() -> Bool {
+  match structural_a {
+    Fnv1a64(a) =>
+      match structural_b {
+        Fnv1a64(b) => !content_hash_eq_structural(left: a, right: b)
+        Sha256Hash(_) => false
+        Sha1Hash(_) => false
+      }
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+  }
+}
+
+test fn sha256_family_eq_is_writable() -> Bool {
+  let row = witness_sha256_row()
+  content_hash_eq_cryptographic(
+    left: row,
+    right: row,
+  )
+}
+
+test fn sha256_digest_content_hash_refuses_invalid_hex() -> Bool {
+  match sha256_digest_content_hash(digest: sha256_digest(hex: "x")) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn digest_to_content_hash_bridge_is_total() -> Bool {
+  let row = witness_sha256_row()
+  match sha256_digest_content_hash(
+    digest: sha256_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+  ) {
+    Present { value: bridged } =>
+      match bridged {
+        Sha256Hash(d1) =>
+          match as_content_hash_cryptographic(digest: row) {
+            Sha256Hash(d2) => content_hash_eq_cryptographic(left: d1, right: d2)
+            Fnv1a64(_) => false
+            Sha1Hash(_) => false
+          }
+        Fnv1a64(_) => false
+        Sha1Hash(_) => false
+      }
+    Absent => false
+  }
+}
+
+test fn pin_integrity_uses_structural_family() -> Bool {
+  match admit_pin_integrity(
+    pin: tool_pin_fixture,
+    observed_identity: tool_pin_fixture.expected_identity,
+  ) {
+    PinIntegrityAdmitted { pin: _ } => true
+    _ => false
+  }
+}
+
+test fn oci_descriptor_accepts_sha256_digest() -> Bool {
+  match accept_descriptor(
+    d: OciDescriptor {
+      mediaType: media_type_oci_image_layer_v1_tar_gzip,
+      digest: witness_oci_sha256_row(),
+      size: 1,
+    }
+  ) {
+    DescriptorAccepted { value: _ } => true
+    _ => false
+  }
+}
+
+test fn oci_content_digest_accepts_sha512_wire() -> Bool {
+  let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  match parse_oci_content_digest_wire(raw: concat("sha512:", hex)) {
+    Present { value: d } =>
+      match d {
+        OciSha512Digest(body) => true
+        OciSha256Digest(_) => false
+        OciOtherDigest(_) => false
+      }
+    Absent => false
+  }
+}
+
+test fn oci_content_digest_refuses_reserved_algorithm_in_other_arm() -> Bool {
+  match parse_oci_content_digest_wire(
+    raw: "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986",
+  ) {
+    Present { value: d } =>
+      match d {
+        OciSha256Digest(_) => true
+        OciSha512Digest(_) => false
+        OciOtherDigest(_) => false
+      }
+    Absent => false
+  }
+}
+
+test fn oci_content_digest_refuses_empty_algorithm_wire() -> Bool {
+  match parse_oci_content_digest_wire(raw: ":payload") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn oci_content_digest_accepts_other_algorithm_wire() -> Bool {
+  match parse_oci_content_digest_wire(raw: "sha384:abc") {
+    Present { value: d } =>
+      match d {
+        OciOtherDigest(body) => (body.algorithm as String) == "sha384"
+        OciSha256Digest(_) => false
+        OciSha512Digest(_) => false
+      }
+    Absent => false
+  }
+}
+
+test fn oci_content_digest_refuses_invalid_algorithm_charset_in_other_arm() -> Bool {
+  match parse_oci_content_digest_wire(raw: "!:payload") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn oci_content_digest_refuses_invalid_encoded_charset_in_other_arm() -> Bool {
+  match parse_oci_content_digest_wire(raw: "custom:!") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn oci_content_digest_refuses_empty_encoded_in_other_arm() -> Bool {
+  match parse_oci_content_digest_wire(raw: "custom:") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn serialize_sha256_prefix_is_wire_form_not_discriminant() -> Bool {
+  let row = witness_sha256_row()
+  let wire = serialize_content_hash(hash: as_content_hash_cryptographic(digest: row))
+  (wire as String) == "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+
+test fn content_hash_family_tags_cryptographic() -> Bool {
+  match content_hash_family(hash: as_content_hash_cryptographic(digest: witness_sha256_row())) {
+    Sha256Family => true
+    Fnv1a64StructuralFamily => false
+    Sha1Family => false
+  }
+}
+
+test fn content_hash_family_tags_structural() -> Bool {
+  match content_hash_family(hash: structural_a) {
+    Fnv1a64StructuralFamily => true
+    Sha256Family => false
+    Sha1Family => false
+  }
+}
+
+test fn compare_content_hash_tags_cross_family_incomparable() -> Bool {
+  match compare_content_hash(
+    left: structural_a,
+    right: as_content_hash_cryptographic(digest: witness_sha256_row()),
+  ) {
+    ContentHashCrossFamilyIncomparable => true
+    ContentHashEqual => false
+    ContentHashDifferent => false
+  }
+}
+
+test fn compare_content_hash_tags_same_family_different() -> Bool {
+  match compare_content_hash(left: structural_a, right: structural_b) {
+    ContentHashDifferent => true
+    ContentHashEqual => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+test fn git_sha1_object_id_maps_to_sha1_family() -> Bool {
+  let oid = match git_sha1_object_id(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
+    Present { value: v } => v
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest {
+          hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as Sha1DigestHex,
+        },
+      }
+  }
+  match git_object_id_content_hash(oid: oid) {
+    Sha1Hash(d) => content_hash_eq_sha1(
+      left: d,
+      right: Sha1Digest {
+        hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as Sha1DigestHex,
+      },
+    )
+    Fnv1a64(_) => false
+    Sha256Hash(_) => false
+  }
+}

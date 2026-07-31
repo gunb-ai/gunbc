@@ -1,6 +1,7 @@
 module gunbc.roadmap_static_site
 
-import std.types { String, Bool, List, NonEmptyStr, ContentHash, HttpMethod, GET, Port }
+import std.types { String, Bool, List, NonEmptyStr, HttpMethod, GET, Port }
+import std.content_hash { ContentHash }
 import std.content_hash { content_hash_atom }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

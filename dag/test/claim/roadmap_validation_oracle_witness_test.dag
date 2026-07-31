@@ -1,7 +1,16 @@
 module test.claim.roadmap_validation_oracle_witness_test
 
-import std.types { Bool, String, NonEmptyStr, List, FilePath, ContentHash }
-import std.content_hash { content_hash_atom }
+import std.types { Bool, String, NonEmptyStr, List, FilePath }
+import std.content_hash {
+  ContentHash,
+  Sha256Digest,
+  Sha256DigestHex,
+  content_hash_atom,
+  as_content_hash_structural,
+  content_hash_of_value,
+  as_content_hash_cryptographic,
+}
+import extdeps.pin { CrossFamilyIdentityIncomparable }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
@@ -34,6 +43,7 @@ import gunbc.roadmap_validation_oracle {
   ValidationOracleMissing,
   ValidationOracleAmbiguous,
   ValidationOracleMoved,
+  ValidationOracleCrossFamilyIdentityIncomparable,
   ValidationOracleUnpinnedDependency,
   OracleDependsOnUnpinnedOracle,
   ValidationPinReceiptUnreadable,
@@ -53,6 +63,7 @@ import gunbc.roadmap_validation_oracle {
   validation_verdict_key,
   validation_verdict_detail,
   validation_refusal_cause_key,
+  validation_oracle_pin_refusal_cause,
   validation_receipt_json,
   validation_receipt_identity_prefix,
   validation_receipt_decode,
@@ -136,7 +147,9 @@ fn identity_of_source(source: String) -> ContentHash {
   ) {
     OracleSetObserved { identity, observations: _ } => identity
     OracleSetIncomplete { blocking: _, observations: _ } =>
-      content_hash_atom(value: "fixture-oracle-was-not-observable" as NonEmptyStr)
+      as_content_hash_structural(
+        structural: content_hash_atom(value: "fixture-oracle-was-not-observable" as NonEmptyStr),
+      )
   }
 }
 
@@ -523,6 +536,35 @@ test fn moved_oracle_detail_locates_both_identities() -> Bool {
     && string_contains(s: detail, pattern: "proves nothing")
 }
 
+data cross_family_pin_refusal_note: String = "Cross-family incomparable is NOT oracle drift. Collapsing it into ValidationOracleMoved would send a human to re-run CI against a moved witness when the real fault is that the pin channel stored one hash family and the observation carried another — a modeling error upstream, not staleness."
+
+test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
+  let expected = content_hash_of_value(value: "pinned-structural-oracle")
+  let observed = as_content_hash_cryptographic(
+    digest: Sha256Digest {
+      hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as Sha256DigestHex,
+    },
+  )
+  let cause = validation_oracle_pin_refusal_cause(
+    cause: CrossFamilyIdentityIncomparable {
+      expected: expected,
+      observed: observed,
+    },
+  )
+  match cause {
+    ValidationOracleCrossFamilyIdentityIncomparable { expected: e, observed: o } =>
+      (e == expected)
+        && (o == observed)
+        && (validation_refusal_cause_key(cause: cause) == "oracle-cross-family-incomparable")
+        && string_contains(
+          s: validation_verdict_detail(verdict: ValidationRefused { cause: cause }),
+          pattern: "different hash families",
+        )
+    ValidationOracleMoved { expected: _, observed: _ } => false
+    _ => false
+  }
+}
+
 data verify_lamp_note: String = "The lamp is the seam where the distinction has to survive, because it is what a human actually looks at. These assert the three verdicts land on three DIFFERENT segment states and that an absent receipt still reads pending — the last one being the property the old hardcoded lamp had for free and that a receipt-reading lamp could easily lose, since the tempting shortcut is to paint Verify from the agent's own completion."
 
 fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
@@ -598,6 +640,23 @@ test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
     },
   ))
   refused == "refused" && failed == "failed" && refused != failed
+}
+
+test fn verify_lamp_shows_cross_family_refusal_as_refused_not_moved() -> Bool {
+  let expected = content_hash_of_value(value: "pinned-structural-oracle")
+  let observed = as_content_hash_cryptographic(
+    digest: Sha256Digest {
+      hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as Sha256DigestHex,
+    },
+  )
+  verify_lamp_state(receipt: receipt_for(
+    verdict: ValidationRefused {
+      cause: ValidationOracleCrossFamilyIdentityIncomparable {
+        expected: expected,
+        observed: observed,
+      },
+    },
+  )) == "refused"
 }
 
 data not_run_receipt_note: String = "review 45271. The receipt-presence seam used to ask whether the receipt TEXT was empty, which answered the same way for three different worlds — no file, an unreadable file, an empty one — and then ran the validation and overwrote whatever was there. Absent and unreadable have opposite correct actions, so dispatch now writes a not-run receipt and absence stops being a state the seam has to interpret. These assert the two halves that makes true: a not-run receipt is DISTINGUISHABLE from every recorded verdict (so the belt can tell 'never ran' from 'already ran' without consulting the filesystem's error string), and it reads as pending at the lamp rather than as a verdict."

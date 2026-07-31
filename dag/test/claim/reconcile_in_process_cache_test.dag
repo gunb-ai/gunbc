@@ -1,9 +1,10 @@
 module test.claim.reconcile_in_process_cache
 
+import std.content_hash { ContentHash, content_hash_of_value }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data shared_subject_digest: ContentHash = "reconcile-in-process-witness-shared-subject-digest"
-
+data shared_subject_digest: ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
 test fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
   let row = cache_interface_facts_from_catalog(row: parse_cache_facts)
   (catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == HandAuthoredString)

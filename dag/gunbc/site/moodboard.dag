@@ -282,7 +282,7 @@ fn themes_serialized() -> String {
 }
 
 fn moodboard_digest() -> String {
-  content_hash_atom(value: concat(register_thesis, themes_serialized()) as NonEmptyStr) as String
+  content_hash_atom(value: concat(register_thesis, themes_serialized()) as NonEmptyStr).digest as String
 }
 
 fn short_digest(digest: String) -> String {

@@ -1,6 +1,7 @@
 module gunbc.scm_compatibility.pijul
 
-import std.types { Bytes, ContentHash, List, NonEmptyStr, String }
+import std.types { Bytes, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets }
 import v2.std.optional { Present, Absent }

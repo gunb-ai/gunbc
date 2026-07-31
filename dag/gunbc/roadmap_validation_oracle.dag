@@ -1,7 +1,16 @@
 module gunbc.roadmap_validation_oracle
 
-import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, ContentHash }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+  as_content_hash_structural,
+  fnv1a64_structural_hex_digest,
+  serialize_content_hash,
+}
 import extdeps.pin {
   Pin,
   ExactPin,
@@ -37,7 +46,7 @@ import extdeps.languages.json.emit {
   serialize_json_object_prefix,
 }
 
-data validation_oracle_authority_note: String = "The single authority for WHAT a verification run is run AGAINST, kept separate from whether that run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and a human ran the receipts by hand; running them automatically is only worth anything if the thing being run cannot be edited by the agent whose work it judges. That is what this module models: the oracle a declared validation names, its observed identity, and the pin captured before the agent started. It mints no new digest concept — identity is std.types.ContentHash produced through std.content_hash, the same authority v1's surface fingerprints and v2's node hashing already use — and no new pin concept: expected-versus-observed is extdeps.pin, reached through admit_pin_integrity, so this module supplies the SUBJECT and the OBSERVATION and borrows the adjudication."
+data validation_oracle_authority_note: String = "The single authority for WHAT a verification run is run AGAINST, kept separate from whether that run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and a human ran the receipts by hand; running them automatically is only worth anything if the thing being run cannot be edited by the agent whose work it judges. That is what this module models: the oracle a declared validation names, its observed identity, and the pin captured before the agent started. Per-oracle identity is std.content_hash.Fnv1a64Structural — content_hash_tagged_structural and content_hash_atom, the same fnv1a64 structural authority v1's surface fingerprints and v2's node hashing already use — and the ordered set fold combines those structurals into one ContentHash for the pin seam; cryptographic families are unwritable on OracleFound.identity (review 45483). Pin expected-versus-observed is extdeps.pin via admit_pin_integrity: this module supplies the SUBJECT and the OBSERVATION and borrows the adjudication."
 
 data validation_oracle_grain_note: String = "WHY THE PINNED IDENTITY IS THE ENTRY FILE AND NOT THE NAMED DECLARATION ALONE, recorded because the narrower grain is the intuitive choice and it is UNSOUND for this purpose. A declared validation is `gunbc run --claim-run --entry E --function F`. Pinning only F's declaration text would leave every helper, data row, and fixture in E editable by the agent whose work F judges — and a witness is overwhelmingly assertions ABOUT values declared beside it, so weakening a fixture weakens the oracle just as effectively as weakening the assertion. The digest is therefore over the whole entry file. Going FURTHER — pinning the entry's whole import closure — is equally wrong in the opposite direction: the subject under test is IN that closure (a frontier witness imports the frontier it tests), so a closure pin would refuse the very diff the node exists to produce. The entry file is the boundary that separates oracle from subject, and it is not an arbitrary one: the corpus already enforces it structurally, because a `test fn` outside a `*_test.dag` file is a naming-hygiene violation at the floor. So the pin's grain rides an existing wall rather than inventing a line. THE RESIDUE THIS GRAIN LEAVES IS NOT DEFERRED — it is made unreachable, and validation_oracle_unpinned_dependency_note owns that decision, its measurement, and its lane. An earlier version of this note ended here with a dissolve-on and shipped the hole; review 45278 was right that a fail-open in the feature's own safety property cannot be a declared scaffold, and the correction is recorded there rather than re-spelled here."
 
@@ -55,7 +64,7 @@ data validation_oracle_unpinned_dependency_note: String = "review 45278, and the
 type OracleObservation
   = OracleFound {
       oracle: ValidationOracleRef,
-      identity: ContentHash,
+      identity: Fnv1a64Structural,
     }
   | OracleMissing {
       oracle: ValidationOracleRef,
@@ -101,8 +110,8 @@ data validation_oracle_identity_tag: NonEmptyStr = "gunbc.validation-oracle/v1"
 
 data validation_oracle_set_tag: NonEmptyStr = "gunbc.validation-oracle-set/v1"
 
-fn validation_oracle_source_identity(source: String) -> ContentHash {
-  content_hash_tagged(
+fn validation_oracle_source_identity(source: String) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
     tag: validation_oracle_identity_tag,
     payload: content_hash_atom(value: source as NonEmptyStr),
   )
@@ -233,7 +242,7 @@ fn validation_oracle_scopes(
   }
 }
 
-data validation_oracle_set_identity_note: String = "A contract may declare several validations, so the pinned fact is one identity over the ORDERED set of their oracles, folded left with std.content_hash.combine under a tag. One digest rather than a list keeps the persisted pin a single value with a single home, and ordering is the contract's own declaration order, which is already the order the validations run in — so the fold introduces no ordering decision of its own. Any oracle moving moves the combined identity, which is the property the pin needs; WHICH one moved is recovered from the per-oracle observations carried beside the refusal, not from the digest."
+data validation_oracle_set_identity_note: String = "A contract may declare several validations, so the pinned fact is one identity over the ORDERED set of their oracles, folded left with content_hash_combine_structural under a tag. One digest rather than a list keeps the persisted pin a single value with a single home, and ordering is the contract's own declaration order, which is already the order the validations run in — so the fold introduces no ordering decision of its own. Any oracle moving moves the combined identity, which is the property the pin needs; WHICH one moved is recovered from the per-oracle observations carried beside the refusal, not from the digest."
 
 type OracleSetObservation
   = OracleSetObserved {
@@ -247,7 +256,7 @@ type OracleSetObservation
 
 fn validation_oracle_observation_identity(
   observation: OracleObservation,
-) -> ContentHash? {
+) -> Fnv1a64Structural? {
   match observation {
     OracleFound { oracle: _, identity } => Present { value: identity }
     OracleMissing { oracle: _, detail: _ } => none
@@ -295,16 +304,18 @@ fn validation_oracle_set_observe(
       }
     Absent =>
       OracleSetObserved {
-        identity: fold(
-          observations,
-          init: content_hash_atom(value: validation_oracle_set_tag),
-          f: fn(acc, o) {
-            match validation_oracle_observation_identity(observation: o) {
-              Present { value: identity } =>
-                content_hash_combine(acc, identity)
-              Absent => acc
-            }
-          },
+        identity: as_content_hash_structural(
+          structural: fold(
+            observations,
+            init: content_hash_atom(value: validation_oracle_set_tag),
+            f: fn(acc, o) {
+              match validation_oracle_observation_identity(observation: o) {
+                Present { value: structural } =>
+                  content_hash_combine_structural(left: acc, right: structural)
+                Absent => acc
+              }
+            },
+          ),
         ),
         observations: observations,
       }
@@ -334,6 +345,10 @@ type ValidationRefusalCause
       imports: List<String>,
     }
   | ValidationOracleMoved {
+      expected: ContentHash,
+      observed: ContentHash,
+    }
+  | ValidationOracleCrossFamilyIdentityIncomparable {
       expected: ContentHash,
       observed: ContentHash,
     }
@@ -390,6 +405,40 @@ fn validation_oracle_incomplete_cause(
 
 data validation_oracle_pin_admission_note: String = "The pin adjudication is extdeps.pin's admit_pin_integrity and nothing else — this module builds the Pin and reads its answer, so expected-versus-observed has one home. Only expected_identity crosses the disk seam between dispatch and verification, because it is the only fact that cannot be re-derived at verification time: the subject comes from the node's own execution contract, the selection is ExactPin by construction (a dispatch pin records an identity OBSERVED from the freshly created worktree, never one resolved from a moving reference), and the version is the revision that worktree was created at, which is captured beside the identity for the same reason. Re-deriving the subject rather than persisting it is deliberate and it fails closed: if the contract changed between dispatch and verification, the re-derived oracle no longer matches the stored identity and the run refuses, which is the correct answer — the pin recorded at dispatch is no longer the pin the contract now names."
 
+fn validation_oracle_parse_pinned_identity_wire(text: String) -> ContentHash? {
+  if text == "" {
+    none
+  } else {
+    match fnv1a64_structural_hex_digest(hex: text) {
+      Present { value: structural } =>
+        Present { value: as_content_hash_structural(structural: structural) }
+      Absent => none
+    }
+  }
+}
+
+fn validation_oracle_parse_pinned_revision_wire(text: String) -> VersionIdentity? {
+  if text == "" {
+    none
+  } else {
+    Present { value: text as NonEmptyStr as VersionIdentity }
+  }
+}
+
+fn validation_oracle_pin_recorded(
+  identity: ContentHash?,
+  revision: VersionIdentity?,
+) -> Bool {
+  match identity {
+    Present { value: _ } =>
+      match revision {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 fn validation_oracle_pin(
   oracles: List<ValidationOracleRef>,
   expected_identity: ContentHash,
@@ -424,6 +473,15 @@ fn validation_oracle_pin_refusal_cause(
     PinAbsent =>
       ValidationPinReceiptUnreadable {
         detail: "no oracle identity was recorded for this attempt at dispatch",
+      }
+    CrossFamilyIdentityIncomparable { expected, observed } =>
+      ValidationOracleCrossFamilyIdentityIncomparable {
+        expected: expected,
+        observed: observed,
+      }
+    CitedDigestIdentityUnprojectable =>
+      ValidationPinReceiptUnreadable {
+        detail: "the pin subject's cited digest cannot be projected to ContentHash; the hash bridge refused",
       }
   }
 }
@@ -519,6 +577,8 @@ fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
     ValidationOracleUnpinnedDependency { entry: _, imports: _ } =>
       "oracle-unpinned-dependency"
     ValidationOracleMoved { expected: _, observed: _ } => "oracle-moved"
+    ValidationOracleCrossFamilyIdentityIncomparable { expected: _, observed: _ } =>
+      "oracle-cross-family-incomparable"
     ValidationOraclePinUnrecorded { channel: _ } => "oracle-pin-unrecorded"
     ValidationPinReceiptUnreadable { detail: _ } => "pin-receipt-unreadable"
     ValidationCommandUnrealized => "command-unrealized"
@@ -563,6 +623,14 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
         ", observed ",
         observed as String,
         ". A run against an oracle the attempt itself moved proves nothing",
+      ], "")
+    ValidationOracleCrossFamilyIdentityIncomparable { expected, observed } =>
+      join([
+        "pinned oracle identity and observed identity are different hash families and cannot be compared: expected ",
+        expected as String,
+        ", observed ",
+        observed as String,
+        ". This is a modeling error upstream of the pin gate, not oracle drift",
       ], "")
     ValidationOraclePinUnrecorded { channel } =>
       join([
@@ -636,7 +704,14 @@ fn validation_oracle_observation_json(
         json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
         json_kv(key: "function", value: json_string(s: oracle.function as String)),
         json_kv(key: "state", value: json_string(s: "found")),
-        json_kv(key: "identity", value: json_string(s: identity as String)),
+        json_kv(
+          key: "identity",
+          value: json_string(
+            s: serialize_content_hash(
+              hash: as_content_hash_structural(structural: identity),
+            ),
+          ),
+        ),
       ])
     OracleMissing { oracle, detail } =>
       json_object(members: [

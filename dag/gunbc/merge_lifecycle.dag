@@ -1,13 +1,17 @@
 module gunbc.merge_lifecycle
 
-import std.types { ContentHash, CommitSha, String, List, Bool, Int }
-import std.content_hash { content_hash_atom, content_hash_tagged }
+import std.types { CommitSha, String, List, Bool, Int }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import extdeps.github.checks { Success }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id, GitSha1ObjectId }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
   AdmissionPolicy,
   policy_admits,
   mint_merge_admission_receipt,
+  GateRosterHash,
+  merge_admission_fixture_git_tree_from_tagged,
 }
 
 data merge_lifecycle_authority_note: String = "Lifecycle DYNAMICS over the gunbc.merge_admission authority — no second admission predicate (DESIGN 2: derive, never restate). gunbc.merge_admission owns the static question (is THIS receipt admissible against THIS target tree and roster); this module owns the temporal one (does a merge PROCESS whose merge step consults policy_admits ever advance main to a tree the process never verified). Squash semantics per gunbc.plans.branch_merge_admission_model section 1: the landed tree is the PR applied to CURRENT main at merge time (squash_result_tree), never the base the receipt recorded — which is exactly why staleness is expressible at all. Trees and rosters are symbolic fixture identities (content_hash_atom roots advanced by content_hash_tagged, injective in tag x payload), the same fixture idiom test.claim.merge_admission_witness already uses for its b0/b1/r0/r1 hashes."
@@ -28,24 +32,32 @@ type LifecycleEvent
   | RosterBump
 
 type VerifiedRun {
-  tree: ContentHash
-  roster: ContentHash
+  tree: GitObjectId
+  roster: GateRosterHash
 }
 
 type LifecycleState {
-  main_tip: ContentHash
-  current_roster: ContentHash
+  main_tip: GitObjectId
+  current_roster: GateRosterHash
   verified: List<VerifiedRun>
   receipts: List<MergeAdmissionReceipt>
   unverified_tip_seen: Bool
 }
 
-fn squash_result_tree(pr: PrIdentity, base: ContentHash) -> ContentHash {
-  content_hash_tagged(tag: pr.squash_tag, payload: base)
+fn squash_result_tree(pr: PrIdentity, base: GitObjectId) -> GitObjectId {
+  merge_admission_fixture_git_tree_from_tagged(tag: pr.squash_tag as NonEmptyStr, base: base)
 }
 
 fn initial_lifecycle_state() -> LifecycleState {
-  let tip0 = content_hash_atom(value: "merge-lifecycle-main-tip-0")
+  let tip0 = match git_sha1_object_id(hex: "0000000000000000000000000000000000000001") {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest {
+          hex: "0000000000000000000000000000000000000001" as Sha1DigestHex,
+        },
+      }
+  }
   let roster0 = content_hash_atom(value: "merge-lifecycle-roster-0")
   LifecycleState {
     main_tip: tip0,
@@ -75,8 +87,8 @@ fn merge_enabled(
   policy: AdmissionPolicy,
   receipts: List<MergeAdmissionReceipt>,
   pr_number: Int,
-  tip: ContentHash,
-  roster: ContentHash,
+  tip: GitObjectId,
+  roster: GateRosterHash,
 ) -> Bool {
   fold(latest_receipt_for(receipts: receipts, pr_number: pr_number), init: false, f: fn(acc, r) {
     acc || policy_admits(
@@ -129,7 +141,10 @@ fn apply_lifecycle_event(policy: AdmissionPolicy, state: LifecycleState, ev: Lif
     RosterBump =>
       LifecycleState {
         main_tip: state.main_tip,
-        current_roster: content_hash_tagged(tag: "merge-lifecycle-roster-bump", payload: state.current_roster),
+        current_roster: content_hash_tagged_structural(
+          tag: "merge-lifecycle-roster-bump",
+          payload: state.current_roster
+        ),
         verified: state.verified,
         receipts: state.receipts,
         unverified_tip_seen: state.unverified_tip_seen,
