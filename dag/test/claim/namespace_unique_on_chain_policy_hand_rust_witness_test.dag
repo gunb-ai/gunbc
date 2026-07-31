@@ -63,7 +63,11 @@ test fn namespace_unique_on_chain_policy_hand_rust_total_is_the_sum_of_its_rows(
 }
 
 test fn namespace_unique_on_chain_policy_merge_repair_growth_is_censused() -> Bool {
-  namespace_unique_on_chain_policy_merge_repair_hand_rust_loc_delta_net > 0 &&
+  namespace_unique_on_chain_policy_merge_repair_hand_rust_loc_delta_net == 4 &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_merge_repair_hand_rust_census_note,
+      pattern: "+4 lines",
+    ) &&
     string_contains(
       s: namespace_unique_on_chain_policy_merge_repair_hand_rust_census_note,
       pattern: "typecheck_module",
@@ -71,6 +75,17 @@ test fn namespace_unique_on_chain_policy_merge_repair_growth_is_censused() -> Bo
     string_contains(
       s: namespace_unique_on_chain_policy_merge_repair_hand_rust_census_note,
       pattern: "DISSOLVE-ON:",
+    )
+}
+
+test fn namespace_unique_on_chain_policy_cli_run_carries_no_stale_absolutes() -> Bool {
+  !string_contains(
+    s: namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
+    pattern: "goes 32513",
+  ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
+      pattern: "ONLY as a delta",
     )
 }
 

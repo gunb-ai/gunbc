@@ -425,23 +425,10 @@ pub fn occurrence_containment_paths_equal(
 pub fn occurrence_containment_path_query_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath. Prefix flattens ancestors++terminal and consumes std.types.is_prefix_of (review 45014 / review 45081) — never ancestor-membership alone (that admitted [A]→X as a prefix of [B,X]→Y).".to_string()
+            "Canonical containment-path query (review 44814): occurrence_containment_path_is_prefix_of is the ONE surface for prefix tests over OccurrenceContainmentPath. It flattens ancestors++terminal and consumes std.types.is_prefix_of (review 45014 / review 45081) — never ancestor-membership alone (that admitted [A]→X as a prefix of [B,X]→Y).\n\nDELETED, NOT MOVED: occurrence_containment_path_contains_ancestor was the sibling ancestor-membership surface this row used to name. The review 45014 / 45081 correction is exactly what orphaned it — once prefix stopped consulting ancestor membership alone, nothing called it, and a corpus-wide check (dag, src/v2, src/v1) found zero consumers: its own declaration, this note, and its own generated emission. Deleting it completes that correction rather than leaving a dead second surface beside the one authority (review 45409, DESIGN section 5 dead-scaffold wall).\n\nWHY DELETED RATHER THAN ROUTED THROUGH A CANONICAL any: the review proposed folding it onto v2.std.algebra's any. That would be a section 3 inversion -- any exists ONLY in src/v2/std/algebra.dag, module v2.std.algebra, which is the v2 compiler's private copy of std; dag/std/algebra.dag, the std authority, has no any. Making std.occurrence_identity import v2.std.algebra would point the authority at a copy of itself. With zero consumers there is no surface to preserve, so deletion is both the smaller change and the correct one; if an ancestor-membership query is ever needed again it should arrive with its consumer, and any should be lifted into std.algebra first.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_containment_path_contains_ancestor(
-    ancestors: Rc<Vec<OccurrenceId>>,
-    target: OccurrenceId,
-) -> bool {
-    ancestors
-        .clone()
-        .iter()
-        .cloned()
-        .fold(false, |found: bool, id: OccurrenceId| {
-            (found || (id.value.clone() == target.value.clone()))
-        })
 }
 
 pub fn occurrence_containment_path_id_sequence(
