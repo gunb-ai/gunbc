@@ -16832,41 +16832,10 @@ pub fn merge_global_bare_variant_locals(
     state: Rc<VariantFoldState>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<VariantFoldState> {
-<<<<<<< HEAD
-    Rc::new(v1_rt::map_keys(&global_bare)).iter().cloned().fold(
-        state.clone(),
-        |acc: _, name: String| match v1_rt::map_get(&global_bare, name.clone())
-            .as_deref()
-            .cloned()
-        {
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-                let owner = binding.resolved.clone();
-                if ((owner.connective.clone() == Connective::Disj)
-                    && has_child_named(owner.clone(), name.clone(), source_indices.clone()))
-                {
-                    match v1_rt::map_get(&acc.locals.clone(), name.clone()) {
-                        Some(_) => acc.clone(),
-                        None => insert_variant_owner_checked(
-                            acc.clone(),
-                            name.clone(),
-                            owner.clone(),
-                            source_indices.clone(),
-                            module_name.clone(),
-                        ),
-                    }
-                } else {
-                    acc.clone()
-                }
-            }
-            _ => acc.clone(),
-        },
-    )
-=======
     Rc::new(VariantFoldState {
         locals: v1_rt::rc_map_merge(global_variant_base.clone(), state.locals.clone()),
         collision_errors: state.collision_errors.clone(),
     })
->>>>>>> origin/main
 }
 
 pub fn build_global_bare_census(
