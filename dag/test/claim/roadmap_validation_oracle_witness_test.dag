@@ -583,6 +583,18 @@ test fn members_after_the_identity_pair_do_not_disturb_the_decode() -> Bool {
   )
 }
 
+data forged_escape_note: String = "review 45642, stated at the boundary that would have been fooled rather than only at the parser. `p\\assed` is not JSON, but the unescaper's unknown-escape arm dropped the backslash and produced exactly the string this reader accepts as a verdict - so a malformed receipt decoded as a pass. The positive control beside it is what makes the claim about the FORGERY rather than about the decoder refusing things generally."
+
+test fn a_verdict_forged_with_an_unknown_escape_is_undecodable() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"p\\assed\"}",
+  )
+    && decodes_as(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}",
+      expected: "passed",
+    )
+}
+
 data verdict_key_agreement_note: String = "validation_verdict_key is the emitter's authority for a verdict's wire key, and validation_receipt_verdict_keys is the reader's list of the keys it accepts. Those are two surfaces over one fact and they can drift: adding a fifth ValidationVerdict variant updates the emitter by exhaustiveness, because the match must gain an arm, but the reader's list is an ordinary data row that nothing forces anyone to extend - so the emitter would write a receipt its own reader refuses, and the failure would surface as an undecodable verdict rather than as a missing case. This pins them to each other by round-tripping every verdict the emitter can produce, which is the same shape as witness_json_text_parse_agrees_with_lexeme_surface_on_exponents: the forked surfaces are the thing under test, not either surface alone."
 
 fn verdict_round_trips(verdict: ValidationVerdict) -> Bool {

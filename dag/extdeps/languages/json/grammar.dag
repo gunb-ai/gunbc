@@ -213,6 +213,36 @@ fn json_text_starts_with_at(s: String, i: Int, lit: String) -> Bool {
   substring(s: s, start: i, end: i + lit.length()) == lit
 }
 
+data json_escape_production_note: String = "RFC 8259 section 7: escape = %x22 / %x5C / %x2F / %x62 / %x66 / %x6E / %x72 / %x74 / %x75 4HEXDIG. The set is CLOSED and \\u carries exactly four hex digits. This scanner previously consumed the backslash and whatever followed it without deciding whether that character named an escape at all, so every unknown escape was accepted (review 45642 RED). The consequence was not cosmetic and not confined to the scanner: the unescaper's unknown-escape arm dropped the backslash, so `\"p\\assed\"` - which is not JSON - decoded to the string `passed` and satisfied the validation receipt's verdict identity. A malformed document fabricated a pass, which is the fail-open DESIGN 5 forbids at exactly the boundary that exists to prevent it.\\n\\nThe refusal belongs HERE rather than in the unescaper because the escape set is a grammar production, and deciding it at the span scan means the invalid state never reaches the value builder - construction over validation. It also fixes both readings in one place: parse_json's strings come through this scanner, and so does the span question extdeps.llm.cli asks, so the two cannot disagree about what an escape is.\\n\\nNOT closed here, declared rather than left silent: RFC 8259 also forbids UNESCAPED control characters (%x00-1F) inside a string, and this scanner still admits them. That gap cannot fabricate an identity the way an unknown escape can - a raw control character inside `passed` makes the string unequal to `passed` rather than equal to it - so it is a lesser member of the same family. Dissolve-on: the char production is scanned as a closed set rather than as everything-but-quote-and-backslash."
+
+fn is_json_hex_digit_char(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789abcdefABCDEF", pattern: c)
+}
+
+fn json_text_escape_end(s: String, i: Int) -> Int {
+  if i >= s.length() {
+    0 - 1
+  } else {
+    let e = char_at(s: s, i: i)
+    if e == "\"" || e == "\\" || e == "/" || e == "b" || e == "f"
+      || e == "n" || e == "r" || e == "t" {
+      i + 1
+    } else if e == "u" {
+      if i + 5 <= s.length()
+        && is_json_hex_digit_char(c: char_at(s: s, i: i + 1))
+        && is_json_hex_digit_char(c: char_at(s: s, i: i + 2))
+        && is_json_hex_digit_char(c: char_at(s: s, i: i + 3))
+        && is_json_hex_digit_char(c: char_at(s: s, i: i + 4)) {
+        i + 5
+      } else {
+        0 - 1
+      }
+    } else {
+      0 - 1
+    }
+  }
+}
+
 fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
   if i >= s.length() {
     json_text_parse_fail(end: i)
@@ -221,10 +251,11 @@ fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
     if c == "\"" {
       json_text_parse_ok(end: i + 1)
     } else if c == "\\" {
-      if i + 1 >= s.length() {
+      let after = json_text_escape_end(s: s, i: i + 1)
+      if after < 0 {
         json_text_parse_fail(end: i)
       } else {
-        json_text_parse_string_inner(s: s, i: i + 2)
+        json_text_parse_string_inner(s: s, i: after)
       }
     } else {
       json_text_parse_string_inner(s: s, i: i + 1)

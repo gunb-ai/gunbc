@@ -131,3 +131,37 @@ test fn the_provider_event_line_that_caught_the_trailing_comma_is_refused() -> B
   !parses(text: "\{\"type\":\"turn.completed\",}")
     && parses(text: "\{\"type\":\"turn.completed\"}")
 }
+
+data unknown_escape_note: String = "review 45642 RED. RFC 8259 section 7 closes the escape set, and the scanner used to consume the backslash and whatever followed without deciding whether it named an escape - so the unescaper's unknown arm dropped the backslash and `p\\assed` became `passed`. The first claim is the reviewer's exact case and it is the one that matters, because the fabricated string is not merely wrong: it equals a verdict the receipt reader accepts, so a malformed document produced a pass. The rest pin the boundary in both directions - every escape the RFC lists still decodes, and every shape it does not list refuses - because a fix that simply refused more would also have broken the emitter's own output."
+
+test fn an_unknown_escape_refuses_rather_than_dropping_the_backslash() -> Bool {
+  !parses(text: "\"p\\assed\"")
+    && !parses(text: "\"\\a\"")
+    && !parses(text: "\"\\x41\"")
+    && !parses(text: "\"\\'\"")
+}
+
+test fn a_short_or_non_hex_unicode_escape_refuses() -> Bool {
+  !parses(text: "\"\\uZZZZ\"")
+    && !parses(text: "\"\\u00\"")
+    && !parses(text: "\"\\u00G1\"")
+    && !parses(text: "\"\\u\"")
+}
+
+test fn every_escape_the_rfc_lists_still_decodes() -> Bool {
+  parses(text: "\"\\\"\"")
+    && parses(text: "\"\\\\\"")
+    && parses(text: "\"\\/\"")
+    && parses(text: "\"\\b\"")
+    && parses(text: "\"\\f\"")
+    && parses(text: "\"\\n\"")
+    && parses(text: "\"\\r\"")
+    && parses(text: "\"\\t\"")
+    && parses(text: "\"\\u0041\"")
+    && parsed_string_of(text: "\"\\/\"") == "/"
+}
+
+test fn a_forged_verdict_escape_does_not_survive_into_a_string() -> Bool {
+  !parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"p\\assed\"}")
+    && parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}")
+}
