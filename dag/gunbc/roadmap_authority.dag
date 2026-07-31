@@ -1899,7 +1899,7 @@ fn guarantee_ladder_section() -> RoadmapSection {
           intricacy: IntricacyMedium,
           volume: VolumeSmall,
           t: fields(
-            headline: "Unknown method R0 → R2: delete the receiver-type fabrication; refuse zero-resolution",
+            headline: "Method existence climbs to R2: delete the receiver-type fabrication; refuse zero-resolution (current rung: the census — R0 proven on the interpretation path only, emission path unmeasured)",
             boundary: "An unresolved method refuses at compile with name, receiver type, and locus. Delete the method_pipe_map_keys_values_fallback else-arm (receiver type, empty diags) and the resolve_builtin_call_type Absent => unit_type arm. Resolution consults the union of today's legitimate paths; refusal fires only on cardinality zero — the ambiguity (>1) half is deliberately a census here, walled after primitive-identity-join defines sameness.",
             displaced_cost: "The #7479 class (typechecked filter_map, HTTP 500 at dispatch) becomes unwritable-to-ship; the compile gate stops being quieter than the interpreter.",
             first_slice: "Zero-resolution refusal behind the probe corpus's method pair, with map/filter/fold/flat_map/service controls green.",
@@ -1929,7 +1929,7 @@ fn guarantee_ladder_section() -> RoadmapSection {
           intricacy: IntricacyHigh,
           volume: VolumeMedium,
           t: fields(
-            headline: "Declared types constrain produced values: return, data, and generic instantiation R0 → R2",
+            headline: "Declared types constrain produced values: return, data, and generic instantiation climb to R2 (current rung: the census — UnknownUnmeasured; compile admission proven, runtime disposition not)",
             boundary: "fn f() -> Int returning a string refuses at compile; data x: Int = \"x\" refuses; a generic record instantiation whose interior does not inhabit the substituted parameter refuses. The judgment is actual-inhabits-declared at the three unchecked positions #7481 probed, reusing the argument-position machinery that already refuses correctly.",
             displaced_cost: "The keystone gap: the recovered thesis's distinctness requirement — without it every declared type is part contract, part documentation, and WalkPlan<FloorFinalization> class defects surface at first field access.",
             first_slice: "Return-position checking, probe-paired; the #7481 in-tree witnesses (floor finalization) dissolve on landing per their own dissolve-on notes.",
@@ -1959,7 +1959,7 @@ fn guarantee_ladder_section() -> RoadmapSection {
           intricacy: IntricacyHigh,
           volume: VolumeMedium,
           t: fields(
-            headline: "The operator's seam, end to end: a 0..n producer cannot feed a 1..n consumer (R0 → R2)",
+            headline: "The operator's seam, end to end: a 0..n producer cannot feed a 1..n consumer (climb to R2; current rung: the census — UnknownUnmeasured)",
             boundary: "One path, not a census: bare List = 0..inf, literal [] = 0..0, nonempty literal = n..n; map preserves, filter floors to 0, concat adds; the interval is an interface fact in InterfaceSummary's contract slot; actual-interval within required-interval enforced at function boundaries with a located seam refusal. The seam direction (2026-07-04, interface-summary-declared-use-arity.md sec 3.1) and the candidate lattice (cardinality-refinement.md P3) exist; the in-tree cardinality_fold_propagation_test rows are MANUAL VALUE-LEVEL specimens (length homomorphism over literals, runtime refine_byte) — binding-level propagation is unimplemented and starts here. Construction-wall first candidate: type Refined<B> sole_constructor plus deletion of refined_vacuous_stub_pack's forged rejection arm, gated on the sole-constructor completeness audit.",
             displaced_cost: "The canonical motivating specimen — simple, structural, explainable without compiler expertise; the first differentiating class an outside reader can verify.",
             first_slice: "The seam check on explicit intervals (no inference): producer-admits-zero into consumer-requires-nonempty refuses; proven-nonempty control compiles.",
