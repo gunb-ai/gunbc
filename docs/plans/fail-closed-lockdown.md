@@ -2,7 +2,7 @@
 
 **Status:** audit + lock-down checklist · **DESIGN.md + carriers are authority** (§6 no parallel ledger); each item dissolves into a wired CI gate when it lands. Linked from `ROADMAP.md §0`.
 
-**Verified against the live tree 2026-06-21.** Line numbers are receipts; re-check before acting.
+**Verified against the live tree 2026-06-21.** Named symbols are receipts; re-check before acting.
 
 ## 0. Thesis — three faces of one problem
 
@@ -16,9 +16,8 @@ The test for "locked": (a) wired into the floor (discovered + run), (b) fail-clo
 
 | Gate | Scope | Evidence |
 | --- | --- | --- |
-| DagCompileCleanGate | whole tree (fail-fast root) | `ci_spec.dag:41`; `ci_floor_plan.dag:82,106` |
-| RustMonolithGate | `.rs` + manifest | `ci_spec.dag:37`; `rust_gates_ci.dag` |
-| GeneratedArtifactDriftGate | `ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry | `ci_spec.dag` `GeneratedArtifactDriftGate`; `generated_artifact_gate.dag`; registry+commit-derivation `gunbc/generated_artifact.dag` |
+| DagCompileCleanGate | whole tree (fail-fast root) | `gunbc.ci_gate` `DagCompileCleanGate`; `v2.workflow.ci_floor_plan` `gate_runnable` |
+| GeneratedArtifactDriftGate | `ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry | `gunbc.ci_gate` `GeneratedArtifactDriftGate`; `tools.generated_artifact_gate` `run_generated_artifact_drift_gate`; `gunbc.generated_artifact` `committed_generated_artifacts` |
 
 These are the **structural** gates. The gap is everything *analytical* and the *bootstrap purity* gate.
 
@@ -32,21 +31,18 @@ These are the **structural** gates. The gap is everything *analytical* and the *
 | **extdeps_shape_transport_policy** | inert | the §3 shape/transport/policy enforcer — authored, not wired |
 | affected_set, fact_cardinality, mock_totality, ownership, subsumption, … | inert | authored lenses, no discovered gate |
 | **discrimination, synthesis, idempotency, parallelism** | advisory / roster | run, but over a **curated roster**, not the change-set — a violation outside the roster merges (`lens_*_family_eval_test.dag`) |
-| **EmitHostGate** | wired but thin | exactly **4 MVP fixtures** (rust/python/go/ts), not the emit tree (`emit_host_gate.dag:27`) |
+| **EmitHostGate** | wired but thin | exactly **4 MVP fixtures** (rust/python/go/ts), not the emit tree (`tools.floor_effect_gate_witness` `emit_host_gate_passes`) |
 | **regen_stage0 --verify** (Stage0LockstepGate) | **not wired** | exists (`verify_stage0_matches`), absent from the floor → seed hand-drift uncaught; gate sits in **closed #5325** |
 
 ## 3. Where the pipeline actually fails OPEN (wrong answer passes silently)
 
 | Site | Class | What it fabricates / masks |
 | --- | --- | --- |
-| `resolved_graph_cache.rs:146` | **cache flake** | content digest = hash of `from_utf8_lossy(bytes)` — **lossy decode, not raw bytes** → warm≠cold / wrong-hit physically possible. **VERIFIED.** |
-| `resolved_graph_cache.rs:169-178` | cache key | subject/content digests read via `from_utf8(..).unwrap_or("")` — malformed → `""` → collision |
-| `v1_interpreter.rs` `parse_table_memo` (~2810) | under-keyed | key `(grammar_digest, token_digest, position, production)` — cross-file position collision; no red witness |
-| `v1_interpreter.rs` `pure_call_memo` (~2912) | key-by-address | keys on `Rc::as_ptr`, not content → stale hit on realloc; structurally-equal args miss |
-| `v1_interpreter.rs:3108` | fail-open infer | `record_lit_type_name_at(..).unwrap_or_default()` → `""` type instead of error |
-| `v1_interpreter.rs` shell out (3884/4289), service (4557/4709) | fail-open IO | `from_utf8_lossy` / `unwrap_or_default` fabricate plausible text from malformed output |
+| `v1_interpreter.rs` `pure_call_memo_key` | key-by-address | keys on `Rc::as_ptr`, not content → stale hit on realloc; structurally-equal args miss |
+| `v1_interpreter.rs` `eval_record_lit` | fail-open infer | `record_lit_type_name_at(..).unwrap_or_default()` → `""` type instead of error |
+| `v1_interpreter.rs` `dispatch_shell`, `eval_service_call` | fail-open IO | `from_utf8_lossy` / `unwrap_or_default` fabricate plausible text from malformed output |
 
-**No warm==cold purity oracle** exists for `resolved_graph_cache` payload, `parse_table_memo`, or `pure_call_memo` (only `resolve_typed_cache_equivalence_test` covers the typed-module cache). This is the "cache flake physically possible" surface, concretely.
+**Warm==cold coverage is incomplete, not absent everywhere.** `v2.test.long.parse_table_memo_governed_witness` `parse_table_memo_warm_equals_cold_content_hash` covers the parse-table memo, and `resolve_typed_cache_equivalence_test.rs` `typed_module_cache_matches_cold_oracle_in_every_order` covers the typed-module cache. Resolved-graph disk decoding is fail-closed: `resolved_graph_cache.rs` `read_cached_header` rejects malformed header digests directly; `read_cached_file` cannot accept its empty decode sentinel as either the validated subject digest or computed payload digest, witnessed by `resolve_cross_process_cache_test.rs` `poisoned_hit_rejected_on_subject_digest_mismatch`. The provider additionally refuses where it cannot expose a faithful probe (`resolved_graph_cache.rs` `faithful_probe_unavailable_gap`). `pure_call_memo` still lacks a warm==cold oracle, leaving its address-keyed flake surface concrete.
 
 Already fixed (precedent for the pattern): cross-representation `==` straddle (now raises `CrossRepresentationEquality`); strict record-field typecheck (#5293).
 
@@ -54,15 +50,15 @@ Already fixed (precedent for the pattern): cross-representation `==` straddle (n
 
 §1–§3 were the first two passes (lens wiring + fail-open code). They found *symptoms*. The lane needs deeper audits before we trust the fixes are complete, because the symptoms likely share **one root**.
 
-**Suspected root — the model↔realization fork (DESIGN open thread, §1/§2/§7).** Every primitive is *modeled* as a coproduct and *realized* as a native `Value`, reconciled by **per-site bridges** — so coverage is accidental and non-compositional. That is the same shape as: the `==` straddle (`Value::eq` `_ => false`), the lossy cache digest (native bytes vs modeled content), and the under-keyed memos (native Rc address vs modeled content identity). If true, the fixes in §4 are *per-site patches* unless the root is dissolved (ground each primitive into its realization — numeric tower first, `Int = GroupCompletion<Nat>` bottoming in Peano `Nat`), which makes whole classes of guard *dead code*.
+**Suspected root — the model↔realization fork (DESIGN open thread, §1/§2/§7).** Every primitive is *modeled* as a coproduct and *realized* as a native `Value`, reconciled by **per-site bridges** — so coverage is accidental and non-compositional. That is the same shape as the `==` straddle (`Value::eq` `_ => false`) and the under-keyed pure-call memo (native address vs modeled content identity). If true, the fixes in §4 are *per-site patches* unless the root is dissolved (ground each primitive into its realization — numeric tower first, `Int = GroupCompletion<Nat>` bottoming in Peano `Nat`), which makes whole classes of guard *dead code*.
 
 Audits to run (each: how many sites, how deep, is there one root):
 
 1. **model↔realization fork audit** — ✅ DONE → [model-realization-fork.md](model-realization-fork.md). ROOT CONFIRMED (one seam, ~13 per-site bridges). Two sub-roots: numeric tower (grounds cleanly → guard dead code) + `Value::Null` overload (None/Absent/miss/Violates — needs *splitting*, the deeper root; ~131 legitimate `present==None→false` sites mean it can't be guarded).
 2. **coercion/equality fail-closure audit** — the `==` fix landed for the numeric tower; remaining: `Bool True|False` over `Value::Bool`, `Optional/Witness` over the overloaded `Value::Null` sentinel (resists a blanket guard — `present == None` at ~131 sites is a *legitimate* `false`; needs grounding).
 3. **inference fail-open audit** — what remains after strict record-field (#5293): return-type inference defaults, other `unwrap_or_default` type fabrications.
-4. **cache-purity audit** — enumerate every cache (resolved_graph, parse_table_memo, pure_call_memo, typed_module, sccache); each must have a warm==cold oracle; only typed_module has one today.
-5. **CI-coverage-completeness audit** — tests/gates that *exist but don't run*. Confirmed instance: the rust gate runs a "known-green subset" (`interp_recorded_fixture wet_hermetic resolve_expr_types_retraversal`, `ci_spec.dag:160`) of **60** `src/v1/tests` files — the rest rot silently (how the Behavior-arm test went stale). Also: the `discrimination` lens (the §5 discriminating-witness enforcer) is itself roster-only, not whole-corpus — the enforcer is vacuous.
+4. **cache-purity audit** — enumerate every cache (resolved_graph, parse_table_memo, pure_call_memo, typed_module, sccache); each must have a warm==cold oracle or fail-closed refusal. Coverage exists for typed_module (`resolve_typed_cache_equivalence_test.rs` `typed_module_cache_matches_cold_oracle_in_every_order`) and parse_table_memo (`v2.test.long.parse_table_memo_governed_witness` `parse_table_memo_warm_equals_cold_content_hash`); resolved_graph refuses the unavailable faithful probe (`resolved_graph_cache.rs` `faithful_probe_unavailable_gap`); pure_call_memo remains uncovered.
+5. **CI-coverage-completeness audit** — tests/gates that *exist but don't run*. Confirmed historical instance: the now-retired Rust monolith gate (`gunbc.commit_workflow` `commit_gate_rust_suite_removed_disposition`; local-only implementation `tools.rust_gates_ci` `run_rust_monolith_gate`) admitted a narrow subset of the `src/v1/tests` corpus — the rest could rot silently (how the Behavior-arm test went stale). Also: the `discrimination` lens (the §5 discriminating-witness enforcer) is itself roster-only, not whole-corpus — the enforcer is vacuous.
 
 The lane is done when these audits return *no new fail-open class* and §4 is green.
 
@@ -75,9 +71,9 @@ Two tiers: **construction** (the class becomes unwritable — this is the real w
 **Tier 1 — construction (make the class unwritable):**
 
 - [ ] **Dissolve the model↔realization fork — THE root** ([model-realization-fork.md](model-realization-fork.md)): realization derived from model. (1) numeric tower `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code; (2) split `Value::Null` (None/Absent/miss/Violates → own carriers).
-- [ ] **Cache key derived FROM declared `inputs_considered`** (single authority) → cannot declare an input you don't key, nor key one you don't declare; divergence unwritable. Subsumes: content-key on **raw bytes** (`resolved_graph_cache.rs:146`), content keys for `parse_table_memo`/`pure_call_memo` (kill position/address keys). *(worked first instance: child adhoc-cc232dbc-1be)*
+- [ ] **Cache key derived FROM declared `inputs_considered`** (single authority) → cannot declare an input you don't key, nor key one you don't declare; divergence unwritable. Subsumes a content key for `pure_call_memo` (kill the address key). *(worked first instance: child adhoc-cc232dbc-1be)*
 - [ ] **Self-host purity by construction** — emitter emits the whole seed so `patch_*`/`HAND_MAINTAINED_STAGE0_FILES` are unwritable; `regen_stage0 --verify` (Stage0LockstepGate, #5325) then a residue check.
-- [ ] **Widen/retire the rust gate** — run the v1 test set or explicitly retire it (no test exists-but-doesn't-run).
+- [x] **Rust monolith gate retired.** `gunbc.commit_workflow` `commit_gate_rust_suite_removed_disposition` records the terminal retirement: nextest remains local and leaves with the v1 seed; required CI separately retains formatting and compile-only coverage, without re-enrolling the monolith.
 
 **Tier 2 — lens (only the genuinely-unstructurable residue; each must justify why not construction):**
 
