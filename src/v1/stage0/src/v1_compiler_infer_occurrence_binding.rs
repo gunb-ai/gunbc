@@ -53,7 +53,7 @@ pub fn module_path_owner_binding_decide(
 pub fn ambiguity_labels_single_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ONE labeller for both production candidate sites (review 45364). global_bare_chain_ambiguity_labels_from_decide and func_parent_closure_ambiguity_labels_from_decide were token-identical modulo a local bind name -- a section 3 nickname pair, two names for one concept, which the predicate-dissolution pass left resident. The call site is not part of the fact: qualifying an ambiguous owner list is the same operation whether the candidates came from the global_bare chain (04_env) or a fn parent closure (04_sigs), so the site-prefixed names encoded a distinction that does not exist. Collapsed to ambiguity_labels_from_decide, consumed by both.".to_string()
+            "ONE labeller for both production candidate sites (review 45364). global_bare_chain_ambiguity_labels_from_decide and func_parent_closure_ambiguity_labels_from_decide were token-identical modulo a local bind name -- a section 3 nickname pair, two names for one concept, which the predicate-dissolution pass left resident. The call site is not part of the fact: qualifying an ambiguous owner list is the same operation whether the candidates came from the global_bare chain (04_env) or a fn parent closure (04_sigs), so the site-prefixed names encoded a distinction that does not exist. Collapsed to ambiguity_labels_from_decide, consumed by both.\n\nWILDCARD-FREE (review 45417): the collapsed fn inherited a _ => [] arm from the two it replaced. ModulePathBindingProjection is a closed 3-arm type, so a wildcard means a future variant silently yields no labels -- an ambiguity that reports as unambiguous, which is the DESIGN section 5 absorbing shape and the same arm this PR deleted from v1.std.core diagnostic_to_span. Hit and Miss are now spelled out, so adding a variant is a compile error here rather than a silent empty label list.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -74,6 +74,7 @@ pub fn ambiguity_labels_from_decide(owners: Rc<Vec<String>>, name: String) -> Rc
             }
             __result
         }),
-        _ => Rc::new(vec![]),
+        ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => Rc::new(vec![]),
+        ModulePathBindingProjection::ModulePathBindingMiss => Rc::new(vec![]),
     }
 }
