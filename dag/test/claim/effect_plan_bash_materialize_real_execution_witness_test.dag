@@ -4,17 +4,17 @@ import extdeps.shell.exec { TransportScript }
 import v2.std.effect_plan { Do, EffectPlan, EffectPlanStep }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
-  BoundOperationInvocation,
   OperationInputBinding,
   OperationRef,
-  bind_operation_invocation,
   operation_argv_bind_text
 }
 import v2.std.orchestration { FailFast }
 import v2.workflow.effect_plan_bash_materialize {
+  BashBoundOperationInvocation,
   EffectPlanBashMaterialization,
   EffectPlanBashMaterializationRefused,
   EffectPlanBashMaterialized,
+  bash_bind_operation_invocation,
   effect_plan_bash_materialize
 }
 
@@ -31,14 +31,14 @@ fn wet_invocation(
   service: String,
   operation: String,
   bindings: List<OperationInputBinding>
-) -> BoundOperationInvocation {
-  bind_operation_invocation(
+) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation(
     at: wet_ref(path: path, service: service, operation: operation),
     bindings: bindings
   )
 }
 
-fn wet_test_path(operation: String, path: String) -> BoundOperationInvocation {
+fn wet_test_path(operation: String, path: String) -> BashBoundOperationInvocation {
   wet_invocation(
     path: "dag/extdeps/shell.dag",
     service: "shell.Test",
@@ -47,7 +47,7 @@ fn wet_test_path(operation: String, path: String) -> BoundOperationInvocation {
   )
 }
 
-fn wet_id_uid() -> BoundOperationInvocation {
+fn wet_id_uid() -> BashBoundOperationInvocation {
   wet_invocation(
     path: "dag/extdeps/tools/id.dag",
     service: "os.Id",
@@ -57,12 +57,12 @@ fn wet_id_uid() -> BoundOperationInvocation {
 }
 
 fn wet_plan(
-  steps: List<EffectPlanStep<BoundOperationInvocation>>
-) -> EffectPlan<BoundOperationInvocation> {
+  steps: List<EffectPlanStep<BashBoundOperationInvocation>>
+) -> EffectPlan<BashBoundOperationInvocation> {
   EffectPlan { steps: steps, on_failure: FailFast }
 }
 
-fn wet_exec_succeeds_with_output(plan: EffectPlan<BoundOperationInvocation>) -> Bool {
+fn wet_exec_succeeds_with_output(plan: EffectPlan<BashBoundOperationInvocation>) -> Bool {
   match effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: source } => {
       let result = shell.Exec.Run(script: source as TransportScript)
@@ -72,7 +72,7 @@ fn wet_exec_succeeds_with_output(plan: EffectPlan<BoundOperationInvocation>) -> 
   }
 }
 
-fn wet_exec_fails_without_output(plan: EffectPlan<BoundOperationInvocation>) -> Bool {
+fn wet_exec_fails_without_output(plan: EffectPlan<BashBoundOperationInvocation>) -> Bool {
   match effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: source } => {
       let result = shell.Exec.Run(script: source as TransportScript)
