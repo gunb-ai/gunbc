@@ -1,0 +1,56 @@
+module v2.test.fixture.walk_plan_stage.overlap_coordination
+
+import std.measure { second }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+
+type OverlapPeer =
+    OverlapPeerA
+  | OverlapPeerB
+
+data walk_plan_stage_overlap_dir: String = "target/walk_plan_stage_overlap"
+
+data walk_plan_stage_overlap_poll_bound: Int = 600
+
+data walk_plan_stage_overlap_poll_note: String = "Typed overlap handshake for production-path stage-executor controls: each peer writes its waiting marker via Filesystem.Write, then polls shell.Test.IsFile until BOTH markers exist, pacing with sleep.Delay.Seconds(1). Serial stage execution fails because the first peer exhausts the 600s bound while the second peer never starts. Cold resolve skew is tolerated — the bound is wall-time, not sub-second overlap."
+
+fn walk_plan_stage_overlap_waiting_path(peer: OverlapPeer) -> String {
+  match peer {
+    OverlapPeerA => concat(walk_plan_stage_overlap_dir, "/waiting_a")
+    OverlapPeerB => concat(walk_plan_stage_overlap_dir, "/waiting_b")
+  }
+}
+
+fn walk_plan_stage_overlap_both_waiting() -> Bool {
+  shell.Test.IsFile(path: walk_plan_stage_overlap_waiting_path(peer: OverlapPeerA)).is_file
+    && shell.Test.IsFile(path: walk_plan_stage_overlap_waiting_path(peer: OverlapPeerB)).is_file
+}
+
+fn walk_plan_stage_overlap_poll(remaining: Int) -> Bool {
+  if walk_plan_stage_overlap_both_waiting() {
+    true
+  } else if remaining <= 0 {
+    false
+  } else {
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    walk_plan_stage_overlap_poll(remaining: remaining - 1)
+  }
+}
+
+fn walk_plan_stage_overlap_handshake(peer: OverlapPeer) -> Bool {
+  let dir_ready = shell.Mkdir.Parents(path: walk_plan_stage_overlap_dir)
+  if !dir_ready.success {
+    false
+  } else {
+    let marker = Filesystem.Write(
+      path: walk_plan_stage_overlap_waiting_path(peer: peer),
+      content: ""
+    )
+    if !marker.success {
+      false
+    } else {
+      walk_plan_stage_overlap_poll(remaining: walk_plan_stage_overlap_poll_bound)
+    }
+  }
+}

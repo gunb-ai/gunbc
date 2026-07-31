@@ -1,0 +1,110 @@
+module v2.test.fixture.walk_plan_stage.common
+
+import std.realization_schedule {
+  Runnable,
+  RunnableSingleClaim,
+  RunnableResourceProfile,
+  runnable_resource_profile,
+  runnable_resource_profile_negligible,
+  runnable_memory_negligible
+}
+import std.execution_mode { Wet, Hermetic }
+
+data walk_plan_stage_fixture_note: String = "Production-path stage-executor controls for #7499 run_stage extraction. Each plan function returns a real WalkPlan with populated on_success_stages and is driven through claim_executor --plan-entry/--plan-function (same pattern as floor_skip/budget_red_control_plan.dag). Lives under test/fixture/ (discovery-excluded at dir grain) and declares no enrolled witness rows — driven only by the recipes in plan.dag. Wet claims use typed service operations (shell.Mkdir/Remove/Test, Filesystem.Read/Write, sleep.Delay) — no medium-as-string shell programs. Staged plans require GUNBC_WALK_ATTEMPT_ID=walk_plan_stage_attempt_id (claim_executor refuses unidentified walks before any batch). Receipt paths are attempt-scoped under walk_plan_stage_attempt_dir — one authority consumed by cleanup, barrier reader, poison claim, and walk_plan_stage_fixture.rs. GREEN recipes must show claim_executor progress lines for on-success stages, not merely exit 0 — FloorBudgetBelowMinimumFootprint can fail-fast before any batch on memory-tight hosts."
+
+data walk_plan_stage_attempt_id: String = "walk-plan-stage-fixture"
+
+data walk_plan_stage_attempt_dir: String = "target/floor-attempt-walk-plan-stage-fixture"
+
+data walk_plan_stage_stage1_receipt_path: String = "target/floor-attempt-walk-plan-stage-fixture/on-success-stage-1-receipt.tsv"
+
+data walk_plan_stage_stage2_receipt_path: String = "target/floor-attempt-walk-plan-stage-fixture/on-success-stage-2-receipt.tsv"
+
+data walk_plan_stage_overlap_peer_a_entry: String = "src/v2/test/fixture/walk_plan_stage/overlap_peer_a_test.dag"
+
+data walk_plan_stage_overlap_peer_b_entry: String = "src/v2/test/fixture/walk_plan_stage/overlap_peer_b_test.dag"
+
+data walk_plan_stage_plan_site: String = "src/v2/test/fixture/walk_plan_stage/plan.dag::walk_plan_stage_overlap_barrier_plan"
+
+data walk_plan_stage_barrier_receipt_row_note: String = "Per-stage receipt claim rows are tab-separated: claim, entry, function, outcome, wall_ms (#7518). plan_site in the header is plan.dag::plan_function."
+
+fn walk_plan_stage_negligible_wet_profile() -> RunnableResourceProfile {
+  runnable_resource_profile(
+    heavy_whole_tree_resolve: false,
+    spawns_host_compiler: false,
+    memory: runnable_memory_negligible(),
+    execution_mode: Wet
+  )
+}
+
+fn walk_plan_stage_green_floor_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag",
+    function: "falsifier_green_control_holds",
+    profile: runnable_resource_profile_negligible()
+  }
+}
+
+fn walk_plan_stage_cleanup_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/cleanup_test.dag",
+    function: "walk_plan_stage_cleanup_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
+
+fn walk_plan_stage_overlap_peer_a_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/overlap_peer_a_test.dag",
+    function: "walk_plan_stage_overlap_peer_a_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
+
+fn walk_plan_stage_overlap_peer_b_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/overlap_peer_b_test.dag",
+    function: "walk_plan_stage_overlap_peer_b_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
+
+fn walk_plan_stage_barrier_witness_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/barrier_witness_test.dag",
+    function: "walk_plan_stage_barrier_witness_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
+
+fn walk_plan_stage_failure_red_member_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/failure_red_member_test.dag",
+    function: "walk_plan_stage_failure_red_member_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
+
+fn walk_plan_stage_panic_member_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/panic_member_test.dag",
+    function: "walk_plan_stage_panic_member_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
+
+fn walk_plan_stage_receipt_refusal_poison_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/receipt_refusal_poison_test.dag",
+    function: "walk_plan_stage_receipt_refusal_poison_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
+
+fn walk_plan_stage_stage2_marker_claim() -> Runnable {
+  RunnableSingleClaim {
+    entry: "src/v2/test/fixture/walk_plan_stage/stage2_marker_test.dag",
+    function: "walk_plan_stage_stage2_marker_holds",
+    profile: walk_plan_stage_negligible_wet_profile()
+  }
+}
