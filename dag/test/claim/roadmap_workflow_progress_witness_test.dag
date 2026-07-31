@@ -66,6 +66,8 @@ fn fixture_evidence(
     provider_events_error: "",
     process: process,
     validation_summary: "gunbc run --claim-run",
+    validation_receipt_readable: false,
+    validation_receipt: "",
   }
 }
 
@@ -216,6 +218,8 @@ test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
     validation_summary: "gunbc run --claim-run",
+    validation_receipt_readable: false,
+    validation_receipt: "",
   })
   starts_with(
     s: truncated,
@@ -232,6 +236,8 @@ test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
     validation_summary: "gunbc run --claim-run",
+    validation_receipt_readable: false,
+    validation_receipt: "",
   })
   string_contains(s: forged, pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"")
     && string_contains(s: forged, pattern: "\"status\": \"admitted\"")
@@ -245,12 +251,16 @@ test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
   let refused = admission_receipt_for(admission: EnvironmentRefused {
     receipts: [],
     validation_summary: "",
+    validation_receipt_readable: false,
+    validation_receipt: "",
     reason: "probe failed",
   })
   let foreign = "{\"schema\": \"some-other-emitter/v1\", \"status\": \"admitted\"}"
   let admitted = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
     validation_summary: "gunbc run --claim-run",
+    validation_receipt_readable: false,
+    validation_receipt: "",
   })
   match dispatch_environment_receipt_decode(receipt: refused) {
     ReceiptDecoded { status } =>
@@ -294,6 +304,8 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     provider_events_error: base.provider_events_error,
     process: base.process,
     validation_summary: base.validation_summary,
+    validation_receipt_readable: base.validation_receipt_readable,
+    validation_receipt: base.validation_receipt,
   }
   let progress = workflow_attempt_progress(evidence: forged)
   !(segment_state(progress.segments, "env") == "complete")
@@ -318,6 +330,8 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     provider_events_error: base.provider_events_error,
     process: base.process,
     validation_summary: base.validation_summary,
+    validation_receipt_readable: base.validation_receipt_readable,
+    validation_receipt: base.validation_receipt,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -341,6 +355,8 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     provider_events_error: "not found",
     process: WorkerProcessAbsent,
     validation_summary: "",
+    validation_receipt_readable: false,
+    validation_receipt: "",
   })
   match progress.provider {
     ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
@@ -370,6 +386,8 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     provider_events_error: base.provider_events_error,
     process: base.process,
     validation_summary: base.validation_summary,
+    validation_receipt_readable: base.validation_receipt_readable,
+    validation_receipt: base.validation_receipt,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
