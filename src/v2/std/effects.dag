@@ -6,11 +6,13 @@ import std.effects {
   PostAlways, CreateIfAbsent, KeylessFallback
 }
 
-data defork_note: String = "v2.std.effects DISSOLVED onto the single std.effects authority (dag-v2 de-fork, docs/plans/dag-v2-defork-audit.md). The EffectShape<K> / CreateCause<K> TYPE is imported from std, never re-defined here -- what was the v2 fork (EffectShape = IsIdempotent | IsBreaking, a 2-level idempotency-class partition) is GONE: idempotency is DERIVED from the one flat EffectShape (DESIGN 4, ops from inhabitance). This module instantiates the type at K = KeySource (interned Symbol) for the substrate-witness harness (idempotency conformance by apply-once == apply-twice Node graphs) and builds shapes by direct construction. It does NOT call std.effects's predicates: those are concrete to EffectShape<std.KeySource> by the emitter generic-function-bound frontier (see std.effects.generic_predicate_frontier_note), and the harness needs only the type + constructors, not the predicates."
+data defork_note: String = "v2.std.effects DISSOLVED onto the single std.effects authority (dag-v2 de-fork, docs/plans/dag-v2-defork-audit.md). The EffectShape<K> / CreateCause<K> TYPE is imported from std, never re-defined here -- what was the v2 fork (EffectShape = IsIdempotent | IsBreaking, a 2-level idempotency-class partition) is GONE: idempotency is DERIVED from the one flat EffectShape (DESIGN 4, ops from inhabitance). This module instantiates the type at K = SubstrateKeySource (interned Symbol) for the substrate-witness harness (idempotency conformance by apply-once == apply-twice Node graphs) and builds shapes by direct construction. It does NOT call std.effects's predicates: those are concrete to EffectShape<std.KeySource> by the emitter generic-function-bound frontier (see std.effects.generic_predicate_frontier_note), and the harness needs only the type + constructors, not the predicates."
 
-data key_source_representation_note: String = "v2's KeySource is the SUBSTRATE key representation (interned Symbol), the K instantiation of the single std.effects.EffectShape<K> authority for the Node-witness harness -- NOT a fork of std.effects. The verb/cause/idempotency algebra is imported from std; only the key REPRESENTATION differs (Symbol here, String in std's REST derivation). The String/Symbol unification is deferred to the grants key/target re-grounding (docs/plans/effect-namespace-grants.md), never crossed at this seam. dissolve-on = grants grounds key/target on the containment tree (QualifiedName)."
+data substrate_key_source_homonym_note: String = "Renamed from KeySource (P3a-1 self-fork collapse): the bare name KeySource is owned by std.effects (String REST derivation). This carrier is the Symbol substrate instantiation for the Node-witness harness only; no alias back to KeySource."
 
-type KeySource
+data key_source_representation_note: String = "v2's SubstrateKeySource is the SUBSTRATE key representation (interned Symbol), the K instantiation of the single std.effects.EffectShape<K> authority for the Node-witness harness -- NOT a fork of std.effects. The verb/cause/idempotency algebra is imported from std; only the key REPRESENTATION differs (Symbol here, String in std's REST derivation). The String/Symbol unification is deferred to the grants key/target re-grounding (docs/plans/effect-namespace-grants.md), never crossed at this seam. dissolve-on = grants grounds key/target on the containment tree (QualifiedName)."
+
+type SubstrateKeySource
   = PathParam { param: Symbol }
   | InputField { field: Symbol }
 
@@ -20,13 +22,13 @@ type IdempotentOperationRef {
 
 type ComposableIdempotentOperationSubject
   = ReadIdempotentSample { operation: IdempotentOperationRef }
-  | UpsertIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
-  | DeleteIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
-  | CreateIfAbsentIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
+  | UpsertIdempotentSample { operation: IdempotentOperationRef, key_source: SubstrateKeySource }
+  | DeleteIdempotentSample { operation: IdempotentOperationRef, key_source: SubstrateKeySource }
+  | CreateIfAbsentIdempotentSample { operation: IdempotentOperationRef, key_source: SubstrateKeySource }
 
 type IdempotentOperationSubject
   = Composable(ComposableIdempotentOperationSubject)
-  | LabelOnlyIdempotentInhabitance { shape: EffectShape<KeySource>, label: Symbol }
+  | LabelOnlyIdempotentInhabitance { shape: EffectShape<SubstrateKeySource>, label: Symbol }
 
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sample_state_value } },
@@ -50,13 +52,13 @@ data sample_create_if_absent_operation: IdempotentOperationRef = IdempotentOpera
   callable: ^sample_create_if_absent_callable
 }
 
-data sample_upsert_key_source: KeySource = InputField { field: ^sample_path_key_slug }
+data sample_upsert_key_source: SubstrateKeySource = InputField { field: ^sample_path_key_slug }
 
-data sample_delete_key_source: KeySource = InputField { field: ^sample_path_key_slug }
+data sample_delete_key_source: SubstrateKeySource = InputField { field: ^sample_path_key_slug }
 
-data sample_create_if_absent_key_source: KeySource = InputField { field: ^sample_path_key_slug }
+data sample_create_if_absent_key_source: SubstrateKeySource = InputField { field: ^sample_path_key_slug }
 
-data sample_create_if_absent_key_b: KeySource = InputField { field: ^sample_alt_path_key_slug }
+data sample_create_if_absent_key_b: SubstrateKeySource = InputField { field: ^sample_alt_path_key_slug }
 
 data sample_read_composable: ComposableIdempotentOperationSubject = ReadIdempotentSample {
   operation: sample_read_operation
@@ -90,11 +92,11 @@ data sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotent
   label: ^sample_label_only_callable
 }
 
-fn create_if_absent_shape(key_source: KeySource) -> EffectShape<KeySource> {
+fn create_if_absent_shape(key_source: SubstrateKeySource) -> EffectShape<SubstrateKeySource> {
   CreateEffect { cause: CreateIfAbsent { key_source: key_source } }
 }
 
-fn create_always_shape() -> EffectShape<KeySource> {
+fn create_always_shape() -> EffectShape<SubstrateKeySource> {
   CreateEffect { cause: PostAlways }
 }
 
@@ -104,7 +106,7 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
-fn key_source_node(key_source: KeySource) -> Node {
+fn key_source_node(key_source: SubstrateKeySource) -> Node {
   match key_source {
     PathParam { param: p } =>
       Node {
@@ -139,7 +141,7 @@ fn key_source_node(key_source: KeySource) -> Node {
   }
 }
 
-fn keyed_shape_node(variant_marker: Symbol, key_source: KeySource) -> Node {
+fn keyed_shape_node(variant_marker: Symbol, key_source: SubstrateKeySource) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -156,7 +158,7 @@ fn keyed_shape_node(variant_marker: Symbol, key_source: KeySource) -> Node {
 }
 }
 
-fn effect_shape_node(shape: EffectShape<KeySource>) -> Node {
+fn effect_shape_node(shape: EffectShape<SubstrateKeySource>) -> Node {
   match shape {
     ReadEffect => atom_node(s: ^effect_shape_variant_read)
     UpsertEffect { key_source: key_source } =>
@@ -175,7 +177,7 @@ fn effect_shape_node(shape: EffectShape<KeySource>) -> Node {
   }
 }
 
-fn classified_idempotent_effect_node(shape: EffectShape<KeySource>) -> Node {
+fn classified_idempotent_effect_node(shape: EffectShape<SubstrateKeySource>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
