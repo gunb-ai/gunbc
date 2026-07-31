@@ -1881,36 +1881,41 @@ fn frontier_row_observed(diagnostics: List<ErrorNode>, method: String, receiver_
   diagnostics |> filter(e => frontier_diag_matches_row(d: e.diagnostic, method: method, receiver_shape: receiver_shape))
 }
 
-fn frontier_row_budget_diags(row: UnresolvedMethodFrontierRow, diagnostics: List<ErrorNode>, module_name: String) -> List<ErrorNode> {
-  match frontier_row_observed(diagnostics: diagnostics, method: row.method, receiver_shape: row.receiver_shape) |> first {
-    Present { value: witness } =>
-      if (frontier_row_observed(diagnostics: diagnostics, method: row.method, receiver_shape: row.receiver_shape) |> count) > row.occurrences {
-        [make_error_node(
-          diagnostic: FrontierOccurrenceBudgetExceeded {
-            method: row.method,
-            receiver_type: row.receiver_shape,
-            declared: row.occurrences,
-            observed: frontier_row_observed(diagnostics: diagnostics, method: row.method, receiver_shape: row.receiver_shape) |> count,
-            span: diagnostic_to_span(d: witness.diagnostic)
-          },
-          module_name: module_name)]
-      } else {
-        []
-      }
-    Absent => []
+fn frontier_row_budget_span(observed: List<ErrorNode>, module_span: SourceSpan) -> SourceSpan {
+  match observed |> first {
+    Present { value: witness } => diagnostic_to_span(d: witness.diagnostic)
+    Absent => module_span
   }
 }
 
-fn frontier_occurrence_budget_diags(module_name: String, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
+fn frontier_row_budget_diags(row: UnresolvedMethodFrontierRow, diagnostics: List<ErrorNode>, module_name: String, module_span: SourceSpan) -> List<ErrorNode> {
+  if (frontier_row_observed(diagnostics: diagnostics, method: row.method, receiver_shape: row.receiver_shape) |> count) == row.occurrences {
+    []
+  } else {
+    [make_error_node(
+      diagnostic: FrontierOccurrenceBudgetExceeded {
+        method: row.method,
+        receiver_type: row.receiver_shape,
+        declared: row.occurrences,
+        observed: frontier_row_observed(diagnostics: diagnostics, method: row.method, receiver_shape: row.receiver_shape) |> count,
+        span: frontier_row_budget_span(
+          observed: frontier_row_observed(diagnostics: diagnostics, method: row.method, receiver_shape: row.receiver_shape),
+          module_span: module_span)
+      },
+      module_name: module_name)]
+  }
+}
+
+fn frontier_occurrence_budget_diags(module_name: String, module_span: SourceSpan, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
   unresolved_method_frontier()
     |> filter(r => r.module_name == module_name)
-    |> flat_map(r => frontier_row_budget_diags(row: r, diagnostics: diagnostics, module_name: module_name))
+    |> flat_map(r => frontier_row_budget_diags(row: r, diagnostics: diagnostics, module_name: module_name, module_span: module_span))
 }
 
 data frontier_occurrence_budget_note: String = "THE COUNT IS WHAT MAKES THE FRONTIER A RATCHET INSTEAD OF AN EXEMPTION. Keying admission on (module, method, receiver_shape) bounds WHERE an unresolved call may live but not HOW MANY may live there, so a second call in the same module, on the same method, failing to resolve the same way, inherited the admission — and that is not hypothetical: the measured rows are not all singletons (v2.compiler.tokenize admits seven `apply` calls, extdeps.mercurial three `any`, gunbc.scm_compatibility.mercurial three `map`), so a row admitting seven would silently admit an eighth (codex review 45464). Each row therefore declares its MEASURED occurrence count and this fold refuses the excess, located on the first offending call. THE COMPARISON IS observed > declared, NEVER observed != declared, and the asymmetry is the load-bearing part: a narrower compile closure legitimately sees fewer occurrences of a module's rows, so equality would red on any partial build, while fixing a call legitimately lowers the count and must never red. So the budget can only be exceeded, never undershot — it ratchets down for free and refuses upward movement. WHY NOT A STABLE PER-OCCURRENCE KEY, which would close this exactly: std.occurrence_identity is the corpus authority for occurrence identity and its own scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, allocating OccurrenceId inside one graph-scoped allocator instead. An allocator-assigned integer cannot appear as a literal in a declared row, because it is not stable across compiles — so a per-occurrence key is not merely unimplemented here, it is unavailable from the authority that owns the concept. The count is the strongest bound the substrate currently supports. Dissolve-on: a content-addressed occurrence identity stable across edits (the namespace lane's containment addressing), at which point rows key on the occurrence itself and the count field deletes."
 
-fn frontier_occurrence_budget_checked(module_name: String, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
-  concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, diagnostics: diagnostics))
+fn frontier_occurrence_budget_checked(module_name: String, module_span: SourceSpan, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
+  concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
 }
 
 fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> String? {
@@ -8422,6 +8427,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     },
     diagnostics: frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
+      module_span: resolved.module.span,
       diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags)),
     binding_forks: env_result.binding_forks
   }

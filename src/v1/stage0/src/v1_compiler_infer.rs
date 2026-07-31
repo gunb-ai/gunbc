@@ -3204,53 +3204,60 @@ pub fn frontier_row_observed(
     })
 }
 
+pub fn frontier_row_budget_span(
+    observed: Rc<Vec<Rc<ErrorNode>>>,
+    module_span: Rc<SourceSpan>,
+) -> Rc<SourceSpan> {
+    match observed.clone().first().cloned() {
+        Some(witness) => diagnostic_to_span(witness.diagnostic.clone()),
+        None => module_span,
+    }
+}
+
 pub fn frontier_row_budget_diags(
     row: Rc<UnresolvedMethodFrontierRow>,
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     module_name: String,
+    module_span: Rc<SourceSpan>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    match frontier_row_observed(
+    if ((frontier_row_observed(
         diagnostics.clone(),
         row.method.clone(),
         row.receiver_shape.clone(),
     )
-    .first()
-    .cloned()
+    .len() as i64)
+        == row.occurrences.clone())
     {
-        Some(witness) => {
-            if ((frontier_row_observed(
-                diagnostics.clone(),
-                row.method.clone(),
-                row.receiver_shape.clone(),
-            )
-            .len() as i64)
-                > row.occurrences.clone())
-            {
-                Rc::new(vec![make_error_node(
-                    Rc::new(CompilerDiagnostic::FrontierOccurrenceBudgetExceeded {
-                        method: row.method.clone(),
-                        receiver_type: row.receiver_shape.clone(),
-                        declared: row.occurrences.clone(),
-                        observed: (frontier_row_observed(
-                            diagnostics.clone(),
-                            row.method.clone(),
-                            row.receiver_shape.clone(),
-                        )
-                        .len() as i64),
-                        span: diagnostic_to_span(witness.diagnostic.clone()),
-                    }),
-                    module_name.clone(),
-                )])
-            } else {
-                Rc::new(vec![])
-            }
-        }
-        None => Rc::new(vec![]),
+        Rc::new(vec![])
+    } else {
+        Rc::new(vec![make_error_node(
+            Rc::new(CompilerDiagnostic::FrontierOccurrenceBudgetExceeded {
+                method: row.method.clone(),
+                receiver_type: row.receiver_shape.clone(),
+                declared: row.occurrences.clone(),
+                observed: (frontier_row_observed(
+                    diagnostics.clone(),
+                    row.method.clone(),
+                    row.receiver_shape.clone(),
+                )
+                .len() as i64),
+                span: frontier_row_budget_span(
+                    frontier_row_observed(
+                        diagnostics.clone(),
+                        row.method.clone(),
+                        row.receiver_shape.clone(),
+                    ),
+                    module_span.clone(),
+                ),
+            }),
+            module_name.clone(),
+        )])
     }
 }
 
 pub fn frontier_occurrence_budget_diags(
     module_name: String,
+    module_span: Rc<SourceSpan>,
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
@@ -3268,9 +3275,14 @@ pub fn frontier_occurrence_budget_diags(
         .cloned()
         {
             __result.extend(
-                (*frontier_row_budget_diags(r.clone(), diagnostics.clone(), module_name.clone()))
-                    .iter()
-                    .cloned(),
+                (*frontier_row_budget_diags(
+                    r.clone(),
+                    diagnostics.clone(),
+                    module_name.clone(),
+                    module_span.clone(),
+                ))
+                .iter()
+                .cloned(),
             );
         }
         __result
@@ -3288,11 +3300,16 @@ pub fn frontier_occurrence_budget_note() -> String {
 
 pub fn frontier_occurrence_budget_checked(
     module_name: String,
+    module_span: Rc<SourceSpan>,
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     v1_rt::concat(
         diagnostics.clone(),
-        frontier_occurrence_budget_diags(module_name.clone(), diagnostics.clone()),
+        frontier_occurrence_budget_diags(
+            module_name.clone(),
+            module_span.clone(),
+            diagnostics.clone(),
+        ),
     )
 }
 
@@ -18041,6 +18058,7 @@ pub fn typecheck_module(
             }),
             diagnostics: frontier_occurrence_budget_checked(
                 resolved_module_name.clone(),
+                resolved.module.clone().span.clone(),
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
