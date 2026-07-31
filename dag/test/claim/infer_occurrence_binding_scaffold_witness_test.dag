@@ -1,6 +1,7 @@
 module test.claim.infer_occurrence_binding_scaffold_witness_test
 
 import std.disposition { Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.infer_occurrence_binding_scaffold {
   infer_occurrence_binding_v1_adapter_scaffold,
   infer_occurrence_binding_v1_adapter_dissolve_trigger,
@@ -9,7 +10,14 @@ import gunbc.infer_occurrence_binding_scaffold {
 
 test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
   match infer_occurrence_binding_v1_adapter_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Scaffold {
+      dissolves_to: SingleAuthority,
+      bind: DeclarationRef {
+        module_path: "std.occurrence_binding",
+        decl_name: "occurrence_binding_from_candidates",
+        field: WholeDeclaration
+      }
+    } => true
     _ => false
   }
 }

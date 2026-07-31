@@ -191,8 +191,8 @@ test fn occurrence_binding_resolve_supplied_one_is_bound_with_exact_identity_hol
     OccurrenceReferenceBindingDecided {
       result: OccurrenceBound { binding: binding },
     } =>
-      binding.containment.ancestors == [OccurrenceId { value: 1 }]
-        && binding.containment.terminal.value == 10
+      binding.candidate.containment.ancestors == [OccurrenceId { value: 1 }]
+        && binding.candidate.containment.terminal.value == 10
     _ => false
   }
 }

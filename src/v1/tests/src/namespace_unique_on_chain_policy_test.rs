@@ -210,19 +210,14 @@ fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
         let _guard = ResolutionPolicyGuard::set(true);
         error_diag_messages(zero_on_chain_fixture())
     };
-    let stray: Vec<&String> = strict
-        .iter()
-        .filter(|m| m.contains("ambiguous reference 'Stray'"))
-        .collect();
     assert!(
-        !stray.is_empty(),
-        "NamespaceOnlyY labels the zero-on-chain whole-pool homonym honestly as \
-         Ambiguous (census walk parity), never a mislabeled UnresolvedType; got {strict:?}"
+        strict.iter().any(|m| m.contains("unresolved type 'Stray'")),
+        "NamespaceOnlyY supplies the empty on-chain population to the cardinality adapter, \
+         so the result is UnresolvedType; got {strict:?}"
     );
     assert!(
-        stray[0].contains("fixother.Stray") && stray[0].contains("fixother2.Stray"),
-        "the refusal must carry the full pool candidate list; got {}",
-        stray[0]
+        !strict.iter().any(|m| m.contains("ambiguous")),
+        "zero supplied candidates must not be relabeled as ambiguity from the whole-pool fallback; got {strict:?}"
     );
 }
 

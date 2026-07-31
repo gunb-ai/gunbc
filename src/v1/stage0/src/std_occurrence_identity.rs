@@ -7,7 +7,6 @@ use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_types::is_prefix_of;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, SourceSpan};
 use crate::v1_rt;
@@ -422,32 +421,6 @@ pub fn occurrence_containment_paths_equal(
         && (left.terminal.clone().value.clone() == right.terminal.clone().value.clone()))
 }
 
-pub fn occurrence_containment_path_query_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical containment-path query (review 44814): occurrence_containment_path_is_prefix_of is the ONE surface for prefix tests over OccurrenceContainmentPath. It flattens ancestors++terminal and consumes std.types.is_prefix_of (review 45014 / review 45081) — never ancestor-membership alone (that admitted [A]→X as a prefix of [B,X]→Y).\n\nDELETED, NOT MOVED: occurrence_containment_path_contains_ancestor was the sibling ancestor-membership surface this row used to name. The review 45014 / 45081 correction is exactly what orphaned it — once prefix stopped consulting ancestor membership alone, nothing called it, and a corpus-wide check (dag, src/v2, src/v1) found zero consumers: its own declaration, this note, and its own generated emission. Deleting it completes that correction rather than leaving a dead second surface beside the one authority (review 45409, DESIGN section 5 dead-scaffold wall).\n\nWHY DELETED RATHER THAN ROUTED THROUGH A CANONICAL any: the review proposed folding it onto v2.std.algebra's any. That would be a section 3 inversion -- any exists ONLY in src/v2/std/algebra.dag, module v2.std.algebra, which is the v2 compiler's private copy of std; dag/std/algebra.dag, the std authority, has no any. Making std.occurrence_identity import v2.std.algebra would point the authority at a copy of itself. With zero consumers there is no surface to preserve, so deletion is both the smaller change and the correct one; if an ancestor-membership query is ever needed again it should arrive with its consumer, and any should be lifted into std.algebra first.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_containment_path_id_sequence(
-    path: Rc<OccurrenceContainmentPath>,
-) -> Rc<Vec<OccurrenceId>> {
-    v1_rt::rc_list_push(path.ancestors.clone(), path.terminal.clone())
-}
-
-pub fn occurrence_containment_path_is_prefix_of(
-    prefix: Rc<OccurrenceContainmentPath>,
-    path: Rc<OccurrenceContainmentPath>,
-) -> bool {
-    is_prefix_of(
-        occurrence_containment_path_id_sequence(prefix.clone()),
-        occurrence_containment_path_id_sequence(path.clone()),
-        occurrence_id_eq,
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceTransportIndexBuild {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
@@ -685,6 +658,7 @@ pub fn reference_occurrence_refusal(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValidatedOccurrenceTransport {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    pub declarations_by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
     pub references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
     pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
     pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
@@ -704,7 +678,7 @@ pub enum OccurrenceTransportValidation {
 pub fn occurrence_transport_validation_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id and references_by_id are the indexed authorities. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries, and never rescan the declarations/references lists, per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation. references_by_id is carried rather than rebuilt (review 45329): validation already builds it to decide declaration refusals, so dropping it from the carrier forced reference lookup to re-derive the same index by a linear filter over references — a second representation of a fact this boundary already owns, and the exact rescan the sentence above forbids. The declarations/references lists remain on the carrier because refusal folds consume them in order; they are not a lookup path.".to_string()
+            "Canonical transport validity boundary: occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id, declarations_by_id, and references_by_id are the exact lookup authorities. Resolvers consume the validated carrier and never rescan OccurrenceIndex.entries or either role population per supplied identity. The declaration/reference lists remain as the authored transport order, not as lookup paths.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -773,6 +747,7 @@ pub fn occurrence_transport_validate(
     None => Rc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
     transport: Rc::new(ValidatedOccurrenceTransport {
     entries_by_id: index_build.entries_by_id.clone(),
+    declarations_by_id: role_index_build.declarations_by_id.clone(),
     references_by_id: role_index_build.references_by_id.clone(),
     declarations: transport.declarations.clone(),
     references: transport.references.clone(),
