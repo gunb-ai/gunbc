@@ -38,6 +38,7 @@ import v2.workflow.floor_naming_hygiene {
 }
 import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.collection {
   List,
   fold_list
@@ -186,7 +187,14 @@ test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
 
 test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
   match floor_discovery_surface_text_scan_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Scaffold {
+      dissolves_to: SingleAuthority,
+      bind: DeclarationRef {
+        module_path: "v2.workflow.floor_naming_hygiene",
+        decl_name: "floor_discovery_scan_test_decl_names",
+        field: WholeDeclaration
+      }
+    } => true
     _ => false
   }
 }
