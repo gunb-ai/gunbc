@@ -754,9 +754,111 @@ data dispatch_requested_read_dwell_ms: Milliseconds = 300
 data js_dwell_const: String = "gunbcDwellMs"
 data js_refresh_workflow_fn: String = "gunbcRefreshWorkflow"
 data js_poll_workflow_fn: String = "gunbcPollWorkflow"
+data js_row_disclosure_fn: String = "gunbcRowDisclosure"
+data js_reason_surface_fn: String = "gunbcReasonSurface"
+
+data reason_surface_producers_note: String = "THE REASON SURFACE IS ONE MECHANISM WITH SEVERAL PRODUCERS, and it became one on an incident (2026-07-30). Composition slice 4 established the rule — anomaly evidence is a SURFACE, not a tooltip — and realized it once, inline, for the dispatch answer. Since then the row grew two more refusal producers: the seven-obligation workflow strip, whose failed and refused segments carry a located detail from /workflow.json, and the click's own catch arm. NEITHER reached a surface. The workflow segment's detail went to stage.title and the catch arm's went to b.title, which is exactly the title-only world anomaly_evidence_witness_test plants as its RED — the corpus stated the rule, enforced it against one subject, and then wrote two more subjects that fail it.\\n\\nThat is why this is a helper rather than a second copy: the defect was not that the workflow strip forgot to render a reason, it was that 'render a located reason where the operator can read it' had one realization welded to one caller, so the second and third callers could not reuse it and did the cheap thing instead. Adding a parallel insertion for the strip would have made three spellings of one concept and guaranteed a fourth.\\n\\nEach producer owns its own line, keyed by data-reason-source, because a row can be simultaneously refused at dispatch and refused at Verify and those are different facts with different remedies — one shared element would let whichever wrote last silently erase the other. Passing empty text REMOVES that producer's line, so a resolved refusal stops claiming the row is unwell; it does not touch any other producer's.\\n\\nWhat this deliberately does NOT do is auto-expand the row when a workflow segment refuses. The dispatch band expands because a click is a discrete operator act with an answer owed to it; the workflow strip re-renders on a two-second poll, and opening a disclosure on a timer would fight the operator's own hands every tick. The chip already carries `Verify · refused` in its own text; the disclosure carries why."
+
+fn row_disclosure_helper_stmt() -> TsStmt {
+  ts_const(name: js_row_disclosure_fn, value: ts_arrow(params: ["el"], body: ts_block(stmts: [
+    ts_const(name: "r", value: ts_binop(
+      left: ts_ident(name: "el"),
+      op: "&&",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "el"), property: "closest"),
+        args: [ts_lit_str(value: "li")]),
+    )),
+    ts_return(expr: ts_binop(
+      left: ts_ident(name: "r"),
+      op: "&&",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "r"), property: "querySelector"),
+        args: [ts_lit_str(value: "details.item-detail")]),
+    )),
+  ])))
+}
+
+fn reason_surface_helper_stmt() -> TsStmt {
+  ts_const(name: js_reason_surface_fn, value: ts_arrow(params: ["dt", "source", "text"], body: ts_block(stmts: [
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "dt")),
+      then: ts_block(stmts: [ts_return(expr: none)]),
+      else_stmt: none,
+    ),
+    ts_let(name: "rl", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
+      args: [ts_binop(
+        left: ts_binop(
+          left: ts_lit_str(value: ".disclosure-reason[data-reason-source=\""),
+          op: "+",
+          right: ts_ident(name: "source")),
+        op: "+",
+        right: ts_lit_str(value: "\"]"))],
+    )),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "text")),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "rl"),
+          op: "&&",
+          right: ts_call(callee: ts_member(object: ts_ident(name: "rl"), property: "remove"), args: []))),
+        ts_return(expr: none),
+      ]),
+      else_stmt: none,
+    ),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "rl")),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "rl"),
+          op: "=",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+            args: [ts_lit_str(value: "div")]))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "rl"), property: "className"),
+          op: "=",
+          right: ts_lit_str(value: "disclosure-reason"))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "rl"), property: "setAttribute"),
+          args: [ts_lit_str(value: "data-reason-source"), ts_ident(name: "source")])),
+        ts_const(name: "sm", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
+          args: [ts_lit_str(value: "summary")])),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "sm"),
+          op: "&&",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "sm"), property: "insertAdjacentElement"),
+            args: [ts_lit_str(value: "afterend"), ts_ident(name: "rl")]))),
+      ]),
+      else_stmt: none,
+    ),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "rl"), property: "textContent"),
+      op: "=",
+      right: ts_ident(name: "text"))),
+  ])))
+}
+
+data reason_source_dispatch: String = "dispatch"
+data reason_source_workflow_prefix: String = "workflow:"
+data reason_source_cleanup: String = "cleanup"
+
+data reason_source_roster_note: String = "The sources naming each producer's own line. They are row-scoped: every one of them is a verdict about THIS work item, so the row's disclosure is where it belongs. Two refusal surfaces deliberately do NOT use this mechanism and it is worth saying why, so a later reader does not 'finish the job' by moving them here. The sessions, attempts, and workflow OBSERVATION refusals are page-scoped — the route itself is unreachable, which is a fact about the dashboard rather than about any one row — and they already render as a persistent .observe-refused banner above main, which is the same rule realized at the page grain. The instance label is the one genuine remainder: it renders `instance · observation refused` with the thrown cause in its title alone, and it is page-scoped, so closing it means routing it into the banner family rather than into this one."
+
+data reason_absent_phrase: String = "no located reason on the wire"
+
+data dispatch_unreadable_answer_note: String = "THE CATCH ARM USED TO NAME A CAUSE IT HAD NOT OBSERVED. It set the title to the literal `network error`, but this arm catches every rejection of the fetch chain — a genuine transport failure AND a response whose body would not parse, which is what an HTTP 500 from the dispatch route looks like from here (r.json() rejects on the error page). The live specimen (2026-07-30): the served graph called an unregistered primitive, the route answered 500, and the button read `belt fault` with a tooltip claiming the network had failed. Nothing had failed on the network; the operator was handed a fabricated diagnosis of a real defect, which is a §5 wrong answer rather than a missing one.\\n\\nThe phrase below is true of BOTH producers — a transport failure means no answer arrived, an unparseable body means the answer cannot be read, and neither is claimed to be the other — and the thrown value is appended rather than discarded, so the actual cause (a TypeError from fetch, a SyntaxError naming the offending token) reaches the operator instead of being replaced by a guess. The status code itself is still lost, because the chain reads r.json() without keeping r; recovering it means restructuring the chain and is not bundled here."
+
+data dispatch_unreadable_answer_phrase: String = "no readable answer from the dispatch route"
 
 fn dispatch_preamble_statements() -> List<TsStmt> {
-  [ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms)))]
+  [
+    ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms))),
+    row_disclosure_helper_stmt(),
+    reason_surface_helper_stmt(),
+  ]
 }
 
 fn dwell_remaining_expr() -> TsExpr {
@@ -882,14 +984,9 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       ),
     )),
     ts_const(name: "expandRow", value: dispatch_expand_chain_expr()),
-    ts_const(name: "rowEl", value: ts_call(callee: js_b_member(name: "closest"), args: [ts_lit_str(value: "li")])),
-    ts_const(name: "dt", value: ts_binop(
-      left: ts_ident(name: "rowEl"),
-      op: "&&",
-      right: ts_call(
-        callee: ts_member(object: ts_ident(name: "rowEl"), property: "querySelector"),
-        args: [ts_lit_str(value: "details.item-detail")]),
-    )),
+    ts_const(name: "dt", value: ts_call(
+      callee: ts_ident(name: js_row_disclosure_fn),
+      args: [ts_ident(name: "b")])),
     ts_if(
       cond: ts_binop(left: ts_ident(name: "expandRow"), op: "&&", right: ts_ident(name: "dt")),
       then: ts_block(stmts: [
@@ -900,50 +997,19 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       ]),
       else_stmt: none,
     ),
-    ts_if(
-      cond: ts_binop(
-        left: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),
-        op: "&&",
-        right: ts_ident(name: "dt")),
-      then: ts_block(stmts: [
-        ts_let(name: "rl", value: ts_call(
-          callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
-          args: [ts_lit_str(value: ".disclosure-reason")])),
-        ts_if(
-          cond: ts_prefix(op: "!", expr: ts_ident(name: "rl")),
-          then: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_ident(name: "rl"),
-              op: "=",
-              right: ts_call(
-                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
-                args: [ts_lit_str(value: "div")]))),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "rl"), property: "className"),
-              op: "=",
-              right: ts_lit_str(value: "disclosure-reason"))),
-            ts_const(name: "sm", value: ts_call(
-              callee: ts_member(object: ts_ident(name: "dt"), property: "querySelector"),
-              args: [ts_lit_str(value: "summary")])),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_ident(name: "sm"),
-              op: "&&",
-              right: ts_call(
-                callee: ts_member(object: ts_ident(name: "sm"), property: "insertAdjacentElement"),
-                args: [ts_lit_str(value: "afterend"), ts_ident(name: "rl")]))),
-          ]),
-          else_stmt: none,
-        ),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "rl"), property: "textContent"),
-          op: "=",
-          right: ts_binop(
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: js_reason_surface_fn),
+      args: [
+        ts_ident(name: "dt"),
+        ts_lit_str(value: reason_source_dispatch),
+        ts_cond(
+          test: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),
+          consequent: ts_binop(
             left: ts_ident(name: "why"),
             op: "||",
-            right: ts_lit_str(value: "belt fault — no located reason on the wire")))),
-      ]),
-      else_stmt: none,
-    ),
+            right: ts_lit_str(value: concat(dispatch_caption_loud, concat(" — ", reason_absent_phrase)))),
+          alternate: ts_lit_str(value: "")),
+      ])),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "ok")),
       then: ts_block(stmts: [
@@ -1018,7 +1084,18 @@ fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
           js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_requested)),
           js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_refused)),
           js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_loud)),
-          ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "title"), op: "=", right: ts_lit_str(value: "network error"))),
+          ts_const(name: "why", value: ts_binop(
+            left: ts_lit_str(value: concat(dispatch_unreadable_answer_phrase, ": ")),
+            op: "+",
+            right: ts_ident(name: "e"))),
+          ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "title"), op: "=", right: ts_ident(name: "why"))),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_ident(name: js_reason_surface_fn),
+            args: [
+              ts_call(callee: ts_ident(name: js_row_disclosure_fn), args: [ts_ident(name: "b")]),
+              ts_lit_str(value: reason_source_dispatch),
+              ts_ident(name: "why"),
+            ])),
           ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "false"))),
         ]))),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "setTimeout"), args: [ts_ident(name: "applyErr"), dwell_remaining_expr()])),
@@ -1645,16 +1722,30 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                                 left: ts_ident(name: "action"),
                                 op: "+",
                                 right: ts_lit_str(value: " refused")))),
+                            ts_const(name: "ccWhy", value: ts_binop(
+                              left: ts_binop(
+                                left: ts_member(object: ts_ident(name: "j"), property: "reason"),
+                                op: "||",
+                                right: ts_member(object: ts_ident(name: "j"), property: "detail")),
+                              op: "||",
+                              right: ts_lit_str(value: reason_absent_phrase))),
                             ts_expr_stmt(expr: ts_binop(
                               left: ts_member(object: ts_ident(name: "cc"), property: "title"),
                               op: "=",
-                              right: ts_binop(
-                                left: ts_binop(
-                                  left: ts_member(object: ts_ident(name: "j"), property: "reason"),
-                                  op: "||",
-                                  right: ts_member(object: ts_ident(name: "j"), property: "detail")),
-                                op: "||",
-                                right: ts_lit_str(value: "no reason on the wire")))),
+                              right: ts_ident(name: "ccWhy"))),
+                            ts_expr_stmt(expr: ts_call(
+                              callee: ts_ident(name: js_reason_surface_fn),
+                              args: [
+                                ts_call(callee: ts_ident(name: js_row_disclosure_fn), args: [ts_ident(name: "cc")]),
+                                ts_lit_str(value: reason_source_cleanup),
+                                ts_binop(
+                                  left: ts_binop(
+                                    left: ts_ident(name: "action"),
+                                    op: "+",
+                                    right: ts_lit_str(value: " refused — ")),
+                                  op: "+",
+                                  right: ts_ident(name: "ccWhy")),
+                              ])),
                             ts_expr_stmt(expr: ts_binop(
                               left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
                               op: "=",
@@ -1671,13 +1762,27 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                         left: ts_ident(name: "action"),
                         op: "+",
                         right: ts_lit_str(value: " failed")))),
+                    ts_const(name: "ccWhy", value: ts_binop(
+                      left: ts_ident(name: "e"),
+                      op: "+",
+                      right: ts_lit_str(value: ""))),
                     ts_expr_stmt(expr: ts_binop(
                       left: ts_member(object: ts_ident(name: "cc"), property: "title"),
                       op: "=",
-                      right: ts_binop(
-                        left: ts_ident(name: "e"),
-                        op: "+",
-                        right: ts_lit_str(value: "")))),
+                      right: ts_ident(name: "ccWhy"))),
+                    ts_expr_stmt(expr: ts_call(
+                      callee: ts_ident(name: js_reason_surface_fn),
+                      args: [
+                        ts_call(callee: ts_ident(name: js_row_disclosure_fn), args: [ts_ident(name: "cc")]),
+                        ts_lit_str(value: reason_source_cleanup),
+                        ts_binop(
+                          left: ts_binop(
+                            left: ts_ident(name: "action"),
+                            op: "+",
+                            right: ts_lit_str(value: " failed — ")),
+                          op: "+",
+                          right: ts_ident(name: "ccWhy")),
+                      ])),
                     ts_expr_stmt(expr: ts_binop(
                       left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
                       op: "=",
@@ -1837,7 +1942,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                   ts_const(name: "wireWhy", value: ts_binop(
                     left: ts_member(object: ts_ident(name: "sj"), property: "reason"),
                     op: "||",
-                    right: ts_lit_str(value: "no reason on the wire"))),
+                    right: ts_lit_str(value: reason_absent_phrase))),
                   ts_const(name: "why", value: ts_binop(
                     left: ts_lit_str(value: "session observation refused: "),
                     op: "+",
@@ -1951,7 +2056,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
                   ts_const(name: "wireWhy", value: ts_binop(
                     left: ts_member(object: ts_ident(name: "aj"), property: "reason"),
                     op: "||",
-                    right: ts_lit_str(value: "no reason on the wire"))),
+                    right: ts_lit_str(value: reason_absent_phrase))),
                   ts_const(name: "why", value: ts_binop(
                     left: ts_lit_str(value: "attempt observation refused: "),
                     op: "+",
@@ -2280,6 +2385,9 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
           ]),
           else_stmt: none,
         ),
+        ts_const(name: "wdt", value: ts_call(
+          callee: ts_ident(name: js_row_disclosure_fn),
+          args: [ts_ident(name: "wp")])),
         ts_expr_stmt(expr: ts_call(
           callee: ts_member(
             object: ts_member(
@@ -2313,6 +2421,40 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
                     property: "state",
                   ),
                 )),
+                ts_const(name: "bad", value: ts_binop(
+                  left: ts_binop(
+                    left: ts_member(
+                      object: ts_ident(name: "seg"),
+                      property: "state",
+                    ),
+                    op: "===",
+                    right: ts_lit_str(value: "failed"),
+                  ),
+                  op: "||",
+                  right: ts_binop(
+                    left: ts_member(
+                      object: ts_ident(name: "seg"),
+                      property: "state",
+                    ),
+                    op: "===",
+                    right: ts_lit_str(value: "refused"),
+                  ),
+                )),
+                ts_const(name: "sl", value: ts_binop(
+                  left: ts_binop(
+                    left: ts_member(
+                      object: ts_ident(name: "seg"),
+                      property: "short_label",
+                    ),
+                    op: "+",
+                    right: ts_lit_str(value: " · "),
+                  ),
+                  op: "+",
+                  right: ts_member(
+                    object: ts_ident(name: "seg"),
+                    property: "state",
+                  ),
+                )),
                 ts_expr_stmt(expr: ts_binop(
                   left: ts_member(
                     object: ts_ident(name: "stage"),
@@ -2320,40 +2462,8 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
                   ),
                   op: "=",
                   right: ts_cond(
-                    test: ts_binop(
-                      left: ts_binop(
-                        left: ts_member(
-                          object: ts_ident(name: "seg"),
-                          property: "state",
-                        ),
-                        op: "===",
-                        right: ts_lit_str(value: "failed"),
-                      ),
-                      op: "||",
-                      right: ts_binop(
-                        left: ts_member(
-                          object: ts_ident(name: "seg"),
-                          property: "state",
-                        ),
-                        op: "===",
-                        right: ts_lit_str(value: "refused"),
-                      ),
-                    ),
-                    consequent: ts_binop(
-                      left: ts_binop(
-                        left: ts_member(
-                          object: ts_ident(name: "seg"),
-                          property: "short_label",
-                        ),
-                        op: "+",
-                        right: ts_lit_str(value: " · "),
-                      ),
-                      op: "+",
-                      right: ts_member(
-                        object: ts_ident(name: "seg"),
-                        property: "state",
-                      ),
-                    ),
+                    test: ts_ident(name: "bad"),
+                    consequent: ts_ident(name: "sl"),
                     alternate: ts_member(
                       object: ts_ident(name: "seg"),
                       property: "short_label",
@@ -2370,6 +2480,38 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
                     object: ts_ident(name: "seg"),
                     property: "detail",
                   ),
+                )),
+                ts_const(name: "sd", value: ts_binop(
+                  left: ts_member(
+                    object: ts_ident(name: "seg"),
+                    property: "detail",
+                  ),
+                  op: "||",
+                  right: ts_lit_str(value: reason_absent_phrase),
+                )),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_ident(name: js_reason_surface_fn),
+                  args: [
+                    ts_ident(name: "wdt"),
+                    ts_binop(
+                      left: ts_lit_str(value: reason_source_workflow_prefix),
+                      op: "+",
+                      right: ts_member(object: ts_ident(name: "seg"), property: "kind"),
+                    ),
+                    ts_cond(
+                      test: ts_ident(name: "bad"),
+                      consequent: ts_binop(
+                        left: ts_binop(
+                          left: ts_ident(name: "sl"),
+                          op: "+",
+                          right: ts_lit_str(value: " — "),
+                        ),
+                        op: "+",
+                        right: ts_ident(name: "sd"),
+                      ),
+                      alternate: ts_lit_str(value: ""),
+                    ),
+                  ],
                 )),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(
@@ -2469,7 +2611,7 @@ fn workflow_fetch_request_statements() -> List<TsStmt> {
                         property: "reason",
                       ),
                       op: "||",
-                      right: ts_lit_str(value: "no reason on the wire"),
+                      right: ts_lit_str(value: reason_absent_phrase),
                     ),
                   )),
                   workflow_refuse_visible_stmt(),
