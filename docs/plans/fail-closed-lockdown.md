@@ -17,7 +17,6 @@ The test for "locked": (a) wired into the floor (discovered + run), (b) fail-clo
 | Gate | Scope | Evidence |
 | --- | --- | --- |
 | DagCompileCleanGate | whole tree (fail-fast root) | `gunbc.ci_gate` `DagCompileCleanGate`; `v2.workflow.ci_floor_plan` `gate_runnable` |
-| RustMonolithGate | `.rs` + manifest | `gunbc.commit_workflow` `commit_gate_rust_suite_removed_disposition` records the retired gate; `tools.rust_gates_ci` `rust_gate_build_jobs_args` remains as local tooling |
 | GeneratedArtifactDriftGate | `ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry | `ci_spec.dag` `GeneratedArtifactDriftGate`; `generated_artifact_gate.dag`; registry+commit-derivation `gunbc/generated_artifact.dag` |
 
 These are the **structural** gates. The gap is everything *analytical* and the *bootstrap purity* gate.
