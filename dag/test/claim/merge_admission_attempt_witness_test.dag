@@ -2,7 +2,7 @@ module test.claim.merge_admission_attempt_witness
 
 import std.types { NonEmptyStr, ContentHash, CommitSha, String }
 import extdeps.github.checks { Success, Failure }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_object_id_eq }
 import gunbc.merge_admission {
   TestedSubject,
   WalkAttemptId,
@@ -17,7 +17,6 @@ import gunbc.merge_admission {
   MergeDeniedSubjectMismatch,
   classify_merge_admission_verdict_v2,
   merge_admission_verdict_would_block,
-  git_object_id_eq,
 }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
