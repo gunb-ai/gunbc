@@ -12,8 +12,19 @@
     "header_lines_excluded_from_diagnostics": 1
   },
   "inferred_grouping": {
+    "decision_counts": {
+      "A_SELF": 30,
+      "B_PARALLEL_TOWER": 63,
+      "C_TRUE_HOMONYM": 222
+    },
+    "decision_key": "variant name plus unordered candidate pair",
     "ambiguous_variant_decisions": 315,
-    "ambiguous_variant_occurrences": 324
+    "ambiguous_variant_occurrences": 324,
+    "occurrence_counts": {
+      "A_SELF": 34,
+      "B_PARALLEL_TOWER": 63,
+      "C_TRUE_HOMONYM": 227
+    }
   },
   "inputs": {
     "compiler_binary_bytes": 21563472,

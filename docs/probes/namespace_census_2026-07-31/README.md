@@ -24,8 +24,18 @@ A normal whole-tree compile follows transitive imports and reached only 1,634 of
 source root whose one module brace-lessly imports every declared module:
 
 ```sh
+mkdir -p /tmp/namespace-census /tmp/namespace-census-output
 python3 docs/probes/namespace_census_2026-07-31/generate_root.py \
   . /tmp/namespace-census/complete_population_root.dag
+/path/to/pinned/gunbc compile \
+  --source-root dag \
+  --source-root src/v2 \
+  --source-root /tmp/namespace-census \
+  --entry /tmp/namespace-census/complete_population_root.dag \
+  --output-dir /tmp/namespace-census-output \
+  --target dag \
+  > /tmp/namespace-census/pop_stdout.log \
+  2> /tmp/namespace-census/pop_stderr.log
 ```
 
 Compile that entry with the pinned binary, the `dag`, `src/v2`, and generated-root
@@ -38,11 +48,14 @@ new line shape:
 
 ```sh
 python3 docs/probes/namespace_census_2026-07-31/parse_diagnostics.py \
-  pop_stderr.log \
+  /tmp/namespace-census/pop_stderr.log \
   --expected-sha256 06289db522ff4cbf1613d07219e6241fe1d92994710e2fc871ad82c3de19823f \
-  --population-json /tmp/namespace-census/population.json
+  --population-json /tmp/namespace-census/population.json \
+  --ambiguity-json /tmp/namespace-census/ambiguity.json
 python3 docs/probes/namespace_census_2026-07-31/provider_bounds.py \
   . /tmp/namespace-census/population.json
+python3 docs/probes/namespace_census_2026-07-31/classify_ambiguity.py \
+  /tmp/namespace-census/ambiguity.json /tmp/namespace-census/ambiguity-classified.json
 ```
 
 The normalized parser output must equal `summary.json`'s compiler-authoritative
@@ -76,7 +89,10 @@ separate. Together they bracket, rather than determine, mechanical share at
 strict catalogue's 2,867 zero-provider rows are not a semantic finding: 2,663 have a
 different-category declaration and only the agnostic bound's 204 remain absent.
 
-`INFERRED GROUPING`: grouping the 324 ambiguity occurrences by variant plus candidate
-population produces 315 decisions. That is a reproducible analysis grouping, not a
-compiler output. The class labels recorded alongside it are likewise analysis, never
-compiler-authoritative resolution.
+`INFERRED GROUPING`: grouping by variant name plus unordered candidate pair maps 324
+occurrences to 315 decisions. The suffix heuristic then labels them A_SELF (30
+decisions/34 occurrences), B_PARALLEL_TOWER (63/63), and C_TRUE_HOMONYM (222/227).
+Both sums are asserted by `classify_ambiguity.py`. The grouping key and labels are
+analysis choices, not compiler output. In particular, B's suffix list was selected
+by inspection; reading those pairs as one axis forked per language is an inference,
+not a semantic compiler judgment.
