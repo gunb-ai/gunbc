@@ -22,7 +22,9 @@ import v2.std.operation_argv {
   OperationRef,
   UndeclaredInputBound,
   bind_operation_invocation,
-  operation_argv_bind_text
+  bind_operation_invocation_host_env_executable,
+  operation_argv_bind_text,
+  operation_argv_bind_text_list
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.orchestration {
@@ -166,6 +168,29 @@ test fn effect_plan_bash_two_declared_operations_encode_and_emit_through_carrier
   encoded && emitted_source_is(
     plan: plan,
     expected: "'test' '-x' '/bin/sh' && 'id' '-u'"
+  )
+}
+
+test fn effect_plan_bash_host_env_executable_replaces_declaration_literal_argv0() -> Bool {
+  let plan = one_step_plan(
+    inv: bind_operation_invocation_host_env_executable(
+      at: operation_ref(
+        path: "dag/extdeps/rust/cargo_build.dag",
+        service: "cargo.Build",
+        operation: "Check"
+      ),
+      bindings: [
+        operation_argv_bind_text_list(
+          name: "extra_args",
+          items: ["-p", "v1-compiler-tests", "--tests"]
+        )
+      ],
+      env_var: "CARGO_BIN"
+    )
+  )
+  emitted_source_is(
+    plan: plan,
+    expected: "\"$CARGO_BIN\" 'check' '-p' 'v1-compiler-tests' '--tests'"
   )
 }
 

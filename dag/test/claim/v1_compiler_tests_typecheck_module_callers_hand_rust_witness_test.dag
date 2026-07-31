@@ -24,13 +24,11 @@ test fn v1_compiler_tests_typecheck_module_callers_scaffold_names_receipt_fields
   !(v1_compiler_tests_typecheck_module_callers_hand_rust_dissolve_trigger == "")
     && !(v1_compiler_tests_typecheck_module_callers_hand_rust_receipt_plan_anchor == "")
     && !(v1_compiler_tests_typecheck_module_callers_hand_rust_roadmap_lane_anchor == "")
-    && v1_compiler_tests_typecheck_module_callers_hand_rust_receipt_witness_entry
-      == "dag/test/claim/v1_compiler_tests_typecheck_module_callers_hand_rust_witness_test.dag"
+    && v1_compiler_tests_typecheck_module_callers_hand_rust_receipt_witness_entry == "dag/test/claim/v1_compiler_tests_typecheck_module_callers_hand_rust_witness_test.dag"
 }
 
 test fn v1_compiler_tests_typecheck_module_callers_loc_delta_matches_roster() -> Bool {
-  v1_compiler_tests_typecheck_module_callers_hand_rust_loc_delta_net
-    == length(xs: v1_compiler_tests_typecheck_module_callers_hand_rust_paths)
+  v1_compiler_tests_typecheck_module_callers_hand_rust_loc_delta_net == length(xs: v1_compiler_tests_typecheck_module_callers_hand_rust_paths)
 }
 
 test fn v1_compiler_tests_typecheck_module_callers_dissolve_trigger_cites_compile_gate_receipt() -> Bool {

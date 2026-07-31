@@ -78,8 +78,8 @@ jobs:
         timeout-minutes: 5
       - name: cargo check -p v1-compiler-tests --tests (compile gate; no test execution)
         run: |
-          # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_fmt_gate_line and ci_release_build_script await
-          "$CARGO_BIN" check -p v1-compiler-tests --tests
+          # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
+          "$CARGO_BIN" 'check' '-p' 'v1-compiler-tests' '--tests'
         timeout-minutes: 5
       - name: Build release bins (claim_executor + gunbc)
         run: |

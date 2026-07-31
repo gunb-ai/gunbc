@@ -2,7 +2,11 @@ module v2.workflow.effect_plan_bash_materialize
 
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
-  bash_build_command_from_lits
+  bash_build_command,
+  bash_build_command_from_lits,
+  bash_build_command_words_from_lits_suffix,
+  bash_build_command_words_single,
+  bash_build_word_var
 }
 import v2.std.algebra {
   HeadAbsent,
@@ -33,7 +37,10 @@ import v2.std.operation_argv {
   ArgvMaterialized,
   ArgvRefusalCause,
   BoundOperationInvocation,
+  DeclarationLiteral,
+  HostEnvVar,
   OperationRef,
+  ShellExecutablePosition,
   operation_argv_cause_label,
   operation_argv_ref_label
 }
@@ -54,7 +61,7 @@ import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node
 }
 
-data effect_plan_bash_materialize_authority_note: String = "Wave A realization edge: EffectPlan<BoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf derives argv from its referenced extdeps operation declaration through shell_materialize_operation_argv. FailFast is the Bash grammar's && relation, so source order is preserved and a failing step prevents every later step. No Run.command, raw shell composer, target field in intent, or second operation registry is introduced. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate step — so the model-only clause of this note retired; nothing else about the edge changed."
+data effect_plan_bash_materialize_authority_note: String = "Wave A realization edge: EffectPlan<BoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf derives argv from its referenced extdeps operation declaration through shell_materialize_operation_argv; optional HostEnvVar on the invocation replaces argv[0] with a grammar-owned bash_build_word_var in emission only (foreign-executor transport glue, not a second argv authority). FailFast is the Bash grammar's && relation, so source order is preserved and a failing step prevents every later step. No Run.command, raw shell composer, target field in intent, or second operation registry is introduced. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate step — so the model-only clause of this note retired; nothing else about the edge changed."
 
 data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (§3): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
 
@@ -121,6 +128,29 @@ fn effect_plan_bash_argv_nul_index(
   }
 }
 
+fn effect_plan_bash_command_from_argv(
+  argv: List<String>,
+  executable_position: ShellExecutablePosition
+) -> Node {
+  match executable_position {
+    DeclarationLiteral => bash_build_command_from_lits(lits: argv)
+    HostEnvVar { name: env_var } =>
+      match list_head(xs: argv) {
+        HeadAbsent => bash_build_command_from_lits(lits: [])
+        HeadFound { value: _ } =>
+          bash_build_command(
+            words: bash_build_command_words_from_lits_suffix(
+              lits: argv,
+              accumulated: bash_build_command_words_single(
+                word: bash_build_word_var(name: env_var)
+              ),
+              index: 1
+            )
+          )
+      }
+  }
+}
+
 fn effect_plan_bash_encode_invocation(
   invocation: BoundOperationInvocation,
   step_index: Int
@@ -143,7 +173,10 @@ fn effect_plan_bash_encode_invocation(
         Absent =>
           EffectPlanBashEncodingAccepted {
             encoding: EffectPlanBashEncoded {
-              statement: bash_build_command_from_lits(lits: argv)
+              statement: effect_plan_bash_command_from_argv(
+                argv: argv,
+                executable_position: invocation.executable_position
+              )
             }
           }
       }
