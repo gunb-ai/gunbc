@@ -1,0 +1,7 @@
+module v2.extdeps.languages.overflow_action
+
+data overflow_action_homonym_note: String = "OverflowAction lifted from java.dag and rust.dag (byte-identical PanicOnOverflow | TwoComplementWrap). P3a-class self-fork homonym eliminated: one type, N language consumers. No std authority covers integer overflow disposition at this grain."
+
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap

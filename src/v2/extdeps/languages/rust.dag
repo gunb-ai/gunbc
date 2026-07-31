@@ -1,5 +1,5 @@
 module v2.extdeps.languages.rust
-import v2.extdeps.languages.primitive_width { OverflowAction }
+import v2.extdeps.languages.overflow_action { OverflowAction }
 import std.trait_derive_shape {
   ReprDeriveClone,
   ReprDeriveDebug,
