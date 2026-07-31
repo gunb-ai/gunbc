@@ -3625,21 +3625,26 @@ fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord
     true
 }
 
-/// The materialization demand receipt at the eval-frame grain: process-wide
-/// ledger totals accumulated by every InterpContext on Drop (threads included),
-/// written once at walk end. Determinism, as measured (2026-07-10, 5 receipts):
-/// unkeyed_calls is corpus-deterministic (identical across schedules, machines,
-/// and debug/release); keyed/distinct/duplicated jitter a few counts because
-/// they sum PER-CTX numbers and witness→ctx grouping is a thread-pool accident
-/// — so counts disclose, they do not pin, until the frame grain is structural.
-/// wasted_ms lines are observational and must never gate. The derived ci.yml
-/// gate fails closed on a missing/malformed file or zeroed keyed_calls (a
-/// floor that evaluated nothing is a lie, so disabling the trace cannot
-/// silently green the gate). Returns false on a write error — the walk fails
-/// closed here, not only at the downstream missing-file gate.
-fn write_materialization_receipt() -> bool {
-    let t = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
-    let body = format!(
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
+/// `gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_note`):
+/// harvests the on-success-stage eval population into
+/// `target/floor-attempt-<attempt_id>/floor-on-success-materialization-receipt.txt`
+/// after `stage_memo` drops; ordinary-floor harvest stays in `write_materialization_receipt`. Receipt shape and
+/// path are modeled in `.dag`; the fs write + process-accumulator boundary are
+/// executor realization until claim_executor self-emits.
+fn materialization_receipt_body(
+    t: &v1_compiler::v1_interpreter::EvalRecomputeTotals,
+    attempt_id: Option<&str>,
+    plan_site: Option<&str>,
+) -> String {
+    let mut body = String::new();
+    if let Some(attempt_id) = attempt_id {
+        body.push_str(&format!("attempt_id={attempt_id}\n"));
+    }
+    if let Some(plan_site) = plan_site {
+        body.push_str(&format!("plan_site={plan_site}\n"));
+    }
+    body.push_str(&format!(
         "keyed_calls={}\nunkeyed_calls={}\noverflow_calls={}\ndistinct_keys={}\nduplicated_keys={}\nsingle_site_keys={}\nmulti_site_keys={}\nwasted_ms_total={}\nwasted_ms_single_site={}\nwasted_ms_multi_site={}\nmemo_hits={}\nmemo_misses={}\nmemo_overflow={}\n",
         t.keyed_calls,
         t.unkeyed_calls,
@@ -3654,17 +3659,40 @@ fn write_materialization_receipt() -> bool {
         t.memo_hits,
         t.memo_misses,
         t.memo_overflow
-    );
-    let path = std::path::Path::new("target/floor-materialization-receipt.txt");
-    if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
+    ));
+    body
+}
+
+/// The materialization demand receipt at the eval-frame grain: process-wide
+/// ledger totals accumulated by every InterpContext on Drop (threads included).
+/// Determinism, as measured (2026-07-10, 5 receipts): unkeyed_calls is
+/// corpus-deterministic (identical across schedules, machines, and debug/release);
+/// keyed/distinct/duplicated jitter a few counts because they sum PER-CTX numbers
+/// and witness→ctx grouping is a thread-pool accident — so counts disclose, they
+/// do not pin, until the frame grain is structural. wasted_ms lines are
+/// observational and must never gate. The derived ci.yml gate fails closed on a
+/// missing/malformed file or zeroed keyed_calls (a floor that evaluated nothing
+/// is a lie, so disabling the trace cannot silently green the gate). Returns
+/// false on a write error — the walk fails closed here, not only at the
+/// downstream missing-file gate.
+fn write_materialization_receipt_at(
+    path: &std::path::Path,
+    population: &str,
+    attempt_id: Option<&str>,
+    plan_site: Option<&str>,
+) -> bool {
+    let t = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+    let body = materialization_receipt_body(&t, attempt_id, plan_site);
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    if let Err(e) = std::fs::create_dir_all(parent).and_then(|_| std::fs::write(path, &body)) {
         eprintln!(
-            "claim_executor: failed to write materialization receipt {}: {e} — walk fails closed here (and the gate downstream fails closed on the missing file)",
+            "claim_executor: failed to write {population} materialization receipt {}: {e} — walk fails closed here",
             path.display()
         );
         return false;
     }
     eprintln!(
-        "[receipt] floor materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} memo_hits={} memo_misses={} (receipt: {})",
+        "[receipt] {population} materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} memo_hits={} memo_misses={} (receipt: {})",
         t.keyed_calls,
         t.unkeyed_calls,
         t.duplicated_keys,
@@ -3676,6 +3704,27 @@ fn write_materialization_receipt() -> bool {
         path.display()
     );
     true
+}
+
+/// Ordinary-floor materialization disclosure (gates via `FloorFinalization`).
+fn write_materialization_receipt() -> bool {
+    write_materialization_receipt_at(
+        std::path::Path::new("target/floor-materialization-receipt.txt"),
+        "floor",
+        None,
+        None,
+    )
+}
+
+/// On-success-stage materialization disclosure — a SEPARATE population from the
+/// ordinary floor receipt, harvested after `stage_memo` drops. Attempt-scoped
+/// like the other on-success receipts so a reused worktree cannot retain a
+/// prior attempt's success population when the current floor fails before stages.
+fn write_on_success_materialization_receipt(attempt_id: &str, plan_site: &str) -> bool {
+    let path = std::path::Path::new("target")
+        .join(format!("floor-attempt-{attempt_id}"))
+        .join("floor-on-success-materialization-receipt.txt");
+    write_materialization_receipt_at(&path, "on-success floor", Some(attempt_id), Some(plan_site))
 }
 
 /// Emit a fractal post-walk tree to stderr when GUNBC_FLOOR_GANTT=1.
@@ -4583,7 +4632,8 @@ fn run_walk(
     // populations differ here only in ordering and failure policy, which is the whole
     // claim of the extraction. Their memo contexts drop AFTER
     // write_materialization_receipt above, so stage materialization is structurally NOT
-    // folded into the floor receipt.
+    // folded into the floor receipt. A second attempt-scoped receipt harvests the stage
+    // population after stage_memo drops.
     let mut on_success_failed = false;
     if !on_success_stages.is_empty() {
         if ordinary_failed {
@@ -4747,7 +4797,21 @@ fn run_walk(
                     break;
                 }
             }
-
+            drop(stage_memo);
+            let materialization_written = match walk_attempt_id {
+                Some(attempt) => write_on_success_materialization_receipt(attempt, plan_site),
+                None => {
+                    eprintln!(
+                        "claim_executor: on-success materialization receipt has no walk-attempt \
+                         identity — refusing to write an unidentifiable receipt"
+                    );
+                    false
+                }
+            };
+            if !materialization_written {
+                on_success_failed = true;
+                failure_details.push("on-success materialization receipt write failed".to_string());
+            }
             let aggregate_written = match walk_attempt_id {
                 Some(attempt) => write_on_success_receipt(
                     &stage_rows,
@@ -5646,6 +5710,18 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Process-wide eval-recompute totals are shared across every test in this
+    // binary. Tests that drain or assert on the accumulator must serialize so
+    // one cannot steal another's totals (DESIGN §5 hermetic discriminating tests).
+    static PROCESS_EVAL_RECOMPUTE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_process_eval_recompute_test_lock<F: FnOnce()>(f: F) {
+        let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        f()
+    }
 
     fn finalization_record(resolve_counts: &[u64]) -> BatchRecord {
         BatchRecord {
@@ -6928,42 +7004,183 @@ mod tests {
 
     // The materialization-receipt chain by execution: a real entry resolves, a
     // claim evaluates on its InterpContext, and the ctx Drop absorbs ledger
-    // totals into the process accumulator. The env latch is process-global and
-    // sticky (OnceLock), so under plain `cargo test` sibling tests in this
-    // binary share it and their ctx drops may also absorb — every assertion
-    // here is therefore monotone under concurrent absorbs (siblings can only
-    // ADD totals; nothing here asserts the accumulator is empty). Drain-once
-    // is Option::take by construction, not asserted through the shared global.
+    // totals into the process accumulator. Serialized via
+    // PROCESS_EVAL_RECOMPUTE_TEST_LOCK so no sibling test can drain or pollute
+    // the accumulator mid-assertion.
     #[test]
     fn materialization_receipt_totals_absorb_on_ctx_drop() {
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+        with_process_eval_recompute_test_lock(|| {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            let root = workspace_root();
+            let roots = vec![
+                root.join("src/v2").to_string_lossy().into_owned(),
+                root.join("dag").to_string_lossy().into_owned(),
+            ];
+            let entry = root
+                .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                .to_string_lossy()
+                .into_owned();
+            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            {
+                let (graph, indices) =
+                    resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
+                // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+                // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+                let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+                let outcome = run_claim(&ctx, "single_pure_demand_is_accepted_recompute");
+                assert!(
+                    matches!(outcome, ClaimOutcome::Pass),
+                    "claim must pass for the receipt to be meaningful"
+                );
+            }
+            let totals = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            assert!(
+                totals.keyed_calls > 0,
+                "ctx Drop must absorb ledger totals into the process accumulator"
+            );
+        });
+    }
+
+    fn parse_materialization_receipt_field(body: &str, key: &str) -> Option<u64> {
+        body.lines()
+            .find_map(|line| line.strip_prefix(key))
+            .and_then(|v| v.trim().parse::<u64>().ok())
+    }
+
+    fn run_walk_materialization_fixture(
+        roots: &[String],
+        on_success_stages: &[Vec<Runnable>],
+    ) -> WalkOutcome {
         let root = workspace_root();
-        let roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
-        ];
-        let entry = root
-            .join("dag/test/claim/materialization_ladder_witness_test.dag")
+        let ordinary_entry = root
+            .join("src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag")
             .to_string_lossy()
             .into_owned();
-        let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
-        {
-            let (graph, indices) =
-                resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
-            // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
-            // the hermetic envelope is exact; a service call sneaking in refuses loudly.
-            let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-            let outcome = run_claim(&ctx, "single_pure_demand_is_accepted_recompute");
+        let ordinary_batch = vec![vec![Runnable::SingleClaim {
+            entry: ordinary_entry,
+            function: "falsifier_green_control_holds".to_string(),
+            profile: ParsedRunnableProfile::undeclared(),
+        }]];
+        const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
+        let walk_attempt_id = if on_success_stages.is_empty() {
+            None
+        } else {
+            Some(TEST_ATTEMPT_ID)
+        };
+        run_walk(
+            roots,
+            "test::on_success_materialization_fixture",
+            &ordinary_batch,
+            on_success_stages,
+            None,
+            &Arc::new(MemoryGovernor::from_environment(1)),
+            None,
+            FalsifierSelfHostWetBudgets::default(),
+            FloorBatchStopPolicy::StopBeforeDependents,
+            None,
+            None,
+            false,
+            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+            walk_attempt_id,
+        )
+    }
+
+    // Discriminating control (DESIGN §5): post-floor pure demand must appear in the
+    // on-success materialization receipt and NOT in the ordinary-floor receipt, which
+    // is harvested before stages run.
+    #[test]
+    fn on_success_materialization_receipt_separates_from_ordinary_floor() {
+        with_process_eval_recompute_test_lock(|| {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            let root = workspace_root();
+            std::env::set_current_dir(&root).expect("chdir to workspace root for receipt paths");
+            let roots = vec![
+                root.join("src/v2").to_string_lossy().into_owned(),
+                root.join("dag").to_string_lossy().into_owned(),
+            ];
+            const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
+            let success_receipt = root
+                .join("target")
+                .join(format!("floor-attempt-{TEST_ATTEMPT_ID}"))
+                .join("floor-on-success-materialization-receipt.txt");
+            let ordinary_receipt = root.join("target/floor-materialization-receipt.txt");
+            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+
+            let run_fixture = |on_success_stages: &[Vec<Runnable>]| {
+                let _ = std::fs::remove_file(&success_receipt);
+                let _ = std::fs::remove_file(&ordinary_receipt);
+                let outcome = run_walk_materialization_fixture(&roots, on_success_stages);
+                assert!(
+                    !outcome.any_failed,
+                    "walk must pass: {:?}",
+                    outcome.failure_details
+                );
+                outcome
+            };
+
+            // RED: no on-success stages => no success-stage materialization receipt.
+            run_fixture(&[]);
             assert!(
-                matches!(outcome, ClaimOutcome::Pass),
-                "claim must pass for the receipt to be meaningful"
+                !success_receipt.exists(),
+                "empty on_success_stages must not write a success materialization receipt"
             );
-        }
-        let totals = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
-        assert!(
-            totals.keyed_calls > 0,
-            "ctx Drop must absorb ledger totals into the process accumulator"
-        );
+            let ordinary_keyed_only = parse_materialization_receipt_field(
+                &std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt"),
+                "keyed_calls=",
+            )
+            .expect("keyed_calls");
+
+            // GREEN: on-success stage runs pure demand after the ordinary receipt harvest.
+            let stage_entry = root
+                .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                .to_string_lossy()
+                .into_owned();
+            let success_stage = vec![vec![Runnable::SingleClaim {
+                entry: stage_entry,
+                function: "single_pure_demand_is_accepted_recompute".to_string(),
+                profile: ParsedRunnableProfile {
+                    provenance: ParsedProfileProvenance::Declared,
+                    heavy_whole_tree_resolve: false,
+                    spawns_host_compiler: false,
+                    memory: ParsedMemoryClass::Negligible,
+                    execution_mode: ExecutionMode::Hermetic,
+                },
+            }]];
+            run_fixture(&success_stage);
+
+            let ordinary_keyed_with_stages = parse_materialization_receipt_field(
+                &std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt"),
+                "keyed_calls=",
+            )
+            .expect("keyed_calls");
+            let success_body = std::fs::read_to_string(&success_receipt)
+                .expect("on-success materialization receipt");
+            let success_keyed =
+                parse_materialization_receipt_field(&success_body, "keyed_calls=").unwrap();
+
+            assert!(
+                success_body.starts_with(&format!(
+                    "attempt_id={TEST_ATTEMPT_ID}\nplan_site=test::on_success_materialization_fixture\n"
+                )),
+                "success receipt must carry attempt and plan identity in the payload"
+            );
+            assert!(
+                success_keyed > 0,
+                "on-success stage pure demand must be counted in the success receipt"
+            );
+            assert_eq!(
+                ordinary_keyed_with_stages, ordinary_keyed_only,
+                "stage materialization must not leak into the ordinary-floor receipt \
+                 (ordinary with stages={ordinary_keyed_with_stages}, ordinary only={ordinary_keyed_only}, success={success_keyed})"
+            );
+            assert!(
+                parse_materialization_receipt_field(&success_body, "memo_hits=").is_some()
+                    && parse_materialization_receipt_field(&success_body, "memo_misses=").is_some()
+                    && parse_materialization_receipt_field(&success_body, "duplicated_keys=")
+                        .is_some(),
+                "success receipt must carry the same field set as the ordinary receipt"
+            );
+        });
     }
 
     // The eval-frame memo by execution: the same pure claim evaluated twice on
