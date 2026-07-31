@@ -18,7 +18,7 @@ fn fail_closed_lockdown_body() -> List<MarkdownBlock> {
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
         row(cells: [cell(text: "DagCompileCleanGate"), cell(text: "whole tree (fail-fast root)"), cell(text: "`gunbc.ci_gate` `DagCompileCleanGate`; `v2.workflow.ci_floor_plan` `gate_runnable`")]),
-        row(cells: [cell(text: "GeneratedArtifactDriftGate"), cell(text: "`ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry"), cell(text: "`ci_spec.dag` `GeneratedArtifactDriftGate`; `generated_artifact_gate.dag`; registry+commit-derivation `gunbc/generated_artifact.dag`")]),
+        row(cells: [cell(text: "GeneratedArtifactDriftGate"), cell(text: "`ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry"), cell(text: "`gunbc.ci_gate` `GeneratedArtifactDriftGate`; `tools.generated_artifact_gate` `run_generated_artifact_drift_gate`; `gunbc.generated_artifact` `committed_generated_artifacts`")]),
       ],
     },
     p(text: "These are the **structural** gates. The gap is everything *analytical* and the *bootstrap purity* gate."),
