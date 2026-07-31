@@ -846,16 +846,6 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
         Rc::new(AlgebraFieldTemplate {
-            name: "count".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
             name: "is_empty".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
@@ -1525,16 +1515,6 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         }),
         Rc::new(AlgebraFieldTemplate {
             name: "length".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Int".to_string(),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),

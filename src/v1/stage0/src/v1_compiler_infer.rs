@@ -116,13 +116,12 @@ pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self,
+    is_type_expr_annotation, make_callable_type, make_container_type, method_receiver_element_node,
+    node_is_collection, node_is_element_collection, node_is_keyed_collection,
+    node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
+    node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
+    resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
+    template_return_has_variables, template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
@@ -130,8 +129,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, FieldNotFound, InternalError, MethodExistenceUndecided, MethodNotFound,
-    MissingField, SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, FieldNotFound, InternalError, MissingField, SoleConstructorViolation,
+    TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -995,59 +994,6 @@ pub fn type_mismatch_error(
         }),
         module_name.clone(),
     )
-}
-
-pub fn declared_return_type_node(item: Rc<Node>) -> Rc<Node> {
-    preserve_outer_optional_cardinality(item.clone(), resolved_type(item.clone()))
-}
-
-pub fn conformance_ground_kernel_scalar(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let plain_shape = ((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0));
-        let required = (n.return_cardinality.clone() == Cardinality::Required);
-        let kernel_named = is_kernel_type(authored_name_at(source_indices.clone(), n.clone()));
-        ((plain_shape.clone() && required.clone()) && kernel_named.clone())
-    }
-}
-
-pub fn declared_type_conformance_diags(
-    declared: Rc<Node>,
-    produced: Rc<Node>,
-    span: Rc<SourceSpan>,
-    scope: Rc<InferScope>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let si = scope.type_env.clone().source_indices.clone();
-        let both_ground = (conformance_ground_kernel_scalar(declared.clone(), si.clone())
-            && conformance_ground_kernel_scalar(produced.clone(), si.clone()));
-        if !both_ground.clone() {
-            Rc::new(vec![])
-        } else {
-            if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
-                Rc::new(vec![])
-            } else {
-                Rc::new(vec![type_mismatch_error(
-                    node_type_shape(declared.clone(), si.clone()),
-                    node_type_shape(produced.clone(), si.clone()),
-                    span.clone(),
-                    scope.module_name.clone(),
-                )])
-            }
-        }
-    }
-}
-
-pub fn declared_type_conformance_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as expected but then kept the declaration own inferred return REGARDLESS of what the body produced, and the generic expected handling in infer_expr applies where-refinement checks rather than a general actual-subtype-of-declared judgment. So fn f() -> Int { \"wrong\" } typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are checked against their declaration: a fn body vs its declared return (both the param-carrying and paramless arms) and a data value vs its type annotation. THE SCOPE IS DELIBERATELY NARROW AND THE NARROWING IS THE FINDING. node_type_compatible is the corpus compatibility relation and it is NOT sound as a general declared-versus-produced conformance judgment: measured over the whole tree, four independent classes of CORRECT code reported a mismatch, each a place where the relation compares names across representations it never peels. (1) OPTIONALITY LIVES IN TWO REPRESENTATIONS — a fn declared -> String? carries optionality in item.return_cardinality while its body produces the nominal Optional coproduct, so 4 correct sites in 05_emit_rust.dag read as expected Primitive(String) got Coproduct(Optional). (2) BRAND ALIASES ARE NOT PEELED — Hash is ContentHash is a branded String, so 3 correct sites in dag_collect_support.dag read as expected Primitive(String) got Primitive(Hash); the same class the method wall measured as NonEmptyStr arriving as Product(NonEmptyStr). (3) ANONYMOUS RECORD LITERALS — the corpus writes a typed list as [ { name: ..., .. }, .. ] without repeating the nominal type, so 8+ correct rows in dag/std/algebra.dag read as expected Container(List,Product(AlgebraFieldTemplate)) got Container(List,Product(<anon>)). (4) CARDINALITY IS NOT ON THE RESOLVED TYPE NODE — resolved_type(n: item) drops the declaration optional marker, which is why the declared side is built through preserve_outer_optional_cardinality, the existing single authority for carrying an outer node cardinality onto an inner type node. Each class was found by RUNNING the wall over the corpus, never by reasoning about it, and the list is not known to be exhaustive — which is precisely why this wall does not chase them with exemptions. Four ad-hoc carve-outs would leave a wall that is neither principled nor trustworthy, and fabricating a refusal is the mirror image of the fabricated success the wall exists to delete. So the predicate is POSITIVE ESTABLISHMENT, the same discipline the method wall uses: judge ONLY when both sides are ground kernel scalars — plain shape, Required cardinality, and a name in std.types kernel_type_set — because then a name difference IS a real difference with no alias, brand, container, coproduct or cardinality representation in between. That admits the whole class the operator named (declaring one primitive and returning another, fn f() -> Int { \"a string\" } and data d: Int = \"a string\") and admits nothing it cannot prove. Everything wider is UNJUDGED, not silently passed: it is the declared frontier of this wall, and each numbered class above is a promotion trigger. Dissolve-on: a peeling conformance relation that grounds brand aliases to their base, reconciles the two optionality representations, and grounds an anonymous literal against its expected nominal type — at which point the ground-kernel-scalar gate widens class by class and finally deletes. Not covered here and each its own lane: direct-call argument types inside compiler modules (the v2. / v1.compiler. exemption), default field values, generic record instantiation, and post-substitution generic field access.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rejects_string_for_optional_coproduct_field(
@@ -1996,6 +1942,15 @@ pub fn where_refinement_value_under_cast(mut value_expr: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn where_refinement_peel_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal path (predicates present AND not covered), inside the final else of where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded resolve_node_bounded work per host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn where_refinement_mismatch_diags(
     formal: Rc<Node>,
     value_expr: Rc<Node>,
@@ -2009,11 +1964,6 @@ pub fn where_refinement_mismatch_diags(
             Some(resolved) => resolved.clone(),
             None => formal.clone(),
         };
-        let formal_checked = peel_nominal_alias_identity(
-            formal_resolved.clone(),
-            type_env.clone(),
-            module_name.clone(),
-        );
         let preds =
             type_where_refinement_predicates_transitive(formal_resolved.clone(), type_env.clone());
         if ((preds.clone().len() as i64) == 0) {
@@ -2037,24 +1987,31 @@ pub fn where_refinement_mismatch_diags(
                 ) {
                     Rc::new(vec![])
                 } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for pred in preds.clone().iter().cloned() {
-                            __result.extend(
-                                (*where_refinement_diags_for_predicate(
-                                    pred.clone(),
-                                    formal_checked.clone(),
-                                    value_for_refinement.clone(),
-                                    span.clone(),
-                                    module_name.clone(),
-                                    source_indices.clone(),
-                                ))
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    })
+                    {
+                        let formal_checked = peel_nominal_alias_identity(
+                            formal_resolved.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for pred in preds.clone().iter().cloned() {
+                                __result.extend(
+                                    (*where_refinement_diags_for_predicate(
+                                        pred.clone(),
+                                        formal_checked.clone(),
+                                        value_for_refinement.clone(),
+                                        span.clone(),
+                                        module_name.clone(),
+                                        source_indices.clone(),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    }
                 }
             }
         }
@@ -2796,52 +2753,12 @@ pub fn method_pipe_map_keys_values_fallback(
                 }),
             }
         } else {
-            {
-                let recv_shape = node_type_shape(
-                    recv_rt.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                );
-                let recv_surface_established = (kernel_profile_lookup(authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
-                    recv_rt.clone(),
-                )) != None);
-                if recv_surface_established.clone() {
-                    Rc::new(MethodPipeFallback {
-                        result_ty: error_type(),
-                        kernel_diags: Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::MethodNotFound {
-                                method: method_name.clone(),
-                                receiver_type: recv_shape.clone(),
-                                span: span.clone(),
-                            }),
-                            scope.module_name.clone(),
-                        )]),
-                    })
-                } else {
-                    Rc::new(MethodPipeFallback {
-                        result_ty: error_type(),
-                        kernel_diags: Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
-                                method: method_name.clone(),
-                                receiver_type: recv_shape.clone(),
-                                span: span.clone(),
-                            }),
-                            scope.module_name.clone(),
-                        )]),
-                    })
-                }
-            }
+            Rc::new(MethodPipeFallback {
+                result_ty: recv_rt.clone(),
+                kernel_diags: Rc::new(vec![]),
+            })
         }
     }
-}
-
-pub fn method_existence_wall_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. Three measured shapes live there — a where-refinement alias arriving as Product(NonEmptyStr) instead of peeling to its String base (8 correct .length() sites in extdeps/filesystem/linux.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), and a product FIELD holding a callable, the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. MethodExistenceUndecided carries that residue as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND NOT FIXED HERE, each a promotion trigger that would let the wall decide a non-kernel receiver: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn categorized_error(
@@ -12864,16 +12781,6 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     } else {
                         body_typed.inferred.clone()
                     };
-                    let return_conformance_diags = if (item.inferred.clone() != None) {
-                        declared_type_conformance_diags(
-                            declared_return_type_node(item.clone()),
-                            resolved_type(body_typed.clone()),
-                            item.body.clone().clone().unwrap().span.clone(),
-                            scope.clone(),
-                        )
-                    } else {
-                        Rc::new(vec![])
-                    };
                     let is_recursive = expr_has_self_call(
                         body_typed.clone(),
                         authored_name_at(
@@ -12935,7 +12842,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         }),
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(transport_diags.clone(), props_diags.clone()),
-                            v1_rt::concat(body_diags.clone(), return_conformance_diags.clone()),
+                            body_diags.clone(),
                         ),
                     })
                 }
@@ -12951,15 +12858,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             Some(resolved_type(item.clone())),
                         );
                         let body_typed = body_result.typed.clone();
-                        let body_diags = v1_rt::concat(
-                            body_result.diagnostics.clone(),
-                            declared_type_conformance_diags(
-                                declared_return_type_node(item.clone()),
-                                resolved_type(body_typed.clone()),
-                                item.body.clone().clone().unwrap().span.clone(),
-                                scope.clone(),
-                            ),
-                        );
+                        let body_diags = body_result.diagnostics.clone();
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
                                 name: item.name.clone(),
@@ -13001,19 +12900,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 data_expected.clone(),
                             );
                             let val_typed = val_result.typed.clone();
-                            let val_diags = if (item.type_annotation.clone() != None) {
-                                v1_rt::concat(
-                                    val_result.diagnostics.clone(),
-                                    declared_type_conformance_diags(
-                                        item.type_annotation.clone().clone().unwrap(),
-                                        resolved_type(val_typed.clone()),
-                                        item.body.clone().clone().unwrap().span.clone(),
-                                        scope.clone(),
-                                    ),
-                                )
-                            } else {
-                                val_result.diagnostics.clone()
-                            };
+                            let val_diags = val_result.diagnostics.clone();
                             let inferred_ret = if (item.type_annotation.clone() != None) {
                                 Some(Rc::new(InferredNode::Resolved {
                                     node: item.type_annotation.clone().clone().unwrap(),
@@ -16849,40 +16736,23 @@ pub fn build_local_variants(
         })
 }
 
+pub fn merge_global_bare_variant_locals_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (bare-minimum-cost, DESIGN 6): the census-eligible variant-owner pairs depend only on global_bare and the name-census si — whole-closure facts identical for every module — so build_global_bare_variant_locals computes them ONCE per closure in typecheck_with_census_extra and the base map threads down realize_module -> typecheck_module -> build_module_context. The former per-module shape rescanned the whole census and re-inserted every eligible pair into every module's locals: 464 modules x 12,554 census keys = 5.8M iterations and 1.29M persistent-map inserts = 31s of the host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31; PR 7398 landed build_global_bare_variant_locals beside the per-module fold but never wired it). map_merge(base, state.locals) is value-identical to the old fold: overlay wins on collision exactly as the old skip-if-present arm kept state's binding, and the old checked-insert collision arm was unreachable (presence was checked before insert), so the global merge contributed zero collision errors then and now. Fidelity of the hoisted si: authored_name_at reads names identically under the raw closure source_indices and the kernel-augmented env.source_indices (kernel spans compute the same name in both arms; non-kernel misses fall back to node.name in both), and the census owners all live in closure files, so eligibility is unchanged.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn merge_global_bare_variant_locals(
     state: Rc<VariantFoldState>,
-    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_name: String,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<VariantFoldState> {
-    Rc::new(v1_rt::map_keys(&global_bare)).iter().cloned().fold(
-        state.clone(),
-        |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(&global_bare, name.clone())
-            .as_deref()
-            .cloned()
-        {
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-                let owner = binding.resolved.clone();
-                if ((owner.connective.clone() == Connective::Disj)
-                    && has_child_named(owner.clone(), name.clone(), source_indices.clone()))
-                {
-                    match v1_rt::map_get(&acc.locals.clone(), name.clone()) {
-                        Some(_) => acc.clone(),
-                        None => insert_variant_owner_checked(
-                            acc.clone(),
-                            name.clone(),
-                            owner.clone(),
-                            source_indices.clone(),
-                            module_name.clone(),
-                        ),
-                    }
-                } else {
-                    acc.clone()
-                }
-            }
-            _ => acc.clone(),
-        },
-    )
+    Rc::new(VariantFoldState {
+        locals: v1_rt::rc_map_merge(global_variant_base.clone(), state.locals.clone()),
+        collision_errors: state.collision_errors.clone(),
+    })
 }
 
 pub fn build_global_bare_census(
@@ -17187,6 +17057,7 @@ pub fn build_module_context(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ModuleContext> {
     {
         let local = fold_module_contributions(
@@ -17217,9 +17088,7 @@ pub fn build_module_context(
                 module_name.clone(),
                 local_variant_fold.clone(),
             ),
-            env.symbol_index.clone().global_bare.clone(),
-            env.source_indices.clone(),
-            module_name.clone(),
+            global_variant_base.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
@@ -17357,6 +17226,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -17425,6 +17295,7 @@ pub fn typecheck_module(
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
+            global_variant_base.clone(),
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -17580,6 +17451,7 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         empty_symbol_index(),
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     )
 }
 
@@ -18220,6 +18092,10 @@ pub fn typecheck_with_census_extra(
             build_symbol_index_census(graph.modules.clone(), census_si.clone()),
             build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
         );
+        let global_variant_base = build_global_bare_variant_locals(
+            symbol_index.global_bare.clone(),
+            source_indices.clone(),
+        );
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -18235,6 +18111,7 @@ pub fn typecheck_with_census_extra(
                     source_indices.clone(),
                     intern_table.clone(),
                     symbol_index.clone(),
+                    global_variant_base.clone(),
                 )
             },
         );
@@ -18293,6 +18170,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -18310,6 +18188,7 @@ pub fn realize_module(
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 symbol_index.clone(),
+                                global_variant_base.clone(),
                             )
                         },
                     );
@@ -18325,6 +18204,7 @@ pub fn realize_module(
                         source_indices.clone(),
                         intern_table.clone(),
                         symbol_index.clone(),
+                        global_variant_base.clone(),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
