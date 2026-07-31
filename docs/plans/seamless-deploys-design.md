@@ -471,13 +471,38 @@ whole answer.
 
 The brief asks that queueing behaviour be confirmed as desirable before building. Assessment:
 
-**It works, mechanically.** A `.socket` unit makes systemd own the listening fd; it survives the
-service restart, so connections land in the kernel accept backlog instead of getting ECONNREFUSED.
-Combined with single-flight polling (`workflow_poll_single_flight_note` — at most one workflow
-observation in flight per browser), queue depth is bounded by viewer count, not by
-viewers × 30 polls. The brief's reasoning here is correct.
+**It works for *new* connections.** A `.socket` unit makes systemd own the listening fd; it survives
+the service restart, so connections land in the kernel accept backlog instead of getting
+ECONNREFUSED. Combined with single-flight polling (`workflow_poll_single_flight_note` — at most one
+workflow observation in flight per browser), queue depth is bounded by viewer count, not by
+viewers × 30 polls. The brief's reasoning here is correct as far as it goes.
 
-**Three things to decide before it is built:**
+**But it does not deliver the handback on its own (review 45291), and this is the important
+correction in this section.** The backlog only holds connections that have *not yet been accepted*.
+A fetch the old process has **already accepted** dies with the process — the client sees a reset,
+the browser's `fetch` rejects, and that lands in exactly the `.catch` arm this ticket is trying to
+quiet (`workflow_fetch_request_statements`). Verified in the seed rather than assumed:
+
+- `handle_serve` installs **no** SIGTERM handler — grep for `SIGTERM` in `cli_run.rs` returns
+  nothing;
+- the only SIGTERM machinery in the seed lives in `phase_profile`, is gated on profiling being
+  enabled, and even when it fires it calls `std::process::exit(143)` after flushing — it does not
+  drain connections;
+- so `systemctl restart` → default SIGTERM disposition → immediate termination, mid-request.
+
+The exposure is small per deploy but not zero: with a 2s poll, roughly *request-duration / 2s* of
+viewers are mid-flight at the restart instant. Across ~40 deploys/day it will fire. And the brief's
+handback is *"a deploy run against a live viewer with no visible interruption"* — a rare banner
+still fails that, so **socket activation alone does not meet the acceptance bar.**
+
+**Closing it requires a drain**, which is more seed work on the *same seam* as the other two: on
+SIGTERM, stop accepting, finish in-flight requests, then exit — bounded by `TimeoutStopSec` so a
+hung request cannot stall the deploy. That makes the seed-integration question (§7 q4) a **three-part
+seam**, not one change: `LISTEN_FDS` (inherit the listener), `sd_notify` (honest readiness), and a
+SIGTERM drain (graceful handover). All three are the same "the process talks to systemd" boundary,
+and answering q4 *no* forecloses all three, not just socket activation.
+
+**Three further things to decide before it is built:**
 
 1. **It requires a seed change, and the seed is supposed to shrink.** The process currently *binds*
    (`TcpListener::bind`, in `cli_run.rs` `handle_serve`). Socket activation requires it to *inherit* fd 3 via
@@ -566,7 +591,9 @@ no seam.
 2. **Slice 3 — correct systemd's F1 assertion (item 2)**, designed with the listener-acquisition
    realization (§3.1). `Type=notify` + a readiness signal at the bind point, modelled as a
    realization rather than cemented. **Does not touch the digest check** (§2 Concept B).
-3. **Slice 4 — the residual window (item 4).** Socket activation, evaluated against §3's three
+3. **Slice 4 — the residual window (item 4).** Socket activation **plus the SIGTERM drain** —
+   the drain is not optional polish; without it an already-accepted fetch dies at restart and raises
+   the very banner this ticket exists to remove (§3, review 45291). Evaluated against §3's three
    decisions, with the staleness cue. This is where the headline outcome is actually delivered.
 4. **Slice 2a/2b/2c — item 3**, in that internal order. **Required, not discretionary** (operator
    direction, §2 Concept C). Listed last because it gates nothing and can run in parallel with
@@ -596,7 +623,12 @@ Adopting the brief's, and adding the ones the analysis surfaced:
   real 503 — **must still raise the banner with its typed reason**. A fix that silences both is a
   regression wearing a fix's clothes.
 - A deploy performed while a browser is watching produces no refusal banner and no gap in the
-  workflow row.
+  workflow row. **This is the brief's handback control, and it is NOT established by socket
+  activation alone** (review 45291): the backlog holds only unaccepted connections, so a fetch the
+  old process already accepted dies with it and raises the banner. Meeting this control requires the
+  SIGTERM drain in §3. Stated as a control on *slice 4 as a whole*, not on socket activation — and
+  if the drain is out of scope, this control must be narrowed to "no banner for connections
+  initiated after the restart began", which is a weaker promise than the brief asked for.
 - **Added (slice 2 — the acceptance bar for item 3, not a nicety):** a deploy in which **only the
   binary content changed** — same kind, same path, unit file untouched — must **install the new
   binary AND restart the service**, and the live process must afterwards be the new binary. This
@@ -644,10 +676,17 @@ Adopting the brief's, and adding the ones the analysis surfaced:
    (§2 Concept C):* whether deploy's bounded owned-artifact scope keeps today's wholesale-refuse
    policy now that `Removed → teardown` becomes reachable on the apply path, and confirmation that a
    *failed observation* refuses rather than degrading to reinstall-everything.
-4. **The seed change.** Is `listener acquisition as a §2 Realization` (SelfBound | Inherited, with
-   `sd_notify` on the same seam) an acceptable way to touch the seed for slices 3–4? If the answer
-   is that the seed should not grow host integration at all, slice 4 needs a different candidate and
-   I would want to know that before designing it.
+4. **The seed change — and it is a three-part seam, not one change** (widened after review 45291).
+   May the seed grow host integration, modelled as a §2 Realization rather than cemented? The seam
+   carries three things, all "the process talks to systemd":
+   - `LISTEN_FDS` — inherit the listener instead of binding it (socket activation, slice 4);
+   - `sd_notify(READY=1)` — honest F1 readiness (slice 3);
+   - **a SIGTERM drain** — stop accepting, finish in-flight, exit within `TimeoutStopSec`
+     (slice 4's residual; without it the handback control cannot be met, §3).
+
+   Answering *no* forecloses **all three**, which means slices 3 and 4 both need different
+   candidates and the headline outcome has no route I currently see. That is why this is the one
+   question genuinely blocking work.
 5. ~~**The 208 figure** — where does it come from?~~ **RESOLVED by measurement.** 208 is the real
    resolved-closure count; the tree's *"closure of 91"* is the stale figure (§1). The measurement
    also confirms the deep fix's premise directly: **76% of startup is the load phase**, before
