@@ -2,9 +2,8 @@ module v2.workflow.ci_v1_compiler_tests_compile_gate_emit_test
 
 import v2.std.effect_plan { Do, EffectPlan }
 import v2.std.operation_argv {
-  BoundOperationInvocation,
   OperationRef,
-  bind_operation_invocation
+  operation_argv_bind_text_list
 }
 import v2.std.orchestration { Continue, FailFast }
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
@@ -18,17 +17,19 @@ import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_shell_emit_scaffold,
 }
 import v2.workflow.effect_plan_bash_materialize {
+  BashBoundOperationInvocation,
   EffectPlanBashMaterializationRefused,
   EffectPlanBashMaterialized,
+  bash_bind_operation_invocation,
   effect_plan_bash_materialize
 }
 import std.disposition { Scaffold }
 
-fn gate_materialized_render(plan: EffectPlan<BoundOperationInvocation>) -> String {
+fn gate_materialized_render(plan: EffectPlan<BashBoundOperationInvocation>) -> String {
   ci_v1_compiler_tests_compile_gate_render(plan: plan)
 }
 
-fn gate_plan_refuses(plan: EffectPlan<BoundOperationInvocation>) -> Bool {
+fn gate_plan_refuses(plan: EffectPlan<BashBoundOperationInvocation>) -> Bool {
   match effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: _ } => false
     EffectPlanBashMaterializationRefused { refusal: _ } => true
@@ -86,13 +87,18 @@ test fn ci_v1_compiler_tests_compile_gate_RED_continue_policy_refuses() -> Bool 
 }
 
 test fn ci_v1_compiler_tests_compile_gate_RED_missing_operation_refuses() -> Bool {
-  let bad_step = bind_operation_invocation(
+  let bad_step = bash_bind_operation_invocation(
     at: OperationRef {
       path: "dag/extdeps/rust/cargo_build.dag",
       service: "cargo.Build",
       operation: "NoSuchCheck"
     },
-    bindings: []
+    bindings: [
+      operation_argv_bind_text_list(
+        name: "extra_args",
+        items: ci_v1_compiler_tests_compile_gate_extra_args
+      )
+    ]
   )
   let refused_plan = EffectPlan {
     steps: [Do { effect: bad_step }],

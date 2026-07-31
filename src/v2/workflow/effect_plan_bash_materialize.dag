@@ -60,7 +60,39 @@ import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node
 }
 
-data effect_plan_bash_materialize_authority_note: String = "Wave A realization edge: EffectPlan<BoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf derives argv from its referenced extdeps operation declaration through shell_materialize_operation_argv; optional HostEnvVar on the invocation replaces argv[0] with a grammar-owned bash_build_word_var in emission only (foreign-executor transport glue, not a second argv authority). FailFast is the Bash grammar's && relation, so source order is preserved and a failing step prevents every later step. No Run.command, raw shell composer, target field in intent, or second operation registry is introduced. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate step — so the model-only clause of this note retired; nothing else about the edge changed."
+data effect_plan_bash_materialize_authority_note: String = "Wave A realization edge: EffectPlan<BashBoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf's operation intent is the agnostic BoundOperationInvocation (operation ref + declaration bindings only); argv is derived from that declaration by shell_materialize_operation_argv. Bash-only executable_position on BashBoundOperationInvocation chooses how argv[0] RENDERS in this foreign-executor transport — DeclarationLiteral emits the declaration literal; HostEnvVar emits bash_build_word_var for pin-rustup prelude paths such as CARGO_BIN — without fusing transport policy into the generic invocation substrate (DESIGN §3). FailFast is the Bash grammar's && relation. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate step."
+
+type BashShellExecutablePosition
+  = DeclarationLiteral
+  | HostEnvVar { name: String }
+
+type BashBoundOperationInvocation {
+  invocation: BoundOperationInvocation
+  executable_position: BashShellExecutablePosition
+}
+
+data bash_bound_operation_invocation_authority_note: String = "Bash realization wrapper over the agnostic BoundOperationInvocation. executable_position is transport-only: it cannot change which operation row is named or which declared inputs bind; it only selects whether argv[0] emits as the declaration literal or as a grammar-owned host env var reference."
+
+fn bash_bind_operation_invocation(
+  at: OperationRef,
+  bindings: List<OperationInputBinding>
+) -> BashBoundOperationInvocation {
+  BashBoundOperationInvocation {
+    invocation: bind_operation_invocation(at: at, bindings: bindings),
+    executable_position: DeclarationLiteral
+  }
+}
+
+fn bash_bind_operation_invocation_host_env_executable(
+  at: OperationRef,
+  bindings: List<OperationInputBinding>,
+  env_var: String
+) -> BashBoundOperationInvocation {
+  BashBoundOperationInvocation {
+    invocation: bind_operation_invocation(at: at, bindings: bindings),
+    executable_position: HostEnvVar { name: env_var }
+  }
+}
 
 data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (§3): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
 
@@ -129,7 +161,7 @@ fn effect_plan_bash_argv_nul_index(
 
 fn effect_plan_bash_command_from_argv(
   argv: List<String>,
-  executable_position: ShellExecutablePosition
+  executable_position: BashShellExecutablePosition
 ) -> Node {
   match executable_position {
     DeclarationLiteral => bash_build_command_from_lits(lits: argv)
@@ -151,9 +183,10 @@ fn effect_plan_bash_command_from_argv(
 }
 
 fn effect_plan_bash_encode_invocation(
-  invocation: BoundOperationInvocation,
+  bound: BashBoundOperationInvocation,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
+  let invocation = bound.invocation
   let at = invocation.at
   match shell_materialize_operation_argv(
     at.path,
@@ -174,7 +207,7 @@ fn effect_plan_bash_encode_invocation(
             encoding: EffectPlanBashEncoded {
               statement: effect_plan_bash_command_from_argv(
                 argv: argv,
-                executable_position: invocation.executable_position
+                executable_position: bound.executable_position
               )
             }
           }
@@ -189,13 +222,13 @@ fn effect_plan_bash_encode_invocation(
 }
 
 fn effect_plan_bash_encode_step(
-  step: EffectPlanStep<BoundOperationInvocation>,
+  step: EffectPlanStep<BashBoundOperationInvocation>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match step {
-    Do { effect: invocation } =>
+    Do { effect: bound } =>
       effect_plan_bash_encode_invocation(
-        invocation: invocation,
+        bound: bound,
         step_index: step_index
       )
     If { cond: _, then_: _, else_: _ } =>
@@ -278,7 +311,7 @@ fn effect_plan_bash_and_then(
 }
 
 fn effect_plan_bash_encode_steps(
-  steps: List<EffectPlanStep<BoundOperationInvocation>>,
+  steps: List<EffectPlanStep<BashBoundOperationInvocation>>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match list_head(xs: steps) {
@@ -313,7 +346,7 @@ fn effect_plan_bash_encode_steps(
 }
 
 fn effect_plan_bash_encode(
-  plan: EffectPlan<BoundOperationInvocation>
+  plan: EffectPlan<BashBoundOperationInvocation>
 ) -> EffectPlanBashEncodeResult {
   match plan.on_failure {
     Continue =>
@@ -393,7 +426,7 @@ fn effect_plan_bash_refusal_label(refusal: EffectPlanBashRefusal) -> String {
 }
 
 fn effect_plan_bash_materialize(
-  plan: EffectPlan<BoundOperationInvocation>
+  plan: EffectPlan<BashBoundOperationInvocation>
 ) -> EffectPlanBashMaterialization {
   match effect_plan_bash_encode(plan: plan) {
     EffectPlanBashEncodingRefused { refusal: refusal } =>

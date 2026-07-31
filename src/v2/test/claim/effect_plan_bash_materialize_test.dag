@@ -22,7 +22,6 @@ import v2.std.operation_argv {
   OperationRef,
   UndeclaredInputBound,
   bind_operation_invocation,
-  bind_operation_invocation_host_env_executable,
   operation_argv_bind_text,
   operation_argv_bind_text_list
 }
@@ -36,6 +35,7 @@ import v2.std.orchestration {
 }
 import v2.workflow.effect_plan_bash_materialize {
   ArgumentContainsNul,
+  BashBoundOperationInvocation,
   EffectPlanBashEncoded,
   EffectPlanBashEncodingAccepted,
   EffectPlanBashMaterialization,
@@ -51,6 +51,8 @@ import v2.workflow.effect_plan_bash_materialize {
   UnsupportedLet,
   UnsupportedRetry,
   UnsupportedWhile,
+  bash_bind_operation_invocation,
+  bash_bind_operation_invocation_host_env_executable,
   effect_plan_bash_encode,
   effect_plan_bash_materialize
 }
@@ -72,14 +74,14 @@ fn invocation(
   service: String,
   operation: String,
   bindings: List<OperationInputBinding>
-) -> BoundOperationInvocation {
-  bind_operation_invocation(
+) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation(
     at: operation_ref(path: path, service: service, operation: operation),
     bindings: bindings
   )
 }
 
-fn id_invocation(operation: String) -> BoundOperationInvocation {
+fn id_invocation(operation: String) -> BashBoundOperationInvocation {
   invocation(
     path: "dag/extdeps/tools/id.dag",
     service: "os.Id",
@@ -88,7 +90,7 @@ fn id_invocation(operation: String) -> BoundOperationInvocation {
   )
 }
 
-fn test_path_invocation(operation: String, path: String) -> BoundOperationInvocation {
+fn test_path_invocation(operation: String, path: String) -> BashBoundOperationInvocation {
   invocation(
     path: "dag/extdeps/shell.dag",
     service: "shell.Test",
@@ -97,7 +99,7 @@ fn test_path_invocation(operation: String, path: String) -> BoundOperationInvoca
   )
 }
 
-fn show_property_invocation(bindings: List<OperationInputBinding>) -> BoundOperationInvocation {
+fn show_property_invocation(bindings: List<OperationInputBinding>) -> BashBoundOperationInvocation {
   invocation(
     path: "dag/extdeps/systemd/systemctl.dag",
     service: "systemd.Systemctl",
@@ -106,16 +108,16 @@ fn show_property_invocation(bindings: List<OperationInputBinding>) -> BoundOpera
   )
 }
 
-fn fail_fast_plan(steps: List<v2.std.effect_plan.EffectPlanStep<BoundOperationInvocation>>) -> EffectPlan<BoundOperationInvocation> {
+fn fail_fast_plan(steps: List<v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>>) -> EffectPlan<BashBoundOperationInvocation> {
   EffectPlan { steps: steps, on_failure: FailFast }
 }
 
-fn one_step_plan(inv: BoundOperationInvocation) -> EffectPlan<BoundOperationInvocation> {
+fn one_step_plan(inv: BashBoundOperationInvocation) -> EffectPlan<BashBoundOperationInvocation> {
   fail_fast_plan(steps: [Do { effect: inv }])
 }
 
 fn emitted_source_is(
-  plan: EffectPlan<BoundOperationInvocation>,
+  plan: EffectPlan<BashBoundOperationInvocation>,
   expected: String
 ) -> Bool {
   match effect_plan_bash_materialize(plan: plan) {
@@ -125,8 +127,8 @@ fn emitted_source_is(
 }
 
 fn emitted_sources_differ(
-  left: EffectPlan<BoundOperationInvocation>,
-  right: EffectPlan<BoundOperationInvocation>
+  left: EffectPlan<BashBoundOperationInvocation>,
+  right: EffectPlan<BashBoundOperationInvocation>
 ) -> Bool {
   match effect_plan_bash_materialize(plan: left) {
     EffectPlanBashMaterialized { source: left_source } =>
@@ -173,7 +175,7 @@ test fn effect_plan_bash_two_declared_operations_encode_and_emit_through_carrier
 
 test fn effect_plan_bash_host_env_executable_replaces_declaration_literal_argv0() -> Bool {
   let plan = one_step_plan(
-    inv: bind_operation_invocation_host_env_executable(
+    inv: bash_bind_operation_invocation_host_env_executable(
       at: operation_ref(
         path: "dag/extdeps/rust/cargo_build.dag",
         service: "cargo.Build",
@@ -438,12 +440,12 @@ test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool 
   }
 }
 
-fn empty_plan() -> EffectPlan<BoundOperationInvocation> {
+fn empty_plan() -> EffectPlan<BashBoundOperationInvocation> {
   fail_fast_plan(steps: [])
 }
 
 fn unsupported_step_refuses(
-  step: v2.std.effect_plan.EffectPlanStep<BoundOperationInvocation>,
+  step: v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>,
   expected: v2.workflow.effect_plan_bash_materialize.EffectPlanBashUnsupportedStep
 ) -> Bool {
   match effect_plan_bash_materialize(plan: fail_fast_plan(steps: [step])) {
