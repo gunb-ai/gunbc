@@ -7574,10 +7574,39 @@ fn dispatch_rest(
         request.call()
     };
 
+    // Whether this operation asked to OBSERVE its own transport outcome. An operation that
+    // declares an output sourced from `http_status`/`http_success` is saying the status is
+    // part of its answer, so a non-2xx is data to return rather than a reason to raise. An
+    // operation that declares neither keeps the raise it has always had — so this widens
+    // nothing by default, and the loud path stays loud for every existing caller.
+    //
+    // The asymmetry this repairs: the shell transport has always surfaced its outcome
+    // (`exit_success`, `exit_code`, `stderr`), which is why a .dag caller can build a typed
+    // refusal around a failed command and cannot build one around a failed request. Same
+    // concept, one realization missing it.
+    //
+    // TWO CEILINGS, STATED SO NEITHER IS MISTAKEN FOR A WALL.
+    //
+    // (1) A caller may declare an outcome output and then ignore it, reading a body field
+    //     that is Null because the request failed. Nothing here forces the branch. Making
+    //     it unavoidable means a transport that answers with a COPRODUCT rather than a
+    //     record, so the failure case has no field to read past — a change to every
+    //     operation's output shape, and the next rung rather than this one. Until then the
+    //     residual is exactly the shell transport's, not a new class.
+    //
+    // (2) A TRANSPORT failure — connection refused, DNS, timeout — still raises, because
+    //     there is no response and therefore no status. Minting one (`0`, say) so the arm
+    //     could be uniform would conflate "the server answered, refusing" with "nothing
+    //     answered", which have different remedies; that is the state-space conflation
+    //     this change exists to remove, arriving one layer down. Observing THAT distinction
+    //     needs its own declared output ("did a response arrive at all"), modeled rather
+    //     than smuggled in as a sentinel status.
+    let observes_outcome = rest_declares_outcome_output(op_node, ctx);
+
     match response {
         Ok(resp) => {
             let status = resp.status();
-            if status >= 400 {
+            if status >= 400 && !observes_outcome {
                 let body = resp.into_string().unwrap_or_default();
                 return Err(InterpError::TypeError {
                     msg: format!("HTTP {}: {}", status, body),
@@ -7585,18 +7614,26 @@ fn dispatch_rest(
             }
             if response_format == "Text" {
                 let body = resp.into_string().unwrap_or_default();
-                return map_response_to_value(&body, None, op_node, ctx);
+                return map_response_to_value(&body, None, op_node, ctx, status);
             }
             let body = resp.into_string().unwrap_or_default();
             let json: serde_json::Value =
                 serde_json::from_str(&body).unwrap_or(serde_json::Value::String(body));
-            map_response_to_value_json(&json, op_node, ctx)
+            map_response_to_value_json(&json, op_node, ctx, status)
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
-            Err(InterpError::TypeError {
-                msg: format!("HTTP {}: {}", status, body),
-            })
+            if !observes_outcome {
+                return Err(InterpError::TypeError {
+                    msg: format!("HTTP {}: {}", status, body),
+                });
+            }
+            if response_format == "Text" {
+                return map_response_to_value(&body, None, op_node, ctx, status);
+            }
+            let json: serde_json::Value =
+                serde_json::from_str(&body).unwrap_or(serde_json::Value::String(body));
+            map_response_to_value_json(&json, op_node, ctx, status)
         }
         Err(e) => Err(InterpError::TypeError {
             msg: format!("HTTP request failed: {}", e),
@@ -7846,27 +7883,68 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
     })
 }
 
+/// The transport-outcome sources a REST operation may declare, mirroring the shell
+/// transport's `exit_success`/`exit_code`. These names are NOT JSON pointers into the
+/// response body: they name the request's own result, which is why they are intercepted
+/// before the body lookup rather than resolved against it.
+const REST_OUTCOME_SOURCE_SUCCESS: &str = "http_success";
+const REST_OUTCOME_SOURCE_STATUS: &str = "http_status";
+
+fn rest_outcome_source_value(from_key: &str, status: u16) -> Option<Value> {
+    match from_key {
+        REST_OUTCOME_SOURCE_SUCCESS => Some(Value::Bool(status < 400)),
+        REST_OUTCOME_SOURCE_STATUS => Some(Value::Int(status as i64)),
+        _ => None,
+    }
+}
+
+/// True when any declared output of this operation is sourced from a transport outcome.
+/// Read off the operation's own declaration, so the decision is a property of the model
+/// rather than of the response that happened to come back.
+fn rest_declares_outcome_output(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => return false,
+    };
+    return_type.children.iter().any(|child| {
+        extract_from_key(child, ctx)
+            .map(|k| rest_outcome_source_value(&k, 200).is_some())
+            .unwrap_or(false)
+    })
+}
+
 fn map_response_to_value(
     text: &str,
     _json: Option<&serde_json::Value>,
     op_node: &Rc<Node>,
     ctx: &InterpContext,
+    status: u16,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => return Ok(Value::Str(text.to_string())),
     };
     let children = &return_type.children;
+    // The bare-text shortcuts below collapse the whole response into one string, which
+    // cannot carry a status. They stay for operations that declared no outcome output —
+    // taking them when one WAS declared would answer the request's result with its body.
+    let declares_outcome = rest_declares_outcome_output(op_node, ctx);
     if children.is_empty() {
         return Ok(Value::Str(text.to_string()));
     }
-    if children.len() == 1 {
+    if children.len() == 1 && !declares_outcome {
         return Ok(Value::Str(text.to_string()));
     }
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-        fields.push((ctx.sym(&field_name), Value::Str(text.to_string())));
+        let value = match extract_from_key(child, ctx)
+            .and_then(|k| rest_outcome_source_value(&k, status))
+        {
+            Some(v) => v,
+            None => Value::Str(text.to_string()),
+        };
+        fields.push((ctx.sym(&field_name), value));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
@@ -7879,6 +7957,7 @@ fn map_response_to_value_json(
     json: &serde_json::Value,
     op_node: &Rc<Node>,
     ctx: &InterpContext,
+    status: u16,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
@@ -7894,7 +7973,14 @@ fn map_response_to_value_json(
         return Ok(json_to_value(json));
     }
 
-    if json.is_array() && !children.is_empty() {
+    // Same reasoning as the text mapper: the whole-document shortcut below cannot carry a
+    // status, so an operation that asked for one takes the field-by-field path instead. A
+    // 4xx body is typically an error object rather than the declared array, and collapsing
+    // it into the first field would hand the caller an error shape wearing the success
+    // field's name — the fabricated-plausible-output failure, arriving as a type.
+    let declares_outcome = rest_declares_outcome_output(op_node, ctx);
+
+    if json.is_array() && !children.is_empty() && !declares_outcome {
         let first_field = authored_name_at(ctx.si(), children[0].clone());
         return Ok(Value::Record {
             type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -7902,10 +7988,38 @@ fn map_response_to_value_json(
         });
     }
 
+    // How many declared outputs read the BODY rather than the transport outcome. When the
+    // body is a bare array (GitHub list endpoints return one) and exactly one output reads
+    // it, that output is the whole document — the same rule the array shortcut above
+    // applies, kept available to operations that also observe their status. Without this,
+    // adding a status field to a list operation would silently strand the array: the body
+    // field has no `from` key, `json.get(name)` on an array finds nothing, and the caller
+    // would receive an empty answer indistinguishable from a genuinely empty list.
+    let body_children: Vec<&Rc<Node>> = children
+        .iter()
+        .filter(|c| {
+            !extract_from_key(c, ctx)
+                .map(|k| rest_outcome_source_value(&k, status).is_some())
+                .unwrap_or(false)
+        })
+        .collect();
+    let sole_body_child_takes_document = json.is_array() && body_children.len() == 1;
+
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
+        if let Some(v) = from_key
+            .as_deref()
+            .and_then(|k| rest_outcome_source_value(k, status))
+        {
+            fields.push((ctx.sym(&field_name), v));
+            continue;
+        }
+        if sole_body_child_takes_document && from_key.is_none() {
+            fields.push((ctx.sym(&field_name), json_to_value(json)));
+            continue;
+        }
         let val = match from_key {
             Some(path) => {
                 let pointer = format!("/{}", path);

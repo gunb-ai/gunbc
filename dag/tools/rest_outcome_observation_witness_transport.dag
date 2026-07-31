@@ -1,0 +1,11 @@
+module tools.rest_outcome_observation_witness_transport
+
+import tools.host_prelude { run_witness_bin }
+
+fn run_rest_outcome_observation_witness() -> Bool {
+  run_witness_bin(
+    var_name: "REST_OUTCOME_OBSERVATION_WITNESS",
+    bin_name: "rest_outcome_observation_witness",
+    args: []
+  )
+}

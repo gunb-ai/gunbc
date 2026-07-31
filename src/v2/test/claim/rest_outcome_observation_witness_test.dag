@@ -1,0 +1,10 @@
+module v2.test.claim.rest_outcome_observation_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_subject_note: String = "Binds a loopback socket and dispatches real HTTP at it, so what executes is the interpreter's REST response handling rather than a description of it. The claim is that an operation declaring an http_success/http_status output receives a non-2xx as a value; the red control is that an operation declaring neither still raises, which is what keeps observation opt-in instead of a silent widen for every existing caller."
+
+test fn rest_outcome_observation_witness_keystone_holds() -> Bool {
+  run_rest_outcome_observation_witness()
+}

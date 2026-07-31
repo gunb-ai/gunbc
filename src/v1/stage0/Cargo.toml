@@ -175,6 +175,15 @@ path = "src/bin/infer_semantics_witness.rs"
 name = "auth_declared_but_unwired_witness"
 path = "src/bin/auth_declared_but_unwired_witness.rs"
 
+# Host-physics floor witness for REST transport-outcome observation. Dispatches real
+# HTTP at a loopback server so a declared http_success/http_status output is proven to
+# carry a non-2xx back as a value, with a red control proving an operation that declared
+# neither still raises. Socket + interpreter behavior, so a pure .dag test fn would be
+# specification without execution (DESIGN §5).
+[[bin]]
+name = "rest_outcome_observation_witness"
+path = "src/bin/rest_outcome_observation_witness.rs"
+
 # Host-physics floor witness for the v1 bootstrap self-host oracle suite
 # (bootstrap.rs). Exercises stage0 check/compile/fixed-point/freshness gates
 # until v2.workflow.bootstrap self-host gates are witness-layer importable.
