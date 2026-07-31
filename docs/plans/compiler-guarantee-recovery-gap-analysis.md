@@ -114,6 +114,32 @@ grounding* / *ratchet forever*) stays as the orthogonal decidability axis.
 | CX gate: every recursive fn terminates with a proven bound | **UNVERIFIED** | `DescentEvidence` exists (`dag/std/termination.dag`, fail-closed to `DescentUnknown`); enforcement scope unaudited | — |
 | Ownership: no aliased mutation in emitted code | **UNVERIFIED — known latent fail-open** | DESIGN.md open thread: emitter silently wraps every `shared_types` member in `Rc<T>` | — |
 
+### 4b. The cardinality case was independently re-derived in-tree — the intent is not lost, the design pass is
+
+The sharpest discovery of the reconciliation pass:
+`docs/plans/interface-summary-declared-use-arity.md` **§3.1 "Value-cardinality arity at
+seams (operator direction 2026-07-04)"** records the operator's exact scenario — *"the
+canonical divergence being one side honoring the empty list while the other assumes
+non-empty. Today that disagreement is a runtime surprise or a silently-degenerate arm; **the
+operator wants it a hard error in the language.**"* — with the seam design sketched (the
+invariant is an interface fact in `InterfaceSummary`'s contract slot; a `0..n` producer
+feeding a `1..n` consumer is *"a located type mismatch at the boundary — unwritable, not
+reviewed"*). Its FLAG E names what is missing: the cardinality lattice itself, deliberately
+not designed there. `docs/plans/cardinality-refinement.md` (status: scoping; registered as
+`gunbc.plans.cardinality_refinement`) carries the lattice proposal — a **closed decidable
+predicate vocabulary** (`Length<N>`, `NonEmpty`, `Bounded<Lo,Hi>`, `Width<N>`, all linear
+arithmetic over counts, chosen precisely to stay inside §4's bounded substrate where general
+refinement would not) plus fold-propagation, whose std seed already has green witnesses.
+
+So the thesis-era guarantee was dropped, and then **the operator re-derived it from scratch
+on 2026-07-04** — which is simultaneously the strongest evidence that the guarantee is real
+(it keeps being wanted independently) and of what the missing specification costs (it had to
+be re-invented rather than consulted, and 27 days later the design pass has not started
+because nothing ranks it). The salvage for this axis is therefore **not new design**: it is
+connecting three artifacts that already exist — the operator direction, the scoped lattice
+plan, and the green fold-propagation seed — and closing the two named gaps (unforgeable
+construction; signature-level propagation through `InterfaceSummary`).
+
 ## 5. Tier 2 — runtime safety ("proven safe or total")
 
 The claim is one sentence: **"No partial functions in the runtime."**
@@ -168,6 +194,51 @@ So neither compiler ever establishes the facts for v2's source. **v1 deletion do
 this**, and the §7 self-host frontier reads greener than it is: `emit` can be green-by-
 execution on a module whose types were never checked, because emission consumes a `Node` plus
 a name string, not a proof.
+
+**Calibration added after independent review — the terminal is better than the phase
+carriers.** Three nuances that bound the claim:
+
+- `validate_then_compile` (`v2.compiler.00_compile`) is a real single gate authority
+  ("no second gate surface exists"): the root roster (`accumulator_copy`, `determinism`,
+  `machine_shape`, `mandatory_tag`) plus the per-node roster (`fact_density`,
+  `unit_modeling`) fire on every compile before an output exists. The staging *shape* is
+  worth keeping.
+- The evaluator refuses unrealized semantics (`v2_eval_semantics_deferred`) rather than
+  fabricating results, and `canonical_grounding_for_node` does impose a coherence gate
+  (`node == facts.grounding.node`) — though a self-certified fact passes that gate *by
+  construction*, so it screens malformed trees, not fabricated groundings.
+- v2 **loop termination is a genuine construction wall** (`v2.std.cardinality`: a loop
+  without a declared bound measure gets `cardinality_loop_bound_undeclared`; descent
+  fail-closed to `DescentUnknown`).
+
+So the correct diagnosis is not "v2 inference is fake"; it is: Branch/Match/Loop carry real
+semantic work, loop termination is walled, the *generic* arm self-certifies, the terminal
+may still refuse later for other reasons — and therefore **`InferredTree` is not a
+trustworthy proof boundary**: its lens consumers read facts whose generic entries were never
+derived. The fix is the phase-carrier separation (§12 stage 4), not a rebuild of the
+terminal.
+
+## 7b. Where the recovered specification must land — and proof the prose already drifted
+
+Two facts that redirect step 1 of the sequencing:
+
+**DESIGN.md is a projection, not the authority.** `dag/gunbc/design_document.dag` carries the
+document's content as data rows; DESIGN.md is generated from it. So "re-home the guarantee
+statement into DESIGN.md" is mis-aimed as stated — the guarantee lands as **`.dag` rows**
+(the claims authority of §11), and the DESIGN.md text is derived. Hand-editing the markdown
+would mint a parallel representation of exactly the kind §3 forbids.
+
+**The prose has already drifted from the substrate, on the substrate's most load-bearing
+sentence.** DESIGN.md §4 says the closed vocabulary is *"6 connectives + 5 behaviors"*.
+`v2.std.node` declares **six** behaviors: `Value | Transform | Branch | Loop | Bind |
+Match`. The recovered thesis is sharper about what that means: it listed five behaviors and
+declared *"Substrate extension is a C1-class stop signal (seventh connective or **sixth
+behavior**) — all four dissolution patterns … must fail with structural arguments before
+extension is allowed."* Whether `Match`'s promotion to a behavior was adjudicated under that
+rule is not established here (it may well have been — v2's `Match` inference is real work);
+what is established is that the live authority's count is wrong against the live substrate,
+which is a clean specimen of why the guarantee must be modeled where a lens can read it,
+not written where only a reader can.
 
 ## 8. What the thesis predicted, in its own words
 
@@ -253,8 +324,8 @@ the rest of the dimensions moving onto it. Restated in the thesis's own table fo
 | Dimension | Declared today | Carried on bindings | Enforced |
 |---|---|---|---|
 | Type safety | `dag/std/types.dag` | `TypeBinding.resolved` | **Partial** — argument position only; return, `data` annotation, generic instantiation unchecked; `v2.*`/`v1.compiler.*` exempt |
-| Termination | `dag/std/termination.dag` (BoundedLattice, bottom = fail-closed) | `TypeBinding.provenance`, `ExprCall.descent_evidence` | **UNVERIFIED** — thesis-era status was "Partial, 421 violations, non-blocking"; needs re-measurement |
-| Cardinality / multiplicity | **nowhere** — connective uninhabited | No | **UNEXPRESSIBLE** (§4) |
+| Termination | `dag/std/termination.dag` (BoundedLattice, bottom = fail-closed) | `TypeBinding.provenance`, `ExprCall.descent_evidence` | **UNVERIFIED in v1** — thesis-era status was "Partial, 421 violations, non-blocking"; **walled in v2 for loops** (`v2.std.cardinality` bound measure) |
+| Cardinality / multiplicity | `v2.std.refinement` (+ scoped lattice plan `gunbc.plans.cardinality_refinement`) | No | **RepresentableButForgeable** — see §4/§4b; operator re-directed 2026-07-04 |
 | Ownership | `src/v1/ownership.dag`, `src/v2/lens/ownership.dag` | No — still a separate pass | **Partial**, plus a known latent fail-open (Rc wrap) |
 | Side effects | `dag/std/behavioral.dag`, `dag/std/effects.dag` | No | Consumers now exist (`std.effect_grant`, `std.realization`, `gunbc.host_effect`) — an improvement on the thesis-era "declared, not consumed" — but **not at binding sites** |
 | Idempotence | `dag/std/effects.dag` (lattice from `EffectShape`) | No | No |
@@ -305,6 +376,25 @@ for removing the exemption); the fallback-arm census figures (2,586 / 408 / 24 /
 claim; #5585 is base64/RFC 4648 in `std.encoding`. The claim is true, the receipt was
 fabricated. (§3 citation class.)
 
+**Independent-review verification ledger (2026-07-31 pass, all checked on `main`):**
+CONFIRMED — `Refined<B>` forgeable incl. the `stub_pack` `Rejected => Refined { base }` arm;
+five advisory `WhereRefinementUnenforced` deferral reasons; `NonEmptyList` manual fixture +
+testgen anchor; green `cardinality_fold_propagation_test`; `direct_call_arg_mismatch_diags`
+formal-driven walk incl. positional fallback for misspelled labels; `ArityMismatch` =
+type-constructor arity; `validate_then_compile` single-door roster exactly as stated;
+`v2.std.cardinality` loop-bound wall; exemption introduction 2026-06-08 (pre-bankruptcy);
+six behaviors in `v2.std.node` vs DESIGN.md's "5"; DESIGN.md projected from
+`gunbc.design_document`; operator direction 2026-07-04 in
+`interface-summary-declared-use-arity.md` §3.1. CORRECTED against the review —
+`PatternDynamic` *does* diagnose at the variant/field lookup sites (`VariantNotFound` /
+`FieldNotFound` with `type_name: "unresolved"`); the silent `diagnostics: []` arm is
+`PatternLookupBlocked` specifically. PRECISION — the `0..n`/`1..n` seam is an operator
+*direction* recorded inside a signed lane, with its lattice design pass (FLAG E) explicitly
+not started; "operator-signed design" slightly overstates it. STILL UNLOCATED — the "104
+TypeMismatch false positives" (no receipt in tree or history found by either pass), and the
+specific historical wording "branch, argument, and return type checking DONE" (the
+`correctness-dimensions.md` *"Yes (blocking)"* row is the receipt actually in hand).
+
 ## 11. Audit queue
 
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b.** Recovered intact; 7 cases, all
@@ -325,25 +415,49 @@ fabricated. (§3 citation class.)
    but the ROADMAP has no track for it, that's a gap"* — so the thread should be **grounded
    on the recovered list, not re-coined** (§3).
 
-## 12. Proposed sequencing (for discussion, not yet agreed)
+## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
-**Step 1 — restore the specification.** Re-home the guarantee statement, the tier claims, and
-the claims-list completeness rule into DESIGN.md. Mostly transcription of text already in git
-history, annotated with §4/§5 status. This is first because §2 explains why nothing else
-holds without it.
+**Stage 1 — the claims authority and the probe corpus land together, both as `.dag`.**
+Model the guarantee population (the review's G0–G9 families are a good candidate cut:
+binding · formation · inhabitance · invocation · domain/totality · control soundness ·
+semantic dimensions · realization · fidelity · external boundary) as rows with: identity,
+proof mode, authoritative carrier, negative RED, positive control, per-compiler enforcement
+status, and **a named consumer in `Accepted`**. Two §3 grounding rules so this doesn't fork
+existing machinery: the families ground on the recovered *dimension* architecture (§8c) and
+the DESIGN open thread `StandingIntent` — this IS that thread's missing claims list, not a
+second taxonomy beside it; and per §7b the authority is `.dag` rows projected into DESIGN.md,
+never hand-edited prose. Historical claims enter `Required` + `Gap` (mode-2 rule, §2).
+The probe corpus lands simultaneously as **enrolled expecting-red rows** (the known-red
+quarantine mechanism already exists: rows execute *expecting* red, so a wall landing flips
+them loudly to controls). That makes the corpus a continuous measurement of the gap from day
+one, before any wall exists — each probe that compiles-when-it-should-refuse is a counted
+deficit, not an anecdote.
 
-**Step 2 — the gap census against that**, replacing this draft's UNVERIFIED rows with
-measurements.
+**Stage 2 — close the ordinary premises (wall-now set):** method/callable existence; exact
+call labels and counts (the §4 application-arity row); return/`data`/field/generic
+inhabitance; `PatternLookupBlocked` refusing instead of `[]`; delete the success-shaped
+fallbacks. One staging correction to the review's interim method wall: the
+**zero-resolution half lands now** (strictly narrowing — refuse when *no* path resolves a
+method; matches runtime reality, cannot red legitimate code), but the **ambiguity half
+(>1 resolution) starts as a census**, walled only after the primitive-identity join defines
+which dual-path resolutions are the *same* primitive — otherwise `map` resolving via both
+registry and algebra template reds the whole corpus on day one and the wall gets reverted
+exactly the way the 104 preserved the exemption.
 
-**Step 3 — walls, in dependency order.** Note two orderings that differ from the obvious one:
+**Stage 3 — one cardinality vertical slice** (§4b: connect the 2026-07-04 operator
+direction + the scoped lattice plan + the green fold seed; acceptance = the operator's
+scenario refusing at the seam, with the nonempty-proof positive control compiling).
 
-- **Primitive single-authority precedes the method-existence wall.** Method existence is
-  currently spread across ≥5 name sets (registry, `PrimitiveContract` rows, algebra
-  templates, interpreter arms, per-target templates). A wall built against any one of them
-  reproduces #7479 inverted — correctly refusing `filter_map`, wrongly refusing what
-  legitimately resolves elsewhere.
-- **The `v2.*` exemption comes off only after the 104 are re-adjudicated.** Otherwise the
-  likely outcome is that it goes back on.
+**Stage 4 — v2 phase carriers** (source ≠ inferred ≠ realized, so self-grounding becomes
+type-invalid; keep the `validate_then_compile` door).
 
-DESIGN.md is untouched by this note; it is the load-bearing authority and the §1/§4 addition
-needs agreement on shape first.
+**Stage 5 — primitive identity consolidation** (definition / realization / cost as three
+facts on one identity; dispatch derived, not hand-listed).
+
+**Stage 6 — remove the compiler-source exemption on fresh evidence** (rerun the probes over
+`v2.*`/`v1.compiler.*`, classify every failure, fix, delete; the unsourced 104 is neither a
+blocker nor a promise).
+
+**Stage 7 — prevalence, measured last**, with failures bucketed into: statically-decidable /
+runtime-value-dependent / external-boundary / resource-budget / capability-not-grounded /
+interpreter-defect.
