@@ -70,6 +70,8 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
+data namespace_node_recut_note: String = "THE BROAD NAMESPACE NODE WAS TOO COARSE TO CLOSE HONESTLY, and the recut is the fix (operator ruling, 2026-07-31). namespace-canonical-binding previously combined two separable things in one boundary: working out which declarations a name can see, and calling one decision function on them. A check proving only the none/one/many decision could therefore have marked the whole node accepted while candidate derivation, reference-derived dependency closure, and the production changeover all remained unbuilt — an acceptance hazard, and the exact shape of rung inflation DESIGN 4b forbids, where a carrier named for the top rung occupies the bottom one.\\n\\nThree prerequisites now stand in front of it. namespace-binding-kernel owns the decision alone, on a candidate population SUPPLIED to it. namespace-reference-derived-closure owns structural exposure, authored order, the candidate index, exact reference-to-declaration binding, and the derived dependency edges. namespace-ambiguity-discharge settles the genuinely-many cases from real compilation. namespace-canonical-binding KEEPS ITS DURABLE IDENTITY and is now the final production changeover only, so historical links resolve and no identity is reused.\\n\\nWhy the split falls exactly there: dependency edges are a PROJECTION OF THE BINDING, not a second authored statement. A program that instead authored the missing edges by hand reached 400 of 771 files at roughly one import per CI floor before it was stopped; the unresolved population was evidence that binding and module discovery are coupled at the wrong boundary, not a backlog to grind down.\\n\\nTHE CHANGEOVER AND ITS SUCCESSOR ARE DISJOINT, and an earlier revision of this recut broke that (review 45649). It retitled namespace-canonical-binding as 'switch the whole compiler over' with a boundary reading 'every place that resolves a name', which swallowed namespace-bound-only-consumers underneath it — that node's own boundary is type checking, call lookup, and argument-count checks reading the decided answer. Overlapping boundaries are the §2 redundancy this document exists to remove, and they are worse on a roadmap than in code: completing the parent would already entail most of the child, so either the child can never be honestly accepted or the parent was silently read narrower than it was written. The cut is PRODUCER versus READER. The changeover node owns the sites that WORK OUT what a name refers to, and the deletion of the search-everything fallback behind them. Its successor owns the READERS of that answer and their obligation to stop on unresolved or ambiguous. Neither entails the other, and each can be accepted on its own evidence.\\n\\nONE EDGE WAS DELIBERATELY NOT CHANGED. pderive-source-slot-binding still depends on namespace-canonical-binding, which now means it waits for the whole production changeover. It plausibly needs only occurrence transport plus the binding kernel, but that is unproven: the dependency moves only once the focused P-derive consumer demonstrates it can operate on an exact supplied candidate population. Loosening it on the strength of the argument alone would be asserting a fact nobody has measured."
+
 data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
 
 fn authored(identity: String,
@@ -521,19 +523,64 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The working mechanism plus a test that two same-named things in different places really do stay apart."
       )
     ),
+    active(
+      identity: "rn_KFQ7I41NISIGTPGPWND9NDJEML",
+      id: "namespace-binding-kernel",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "One decision function, handed the candidates rather than finding them",
+        boundary: "Given a list of things a name could refer to, decide: none, exactly one, or more than one. Checking that the name and the declarations are well formed and of a kind that could match. NOT working out which declarations are in view — that is the next step.",
+        displaced_cost: "Several lookup mechanisms exist today and they can disagree about the same name, which is how a program silently ends up meaning something other than what was written. Separating the decision from the search makes the decision reviewable on its own.",
+        first_slice: "Validate the name and its declarations, then call the one decision function exactly once on a candidate list supplied from outside.",
+        red_control: "A malformed name refuses; a declaration of the wrong kind is excluded; supplied lists of nothing, one thing, and two things give unresolved, resolved, and ambiguous respectively; and no second place in the compiler makes that same decision.",
+        out_of_scope: "Does not work out which declarations are visible, does not order them by where they were written, does not build an index, and does not claim the wider naming work is finished.",
+        handback: "The decision function plus worked none/one/many examples actually run, and evidence that nothing else decides the same question."
+      )
+    ),
+    active_large(
+      identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
+      id: "namespace-reference-derived-closure",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Work out what each name can see, and let that be what a file depends on",
+        boundary: "From where a name is written, work outward to every declaration actually in view — including ordinary neighbours in the same file — respecting where things were written relative to each other. Then record, for each name, exactly which declaration answered it, and derive what each file depends on from those answers.",
+        displaced_cost: "What a file depends on is currently written out by hand as a separate statement, so it can disagree with what the file actually refers to. Hundreds of files were patched by hand to keep those two in step, which is work that should never have existed: what a file depends on is a consequence of what it refers to, not a second thing to maintain.",
+        first_slice: "One ordinary production file: work out what each name in it can see, bind each name, and derive the file's dependencies from those bindings alone.",
+        red_control: "A neighbour in the same file is in view; something inside a different branch of a decision is not; something written further down is not; the same name written twice in genuinely different places stays ambiguous; repeated mentions of one thing collapse to a single dependency; and nothing depends on an unrelated file happening to be loaded at the same time.",
+        out_of_scope: "No hand-written dependency statements, no falling back to searching everything that happens to be loaded, no mass edits across the repository, and no throwing away which particular name produced which dependency.",
+        handback: "The derived dependencies for one real file, matching what was written by hand, with each of the red controls actually run."
+      )
+    ),
+    active(
+      identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
+      id: "namespace-ambiguity-discharge",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Settle the names that genuinely could mean two things",
+        boundary: "Using the real answers from the step before — not a count taken by searching text — go through every name that genuinely has more than one candidate and either refuse it on purpose or say which one is meant, by renaming or by writing it out in full.",
+        displaced_cost: "Counting these by searching for text gives a number that is wrong in both directions, so it cannot tell anyone how much work is left or whether it is finished.",
+        first_slice: "Produce the real list from actual compilation, then settle the first genuine group.",
+        red_control: "Every genuinely ambiguous name is either deliberately refusing or explicitly spelled out, and no rule is added that quietly prefers one candidate over another.",
+        out_of_scope: "No preference rule, no nearest-match, and no sizing the work from a text search.",
+        handback: "The real list, the settled groups, and proof that no tie-breaking rule was introduced."
+      )
+    ),
     active_large(
       identity: "rn_KH24WPK0FFKWHK5J0QM40AYMZZ",
       id: "namespace-canonical-binding",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "Have exactly one rule decide what every name refers to",
-        boundary: "Work out the candidates by looking outward from where the name was written, then call one shared decision function once. Not several mechanisms racing to answer.",
-        displaced_cost: "Several lookup mechanisms exist today and they can disagree about the same name, which is how a program silently ends up meaning something other than what was written.",
-        first_slice: "Route type names, value names, and function calls through the one decision function.",
-        red_control: "No candidates means unresolved and two equally good candidates means ambiguous — neither quietly picks one.",
-        out_of_scope: "No configuration switch between old and new behaviour, no retrying with a different rule when the first answer is unwelcome.",
-        handback: "Worked examples of the unique, unresolved, ambiguous, and duplicate cases, all actually run."
+        headline: "Make name lookup itself produce that one answer, and delete the old way",
+        boundary: "The places that WORK OUT what a name refers to — type names, value names, and calls — produce their answer from the mechanisms built in the earlier steps, and the old habit of searching everything currently loaded is deleted rather than left beside them. This is the changeover of name lookup itself. What the rest of the compiler then does with that answer is the next step, not this one.",
+        displaced_cost: "Until the old lookup is deleted the new mechanism is only advisory: both run, they can disagree, and the compiler can still quietly mean something other than what was written.",
+        first_slice: "Make one real lookup site produce its answer from the new mechanism, and delete the search-everything fallback behind it.",
+        red_control: "Expectations recorded before the changeover now invert; the search-everything path provably does not run; and no candidates still means unresolved while two candidates still means ambiguous.",
+        out_of_scope: "Does not migrate the readers of that answer — type checking, call lookup, and argument-count checks are the next step. No configuration switch between old and new behaviour, no retrying with a different rule when the first answer is unwelcome, and no keeping the old path alive for compatibility.",
+        handback: "The changed lookup sites, the deleted fallback, the inverted expectations, and proof the old path did not run."
       )
     ),
     active(
@@ -1428,7 +1475,10 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
 
-    edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
+    edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
+    edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
+    edge(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
     edge(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers"),
     edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
