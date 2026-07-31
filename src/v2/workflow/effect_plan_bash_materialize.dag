@@ -37,10 +37,9 @@ import v2.std.operation_argv {
   ArgvMaterialized,
   ArgvRefusalCause,
   BoundOperationInvocation,
-  DeclarationLiteral,
-  HostEnvVar,
+  OperationInputBinding,
   OperationRef,
-  ShellExecutablePosition,
+  bind_operation_invocation,
   operation_argv_cause_label,
   operation_argv_ref_label
 }

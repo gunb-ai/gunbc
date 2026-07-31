@@ -26,17 +26,12 @@ type OperationInputBinding {
   value: OperationInputValue
 }
 
-type ShellExecutablePosition
-  = DeclarationLiteral
-  | HostEnvVar { name: String }
-
 type BoundOperationInvocation {
   at: OperationRef
   bindings: List<OperationInputBinding>
-  executable_position: ShellExecutablePosition
 }
 
-data bound_operation_invocation_authority_note: String = "A bound operation invocation is exactly an existing OperationRef paired with the existing declaration-owned OperationInputBinding vocabulary, plus an optional REALIZATION-ONLY executable_position that chooses how argv[0] renders in a foreign-executor Bash transport. DeclarationLiteral keeps argv[0] as the operation declaration's own literal (the default); HostEnvVar names a host env var that replaces argv[0] in grammar emission only — it is NOT a bindable declared input and cannot change which program the operation row names (DESIGN §3: the declaration literal remains the semantic authority; the override is transport glue for CI prelude paths such as pin-rustup's CARGO_BIN). argv tail tokens remain derived from the referenced extdeps declaration by shell_materialize_operation_argv."
+data bound_operation_invocation_authority_note: String = "A bound operation invocation is exactly an existing OperationRef paired with the existing declaration-owned OperationInputBinding vocabulary. It carries no argv, process, target-language, registry, or path-alias fact: argv remains derived from the referenced extdeps declaration by shell_materialize_operation_argv, and a realization chooses whether/how to transport it."
 
 fn bind_operation_invocation(
   at: OperationRef,
@@ -44,20 +39,7 @@ fn bind_operation_invocation(
 ) -> BoundOperationInvocation {
   BoundOperationInvocation {
     at: at,
-    bindings: bindings,
-    executable_position: DeclarationLiteral
-  }
-}
-
-fn bind_operation_invocation_host_env_executable(
-  at: OperationRef,
-  bindings: List<OperationInputBinding>,
-  env_var: String
-) -> BoundOperationInvocation {
-  BoundOperationInvocation {
-    at: at,
-    bindings: bindings,
-    executable_position: HostEnvVar { name: env_var }
+    bindings: bindings
   }
 }
 
