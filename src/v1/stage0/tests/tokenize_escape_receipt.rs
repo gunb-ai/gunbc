@@ -6,13 +6,26 @@
 //! is unchanged. These are green on both sides of the migration; on their own they prove
 //! nothing about cost, because they are satisfied by changing nothing.
 //!
-//! SEPARATION (`escape_cost_is_linear_in_literal_length`): the discriminating half. It reds
-//! against the pre-migration implementation, which walked a raw `String` by index — `char_at`
-//! is `chars().nth(pos)` and `string_length` is `chars().count()` once any non-ASCII character
-//! appears anywhere in the literal, so a single em dash flipped the whole scan quadratic.
-//! Measured on the seed before the change: 2,769 chars 7.8ms -> 44,019 chars 584ms, i.e. ~3.9x
-//! per doubling. The assertion is a RATIO rather than a wall-clock bound so it does not encode
-//! this machine's speed.
+//! SEPARATION (`escape_cost_is_linear_in_literal_length`): the discriminating half, and it is
+//! deliberately **`#[ignore]`d — a benchmark, not a gate**. It reds against the pre-migration
+//! implementation, which walked a raw `String` by index: `char_at` begins with an `is_ascii()`
+//! scan of the whole string and then `chars().nth(pos)`, and `string_length` re-counts, so a
+//! per-character loop was quadratic on any input. Measured on the seed before the change:
+//! 2,769 chars 7.8ms -> 44,019 chars 584ms, ~3.9x per doubling; after, 5.95ms at 44,019.
+//!
+//! Why not gating: a wall-clock assertion can fail correct code when the larger run is the one
+//! that catches contention, and gating correctness on timing is against the hermetic-first test
+//! discipline (review 45416). The deterministic alternative does not rescue it either — the only
+//! work counter in the tree (`v1_rt::take_text_lookup_chars_walked`) sits behind the non-default
+//! `text_lookup_work_counter` feature, and `char_at`/`string_length` are not instrumented into it
+//! at all, so a counter-based test would be `#[cfg(feature = ...)]` and equally non-gating while
+//! also requiring a change to a core primitive. The durable regression guard for this class is a
+//! structural lens over the `Node` tree, the way `v2.lens.complexity_accumulator_copy` guards the
+//! copied-accumulator class — named as the dissolution trigger on
+//! `escape_receipt_seed_growth_mark`, not authored here.
+//!
+//! Run it deliberately:
+//!   cargo test -p v1-compiler --release --test tokenize_escape_receipt -- --ignored --nocapture
 //!
 //! Both halves drive `tokenize`, the real consumer, rather than the escape helpers directly:
 //! the helpers' signatures changed in the migration, and a receipt that could not run against
@@ -143,18 +156,24 @@ fn best_tokenize_time(repeats: usize, samples: usize) -> Duration {
     best
 }
 
+/// NOT A GATE. `#[ignore]`d on purpose -- see the module header. This is the cost-shape
+/// benchmark: run it by hand when touching the escape path, and read the printed ratio rather
+/// than trusting the bound. It is kept executable because it is what established the result
+/// (14.2x before, ~4x after), not because a wall-clock number belongs in a required suite.
 #[test]
+#[ignore = "wall-clock benchmark, not a correctness gate: run with --ignored"]
 fn escape_cost_is_linear_in_literal_length() {
     let small = best_tokenize_time(1_000, 3);
     let large = best_tokenize_time(4_000, 3);
 
     // 4x the input. Linear => ~4x the time. Quadratic => ~16x.
     let ratio = large.as_secs_f64() / small.as_secs_f64();
+    println!(
+        "escape cost: 1k units {:?}, 4k units {:?} -> {:.2}x for 4x input",
+        small, large, ratio
+    );
 
-    // Generous: the bound sits between the two regimes with room on both sides. The seed
-    // before the migration measured 14.1x here; linear measures ~4x. Fixed per-call overhead
-    // pulls the observed ratio DOWN, so noise pushes this assertion toward passing rather
-    // than toward a false red.
+    // The seed before the migration measured 14.1-14.2x here; linear measures ~4x.
     assert!(
         ratio < 8.0,
         "string-literal escape cost is superlinear: 1k units {:?}, 4k units {:?} (4x input, \

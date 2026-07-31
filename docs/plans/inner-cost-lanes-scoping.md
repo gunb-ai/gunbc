@@ -94,6 +94,21 @@ Discharged by `src/v1/stage0/tests/tokenize_escape_receipt.rs`, executed on both
   ≥8× time) so it does not encode one machine's speed. Against the pre-migration seed it reds at
   **14.2×**; after, it passes. That RED was observed by running it, not predicted.
 
+  It ships **`#[ignore]`d — a benchmark, not a gate** (review 45416). A wall-clock assertion can
+  fail correct code when the larger run is the one that catches contention, and gating correctness
+  on timing is against hermetic-first test discipline. The deterministic alternative does not
+  rescue it: the tree's only work counter (`v1_rt::take_text_lookup_chars_walked`) is behind the
+  non-default `text_lookup_work_counter` feature and does not instrument `char_at`/`string_length`
+  at all, so a counter-based test would be `#[cfg(feature = ...)]` and equally non-gating while
+  additionally changing a core primitive.
+
+  The distinction that matters: the oracle was **discharged by execution** in the landing PR — red
+  observed before, green after — which is what DESIGN §5 asks for. What is deferred is the standing
+  regression *guard*, and the repo's native form for that is a structural lens over the `Node` tree,
+  as `v2.lens.complexity_accumulator_copy` is for the copied-accumulator class. Such a lens would
+  also cover the ~30 raw-index sites the audit below found, which a per-function test never could —
+  so it is the better instrument, not merely the substitute.
+
 ### Beyond the slice
 
 The named generalization is `SourceCursor` / `TokenBuilder` / `FrozenTokenStream` and enforceable
