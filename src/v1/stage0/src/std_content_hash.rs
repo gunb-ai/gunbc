@@ -94,7 +94,7 @@ pub fn structural_content_hash(digest: String) -> Rc<Fnv1a64Structural> {
 }
 
 pub fn content_hash_is_lower_hex_code_point(cp: i64) -> bool {
-    ((cp.clone() >= 48) && (cp.clone() <= 57)) || ((cp.clone() >= 97) && (cp.clone() <= 102))
+    (((cp.clone() >= 48) && (cp.clone() <= 57)) || ((cp.clone() >= 97) && (cp.clone() <= 102)))
 }
 
 pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
@@ -104,7 +104,7 @@ pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
             .iter()
             .cloned()
         {
-            if !content_hash_is_lower_hex_code_point(c.clone()) {
+            if !(content_hash_is_lower_hex_code_point(c.clone())) {
                 __all = false;
                 break;
             }
