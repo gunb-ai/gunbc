@@ -1,9 +1,9 @@
 module v2.test.fixture.walk_plan_stage.overlap_coordination
 
-import std.types { NonEmptyStr }
+import std.measure { second }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.sleep
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type OverlapPeer =
     OverlapPeerA
@@ -33,7 +33,7 @@ fn walk_plan_stage_overlap_poll(remaining: Int) -> Bool {
   } else if remaining <= 0 {
     false
   } else {
-    let _paced = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr).success
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
     walk_plan_stage_overlap_poll(remaining: remaining - 1)
   }
 }
