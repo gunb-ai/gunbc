@@ -129,6 +129,20 @@ type TargetModel {
   runtime_row: TargetEmitHostRuntimeRow
 }
 
+fn target_model_declared_inhabitants(target: TargetModel) -> Outcome<Node> {
+  projection_bundle_child(
+    bundle: target.bundle,
+    name: ^target_model_edge_declared_inhabitants
+  )
+}
+
+fn target_model_selection_priority(target: TargetModel) -> Outcome<Node> {
+  projection_bundle_child(
+    bundle: target.bundle,
+    name: ^target_model_edge_selection_policy
+  )
+}
+
 data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
 
 fn target_model_make_with_emit_transforms(
@@ -11698,7 +11712,7 @@ fn target_transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
 }
 
 fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<Node> {
-  projection_bundle_child(bundle: target.bundle, name: ^target_model_edge_declared_inhabitants)
+  target_model_declared_inhabitants(target: target)
 }
 
 fn target_value_expr_add_signature_matches_for_target(

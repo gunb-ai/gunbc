@@ -38,7 +38,7 @@ import v2.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
   coercion_candidate_set_from_declared_inhabitants,
-  coercion_identity_from_declared_inhabitants,
+  coercion_identity_from_target_model,
   coercion_fold_with_declared_priority
 }
 import v2.std.diagnostic {
@@ -1246,20 +1246,16 @@ fn coerce_grounded_node(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<CoercionResult> {
-  bind_outcome(
-    o: target_selection_priority_from_model(target: target),
-    f: fn(priority) {
+  match coercion_identity_from_target_model(source: source, target: target) {
+    Accepted { value: identity, diagnostics: d } =>
+      Accepted { value: identity, diagnostics: d }
+    Rejected { diagnostics: _ } =>
       bind_outcome(
-        o: coercion_candidates_from_target_model(target: target),
-        f: fn(candidates) {
-          match coercion_identity_from_declared_inhabitants(
-            source: source,
-            candidates: candidates,
-            priority: priority
-          ) {
-            Accepted { value: identity, diagnostics: d } =>
-              Accepted { value: identity, diagnostics: d }
-            Rejected { diagnostics: _ } =>
+        o: target_selection_priority_from_model(target: target),
+        f: fn(priority) {
+          bind_outcome(
+            o: coercion_candidates_from_target_model(target: target),
+            f: fn(candidates) {
               bind_outcome(
                 o: canonical_grounding_for_node(tree: tree, node: source),
                 f: fn(grounding) {
@@ -1270,11 +1266,11 @@ fn coerce_grounded_node(
                   )
                 }
               )
-          }
+            }
+          )
         }
       )
-    }
-  )
+  }
 }
 fn translate_type_expression_shape_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
