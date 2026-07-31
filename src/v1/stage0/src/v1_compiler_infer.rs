@@ -23,6 +23,7 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+pub use crate::std_methods::declared_method_names;
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
@@ -129,8 +130,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, FieldNotFound, InternalError, MissingField, SoleConstructorViolation,
-    TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, FieldNotFound, InternalError, MethodExistenceUndecided, MethodNotFound,
+    MissingField, SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -994,6 +995,59 @@ pub fn type_mismatch_error(
         }),
         module_name.clone(),
     )
+}
+
+pub fn declared_return_type_node(item: Rc<Node>) -> Rc<Node> {
+    preserve_outer_optional_cardinality(item.clone(), resolved_type(item.clone()))
+}
+
+pub fn conformance_ground_kernel_scalar(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let plain_shape = ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0));
+        let required = (n.return_cardinality.clone() == Cardinality::Required);
+        let kernel_named = is_kernel_type(authored_name_at(source_indices.clone(), n.clone()));
+        ((plain_shape.clone() && required.clone()) && kernel_named.clone())
+    }
+}
+
+pub fn declared_type_conformance_diags(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let both_ground = (conformance_ground_kernel_scalar(declared.clone(), si.clone())
+            && conformance_ground_kernel_scalar(produced.clone(), si.clone()));
+        if !both_ground.clone() {
+            Rc::new(vec![])
+        } else {
+            if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![type_mismatch_error(
+                    node_type_shape(declared.clone(), si.clone()),
+                    node_type_shape(produced.clone(), si.clone()),
+                    span.clone(),
+                    scope.module_name.clone(),
+                )])
+            }
+        }
+    }
+}
+
+pub fn declared_type_conformance_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as expected but then kept the declaration own inferred return REGARDLESS of what the body produced, and the generic expected handling in infer_expr applies where-refinement checks rather than a general actual-subtype-of-declared judgment. So fn f() -> Int { \"wrong\" } typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are checked against their declaration: a fn body vs its declared return (both the param-carrying and paramless arms) and a data value vs its type annotation. THE SCOPE IS DELIBERATELY NARROW AND THE NARROWING IS THE FINDING. node_type_compatible is the corpus compatibility relation and it is NOT sound as a general declared-versus-produced conformance judgment: measured over the whole tree, four independent classes of CORRECT code reported a mismatch, each a place where the relation compares names across representations it never peels. (1) OPTIONALITY LIVES IN TWO REPRESENTATIONS — a fn declared -> String? carries optionality in item.return_cardinality while its body produces the nominal Optional coproduct, so 4 correct sites in 05_emit_rust.dag read as expected Primitive(String) got Coproduct(Optional). (2) BRAND ALIASES ARE NOT PEELED — Hash is ContentHash is a branded String, so 3 correct sites in dag_collect_support.dag read as expected Primitive(String) got Primitive(Hash); the same class the method wall measured as NonEmptyStr arriving as Product(NonEmptyStr). (3) ANONYMOUS RECORD LITERALS — the corpus writes a typed list as [ { name: ..., .. }, .. ] without repeating the nominal type, so 8+ correct rows in dag/std/algebra.dag read as expected Container(List,Product(AlgebraFieldTemplate)) got Container(List,Product(<anon>)). (4) CARDINALITY IS NOT ON THE RESOLVED TYPE NODE — resolved_type(n: item) drops the declaration optional marker, which is why the declared side is built through preserve_outer_optional_cardinality, the existing single authority for carrying an outer node cardinality onto an inner type node. Each class was found by RUNNING the wall over the corpus, never by reasoning about it, and the list is not known to be exhaustive — which is precisely why this wall does not chase them with exemptions. Four ad-hoc carve-outs would leave a wall that is neither principled nor trustworthy, and fabricating a refusal is the mirror image of the fabricated success the wall exists to delete. So the predicate is POSITIVE ESTABLISHMENT, the same discipline the method wall uses: judge ONLY when both sides are ground kernel scalars — plain shape, Required cardinality, and a name in std.types kernel_type_set — because then a name difference IS a real difference with no alias, brand, container, coproduct or cardinality representation in between. That admits the whole class the operator named (declaring one primitive and returning another, fn f() -> Int { \"a string\" } and data d: Int = \"a string\") and admits nothing it cannot prove. Everything wider is UNJUDGED, not silently passed: it is the declared frontier of this wall, and each numbered class above is a promotion trigger. Dissolve-on: a peeling conformance relation that grounds brand aliases to their base, reconciles the two optionality representations, and grounds an anonymous literal against its expected nominal type — at which point the ground-kernel-scalar gate widens class by class and finally deletes. Not covered here and each its own lane: direct-call argument types inside compiler modules (the v2. / v1.compiler. exemption), default field values, generic record instantiation, and post-substitution generic field access.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rejects_string_for_optional_coproduct_field(
@@ -2742,12 +2796,62 @@ pub fn method_pipe_map_keys_values_fallback(
                 }),
             }
         } else {
-            Rc::new(MethodPipeFallback {
-                result_ty: recv_rt.clone(),
-                kernel_diags: Rc::new(vec![]),
-            })
+            {
+                let recv_shape = node_type_shape(
+                    recv_rt.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                let name_is_declared_method = {
+                    let mut __found = false;
+                    for m in declared_method_names().iter().cloned() {
+                        if (m.clone() == method_name.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                let receiver_surface_known = is_fully_resolved(
+                    recv_rt.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                if (!name_is_declared_method.clone() && receiver_surface_known.clone()) {
+                    Rc::new(MethodPipeFallback {
+                        result_ty: error_type(),
+                        kernel_diags: Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::MethodNotFound {
+                                method: method_name.clone(),
+                                receiver_type: recv_shape.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                    })
+                } else {
+                    Rc::new(MethodPipeFallback {
+                        result_ty: error_type(),
+                        kernel_diags: Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
+                                method: method_name.clone(),
+                                receiver_type: recv_shape.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                    })
+                }
+            }
         }
     }
+}
+
+pub fn method_existence_wall_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline and looked plausible to downstream inference, with the expression stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART and two obvious ones are UNSOUND, each measured on the whole tree before being rejected. (i) is_fully_resolved alone: a type can carry no type variables and still be an inference artifact — NonEmptyStr, declared String where non_empty, arrives as Product(NonEmptyStr) instead of peeling to its String base, so 8 correct .length() sites in extdeps/filesystem/linux.dag red while the identical text.length() in extdeps/mercurial.dag stays green; and a coproduct payload bound by pattern destructuring in extdeps/dns/domain_name.dag arrives typed Primitive(ok), a variant-name-shaped garbage type, reding a correct labels |> list_push(label). (ii) the receiver algebra profile as the complete surface: free_monoid_scalar_templates omits count while the interpreter dispatches it natively (the length/count/size arm), so String.count() in 05_emit_rust.dag reds against a profile the runtime contradicts — the five-way primitive fork, measured. Fabricating a refusal is the mirror image of the fabricated success this wall deletes, so the predicate is COMPOSED and each half is a declared authority, not one minted here (§3): refuse only when the method name is absent from std.methods declared_method_names AND the receiver type is fully resolved. The name roster answers is this a substrate method at all; the receiver gate answers could this instead be a product field holding a callable, which is exactly the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag — apply is correctly absent from the roster, so without the receiver gate those 7 sites would red. Measured verdict on the whole corpus: zero false positives, and TWO real latent defects caught — the #7479 filter_map incident, and env.clone() at 05_emit_rust.dag:9009,9831, a Rust-ism with no .dag definition and NO interpreter arm, which compiles clean today because the fallback handed back TypeEnv and would die at InterpError::Unimplemented if that path ran. MethodExistenceUndecided carries the residue: not a silent widen but a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent), so the frequency of the undecidable class stays observable and prioritizable rather than zeroed by construction. Both arms return error_type, never recv_rt: node_type_compatible treats error_type as compatible with everything, so one located refusal does not cascade into derived mismatches downstream. Positive controls that must stay green: map/filter/fold/flat_map resolve at tier0 (lookup_structural_method) and service ops at tier1 — neither reaches this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND DELIBERATELY NOT FIXED HERE, each a promotion trigger that would let the wall decide more: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding from pattern destructuring typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point existence is decided per RECEIVER rather than per NAME, the roster stops being the conservative side of a fork, and MethodExistenceUndecided is deleted.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn categorized_error(
@@ -12770,6 +12874,16 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     } else {
                         body_typed.inferred.clone()
                     };
+                    let return_conformance_diags = if (item.inferred.clone() != None) {
+                        declared_type_conformance_diags(
+                            declared_return_type_node(item.clone()),
+                            resolved_type(body_typed.clone()),
+                            item.body.clone().clone().unwrap().span.clone(),
+                            scope.clone(),
+                        )
+                    } else {
+                        Rc::new(vec![])
+                    };
                     let is_recursive = expr_has_self_call(
                         body_typed.clone(),
                         authored_name_at(
@@ -12831,7 +12945,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         }),
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(transport_diags.clone(), props_diags.clone()),
-                            body_diags.clone(),
+                            v1_rt::concat(body_diags.clone(), return_conformance_diags.clone()),
                         ),
                     })
                 }
@@ -12847,7 +12961,15 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             Some(resolved_type(item.clone())),
                         );
                         let body_typed = body_result.typed.clone();
-                        let body_diags = body_result.diagnostics.clone();
+                        let body_diags = v1_rt::concat(
+                            body_result.diagnostics.clone(),
+                            declared_type_conformance_diags(
+                                declared_return_type_node(item.clone()),
+                                resolved_type(body_typed.clone()),
+                                item.body.clone().clone().unwrap().span.clone(),
+                                scope.clone(),
+                            ),
+                        );
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
                                 name: item.name.clone(),
@@ -12889,7 +13011,19 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 data_expected.clone(),
                             );
                             let val_typed = val_result.typed.clone();
-                            let val_diags = val_result.diagnostics.clone();
+                            let val_diags = if (item.type_annotation.clone() != None) {
+                                v1_rt::concat(
+                                    val_result.diagnostics.clone(),
+                                    declared_type_conformance_diags(
+                                        item.type_annotation.clone().clone().unwrap(),
+                                        resolved_type(val_typed.clone()),
+                                        item.body.clone().clone().unwrap().span.clone(),
+                                        scope.clone(),
+                                    ),
+                                )
+                            } else {
+                                val_result.diagnostics.clone()
+                            };
                             let inferred_ret = if (item.type_annotation.clone() != None) {
                                 Some(Rc::new(InferredNode::Resolved {
                                     node: item.type_annotation.clone().clone().unwrap(),
