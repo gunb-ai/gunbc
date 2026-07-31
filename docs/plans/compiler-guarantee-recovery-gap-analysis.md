@@ -130,8 +130,9 @@ examples sit above mainstream while method-existence and return-conformance sit 
 doctrine (§7b discipline — never a hand edit of the markdown). The §3 status lattice below
 refines the rungs (e.g. `RepresentableButForgeable` = R1 wanting R3 behind the capability
 ceiling; `LiteralOnlyWall` = R2 on a fragment); the claim carrier of §11/§12 gives every
-class `current_rung` (probe-measured), `ceiling` (with its justification kind), and
-`next_rung_trigger`.
+class a **derived disposition** (folded per path from executed measurements — no stored rung
+field exists to inflate; see §12 Stage 1b, corrected per review 45367), `ceiling` (with its
+justification kind), and `next_rung_trigger`.
 
 ## 1c. Current rung census (seed population for the Stage-1 carrier — status `Unknown` where this audit has not measured)
 
@@ -148,7 +149,7 @@ unless the row says otherwise, and `Unknown` is the honest default.
 
 | Class | Current rung | Ceiling | Why not higher | Evidence | Next trigger |
 |---|---|---|---|---|---|
-| Unknown fn/method | R0 on interpretation path (typed at dispatch); emission path unmeasured | R3 (resolved call carries declaration identity) | fabricating fallback live | #7479 | zero-resolution wall; `FunctionRef` IR |
+| Unknown fn/method | R0 on interpretation path (typed at dispatch); **R2 on the compile gate for kernel receivers only** (narrow per-receiver wall landed, gunbc#7484: six REDs/positive controls, regen divergence 0 — tidy-deer-730, 2026-07-31); emission path and non-kernel receivers unmeasured | R3 (resolved call carries declaration identity) | fabricating fallback live outside the narrow wall; promotion gated on two measured receiver-type resolution defects (where-refinement alias unpeeled to base; pattern-destructured payload typed as its variant name) and the primitive-identity dispatch fork (§12 Stage 2 amendment) | #7479 · gunbc#7484 | general zero-resolution wall (identity join is a prerequisite); `FunctionRef` IR |
 | Call shape (labels/count) | **partly below floor** (misspelled label binds positionally, silent) | R3 (exact bijection in normalized IR) | formal-driven walk; `ArityMismatch` is constructor-grain | `direct_call_arg_mismatch_diags` | floor diagnostic first, then exact-shape judgment |
 | Return conformance | **UnknownUnmeasured** (compile admission proven; runtime disposition and silent paths unmeasured) | R3 (body edge inhabits Arrow codomain) | no general judgment | #7481 | return-position checking |
 | `data` annotation | **UnknownUnmeasured** (same basis) | R3 | same lane | #7481 | same lane |
@@ -156,6 +157,7 @@ unless the row says otherwise, and `Unknown` is the honest default.
 | Field through generics | **UnknownUnmeasured** (same basis) | R2 (pending-constraint discharge) | `field_of_type_var` minted | §4 | constraint carried + unique discharge |
 | Closed-match exhaustiveness | below-floor candidate / **UnknownUnmeasured** (compile silence proven; runtime unmeasured) | R3 (full arm population at elimination) | `PatternLookupBlocked => []` | §4 | `ExhaustivenessUnknown` refuses |
 | Record completeness | **Unknown — unmeasured** | R3 | not audited this pass | — | audit probe |
+| Parse: list separator dropped | **Below floor — silent** (measured: `[ {a}, {b}  {c} ]` compiles with zero diagnostics — a dropped comma is a silent semantic change, two- vs three-element list; survived regen, whole-corpus compile, fixed-point verify and a 15-case matrix, caught only by a human diff read) | R3 (decidable grammar fact) | separator omission parses as element juxtaposition | tidy-deer-730 probe on gunbc#7484 + review 45347, 2026-07-31 | probe pair in the corpus; refusal in the list production (§11 item 6) |
 | Producer/consumer cardinality | **UnknownUnmeasured** (typed-rejection vs silent-degeneration split unmeasured) | R3 (seam unwritable) | forgeable carrier; no signature propagation (`sole_constructor` audit pending) | §4b | Stage-3 vertical slice |
 
 **Domain: structural safety extensions (the differentiator)**
@@ -569,6 +571,30 @@ TypeMismatch false positives" (no receipt in tree or history found by either pas
 specific historical wording "branch, argument, and return type checking DONE" (the
 `correctness-dimensions.md` *"Yes (blocking)"* row is the receipt actually in hand).
 
+**Restructure-pass ledger (2026-07-31, fourth pass):** ADOPTED with provenance —
+tidy-deer-730's measured receipts from the gunbc#7484 lane: the parser silent-separator
+specimen (`[ {a}, {b}  {c} ]` compiles with zero diagnostics; caught only by review 45347's
+human diff read after surviving regen, whole-corpus compile, fixed-point verify, and a
+15-case matrix), the kernel-profile/interpreter-dispatch fork (`String`/`Map` declare
+`length` but not `count`; the interpreter dispatches `length`/`count`/`size`), and two
+receiver-type resolution defects gating method-wall promotion (where-refinement alias
+unpeeled to base; pattern-destructured payload typed as its variant name) — landed as
+census/queue rows with the dependency corrected: the identity join **precedes** the general
+method wall (§12 Stage 2 amendment). CORRECTED per review 45367 — Stage 1 listed
+`current_rung` as a stored carrier field in two places while the roadmap node said no such
+field exists; the stored-field reading is withdrawn everywhere (disposition is derived,
+§12 Stage 1b), and the DESIGN §4b tail's "per-class current rung" phrasing re-projected to
+match. STRUCTURAL (operator verdict on gunbc#7489) — the ladder roadmap nodes moved inside
+`declared_roadmap_nodes()`/`declared_roadmap_edges()` under lane owner `compiler-guarantee`
+(the section-local list was a second roadmap universe — uncounted, receipt-unreachable,
+invisible to the identity/endpoint/acyclicity witnesses; review 45356 independently flagged
+the owner-less rows the placement forced), with rendered⊆declared∪derived now witnessed
+plus a synthetic-ghost RED; `HandAuthoredDocBind` re-typed `primary_work +
+additional_works` so the zero-anchor bind is unwritable (the empty-works RED deleted with
+the validation it backed, its residue named on the carrier note), the two remaining
+duplicate `(home, slug)` pairs merged, and bind-identity uniqueness witnessed with a
+synthetic-duplicate RED.
+
 ## 11. Audit queue
 
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
@@ -592,35 +618,77 @@ specific historical wording "branch, argument, and return type checking DONE" (t
    claim⇄coverage. The claims list already carried that rule in prose — *"If a claim IS here
    but the ROADMAP has no track for it, that's a gap"* — so the thread should be **grounded
    on the recovered list, not re-coined** (§3).
+6. **Parser: separator-omission refusal** (new, measured 2026-07-31 — see the §1c census
+   row): a dropped list separator must be a parse refusal, never element juxtaposition.
+   Probe pair first (ladder-probe-corpus), then the wall in the list production.
+7. **Parser: block-after-bare-identifier misparse** (new, measured 2026-07-31,
+   tidy-deer-730): `if c == CardOpt { f(n: 1) } else { 2 }` fails with `expected RParen,
+   found Colon` — the block is read as a variant/record literal. A **false refusal of
+   legitimate input** (loud, wrong locus), so it is a parser-completeness defect rather than
+   a ladder harm class; root-cause the lookahead before any wall leans on if-condition
+   equality against variant names.
+8. **Receiver-type resolution defects** (new, measured 2026-07-31): (a) a where-refinement
+   alias arrives as its brand, unpeeled to the base; (b) a pattern-destructured coproduct
+   payload arrives typed as the variant name rather than the field type. Both gate
+   method-wall promotion beyond kernel receivers (§12 Stage 2 amendment).
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
-**Stage 1 — the claims authority and the probe corpus land together, both as `.dag`.**
-Model the guarantee population (the review's G0–G9 families are a good candidate cut:
-binding · formation · inhabitance · invocation · domain/totality · control soundness ·
-semantic dimensions · realization · fidelity · external boundary) as rows with: identity,
-proof mode, authoritative carrier, negative RED, positive control, per-compiler enforcement
-status, **a named consumer in `Accepted`**, and the three ladder fields of §1b —
-`current_rung` (probe-measured, never asserted), `ceiling` (with its
-mathematical/capability/price justification), `next_rung_trigger` — plus the two lens
-obligations: red on rung inflation (reported > measured; v2's generic arm reds on day one)
-and red on stalls (below ceiling with no named trigger). The ladder also consolidates five
-existing fragment-vocabularies onto one axis (§3's lattice, `wall now`/`after`/`ratchet`,
-`LifecycleByConstruction|Convention`, `DecodeFidelity`, the thesis tiers) — a §2/§3 merge,
-not a new taxonomy. Two §3 grounding rules so this doesn't fork
-existing machinery: the families ground on the recovered *dimension* architecture (§8c) and
-the DESIGN open thread `StandingIntent` — this IS that thread's missing claims list, not a
-second taxonomy beside it; and per §7b the authority is `.dag` rows projected into DESIGN.md,
-never hand-edited prose. Historical claims enter `Required` + `Gap` (mode-2 rule, §2).
-The probe corpus lands simultaneously as **enrolled expecting-red rows** (the known-red
-quarantine mechanism already exists: rows execute *expecting* red, so a wall landing flips
-them loudly to controls). That makes the corpus a continuous measurement of the gap from day
-one, before any wall exists — each probe that compiles-when-it-should-refuse is a counted
-deficit, not an anecdote.
+**(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
+authority itself — the `compiler-guarantee` lane's declared nodes and edges
+(`gunbc.roadmap_authority` `guarantee_ladder_nodes` / `guarantee_ladder_edges`) — after the
+operator's verdict caught the first cut rendering these nodes from a section-local list
+outside `declared_roadmap_nodes()`. This section stays as the narrative rationale; where
+prose and edges disagree, **the edges are the authority**.
+
+**Stage 1a — the probe corpus first, as `.dag`.** One probe pair per floor class
+(deliberately-bad input expected to refuse; legitimate control expected to accept), landed
+as **enrolled expecting-red rows** (the known-red quarantine mechanism already exists: rows
+execute *expecting* red, so a wall landing flips them loudly to controls). That makes the
+corpus a continuous measurement of the gap before any wall exists — each
+compiles-when-it-should-refuse is a counted deficit, not an anecdote — and it is what the
+carrier's dispositions derive from, which is why it precedes the carrier.
+
+**Stage 1b — the claims carrier, measurement separated from claim.** Model the guarantee
+population (the review's G0–G9 families are a good candidate cut: binding · formation ·
+inhabitance · invocation · domain/totality · control soundness · semantic dimensions ·
+realization · fidelity · external boundary) as **four carriers**: `GuaranteeRequirement`
+(class identity, domain, harm, `ceiling` with its mathematical/capability/price
+justification, `next_rung_trigger`); `GuaranteePath` (`subject_grain`,
+`acceptance_boundary`, `compile_mode`, `realization_target` — one row per in-scope path,
+the population **derived from the census's path axes or completeness-witnessed against
+them**, so a strongest-path-only reading is a red, not an oversight); `GuaranteeMeasurement`
+(an executed probe/witness receipt, **with a named consumer in `Accepted`**); and
+`GuaranteeDisposition` **derived per path, never stored** — `Unmeasured |
+BelowFloor{evidence} | OnLadder{rung, evidence} | OutsideModeledGuarantee{reason}` — folded
+to class state as below-floor dominates, then unmeasured, then the **minimum rung across
+paths**. There is no stored `current_rung` column, so a transcribed rung is
+*unrepresentable* rather than lens-caught (corrected per review 45367: an earlier draft of
+this stage listed `current_rung` as a carrier field, which would have reintroduced exactly
+the rung-inflation class §1b forbids). What survives as checks: an `OnLadder` disposition's
+evidence refs must execute (honesty — v2's generic self-grounding is the day-one
+below-target disposition), and a class below its ceiling with no `next_rung_trigger` reds
+(stall). The five recovered fragment-vocabularies (§3's lattice, `wall
+now`/`after`/`ratchet`, `LifecycleByConstruction|Convention`, `DecodeFidelity`, the thesis
+tiers) are **joined by class identity and kept orthogonal** — decidability/grounding,
+fidelity, construction/enforcement state, historical domain, and harm-timing rung are
+different axes and none consolidates into another (corrected per the operator's 2026-07-31
+verdict: an earlier draft said "consolidates five vocabularies onto one axis"). Two §3
+grounding rules so this doesn't fork existing machinery: the families ground on the
+recovered *dimension* architecture (§8c) and the DESIGN open thread `StandingIntent` — this
+IS that thread's missing claims list, not a second taxonomy beside it; and per §7b the
+authority is `.dag` rows projected into DESIGN.md, never hand-edited prose. Historical
+claims enter `Required` + `Gap` (mode-2 rule, §2).
+
+**Stage 1c — baseline prevalence, before any wall** (split out of the old Stage 7 per the
+operator's verdict): the whole-corpus floor rerun bucketed by ladder position, keyed to the
+carrier's class ids — the honest *before* picture. Each wall node's roadmap edge on the
+baseline node encodes that a wall landing first would pollute it.
 
 **Stage 2 — close the ordinary premises (wall-now set):** method/callable existence; exact
 call labels and counts (the §4 application-arity row); return/`data`/field/generic
-inhabitance; `PatternLookupBlocked` refusing instead of `[]`; delete the success-shaped
+inhabitance (incl. deleting the `field_of_type_var` fabrication — its own roadmap node);
+`PatternLookupBlocked` refusing instead of `[]`; delete the success-shaped
 fallbacks. One staging correction to the review's interim method wall: the
 **zero-resolution half lands now** (strictly narrowing — refuse when *no* path resolves a
 method; matches runtime reality, cannot red legitimate code), but the **ambiguity half
@@ -629,9 +697,23 @@ which dual-path resolutions are the *same* primitive — otherwise `map` resolvi
 registry and algebra template reds the whole corpus on day one and the wall gets reverted
 exactly the way the 104 preserved the exemption.
 
+**Stage 2 measured amendment (2026-07-31, tidy-deer-730 on gunbc#7484):** a narrow
+per-receiver method-existence wall over **kernel receivers** has landed (six REDs/positive
+controls, regen divergence 0). What keeps it narrow, measured: (a) two receiver-type
+resolution defects — a where-refinement alias arrives as its brand, unpeeled to the base;
+a pattern-destructured coproduct payload arrives typed as the *variant name* rather than
+the field type — and (b) the primitive-identity fork itself: the kernel algebra profiles
+disagree with interpreter dispatch (`String` and `Map` declare `length` but not `count`
+while the interpreter dispatches `length`/`count`/`size`). So the Stage-5 join is a
+**prerequisite of the general method wall, not a follow-on** — the roadmap edges encode
+`floor-method-existence-wall ← primitive-identity-join`, correcting this section's
+original order; the two resolution defects are §11 item 8.
+
 **Stage 3 — one cardinality vertical slice** (§4b: connect the 2026-07-04 operator
-direction + the scoped lattice plan + the green fold seed; acceptance = the operator's
-scenario refusing at the seam, with the nonempty-proof positive control compiling).
+direction + the scoped lattice plan + the manual value-level fold specimens; acceptance =
+the operator's scenario refusing at the seam, with the nonempty-proof positive control
+compiling; the construction-wall candidate is gated on the §11 item 1a `sole_constructor`
+audit — a declared roadmap edge, not prose).
 
 **Stage 4 — v2 phase carriers** (source ≠ inferred ≠ realized, so self-grounding becomes
 type-invalid; keep the `validate_then_compile` door).
@@ -643,6 +725,8 @@ facts on one identity; dispatch derived, not hand-listed).
 `v2.*`/`v1.compiler.*`, classify every failure, fix, delete; the unsourced 104 is neither a
 blocker nor a promise).
 
-**Stage 7 — prevalence, measured last**, with failures bucketed into: statically-decidable /
+**Stage 7 — residual prevalence, measured last** (the baseline half moved to Stage 1c per
+the operator's verdict): the same bucketing classifier — statically-decidable /
 runtime-value-dependent / external-boundary / resource-budget / capability-not-grounded /
-interpreter-defect.
+interpreter-defect — re-run after the declared climbs land and **diffed against the
+baseline**, so each wall's landing is a measured before/after receipt, never an assumed win.
