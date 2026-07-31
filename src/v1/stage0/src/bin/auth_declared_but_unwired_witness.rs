@@ -103,6 +103,63 @@ fn probe() -> String {
 }
 "#;
 
+// The second slip path, found in review of the first fix (review 45550). The empty check
+// above runs on a Display rendering, and Display is total over Value: Null renders as the
+// non-empty "null" and an Int renders as its digits, so a non-string endpoint would clear
+// the emptiness test and be sent as a base URL. An Int is the fixture because it makes the
+// rendering visibly plausible — "8080" looks like configuration, not like a defect.
+const SERVICE_ENDPOINT_RESOLVES_NON_STRING: &str = r#"module auth_unwired_t10
+
+data svc_base_port: Int = 8080
+
+service test.Svc {
+  config {
+    endpoint: svc_base_port
+  }
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "ok" }
+    }
+  }
+}
+
+fn probe() -> String {
+  let r = test.Svc.GetData()
+  r.data
+}
+"#;
+
+// The third slip path (review 45552). The two above cover a key that is PRESENT and
+// unreadable; this covers a key that is absent entirely, which reached `String::new()`
+// and sent the bare path as a relative URL. It gets its own error rather than sharing
+// ServiceConfigUnresolved: "declared nothing" and "declared something unreadable" are
+// different authoring mistakes whose fixes name different edits.
+const SERVICE_ENDPOINT_ABSENT: &str = r#"module auth_unwired_t11
+
+service test.Svc {
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "ok" }
+    }
+  }
+}
+
+fn probe() -> String {
+  let r = test.Svc.GetData()
+  r.data
+}
+"#;
+
 const SERVICE_AUTH_INPUT_NOT_PROVIDED: &str = r#"module auth_unwired_t2
 
 service test.Svc {
@@ -389,6 +446,59 @@ fn endpoint_resolving_empty_refuses(module_index: &ModuleIndex) {
     }
 }
 
+fn endpoint_resolving_non_string_refuses(module_index: &ModuleIndex) {
+    let resolved = resolve(module_index, SERVICE_ENDPOINT_RESOLVES_NON_STRING);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    match v1_interpreter::run_in_context(&ctx, "probe", false) {
+        Err(InterpError::ServiceConfigUnresolved { key, spelled }) => {
+            assert_eq!(
+                key, "endpoint",
+                "refusal must name the config key it could not read"
+            );
+            assert!(
+                spelled.contains("svc_base_port"),
+                "refusal must carry the spelling that failed, got '{spelled}'"
+            );
+        }
+        other => panic!(
+            "an endpoint resolving to a non-string must REFUSE. Display is total over Value, \
+             so a rendering-based read would have sent \"8080\" as the base URL and passed \
+             the emptiness check; got {other:?}"
+        ),
+    }
+}
+
+fn endpoint_absent_refuses(module_index: &ModuleIndex) {
+    let resolved = resolve(module_index, SERVICE_ENDPOINT_ABSENT);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    match v1_interpreter::run_in_context(&ctx, "probe", false) {
+        Err(InterpError::ServiceConfigMissing { key, service }) => {
+            assert_eq!(
+                key, "endpoint",
+                "refusal must name the config key that was never declared"
+            );
+            assert!(
+                !service.is_empty(),
+                "refusal must name the service, or it cannot be located"
+            );
+        }
+        other => panic!(
+            "a service declaring no endpoint must REFUSE, not send the bare path as a \
+             relative URL; got {other:?}"
+        ),
+    }
+}
+
 fn auth_input_empty_fails_closed_pre_send(module_index: &ModuleIndex) {
     let resolved = resolve(module_index, SERVICE_AUTH_INPUT_NOT_PROVIDED);
     let graph = resolved.graph.as_ref().expect("graph");
@@ -520,6 +630,11 @@ fn main() -> ExitCode {
             "endpoint_resolving_empty_refuses",
             endpoint_resolving_empty_refuses,
         ),
+        (
+            "endpoint_resolving_non_string_refuses",
+            endpoint_resolving_non_string_refuses,
+        ),
+        ("endpoint_absent_refuses", endpoint_absent_refuses),
         (
             "no_auth_declared_does_not_fire_guard",
             no_auth_declared_does_not_fire_guard,

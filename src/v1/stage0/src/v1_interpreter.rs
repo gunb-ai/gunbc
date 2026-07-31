@@ -735,6 +735,10 @@ pub enum InterpError {
         key: String,
         spelled: String,
     },
+    ServiceConfigMissing {
+        key: String,
+        service: String,
+    },
     EvalBudgetExceeded {
         elapsed_ms: u64,
         budget_ms: u64,
@@ -825,6 +829,11 @@ impl fmt::Display for InterpError {
                 f,
                 "service config '{}' did not resolve to a value (spelled '{}') — refusing to send a request against an unresolved endpoint",
                 key, spelled
+            ),
+            InterpError::ServiceConfigMissing { key, service } => write!(
+                f,
+                "service '{}' declares no '{}' in its config — refusing to send a request against an empty base",
+                service, key
             ),
             InterpError::ArgvExceedsHostArgMax {
                 actual_bytes,
@@ -7318,6 +7327,9 @@ fn dispatch_rest(
     // An unresolvable endpoint REFUSES here rather than defaulting to "". An empty
     // base produces the same `RelativeUrlWithoutBase` failure as a garbage one, so
     // `unwrap_or_default()` was a second way for the same defect to arrive unlocated.
+    // An ABSENT key is its own refusal rather than the same one: "declared nothing"
+    // and "declared something unreadable" are different authoring mistakes, and the
+    // fix for each names a different edit.
     let base_url =
         match find_service_config_string(service_node, "svc_endpoint", &si, param_env, ctx) {
             Some(Ok(url)) => url,
@@ -7327,7 +7339,12 @@ fn dispatch_rest(
                     spelled,
                 })
             }
-            None => String::new(),
+            None => {
+                return Err(InterpError::ServiceConfigMissing {
+                    key: "endpoint".to_string(),
+                    service: service_node.name.clone(),
+                })
+            }
         };
 
     let path = match find_property(transport.properties.clone(), "path".to_string(), si.clone()) {
@@ -7721,15 +7738,13 @@ fn find_service_config_string(
         if name == key {
             let val_node = field_init_node_value(prop.clone());
             let spelled = authored_name_at(si.clone(), val_node.clone());
+            // Narrowed to Str for the same reason the deleted branch narrowed to LitStr:
+            // Display renders every Value, so `format!` would turn Null into "null" and
+            // Int into its digits, and the non-empty check would wave both through as a
+            // base URL. That is this function's original defect one layer down.
             return Some(match eval_expr(&val_node, param_env, ctx) {
-                Ok(v) => {
-                    let s = format!("{}", v);
-                    if s.is_empty() {
-                        Err(spelled)
-                    } else {
-                        Ok(s)
-                    }
-                }
+                Ok(Value::Str(s)) if !s.is_empty() => Ok(s),
+                Ok(_) => Err(spelled),
                 Err(_) => Err(spelled),
             });
         }
