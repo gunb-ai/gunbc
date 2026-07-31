@@ -1209,6 +1209,8 @@ fn where_refinement_value_under_cast(value_expr: Node) -> Node {
   }
 }
 
+data where_refinement_peel_cost_note: String = "Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal path (predicates present AND not covered), inside the final else of where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded resolve_node_bounded work per host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded."
+
 fn where_refinement_mismatch_diags(
   formal: Node,
   value_expr: Node,
@@ -1221,7 +1223,6 @@ fn where_refinement_mismatch_diags(
     Present { value: resolved } => resolved
     Absent => formal
   }
-  let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
   let preds = type_where_refinement_predicates_transitive(ty: formal_resolved, type_env: type_env)
   if preds |> count == 0 {
     []
@@ -1240,6 +1241,7 @@ fn where_refinement_mismatch_diags(
     ) {
       []
     } else {
+      let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
       flat_map(
         preds,
         pred => where_refinement_diags_for_predicate(

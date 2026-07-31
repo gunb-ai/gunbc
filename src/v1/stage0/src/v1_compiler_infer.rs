@@ -1942,6 +1942,15 @@ pub fn where_refinement_value_under_cast(mut value_expr: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn where_refinement_peel_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal path (predicates present AND not covered), inside the final else of where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded resolve_node_bounded work per host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn where_refinement_mismatch_diags(
     formal: Rc<Node>,
     value_expr: Rc<Node>,
@@ -1955,11 +1964,6 @@ pub fn where_refinement_mismatch_diags(
             Some(resolved) => resolved.clone(),
             None => formal.clone(),
         };
-        let formal_checked = peel_nominal_alias_identity(
-            formal_resolved.clone(),
-            type_env.clone(),
-            module_name.clone(),
-        );
         let preds =
             type_where_refinement_predicates_transitive(formal_resolved.clone(), type_env.clone());
         if ((preds.clone().len() as i64) == 0) {
@@ -1983,24 +1987,31 @@ pub fn where_refinement_mismatch_diags(
                 ) {
                     Rc::new(vec![])
                 } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for pred in preds.clone().iter().cloned() {
-                            __result.extend(
-                                (*where_refinement_diags_for_predicate(
-                                    pred.clone(),
-                                    formal_checked.clone(),
-                                    value_for_refinement.clone(),
-                                    span.clone(),
-                                    module_name.clone(),
-                                    source_indices.clone(),
-                                ))
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    })
+                    {
+                        let formal_checked = peel_nominal_alias_identity(
+                            formal_resolved.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for pred in preds.clone().iter().cloned() {
+                                __result.extend(
+                                    (*where_refinement_diags_for_predicate(
+                                        pred.clone(),
+                                        formal_checked.clone(),
+                                        value_for_refinement.clone(),
+                                        span.clone(),
+                                        module_name.clone(),
+                                        source_indices.clone(),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    }
                 }
             }
         }
