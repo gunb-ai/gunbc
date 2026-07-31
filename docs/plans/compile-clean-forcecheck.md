@@ -6,7 +6,7 @@
 
 ## 0. Verdict — the brief's mechanism is wrong; the leak is a global seed allowlist
 
-The compile-clean gate (`dag/tools/dag_compile_clean_gate.dag` → `gunbc compile --target rust` over `dag/` with `src/v2` as the import pool) is **fail-open**: `gunbc compile` on `main` returns 0 diagnostics / EXIT 0 even though `dag/extdeps/cloud/gcp/secret_manager.dag:71` calls `utf8_decode_bytes`, which is **defined nowhere in `dag/` or `src/v2`**.
+The compile-clean gate (`dag/tools/dag_compile_clean_gate.dag` → `gunbc compile --target rust` over `dag/` with `src/v2` as the import pool) is **fail-open**: `gunbc compile` on `main` returns 0 diagnostics / EXIT 0 even though `extdeps.cloud.gcp.secret_manager` `utf8_secret_from_access_payload` calls `utf8_decode_bytes`, which is **defined nowhere in `dag/` or `src/v2`**.
 
 The brief framed this as "unreached fn bodies escape typecheck." **That is false** — bodies are always visited. The precise mechanism (execution-proven, §1 below) is two independent fail-open holes:
 
@@ -24,7 +24,7 @@ The brief framed this as "unreached fn bodies escape typecheck." **That is false
 | call to **registered** seed builtin | `fn f()->Int{ utf8_decode_bytes(payload:3) }` | **0 diagnostics** | registry absorbs the name → `string_type`, no def required, no arg check |
 | plain return-type mismatch | `fn f()->Int{ "a string" }` | **0 diagnostics** | declared return type unenforced |
 
-**The real on-main witness** — `dag/extdeps/cloud/gcp/secret_manager.dag:70-72`:
+**The real on-main witness** — `extdeps.cloud.gcp.secret_manager` `utf8_secret_from_access_payload`:
 
 ```
 fn utf8_secret_from_access_payload(payload: Bytes) -> Secret {
@@ -36,7 +36,7 @@ fn utf8_secret_from_access_payload(payload: Bytes) -> Secret {
 
 ## 2. The seam — `builtin_function_registry`
 
-`src/v1/04_method.dag:55-155` (Rust seed `v1_compiler_infer_method.rs:100-365`). 76 names → return-type `Node`s, e.g. `utf8_decode_bytes → string_type` (04_method.dag:93). Its own header is the indictment:
+`v1.compiler.infer_method` `builtin_function_registry` (also the authority for its generated Rust seed). 76 names → return-type `Node`s, e.g. `utf8_decode_bytes → string_type` (04_method.dag:93). Its own header is the indictment:
 
 > `// BRIDGE: This map_insert chain is a duplicate authority over facts that should come from .dag`
 > `// function declarations (extern fn signatures). Deletion point: when builtins are actual .dag`
@@ -47,7 +47,7 @@ So this is a known §3 fork (duplicate authority) with a **named dissolution tri
 - **Global, not tree-scoped.** The same registry is consulted whether the entry root is `src/v1` (the seed, which legitimately needs `utf8_decode_bytes`/`scan_while`/… as its runtime kernel — used in `05_emit_rust.dag`, `runtime_rust.dag`) or `dag/` (the substrate, which must not depend on seed intrinsics). A name in the registry resolves in *any* tree.
 - **Resolution without definition or arg-check.** A registry hit yields a fabricated return type with no parameter typing and no requirement that a definition exist in the compiled closure — DESIGN §5's "fabricated plausible output" anti-pattern, at the call-head resolution seam.
 
-(`resolve_builtin_call_type`'s `Absent => unit_type`, 04_method.dag:166, is *not* a live leak for call syntax — unregistered names are caught upstream as "function not found in scope". It is a latent fail-open kept for non-call uses; out of scope here, noted for the audit.)
+(`v1.compiler.infer_method` `resolve_builtin_call_type`'s `Absent => unit_type` is *not* a live leak for call syntax — unregistered names are caught upstream as "function not found in scope". It is a latent fail-open kept for non-call uses; out of scope here, noted for the audit.)
 
 ## 3. Construction-correct direction (DESIGN §5/§3)
 
@@ -72,7 +72,7 @@ Parent `quick-ant-298` confirmed: this node ships **(A)'s design + the blast-rad
 
 **Construction shape (the registry's dissolve-on, staged):** each builtin row carries an **availability tag** — `SubstrateAvailable` vs `SeedOnly` — instead of a flat name→type map. The call-head resolver admits a `SeedOnly` row **only when the compile's entry root is the v1 seed**; for a substrate entry root (dag/ + v2 pool) a `SeedOnly` hit is treated as *not a builtin* → falls through to the existing fail-closed "function not found in scope" (probe 2). `SubstrateAvailable` rows are the sanctioned primitive surface and, per the dissolve-on, migrate to real `std` `.dag` defs over time; once a name has a real def it leaves the registry entirely and resolves through normal func-env lookup.
 
-- *Entry-root signal*: the existing entry-vs-pool distinction (`main.rs:343-347` "entry modules = all .dag in the FIRST source root; additional roots are dependency pools") already separates the compiled tree from its pools. The infer scope must carry one bit — "entry root is the v1 seed" — derived from whether `src/v1` is the primary `--source-root`. (Threading this into `InferScope` is the load-bearing part; out of scope for this node — captured here for the enforce PR.)
+- *Entry-root signal*: the existing entry-vs-pool distinction (`v1.compiler.emit_rust` `emit_compile_match_arm`: "entry modules = all .dag in the FIRST source root; additional roots are dependency pools") already separates the compiled tree from its pools. The infer scope must carry one bit — "entry root is the v1 seed" — derived from whether `src/v1` is the primary `--source-root`. (Threading this into `InferScope` is the load-bearing part; out of scope for this node — captured here for the enforce PR.)
 - *Why a tag, not a second map*: a second allowlist map would be a new parallel authority (§3). One row per builtin with an availability field keeps single authority and reads as construction, not a lens.
 - *Non-enforcing intermediate (this node)*: the empty-registry measurement in §6 already enumerates the exact leak set without any code change shipping. The enforce PR turns each `SeedOnly` substrate hit into the fail-closed path behind operator sign-off.
 

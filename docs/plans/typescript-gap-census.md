@@ -29,7 +29,7 @@
 7. **#7 module import** — VEP. Witness: `ts_import_emit_by_execution_exact_holds` (`typescript_import_emit_by_execution_test.dag`).
 8. **#8 effect apply** — VEP. Witness: `ts_effect_io_emit_holds` (`typescript_effect_io_emit_test.dag`).
 9. **#9 fold_call body via translate** — VEP. Witness: `fold_call_closure_emit_keystone_holds` (`fold_call_closure_emit_test.dag`).
-10. **#10 operators (arith/cmp)** — VEP with **ad-hoc test catalog only** (`add_body_ts_emit_catalog_minus_discriminates`, `add_body_ts_emit_missing_catalog_rejects`). Default `ts_operator_realizations_catalog_node()` enrolls **OpAdd only** (`typescript.dag:640`) — see #16.
+10. **#10 operators (arith/cmp)** — VEP with **ad-hoc test catalog only** (`add_body_ts_emit_catalog_minus_discriminates`, `add_body_ts_emit_missing_catalog_rejects`). Default `v2.extdeps.languages.typescript` `ts_operator_realizations_catalog_node` enrolls **OpAdd only** — see #16.
 
 ### FAIL-CLOSED (emit explicitly Rejected — named)
 
@@ -38,11 +38,11 @@
 
 ### FAIL-OPEN (compiler-scale; no green bar (b)+(c) on default model today)
 
-1. **#13 match / coproduct dispatch** — `match_form.match_token = ^ts_token_unwired_match` (`typescript.dag:623`); no TS match witness; compiler uses `Match` heavily (`05_eval.dag`).
-2. **#14 bind-in scoping** — `let_form.in_token = ^ts_token_unwired_bind_in` (`typescript.dag:606`).
-3. **#15 loop form wiring** — `loop_form.loop_token = ^ts_token_unwired_loop` (`typescript.dag:609`).
-4. **#16 default operator catalog** — `ts_operator_realizations_catalog_node()` rows = `[ts_add_operator_realization_row()]` only (`typescript.dag:640–641`). Algebra ops miss on default model (`add_body_ts_emit_missing_catalog_rejects`).
-5. **#17 grammar-inverse rows beyond add** — committed `ts_translation_rules_node()` has **1** child (`fn_add`); witness bundle `ts_translation_rules_witness()` expects **3** (add + type_alias + pr3) (`typescript.dag:1381–1414`).
+1. **#13 match / coproduct dispatch** — `match_form.match_token = ^ts_token_unwired_match` (`v2.extdeps.languages.typescript` `ts_value_expression_projection_full`); no TS match witness; compiler uses `Match` heavily (`05_eval.dag`).
+2. **#14 bind-in scoping** — `let_form.in_token = ^ts_token_unwired_bind_in` (`v2.extdeps.languages.typescript` `ts_value_expression_projection_full`).
+3. **#15 loop form wiring** — `loop_form.loop_token = ^ts_token_unwired_loop` (`v2.extdeps.languages.typescript` `ts_value_expression_projection_full`).
+4. **#16 default operator catalog** — `v2.extdeps.languages.typescript` `ts_operator_realizations_catalog_node` rows = `[ts_add_operator_realization_row()]` only. Algebra ops miss on default model (`add_body_ts_emit_missing_catalog_rejects`).
+5. **#17 grammar-inverse rows beyond add** — committed `v2.extdeps.languages.typescript` `ts_translation_rules_node` has **1** child (`fn_add`); witness bundle `ts_translation_rules_witness` expects **3** (add + type_alias + pr3).
 6. **#18 branch dispatch** — compiler uses `Branch` (`04_infer` / `05_eval`); zero TS emit witnesses.
 7. **#19 tsc-green / emit_host oracle** — §5 spec-without-execution crack. Sole consumer path: `ts_host_transport_descriptor` + `emit_host_gate.dag`. **`typescript_descriptor_node_ts_node_run_add_holds` FAIL** (wet `claim_batch`); **`emit_host_gate_passes` FAIL** (wet). Bar (c) red even for add.
 8. **#20 whole `src/v2` → TS** — no module; Route-A tsc analogue not started (terminal slice E).

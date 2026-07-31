@@ -43,7 +43,7 @@ The **same** record projection renders as manifest text **and** JSON by swapping
 
 ## 3. Hazard — do not build on `std.render` kv helpers
 
-`std.render` `kv_pair` / `kv_block` are **broken** for real emission: in `.dag` runtime literals bare curly-brace interpolation is live, while the escaped-brace form in `render.dag:119-120` emits literal brace characters, not key=value pairs. `digest_render.dag` and friends must route through `serialize_record`, not these helpers.
+`std.render` `kv_pair` / `kv_block` are **broken** for real emission: in `.dag` runtime literals bare curly-brace interpolation is live, while the escaped-brace form in `std.render` `kv_pair` emits literal brace characters, not key=value pairs. `digest_render.dag` and friends must route through `serialize_record`, not these helpers.
 
 ## 4. Ordered scope (C1–C6)
 
@@ -59,7 +59,7 @@ The **same** record projection renders as manifest text **and** JSON by swapping
 - `FormatModel` at `languages.dag:36` — type only, zero `data` rows, not in `LanguageSpec`.
 - `OutputFormat` at `render.dag:160` — consumed by `extdeps/git/gitignore.dag` `gitignore_output_format` only.
 - `extdeps/git/gitignore_render.dag` — orphan knob declarations, ignored at emit.
-- `languages_consumer_census` baselines: 71 total decls, 64 language rows, 7 format rows (`src/v2/lens/languages_consumer_census.dag:9-11`).
+- `v2.lens.languages_consumer_census` baselines: `languages_consumer_census_data_decl_baseline`, `languages_consumer_census_per_language_row_baseline`, `languages_consumer_census_format_row_baseline`.
 
 ## 6. Open / boundaries
 
