@@ -1,0 +1,35 @@
+{
+  "compiler_authoritative": {
+    "classification": {
+      "ambiguous_variant": 324,
+      "no_field": 594,
+      "singleton": 6,
+      "type_mismatch": 12,
+      "unresolved_name": 17112
+    },
+    "classification_sum": 18048,
+    "compiler_reported_hard_diagnostics": 18048,
+    "header_lines_excluded_from_diagnostics": 1
+  },
+  "inferred_grouping": {
+    "ambiguous_variant_decisions": 315,
+    "ambiguous_variant_occurrences": 324
+  },
+  "inputs": {
+    "compiler_binary_bytes": 21563472,
+    "compiler_binary_sha256": "87538a75c2b56111f9ab1440336b858ee8618cd7892758f9c21c5af0655a68b6",
+    "compiler_source_commit": "b222f079a0425a4015718175dd7f41a55b76b759",
+    "corpus_commit": "0337fb27c039a800a1aff4b80140d6dbf027e595",
+    "raw_log_sha256": "06289db522ff4cbf1613d07219e6241fe1d92994710e2fc871ad82c3de19823f"
+  },
+  "regex_bound": {
+    "mechanical_share_percent": {
+      "lower": 60.7,
+      "upper": 81.6
+    },
+    "unique_provider_edges": {
+      "lower": 2197,
+      "upper": 2717
+    }
+  }
+}
