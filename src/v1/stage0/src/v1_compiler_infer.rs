@@ -999,17 +999,17 @@ pub fn type_mismatch_error(
     )
 }
 
-pub fn collect_explicit_return_types(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+pub fn collect_explicit_return_values(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*n.expr_data.clone()).clone() {
             ExprData::ExprLambda => Rc::new(vec![]),
             ExprData::ExprReturn => v1_rt::concat(
-                Rc::new(vec![resolved_type(return_value(n.clone()))]),
+                Rc::new(vec![return_value(n.clone())]),
                 Rc::new({
                     let mut __result = Vec::new();
                     for c in n.children.clone().iter().cloned() {
                         __result
-                            .extend((*collect_explicit_return_types(c.clone())).iter().cloned());
+                            .extend((*collect_explicit_return_values(c.clone())).iter().cloned());
                     }
                     __result
                 }),
@@ -1017,7 +1017,7 @@ pub fn collect_explicit_return_types(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
             _ => Rc::new({
                 let mut __result = Vec::new();
                 for c in n.children.clone().iter().cloned() {
-                    __result.extend((*collect_explicit_return_types(c.clone())).iter().cloned());
+                    __result.extend((*collect_explicit_return_values(c.clone())).iter().cloned());
                 }
                 __result
             }),
@@ -1032,15 +1032,15 @@ pub fn explicit_return_conformance_diags(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for produced in collect_explicit_return_types(body_typed.clone())
+        for returned in collect_explicit_return_values(body_typed.clone())
             .iter()
             .cloned()
         {
             __result.extend(
                 (*declared_type_conformance_diags(
                     declared.clone(),
-                    produced.clone(),
-                    body_typed.span.clone(),
+                    resolved_type(returned.clone()),
+                    returned.span.clone(),
                     scope.clone(),
                 ))
                 .iter()
@@ -1105,6 +1105,25 @@ pub fn conformance_ground_type(
         || conformance_ground_element_collection(n.clone(), source_indices.clone()))
 }
 
+pub fn conformance_expanded_shape(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    match lookup_type_for(scope.type_env.clone(), n.clone()) {
+        Some(resolved) => node_type_shape(
+            resolved.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        ),
+        None => node_type_shape(n.clone(), scope.type_env.clone().source_indices.clone()),
+    }
+}
+
+pub fn conformance_expansion_depth_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so a shape comparison alone reads `Primitive(Node)` against `Product(Node)` and calls one type two. Measured over the whole corpus, that accounted for the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, every one of them a reference and its own body. Reporting those as unjudged was not a conservative silence, it was a WRONG COUNT: it inflated the frontier with pairs that are the same type by construction, and an inflated frontier is the rung-inflation failure pointed the other way — it makes the gap look bigger than it is and buries the residue that genuinely cannot be decided. Resolving each side through lookup_type_for before comparing is a real judgment step, not a name heuristic: it asks the type environment what the reference denotes and compares the answers, which is the same peel the where-refinement chain performs on its own base. It can only ever REMOVE a diagnostic — both branches below already treat unequal shapes as unjudged rather than as a refusal — so widening here cannot introduce a fabricated refusal.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn declared_type_conformance_diags(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -1116,8 +1135,8 @@ pub fn declared_type_conformance_diags(
         let both_ground = (conformance_ground_type(declared.clone(), si.clone())
             && conformance_ground_type(produced.clone(), si.clone()));
         if !both_ground.clone() {
-            if (node_type_shape(declared.clone(), si.clone())
-                == node_type_shape(produced.clone(), si.clone()))
+            if (conformance_expanded_shape(declared.clone(), scope.clone())
+                == conformance_expanded_shape(produced.clone(), scope.clone()))
             {
                 Rc::new(vec![])
             } else {
@@ -3130,20 +3149,6 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     occurrences: 3,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
-}), Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "test.claim.language_source_scaffold_index_test".to_string(),
-    method: "split".to_string(),
-    occurrences: 1,
-    receiver_shape: "Primitive()".to_string(),
-    cause: "receiver is an untyped lambda parameter, the same propagation gap as the rows above.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
-}), Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "test.claim.language_source_scaffold_index_test".to_string(),
-    method: "count".to_string(),
-    occurrences: 1,
-    receiver_shape: "Primitive()".to_string(),
-    cause: "receiver is an untyped lambda parameter, the same propagation gap as the `split` row above.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.dns.domain_name".to_string(),

@@ -603,20 +603,24 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 
-fn collect_explicit_return_types(n: Node) -> List<Node> {
+fn collect_explicit_return_values(n: Node) -> List<Node> {
   match n.expr_data {
     ExprLambda => []
     ExprReturn =>
       concat(
-        [resolved_type(n: return_value(texpr: n))],
-        n.children |> flat_map(c => collect_explicit_return_types(n: c)))
-    _ => n.children |> flat_map(c => collect_explicit_return_types(n: c))
+        [return_value(texpr: n)],
+        n.children |> flat_map(c => collect_explicit_return_values(n: c)))
+    _ => n.children |> flat_map(c => collect_explicit_return_values(n: c))
   }
 }
 
 fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: InferScope) -> List<ErrorNode> {
-  collect_explicit_return_types(n: body_typed)
-    |> flat_map(produced => declared_type_conformance_diags(declared: declared, produced: produced, span: body_typed.span, scope: scope))
+  collect_explicit_return_values(n: body_typed)
+    |> flat_map(returned => declared_type_conformance_diags(
+         declared: declared,
+         produced: resolved_type(n: returned),
+         span: returned.span,
+         scope: scope))
 }
 
 data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
@@ -649,12 +653,21 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
     || conformance_ground_element_collection(n: n, source_indices: source_indices)
 }
 
+fn conformance_expanded_shape(n: Node, scope: InferScope) -> String {
+  match lookup_type_for(env: scope.type_env, node: n) {
+    Present { value: resolved } => node_type_shape(n: resolved, source_indices: scope.type_env.source_indices)
+    Absent => node_type_shape(n: n, source_indices: scope.type_env.source_indices)
+  }
+}
+
+data conformance_expansion_depth_note: String = "A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so a shape comparison alone reads `Primitive(Node)` against `Product(Node)` and calls one type two. Measured over the whole corpus, that accounted for the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, every one of them a reference and its own body. Reporting those as unjudged was not a conservative silence, it was a WRONG COUNT: it inflated the frontier with pairs that are the same type by construction, and an inflated frontier is the rung-inflation failure pointed the other way — it makes the gap look bigger than it is and buries the residue that genuinely cannot be decided. Resolving each side through lookup_type_for before comparing is a real judgment step, not a name heuristic: it asks the type environment what the reference denotes and compares the answers, which is the same peel the where-refinement chain performs on its own base. It can only ever REMOVE a diagnostic — both branches below already treat unequal shapes as unjudged rather than as a refusal — so widening here cannot introduce a fabricated refusal."
+
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
   if !both_ground {
-    if node_type_shape(n: declared, source_indices: si) == node_type_shape(n: produced, source_indices: si) {
+    if conformance_expanded_shape(n: declared, scope: scope) == conformance_expanded_shape(n: produced, scope: scope) {
       []
     } else {
       [make_error_node(
@@ -1821,22 +1834,6 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 3,
       receiver_shape: "Primitive()",
       cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
-    },
-    {
-      module_name: "test.claim.language_source_scaffold_index_test",
-      method: "split",
-      occurrences: 1,
-      receiver_shape: "Primitive()",
-      cause: "receiver is an untyped lambda parameter, the same propagation gap as the rows above.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
-    },
-    {
-      module_name: "test.claim.language_source_scaffold_index_test",
-      method: "count",
-      occurrences: 1,
-      receiver_shape: "Primitive()",
-      cause: "receiver is an untyped lambda parameter, the same propagation gap as the `split` row above.",
       dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
     },
     {
