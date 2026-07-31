@@ -375,7 +375,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
     ExprMatch =>
       let scrut = collect_callable_refs(texpr: match_scrutinee(texpr: texpr), si: si)
       match_arm_nodes(texpr: texpr) |> fold(init: scrut, f: (acc, arm) =>
-        set_union(acc, collect_callable_refs(texpr: arm_body(arm: arm), si: si))
+        set_union(acc, collect_callable_refs(texpr: arm_body(n: arm), si: si))
       )
     ExprLet =>
       let val = collect_callable_refs(texpr: let_value(texpr: texpr), si: si)
