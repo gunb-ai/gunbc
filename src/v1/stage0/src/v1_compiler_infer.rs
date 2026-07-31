@@ -23,6 +23,7 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+pub use crate::std_methods::declared_method_names;
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
@@ -994,6 +995,36 @@ pub fn type_mismatch_error(
         }),
         module_name.clone(),
     )
+}
+
+pub fn declared_type_conformance_diags(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![type_mismatch_error(
+                node_type_shape(declared.clone(), si.clone()),
+                node_type_shape(produced.clone(), si.clone()),
+                span.clone(),
+                scope.module_name.clone(),
+            )])
+        }
+    }
+}
+
+pub fn declared_type_conformance_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as `expected` but then kept the declaration's own inferred return REGARDLESS of what the body produced, and the generic `expected` handling in infer_expr applies where-refinement checks rather than a general actual-<:-declared judgment. So `fn f() -> Int { \"wrong\" }` typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are now checked against their declaration: a fn body vs its declared return (both the param'd and paramless arms) and a `data` value vs its type annotation. The relation is the EXISTING node_type_compatible (§3 single authority — the same compatibility used at argument sites, not a second relation minted here), which is deliberately permissive: an error type, a type variable, or an under-resolved shape on either side answers compatible, so this wall fires only where the mismatch is PROVEN and never manufactures a red from inference's own frontier. The diagnostic is the existing TypeMismatch, located at the BODY's span so it points at the offending expression rather than the signature. Not covered here, and each its own lane: direct-call argument types inside compiler modules (the `v2.`/`v1.compiler.` exemption), default field values, generic record instantiation, and post-substitution generic field access.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rejects_string_for_optional_coproduct_field(
@@ -2747,10 +2778,13 @@ pub fn method_pipe_map_keys_values_fallback(
                     recv_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 );
-                if is_fully_resolved(
+                let name_is_declared_method =
+                    v1_rt::contains(declared_method_names(), method_name.clone());
+                let receiver_surface_known = is_fully_resolved(
                     recv_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) {
+                );
+                if (!name_is_declared_method.clone() && receiver_surface_known.clone()) {
                     Rc::new(MethodPipeFallback {
                         result_ty: error_type(),
                         kernel_diags: Rc::new(vec![make_error_node(
@@ -2783,7 +2817,7 @@ pub fn method_pipe_map_keys_values_fallback(
 pub fn method_existence_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline and looked plausible to downstream inference, with the method expression stamped PlainMethodSemantics as if typed. The failure surfaced only at InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). Two states, two variants (DESIGN §5 state-space conflation): MethodNotFound is the DECIDABLE refusal — the receiver type is fully resolved, so the method is provably absent; MethodExistenceUndecided is the frontier — an under-resolved receiver (type variables present) cannot PROVE the method missing, so it is a typed, located, COUNTED refusal rather than a silent widen back to recv_rt. Both arms return error_type, never recv_rt: node_type_compatible treats error_type as compatible with everything, so one located refusal does not cascade into a fan of derived mismatches at every downstream consumer. Positive controls that must stay green: map/filter/fold/flat_map and the other algebra method templates resolve at tier0 (lookup_structural_method) and service ops at tier1 (check_service_method_call_node) — neither reaches this arm. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition and target realization, at which point method existence is decided against that authority instead of the structural/service tier pair and MethodExistenceUndecided's frontier closes.".to_string()
+            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline and looked plausible to downstream inference, with the expression stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART and two obvious ones are UNSOUND, each measured on the whole tree before being rejected. (i) is_fully_resolved alone: a type can carry no type variables and still be an inference artifact — NonEmptyStr, declared String where non_empty, arrives as Product(NonEmptyStr) instead of peeling to its String base, so 8 correct .length() sites in extdeps/filesystem/linux.dag red while the identical text.length() in extdeps/mercurial.dag stays green; and a coproduct payload bound by pattern destructuring in extdeps/dns/domain_name.dag arrives typed Primitive(ok), a variant-name-shaped garbage type, reding a correct labels |> list_push(label). (ii) the receiver algebra profile as the complete surface: free_monoid_scalar_templates omits count while the interpreter dispatches it natively (the length/count/size arm), so String.count() in 05_emit_rust.dag reds against a profile the runtime contradicts — the five-way primitive fork, measured. Fabricating a refusal is the mirror image of the fabricated success this wall deletes, so the predicate is COMPOSED and each half is a declared authority, not one minted here (§3): refuse only when the method name is absent from std.methods declared_method_names AND the receiver type is fully resolved. The name roster answers is this a substrate method at all; the receiver gate answers could this instead be a product field holding a callable, which is exactly the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag — apply is correctly absent from the roster, so without the receiver gate those 7 sites would red. Measured verdict on the whole corpus: zero false positives, and TWO real latent defects caught — the #7479 filter_map incident, and env.clone() at 05_emit_rust.dag:9009,9831, a Rust-ism with no .dag definition and NO interpreter arm, which compiles clean today because the fallback handed back TypeEnv and would die at InterpError::Unimplemented if that path ran. MethodExistenceUndecided carries the residue: not a silent widen but a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent), so the frequency of the undecidable class stays observable and prioritizable rather than zeroed by construction. Both arms return error_type, never recv_rt: node_type_compatible treats error_type as compatible with everything, so one located refusal does not cascade into derived mismatches downstream. Positive controls that must stay green: map/filter/fold/flat_map resolve at tier0 (lookup_structural_method) and service ops at tier1 — neither reaches this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND DELIBERATELY NOT FIXED HERE, each a promotion trigger that would let the wall decide more: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding from pattern destructuring typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point existence is decided per RECEIVER rather than per NAME, the roster stops being the conservative side of a fork, and MethodExistenceUndecided is deleted.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -12809,6 +12843,16 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     } else {
                         body_typed.inferred.clone()
                     };
+                    let return_conformance_diags = if (item.inferred.clone() != None) {
+                        declared_type_conformance_diags(
+                            resolved_type(item.clone()),
+                            resolved_type(body_typed.clone()),
+                            item.body.clone().clone().unwrap().span.clone(),
+                            scope.clone(),
+                        )
+                    } else {
+                        Rc::new(vec![])
+                    };
                     let is_recursive = expr_has_self_call(
                         body_typed.clone(),
                         authored_name_at(
@@ -12870,7 +12914,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         }),
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(transport_diags.clone(), props_diags.clone()),
-                            body_diags.clone(),
+                            v1_rt::concat(body_diags.clone(), return_conformance_diags.clone()),
                         ),
                     })
                 }
@@ -12886,7 +12930,15 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             Some(resolved_type(item.clone())),
                         );
                         let body_typed = body_result.typed.clone();
-                        let body_diags = body_result.diagnostics.clone();
+                        let body_diags = v1_rt::concat(
+                            body_result.diagnostics.clone(),
+                            declared_type_conformance_diags(
+                                resolved_type(item.clone()),
+                                resolved_type(body_typed.clone()),
+                                item.body.clone().clone().unwrap().span.clone(),
+                                scope.clone(),
+                            ),
+                        );
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
                                 name: item.name.clone(),
@@ -12928,7 +12980,19 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 data_expected.clone(),
                             );
                             let val_typed = val_result.typed.clone();
-                            let val_diags = val_result.diagnostics.clone();
+                            let val_diags = if (item.type_annotation.clone() != None) {
+                                v1_rt::concat(
+                                    val_result.diagnostics.clone(),
+                                    declared_type_conformance_diags(
+                                        item.type_annotation.clone().clone().unwrap(),
+                                        resolved_type(val_typed.clone()),
+                                        item.body.clone().clone().unwrap().span.clone(),
+                                        scope.clone(),
+                                    ),
+                                )
+                            } else {
+                                val_result.diagnostics.clone()
+                            };
                             let inferred_ret = if (item.type_annotation.clone() != None) {
                                 Some(Rc::new(InferredNode::Resolved {
                                     node: item.type_annotation.clone().clone().unwrap(),
