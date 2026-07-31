@@ -125,6 +125,58 @@ fn coercion_candidate_set_from_declared_inhabitants(
     )
   }
 }
+data identity_coercion_grounding_ruling: String = "Identity admission and semantic coercion are distinct judgments. When source is selected from the target model's AUTHORED target_model_edge_declared_inhabitants roster, source already inhabits that model: the closed candidate set plus exact structural witness grounds CoercionQuality.Identity without claiming a resolved type for source. This authority must never receive a candidate roster derived from source itself — that would recreate self-certification with an extra step. Non-identity coercion still requires the compiler's derived CanonicalGrounding."
+
+fn coercion_identity_from_declared_inhabitants(
+  source: Node,
+  candidates: CoercionCandidateSet,
+  priority: Node,
+) -> Outcome<CoercionResult> {
+  match find_witness(
+    source_facts: source,
+    candidates: candidates.set,
+    predicate: PreservationPredicate {
+      algebra: source,
+      preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: TargetSelection {
+      policy: TargetDeclaredPriority { priority: priority }
+    }
+  ) {
+    Accepted { value: fw, diagnostics: fw_d } =>
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: Identity,
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_exact_structural_equality,
+              evidence: Node {
+                kind: TypeNode { connective: Conj },
+                children: [
+                  Edge {
+                    label: Named { name: ^coercion_homomorphism_evidence_source },
+                    target: source
+                  },
+                  Edge {
+                    label: Named { name: ^coercion_homomorphism_evidence_candidate },
+                    target: fw.candidate
+                  },
+                  Edge {
+                    label: Named { name: ^coercion_homomorphism_evidence_find_witness },
+                    target: fw.witness.evidence
+                  }
+                ],
+                occurrence_id: SyntheticOccurrence
+              }
+            }
+          }
+        },
+        diagnostics: fw_d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
 fn coercion_quality_for_witness(
   source: CanonicalGrounding,
   fw: FindWitnessResult,

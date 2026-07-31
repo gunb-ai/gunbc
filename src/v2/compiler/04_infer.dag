@@ -407,10 +407,24 @@ fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
-          inferred_facts_not_derived(
-            node: n,
-            descent: Holds { value: descent_proof }
-          )
+          if infer_branch_is_bool_literal_atom(node: n) {
+            inferred_facts_from_derived_type(
+              node: n,
+              derived_type: bool_node(),
+              descent: Holds { value: descent_proof }
+            )
+          } else if infer_branch_is_int_literal_atom(node: n) {
+            inferred_facts_from_derived_type(
+              node: n,
+              derived_type: infer_branch_int_binding_type_node(),
+              descent: Holds { value: descent_proof }
+            )
+          } else {
+            inferred_facts_not_derived(
+              node: n,
+              descent: Holds { value: descent_proof }
+            )
+          }
       }
   }
 }
