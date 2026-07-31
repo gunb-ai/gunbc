@@ -303,16 +303,24 @@ fn lean_platform_word_width_node() -> Node {
   lean_inhabitant_atom(id: ^lean_tag_pointer)
 }
 
+fn lean_width_inadmissible_node() -> Node {
+  lean_inhabitant_atom(id: ^lean_tag_width_inadmissible)
+}
+
 fn lean_bit_width_node(width: BitWidth) -> Node {
-  let n = bit_width_count(width)
-  if n == 8 {
-    lean_inhabitant_atom(id: ^lean_tag_bits8)
-  } else if n == 16 {
-    lean_inhabitant_atom(id: ^lean_tag_bits16)
-  } else if n == 32 {
-    lean_inhabitant_atom(id: ^lean_tag_bits32)
+  if lean_admits_bit_width(width: width) {
+    let n = bit_width_count(width)
+    if n == 8 {
+      lean_inhabitant_atom(id: ^lean_tag_bits8)
+    } else if n == 16 {
+      lean_inhabitant_atom(id: ^lean_tag_bits16)
+    } else if n == 32 {
+      lean_inhabitant_atom(id: ^lean_tag_bits32)
+    } else {
+      lean_inhabitant_atom(id: ^lean_tag_bits64)
+    }
   } else {
-    lean_inhabitant_atom(id: ^lean_tag_bits64)
+    lean_width_inadmissible_node()
   }
 }
 

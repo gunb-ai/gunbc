@@ -1,7 +1,11 @@
 module v2.test.claim.lean_bit_width_admissibility_witness
 
 
-import v2.extdeps.languages.lean { lean_admits_bit_width }
+import v2.extdeps.languages.lean {
+  lean_admits_bit_width,
+  lean_bit_width_node,
+  lean_width_inadmissible_node
+}
 import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -20,4 +24,10 @@ test fn lean_admits_catalog_fixed_widths() -> Bool {
 test fn lean_refuses_bits128_admissibility() -> Bool {
   let w128: BitWidth = bit_width(count: 128)
   !lean_admits_bit_width(width: w128) && bit_width_count(w128) == 128
+}
+
+test fn lean_inadmissible_width_projects_refusal_node() -> Bool {
+  let w128: BitWidth = bit_width(count: 128)
+  !lean_admits_bit_width(width: w128)
+    && lean_bit_width_node(width: w128) == lean_width_inadmissible_node()
 }
