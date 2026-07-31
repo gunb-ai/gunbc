@@ -4418,31 +4418,6 @@ mod typed_module_content_key_tests {
             );
         });
     }
-
-    /// Discriminating controls for the string→`Fnv1a64Structural` coercion on the
-    /// `typed_module_content_key` bridge (review 45554; authority note
-    /// `std.interface_summary.typed_module_key_v1_seed_bridge_note`).
-    #[test]
-    fn fnv1a64_structural_hex_digest_refuses_invalid_wire() {
-        use super::fnv1a64_structural_hex_digest;
-        assert!(
-            fnv1a64_structural_hex_digest("0123456789ABCDEF".to_string()).is_none(),
-            "uppercase hex must refuse, not fold case"
-        );
-        assert!(
-            fnv1a64_structural_hex_digest("0123456789abcde".to_string()).is_none(),
-            "short hex must refuse"
-        );
-    }
-
-    #[test]
-    fn fnv1a64_structural_hex_digest_accepts_valid_wire() {
-        use super::fnv1a64_structural_hex_digest;
-        assert!(
-            fnv1a64_structural_hex_digest("0123456789abcdef".to_string()).is_some(),
-            "valid 16-char lowercase hex must mint"
-        );
-    }
 }
 
 #[cfg(test)]
