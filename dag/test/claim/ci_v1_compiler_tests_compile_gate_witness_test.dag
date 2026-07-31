@@ -12,7 +12,8 @@ fn build_job_has_v1_compiler_tests_compile_gate_step() -> Bool {
   fold(ci_build_job().steps, init: false, f: (acc, step) => {
     acc || match step {
       RunStep { name: _, id: _, run: cmd, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-        string_contains(s: cmd, pattern: "check -p v1-compiler-tests --tests")
+        string_contains(s: cmd, pattern: "'check'")
+          && string_contains(s: cmd, pattern: "'v1-compiler-tests'")
           && string_contains(s: cmd, pattern: "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script")
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
@@ -20,14 +21,12 @@ fn build_job_has_v1_compiler_tests_compile_gate_step() -> Bool {
 }
 
 test fn w_gate_script_names_compile_only_command() -> Bool {
-  string_contains(
-    s: ci_v1_compiler_tests_compile_gate_script(),
-    pattern: "check -p v1-compiler-tests --tests"
-  )
-    && !string_contains(
-      s: ci_v1_compiler_tests_compile_gate_script(),
-      pattern: "nextest"
-    )
+  let script = ci_v1_compiler_tests_compile_gate_script()
+  string_contains(s: script, pattern: "'check'")
+    && string_contains(s: script, pattern: "'v1-compiler-tests'")
+    && string_contains(s: script, pattern: "'--tests'")
+    && string_contains(s: script, pattern: "\"$CARGO_BIN\"")
+    && !string_contains(s: script, pattern: "nextest")
 }
 
 test fn w_gate_carrier_is_scaffold() -> Bool {

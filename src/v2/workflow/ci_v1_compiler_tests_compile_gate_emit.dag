@@ -3,6 +3,21 @@ module v2.workflow.ci_v1_compiler_tests_compile_gate_emit
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { List }
+import v2.std.effect_plan { Do, EffectPlan }
+import v2.std.operation_argv {
+  BoundOperationInvocation,
+  OperationRef,
+  bind_operation_invocation,
+  operation_argv_bind_text_list
+}
+import v2.std.orchestration { FailFast }
+import v2.std.text { String }
+import v2.workflow.effect_plan_bash_materialize {
+  EffectPlanBashMaterializationRefused,
+  EffectPlanBashMaterialized,
+  effect_plan_bash_materialize,
+  effect_plan_bash_refusal_label
+}
 
 data ci_v1_compiler_tests_compile_gate_extra_args: List<String> = [
   "-p",
@@ -10,7 +25,13 @@ data ci_v1_compiler_tests_compile_gate_extra_args: List<String> = [
   "--tests"
 ]
 
-data ci_v1_compiler_tests_compile_gate_authority_note: String = "Build-job compile gate for the v1-compiler-tests workspace crate. The operation shape is extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the GitHub Actions run: step is a foreign-executor shell transport pending bash-emit binding (same scaffold class as ci_fmt_gate_line and ci_release_build_script)."
+data ci_v1_compiler_tests_compile_gate_cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
+data ci_v1_compiler_tests_compile_gate_cargo_service: String = "cargo.Build"
+data ci_v1_compiler_tests_compile_gate_cargo_operation: String = "Check"
+
+data ci_v1_compiler_tests_compile_gate_refusal_prefix: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ v1-compiler-tests compile gate: "
+
+data ci_v1_compiler_tests_compile_gate_authority_note: String = "Build-job compile gate for the v1-compiler-tests workspace crate. Wave B typed carrier: one extdeps.cargo_build cargo.Build.Check invocation bound by name; argv is derived from that declaration by shell_materialize_operation_argv and emitted through effect_plan_bash_materialize (same edge as ci_merge_admission_gate_emit). GitHub Actions run: remains a foreign-executor shell transport — only the declaration-literal cargo executable position is substituted for the pin-rustup $CARGO_BIN env (same CI prelude contract as ci_fmt_gate_line and ci_release_build_script)."
 
 data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -21,15 +42,66 @@ data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: Disposition = Scaffo
   }
 }
 
-data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
+data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation with no parallel $CARGO_BIN substitution glue — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
 
-fn ci_v1_compiler_tests_compile_gate_line() -> String {
-  "\"$CARGO_BIN\" check -p v1-compiler-tests --tests"
+data ci_foreign_executor_cargo_argv0_quoted: String = "'cargo'"
+
+fn ci_foreign_executor_cargo_bin_line(materialized: String) -> String {
+  let prefix = concat(ci_foreign_executor_cargo_argv0_quoted, " ")
+  if starts_with(s: materialized, prefix: prefix) {
+    concat(
+      "\"$CARGO_BIN\" ",
+      substring(
+        s: materialized,
+        start: string_length(s: prefix),
+        end: string_length(s: materialized)
+      )
+    )
+  } else {
+    concat("__GUNBC_CARGO_BIN_SUBSTITUTION_REFUSED__ ", materialized)
+  }
+}
+
+fn ci_v1_compiler_tests_compile_gate_check_step() -> BoundOperationInvocation {
+  bind_operation_invocation(
+    at: OperationRef {
+      path: ci_v1_compiler_tests_compile_gate_cargo_path,
+      service: ci_v1_compiler_tests_compile_gate_cargo_service,
+      operation: ci_v1_compiler_tests_compile_gate_cargo_operation
+    },
+    bindings: [
+      operation_argv_bind_text_list(
+        name: "extra_args",
+        items: ci_v1_compiler_tests_compile_gate_extra_args
+      )
+    ]
+  )
+}
+
+fn ci_v1_compiler_tests_compile_gate_intent() -> EffectPlan<BoundOperationInvocation> {
+  EffectPlan {
+    steps: [Do { effect: ci_v1_compiler_tests_compile_gate_check_step() }],
+    on_failure: FailFast
+  }
+}
+
+fn ci_v1_compiler_tests_compile_gate_render(
+  plan: EffectPlan<BoundOperationInvocation>
+) -> String {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: source } =>
+      ci_foreign_executor_cargo_bin_line(materialized: source)
+    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+      concat(
+        ci_v1_compiler_tests_compile_gate_refusal_prefix,
+        effect_plan_bash_refusal_label(refusal: refusal)
+      )
+  }
 }
 
 fn ci_v1_compiler_tests_compile_gate_script() -> String {
   concat(
     concat("# ", concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")),
-    ci_v1_compiler_tests_compile_gate_line()
+    concat(ci_v1_compiler_tests_compile_gate_render(plan: ci_v1_compiler_tests_compile_gate_intent()), "\n")
   )
 }
