@@ -2,7 +2,7 @@ module gunbc.floor_discovery_scaffold
 
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { String }
+import std.types { Int, String }
 
 data floor_discovery_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -14,6 +14,12 @@ data floor_discovery_hand_rust_scaffold: Disposition = Scaffold {
 }
 
 data floor_discovery_dissolve_trigger: String = "🟡 dissolve-on: floor_discovery_hand_rust_bridge — floor_discovery_producer.dag is roster authority; Rust host still realizes effect-reach reclassification (apply_effect_reach_derived_reads_live_tree), parallel tree walks for build_floor_lens_import_graph, and invoke_floor_discovery_producer interpreter transport via discover_floor_witness_roster; DISSOLVES WHEN discovery admission consumes v2.lens.effect_reach directly and lens-graph feed the .dag producer closure (witness: dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag). Legacy discover_floor_corpus_rows_inner_rust_legacy deleted; discover_floor_corpus_rows / check_floor_filename_hygiene / _inner / _scoped arms deleted. Transport surface enumerated for this receipt (review 44710): invoke_floor_discovery_producer delegates to invoke_floor_discovery_producer_over_corpus(producer_roots, corpus_roots, ...), which de-fuses the two roles the single source_roots list carried — producer_roots locates the MACHINERY (this module's producer entry), corpus_roots is the SUBJECT walked and judged. Production passes one list for both, so the split is role-naming with no behaviour change, and it dissolves with the transport it parameterizes. The producer entry is located by floor_discovery_producer_entry_anchored (process_workspace_root join, NOT cwd-relative) at both resolve sites so resolve_entry_graph_shared keeps one cache key; that anchoring belongs to the cli_run_runtime_workspace_root_plumbing scaffold and dissolves with it."
+
+data floor_naming_hygiene_entry_hand_rust_loc_delta_net: Int = 6
+
+data floor_naming_hygiene_entry_hand_rust_census_note: String = "HAND-RUST census against origin/main: src/v1/stage0/src/cli_run.rs is +8/-2, net +6. The growth is exactly FLOOR_NAMING_HYGIENE_ENTRY plus floor_naming_hygiene_entry_anchored and the filename-hygiene resolver repoint; no second consumer or decision is added. DISSOLVE-ON: the cli_run_runtime_workspace_root_plumbing scaffold deletes this constant/helper when entry resolution receives a typed workspace-root-relative entry instead of anchoring in hand Rust. Concrete ROADMAP row: gunbc.roadmap_authority v1-hand-queue-drain (Work through the remaining hand-written files the products need)."
+
+data floor_naming_hygiene_entry_hand_rust_discriminator: String = "floor_naming_hygiene_entry_anchored"
 
 data floor_discovery_producer_entry: String = "src/v2/workflow/floor_discovery_producer.dag"
 
