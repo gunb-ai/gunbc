@@ -8,11 +8,11 @@
 
 ## 0. Verdict — the brief's mechanism is wrong; the leak is a global seed allowlist
 
-The compile-clean gate (`dag/tools/dag_compile_clean_gate.dag` → `gunbc compile --target rust` over `dag/` with `src/v2` as the import pool) is **fail-open**: `gunbc compile` on `main` returns 0 diagnostics / EXIT 0 even though `extdeps.cloud.gcp.secret_manager` `utf8_secret_from_access_payload` calls `utf8_decode_bytes`, which is **defined nowhere in `dag/` or `src/v2`**.
+At the 2026-06-21 capture, the compile-clean gate (`dag/tools/dag_compile_clean_gate.dag` → `gunbc compile --target rust` over `dag/` with `src/v2` as the import pool) was **fail-open**: `gunbc compile` on `main` returned 0 diagnostics / EXIT 0 even though `extdeps.cloud.gcp.secret_manager` `utf8_secret_from_access_payload` called `utf8_decode_bytes`, which was then **defined nowhere in `dag/` or `src/v2`**. The current tree now defines `std.encoding` `utf8_decode_bytes`; this paragraph is a historical execution receipt, not a claim that the literal leak remains live.
 
-The brief framed this as "unreached fn bodies escape typecheck." **That is false** — bodies are always visited. The precise mechanism (execution-proven, §1 below) is two independent fail-open holes:
+The brief framed this as "unreached fn bodies escape typecheck." **That was false** — bodies were always visited. At the captured run, the execution-proven mechanism (§1 below) was two independent fail-open holes:
 
-1. **Registry leak** — `utf8_decode_bytes` resolves because it is a hardcoded entry in the global `builtin_function_registry()`, an **explicitly-marked BRIDGE scaffold**. The registry is *not scoped to the tree being compiled*, so v1-seed runtime intrinsics leak into the dag-substrate compile.
+1. **Registry leak at capture** — `utf8_decode_bytes` resolved because it was a hardcoded entry in the global `builtin_function_registry()`, then an **explicitly-marked BRIDGE scaffold**. The registry was *not scoped to the tree being compiled*, so v1-seed runtime intrinsics leaked into the dag-substrate compile.
 2. **Return-type fail-open** — a function whose body's inferred type ≠ its declared return type is not flagged (`#5293` closed only the record-field hole, not return types). Independent of the gate; a member of ROADMAP §0's "inference fail-open (return-type after #5293)".
 
 ## 1. Execution-proven mechanism (receipts)
@@ -34,11 +34,11 @@ fn utf8_secret_from_access_payload(payload: Bytes) -> Secret {
 }
 ```
 
-`utf8_decode_bytes` resolves via the registry; the `as Secret` cast satisfies the return type. So the **literal witness is hole #1 alone** (return-type enforcement would not catch it because of the cast).
+In the captured run, `utf8_decode_bytes` resolved via the registry; the `as Secret` cast satisfied the return type. So the **literal witness was hole #1 alone** (return-type enforcement would not have caught it because of the cast).
 
 ## 2. The seam — `builtin_function_registry`
 
-`v1.compiler.infer_method` `builtin_function_registry` (also the authority for its generated Rust seed). 76 names → return-type `Node`s, e.g. `utf8_decode_bytes → string_type` (04_method.dag:93). Its own header is the indictment:
+At capture, `v1.compiler.infer_method` `builtin_function_registry` (also the authority for its generated Rust seed) held 76 names → return-type `Node`s, including the `utf8_decode_bytes → string_type` row (04_method.dag:93). That row and the cited header are absent from the current tree, as the unresolved-citation marker above records; the header at capture was the indictment:
 
 > `// BRIDGE: This map_insert chain is a duplicate authority over facts that should come from .dag`
 > `// function declarations (extern fn signatures). Deletion point: when builtins are actual .dag`
