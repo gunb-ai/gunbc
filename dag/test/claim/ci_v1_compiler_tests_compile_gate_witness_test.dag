@@ -2,14 +2,14 @@ module test.claim.ci_v1_compiler_tests_compile_gate_witness
 
 import gunbc.ci_spec { ci_v1_compiler_tests_compile_gate_line }
 import gunbc.ci_workflow { ci_build_job }
-import extdeps.github.actions { Step, RunStep }
+import extdeps.github.actions { Step, RunStep, UsesStep }
 
 fn build_job_has_v1_compiler_tests_compile_gate_step() -> Bool {
   fold(ci_build_job().steps, init: false, f: (acc, step) => {
     acc || match step {
-      RunStep { run: cmd, .. } =>
+      RunStep { name: _, id: _, run: cmd, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
         string_contains(s: cmd, pattern: "check -p v1-compiler-tests --tests")
-      _ => false
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
   })
 }
