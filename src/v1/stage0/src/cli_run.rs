@@ -12523,8 +12523,8 @@ pub fn handle_run_with_options(
     }
 
     // Same install as claim_executor / claim_batch: without it, host-effect traces
-    // fall back to Full and the merge-admission stamp (`gunbc run … merge_admission_stamp`)
-    // dumps every Ambient Begin/Done as emoji shell noise (operator live-log
+    // fall back to Full and effectful merge-admission success stages dump every
+    // Ambient Begin/Done as emoji shell noise (operator live-log
     // 2026-07-25). Install before any Wet eval so ShellTrace Suppressed-at-Normal
     // collapses Ambient scaffolding; Anomaly Failed still surfaces via disposition.
     install_output_policy(&source_roots);

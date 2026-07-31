@@ -99,6 +99,50 @@ data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/s
 
 data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 
+data floor_merge_admission_entry: String = "dag/tools/merge_admission_walk.dag"
+
+data floor_merge_admission_capture_function: String = "capture_tested_subject"
+
+data floor_merge_admission_stamp_function: String = "stamp_tested_floor"
+
+data floor_merge_admission_gate_function: String = "refresh_current_target_and_gate"
+
+data floor_merge_admission_capture_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_merge_admission_capture } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data floor_merge_admission_schedule_note: String = "The admission path is modeled as one ordinary capture plus two singleton success stages, all calling one entry. Capture is a first-batch resource anchor with a DataDependsOn edge into compile-clean, so it observes the checkout subject before substantive floor work without creating the corpus->capture->compile->corpus cycle. Stamp and gate are distinct stages because stage barriers, not sibling order, carry their dependency; fresh fetch and classification remain one composite stage-2 function for the same reason. All three profiles are Wet, negligible, non-heavy, and non-host-compiler: the exact shape std.realization_schedule on_success_runnable_disposition admits."
+
+fn floor_merge_admission_profile() -> RunnableResourceProfile {
+  gate_profile_negligible_wet_declared()
+}
+
+fn floor_merge_admission_capture_runnable() -> Runnable {
+  RunnableSingleClaim {
+    entry: floor_merge_admission_entry,
+    function: floor_merge_admission_capture_function,
+    profile: floor_merge_admission_profile()
+  }
+}
+
+fn floor_merge_admission_stamp_runnable() -> Runnable {
+  RunnableSingleClaim {
+    entry: floor_merge_admission_entry,
+    function: floor_merge_admission_stamp_function,
+    profile: floor_merge_admission_profile()
+  }
+}
+
+fn floor_merge_admission_gate_runnable() -> Runnable {
+  RunnableSingleClaim {
+    entry: floor_merge_admission_entry,
+    function: floor_merge_admission_gate_function,
+    profile: floor_merge_admission_profile()
+  }
+}
+
 data gunbc_ci_cheap_floor_gate_membership: List<Gate> = [
   CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate,
@@ -221,6 +265,7 @@ fn floor_compile_root_node() -> Node {
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
   (node == floor_compile_root_node())
+    || (node == floor_merge_admission_capture_node)
     || (node == floor_corpus_node)
     || (node == execution_corpus_node)
     || (node == bin_witness_corpus_node)
@@ -579,8 +624,12 @@ fn bin_witness_corpus_runnable_for() -> Runnable {
   }
 }
 
-fn floor_nodes(spec: CiSpec) -> List<Node> {
-  fold(spec.gates, init: corpus_plan_nodes(spec: spec), f: fn(acc, g) {
+fn floor_nodes(spec: CiSpec, include_admission_capture: Bool) -> List<Node> {
+  let roots = concat(
+    if include_admission_capture { [floor_merge_admission_capture_node] } else { [] },
+    corpus_plan_nodes(spec: spec)
+  )
+  fold(spec.gates, init: roots, f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
   })
 }
@@ -591,6 +640,15 @@ fn floor_depends_on_compile(dependent: Node) -> DependencyView {
     dependent: dependent,
     kind: DataDependsOn,
     usage_site: dependent
+  }
+}
+
+fn floor_compile_depends_on_admission_capture() -> DependencyView {
+  DependencyView {
+    source: floor_merge_admission_capture_node,
+    dependent: floor_compile_root_node(),
+    kind: DataDependsOn,
+    usage_site: floor_compile_root_node()
   }
 }
 
@@ -664,10 +722,17 @@ fn floor_spec_has_compile_gate(spec: CiSpec) -> Bool {
   })
 }
 
-fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
+fn floor_data_dependencies(spec: CiSpec, include_admission_capture: Bool) -> List<DependencyView> {
   if floor_spec_has_compile_gate(spec: spec) {
     concat(
-      floor_cheap_gates_precede_compile_edges(spec: spec),
+      concat(
+        floor_cheap_gates_precede_compile_edges(spec: spec),
+        if include_admission_capture {
+          [floor_compile_depends_on_admission_capture()]
+        } else {
+          []
+        }
+      ),
       fold(
         spec.gates,
         init: fold(corpus_plan_nodes(spec: spec), init: [], f: fn(acc, corpus_node) {
@@ -765,8 +830,8 @@ fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
   )
 }
 
-fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
-  let data_deps = floor_data_dependencies(spec: spec)
+fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool, include_admission_capture: Bool) -> List<DependencyView> {
+  let data_deps = floor_data_dependencies(spec: spec, include_admission_capture: include_admission_capture)
   if serialize_heavy {
     concat(data_deps, floor_resource_dependencies(spec: spec))
   } else {
@@ -789,6 +854,8 @@ fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
     execution_corpus_runnable_for(spec: spec)
   } else if node == bin_witness_corpus_node {
     bin_witness_corpus_runnable_for()
+  } else if node == floor_merge_admission_capture_node {
+    floor_merge_admission_capture_runnable()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }
@@ -808,14 +875,14 @@ fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) ->
   })
 }
 
-fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool, include_admission_capture: Bool) -> List<List<Runnable>> {
   match runner_schedule_plan_from_dependencies(
-    nodes: floor_nodes(spec: spec),
-    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
+    nodes: floor_nodes(spec: spec, include_admission_capture: include_admission_capture),
+    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy, include_admission_capture: include_admission_capture),
     value: runner_ordering_only
   ) {
     RunnerScheduleComplete { batches: batches, store: store } =>
-      if runner_schedule_store_covers_nodes(store: store, nodes: floor_nodes(spec: spec)) {
+      if runner_schedule_store_covers_nodes(store: store, nodes: floor_nodes(spec: spec, include_admission_capture: include_admission_capture)) {
         runnables_for_executor_batches(batches: batches, spec: spec)
       } else {
         [[floor_unrunnable_sentinel()]]
@@ -824,12 +891,16 @@ fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<Li
   }
 }
 
+fn floor_schedule_for_with_capture(spec: CiSpec, serialize_heavy: Bool, include_admission_capture: Bool) -> List<List<Runnable>> {
+  floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy, include_admission_capture: include_admission_capture)
+}
+
 fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
-  floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
+  floor_schedule_for_with_capture(spec: spec, serialize_heavy: serialize_heavy, include_admission_capture: false)
 }
 
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
-  floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: true)
+  floor_schedule_for_with_capture(spec: gunbc_ci_spec, serialize_heavy: true, include_admission_capture: true)
 }
 
 fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
@@ -842,7 +913,12 @@ fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
 }
 
 fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
-  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
+  RealizationPlan {
+    target: ci_floor_target_digest
+    objective: RealizationObjective { goals: width_fold_objective_goals() }
+    schedule: floor_schedule_for_with_capture(spec: gunbc_ci_spec, serialize_heavy: true, include_admission_capture: true)
+    total: cost_account_predicted_zero()
+  }
 }
 
 fn gunbc_falsifier_predict_only_batch() -> Runnable {
@@ -1255,7 +1331,24 @@ fn gunbc_ci_plan_artifact_ordinary_batches() -> List<List<Runnable>> {
 data walk_plan_uniformity_note: String = "EVERY plan function returns WalkPlan<F>, including the three with no postconditions — on_success_stages: [] is a declared empty set, not an omission the executor papers over. The INSTANTIATION is where the four differ: this floor returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. That DECLARES the intended finalization family and removes the std-level coproduct fork; it does not enforce either, because the typechecker does not check a declared return type against the body (probed by execution — std.realization_schedule walk_finalization_note carries it). Enforcement is the enrolled value witnesses in v2.test.claim.ci_floor_plan_witness plus the executor's runtime parser, and those dissolve when return-position checking lands. The executor has ONE strict parser for the record shape; there is deliberately NO fallback from a failed record parse to a bare-List<List<Runnable>> reading, because that fallback would let a malformed plan silently run with its success stages dropped — the exact silent-widen shape §5 forbids. The `_plan` names replace the `_batches` names in the same motion (operator ruling 2026-07-30): a function whose value now carries postcondition stages must not keep a name that says it returns only batches, or the next author reasonably assumes the stages are not part of the value. The four argv/step consumers follow automatically because they derive from the floor_plan_function / plan_artifact_plan_function / regen_floor_plan_function / falsifier_plan_function constants (gunbc.ci_spec, gunbc.falsifier_workflow) — those constants are the single naming authority, renamed with the functions."
 
 fn gunbc_ci_on_success_stages() -> List<List<Runnable>> {
-  []
+  [
+    [floor_merge_admission_stamp_runnable()],
+    [floor_merge_admission_gate_runnable()]
+  ]
+}
+
+fn witness_merge_admission_capture_is_first_batch_only() -> Bool {
+  let batches = gunbc_ci_floor_ordinary_batches()
+  floor_batch_contains_function(
+    batch: batches.first(),
+    target: floor_merge_admission_capture_function
+  )
+    && fold(skip(xs: batches, n: 1), init: true, f: fn(ok, batch) {
+      ok && !floor_batch_contains_function(
+        batch: batch,
+        target: floor_merge_admission_capture_function
+      )
+    })
 }
 
 fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
@@ -1389,7 +1482,10 @@ fn witness_string_lists_have_same_members(a: List<String>, b: List<String>) -> B
 
 fn witness_floor_schedule_preserves_enrolled_set() -> Bool {
   witness_string_lists_have_same_members(
-    a: gunbc_ci_floor_enrolled_runnable_labels_for(spec: gunbc_ci_spec),
+    a: list_snoc_item(
+      xs: gunbc_ci_floor_enrolled_runnable_labels_for(spec: gunbc_ci_spec),
+      item: floor_merge_admission_capture_function
+    ),
     b: gunbc_ci_floor_schedule_runnable_labels(batches: gunbc_ci_floor_ordinary_batches())
   )
 }

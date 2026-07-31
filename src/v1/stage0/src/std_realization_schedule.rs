@@ -326,7 +326,7 @@ pub enum OnSuccessRunnableDisposition {
 pub fn on_success_runnable_disposition_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The single modeled admission authority for a Runnable authored into WalkPlan.on_success_stages. Discovery and kernel workloads have no defined green-only meaning; whole-tree resolve, host-compiler spawn, and substantial residency refuse because success stages declare no resource clamp. A modeled RunnableSingleClaim always carries its full profile — absence or malformation is the strict executor parser's boundary, not a second disposition arm here. The seed executor mirrors this decision until it consumes the v2 model directly; when stage capabilities grow, this function is the one authority that changes.".to_string()
+            "The single modeled admission authority for a Runnable authored into WalkPlan.on_success_stages. Discovery and kernel workloads have no defined green-only meaning. A whole-tree resolve takes the unadmitted memo lane and leaves its context resident across later stages; host-compiler spawn and substantial residency refuse because success stages declare no resource clamp. A modeled RunnableSingleClaim always carries its full profile — absence or malformation is the strict executor parser's boundary, not a second disposition arm here. The seed executor mirrors this decision until it consumes the v2 model directly; when stage capabilities grow, this function is the one authority that changes.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

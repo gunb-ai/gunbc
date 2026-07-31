@@ -20,27 +20,6 @@ data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   floor_exit_code: 1,
 )
 
-test fn floor_stamp_exports_ci_floor_exit_on_gunbc_line() -> Bool {
-  string_contains(
-    s: v2.workflow.ci_merge_admission_emit.ci_floor_stamp_merge_admission_script(),
-    pattern: "CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run"
-  )
-}
-
-test fn floor_stamp_propagates_stamp_failure_after_green_floor() -> Bool {
-  let script = v2.workflow.ci_merge_admission_emit.ci_floor_stamp_merge_admission_script()
-  string_contains(s: script, pattern: "STAMP_EXIT=$?")
-    && string_contains(s: script, pattern: "exit \"$STAMP_EXIT\"")
-    && string_contains(s: script, pattern: "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi")
-}
-
-test fn stamp_missing_floor_exit_policy_is_fail_closed() -> Bool {
-  string_contains(
-    s: merge_admission_stamp_missing_floor_exit_is_failure,
-    pattern: "fail-closed"
-  )
-}
-
 test fn floor_exit_zero_maps_to_success() -> Bool {
   floor_exit_to_check_conclusion(exit_code: 0) == extdeps.github.checks.Success
 }
@@ -124,13 +103,6 @@ test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
       }
     Absent => false
   }
-}
-
-test fn stamp_non_pr_event_omits_fabricated_pr_number() -> Bool {
-  string_contains(
-    s: merge_admission_stamp_non_pr_omits_pr_number,
-    pattern: "not fabricated 0"
-  )
 }
 
 test fn red_floor_stamps_failure_conclusion() -> Bool {

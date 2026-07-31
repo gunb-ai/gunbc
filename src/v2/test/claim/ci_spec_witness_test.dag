@@ -44,7 +44,6 @@ import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.merge_admission_produce {
   merge_admission_merge_base_ref,
 }
-import v2.workflow.ci_merge_admission_gate_emit { ci_merge_admission_gate_script }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -308,18 +307,26 @@ test fn witness_receipt_gate_steps_absent_from_workflow() -> Bool {
     !string_contains(s: yaml, pattern: "Floor materialization receipt gate")
 }
 
+data merge_admission_cold_processes_deleted_note: String = "The live merge-admission claims execute inside gunbc_ci_floor_plan. The former floor-tail stamp and separate gate step are deleted, not merely unwired: retaining either would be a second representation and would keep paying a cold gunbc resolve. This live generated-workflow witness pins both absences at the consumer boundary."
+
+test fn witness_merge_admission_cold_processes_absent_from_workflow() -> Bool {
+  let yaml = expected_ci_yml()
+  !string_contains(s: yaml, pattern: "CI_FLOOR_EXIT=")
+    && !string_contains(s: yaml, pattern: "STAMP_EXIT=")
+    && !string_contains(s: yaml, pattern: "Merge-admission gate (receipt required")
+    && !string_contains(s: yaml, pattern: "dag/tools/merge_admission_stamp.dag")
+    && !string_contains(s: yaml, pattern: "dag/tools/merge_admission_gate.dag")
+}
+
 test fn witness_documentation_only_disposition_transport_retired() -> Bool {
   let marker_path = "target/ci-floor-disposition.txt"
   let skipped_disposition = "documentation_only_skipped"
   let floor = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   let selection_gate = ci_selection_control_script()
-  let admission_gate = ci_merge_admission_gate_script()
   !string_contains(s: floor, pattern: marker_path) &&
     !string_contains(s: floor, pattern: skipped_disposition) &&
     !string_contains(s: selection_gate, pattern: marker_path) &&
-    !string_contains(s: selection_gate, pattern: skipped_disposition) &&
-    !string_contains(s: admission_gate, pattern: marker_path) &&
-    !string_contains(s: admission_gate, pattern: skipped_disposition)
+    !string_contains(s: selection_gate, pattern: skipped_disposition)
 }
 
 test fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {

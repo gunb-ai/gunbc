@@ -2,17 +2,7 @@ module gunbc.merge_admission_produce
 
 import std.types { NonEmptyStr, ContentHash, CommitSha, String, Int, List, Bool, GitRef }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_sha1_object_id, git_sha256_object_id }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repo_identity { gunbc_merge_target_ref }
-import gunbc.cli_invoke {
-  SourceRootBare,
-  gunbc_bin_name,
-  gunbc_bin_shell,
-  release_bin_rel_path,
-  source_root_transport_argv,
-  source_roots_shell_flags,
-}
 import extdeps.git
 import extdeps.github.checks {
   CheckConclusion,
@@ -30,7 +20,6 @@ import gunbc.merge_admission {
   mint_merge_admission_receipt,
   current_gate_roster_hash,
 }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 
 data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
 
@@ -341,59 +330,6 @@ fn ci_repo_root_shell() -> String {
   git_toplevel_shell_subexpr_with_fallback()
 }
 
-data merge_admission_v1_tool_source_roots: List<String> = ["dag"]
-
-data merge_admission_gate_entry_path: String = "dag/tools/merge_admission_gate.dag"
-
-data merge_admission_gate_entry_function: String = "main"
-
-data merge_admission_gate_policy_note: String = "Gate POLICY, language-blind: which merge base is fetched, which tool entry/function decides admission, which source roots that tool compiles under, and where the release binary sits relative to the repo root. Nothing here spells a command, a flag string, or a shell fragment for the gate — the bash rendering is v2.workflow.ci_merge_admission_gate_emit's business and derives argv from the referenced extdeps operation declarations (git.Core.FetchNoTags, gunbc.WitnessBin.Run), never from a concat builder here. The stamp surfaces below are a SEPARATE, still-raw floor-tail site and keep their shell spellings; both now read the same source-root list and the same release-bin path row, so the two spellings cannot drift apart (§3)."
-
-fn merge_admission_v1_tool_source_flags() -> String {
-  source_roots_shell_flags(roots: merge_admission_v1_tool_source_roots, style: SourceRootBare)
-}
-
-fn merge_admission_gate_bin_rel_path() -> String {
-  release_bin_rel_path(bin_name: gunbc_bin_name)
-}
-
-fn merge_admission_gate_tool_args() -> List<String> {
-  concat(
-    concat(
-      ["run"],
-      source_root_transport_argv(roots: merge_admission_v1_tool_source_roots)
-    ),
-    [
-      "--entry", merge_admission_gate_entry_path,
-      "--function", merge_admission_gate_entry_function
-    ]
-  )
-}
-
-fn merge_admission_gate_fetch_parts() -> GitRemoteRefParts {
-  git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
-}
-
-fn gunbc_run_bin_shell() -> String {
-  concat(gunbc_bin_shell(), " run")
-}
-
-fn merge_admission_stamp_command() -> String {
-  concat(
-    concat(gunbc_run_bin_shell(), merge_admission_v1_tool_source_flags()),
-    " --entry dag/tools/merge_admission_stamp.dag --function main"
-  )
-}
-
-data merge_admission_shell_emit_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration
-  }
-}
-
 fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
   if exit_code == 0 { Success } else { Failure }
 }
@@ -426,14 +362,3 @@ fn stamp_floor_receipt_with_conclusion(
     conclusion: conclusion,
   )
 }
-
-data ci_floor_stamp_merge_admission_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "v2.workflow.ci_merge_admission_emit",
-    decl_name: "ci_floor_stamp_merge_admission_script",
-    field: WholeDeclaration
-  }
-}
-
-data ci_floor_stamp_merge_admission_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_stamp_merge_admission_script — floor-tail FLOOR_EXIT/STAMP_EXIT capture + merge-admission stamp; PR2a lands ExitStatus carrier for STAMP_EXIT; PR2b dissolves IntNe/Exit concat residue"
