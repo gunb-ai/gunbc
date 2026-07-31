@@ -34,6 +34,8 @@ import gunbc.roadmap_validation_oracle {
   ValidationOracleMissing,
   ValidationOracleAmbiguous,
   ValidationOracleMoved,
+  ValidationOracleUnpinnedDependency,
+  OracleDependsOnUnpinnedOracle,
   ValidationPinReceiptUnreadable,
   ValidationVerdict,
   ValidationPassed,
@@ -271,6 +273,86 @@ test fn declaration_scan_ignores_the_name_inside_a_note() -> Bool {
     source: source,
     function: oracle_function_name,
   ) == 1
+}
+
+data unpinned_dependency_note: String = "review 45278. The entry-file pin closes the direct attack but leaves a witness's IMPORTED test modules — fixtures and shared assertions, which are oracle rather than subject — outside the digest. The fixture below is the reviewer's own measured specimen reproduced in shape: dag/test/claim/scm_compatibility_shape_witness_test.dag imports four test.claim modules, so weakening one of them would green Verify without moving the pinned entry's digest. The residue is therefore made unreachable rather than deferred: such an oracle refuses. The paired green is what keeps this from being a blanket rejection — a witness importing only subject and std modules still verifies, so the refusal discriminates on the oracle-side dependency rather than on having imports at all."
+
+fn witness_source_importing_test_helpers() -> String {
+  join([
+    "module test.claim.scm_compatibility_shape_witness_test\n",
+    "import std.types \{ Bool \}\n",
+    "import gunbc.scm_compatibility_shape \{ CompatibilityShape \}\n",
+    "import test.claim.scm_compatibility_git_witness \{ git_rows_hold \}\n",
+    "import test.claim.native_scm_interaction_scenario_fixture \{ scenario \}\n",
+    "\n",
+    "test fn frontier_generator_attribution_holds() -> Bool \{\n",
+    "  git_rows_hold() && scenario()\n",
+    "\}\n",
+  ], "")
+}
+
+fn witness_source_importing_only_subject_modules() -> String {
+  join([
+    "module src.v2.compiler.self_host.frontier_witness_test\n",
+    "import std.types \{ Bool \}\n",
+    "import src.v2.compiler.self_host.frontier \{ frontier_rows \}\n",
+    "\n",
+    "test fn frontier_generator_attribution_holds() -> Bool \{\n",
+    "  count(frontier_rows()) > 0\n",
+    "\}\n",
+  ], "")
+}
+
+test fn oracle_importing_test_helpers_refuses_as_unpinned_dependency() -> Bool {
+  let gate = validation_oracle_gate(
+    contract: oracle_contract(),
+    observations: observe_witness(
+      source_readable: true,
+      source: witness_source_importing_test_helpers(),
+    ),
+    pin_recorded: true,
+    expected_identity: identity_of_source(
+      source: witness_source_importing_test_helpers(),
+    ),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  )
+  match gate {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationOracleUnpinnedDependency { entry: _, imports } =>
+          count(imports) == 2
+            && any(imports, m => m == "test.claim.scm_compatibility_git_witness")
+        _ => false
+      }
+  }
+}
+
+test fn oracle_importing_only_subject_modules_still_verifies() -> Bool {
+  let source = witness_source_importing_only_subject_modules()
+  match validation_oracle_gate(
+    contract: oracle_contract(),
+    observations: observe_witness(source_readable: true, source: source),
+    pin_recorded: true,
+    expected_identity: identity_of_source(source: source),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  ) {
+    ValidationOracleAdmitted { identity: _ } => true
+    ValidationOracleGateRefused { cause: _ } => false
+  }
+}
+
+test fn unpinned_dependency_detail_names_the_uncovered_modules() -> Bool {
+  let detail = validation_verdict_detail(verdict: ValidationRefused {
+    cause: ValidationOracleUnpinnedDependency {
+      entry: oracle_entry_path as String,
+      imports: ["test.claim.scm_compatibility_git_witness"],
+    },
+  })
+  string_contains(s: detail, pattern: "test.claim.scm_compatibility_git_witness")
+    && string_contains(s: detail, pattern: "partially pinned oracle")
 }
 
 data unpinnable_validation_note: String = "A declared validation whose oracle this module cannot observe must refuse rather than run unpinned. Running it would produce a green meaning `the agent's own edits passed a test whose content nothing recorded`, which is the same fail-open the moved-oracle arm closes, reached by a different route."
@@ -553,6 +635,9 @@ test fn roadmap_validation_oracle_keystone_holds() -> Bool {
     && readable_source_without_the_declaration_is_also_missing()
     && duplicated_declaration_answers_oracle_ambiguous()
     && declaration_scan_ignores_the_name_inside_a_note()
+    && oracle_importing_test_helpers_refuses_as_unpinned_dependency()
+    && oracle_importing_only_subject_modules_still_verifies()
+    && unpinned_dependency_detail_names_the_uncovered_modules()
     && cargo_test_validation_refuses_as_unpinnable()
     && unspecified_contract_refuses_rather_than_verifying()
     && attempt_without_a_recorded_pin_refuses()

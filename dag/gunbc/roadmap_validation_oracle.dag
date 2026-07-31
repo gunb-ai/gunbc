@@ -39,7 +39,7 @@ import extdeps.languages.json.emit {
 
 data validation_oracle_authority_note: String = "The single authority for WHAT a verification run is run AGAINST, kept separate from whether that run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and a human ran the receipts by hand; running them automatically is only worth anything if the thing being run cannot be edited by the agent whose work it judges. That is what this module models: the oracle a declared validation names, its observed identity, and the pin captured before the agent started. It mints no new digest concept — identity is std.types.ContentHash produced through std.content_hash, the same authority v1's surface fingerprints and v2's node hashing already use — and no new pin concept: expected-versus-observed is extdeps.pin, reached through admit_pin_integrity, so this module supplies the SUBJECT and the OBSERVATION and borrows the adjudication."
 
-data validation_oracle_grain_note: String = "WHY THE PINNED IDENTITY IS THE ENTRY FILE AND NOT THE NAMED DECLARATION ALONE, recorded because the narrower grain is the intuitive choice and it is UNSOUND for this purpose. A declared validation is `gunbc run --claim-run --entry E --function F`. Pinning only F's declaration text would leave every helper, data row, and fixture in E editable by the agent whose work F judges — and a witness is overwhelmingly assertions ABOUT values declared beside it, so weakening a fixture weakens the oracle just as effectively as weakening the assertion. The digest is therefore over the whole entry file. Going FURTHER — pinning the entry's whole import closure — is equally wrong in the opposite direction: the subject under test is IN that closure (a frontier witness imports the frontier it tests), so a closure pin would refuse the very diff the node exists to produce. The entry file is the boundary that separates oracle from subject, and it is not an arbitrary one: the corpus already enforces it structurally, because a `test fn` outside a `*_test.dag` file is a naming-hygiene violation at the floor. So the pin's grain rides an existing wall rather than inventing a line. RESIDUE, stated because it is real and this note is where it stays countable: a witness that imports a SHARED test helper from another file can still be weakened by editing that helper, which is outside the entry file and therefore outside this pin. dissolve-on: feature:validation-oracle-closure-partition — the claim runner's loaded closure is partitioned into oracle-side and subject-side modules from the containment tree, and the pin covers the oracle side entire; at that point the entry-file grain becomes a projection of the partition rather than a proxy for it."
+data validation_oracle_grain_note: String = "WHY THE PINNED IDENTITY IS THE ENTRY FILE AND NOT THE NAMED DECLARATION ALONE, recorded because the narrower grain is the intuitive choice and it is UNSOUND for this purpose. A declared validation is `gunbc run --claim-run --entry E --function F`. Pinning only F's declaration text would leave every helper, data row, and fixture in E editable by the agent whose work F judges — and a witness is overwhelmingly assertions ABOUT values declared beside it, so weakening a fixture weakens the oracle just as effectively as weakening the assertion. The digest is therefore over the whole entry file. Going FURTHER — pinning the entry's whole import closure — is equally wrong in the opposite direction: the subject under test is IN that closure (a frontier witness imports the frontier it tests), so a closure pin would refuse the very diff the node exists to produce. The entry file is the boundary that separates oracle from subject, and it is not an arbitrary one: the corpus already enforces it structurally, because a `test fn` outside a `*_test.dag` file is a naming-hygiene violation at the floor. So the pin's grain rides an existing wall rather than inventing a line. THE RESIDUE THIS GRAIN LEAVES IS NOT DEFERRED — it is made unreachable, and validation_oracle_unpinned_dependency_note owns that decision, its measurement, and its lane. An earlier version of this note ended here with a dissolve-on and shipped the hole; review 45278 was right that a fail-open in the feature's own safety property cannot be a declared scaffold, and the correction is recorded there rather than re-spelled here."
 
 data validation_oracle_declaration_scan_note: String = "The declaration count is a LINE-START scan over the entry source, and its limits are stated rather than discovered. A top-level .dag declaration is unindented, so requiring the line to BEGIN with a declaration keyword followed by `<name>(` or `<name><` excludes the common false positive — the same identifier appearing inside one of this corpus's large note strings — without pretending to be a parse. Both keywords are enumerated because a claim entry point is overwhelmingly `test fn` while its helpers are `fn`, and either may be the function a contract names; matching only the bare keyword reported every witness entry as a missing oracle, which is how this was found — the paired green/red controls went red together, which a scanner that recognised nothing would also produce, and that is precisely why the non-vacuity control sits beside them. It is used for exactly one decision, how MANY declarations answer to the contract's name, because that count is what separates three genuinely different states with three different remedies: none is a missing oracle, one is the oracle, and more than one means the contract does not determine which declaration the claim runner will pick. That last state is not hypothetical here — this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped — so the arm has a real producer rather than being coverage by illusion. dissolve-on: feature:cited-symbol-resolution — the same trigger extdeps.pin already names; when identifiers resolve against the containment tree, this scan is replaced by that resolution and the ambiguity arm is answered structurally instead of textually."
 
@@ -49,6 +49,8 @@ type ValidationOracleRef {
 }
 
 data validation_oracle_observation_note: String = "Three arms because three remedies. OracleFound carries the identity that the pin is adjudicated against. OracleMissing means the entry source was obtained and the contract's function is NOT declared in it, or the source could not be obtained at all; the host's own reason travels in `detail` rather than being reclassified here. Those two causes share an arm deliberately and the sharing is bounded: neither can green, both stop the line, and the located detail says which one happened. What is NOT claimed is that this arm distinguishes a deleted file from an unreadable one — the Filesystem.Read surface reports success plus a message and exposes no typed absence, so inventing that distinction from an error string would be a classification this module cannot decide. dissolve-on: feature:filesystem-read-typed-absence — the read surface carries absent as its own arm, and OracleMissing splits along it. OracleAmbiguous is the count>1 state above."
+
+data validation_oracle_unpinned_dependency_note: String = "review 45278, and the reviewer was right that a declared residue is not good enough HERE. The entry-file pin closes the direct attack — an agent editing the witness that judges it — but a witness may import assertions and fixtures from OTHER test modules, and those are oracle, not subject. dag/test/claim/scm_compatibility_shape_witness_test.dag is the measured specimen: it imports four test.claim modules, so weakening test.claim.scm_compatibility_git_witness would green Verify without moving the pinned digest. That is the same fail-open the pin exists to close, reached one import away, and shipping it behind a dissolve-on would have been exactly the unmarked-scaffold move DESIGN section 5 forbids — a green that means nothing for 125 of the corpus's 928 witness files (measured, not estimated).\n\nSo the residue is made UNREACHABLE rather than deferred: an oracle whose entry imports a test-side module REFUSES, typed and counted, instead of verifying against a partially pinned oracle. This is deliberately the cheaper of the two remedies the review named. The complete fix — pinning the whole oracle-side dependency partition — needs a transitive import closure, and computing one here would mint a SECOND import resolver beside the containment tree the namespace lane is making the single naming authority (DESIGN section 3). Refusing needs only the module NAME, which the import line already states, so it forks nothing.\n\nWhat this does NOT catch, stated because the boundary is real: a test helper that is not named as a test module — a plain fn file under a non-test module path — is structurally indistinguishable from a subject module here, so it neither refuses nor is pinned. Closing that requires the same partition as the complete fix.\n\nLANE, because a trigger with no owner is a park and the review was right to say so: this dissolves on v2.compiler.source_authority's derived path-module rows (the module identity vs storage thread in DESIGN's open threads), which is what makes an entry's closure computable without a second resolver. When those rows land, the oracle-side partition is pinned in full and these refusals become verifications."
 
 type OracleObservation
   = OracleFound {
@@ -63,6 +65,37 @@ type OracleObservation
       oracle: ValidationOracleRef,
       declaration_count: Int,
     }
+  | OracleDependsOnUnpinnedOracle {
+      oracle: ValidationOracleRef,
+      imports: List<String>,
+    }
+
+data validation_oracle_test_module_prefixes: List<String> = ["test.", "v2.test."]
+
+fn validation_oracle_import_target(line: String) -> String {
+  if !starts_with(s: line, prefix: "import ") {
+    ""
+  } else {
+    let rest = substring(s: line, start: 7, end: string_length(s: line))
+    match split(s: rest, delimiter: " ") |> first {
+      Present { value: head } => head
+      Absent => ""
+    }
+  }
+}
+
+fn validation_oracle_import_is_oracle_side(module_path: String) -> Bool {
+  any(
+    validation_oracle_test_module_prefixes,
+    prefix => starts_with(s: module_path, prefix: prefix),
+  )
+}
+
+fn validation_oracle_unpinned_dependencies(source: String) -> List<String> {
+  split(s: source, delimiter: "\n")
+    |> map(line => validation_oracle_import_target(line: line))
+    |> filter(m => validation_oracle_import_is_oracle_side(module_path: m))
+}
 
 data validation_oracle_identity_tag: NonEmptyStr = "gunbc.validation-oracle/v1"
 
@@ -143,9 +176,17 @@ fn validation_oracle_observe_from_source(
         declaration_count: declarations,
       }
     } else {
-      OracleFound {
-        oracle: oracle,
-        identity: validation_oracle_source_identity(source: source),
+      let unpinned = validation_oracle_unpinned_dependencies(source: source)
+      if count(unpinned) > 0 {
+        OracleDependsOnUnpinnedOracle {
+          oracle: oracle,
+          imports: unpinned,
+        }
+      } else {
+        OracleFound {
+          oracle: oracle,
+          identity: validation_oracle_source_identity(source: source),
+        }
       }
     }
   }
@@ -211,6 +252,7 @@ fn validation_oracle_observation_identity(
     OracleFound { oracle: _, identity } => Present { value: identity }
     OracleMissing { oracle: _, detail: _ } => none
     OracleAmbiguous { oracle: _, declaration_count: _ } => none
+    OracleDependsOnUnpinnedOracle { oracle: _, imports: _ } => none
   }
 }
 
@@ -221,6 +263,7 @@ fn validation_oracle_observation_ref(
     OracleFound { oracle, identity: _ } => oracle
     OracleMissing { oracle, detail: _ } => oracle
     OracleAmbiguous { oracle, declaration_count: _ } => oracle
+    OracleDependsOnUnpinnedOracle { oracle, imports: _ } => oracle
   }
 }
 
@@ -286,6 +329,10 @@ type ValidationRefusalCause
       function: String,
       declaration_count: Int,
     }
+  | ValidationOracleUnpinnedDependency {
+      entry: String,
+      imports: List<String>,
+    }
   | ValidationOracleMoved {
       expected: ContentHash,
       observed: ContentHash,
@@ -332,6 +379,11 @@ fn validation_oracle_incomplete_cause(
         entry: oracle.entry as String,
         function: oracle.function as String,
         declaration_count: declaration_count,
+      }
+    OracleDependsOnUnpinnedOracle { oracle, imports } =>
+      ValidationOracleUnpinnedDependency {
+        entry: oracle.entry as String,
+        imports: imports,
       }
   }
 }
@@ -464,6 +516,8 @@ fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
       "oracle-missing"
     ValidationOracleAmbiguous { entry: _, function: _, declaration_count: _ } =>
       "oracle-ambiguous"
+    ValidationOracleUnpinnedDependency { entry: _, imports: _ } =>
+      "oracle-unpinned-dependency"
     ValidationOracleMoved { expected: _, observed: _ } => "oracle-moved"
     ValidationOraclePinUnrecorded { channel: _ } => "oracle-pin-unrecorded"
     ValidationPinReceiptUnreadable { detail: _ } => "pin-receipt-unreadable"
@@ -492,6 +546,15 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
         " declarations named ",
         function,
         "; the contract does not determine which one the claim runner selects",
+      ], "")
+    ValidationOracleUnpinnedDependency { entry, imports } =>
+      join([
+        entry,
+        " imports ",
+        to_string(count(imports)),
+        " test-side module(s) whose content this pin does not cover (",
+        join(imports, ", "),
+        "). Verifying would adjudicate a partially pinned oracle, so the run refuses instead",
       ], "")
     ValidationOracleMoved { expected, observed } =>
       join([
@@ -581,6 +644,15 @@ fn validation_oracle_observation_json(
         json_kv(key: "function", value: json_string(s: oracle.function as String)),
         json_kv(key: "state", value: json_string(s: "missing")),
         json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    OracleDependsOnUnpinnedOracle { oracle, imports } =>
+      json_object(members: [
+        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
+        json_kv(key: "function", value: json_string(s: oracle.function as String)),
+        json_kv(key: "state", value: json_string(s: "unpinned-dependency")),
+        json_kv(key: "imports", value: json_array(elements: map(
+          imports, m => json_string(s: m),
+        ))),
       ])
     OracleAmbiguous { oracle, declaration_count } =>
       json_object(members: [
