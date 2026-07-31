@@ -4,7 +4,7 @@ type Temperature {
   celsius: Float
 }
 
-type WeatherCondition
+type Condition
   = Sunny
   | Cloudy
   | Rainy { mm_per_hour: Float }
@@ -14,7 +14,7 @@ type Forecast {
   location: String
   high: Temperature
   low: Temperature
-  condition: WeatherCondition
+  condition: Condition
 }
 
 fn to_fahrenheit(temp: Temperature) -> Float {
@@ -25,7 +25,7 @@ fn is_freezing(temp: Temperature) -> Bool {
   temp.celsius <= 0.0
 }
 
-fn describe_condition(cond: WeatherCondition) -> String {
+fn describe_condition(cond: Condition) -> String {
   match cond {
     Sunny => "clear skies"
     Cloudy => "overcast"
