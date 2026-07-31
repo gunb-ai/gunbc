@@ -73,7 +73,7 @@ Two tiers: **construction** (the class becomes unwritable — this is the real w
 - [ ] **Dissolve the model↔realization fork — THE root** ([model-realization-fork.md](model-realization-fork.md)): realization derived from model. (1) numeric tower `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code; (2) split `Value::Null` (None/Absent/miss/Violates → own carriers).
 - [ ] **Cache key derived FROM declared `inputs_considered`** (single authority) → cannot declare an input you don't key, nor key one you don't declare; divergence unwritable. Subsumes a content key for `pure_call_memo` (kill the address key). *(worked first instance: child adhoc-cc232dbc-1be)*
 - [ ] **Self-host purity by construction** — emitter emits the whole seed so `patch_*`/`HAND_MAINTAINED_STAGE0_FILES` are unwritable; `regen_stage0 --verify` (Stage0LockstepGate, #5325) then a residue check.
-- [ ] **Widen/retire the rust gate** — run the v1 test set or explicitly retire it (no test exists-but-doesn't-run).
+- [x] **Rust monolith gate retired.** `gunbc.commit_workflow` `commit_gate_rust_suite_removed_disposition` records the terminal retirement: nextest remains local and leaves with the v1 seed; required CI separately retains formatting and compile-only coverage, without re-enrolling the monolith.
 
 **Tier 2 — lens (only the genuinely-unstructurable residue; each must justify why not construction):**
 
