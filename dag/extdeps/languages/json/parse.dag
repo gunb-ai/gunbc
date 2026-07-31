@@ -160,32 +160,34 @@ type JsonArrayAcc =
     JsonArrayAccOk { elements: List<JsonValue>, next: Int }
   | JsonArrayAccFail { at: Int }
 
+data json_trailing_comma_note: String = "RFC 8259's array production is `[ ws ]` or `[ value *( , value ) ]` - the empty form is reachable only at the OPENING bracket, never after a separator. An accumulator that checks for the closing bracket at the top of each round reaches that check again after consuming a comma, which silently accepts a trailing comma; the same shape accepts `\{\"a\": 1,}`. That is not a cosmetic leniency: json_text_parseable is the guard the Codex JSONL reader uses to refuse a malformed provider line, and a parser that accepts a trailing comma lets a truncated-then-closed event read as well-formed. The element and member folds below therefore REQUIRE a value, and the empty-container case is decided once by the opening reader."
+
 fn parse_json_array_elements(s: String, i: Int, acc: List<JsonValue>) -> JsonArrayAcc {
-  let p = json_text_skip_ws(s: s, i: i)
-  if char_at(s: s, i: p) == "]" {
-    JsonArrayAccOk { elements: acc, next: p + 1 }
-  } else {
-    match parse_json_value_at(s: s, i: p) {
-      JsonParseFail { at: a } => JsonArrayAccFail { at: a }
-      JsonParsed { value: v, next: n } => {
-        let acc2 = acc |> list_push(v)
-        let q = json_text_skip_ws(s: s, i: n)
-        if char_at(s: s, i: q) == "]" {
-          JsonArrayAccOk { elements: acc2, next: q + 1 }
-        } else if char_at(s: s, i: q) == "," {
-          parse_json_array_elements(s: s, i: q + 1, acc: acc2)
-        } else {
-          JsonArrayAccFail { at: q }
-        }
+  match parse_json_value_at(s: s, i: i) {
+    JsonParseFail { at: a } => JsonArrayAccFail { at: a }
+    JsonParsed { value: v, next: n } => {
+      let acc2 = acc |> list_push(v)
+      let q = json_text_skip_ws(s: s, i: n)
+      if char_at(s: s, i: q) == "]" {
+        JsonArrayAccOk { elements: acc2, next: q + 1 }
+      } else if char_at(s: s, i: q) == "," {
+        parse_json_array_elements(s: s, i: q + 1, acc: acc2)
+      } else {
+        JsonArrayAccFail { at: q }
       }
     }
   }
 }
 
 fn parse_json_array_at(s: String, i: Int) -> JsonParse {
-  match parse_json_array_elements(s: s, i: i + 1, acc: []) {
-    JsonArrayAccFail { at: a } => JsonParseFail { at: a }
-    JsonArrayAccOk { elements: els, next: n } => JsonParsed { value: JsonArray { elements: els }, next: n }
+  let p = json_text_skip_ws(s: s, i: i + 1)
+  if char_at(s: s, i: p) == "]" {
+    JsonParsed { value: JsonArray { elements: [] }, next: p + 1 }
+  } else {
+    match parse_json_array_elements(s: s, i: p, acc: []) {
+      JsonArrayAccFail { at: a } => JsonParseFail { at: a }
+      JsonArrayAccOk { elements: els, next: n } => JsonParsed { value: JsonArray { elements: els }, next: n }
+    }
   }
 }
 
@@ -195,28 +197,24 @@ type JsonObjectAcc =
 
 fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> JsonObjectAcc {
   let p = json_text_skip_ws(s: s, i: i)
-  if char_at(s: s, i: p) == "}" {
-    JsonObjectAccOk { members: acc, next: p + 1 }
-  } else {
-    match parse_json_string_at(s: s, i: p) {
-      JsonParseFail { at: a } => JsonObjectAccFail { at: a }
-      JsonParsed { value: keyval, next: key_end } => {
-        let c = json_text_skip_ws(s: s, i: key_end)
-        if char_at(s: s, i: c) != ":" {
-          JsonObjectAccFail { at: c }
-        } else {
-          match parse_json_value_at(s: s, i: c + 1) {
-            JsonParseFail { at: a } => JsonObjectAccFail { at: a }
-            JsonParsed { value: v, next: val_end } => {
-              let acc2 = acc |> list_push(json_kv(key: json_string_value_or_empty(v: keyval), value: v))
-              let q = json_text_skip_ws(s: s, i: val_end)
-              if char_at(s: s, i: q) == "}" {
-                JsonObjectAccOk { members: acc2, next: q + 1 }
-              } else if char_at(s: s, i: q) == "," {
-                parse_json_object_members(s: s, i: q + 1, acc: acc2)
-              } else {
-                JsonObjectAccFail { at: q }
-              }
+  match parse_json_string_at(s: s, i: p) {
+    JsonParseFail { at: a } => JsonObjectAccFail { at: a }
+    JsonParsed { value: keyval, next: key_end } => {
+      let c = json_text_skip_ws(s: s, i: key_end)
+      if char_at(s: s, i: c) != ":" {
+        JsonObjectAccFail { at: c }
+      } else {
+        match parse_json_value_at(s: s, i: c + 1) {
+          JsonParseFail { at: a } => JsonObjectAccFail { at: a }
+          JsonParsed { value: v, next: val_end } => {
+            let acc2 = acc |> list_push(json_kv(key: json_string_value_or_empty(v: keyval), value: v))
+            let q = json_text_skip_ws(s: s, i: val_end)
+            if char_at(s: s, i: q) == "}" {
+              JsonObjectAccOk { members: acc2, next: q + 1 }
+            } else if char_at(s: s, i: q) == "," {
+              parse_json_object_members(s: s, i: q + 1, acc: acc2)
+            } else {
+              JsonObjectAccFail { at: q }
             }
           }
         }
@@ -226,9 +224,14 @@ fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> Json
 }
 
 fn parse_json_object_at(s: String, i: Int) -> JsonParse {
-  match parse_json_object_members(s: s, i: i + 1, acc: []) {
-    JsonObjectAccFail { at: a } => JsonParseFail { at: a }
-    JsonObjectAccOk { members: ms, next: n } => JsonParsed { value: JsonObject { members: ms }, next: n }
+  let p = json_text_skip_ws(s: s, i: i + 1)
+  if char_at(s: s, i: p) == "}" {
+    JsonParsed { value: JsonObject { members: [] }, next: p + 1 }
+  } else {
+    match parse_json_object_members(s: s, i: p, acc: []) {
+      JsonObjectAccFail { at: a } => JsonParseFail { at: a }
+      JsonObjectAccOk { members: ms, next: n } => JsonParsed { value: JsonObject { members: ms }, next: n }
+    }
   }
 }
 
