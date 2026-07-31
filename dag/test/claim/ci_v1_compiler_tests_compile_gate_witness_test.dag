@@ -1,28 +1,40 @@
 module test.claim.ci_v1_compiler_tests_compile_gate_witness
 
-import gunbc.ci_spec { ci_v1_compiler_tests_compile_gate_line }
+import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
+  ci_v1_compiler_tests_compile_gate_script,
+  ci_v1_compiler_tests_compile_gate_shell_emit_scaffold,
+}
 import gunbc.ci_workflow { ci_build_job }
 import extdeps.github.actions { Step, RunStep, UsesStep }
+import std.disposition { Scaffold }
 
 fn build_job_has_v1_compiler_tests_compile_gate_step() -> Bool {
   fold(ci_build_job().steps, init: false, f: (acc, step) => {
     acc || match step {
       RunStep { name: _, id: _, run: cmd, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
         string_contains(s: cmd, pattern: "check -p v1-compiler-tests --tests")
+          && string_contains(s: cmd, pattern: "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script")
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
   })
 }
 
-test fn w_gate_line_names_compile_only_command() -> Bool {
+test fn w_gate_script_names_compile_only_command() -> Bool {
   string_contains(
-    s: ci_v1_compiler_tests_compile_gate_line(),
+    s: ci_v1_compiler_tests_compile_gate_script(),
     pattern: "check -p v1-compiler-tests --tests"
   )
     && !string_contains(
-      s: ci_v1_compiler_tests_compile_gate_line(),
+      s: ci_v1_compiler_tests_compile_gate_script(),
       pattern: "nextest"
     )
+}
+
+test fn w_gate_carrier_is_scaffold() -> Bool {
+  match ci_v1_compiler_tests_compile_gate_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
 }
 
 test fn w_build_job_enrolls_compile_gate_before_release_build() -> Bool {

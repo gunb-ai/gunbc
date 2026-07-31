@@ -34,6 +34,7 @@ import v2.workflow.ci_workflow_run_emit {
   ci_selection_control_script
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
+import v2.workflow.ci_v1_compiler_tests_compile_gate_emit { ci_v1_compiler_tests_compile_gate_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
@@ -244,7 +245,7 @@ fn ci_v1_compiler_tests_compile_gate_step() -> Step {
   RunStep {
     name: Present { value: "cargo check -p v1-compiler-tests --tests (compile gate; no test execution)" },
     id: none,
-    run: ci_v1_compiler_tests_compile_gate_line(),
+    run: ci_v1_compiler_tests_compile_gate_script(),
     shell: none,
     env: none,
     working_directory: none,

@@ -125,6 +125,20 @@ service cargo.Build {
     }
   }
 
+  operation Check {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "check", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Check failed"
+    }
+  }
+
   operation Doc {
     input { extra_args: List<String> = [] }
     output {

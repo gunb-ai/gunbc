@@ -1,0 +1,35 @@
+module v2.workflow.ci_v1_compiler_tests_compile_gate_emit
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List }
+
+data ci_v1_compiler_tests_compile_gate_extra_args: List<String> = [
+  "-p",
+  "v1-compiler-tests",
+  "--tests"
+]
+
+data ci_v1_compiler_tests_compile_gate_authority_note: String = "Build-job compile gate for the v1-compiler-tests workspace crate. The operation shape is extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the GitHub Actions run: step is a foreign-executor shell transport pending bash-emit binding (same scaffold class as ci_fmt_gate_line and ci_release_build_script)."
+
+data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_v1_compiler_tests_compile_gate_emit",
+    decl_name: "ci_v1_compiler_tests_compile_gate_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
+
+fn ci_v1_compiler_tests_compile_gate_line() -> String {
+  "\"$CARGO_BIN\" check -p v1-compiler-tests --tests"
+}
+
+fn ci_v1_compiler_tests_compile_gate_script() -> String {
+  concat(
+    concat("# ", concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")),
+    ci_v1_compiler_tests_compile_gate_line()
+  )
+}

@@ -1,0 +1,33 @@
+module v2.workflow.ci_v1_compiler_tests_compile_gate_emit_test
+
+import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
+  ci_v1_compiler_tests_compile_gate_script,
+  ci_v1_compiler_tests_compile_gate_shell_emit_scaffold,
+  ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
+}
+import std.disposition { Scaffold }
+
+test fn ci_v1_compiler_tests_compile_gate_shell_emit_is_scaffold_holds() -> Bool {
+  match ci_v1_compiler_tests_compile_gate_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn ci_v1_compiler_tests_compile_gate_emit_carries_dissolve_marker_holds() -> Bool {
+  string_contains(
+    s: ci_v1_compiler_tests_compile_gate_script(),
+    pattern: "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script"
+  )
+}
+
+test fn ci_v1_compiler_tests_compile_gate_emit_cites_check_authority_holds() -> Bool {
+  string_contains(
+    s: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
+    pattern: "cargo.Build.Check"
+  )
+    && string_contains(
+      s: ci_v1_compiler_tests_compile_gate_script(),
+      pattern: "check -p v1-compiler-tests --tests"
+    )
+}
