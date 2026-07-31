@@ -1,5 +1,5 @@
 use crate::helpers::{compile_multi, diagnostic_messages};
-use v1_compiler::v1_std_core::{diagnostic_to_message, CompilerDiagnostic};
+use v1_compiler::v1_std_core::CompilerDiagnostic;
 
 #[test]
 fn std_types_freebie_no_longer_leaks_types_into_non_importers() {
