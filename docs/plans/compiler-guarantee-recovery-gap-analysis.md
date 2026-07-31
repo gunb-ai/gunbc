@@ -34,39 +34,69 @@ And the framing immediately above it:
 Emission is specified as the downstream, mechanical half of a two-stage contract. The
 upstream half — validation — is the one that was not built.
 
-## 2. The drop mechanism (the load-bearing finding)
+## 2. The failure history (revised after independent review, 2026-07-31)
 
-The claims did not get argued away. They got **priced out**, one at a time, by a live
-authority that kept the cost discipline and lost the specification.
+An earlier draft of this section told a two-part story: the spec was lost, then the claims
+were priced out one at a time. Independent review corrected it, and the corrected history has
+**three distinct failure modes**, each with its own receipt:
 
-Receipt, `v2.std.orchestration` `pipeline_steps_empty_arm_note`:
+1. **The implementation never matched the specification, even while the specification was
+   live.** `module_skips_direct_call_arg_check` (the `v2.*`/`v1.compiler.*` exemption) dates
+   to **2026-06-08** (`a13fb57b149`, first `-S` occurrence) — eight days *before* the
+   2026-06-16 bankruptcy. The gaps predate the loss of the document that named them.
+2. **The status ledger overstated completeness.** The recovered
+   `docs/thesis/correctness-dimensions.md` table marks Type safety as *"Yes (blocking)"*
+   while return-position, `data`-annotation, and generic-instantiation checking did not
+   exist and the compiler-module exemption was live. So "we had it and lost it" is wrong;
+   the honest statement is *"it was declared DONE, was not, and then the declaration that
+   could have been audited was deleted."*
+3. **The bankruptcy removed the contract against which (2) could have been noticed.**
+   DESIGN.md kept the epistemology and the cost discipline; nothing survived that says what
+   must be established before `Accepted`.
 
-> A `NonEmpty<PipelineStep>` carrier was considered and **declined**: zero occurrences in tree
-> today, and it would touch this type plus every Pipeline constructor for a currently-
-> unexercised case (**the purity trap, DESIGN.md sec 6**).
+**A withdrawn receipt, kept for the record:** an earlier draft cited `v2.std.orchestration`
+`pipeline_steps_empty_arm_note` (the declined `NonEmpty<PipelineStep>` carrier) as proof that
+a required invariant was priced out by §6's purity trap. Independent review rejected that
+reading and the rejection is correct: the note *deliberately* gives the empty pipeline total
+no-op semantics (empty conditional arms emit the bash no-op `:`; a both-empty `If` is "run
+the condition, discard the outcome"). Emptiness there is a **legitimate total semantics**, so
+the decline was a correct engineering decision, not a dropped wall. The note remains a fair
+illustration of the *decision procedure* — a carrier addition priced by §6 with no
+specification to consult, "revisit if construction sites appear" as the only trigger — but
+it is not evidence the procedure ever produced a wrong answer. No receipt currently in hand
+shows a *required* invariant being declined.
 
-That reasoning is correct *given today's DESIGN.md* and wrong against the recovered thesis,
-where cardinality is Tier 1 — "impossible to write the bug," not an optional refinement.
-§6's purity trap exists to bound *unbounded elegance work*; with no claims list to check
-against, it also bounds **mandatory structural walls**, and the two are indistinguishable at
-the point of decision.
+**Consequence for the fix, sharpened by mode (2):** restoring the claims list is still the
+move that makes the next decline-decision answerable — but historical claims must enter as
+**provenance and candidate obligations, never as implementation truth**. A recovered claim
+lands as `Required` + `CurrentStatus: Gap` until a discriminating RED/green pair proves
+otherwise. Copying the historical "DONE" column would repeat mode (2) verbatim.
 
-**Consequence for the fix:** restoring the claims list is not documentation. It is the thing
-that makes the next such decision come out differently. Any wall built without it will be
-re-declined by the same argument.
+## 3. Status vocabulary (widened after independent review)
 
-## 3. Status vocabulary
+The original three-state vocabulary (ENFORCED / UNENFORCED / UNEXPRESSIBLE) lost exactly the
+information this tree carries: a guarantee can have a carrier that proves nothing, a wall
+that holds only for literals, or a check that fires at the runtime boundary rather than at
+compile time — and each of those has a different fix. Working states, adopted from the
+independent review:
 
-Enforcement status:
+`Absent` · `Declared` · `RepresentableButForgeable` · `LiteralOnlyWall` · `LocallyChecked` ·
+`RuntimeBoundaryOnly` · `StaticallyPropagated` · `ConstructionWall` ·
+`TargetRealizationGated` · `ExternalNotGuaranteed` · `UnknownUnmeasured`
 
-- **ENFORCED** — the tree refuses the bad program.
-- **UNENFORCED** — the carrier exists; nothing checks it.
-- **UNEXPRESSIBLE** — there is no carrier. Strictly worse than UNENFORCED: the fix is a
-  substrate addition, not a check.
+Calibration examples, each verified on `main`: `NonEmptyList<T>` is
+RepresentableButForgeable; string `non_empty` where-refinement is LiteralOnlyWall; a
+nonliteral refined argument is RuntimeBoundaryOnly (five `WhereRefinementUnenforced` deferral
+reasons are enrolled as *advisory* — `v1.compiler.core`
+`where_refinement_deferral_reason_scaffold_note`); v2 loop termination is a ConstructionWall
+(`v2.std.cardinality` requires a declared loop measure, fail-closed to `DescentUnknown`);
+unknown method is a fail-open Absent; host state is ExternalNotGuaranteed by the guarantee
+statement itself.
 
-Classified against DESIGN.md §5's three-way test (*wall now* — decidable and grounded /
-*wall after grounding* — decidable, waiting on a single authority / *ratchet forever* —
-undecidable).
+This vocabulary is prose-interim: it becomes a typed enum on the claim carrier when the
+guarantee authority lands (§11), the same way `DescentEvidence` and `DecodeFidelity` model
+their own verdicts. The DESIGN.md §5 wall-classification (*wall now* / *wall after
+grounding* / *ratchet forever*) stays as the orthogonal decidability axis.
 
 ## 4. Tier 1 — structural correctness ("impossible to write the bug")
 
@@ -75,8 +105,9 @@ undecidable).
 | Type mismatches caught at compile time | **UNENFORCED** (return position, `data` annotation, generic instantiation) | `fn f() -> Int { "not an int" }` typechecks — probed by execution, PR #7481; argument position *is* checked | wall after grounding |
 | …in compiler source | **UNENFORCED by exemption** | `v1.compiler.infer` `module_skips_direct_call_arg_check` — skips `v2.*` and `v1.compiler.*` | wall now |
 | Field typos | **PARTIAL** — concrete types checked; through a type variable, not | `v1.compiler.infer` mints `TypeVariable { id: "field_of_type_var" }` instead of refusing | wall after grounding |
-| Non-exhaustive matches | **UNVERIFIED** — reported at runtime in the #6848 histogram | needs re-measurement | — |
-| Cardinality / multiplicity (empty list into a callee that requires one) | **UNEXPRESSIBLE** | `Cardinality` is one of six connectives in `v2.std.node`, but every construction site is a lens/test fixture — zero `std` or production inhabitants; no `NonEmpty<T>`; v1 forked the *name* onto optionality (`v1.compiler.core` `Cardinality = Required \| CardOptional`) | wall after grounding |
+| Application arity / call shape (missing, extra, misspelled-label args) | **fail-open by construction of the walk** | `v1.compiler.infer` `direct_call_arg_mismatch_diags` is *formal-driven*: per formal it seeks a same-named arg, else falls back to the **positional** arg at the same index (a misspelled label silently binds by position if the type fits), and `Absent => []` (missing arg → no diagnostic); extra args are never visited. The `ArityMismatch` diagnostic is **type-constructor** arity ("expects N *type* arguments"), not invocation arity — invocation arity has no compile diagnostic; #6896's wall is runtime-only | wall now |
+| Non-exhaustive matches | **PARTIAL — one confirmed silent arm** | resolved coproducts have exhaustiveness machinery; but `v1.compiler.infer_patterns` `lookup_variant_in_type` / `lookup_field_in_variant` both have `PatternLookupBlocked => node_lookup_failed(diagnostics: [])` — a blocked scrutinee lookup fails with **zero diagnostics** and the pattern types as `error_type` (`PatternDynamic`, by contrast, does diagnose at these sites). "Exhaustiveness not established" is treated as success-adjacent, not refused | wall after grounding |
+| Cardinality / multiplicity (empty list into a callee that requires one) | **RepresentableButForgeable, not statically propagated** — reclassified from UNEXPRESSIBLE after independent review | Representation exists: `v2.std.refinement` `Validation<B>`/`Refined<B>`/`refine`, a `NonEmptyList<T>` manual fixture (`v2.test.claim.manual.refinement_nonempty_list` + testgen anchor), and **green fold-propagation witnesses** (`cardinality_fold_propagation_test`: `cardinality_is_a_fold_homomorphism`, `fold_overflow_rejects`). Forgeable: `Refined<B>` is a public record — `refined_vacuous_stub_pack`'s `Rejected` arm literally returns `Refined { base }`, so the carrier proves nothing about validation. Not propagated: no cardinality lattice in signatures (`v2.std.cardinality` is loop-termination), `InterfaceSummary` (`dag/std/interface_summary.dag`) carries no cardinality slot, no transfer functions across `map`/`filter`/`concat`. The substrate `Cardinality` connective remains production-uninhabited and v1 forks the name onto optionality (`Required \| CardOptional`) | wall after grounding |
 | Method existence | **UNENFORCED — fabricates** | `v1.compiler.infer` `method_pipe_map_keys_values_fallback` else-arm returns the *receiver type* with `kernel_diags: []`; unresolved method stamped `PlainMethodSemantics` | wall now |
 | Grounding completeness — "**not** a name-keyed table lookup" | **VIOLATED literally** | `v1.compiler.infer_method` `builtin_function_registry() -> Map<String, Node>` is a name-keyed table (~120 entries), one of ≥5 independent primitive-existence authorities | wall after grounding |
 | Circular deps / stale imports / cross-target drift | **UNVERIFIED** | not yet audited | — |
