@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
+pub use crate::extdeps_container_oci_digest::oci_other_digest_algorithm;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
@@ -10,7 +11,7 @@ use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, U
 use crate::std_content_hash::ContentHash::*;
 pub use crate::std_content_hash::{
     content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
-    content_hash_validate_lower_hex_length, oci_other_digest_algorithm_holds,
+    content_hash_validate_lower_hex_length,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 use crate::std_induction::RecursionShape::{
@@ -1759,7 +1760,7 @@ pub fn decidable_where_string_predicate_holds(pred_name: String, value: String) 
                         Some(content_hash_validate_lower_hex_length(value.clone(), 16))
                     } else {
                         if (pred_name.clone() == "oci_other_digest_algorithm".to_string()) {
-                            Some(oci_other_digest_algorithm_holds(value.clone()))
+                            Some(oci_other_digest_algorithm(value.clone()))
                         } else {
                             None
                         }

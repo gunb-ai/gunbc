@@ -68,7 +68,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-extdeps-base".to_string(),
         crate_dir: "src/v1/stage0_extdeps_base".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["extdeps_external_authority".to_string(), "extdeps_uri".to_string()]),
+        modules: Rc::new(vec!["extdeps_container_oci_digest".to_string(), "extdeps_external_authority".to_string(), "extdeps_uri".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string(), "v1-stage0-std-surface".to_string()]),
         carries_non_empty_wrappers: false,
     }), Rc::new(GeneratedPartitionCrateRow {
