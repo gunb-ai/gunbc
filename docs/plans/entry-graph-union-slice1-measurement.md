@@ -115,19 +115,38 @@ Because the dominant row is a fixed per-index construction, the shares in A.4 de
 **fixed-cost-dominated harness, not the floor**. On a floor run one index amortizes across
 hundreds of entries, so `load`'s share there must be smaller — by how much is unmeasured.
 
-Repeating the partition (operator review point 1) shows why this matters. Run-to-run within
-an entry is stable; **across entries the dominant row inverts**:
+Repeating the partition (operator review point 1) was asked for in order to show the share
+ordering holds. **It does not hold, and that is the finding.** Every row below is read from
+a committed receipt in `docs/plans/receipts/entry-graph-union-slice1/`; an earlier revision
+of this table quoted a run set that was never retained, so its figures were unverifiable and
+are withdrawn.
 
-| entry (closure modules) | run | parent | load | typecheck_compute |
+| entry (closure modules) | run | parent | `load` | `typecheck_compute` |
 |---|---|---:|---:|---:|
-| `ci_floor_measurement_test` (159) | r1 | 70.0 s | **67.02%** | 25.62% |
-| `ci_floor_measurement_test` | r2 | 75.3 s | **67.96%** | 24.64% |
-| `generated_artifact_drift_test` (504) | r1 | 125.4 s | 37.89% | **51.48%** |
-| `generated_artifact_drift_test` | r2 | 133.2 s | 39.52% | **49.73%** |
+| `ci_floor_measurement_test` (159) | r1 | 75.2 s | **51.24 s / 68.11%** | 18.48 s / 24.57% |
+| `ci_floor_measurement_test` | r2 | 66.4 s | **44.96 s / 67.68%** | 16.57 s / 24.95% |
+| `generated_artifact_drift_test` (504) | r1 | 131.0 s | 50.98 s / 38.93% | **65.56 s / 50.06%** |
+| `generated_artifact_drift_test` | r2 | 155.7 s | **77.11 s / 49.52%** | 64.55 s / 41.46% |
 
-Typecheck scales with closure size; the index build does not. So "load is the dominant
-cost" was an artifact of the entry chosen, and the lane's original typecheck framing is
-correct on the larger closure.
+The ordering flips **between two runs of the same entry**: on `generated_artifact_drift_test`
+r1 `typecheck_compute` leads, on r2 `load` leads. So no share in A.4 is a reproducible
+quantity, and the earlier "the dominant row inverts across entries" reading was itself an
+artifact — it happened to compare two runs that agreed.
+
+The absolute columns say why, and they are the durable part:
+
+- **`typecheck_compute` is stable within an entry and scales with closure size** —
+  18.48 / 16.57 s on the 159-module closure against 65.56 / 64.55 s on the 504-module one.
+  Roughly 3.6× the time for 3.2× the modules, and ±6% run-to-run.
+- **`load` does not track closure size at all** — 51.24 s on the small closure and 50.98 s
+  on the large one, then 77.11 s on a repeat of that same large one. It is a corpus-fixed
+  cost (`load_bare_edge_index` is 99.9–100.0% of `load` in all four runs) whose *magnitude*
+  is host-noise-dominated, spanning 44.96–77.11 s across runs that differ in nothing else.
+
+A share is a ratio of a stable numerator to a noisy one, so the share moves with the noise.
+**Confound, disclosed:** these runs shared the host with concurrent `cargo build` work, which
+is the most likely source of the 1.7× spread in a cost that should be constant. That does not
+rescue the shares — it explains why they cannot be quoted.
 
 **A floor-representative partition requires the `claim_executor` discovery path** (wired,
 emitting `[cost-partition]` against per-entry receipts from one universe) and **has not been
@@ -191,15 +210,24 @@ Recorded because it is the failure mode this kind of measurement is most exposed
   reconciles at 0 ns tolerance and refuses rather than clamps.
 - **B's membership numbers.** Duplication factor 35.9 / 38.4 / 38.3 across narrow / typical
   / broad, 97.2–97.4% of memberships repeated, stable across a 10× range of diff breadth.
-- **`load` is `build_both_closure_edge_index`**, a corpus-wide index memoized per
-  `MultiEntryIndex` at ~25.6 s per index, independent of the entry's closure size.
+- **`load` is `build_both_closure_edge_index`** — 99.9–100.0% of `load` in all four
+  partition runs — a corpus-wide index memoized per `MultiEntryIndex` and **independent of
+  the entry's closure size** (51.24 s on a 159-module closure, 50.98 s on a 504-module one).
+  Its *magnitude* is not a stable measurement on this host: across four runs at 2 spans each
+  it spans 44.96–77.11 s, i.e. ~22–39 s per index. The size-independence is the durable
+  claim; the per-index figure is not.
 
 ### Retracted
 
 1. **"`load` is dominated by an unmemoized per-(entry, module) content scan."** Measured at
    ~0.0% of `load` (§A.6). Inferred from the call path, never measured.
-2. **"`load` is the dominant cost."** True at 67–68% on a 159-module closure, false at
-   38–40% on a 504-module one where typecheck_compute is ~50% (§A.7).
+2. **"`load` is the dominant cost."** Not established either way. It is 67.7–68.1% on the
+   159-module closure but 38.93% and 49.52% on two runs of the *same* 504-module closure —
+   `typecheck_compute` leads on the first, `load` on the second. A share whose ordering
+   flips between repeats of one entry is not a measurement (§A.7).
+   *A previous revision of this list retracted the claim in favour of "false at 38–40% on a
+   504-module closure." That replacement was also wrong: it rested on the same unretained
+   run set as the old §A.7 table, and the committed fourth receipt contradicts it.*
 3. **"The duplication factor is the multiplier on the dominant cost," and the per-source
    content-hash memo that followed.** The dominant row is fixed per index — not per entry,
    not per membership — so neither A×B join direction holds, and the memo recommendation
