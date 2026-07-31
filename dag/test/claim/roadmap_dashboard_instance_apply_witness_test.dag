@@ -53,9 +53,18 @@ import gunbc.roadmap_dashboard_instance_apply {
   DashboardApplyPreflightResult,
   DashboardApplyPreflightReady,
   DashboardApplyPreflightRefused,
+  DashboardApplyPreflightBootstrapPending,
   DashboardBootstrapPreflight,
   DashboardBootstrapReady,
   DashboardBootstrapRefused,
+  DashboardBootstrapUnobserved,
+  DashboardPathObservation,
+  PathObservedPresent,
+  PathObservedAbsent,
+  PathObservationRefused,
+  DashboardExecutableSurvey,
+  ExecutablesSurveyed,
+  ExecutableSurveyRefused,
   dashboard_next_path,
   dashboard_instance_health_url,
   dashboard_health_names_instance,
@@ -70,7 +79,7 @@ import gunbc.roadmap_dashboard_instance_apply {
 import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
 
-data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes."
+data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes.\\n\\nTHE SERVE BINARY LEFT THIS ROSTER AND ITS ABSENCE IS NOW ASSERTED, which is the substantive half of the 15-to-16 move. This branch gives apply an ensure-serve-binary step, so the binary is something the deployment INSTALLS rather than a precondition it demands — and a roster that still required it would refuse every first apply to a host that does not yet have one, which is the exact bootstrap this change exists to perform. dirname and chmod entered for the same reason: they are what installing it costs.\\n\\nThe negative conjunct is the one that would catch the regression. Re-adding the binary as a required executable keeps the count at 16 by displacing something else, so the literal alone cannot see it; asserting the binary is NOT required states the precondition/product distinction directly."
 
 test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
   let lab = srv1_lab_dashboard_instance()
@@ -198,7 +207,7 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       "gunbc-dashboard-srv1-lab-codex-feedback-v0",
       "-c",
       "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source",
-      "/opt/gunbc/bin/gunbc",
+      "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin/gunbc",
       "serve",
       "--source-root",
       "dag",
@@ -261,12 +270,15 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
     dashboard_instance_dispatch_platform_executables(instance: lab),
     platform_path => any(required, path => path == platform_path),
   )
-    && count(required) == 15
+    && count(required) == 16
     && any(required, path => path == ("/usr/bin/sh" as FilePath))
     && any(required, path => path == ("/usr/bin/tee" as FilePath))
     && any(required, path => path == ("/usr/bin/env" as FilePath))
     && any(required, path => path == ("/usr/bin/install" as FilePath))
     && any(required, path => path == ("/usr/bin/ln" as FilePath))
+    && any(required, path => path == ("/usr/bin/dirname" as FilePath))
+    && any(required, path => path == ("/usr/bin/chmod" as FilePath))
+    && !any(required, path => path == lab.serve_binary)
     && !any(
       required,
       path => path == ("/home/briansrls/.cargo/bin/cargo" as FilePath),
@@ -322,7 +334,9 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 14
+  count(rows) == 16
+    && any(rows, row => row.kind == "ensure-provider-state-root")
+    && any(rows, row => row.kind == "ensure-serve-binary")
     && any(rows, row => row.kind == "hydrate-controller-history")
     && any(rows, row => row.kind == "prepare-git-bundle")
     && any(rows, row => row.kind == "stage-git-bundle")
@@ -464,12 +478,24 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       instance_id: _,
       source_revision: _,
     } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } => false
   }
   let clean_ok = match clean {
     DashboardApplyPreflightReady { instance_id, source_revision } =>
       instance_id == lab.instance_id
         && source_revision == "deadbeef"
     DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } => false
   }
   let missing_remote_ok = match missing_remote {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
@@ -479,6 +505,12 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       instance_id: _,
       source_revision: _,
     } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } => false
   }
   let empty_revision_ok = match empty_revision {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
@@ -487,6 +519,12 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
     DashboardApplyPreflightReady {
       instance_id: _,
       source_revision: _,
+    } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
     } => false
   }
   dirty_ok
@@ -503,32 +541,70 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
     )
 }
 
+data bootstrap_unobserved_discriminates_note: String = "THE THIRD CASE IS THE POINT OF THIS CLAIM (review 45213). The first two arms passed before the fix and pass after it, so on their own they cannot tell the two versions apart — the collapse was invisible to them precisely because absent and unobservable both arrived as the same Bool.\\n\\nThe unobserved case is the discriminator: against the predecessor it is unconstructible, because there was no third value to pass, and against a regression that re-collapses the observation it lands in DashboardBootstrapRefused carrying not writable — which this claim asserts it does NOT. The transport reason must survive into the verdict, so the assertion checks the reason text reaches the operator rather than merely that some refusal occurred.\\n\\nThe reason string is a realistic transport failure rather than a placeholder, because the failure mode being guarded is an unreachable host being described as a permissions problem on a directory."
+
 test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let ready = dashboard_bootstrap_preflight_decision(
     instance: lab,
-    root_present: false,
-    bootstrap_present: true,
-    bootstrap_writable: true,
+    root: PathObservedAbsent,
+    bootstrap_present: PathObservedPresent,
+    bootstrap_writable: PathObservedPresent,
   )
   let refused = dashboard_bootstrap_preflight_decision(
     instance: lab,
-    root_present: false,
-    bootstrap_present: true,
-    bootstrap_writable: false,
+    root: PathObservedAbsent,
+    bootstrap_present: PathObservedPresent,
+    bootstrap_writable: PathObservedAbsent,
+  )
+  let unobserved = dashboard_bootstrap_preflight_decision(
+    instance: lab,
+    root: PathObservedAbsent,
+    bootstrap_present: PathObservedPresent,
+    bootstrap_writable: PathObservationRefused {
+      reason: "ssh: connect to host srv1 port 22: No route to host",
+    },
   )
   let ready_ok = match ready {
     DashboardBootstrapReady { bootstrap_root } =>
       bootstrap_root == "/home/briansrls/.local/share"
     DashboardBootstrapRefused { bootstrap_root: _, reason: _ } => false
+    DashboardBootstrapUnobserved { path: _, reason: _ } => false
   }
   let refused_ok = match refused {
     DashboardBootstrapReady { bootstrap_root: _ } => false
     DashboardBootstrapRefused { bootstrap_root, reason } =>
       bootstrap_root == "/home/briansrls/.local/share"
         && string_contains(s: reason as String, pattern: "not writable")
+    DashboardBootstrapUnobserved { path: _, reason: _ } => false
   }
-  ready_ok && refused_ok
+  let unobserved_ok = match unobserved {
+    DashboardBootstrapReady { bootstrap_root: _ } => false
+    DashboardBootstrapRefused { bootstrap_root: _, reason: _ } => false
+    DashboardBootstrapUnobserved { path, reason } =>
+      path == "/home/briansrls/.local/share"
+        && string_contains(s: reason, pattern: "No route to host")
+        && !string_contains(s: reason, pattern: "not writable")
+  }
+  ready_ok && refused_ok && unobserved_ok
+}
+
+data unreachable_root_never_reports_a_bootstrap_parent_note: String = "THE ROOT PROBE HAS THE SAME THREE ANSWERS, and it is the one whose collapse chose the WRONG PATH rather than the wrong verdict. Which directory is the bootstrap parent depends on whether the instance root exists — present means bootstrap into the root itself, absent means bootstrap into the provisioning parent — so a refused root observation does not merely lose a fact, it makes the subsequent question meaningless. The predecessor answered false and proceeded to describe the provisioning parent, which is a claim about a directory selected on evidence that was never gathered.\\n\\nThe claim asserts the refusal names the instance root, because that is the path whose observation actually failed."
+
+test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match dashboard_bootstrap_preflight_decision(
+    instance: lab,
+    root: PathObservationRefused { reason: "ssh transport refused" },
+    bootstrap_present: PathObservedPresent,
+    bootstrap_writable: PathObservedPresent,
+  ) {
+    DashboardBootstrapReady { bootstrap_root: _ } => false
+    DashboardBootstrapRefused { bootstrap_root: _, reason: _ } => false
+    DashboardBootstrapUnobserved { path, reason } =>
+      (path as String) == (lab.instance_root as String)
+        && string_contains(s: reason, pattern: "ssh transport refused")
+  }
 }
 
 data production_peer_witness_note: String = "THE ARM THAT MATTERS IS THE MIXED ONE. An unpeered host has no production liveness to compare, so the tempting shortcut is to let an absent reading compare equal to anything and move on — which would let an apply that STARTED with production served and ENDED with it unreachable report untouched, the precise reading the post-apply check exists to prevent. Equality is therefore required to agree on the arm as well as the contents: two reads compare their snapshots, two unpeered readings compare their hosts, and one of each is never equal regardless of what happened in between.\\n\\nThe isolation claim is the counterpart. NoProductionPeer discharges the disjointness obligation because there is no peer to overlap with, but it must not discharge the instance's OWN ownership requirement — an unowned path is unowned whether or not a production dashboard shares the machine, and preflight checks the two separately for that reason."
@@ -604,5 +680,6 @@ test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
     && dashboard_refusal_receipt_is_typed_and_located()
     && dashboard_dirty_controller_source_refuses_before_apply()
     && dashboard_bootstrap_parent_writability_is_a_preflight_fact()
+    && dashboard_unreachable_root_refuses_before_choosing_a_parent()
     && dashboard_poll_interval_is_a_usable_duration()
 }

@@ -4,9 +4,9 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   WalkPlan,
-  FloorFinalization,
   runnable_resource_profile_negligible
 }
+import gunbc.ci_materialization { FloorFinalization }
 import v2.std.collection { List }
 import std.types { Int }
 
@@ -20,14 +20,13 @@ fn budget_red_control_claim() -> Runnable {
   }
 }
 
-data budget_red_control_declared_resolve_note: String = "The fixture DECLARES its finalization policy in its own plan value (declared 1: exactly one single-claim batch paying exactly one entry resolve) — it no longer needs a name-impersonated projection fn, because the policy is a WalkPlan FIELD (walk_finalization_note): the executor reads the parsed value, and a floor plan without its law is unwritable rather than discovered missing at arm time."
+data budget_red_control_declared_resolve_note: String = "The fixture DECLARES its finalization policy in its own plan value (declared 1: exactly one single-claim batch paying exactly one entry resolve) — it no longer needs a name-impersonated projection fn, because the policy is a WalkPlan FIELD (walk_finalization_note): the executor reads the parsed value. The return type WalkPlan<FloorFinalization> declares which family this fixture carries; it does not make the empty policy unwritable, since the typechecker does not check a return type against the body (std.realization_schedule walk_finalization_note). Materialization disclosure is intrinsic to FloorFinalization, so this fixture obligates both floor laws by inhabiting the type — there is no Bool to set."
 
-fn gunbc_ci_floor_plan() -> WalkPlan {
+fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
   WalkPlan {
     batches: [[budget_red_control_claim()]],
     finalization: FloorFinalization {
       declared_resolve_count: 1,
-      require_materialization_disclosure: true,
     },
     on_success_stages: [],
   }

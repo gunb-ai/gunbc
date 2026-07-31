@@ -1943,6 +1943,15 @@ pub fn where_refinement_value_under_cast(mut value_expr: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn where_refinement_peel_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal path (predicates present AND not covered), inside the final else of where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded resolve_node_bounded work per host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn where_refinement_mismatch_diags(
     formal: Rc<Node>,
     value_expr: Rc<Node>,
@@ -1956,11 +1965,6 @@ pub fn where_refinement_mismatch_diags(
             Some(resolved) => resolved.clone(),
             None => formal.clone(),
         };
-        let formal_checked = peel_nominal_alias_identity(
-            formal_resolved.clone(),
-            type_env.clone(),
-            module_name.clone(),
-        );
         let preds =
             type_where_refinement_predicates_transitive(formal_resolved.clone(), type_env.clone());
         if ((preds.clone().len() as i64) == 0) {
@@ -1984,24 +1988,31 @@ pub fn where_refinement_mismatch_diags(
                 ) {
                     Rc::new(vec![])
                 } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for pred in preds.clone().iter().cloned() {
-                            __result.extend(
-                                (*where_refinement_diags_for_predicate(
-                                    pred.clone(),
-                                    formal_checked.clone(),
-                                    value_for_refinement.clone(),
-                                    span.clone(),
-                                    module_name.clone(),
-                                    source_indices.clone(),
-                                ))
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    })
+                    {
+                        let formal_checked = peel_nominal_alias_identity(
+                            formal_resolved.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for pred in preds.clone().iter().cloned() {
+                                __result.extend(
+                                    (*where_refinement_diags_for_predicate(
+                                        pred.clone(),
+                                        formal_checked.clone(),
+                                        value_for_refinement.clone(),
+                                        span.clone(),
+                                        module_name.clone(),
+                                        source_indices.clone(),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    }
                 }
             }
         }
@@ -16808,12 +16819,20 @@ pub fn build_local_variants(
         })
 }
 
+pub fn merge_global_bare_variant_locals_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (bare-minimum-cost, DESIGN 6): the census-eligible variant-owner pairs depend only on global_bare and the name-census si — whole-closure facts identical for every module — so build_global_bare_variant_locals computes them ONCE per closure in typecheck_with_census_extra and the base map threads down realize_module -> typecheck_module -> build_module_context. The former per-module shape rescanned the whole census and re-inserted every eligible pair into every module's locals: 464 modules x 12,554 census keys = 5.8M iterations and 1.29M persistent-map inserts = 31s of the host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31; PR 7398 landed build_global_bare_variant_locals beside the per-module fold but never wired it). map_merge(base, state.locals) is value-identical to the old fold: overlay wins on collision exactly as the old skip-if-present arm kept state's binding, and the old checked-insert collision arm was unreachable (presence was checked before insert), so the global merge contributed zero collision errors then and now. Fidelity of the hoisted si: authored_name_at reads names identically under the raw closure source_indices and the kernel-augmented env.source_indices (kernel spans compute the same name in both arms; non-kernel misses fall back to node.name in both), and the census owners all live in closure files, so eligibility is unchanged.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn merge_global_bare_variant_locals(
     state: Rc<VariantFoldState>,
-    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_name: String,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<VariantFoldState> {
+<<<<<<< HEAD
     Rc::new(v1_rt::map_keys(&global_bare)).iter().cloned().fold(
         state.clone(),
         |acc: _, name: String| match v1_rt::map_get(&global_bare, name.clone())
@@ -16842,6 +16861,12 @@ pub fn merge_global_bare_variant_locals(
             _ => acc.clone(),
         },
     )
+=======
+    Rc::new(VariantFoldState {
+        locals: v1_rt::rc_map_merge(global_variant_base.clone(), state.locals.clone()),
+        collision_errors: state.collision_errors.clone(),
+    })
+>>>>>>> origin/main
 }
 
 pub fn build_global_bare_census(
@@ -17143,6 +17168,7 @@ pub fn build_module_context(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ModuleContext> {
     {
         let local = fold_module_contributions(
@@ -17173,9 +17199,7 @@ pub fn build_module_context(
                 module_name.clone(),
                 local_variant_fold.clone(),
             ),
-            env.symbol_index.clone().global_bare.clone(),
-            env.source_indices.clone(),
-            module_name.clone(),
+            global_variant_base.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
@@ -17310,6 +17334,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -17378,6 +17403,7 @@ pub fn typecheck_module(
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
+            global_variant_base.clone(),
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -17533,6 +17559,7 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         empty_symbol_index(),
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     )
 }
 
@@ -18184,6 +18211,10 @@ pub fn typecheck_with_census_extra(
             build_symbol_index_census(graph.modules.clone(), census_si.clone()),
             build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
         );
+        let global_variant_base = build_global_bare_variant_locals(
+            symbol_index.global_bare.clone(),
+            source_indices.clone(),
+        );
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -18199,6 +18230,7 @@ pub fn typecheck_with_census_extra(
                     source_indices.clone(),
                     intern_table.clone(),
                     symbol_index.clone(),
+                    global_variant_base.clone(),
                 )
             },
         );
@@ -18257,6 +18289,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -18274,6 +18307,7 @@ pub fn realize_module(
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 symbol_index.clone(),
+                                global_variant_base.clone(),
                             )
                         },
                     );
@@ -18289,6 +18323,7 @@ pub fn realize_module(
                         source_indices.clone(),
                         intern_table.clone(),
                         symbol_index.clone(),
+                        global_variant_base.clone(),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());

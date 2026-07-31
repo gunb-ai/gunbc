@@ -10,6 +10,7 @@ import gunbc.roadmap_serve {
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
+  roadmap_serve_route_specs,
   roadmap_serve_build_from_specs,
   roadmap_serve_selection_response,
   roadmap_serve_invoke,
@@ -168,9 +169,12 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     && string_contains(s: r.body, pattern: "\"dispatch_attempt_state_root\": \"/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0/attempt-state\"")
 }
 
+data route_table_drops_nothing_note: String = "THE ROUTE COUNT STOPPED BEING A LITERAL, and what replaces it is the claim the literal was standing in for. Sixteen was read off the live route roster, so adding /provider.json — a correct route this PR needed — reds a witness that has nothing to say about which routes exist. That is the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464, and this was a third instance of it (review, 2026-07-30, found by the full floor rather than by any targeted run).\\n\\nThe replacement is strictly stronger, not weaker. What this witness is actually for is that the live table BUILDS — the refusing arm below is the other half — and the interesting failure is a build that silently drops a route rather than refusing. serve_page_response_note in this module names exactly that hazard: the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy. A literal count cannot tell a dropped route from a roster that legitimately grew; comparing against the roster can, and it never needs editing again.\\n\\nThe non-emptiness conjunct stays because equality between two empty lists would hold vacuously."
+
 test fn witness_live_table_builds_ready_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => count(t.routes) == 16
+    RoadmapServeTable { table: t } =>
+      count(t.routes) > 0 && count(t.routes) == count(roadmap_serve_route_specs())
     RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
   }
 }
