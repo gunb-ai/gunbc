@@ -21,7 +21,23 @@ type HandAuthoredDocBind {
   dissolution: DissolutionTrigger,
 }
 
-data hand_authored_works_carrier_note: String = "works is the TYPED anchor set: every carrier a doc binds to is a DeclarationRef row, never a name living only in DissolutionTrigger.text (post-merge review of gunbc#7486, 2026-07-31: the merged guarantee-recovery row claimed two anchored carriers while structurally carrying one — the second existed only in prose, so its lifecycle was untracked). Nonemptiness is NOT enforced by this type today — List admits [], exactly the producer/consumer cardinality gap the guarantee ladder tracks (an empty works row would be an unbound bind); until the cardinality seam lands, the doc-graph witnesses are the wall."
+data hand_authored_works_carrier_note: String = "works is the TYPED anchor set: every carrier a doc binds to is a DeclarationRef row, never a name living only in DissolutionTrigger.text (post-merge review of gunbc#7486, 2026-07-31: the merged guarantee-recovery row claimed two anchored carriers while structurally carrying one — the second existed only in prose, so its lifecycle was untracked). EXECUTING CONSUMERS (added per review 45336, which correctly found the first cut of this field inert — representation without a reader is specification-without-execution, DESIGN 5): the doc-reachability witness rows consume this list via the predicates below — every bind's works nonempty (List admits [], the exact cardinality gap the guarantee ladder tracks, so the witness is the wall until the seam lands), every ref carrying nonempty module_path and decl_name, and the guarantee-recovery row pinning BOTH its anchors by value with an empty-works RED control beside them. RESIDUE, named: staleness against the live tree (a works ref naming a decl that no longer exists) is NOT witnessed here — v1.compiler.* modules are outside the witness compile pool, so ref-vs-tree resolution is exactly the feature:cited-symbol-resolution lens DESIGN 3 already names; these refs are symbolic citations and inherit that trigger."
+
+fn hand_authored_bind_works_nonempty(b: HandAuthoredDocBind) -> Bool {
+  (b.works |> count) > 0
+}
+
+fn declaration_ref_carries_symbol(r: DeclarationRef) -> Bool {
+  r.module_path != "" && r.decl_name != ""
+}
+
+fn hand_authored_binds_works_all_nonempty() -> Bool {
+  all(hand_authored_doc_binds, b => hand_authored_bind_works_nonempty(b: b))
+}
+
+fn hand_authored_works_refs_all_carry_symbols() -> Bool {
+  all(hand_authored_doc_binds, b => all(b.works, r => declaration_ref_carries_symbol(r: r)))
+}
 
 
 
