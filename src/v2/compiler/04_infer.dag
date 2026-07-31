@@ -8,8 +8,9 @@ import v2.std.bounded_lattice_completeness {
 }
 import v2.compiler.resolve { ResolvedTree }
 import v2.extdeps.languages.dag {
-  dag_node_is_canonical_bool_literal,
-  dag_node_is_canonical_int_literal
+  DagCanonicalBoolLiteral,
+  DagCanonicalIntLiteral,
+  dag_canonical_literal_from_node
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection {
@@ -400,7 +401,7 @@ fn concat_inferred_facts_entries(
   })
 }
 
-data infer_node_facts_no_derivation_note: String = "infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts && candidate == source_facts) with algebra bound to the root itself — so the witness search reduced to root == root and always succeeded. The grounding it minted carried the source node as its own structural evidence, which inferred_facts_resolved_type reads as the node's resolved type. That is source identity standing where a derivation belongs. The two literal classes already modeled by infer_branch_is_bool_literal_atom and infer_branch_is_int_literal_atom now raise those existing derivations to leaf facts; every other node on this path carries the typed GroundingNotDerived frontier. solve_constraints itself is untouched — it remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag, to be EXTENDED with real candidate generation, never forked."
+data infer_node_facts_no_derivation_note: String = "infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts && candidate == source_facts) with algebra bound to the root itself — so the witness search reduced to root == root and always succeeded. The grounding it minted carried the source node as its own structural evidence, which inferred_facts_resolved_type reads as the node's resolved type. That is source identity standing where a derivation belongs. The Bool and Int arms now consume the typed canonical-literal query and raise those derivations to leaf facts; every other node on this path carries the typed GroundingNotDerived frontier. solve_constraints itself is untouched — it remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag, to be EXTENDED with real candidate generation, never forked."
 
 fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
@@ -410,23 +411,24 @@ fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
-          if infer_branch_is_bool_literal_atom(node: n) {
-            inferred_facts_from_derived_type(
-              node: n,
-              derived_type: bool_node(),
-              descent: Holds { value: descent_proof }
-            )
-          } else if infer_branch_is_int_literal_atom(node: n) {
-            inferred_facts_from_derived_type(
-              node: n,
-              derived_type: infer_branch_int_binding_type_node(),
-              descent: Holds { value: descent_proof }
-            )
-          } else {
-            inferred_facts_not_derived(
-              node: n,
-              descent: Holds { value: descent_proof }
-            )
+          match dag_canonical_literal_from_node(node: n) {
+            Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
+              inferred_facts_from_derived_type(
+                node: n,
+                derived_type: bool_node(),
+                descent: Holds { value: descent_proof }
+              )
+            Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+              inferred_facts_from_derived_type(
+                node: n,
+                derived_type: infer_branch_int_binding_type_node(),
+                descent: Holds { value: descent_proof }
+              )
+            Rejected { diagnostics: _ } =>
+              inferred_facts_not_derived(
+                node: n,
+                descent: Holds { value: descent_proof }
+              )
           }
       }
   }
@@ -537,14 +539,6 @@ fn infer_branch_int_binding_type_node() -> Node {
   }
 }
 
-fn infer_branch_is_bool_literal_atom(node: Node) -> Bool {
-  dag_node_is_canonical_bool_literal(node: node)
-}
-
-fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
-  dag_node_is_canonical_int_literal(node: node)
-}
-
 fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
@@ -611,19 +605,20 @@ fn infer_branch_operand_resolved_type_in_tree(
   facts: InferredFacts,
   tree: Node,
 ) -> Witness<Node> {
-  if infer_branch_is_bool_literal_atom(node: node) {
-    Holds { value: bool_node() }
-  } else if infer_branch_is_int_literal_atom(node: node) {
-    Holds { value: infer_branch_int_binding_type_node() }
-  } else {
-    match infer_atom_binding_sym(node: node) {
-      Present { value: binding } =>
-        match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
-          Present { value: domain_ty } => Holds { value: domain_ty }
-          Absent => inferred_facts_resolved_type(facts: facts)
-        }
-      Absent => inferred_facts_resolved_type(facts: facts)
-    }
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
+      Holds { value: bool_node() }
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      Holds { value: infer_branch_int_binding_type_node() }
+    Rejected { diagnostics: _ } =>
+      match infer_atom_binding_sym(node: node) {
+        Present { value: binding } =>
+          match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
+            Present { value: domain_ty } => Holds { value: domain_ty }
+            Absent => inferred_facts_resolved_type(facts: facts)
+          }
+        Absent => inferred_facts_resolved_type(facts: facts)
+      }
   }
 }
 
@@ -702,11 +697,17 @@ fn infer_match_bool_arm_body_type(
   body_facts: InferredFacts,
   scrutinee_type: Node
 ) -> Witness<Node> {
-  if infer_branch_type_is_int(type_node: scrutinee_type)
-      && infer_branch_is_bool_literal_atom(node: body_target) {
-    Holds { value: infer_branch_int_binding_type_node() }
-  } else {
-    infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+  match dag_canonical_literal_from_node(node: body_target) {
+    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
+      if infer_branch_type_is_int(type_node: scrutinee_type) {
+        Holds { value: infer_branch_int_binding_type_node() }
+      } else {
+        infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+      }
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+    Rejected { diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
   }
 }
 
@@ -892,27 +893,15 @@ type InferMatchArmRow {
   body_type: Node
 }
 
-fn infer_branch_is_bool_true_literal_atom(node: Node) -> Bool {
-  infer_branch_is_bool_literal_atom(node: node) && match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
-    _ => false
-  }
-}
-
-fn infer_branch_is_bool_false_literal_atom(node: Node) -> Bool {
-  infer_branch_is_bool_literal_atom(node: node) && match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
-    _ => false
-  }
-}
-
 fn infer_bool_literal_pattern_classify(pattern: Node) -> InferBoolLiteralPattern {
-  if infer_branch_is_bool_true_literal_atom(node: pattern) {
-    InferBoolLiteralPatternTrue
-  } else if infer_branch_is_bool_false_literal_atom(node: pattern) {
-    InferBoolLiteralPatternFalse
-  } else {
-    InferBoolLiteralPatternOther
+  match dag_canonical_literal_from_node(node: pattern) {
+    Accepted { value: DagCanonicalBoolLiteral { value: true }, diagnostics: _ } =>
+      InferBoolLiteralPatternTrue
+    Accepted { value: DagCanonicalBoolLiteral { value: false }, diagnostics: _ } =>
+      InferBoolLiteralPatternFalse
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      InferBoolLiteralPatternOther
+    Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
   }
 }
 
@@ -1446,9 +1435,14 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
 data infer_literal_subtree_diagnostic_discharge_note: String = "An integer literal's modeled type derives from its canonical representation, including its sole named magnitude subtree. Its derivation discharges only that edge's local type frontier; propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean literals are canonical only with no children, so no boolean payload can be discharged. Malformed literals remain GroundingNotDerived and retain every child diagnostic."
 
 fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
-  infer_branch_is_int_literal_atom(node: parent) && match edge.label {
-    Named { name: field } => field == ^integer_literal_magnitude_field
-    Positional => false
+  match dag_canonical_literal_from_node(node: parent) {
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      match edge.label {
+        Named { name: field } => field == ^integer_literal_magnitude_field
+        Positional => false
+      }
+    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

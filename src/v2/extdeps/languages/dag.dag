@@ -4071,11 +4071,6 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
-fn dag_node_is_canonical_bool_literal(node: Node) -> Bool {
-  (dag_node_is_kw_true_atom(node: node) || dag_node_is_kw_false_atom(node: node))
-    && (length(xs: node.children) == 0)
-}
-
 data dag_eval_literal_atom_authority_note: String = "Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this roster folds into it."
 
 fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
@@ -4195,14 +4190,37 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
   }
 }
 
-fn dag_node_is_canonical_int_literal(node: Node) -> Bool {
-  if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
+type DagCanonicalLiteral
+  = DagCanonicalBoolLiteral { value: Bool }
+  | DagCanonicalIntLiteral { magnitude: Int }
+
+fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^dag_literal_shape_invalid,
+    at: node_locus(node: node),
+    correction: None
+  }
+}
+
+data dag_canonical_literal_query_note: String = "dag_canonical_literal_from_node is the single typed query for inference-facing DAG literal shape. It preserves the Bool-vs-Int distinction and the decoded integer magnitude in a coproduct instead of publishing sibling is_* predicates over Node storage. Bool literals admit exactly the childless true/false atoms. Int literals admit exactly one named, decodable magnitude child. Every other shape is a typed refusal."
+
+fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
+  if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
+    outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
+  } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
+    outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
+  } else if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      Accepted { value: magnitude, diagnostics: d } =>
+        Accepted {
+          value: DagCanonicalIntLiteral { magnitude: magnitude },
+          diagnostics: d
+        }
+      Rejected { diagnostics: _ } =>
+        outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
     }
   } else {
-    false
+    outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
   }
 }
 
