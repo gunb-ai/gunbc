@@ -805,9 +805,12 @@ fn inferred_facts_digest(facts: InferredFacts) -> Hash {
           b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
         )
       )
-    GroundingNotDerived { node: _ } =>
+    GroundingNotDerived { node: n } =>
       combine_hash(
-        a: content_hash(n: eval_grounding_not_derived_digest_node()),
+        a: combine_hash(
+          a: content_hash(n: eval_grounding_not_derived_digest_node()),
+          b: content_hash(n: n)
+        ),
         b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
       )
   }

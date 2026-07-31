@@ -331,12 +331,15 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
   }
 }
 
+data canonical_grounding_self_evidence_backstop_note: String = "The evidence != node conjunct is the VALIDATION half of the self-grounding wall, and it exists only because of a residue the construction half cannot reach. canonical_grounding_from_derived_type is the single construction authority and refuses self-evidence outright, which covers every grounding the compiler itself mints; but CanonicalGrounding is a structural record, so any module — a test fixture, a hand-built claim tree — can still write one field-by-field without going through that authority. This conjunct is where such a record is caught, on the read path every consumer already funnels through (eval's inhabitance/canonical witnesses, translate's coerce_grounded_node). Per DESIGN §5 the ordering is deliberate: construction where the state is reachable-by-construction, a post-hoc check only for the structurally-constructible residue — not a check standing where construction was available."
+
 fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   well_formed(n: grounding.node)
     && well_formed(n: grounding.witness.structural.evidence)
     && (grounding.witness.structural.property == ^constraint_property_being_canonical)
     && (grounding.witness.closedness.property == ^constraint_property_candidate_set_closedness)
     && (grounding.witness.closedness.evidence == grounding.node)
+    && (grounding.witness.structural.evidence != grounding.node)
 }
 
 fn inferred_facts_construction(
