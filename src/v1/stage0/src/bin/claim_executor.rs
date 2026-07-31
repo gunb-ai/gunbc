@@ -1060,8 +1060,23 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
     })
 }
 
+/// A discovery claim's subject is a scanned corpus, not one declaration. Naming that
+/// explicitly keeps a reader from parsing a blank `entry` as "unknown" when the truth is
+/// "not one entry" — the state-space conflation this field exists to avoid.
+const DISCOVERY_AGGREGATE_ENTRY: &str = "<discovery corpus — many entries>";
+
 struct ClaimResult {
     function: String,
+    /// The entry file this claim was declared in. Carried rather than looked up: a
+    /// function name is NOT a declaration identity (review 2026-07-31), and two fixture or
+    /// production modules may lawfully spell a function the same way. Recovering it by
+    /// searching a stage's runnables for a matching function name would reproduce exactly
+    /// the ambiguity that makes the name insufficient in the first place.
+    ///
+    /// Sites with no single declaring entry say so explicitly rather than passing an empty
+    /// string — a discovery aggregate spans a corpus, and a blank field would read as
+    /// "unknown" when the truth is "not one entry".
+    entry: String,
     ok: bool,
     detail: String,
     /// Wall-clock eval time for this single claim (0 for discovery aggregate).
@@ -1201,6 +1216,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
 
 fn claim_result_for_outcome(
     function: String,
+    entry: String,
     outcome: ClaimOutcome,
     wall_nanos: u128,
     resolve_nanos: u128,
@@ -1208,6 +1224,7 @@ fn claim_result_for_outcome(
     match outcome {
         ClaimOutcome::Pass => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: true,
             detail: String::new(),
             wall_nanos,
@@ -1220,6 +1237,7 @@ fn claim_result_for_outcome(
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: false,
             detail: "returned Bool(false)".to_string(),
             wall_nanos,
@@ -1232,6 +1250,7 @@ fn claim_result_for_outcome(
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: false,
             detail: format!("returned `{}`, not Bool", got),
             wall_nanos,
@@ -1244,6 +1263,7 @@ fn claim_result_for_outcome(
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: false,
             detail: format!("runtime error: {}", message),
             wall_nanos,
@@ -1260,6 +1280,7 @@ fn claim_result_for_outcome(
             kind,
         } => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: false,
             // The detail still names the budget in prose for the human reading a log, but
             // `budget_refusal` beside it is what classification reads — so the mode no
@@ -1297,6 +1318,9 @@ fn run_batch_unit(
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
             function,
+            // An unmapped node never bound to a declaration, so there is no entry to
+            // name. Said explicitly rather than blanked.
+            entry: "<unmapped node — no declaring entry>".to_string(),
             ok: false,
             detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
                 .to_string(),
@@ -1379,6 +1403,7 @@ fn run_shared_entry_claims(
                 .iter()
                 .map(|function| ClaimResult {
                     function: function.clone(),
+                    entry: entry.to_string(),
                     ok: false,
                     detail: format!("resolve failed for {}: {}", entry, msg),
                     wall_nanos: 0,
@@ -1411,7 +1436,7 @@ fn run_shared_entry_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
         })
         .collect()
 }
@@ -1439,6 +1464,7 @@ fn run_memo_shared_claims(
                     .iter()
                     .map(|function| ClaimResult {
                         function: function.clone(),
+                        entry: entry.to_string(),
                         ok: false,
                         detail: format!("resolve failed for {}: {}", entry, msg),
                         wall_nanos: 0,
@@ -1481,7 +1507,7 @@ fn run_memo_shared_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
         })
         .collect()
 }
@@ -1874,6 +1900,7 @@ fn discovery_claim_result(
     match projected {
         Ok(witness_row_costs) => ClaimResult {
             function,
+            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
             ok,
             detail,
             wall_nanos: 0,
@@ -1897,6 +1924,7 @@ fn discovery_claim_result(
             };
             ClaimResult {
                 function,
+                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                 ok: false,
                 detail,
                 wall_nanos: 0,
@@ -2111,6 +2139,7 @@ fn run_discovery_batch_node(
                 );
                 ClaimResult {
                     function: format!("{label} (expect_red still-red OK)"),
+                    entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: true,
                     detail: String::new(),
                     wall_nanos: 0,
@@ -2124,6 +2153,7 @@ fn run_discovery_batch_node(
             } else {
                 ClaimResult {
                     function: label,
+                    entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: false,
                     detail: format!("discovery corpus failed: {msg}"),
                     wall_nanos: 0,
@@ -3426,6 +3456,7 @@ fn write_on_success_stage_receipt(
     run: &StageRun,
     declared_stage_count: usize,
     attempt_id: &str,
+    plan_site: &str,
 ) -> bool {
     let mut resolves: u64 = 0;
     for r in &run.results {
@@ -3441,6 +3472,9 @@ fn write_on_success_stage_receipt(
     // stale-or-fresh, it is NOT THE SUBJECT, and a consumer that reads this file by path
     // must be able to discover that from the bytes it just read.
     body.push_str(&format!("attempt_id={attempt_id}\n"));
+    // The plan site completes the subject location: attempt says WHICH RUN, plan site says
+    // WHICH PLAN within it, entry+function on each row say WHICH DECLARATION.
+    body.push_str(&format!("plan_site={plan_site}\n"));
     body.push_str(&format!("stage_index={}\n", stage_index + 1));
     body.push_str(&format!("stage_count={declared_stage_count}\n"));
     body.push_str(&format!(
@@ -3460,9 +3494,13 @@ fn write_on_success_stage_receipt(
             None => "none".to_string(),
         }
     ));
+    // ENTRY BEFORE FUNCTION: the pair is the declaration identity, and the entry is the
+    // discriminating half. A row keyed on function alone cannot tell two modules that
+    // lawfully spell a claim the same way apart (review 2026-07-31).
     for r in &run.results {
         body.push_str(&format!(
-            "claim\t{}\t{}\t{}\n",
+            "claim\t{}\t{}\t{}\t{}\n",
+            r.entry,
             r.function,
             if r.ok { "passed" } else { "failed" },
             r.wall_nanos / 1_000_000
@@ -3506,8 +3544,18 @@ fn write_on_success_receipt(
     resolves_total: u64,
     skipped_ordinary_failed: bool,
     declared_stage_count: usize,
+    attempt_id: &str,
+    plan_site: &str,
 ) -> bool {
     let mut body = String::new();
+    // SAME IDENTITY DISCIPLINE AS THE PER-STAGE RECEIPTS, and it was missing here while
+    // the PR describing this work claimed receipt identity was closed (review
+    // 2026-07-31). The aggregate is part of the same evidence population — it answers
+    // "how much of the declared sequence ran", and that answer is worthless unless it is
+    // attributable to an attempt. A reused worktree would otherwise retain a prior
+    // attempt's aggregate when the current floor fails before stages ever start.
+    body.push_str(&format!("attempt_id={attempt_id}\n"));
+    body.push_str(&format!("plan_site={plan_site}\n"));
     if skipped_ordinary_failed {
         body.push_str("skipped=ordinary_floor_failed\n");
     }
@@ -3523,8 +3571,9 @@ fn write_on_success_receipt(
             if *passed { "passed" } else { "failed" }
         ));
     }
-    let base = std::path::Path::new("target");
-    let path = base.join("floor-on-success-receipt.txt");
+    let base = std::path::Path::new("target").join(format!("floor-attempt-{attempt_id}"));
+    let base = base.as_path();
+    let path = base.join("on-success-receipt.txt");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
         eprintln!(
             "claim_executor: failed to write on-success receipt {}: {e} — walk fails closed here",
@@ -3994,13 +4043,30 @@ fn validate_floor_finalization(
 
 /// THE CONCURRENCY PRIMITIVE, extracted so the contract is reachable by a test.
 ///
-/// `walk_plan_note` states that members WITHIN a stage run concurrently — that is why
-/// anything sequential must be one claim whose body sequences its steps, or two
-/// singleton stages. While the spawn and the join were inlined in the batch loop, that
-/// promise was checkable only by reading the code, and the first attempt at success
-/// stages promised it while executing serially. Split out, the two halves each get a
-/// latch control: members really do overlap, and the join really does wait for all of
-/// them.
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `std.realization_schedule`
+/// `walk_plan_run_stage_claim_executor_seed_deferral`). This function, `join_units`,
+/// `run_stage`, `batch_unit_lane`, the stage receipt writers, and the walk-attempt
+/// observation are all covered by that row: the executor is the seed that runs before any
+/// `.dag` walk exists, so the code deciding how a walk executes cannot itself be a walk.
+/// dissolve-on: executor scheduling expressed as a `.dag` walk over `WalkPlan` (lane
+/// selection, admission, receipt emission as modeled effects), gated behind the
+/// witness-realization lane.
+///
+/// THE CONTRACT, stated at the strength `walk_plan_note` actually carries: DISTINCT
+/// SPAWNED resolve groups MAY overlap, subject to governor admission. Same-entry groups,
+/// memo-lane units, main-thread units, and width-constrained spawned units may execute
+/// serially, and NO SIBLING ORDER IS GUARANTEED. An earlier version of this comment said
+/// members "run concurrently" — the stronger promise the carrier retracted (review
+/// 2026-07-31), and one the executor would violate every time grouping, memo placement,
+/// or a width-1 governor legitimately withdrew overlap.
+///
+/// The absence of a guaranteed order is what stage occupants actually depend on, and it
+/// is why anything sequential must be one claim whose body sequences its steps, or two
+/// singleton stages. While the spawn and the join were inlined in the batch loop, even
+/// that weaker property was checkable only by reading the code, and the first attempt at
+/// success stages promised the stronger one while executing serially. Split out, the two
+/// halves each get a latch control: spawned peers really can overlap, and the join really
+/// does wait for all of them.
 ///
 /// The join half is what makes the stage BARRIER real. Stage N+1 cannot begin early
 /// because `run_walk`'s stage loop is sequential by construction — each iteration takes
@@ -4506,8 +4572,14 @@ fn run_walk(
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
     // is an ordinary-floor policy and never applies between stages. Members run through
     // `run_stage`, the SAME executor the ordinary batches use — same unit grouping, same
-    // lane partition, same governor admission — so a stage's members are concurrent
-    // exactly as the contract says, and nothing reaches a weaker route. The two
+    // lane partition, same CLAMP MECHANISM, same per-lane admission rule. Three of those
+    // are deliberately weaker than an earlier draft's wording (review 2026-07-31). NOT
+    // "same governor admission": admission is PER-LANE, and only the spawned lane acquires
+    // a slot. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
+    // deliberately pass None and stay inside a narrow admissible profile instead — the
+    // mechanism is shared, the parameters are not. And NOT "concurrent exactly as the
+    // contract says": the contract promises only that distinct spawned groups MAY overlap.
+    // The two
     // populations differ here only in ordering and failure policy, which is the whole
     // claim of the extraction. Their memo contexts drop AFTER
     // write_materialization_receipt above, so stage materialization is structurally NOT
@@ -4520,7 +4592,25 @@ fn run_walk(
                  (green-only by construction)",
                 on_success_stages.len()
             );
-            let _ = write_on_success_receipt(&[], 0, true, on_success_stages.len());
+            // The skip receipt is still attempt-scoped: "the ordinary floor failed so no
+            // stage ran" is an answer about THIS attempt, and an unattributable copy of it
+            // in a reused worktree is indistinguishable from a prior attempt's.
+            match walk_attempt_id {
+                Some(attempt) => {
+                    let _ = write_on_success_receipt(
+                        &[],
+                        0,
+                        true,
+                        on_success_stages.len(),
+                        attempt,
+                        plan_site,
+                    );
+                }
+                None => eprintln!(
+                    "claim_executor: on-success skip receipt NOT written — no walk-attempt \
+                     identity (arm-time observation should have refused this walk)"
+                ),
+            }
         } else {
             let mut stage_rows: Vec<(usize, bool)> = Vec::new();
             let mut stage_resolves: u64 = 0;
@@ -4626,6 +4716,7 @@ fn run_walk(
                         &run,
                         on_success_stages.len(),
                         attempt,
+                        plan_site,
                     ),
                     None => {
                         eprintln!(
@@ -4657,12 +4748,24 @@ fn run_walk(
                 }
             }
 
-            if !write_on_success_receipt(
-                &stage_rows,
-                stage_resolves,
-                false,
-                on_success_stages.len(),
-            ) {
+            let aggregate_written = match walk_attempt_id {
+                Some(attempt) => write_on_success_receipt(
+                    &stage_rows,
+                    stage_resolves,
+                    false,
+                    on_success_stages.len(),
+                    attempt,
+                    plan_site,
+                ),
+                None => {
+                    eprintln!(
+                        "claim_executor: on-success aggregate receipt has no walk-attempt \
+                         identity — refusing to write an unattributable receipt"
+                    );
+                    false
+                }
+            };
+            if !aggregate_written {
                 on_success_failed = true;
             }
         }
@@ -5556,6 +5659,7 @@ mod tests {
                 .iter()
                 .map(|n| ClaimResult {
                     function: "fixture".to_string(),
+                    entry: "fixture.dag".to_string(),
                     ok: true,
                     detail: String::new(),
                     wall_nanos: 0,
@@ -5748,6 +5852,7 @@ mod tests {
     fn budget_kill_classifies_structurally_not_by_message_text() {
         let timed_out = ClaimResult {
             function: "some_witness".to_string(),
+            entry: "some_witness_test.dag".to_string(),
             ok: false,
             detail: "wording that mentions no budget phrase at all".to_string(),
             wall_nanos: 0,
@@ -5776,6 +5881,7 @@ mod tests {
         // And an ordinary witness red must NOT be dragged into BudgetExceeded.
         let plain = ClaimResult {
             function: "other_witness".to_string(),
+            entry: "other_witness_test.dag".to_string(),
             ok: false,
             detail: "returned Bool(false)".to_string(),
             wall_nanos: 0,
@@ -7471,6 +7577,7 @@ mod tests {
     fn latch_result(function: &str) -> ClaimResult {
         ClaimResult {
             function: function.to_string(),
+            entry: "latch_fixture.dag".to_string(),
             ok: true,
             detail: String::new(),
             wall_nanos: 0,
