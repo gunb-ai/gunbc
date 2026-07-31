@@ -36,6 +36,34 @@ fn wall_value_node() -> Node {
   }
 }
 
+fn wall_malformed_bool_with_payload() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } },
+    children: [
+      Edge {
+        label: Named { name: ^wall_malformed_bool_payload_field },
+        target: wall_value_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wall_malformed_int_with_extra_payload() -> Node {
+  let literal = dag_int_literal_fixture_one()
+  Node {
+    kind: literal.kind,
+    children: list_snoc_item(
+      xs: literal.children,
+      item: Edge {
+        label: Named { name: ^wall_malformed_int_payload_field },
+        target: wall_value_node()
+      }
+    ),
+    occurrence_id: literal.occurrence_id
+  }
+}
+
 fn wall_derived_type_node() -> Node {
   wall_atom(s: ^wall_derived_type_marker)
 }
@@ -155,4 +183,14 @@ test fn wall_frontier_node_has_no_resolved_type() -> Bool {
 
 test fn wall_frontier_is_counted_on_the_accepted_path() -> Bool {
   wall_infer_counts_frontier(root: wall_value_node())
+}
+
+test fn wall_malformed_bool_payload_is_not_grounded_or_discharged() -> Bool {
+  wall_grounding_for_node_refused(root: wall_malformed_bool_with_payload())
+    && wall_infer_counts_frontier(root: wall_malformed_bool_with_payload())
+}
+
+test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool {
+  wall_grounding_for_node_refused(root: wall_malformed_int_with_extra_payload())
+    && wall_infer_counts_frontier(root: wall_malformed_int_with_extra_payload())
 }

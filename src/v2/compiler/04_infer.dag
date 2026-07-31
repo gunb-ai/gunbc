@@ -7,7 +7,10 @@ import v2.std.bounded_lattice_completeness {
   partial_bounded_lattice_instances_in_tree
 }
 import v2.compiler.resolve { ResolvedTree }
-import v2.extdeps.languages.dag { dag_node_is_int_literal_atom }
+import v2.extdeps.languages.dag {
+  dag_node_is_canonical_bool_literal,
+  dag_node_is_canonical_int_literal
+}
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection {
   List,
@@ -535,15 +538,11 @@ fn infer_branch_int_binding_type_node() -> Node {
 }
 
 fn infer_branch_is_bool_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
-    _ => false
-  }
+  dag_node_is_canonical_bool_literal(node: node)
 }
 
 fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
-  dag_node_is_int_literal_atom(node: node)
+  dag_node_is_canonical_int_literal(node: node)
 }
 
 fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
@@ -894,14 +893,14 @@ type InferMatchArmRow {
 }
 
 fn infer_branch_is_bool_true_literal_atom(node: Node) -> Bool {
-  match node.kind {
+  infer_branch_is_bool_literal_atom(node: node) && match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
     _ => false
   }
 }
 
 fn infer_branch_is_bool_false_literal_atom(node: Node) -> Bool {
-  match node.kind {
+  infer_branch_is_bool_literal_atom(node: node) && match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
     _ => false
   }
@@ -1444,7 +1443,14 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
   }
 }
 
-data infer_literal_subtree_diagnostic_discharge_note: String = "A literal's modeled type derives from its whole representation, including the magnitude subtree. Its derivation discharges that subtree's local type frontier; propagating those diagnostics past the literal would report GroundingNotDerived after Int or Bool was derived. This discharge is restricted to the two modeled literal predicates, so unrelated underived children remain counted."
+data infer_literal_subtree_diagnostic_discharge_note: String = "An integer literal's modeled type derives from its canonical representation, including its sole named magnitude subtree. Its derivation discharges only that edge's local type frontier; propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean literals are canonical only with no children, so no boolean payload can be discharged. Malformed literals remain GroundingNotDerived and retain every child diagnostic."
+
+fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
+  infer_branch_is_int_literal_atom(node: parent) && match edge.label {
+    Named { name: field } => field == ^integer_literal_magnitude_field
+    Positional => false
+  }
+}
 
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
@@ -1469,8 +1475,7 @@ fn infer_gather_fold_step(
     )
   } else {
     let merged_entries = concat_inferred_facts_entries(a: acc.entries, b: child.entries)
-    let merged_pending = if infer_branch_is_bool_literal_atom(node: acc.node)
-      || infer_branch_is_int_literal_atom(node: acc.node) {
+    let merged_pending = if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
       acc.pending
     } else {
       diagnostics_merge(outer: acc.pending, inner: child.pending)

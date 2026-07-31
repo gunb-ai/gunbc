@@ -144,7 +144,7 @@ import v2.std.compilers.target_model {
   derive_bodied_arrow_scaffold}
 import v2.std.logic { Bool }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, for_all, is_empty, list_append, list_snoc_item }
+import v2.std.algebra { fold_list, for_all, is_empty, length, list_append, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -4071,6 +4071,11 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
+fn dag_node_is_canonical_bool_literal(node: Node) -> Bool {
+  (dag_node_is_kw_true_atom(node: node) || dag_node_is_kw_false_atom(node: node))
+    && (length(xs: node.children) == 0)
+}
+
 data dag_eval_literal_atom_authority_note: String = "Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this roster folds into it."
 
 fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
@@ -4187,6 +4192,17 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
         correction: None
       }
     )
+  }
+}
+
+fn dag_node_is_canonical_int_literal(node: Node) -> Bool {
+  if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    false
   }
 }
 
