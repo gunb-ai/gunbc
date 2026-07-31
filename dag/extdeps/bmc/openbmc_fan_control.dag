@@ -17,6 +17,7 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import extdeps.tools.jq { jq_authority }
+import extdeps.systemd.systemctl { systemctl_authority }
 import extdeps.bmc.openbmc_operation {
   OpenBmcCopyFilePreservingMetadata,
   OpenBmcDiskUsageKib,
@@ -69,6 +70,7 @@ import extdeps.bmc.openbmc_password_ssh_transport {
   openbmc_password_ssh_transport_note,
 }
 import std.measure {
+  ByteSize,
   Celsius,
   CelsiusDelta,
   Percent,
@@ -78,13 +80,14 @@ import std.measure {
   celsius_count,
   celsius_delta,
   celsius_delta_count,
+  byte_size,
   percent,
   percent_count,
   rpm,
   rpm_count,
   second_count,
 }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -94,6 +97,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data openbmc_fan_control_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
+
+data openbmc_systemctl_is_active_authority_note: String = "The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status when no named unit is active. This decoder admits only the exact inactive token as the typed false observation; other non-active states remain typed refusals rather than being collapsed into inactive."
+
+data openbmc_systemctl_is_active_authority: ExternalAuthority = systemctl_authority
 
 data openbmc_json_projection_authority: ExternalAuthority = jq_authority
 
@@ -177,6 +184,194 @@ type OpenBmcFanConfigObservation {
 type OpenBmcFanConfigObservationResult
   = OpenBmcFanConfigObserved { observation: OpenBmcFanConfigObservation }
   | OpenBmcFanConfigObservationRefused { reason: String }
+
+type OpenBmcPathResult
+  = OpenBmcPathObserved { path: NonEmptyStr }
+  | OpenBmcPathRefused { reason: String }
+
+type OpenBmcBoolResult
+  = OpenBmcBoolObserved { value: Bool }
+  | OpenBmcBoolRefused { reason: String }
+
+type OpenBmcByteSizeResult
+  = OpenBmcByteSizeObserved { value: ByteSize }
+  | OpenBmcByteSizeRefused { reason: String }
+
+type OpenBmcInstantResult
+  = OpenBmcInstantObserved { observed_at: EpochMs }
+  | OpenBmcInstantRefused { reason: String }
+
+fn openbmc_path_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcPathResult {
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "path transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcPathRefused { reason: reason }
+  } else {
+    let paths = split(s: remote.stdout, delimiter: "\n")
+      |> map(path => trim(path))
+      |> filter(path => path != "")
+    if paths.length() == 0 {
+      OpenBmcPathRefused { reason: "path response is empty" }
+    } else if paths.length() == 1 {
+      OpenBmcPathObserved { path: paths.first() as NonEmptyStr }
+    } else {
+      OpenBmcPathRefused {
+        reason: "path response contains more than one non-empty path",
+      }
+    }
+  }
+}
+
+fn openbmc_zone_failsafe_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcBoolResult {
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "zone failsafe transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcBoolRefused { reason: reason }
+  } else {
+    let tokens = split(s: trim(remote.stdout), delimiter: " ")
+      |> filter(token => trim(token) != "")
+    if tokens.length() != 2 || trim(tokens.first()) != "b" {
+      OpenBmcBoolRefused {
+        reason: "zone failsafe response does not have one typed boolean payload",
+      }
+    } else {
+      let payload = trim(tokens.skip(n: 1).first())
+      if payload == "true" {
+        OpenBmcBoolObserved { value: true }
+      } else if payload == "false" {
+        OpenBmcBoolObserved { value: false }
+      } else {
+        OpenBmcBoolRefused { reason: "zone failsafe payload is not boolean" }
+      }
+    }
+  }
+}
+
+fn openbmc_path_probe_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcBoolResult {
+  if remote.exit_code == 0 && remote.success {
+    OpenBmcBoolObserved { value: true }
+  } else if remote.exit_code == 1
+    && !remote.success
+    && trim(remote.stdout) == ""
+    && trim(remote.stderr) == "" {
+    OpenBmcBoolObserved { value: false }
+  } else {
+    let reason = if trim(remote.stderr) == "" {
+      concat(
+        "path predicate response is not the expected positive or negative shape; observed stdout: ",
+        trim(remote.stdout),
+      )
+    } else {
+      remote.stderr
+    }
+    OpenBmcBoolRefused { reason: reason }
+  }
+}
+
+fn openbmc_service_active_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcBoolResult {
+  if remote.exit_code == 0
+    && remote.success
+    && trim(remote.stdout) == "active"
+    && trim(remote.stderr) == "" {
+    OpenBmcBoolObserved { value: true }
+  } else if remote.exit_code == 3
+    && !remote.success
+    && trim(remote.stdout) == "inactive"
+    && trim(remote.stderr) == "" {
+    OpenBmcBoolObserved { value: false }
+  } else {
+    let reason = if trim(remote.stderr) == "" {
+      concat(
+        "service-active response is not the expected active or inactive shape; observed stdout: ",
+        trim(remote.stdout),
+      )
+    } else {
+      remote.stderr
+    }
+    OpenBmcBoolRefused { reason: reason }
+  }
+}
+
+fn openbmc_disk_usage_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcByteSizeResult {
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "disk usage transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcByteSizeRefused { reason: reason }
+  } else {
+    let lines = split(s: trim(remote.stdout), delimiter: "\n")
+    if lines.length() < 2 {
+      OpenBmcByteSizeRefused { reason: "disk usage response has no data row" }
+    } else {
+      let fields = split(
+        s: trim(lines.skip(n: 1).first()),
+        delimiter: " ",
+      ) |> filter(field => trim(field) != "")
+      if fields.length() < 4 {
+        OpenBmcByteSizeRefused {
+          reason: "disk usage data row has no available-kibibyte field",
+        }
+      } else {
+        match parse_int(s: trim(fields.skip(n: 3).first())) {
+          Absent =>
+            OpenBmcByteSizeRefused {
+              reason: "available-kibibyte field is not an integer",
+            }
+          Present { value: kibibytes } =>
+            if kibibytes < 0 {
+              OpenBmcByteSizeRefused {
+                reason: "available-kibibyte field is negative",
+              }
+            } else {
+              OpenBmcByteSizeObserved { value: byte_size(kibibytes * 1024) }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn openbmc_epoch_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcInstantResult {
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "UTC timestamp transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcInstantRefused { reason: reason }
+  } else {
+    match parse_int(s: trim(remote.stdout)) {
+      Absent =>
+        OpenBmcInstantRefused { reason: "UTC epoch-second response is not an integer" }
+      Present { value: epoch_seconds } =>
+        if epoch_seconds < 0 {
+          OpenBmcInstantRefused { reason: "UTC epoch-second response is negative" }
+        } else {
+          OpenBmcInstantObserved { observed_at: epoch_seconds * 1000 }
+        }
+    }
+  }
+}
 
 fn openbmc_execute(
   session: PasswordSshSession,
@@ -624,22 +819,35 @@ fn openbmc_read_file(
 fn openbmc_resolve_path(
   session: PasswordSshSession,
   path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcResolvePath { path: path })
+) -> OpenBmcPathResult {
+  let remote = openbmc_execute(
+    session: session,
+    operation: OpenBmcResolvePath { path: path },
+  )
+  openbmc_path_result(remote: remote)
 }
 
 fn openbmc_parent_directory(
   session: PasswordSshSession,
   path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcParentDirectory { path: path })
+) -> OpenBmcPathResult {
+  let remote = openbmc_execute(
+    session: session,
+    operation: OpenBmcParentDirectory { path: path },
+  )
+  openbmc_path_result(remote: remote)
 }
 
 fn openbmc_systemd_is_active(
   session: PasswordSshSession,
   service: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcSystemdIsActive { service: service })
+) -> OpenBmcBoolResult {
+  openbmc_service_active_result(
+    remote: openbmc_execute(
+      session: session,
+      operation: OpenBmcSystemdIsActive { service: service },
+    ),
+  )
 }
 
 fn openbmc_systemd_restart(
@@ -652,8 +860,12 @@ fn openbmc_systemd_restart(
 fn openbmc_zone_failsafe(
   session: PasswordSshSession,
   zone_path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcZoneFailsafe { zone_path: zone_path })
+) -> OpenBmcBoolResult {
+  let remote = openbmc_execute(
+    session: session,
+    operation: OpenBmcZoneFailsafe { zone_path: zone_path },
+  )
+  openbmc_zone_failsafe_result(remote: remote)
 }
 
 type OpenBmcSensorServicesResult
@@ -705,6 +917,16 @@ type OpenBmcTachHealth
       minimum_rpm: RevolutionsPerMinute,
       source: OpenBmcTachThresholdSource,
     }
+
+fn openbmc_tach_health_sensor(
+  health: OpenBmcTachHealth,
+) -> NonEmptyStr {
+  match health {
+    OpenBmcTachThresholdUnstated { sensor, reason: _ } => sensor
+    OpenBmcTachBelowThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+    OpenBmcTachAtOrAboveThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+  }
+}
 
 type OpenBmcTachHealthResult
   = OpenBmcTachHealthObserved { health: OpenBmcTachHealth }
@@ -1459,15 +1681,25 @@ fn openbmc_fan_config_project_local(
 fn openbmc_path_is_writable(
   session: PasswordSshSession,
   path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcPathIsWritable { path: path })
+) -> OpenBmcBoolResult {
+  openbmc_path_probe_result(
+    remote: openbmc_execute(
+      session: session,
+      operation: OpenBmcPathIsWritable { path: path },
+    ),
+  )
 }
 
 fn openbmc_path_exists(
   session: PasswordSshSession,
   path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcPathExists { path: path })
+) -> OpenBmcBoolResult {
+  openbmc_path_probe_result(
+    remote: openbmc_execute(
+      session: session,
+      operation: OpenBmcPathExists { path: path },
+    ),
+  )
 }
 
 fn openbmc_path_is_nonempty_file(
@@ -1480,14 +1712,19 @@ fn openbmc_path_is_nonempty_file(
 fn openbmc_disk_usage_kib(
   session: PasswordSshSession,
   path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcDiskUsageKib { path: path })
+) -> OpenBmcByteSizeResult {
+  let remote = openbmc_execute(
+    session: session,
+    operation: OpenBmcDiskUsageKib { path: path },
+  )
+  openbmc_disk_usage_result(remote: remote)
 }
 
 fn openbmc_utc_timestamp(
   session: PasswordSshSession,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcUtcTimestamp)
+) -> OpenBmcInstantResult {
+  let remote = openbmc_execute(session: session, operation: OpenBmcUtcTimestamp)
+  openbmc_epoch_result(remote: remote)
 }
 
 fn openbmc_make_directory(

@@ -15,7 +15,7 @@ use v1_compiler::cli_run::{
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
-    top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
+    top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
     TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
@@ -708,6 +708,23 @@ struct ClaimResult {
     corpus_witnesses: usize,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
     witness_row_costs: Vec<(String, String, u128, u128, u128, String, String)>,
+    /// Set only when this row was killed at a budget, carrying the pair that explains it.
+    ///
+    /// `ok`/`detail` are a lossy flattening of `ClaimOutcome`, so without this the batch's
+    /// failure mode has to be recovered by substring-matching `detail` — which is what
+    /// `falsifier_failure_mode` did, and its fallback arm is `WitnessRed`, so a reworded
+    /// message silently demoted a budget refusal to a witness failure. This keeps the fact
+    /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
+    /// not a second authority: nothing sets it except the `TimedOut` arm below.
+    budget_refusal: Option<BudgetRefusal>,
+}
+
+/// The pair explaining a budget kill, kept alongside the flattened `ok`/`detail`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BudgetRefusal {
+    elapsed_ms: u64,
+    budget_ms: u64,
+    kind: BudgetKind,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -829,6 +846,7 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
@@ -840,6 +858,7 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
@@ -851,6 +870,7 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
@@ -862,6 +882,37 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
+        },
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => ClaimResult {
+            function,
+            ok: false,
+            // The detail still names the budget in prose for the human reading a log, but
+            // `budget_refusal` beside it is what classification reads — so the mode no
+            // longer depends on this wording. "ceiling" is deliberate: the row was killed
+            // AT the budget, so elapsed bounds the cost, it does not measure it.
+            detail: format!(
+                "killed at its {} budget: {}ms elapsed > {}ms budget (elapsed is a ceiling, \
+                 not a completed duration)",
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: Some(BudgetRefusal {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            }),
         },
     }
 }
@@ -885,6 +936,7 @@ fn run_batch_unit(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -965,6 +1017,7 @@ fn run_shared_entry_claims(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 })
                 .collect();
         }
@@ -1024,6 +1077,7 @@ fn run_memo_shared_claims(
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
                         witness_row_costs: Vec::new(),
+                        budget_refusal: None,
                     })
                     .collect();
             }
@@ -1409,6 +1463,34 @@ fn read_schedule_witness_entry_paths(
     }
 }
 
+/// The first budget kill among this discovery batch's witnesses, if any.
+///
+/// Discovery is the falsifier path — it is where the incident that motivated the typed
+/// `TimedOut` actually lives (`resolution_divergence_silent_pick_gate_keystone_holds` is a
+/// discovery row). A discovery batch flattens N witness outcomes into one `ok`/`detail`
+/// pair, so without lifting the refusal out of `witness_outcomes` the batch would carry
+/// `budget_refusal: None`, miss the structural path in `batch_failure_mode_and_detail`, and
+/// fall back to substring-matching a detail string that no longer contains the old budget
+/// prose — reporting `WitnessRed` for a budget kill on the exact path this change exists to
+/// fix (review 45220).
+fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal> {
+    summary
+        .witness_outcomes
+        .iter()
+        .find_map(|w| match w.outcome {
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => Some(BudgetRefusal {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            }),
+            _ => None,
+        })
+}
+
 fn discovery_claim_result(
     function: String,
     ok: bool,
@@ -1430,6 +1512,7 @@ fn discovery_claim_result(
             corpus_eval_nanos: summary.total_measured_nanos,
             corpus_witnesses: summary.total,
             witness_row_costs,
+            budget_refusal: discovery_budget_refusal(summary),
         },
         Err(msg) => {
             eprintln!("[witness-row-cost] refused: {msg}");
@@ -1452,6 +1535,11 @@ fn discovery_claim_result(
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
                 witness_row_costs: Vec::new(),
+                // Same rule as the detail above: a receipt refusal ADDS a cause, it does not
+                // erase the one already established. A batch that blew its budget and then
+                // failed to project its receipt is still a budget kill, and dropping that
+                // here would hand it back to the substring classifier.
+                budget_refusal: discovery_budget_refusal(summary),
             }
         }
     }
@@ -1614,6 +1702,7 @@ fn run_discovery_batch_node(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 }
             } else {
                 ClaimResult {
@@ -1626,6 +1715,7 @@ fn run_discovery_batch_node(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 }
             }
         }
@@ -2177,6 +2267,21 @@ fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
         return ("none", "no failures recorded".to_string());
     }
     let joined = details.join(" | ");
+    // Read the budget refusal off the VALUE, never off the prose. `falsifier_failure_mode`
+    // recovers "BudgetExceeded" by substring-matching the message the seed had already
+    // formatted from the typed pair — one fact in two representations, the second guessed
+    // back from the first — and its fallback arm is "WitnessRed", so rewording an error
+    // silently demoted a budget refusal to a witness failure (two different remedies:
+    // re-basis a dated ceiling vs. fix the witness). A structurally-known refusal wins
+    // outright; the string classifier stays only for the paths that still arrive as
+    // RuntimeError prose (interpreter-raised budgets, infra strings) and dissolves as
+    // those are typed at their own seams.
+    if rec.results.iter().any(|r| r.budget_refusal.is_some()) {
+        return (
+            "BudgetExceeded",
+            joined.chars().take(600).collect::<String>(),
+        );
+    }
     (
         falsifier_failure_mode(&details),
         joined.chars().take(600).collect::<String>(),
@@ -4621,6 +4726,71 @@ mod tests {
         ));
     }
 
+    fn batch_record_for_test(results: Vec<ClaimResult>) -> BatchRecord {
+        BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: results.len() as u128,
+            results,
+            label: "batch-under-test".to_string(),
+            selection_tag: "off",
+        }
+    }
+
+    /// A budget kill must classify as BudgetExceeded from the VALUE, not from the message.
+    ///
+    /// RED control: the detail string here deliberately contains none of the substrings
+    /// `falsifier_failure_mode` looks for, so under the old string-sniffing path this row
+    /// would fall through to the `else` arm and report `WitnessRed` — silently swapping
+    /// "re-basis a dated ceiling" for "fix the witness". Passing proves the mode is read
+    /// off `budget_refusal`, so message wording can change without moving the class.
+    #[test]
+    fn budget_kill_classifies_structurally_not_by_message_text() {
+        let timed_out = ClaimResult {
+            function: "some_witness".to_string(),
+            ok: false,
+            detail: "wording that mentions no budget phrase at all".to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: Some(BudgetRefusal {
+                elapsed_ms: 900_001,
+                budget_ms: 900_000,
+                kind: BudgetKind::Wall,
+            }),
+        };
+        // Sanity: the string classifier alone really would misclassify this detail.
+        assert_eq!(
+            falsifier_failure_mode(&[timed_out.detail.clone()]),
+            "WitnessRed",
+            "control is only meaningful if the string path would get this wrong"
+        );
+
+        let rec = batch_record_for_test(vec![timed_out]);
+        let (mode, _detail) = batch_failure_mode_and_detail(&rec);
+        assert_eq!(mode, "BudgetExceeded");
+
+        // And an ordinary witness red must NOT be dragged into BudgetExceeded.
+        let plain = ClaimResult {
+            function: "other_witness".to_string(),
+            ok: false,
+            detail: "returned Bool(false)".to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+        };
+        let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
+        assert_eq!(mode, "WitnessRed");
+    }
+
     #[test]
     fn falsifier_failure_mode_classifies_three_arms() {
         assert_eq!(
@@ -6109,6 +6279,91 @@ mod tests {
         let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
             .expect_err("zero eval must refuse");
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
+    }
+
+    /// Discovery is THE falsifier path — `resolution_divergence_silent_pick_gate_keystone_holds`
+    /// is a discovery row — so a budget kill there must classify structurally like any other.
+    ///
+    /// RED control for review 45220, which caught this as a live regression: a discovery batch
+    /// flattens N witness outcomes into one `ok`/`detail`, and this result previously hardcoded
+    /// `budget_refusal: None`. Combined with the new detail wording (which deliberately contains
+    /// none of `falsifier_failure_mode`'s substrings), a budget kill on the primary path fell
+    /// through to `WitnessRed` — the exact misclassification this change exists to remove, in
+    /// new prose. The assertion below on the string classifier keeps the control non-vacuous.
+    #[test]
+    fn discovery_budget_kill_classifies_structurally_on_the_falsifier_path() {
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let killed_detail =
+            "1 of 1 discovery witness(es) failed: fn=silent_pick killed at its wall budget: \
+             900001ms elapsed > 900000ms budget";
+        assert_eq!(
+            falsifier_failure_mode(&[killed_detail.to_string()]),
+            "WitnessRed",
+            "control is only meaningful if the string path would misclassify this detail"
+        );
+
+        let summary_with = |outcome: ClaimOutcome| DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
+            failures: vec![killed_detail.into()],
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag"
+                    .into(),
+                module_path: "test.claim.resolution_divergence_silent_pick_gate".into(),
+                function: "resolution_divergence_silent_pick_gate_keystone_holds".into(),
+                outcome,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+        };
+        let killed = ClaimOutcome::TimedOut {
+            elapsed_ms: 900_001,
+            budget_ms: 900_000,
+            kind: BudgetKind::Wall,
+        };
+
+        // Both arms: the receipt projection may succeed or refuse, and a receipt refusal must
+        // ADD a cause rather than erase the budget kill already established.
+        for projected in [
+            Ok(Vec::new()),
+            Err("[witness-row-cost] REFUSED: missing measured resolve parent".to_string()),
+        ] {
+            let result = discovery_claim_result(
+                "discovery-corpus".into(),
+                false,
+                killed_detail.to_string(),
+                &summary_with(killed.clone()),
+                projected,
+            );
+            assert!(
+                result.budget_refusal.is_some(),
+                "discovery batch must lift the budget kill out of witness_outcomes"
+            );
+            let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![result]));
+            assert_eq!(mode, "BudgetExceeded");
+        }
+
+        // And a discovery batch with an ordinary red must NOT be dragged into BudgetExceeded.
+        let result = discovery_claim_result(
+            "discovery-corpus".into(),
+            false,
+            "red".into(),
+            &summary_with(ClaimOutcome::Fail),
+            Ok(Vec::new()),
+        );
+        assert!(result.budget_refusal.is_none());
     }
 
     #[test]

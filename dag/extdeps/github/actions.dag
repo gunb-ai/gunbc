@@ -198,15 +198,6 @@ type ArtifactOp
 
 type MissingFilesBehavior = Warn | ErrorOut | Ignore
 
-data upload_artifact_action: ActionRef = ActionRef {
-  owner: "actions", repo: "upload-artifact", ref: "v2"
-}
-
-data download_artifact_action: ActionRef = ActionRef {
-  owner: "actions", repo: "download-artifact", ref: "v2"
-}
-
-
 data checkout_action: ActionRef = ActionRef {
   owner: "actions", repo: "checkout", ref: "v5"
 }
@@ -230,6 +221,8 @@ data upload_artifact_action: ActionRef = ActionRef {
 data download_artifact_action: ActionRef = ActionRef {
   owner: "actions", repo: "download-artifact", ref: "v4"
 }
+
+data action_ref_double_bound_finding_note: String = "review 44886 surfaced this while ActionRef was being used as the SECOND SUBJECT proving Pin<Subject> composes, and the defect it found has nothing to do with pinning. THE DEFECT: upload_artifact_action and download_artifact_action were EACH DECLARED TWICE in this module — an earlier pair at ref v2 and a later pair at ref v4 — so one name carried two different upstream versions and the module silently resolved it by declaration order. Introduced by #6472 (2026-07-11), which added the v4 rows without deleting the v2 rows it superseded. WHICH ONE WON, ESTABLISHED BY EXECUTION RATHER THAN BY READING THE RULE: the emitted .github/workflows/ci.yml carries actions/upload-artifact@v4 and actions/download-artifact@v4 at every occurrence, so the LAST binding wins and the v2 rows were dead. That is the only reason this was a latent defect rather than a live one — the corpus happened to be ordered so the intended version won. Reverse the two blocks and every artifact step in CI silently downgrades to a version GitHub has since deprecated, with nothing anywhere reporting a change. The v2 rows are deleted here and the emitted ci.yml is byte-identical, which is the proof they were genuinely unreachable. WHY THE FIX IS A DELETION AND NOT A RENAME: these were never two concepts needing two names. They are one concept that was edited by addition, so the correct end state is one binding per name (DESIGN section 3 single authority), not a disambiguated pair. WHAT THIS MODULE CANNOT DO ABOUT IT, which is the part worth carrying: a double-bound name is DECIDABLE — it is exactly the unbound/double-bound error the namespace authority already specifies (docs/plans/namespace-resolution-design.md, where a binding edge that is double-bound is an error rather than a last-wins resolution), so the class belongs to that lane as a construction wall, not to a reviewer noticing it. Until that lands, declaration order is load-bearing in every .dag module and nothing says so. dissolve-on: feature:double-bound-declaration-refuses — a second binding of a name in one module is a typed, located refusal at compile time; at that point this note deletes and the class becomes unwritable rather than reviewed. This is the same shape as pin_cited_symbol_verification_note in extdeps.pin: a defect that prose caught once and that only the substrate can stop repeating."
 
 data max_job_timeout_minutes: Int = 360
 
