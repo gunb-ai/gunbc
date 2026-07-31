@@ -45,9 +45,9 @@ type FamilyVerificationLedgerRow {
   dissolve_trigger: String
 }
 
-data spine_witness_parity_recipe: String = "claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_batches (batch 0 = SelectionPredictOnly whole-corpus cold affected-set falsifier; zero unexplained divergence vs predict-only expectations — a rerun-everything arm is the absorbing-fallback hard reject)"
+data spine_witness_parity_recipe: String = "claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_plan (batch 0 = SelectionPredictOnly whole-corpus cold affected-set falsifier; zero unexplained divergence vs predict-only expectations — a rerun-everything arm is the absorbing-fallback hard reject)"
 
-data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree; same authority as gunbc_ci_floor_batches)"
+data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree; same authority as gunbc_ci_floor_plan)"
 
 data spine_regen_recipe: String = "regen_stage0 --emit-fresh target/v2-emit-fresh-realize --write-manifest target/v2-emit-fresh-realize/roster_manifest.txt --verify (RegenVerifyGate transport)"
 

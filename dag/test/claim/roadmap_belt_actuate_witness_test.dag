@@ -55,6 +55,10 @@ import gunbc.roadmap_belt_actuate {
   belt_claude_preflight_decision,
   BeltCodexPreflight, CodexPreflightOk, CodexPreflightRefused,
   belt_codex_preflight_decision_observed_for_home,
+  BeltFootprintObservation,
+  BeltFootprintAdmission, FootprintAdmitted, FootprintRefused,
+  belt_footprint_admission_decision,
+  belt_dispatch_footprint_roots,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -703,4 +707,80 @@ test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
           && instance_id == (preview.instance_id as String)
       _ => false
     }
+}
+
+data footprint_admission_witness_note: String = "Every arm of belt_footprint_admission_decision is exercised on SYNTHETIC observations, the same discipline belt_claude_preflight_decision and belt_observe_from_result already follow: the decision is a pure fn over facts, so its arms are witnessable without a host, and the live half (belt_footprint_observe) only threads real probe results into it. The arms are not interchangeable and the tests say why — absent, unwritable, and unsearchable name three different remedies (converge the member, fix ownership drift, fix the mode), which is the whole point of not collapsing them into one `unusable` Bool. The short-circuit witness is the load-bearing one for operator experience: with two bad roots the FIRST is reported rather than the last, so the refusal names the member a human should look at first rather than whichever happened to sort last."
+
+fn footprint_obs(
+  member: String,
+  present: Bool,
+  writable: Bool,
+  searchable: Bool,
+) -> BeltFootprintObservation {
+  BeltFootprintObservation {
+    member: member,
+    path: join(["/opt/gunbc/", member], ""),
+    present: present,
+    writable: writable,
+    searchable: searchable,
+  }
+}
+
+fn footprint_refusal_step(admission: BeltFootprintAdmission) -> String {
+  match admission {
+    FootprintAdmitted => "admitted"
+    FootprintRefused { step: st, detail: _ } => st
+  }
+}
+
+test fn witness_footprint_all_roots_usable_admits() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "dispatch-worktrees", present: true, writable: true, searchable: true),
+    footprint_obs(member: "attempt-state", present: true, writable: true, searchable: true),
+  ])
+  footprint_refusal_step(admission: verdict) == "admitted"
+}
+
+test fn witness_footprint_absent_root_refuses() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "dispatch-worktrees", present: true, writable: true, searchable: true),
+    footprint_obs(member: "attempt-state", present: false, writable: false, searchable: false),
+  ])
+  footprint_refusal_step(admission: verdict) == "footprint-root-absent"
+}
+
+test fn witness_footprint_unwritable_root_refuses() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "attempt-state", present: true, writable: false, searchable: true),
+  ])
+  footprint_refusal_step(admission: verdict) == "footprint-root-unwritable"
+}
+
+test fn witness_footprint_unsearchable_root_refuses() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "attempt-state", present: true, writable: true, searchable: false),
+  ])
+  footprint_refusal_step(admission: verdict) == "footprint-root-unsearchable"
+}
+
+test fn witness_footprint_refusal_names_the_first_bad_root() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "dispatch-worktrees", present: false, writable: false, searchable: false),
+    footprint_obs(member: "attempt-state", present: true, writable: false, searchable: true),
+  ])
+  let step_is_first = footprint_refusal_step(admission: verdict) == "footprint-root-absent"
+  let names_first = match verdict {
+    FootprintRefused { step: _, detail: d } =>
+      string_contains(s: d, pattern: "dispatch-worktrees")
+    FootprintAdmitted => false
+  }
+  step_is_first && names_first
+}
+
+test fn witness_footprint_roots_cover_both_belt_write_targets() -> Bool {
+  let roots = belt_dispatch_footprint_roots(instance: srv2_preview_dashboard_instance())
+  let paths = join(map(roots, r => r.path), "|")
+  let has_worktrees = string_contains(s: paths, pattern: "attempts")
+  let has_attempt_state = string_contains(s: paths, pattern: "attempt-state")
+  has_worktrees && has_attempt_state
 }

@@ -39,11 +39,8 @@ import gunbc.repo_identity {
   gunbc_default_branch_name,
 }
 import extdeps.git { GitRemoteRefParts, git_remote_ref }
-import gunbc.ci_materialization {
-  ci_floor_resolve_receipt_gate_script,
-  ci_floor_materialization_receipt_gate_script,
-}
 import gunbc.ci_workflow { ci_selection_control_script }
+import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.merge_admission_produce {
   merge_admission_merge_base_ref,
 }
@@ -153,7 +150,7 @@ test fn witness_run_script_invokes_scheduler() -> Bool {
   let floor_script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: git_fetch_script(policy: gunbc_ci_spec.diff_policy)) &&
     string_contains(s: script, pattern: scheduler_invoke(spec: gunbc_ci_spec)) &&
-    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches") &&
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_plan") &&
     !string_contains(s: floor_script, pattern: "--bin claim_batch") &&
     !string_contains(s: floor_script, pattern: "cargo build") &&
     !string_contains(s: script, pattern: "cargo run -p v1-compiler --release --bin claim_executor")
@@ -256,7 +253,7 @@ test fn witness_documentation_only_floor_shortcut_retired() -> Bool {
     !string_contains(s: script, pattern: "if [ \"$_ci_floor_skip\" = \"documentation_only_skip\" ]; then") &&
     !string_contains(s: script, pattern: "floor skipped (CI_FLOOR_DISPOSITION=") &&
     !string_contains(s: script, pattern: "CI_FLOOR_DISPOSITION=documentation_only_skipped") &&
-    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches")
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_plan")
 }
 
 test fn witness_merge_base_ref_single_authority() -> Bool {
@@ -303,20 +300,22 @@ test fn witness_selection_control_scoped_red_control() -> Bool {
   !selection_control_scoped_holds_for(s: missing_suite_invocation)
 }
 
+data receipt_gate_scripts_deleted_note: String = "The resolve-receipt and materialization-receipt gate SCRIPTS are deleted, not just unwired (ruling 2026-07-30): their laws run inside claim_executor as ordinary-floor finalization, and a surviving script would be a second representation of the floor-completion rule whose still-green tests could mask a live-path regression — the exact shape that hid the lost admission fetch. This witness therefore asserts their step names are ABSENT from the emitted workflow, and the disposition-transport check below keeps covering only the scripts that still exist."
+
+test fn witness_receipt_gate_steps_absent_from_workflow() -> Bool {
+  let yaml = expected_ci_yml()
+  !string_contains(s: yaml, pattern: "Floor resolve receipt gate") &&
+    !string_contains(s: yaml, pattern: "Floor materialization receipt gate")
+}
+
 test fn witness_documentation_only_disposition_transport_retired() -> Bool {
   let marker_path = "target/ci-floor-disposition.txt"
   let skipped_disposition = "documentation_only_skipped"
   let floor = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
-  let resolve_gate = ci_floor_resolve_receipt_gate_script()
-  let materialization_gate = ci_floor_materialization_receipt_gate_script()
   let selection_gate = ci_selection_control_script()
   let admission_gate = ci_merge_admission_gate_script()
   !string_contains(s: floor, pattern: marker_path) &&
     !string_contains(s: floor, pattern: skipped_disposition) &&
-    !string_contains(s: resolve_gate, pattern: marker_path) &&
-    !string_contains(s: resolve_gate, pattern: skipped_disposition) &&
-    !string_contains(s: materialization_gate, pattern: marker_path) &&
-    !string_contains(s: materialization_gate, pattern: skipped_disposition) &&
     !string_contains(s: selection_gate, pattern: marker_path) &&
     !string_contains(s: selection_gate, pattern: skipped_disposition) &&
     !string_contains(s: admission_gate, pattern: marker_path) &&

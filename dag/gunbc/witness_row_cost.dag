@@ -45,6 +45,7 @@ import std.observation {
   Done,
   Refused,
   Failed,
+  TimedOut,
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -519,5 +520,25 @@ fn witness_cost_seed_failed_event(
     declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
     eval: eval,
     outcome: Failed { error: error, output: "" }
+  )
+}
+
+data witness_cost_seed_timed_out_note: String = "A deadline-killed witness is TimedOut, never Failed and never Done. The distinction is not cosmetic: a killed row's recorded wall is its CEILING, not its cost — a censored measurement — so anything that reads it as a completed duration is reading a fabricated value. The concrete price was paid twice. The falsifier alert reported the whole run red and erased its green components (gunbc.floor_component_receipt), and the witness row-cost basis could not seed the corpus's most expensive row at all: resolution_divergence_silent_pick_gate_keystone_holds was killed at 900000ms but recorded a flat 900794ms, and seeding that under the 2x comparator would have pinned the row WithinBasis below ~1.8M ms forever, enshrining a deadline ceiling as normal cost. Upstream of this constructor the seed used to flatten the typed budget pair into a message string and the floor then recovered the classification by substring-matching that same prose (falsifier_failure_mode's .contains checks), whose fallback arm is WitnessRed — so rewording an error silently reclassified a budget refusal as a witness failure. Both budget clocks route here: cpu (thread CPU, the stride-poll metric) and wall (whole-receipt, counting subprocess I/O) are different states with different remedies, so the seed keeps them apart as BudgetKind and surfaces the label in the failure detail and the batch failure mode. It is deliberately NOT a field on this event: ObservationOutcome.TimedOut carries budget and elapsed only, and extending that sum is a change to load-bearing substrate (std.observation) that this lane does not carry the mandate for. The consequence is stated rather than hidden — an ObservationEvent alone does not say which clock expired; the seed-side detail does. Dissolve-on: if a consumer needs the clock from the event itself, that is the argument for taking the field to std.observation, not for widening it here. Parameters are Millisecond carriers, not bare Nat: the caller is what can get a unit wrong, and the seed constructs the carrier by calling millisecond(count:) across the boundary so the constructor stays the single authority."
+
+data witness_cost_timed_out_seed_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side Rust this constructor is fed by (review 45226 asked for it, correctly, and the sibling gunbc.floor_component_receipt seed_transport_deferral_note is the precedent it matches). WHAT IS ADDED: no new Rust file and no parallel authority — a variant on the existing ClaimOutcome sum in the already-seed-retained cli_run module (TimedOut carrying elapsed_ms/budget_ms/kind), the BudgetKind label pair, a BudgetRefusal projection field on ClaimResult so the fact survives the flattening into ok/detail, and discovery_budget_refusal which lifts that fact out of a discovery batch's witness_outcomes. WHAT IT REPLACES rather than accumulates: the two format!-into-RuntimeError sites and the reliance on falsifier_failure_mode's substring recovery of the classification — the change is net-negative on the seed's judgment surface, since the seed no longer decides what a budget message MEANS by reading its own prose. WHAT IS NOT IN RUST: the outcome vocabulary and the receipt shape, which are std.observation's ObservationOutcome and this module's projection; the seed constructs no carrier, calling millisecond(count:) through the interpreter and handing the resulting Millisecond back, so no flat-scalar duration crosses the seam. DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION: this transport deletes when witness execution is realized from .dag rather than interpreted in the seed bin (the witness-realization lane — emit witnesses to native code and schedule the runs through realization/materialization), at which point the budget deadline is enforced by the realized runner and the TimedOut event is constructed here directly instead of being marshalled across the interpreter boundary. Note this is a DIFFERENT trigger from witness_cost_seed_timed_out_note's, which concerns adding the clock kind to std.observation; that one widens the modeled outcome, this one deletes the seed transport, and neither implies the other."
+
+fn witness_cost_seed_timed_out_event(
+  entry: NonEmptyStr,
+  module_path: NonEmptyStr,
+  function: NonEmptyStr,
+  eval: Nanosecond,
+  budget: Millisecond,
+  elapsed: Millisecond,
+) -> ObservationEvent {
+  witness_cost_declaration_event(
+    entry: entry,
+    declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
+    eval: eval,
+    outcome: TimedOut { budget: budget, elapsed: elapsed }
   )
 }
