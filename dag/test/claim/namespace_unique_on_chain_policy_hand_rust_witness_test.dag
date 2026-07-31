@@ -55,10 +55,10 @@ test fn namespace_unique_on_chain_policy_hand_rust_total_is_the_sum_of_its_rows(
   (((namespace_unique_on_chain_policy_loc_delta_net +
     namespace_unique_on_chain_policy_cli_run_hand_rust_loc_delta_net) +
     namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_loc_delta_net) +
-    namespace_unique_on_chain_policy_merge_repair_hand_rust_loc_delta_net) == 208 &&
+    namespace_unique_on_chain_policy_merge_repair_hand_rust_loc_delta_net) == 205 &&
     string_contains(
       s: namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note,
-      pattern: "= +208",
+      pattern: "= +205",
     )
 }
 
