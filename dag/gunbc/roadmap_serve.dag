@@ -65,6 +65,7 @@ import gunbc.roadmap_belt_actuate {
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
 }
+import gunbc.roadmap_dashboard_instance_apply { dashboard_provider_readiness_json }
 import gunbc.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,
@@ -97,6 +98,7 @@ type RoadmapServeHandler
   | DispatchJsonHandler
   | HealthzHandler
   | DashboardInstanceHandler
+  | ProviderReadinessHandler
   | BeltDispatchHandler
   | DispatchAssetHandler
   | SandboxPageHandler
@@ -127,6 +129,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/provider.json", handler: ProviderReadinessHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sessions.json", handler: SessionsJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
@@ -335,6 +338,12 @@ fn roadmap_serve_invoke_for_instance(
         status: 200,
         content_type: application_json_utf8,
         body: dashboard_instance_json(instance: instance),
+      )
+    ProviderReadinessHandler =>
+      serve_text_response(
+        status: 200,
+        content_type: application_json_utf8,
+        body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
       serve_dispatch_handler_response_for_instance(instance: instance, params: params)

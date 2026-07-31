@@ -1209,6 +1209,8 @@ fn where_refinement_value_under_cast(value_expr: Node) -> Node {
   }
 }
 
+data where_refinement_peel_cost_note: String = "Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal path (predicates present AND not covered), inside the final else of where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded resolve_node_bounded work per host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded."
+
 fn where_refinement_mismatch_diags(
   formal: Node,
   value_expr: Node,
@@ -1221,7 +1223,6 @@ fn where_refinement_mismatch_diags(
     Present { value: resolved } => resolved
     Absent => formal
   }
-  let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
   let preds = type_where_refinement_predicates_transitive(ty: formal_resolved, type_env: type_env)
   if preds |> count == 0 {
     []
@@ -1240,6 +1241,7 @@ fn where_refinement_mismatch_diags(
     ) {
       []
     } else {
+      let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
       flat_map(
         preds,
         pred => where_refinement_diags_for_predicate(
@@ -7735,27 +7737,16 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
   )
 }
 
+data merge_global_bare_variant_locals_cost_note: String = "Cost shape (bare-minimum-cost, DESIGN 6): the census-eligible variant-owner pairs depend only on global_bare and the name-census si — whole-closure facts identical for every module — so build_global_bare_variant_locals computes them ONCE per closure in typecheck_with_census_extra and the base map threads down realize_module -> typecheck_module -> build_module_context. The former per-module shape rescanned the whole census and re-inserted every eligible pair into every module's locals: 464 modules x 12,554 census keys = 5.8M iterations and 1.29M persistent-map inserts = 31s of the host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31; PR 7398 landed build_global_bare_variant_locals beside the per-module fold but never wired it). map_merge(base, state.locals) is value-identical to the old fold: overlay wins on collision exactly as the old skip-if-present arm kept state's binding, and the old checked-insert collision arm was unreachable (presence was checked before insert), so the global merge contributed zero collision errors then and now. Fidelity of the hoisted si: authored_name_at reads names identically under the raw closure source_indices and the kernel-augmented env.source_indices (kernel spans compute the same name in both arms; non-kernel misses fall back to node.name in both), and the census owners all live in closure files, so eligibility is unchanged."
+
 fn merge_global_bare_variant_locals(
   state: VariantFoldState,
-  global_bare: Map<String, GlobalBareLookupState>,
-  source_indices: Map<String, NewlineIndex>,
-  module_name: String
+  global_variant_base: Map<String, TypeBinding>
 ) -> VariantFoldState {
-  fold(global_bare |> map_keys, init: state, f: (acc, name) =>
-    match map_get(global_bare, name) {
-      Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
-        let owner = binding.resolved
-        if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
-          match map_get(acc.locals, name) {
-            Present { value: _ } => acc
-            Absent => insert_variant_owner_checked(state: acc, arm_name: name, owner: owner, source_indices: source_indices, module_name: module_name)
-          }
-        } else {
-          acc
-        }
-      _ => acc
-    }
-  )
+  VariantFoldState {
+    locals: map_merge(global_variant_base, state.locals),
+    collision_errors: state.collision_errors
+  }
 }
 
 fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
@@ -7889,7 +7880,8 @@ fn build_module_context(contributions: List<ItemContribution>,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
-    module_name: String) -> ModuleContext {
+    module_name: String,
+    global_variant_base: Map<String, TypeBinding>) -> ModuleContext {
   let local = fold_module_contributions(
     remaining: contributions,
     resolved_items: [],
@@ -7915,9 +7907,7 @@ fn build_module_context(contributions: List<ItemContribution>,
       module_name: module_name,
       init: local_variant_fold
     ),
-    global_bare: env.symbol_index.global_bare,
-    source_indices: env.source_indices,
-    module_name: module_name
+    global_variant_base: global_variant_base
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
@@ -7984,7 +7974,7 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> TypecheckModuleResult {
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -8025,7 +8015,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     variant_surfaces: variant_surfaces,
     resolved_imports: resolved.resolved_imports,
     env: env,
-    module_name: resolved_module_name
+    module_name: resolved_module_name,
+    global_variant_base: global_variant_base
   )
 
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
@@ -8109,7 +8100,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 }
 
 fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index())
+  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map())
 }
 
 type EnvResolveResult {
@@ -8363,6 +8354,7 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     closure: build_symbol_index_census(modules: graph.modules, source_indices: census_si),
     fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si)
   )
+  let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
@@ -8375,7 +8367,8 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
       state: st,
       source_indices: source_indices,
       intern_table: intern_table,
-      symbol_index: symbol_index
+      symbol_index: symbol_index,
+      global_variant_base: global_variant_base
     )
   )
   let modules = graph.modules |> flat_map(rm =>
@@ -8400,7 +8393,8 @@ fn realize_module(
   state: RealizeState,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
-  symbol_index: SymbolIndex
+  symbol_index: SymbolIndex,
+  global_variant_base: Map<String, TypeBinding>
 ) -> RealizeState {
   match map_get(state.module_index, name) {
     Present { value: _ } => state
@@ -8415,11 +8409,12 @@ fn realize_module(
               state: st,
               source_indices: source_indices,
               intern_table: intern_table,
-              symbol_index: symbol_index
+              symbol_index: symbol_index,
+              global_variant_base: global_variant_base
             )
           )
           let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
+          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
