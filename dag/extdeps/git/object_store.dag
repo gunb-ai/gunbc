@@ -303,6 +303,49 @@ type GitObjectId
   = GitSha1ObjectId { digest: GitSha1Digest }
   | GitSha256ObjectId { digest: GitSha256Digest }
 
+data git_object_id_text_note: String = "THE VALIDATING CONSTRUCTORS. The brands GitSha1Digest and GitSha256Digest are ContentHash brands, and a brand alone admits any string: before these existed, a consumer casting text into one could produce a GitSha1ObjectId carrying \"x\", a 64-digit value labelled sha1, or arbitrary non-hex, and every one of those typechecked as a Git object id (review 2026-07-30, on the merge-admission wire parser that did exactly this). Family is not enough — LENGTH and SYNTAX are what make an object id an object id, and they differ per family, which is precisely why the discriminant exists.
+
+These reuse git_decode_lower_hex_octets rather than introducing a second hex reader, so the canonical form is one authority: git spells object ids in LOWERCASE hex, and an uppercase or mixed-case spelling refuses rather than being folded, because folding would make two textual forms name one object and quietly break the round trip. A caller holding a foreign-cased id normalizes deliberately at its own boundary."
+
+fn git_sha1_object_id(hex: String) -> GitObjectId? {
+  if hex.length() != 40 {
+    none
+  } else {
+    match git_decode_lower_hex_octets(text: hex) {
+      Absent => none
+      Present { value: _ } => Present { value: GitSha1ObjectId { digest: hex as GitSha1Digest } }
+    }
+  }
+}
+
+fn git_sha256_object_id(hex: String) -> GitObjectId? {
+  if hex.length() != 64 {
+    none
+  } else {
+    match git_decode_lower_hex_octets(text: hex) {
+      Absent => none
+      Present { value: _ } => Present { value: GitSha256ObjectId { digest: hex as GitSha256Digest } }
+    }
+  }
+}
+
+data git_object_id_eq_note: String = "Format-aware equality, held beside the type rather than in a consumer: two ids of different families are never equal, so a repository mid SHA-1/SHA-256 transition cannot produce a false match on hex alone. It lived briefly in gunbc.merge_admission, which is generic Git behaviour sitting in one consumer — the §3 fork this move closes."
+
+fn git_object_id_eq(left: GitObjectId, right: GitObjectId) -> Bool {
+  match left {
+    GitSha1ObjectId { digest: l } =>
+      match right {
+        GitSha1ObjectId { digest: r } => (l as ContentHash) == (r as ContentHash)
+        GitSha256ObjectId { digest: _ } => false
+      }
+    GitSha256ObjectId { digest: l } =>
+      match right {
+        GitSha256ObjectId { digest: r } => (l as ContentHash) == (r as ContentHash)
+        GitSha1ObjectId { digest: _ } => false
+      }
+  }
+}
+
 fn git_object_id_format(oid: GitObjectId) -> GitObjectFormat {
   match oid {
     GitSha1ObjectId { digest: _ } => GitObjectFormatSha1
