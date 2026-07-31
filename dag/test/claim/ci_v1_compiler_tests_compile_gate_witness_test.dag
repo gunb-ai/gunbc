@@ -1,0 +1,30 @@
+module test.claim.ci_v1_compiler_tests_compile_gate_witness
+
+import gunbc.ci_spec { ci_v1_compiler_tests_compile_gate_line }
+import gunbc.ci_workflow { ci_build_job }
+import extdeps.github.actions { Step, RunStep }
+
+fn build_job_has_v1_compiler_tests_compile_gate_step() -> Bool {
+  fold(ci_build_job().steps, init: false, f: (acc, step) => {
+    acc || match step {
+      RunStep { run: cmd, .. } =>
+        string_contains(s: cmd, pattern: "check -p v1-compiler-tests --tests")
+      _ => false
+    }
+  })
+}
+
+test fn w_gate_line_names_compile_only_command() -> Bool {
+  string_contains(
+    s: ci_v1_compiler_tests_compile_gate_line(),
+    pattern: "check -p v1-compiler-tests --tests"
+  )
+    && !string_contains(
+      s: ci_v1_compiler_tests_compile_gate_line(),
+      pattern: "nextest"
+    )
+}
+
+test fn w_build_job_enrolls_compile_gate_before_release_build() -> Bool {
+  build_job_has_v1_compiler_tests_compile_gate_step()
+}
