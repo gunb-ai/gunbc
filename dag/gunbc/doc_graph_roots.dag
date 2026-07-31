@@ -263,6 +263,18 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_deploy_srv1_stage", field: WholeDeclaration },
     dissolution: HasTrigger { text: "all FOUR findings this diagnosis names are facts on their carriers: (1) srv1 deployment holds a typed HOST-SIDE lease spanning mutation, readiness and identity readback — a runner label or concurrency group is mitigation only, since neither excludes the operator apply path — plus a counted refusal when the candidate is not the authoritative revision under whichever revision authority is ruled, (2) the healthz fingerprint identifies what is DEPLOYED (source closure and binary artifact identity, not build provenance alone) rather than five rendered bodies, (3) the refusal path preserves the decl's located diagnosis instead of substituting a render complaint, with control-byte admission decided per CursorAction and DynamicLineState rather than one global roster, and (4) job_yaml emits Job.concurrency with a discriminating RED. Then the doc deletes with this row. Twice corrected in review: review 44735 caught that the trigger omitted the misattributed-refusal defect entirely, and review 44766 caught that it would have accepted scheduler-only exclusion, source-only identity and a global byte-roster fix" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "compiler-guarantee-recovery-gap-analysis",
+    work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "module_skips_direct_call_arg_check", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the recovered guarantee statement and tier claims are re-homed into DESIGN.md as its specification half, AND every Tier 1/Tier 2 row in the analysis is either closed on its carrier or migrated to a registered gunbc.plan.Plan row. This bind names the escape hatch specifically because docs/thesis/correctness-dimensions.md states the dimension contract as 'enforced universally — all code is subject to all dimensions, no escape hatch, no wrapper functions', and module_skips_direct_call_arg_check is that clause's one named violation in tree: it exempts v2.* and v1.compiler.* from direct-call argument checking, so the compiler being bootstrapped is authored under weaker checks than ordinary source. Deleting it is the analysis's terminal Tier 1 acceptance and its removal ends this row" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "compiler-guarantee-recovery-gap-analysis",
+    work: DeclarationRef { module_path: "v2.std.constraints", decl_name: "solve_constraints", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "v2 inference stops certifying source identity as semantic grounding. Today solve_constraints passes graph.root as source_facts, algebra AND the sole candidate, and v2.std.constraint_satisfaction_predicate.constraint_satisfaction_preservation_holds requires algebra == source_facts && candidate == source_facts — so the proof reduces to well_formed(root) checked three times and is then relabelled CanonicalGrounding. The row dissolves when a candidate is derived rather than supplied, or the generic arm returns a typed compile refusal instead of an accepted self-grounded InferredTree" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {

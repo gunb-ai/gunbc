@@ -154,6 +154,93 @@ Three recovered lines that name today's defects directly:
 - **Epistemic stacking**, flagged *"load-bearing for codegen — must not be dropped"*: *"Every
   emitter special case is evidence of an ungrounded concept upstream."*
 
+## 8b. The acceptance corpus was recovered — and it has a hole in the same place
+
+`docs/error-examples.md` survived intact (487 lines, readable at `3127161e878^`). It is
+structured as a RED-control corpus: `.dag` input, the exact expected compiler error, the
+algebra that catches it, and why a traditional compiler cannot. Its own framing:
+
+> These serve as TDD targets: each example is a test case. The `.dag` code is the test input;
+> the error message is the acceptance criterion. When the feature lands, the test should pass.
+
+Seven cases: (1) non-terminating recursion through type resolution · (2) cross-service data
+corruption through non-idempotent retry · (3) redundant computation across service boundaries
+· (4) accidentally quadratic with a non-obvious cause · (5) infrastructure drift through
+partial failure · (6) semantic cancellation across function boundaries · (7) exponential
+blowup from unguarded recursive branching.
+
+**The finding: every one is a Tier 2-or-above case. Not one is Tier 1.** There is no
+method-existence example, no declared-return-conformance example, and — searched explicitly —
+**no cardinality or empty-list example anywhere in the corpus** (zero occurrences of
+`empty` / `cardinal` / `NonEmpty` / `arity` outside an unrelated `fold` body).
+
+This revises §2's account of the drop. The specification did not merely get priced out later;
+it was **under-specified at the source**. Tier 1 was treated as solved-by-assumption and
+given no acceptance criteria, while the exotic wins got seven fully-worked ones. So the
+foundation had no test, therefore no consumer, therefore nothing to notice it was never
+built — the specification-without-execution trap (§5) operating on the *specification itself*.
+
+**Consequence for salvage, and it is the load-bearing one:** the recovered corpus is directly
+usable for Tier 2/3 walls, but **the Tier 1 RED controls do not exist and must be authored.**
+They are the cheapest and most urgent artifacts in this whole effort — each is a
+three-line `.dag` program — and they were never written because no one imagined needing them.
+The user-supplied case is the archetype and belongs in the corpus as example 0:
+
+```dag
+// callee requires at least one; caller can supply zero.
+// Today: unexpressible — no NonEmpty<T> carrier, Cardinality connective uninhabited.
+```
+
+## 8c. The dimension architecture — recovered contract, and it is still standing
+
+`docs/thesis/correctness-dimensions.md` defines the mechanism that was supposed to make all of
+this uniform, and it is the strongest salvage news in this note.
+
+> Correctness is not one property — it is many orthogonal dimensions… In gunbc they are
+> **inescapable properties of the system, like conservation laws in physics. You don't opt
+> into gravity.**
+
+Four-part contract for every dimension: (1) declared in `std/` as a structural type with
+lattice operations; (2) **computed at binding sites during inference — no separate analysis
+pass**; (3) carried through the IR on bindings; (4) **enforced universally — all code is
+subject to all dimensions, no escape hatch, no wrapper functions.**
+
+**Clause 4 is violated by name.** `v1.compiler.infer` `module_skips_direct_call_arg_check` is
+exactly an escape hatch, and it exempts the two module trees that most need the dimension.
+
+**But the carriers are real and present**, verified on `main`:
+
+- `v1.compiler.infer_env` `TypeBinding { name, resolved, provenance: SubValueRelation }` —
+  the thesis names `TypeBinding.provenance`, and it is there.
+- `v1.compiler.core` `ExprCall { call_semantics, descent_evidence: List<SubValueRelation>? }`
+  — the thesis names `ExprCall.descent_evidence`, and it is there.
+
+So the mechanism the thesis describes was **built, not just designed**. What did not happen is
+the rest of the dimensions moving onto it. Restated in the thesis's own table format
+(*Carried on bindings* / *Enforced* are the load-bearing columns):
+
+| Dimension | Declared today | Carried on bindings | Enforced |
+|---|---|---|---|
+| Type safety | `dag/std/types.dag` | `TypeBinding.resolved` | **Partial** — argument position only; return, `data` annotation, generic instantiation unchecked; `v2.*`/`v1.compiler.*` exempt |
+| Termination | `dag/std/termination.dag` (BoundedLattice, bottom = fail-closed) | `TypeBinding.provenance`, `ExprCall.descent_evidence` | **UNVERIFIED** — thesis-era status was "Partial, 421 violations, non-blocking"; needs re-measurement |
+| Cardinality / multiplicity | **nowhere** — connective uninhabited | No | **UNEXPRESSIBLE** (§4) |
+| Ownership | `src/v1/ownership.dag`, `src/v2/lens/ownership.dag` | No — still a separate pass | **Partial**, plus a known latent fail-open (Rc wrap) |
+| Side effects | `dag/std/behavioral.dag`, `dag/std/effects.dag` | No | Consumers now exist (`std.effect_grant`, `std.realization`, `gunbc.host_effect`) — an improvement on the thesis-era "declared, not consumed" — but **not at binding sites** |
+| Idempotence | `dag/std/effects.dag` (lattice from `EffectShape`) | No | No |
+| Purity | not declared | — | No |
+| Space bounds | not declared | — | No |
+
+**Why this matters for sequencing:** two of eight dimensions reached the binding carrier and
+the carrier still works. The salvage is therefore *not* an architecture rebuild — it is
+finishing a migration that stalled, plus deleting one escape hatch. That is a materially
+cheaper and more defensible proposition than the wall-by-wall roadmap implies, and it should
+be the frame for step 3.
+
+The thesis also names its own falsification test: *"If user-defined dimensions work the same
+as built-in ones, the mechanism is general. If they require special compiler support, the
+mechanism is incomplete."* Unaudited. `src/v1/dimensions-design.md` (396 lines, recoverable)
+is the abstracted mechanism and has not been read yet.
+
 ## 9. Where the ambition sat, for calibration
 
 `docs/thesis/what-dag-catches-that-normal-compilers-dont.md` — its examples are
@@ -189,10 +276,13 @@ fabricated. (§3 citation class.)
 
 ## 11. Audit queue
 
-1. Recover the rest of `docs/thesis/` — `correctness-dimensions`, `what-falls-out`,
-   `two-groundings`, `the-derived-homomorphism`; and `docs/error-examples.md`, described as
-   *"TDD targets for the compiler… the error message is the acceptance criterion"* — a
-   ready-made acceptance corpus.
+1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b.** Recovered intact; 7 cases, all
+   Tier 2+, zero Tier 1. Still to pull: the rest of `docs/thesis/` —
+   `correctness-dimensions`, `what-falls-out`, `two-groundings`, `the-derived-homomorphism`.
+1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
+   existed. Start with the cardinality archetype, method existence, and declared-return
+   conformance — each a three-line `.dag` program with an expected-error acceptance criterion,
+   in the recovered corpus's own format.
 2. Re-measure the floor histogram, bucketed **statically-decidable vs genuinely-runtime**.
    This is an execution, not a design, and it is what denominates the work in displaced cost
    (§6) instead of elegance.
