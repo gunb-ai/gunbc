@@ -999,6 +999,15 @@ pub fn type_mismatch_error(
     )
 }
 
+pub fn seed_node_traversal_frontier() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "\\u{1F7E1} dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is 16 self-recursive `children |> flat_map` sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus 579 direct Node-storage field reads in 04_infer alone. collect_explicit_return_values is the 17th instance, not a new class, and a per-function row would assert separable work that does not exist while 16 identical siblings carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds a 17th shape without removing any of the 16, and migrating all 17 is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn collect_explicit_return_values(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*n.expr_data.clone()).clone() {
@@ -1105,28 +1114,6 @@ pub fn conformance_ground_type(
         || conformance_ground_element_collection(n.clone(), source_indices.clone()))
 }
 
-pub fn conformance_named_structured(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let structured = ((n.connective.clone() == Connective::Conj)
-            || (n.connective.clone() == Connective::Disj));
-        let named = (authored_name_at(source_indices.clone(), n.clone()) != "".to_string());
-        let plain_cardinality = (n.return_cardinality.clone() == Cardinality::Required);
-        ((structured.clone() && named.clone()) && plain_cardinality.clone())
-    }
-}
-
-pub fn conformance_named_structured_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE UNJUDGED BRANCH WAS A LIVE HOLE, not merely an unmeasured one, and it took an executed probe to see it: `type R { x: Int }` `type S { y: String }` `fn wrong_record() -> R { S { y: \"a\" } }` compiled with EXIT 0 and EMITTED TWO FILES while reporting the mismatch as a counted advisory. Two structurally unrelated named records is not a representation gap and never was — it is the conformance half of #7479, a success-shaped acceptance of a program that is simply wrong, and counting it protects nothing (codex review 45647, confirmed by execution before the fix and after). The predicate that closes it is POSITIVE ESTABLISHMENT, the same discipline the method wall uses rather than a fifth carve-out: refuse only when BOTH sides are STRUCTURED (a product or coproduct, so no bare leaf), BOTH carry an authored name (so an anonymous record literal, which is the corpus idiom for writing a typed row without repeating its type, can never reach the arm), and BOTH are Required (so the two optionality representations cannot straddle it). Every one of the four measured false-positive classes is excluded BY THAT SHAPE rather than by naming it: Nat-vs-Int and Symbol-vs-String and Fragment-vs-Element are leaf-to-leaf so they fail `structured`; NonEmptyStr-vs-String is structured on one side only; PrimitiveContract-vs-anon fails `named`. What is left is exactly the class where a name difference IS a real difference, because two structured named types with different names have no alias, brand, literal-shorthand or cardinality representation standing between them. Measured whole-corpus after the change: still 0 blocking, so the arm reds nothing correct that the corpus contains.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn conformance_expanded_node(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Node> {
     {
         let peeled = peel_where_refinement_base(n.clone(), scope.type_env.clone());
@@ -1135,6 +1122,15 @@ pub fn conformance_expanded_node(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Node>
             None => peeled.clone(),
         }
     }
+}
+
+pub fn conformance_unjudged_live_hole_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "PROVEN LIVE HOLE, RECORDED RATHER THAN PAPERED OVER (codex review 45647). The unjudged branch is not merely unmeasured — a program that is simply WRONG reaches emission through it. Executed witness: `type R { x: Int }` `type S { y: String }` `fn wrong_record() -> R { S { y: \"a\" } }` compiles EXIT 0 and EMITS TWO FILES, reporting the mismatch as a counted advisory. Two structurally unrelated named records is not a representation gap; it is the conformance half of #7479, and counting it protects nothing. THE FIX WAS ATTEMPTED AND IS NOT LANDED, and the measurements are recorded because they are the real cost of the next attempt rather than a reason to stop looking. Three successive narrowings of a refuse-when-both-sides-are-named-structured rule were each run against the whole corpus: (1) both sides structured and named -> 90 refusals of CORRECT code, dominated by the two-representation optionality class (24 Node(Optional) vs Primitive(Node), plus Coproduct(X) vs Coproduct(Optional)); (2) narrowed to inhabited named RECORDS with kernel scope names excluded -> 15; (3) additionally guarding the raw nodes -> 27, and the population had by then shifted to a NEW class, produced sides that are let-BINDING names (module_emit_scope, scope_after_expr, lookup_item) rather than types. The count moving 90 -> 15 -> 27 rather than monotonically down is the finding: each guard displaces the false-positive population instead of shrinking it, which is the exemption-accumulation this wall refuses elsewhere, and shipping any of the three would red correct code. So the arm is NOT landed and the residue stays a counted advisory, which is strictly better than the pre-PR silence and strictly worse than a refusal. The blocking obstacle is named and is not vague: the produced-side node reaching this branch is not reliably a TYPE — it can be a nominal reference, a kernel encoding of cardinality or absence, an anonymous literal, or a let-binding identity — so no predicate over its shape can separate a real mismatch from a representation gap until produced-side type identity is established upstream. Dissolve-on: feature:conformance-produced-type-identity — the produced node carries a resolved type identity rather than a shape to be guessed at, at which point the refusal arm is one predicate over two identities and this row deletes. This is a declared boundary with an executed witness, an owner-facing trigger and a measured cost, not an advisory success path dressed up as one.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn conformance_expansion_depth_note() -> String {
@@ -1164,29 +1160,14 @@ pub fn declared_type_conformance_diags(
             ) {
                 Rc::new(vec![])
             } else {
-                if (conformance_named_structured(
-                    conformance_expanded_node(declared.clone(), scope.clone()),
-                    si.clone(),
-                ) && conformance_named_structured(
-                    conformance_expanded_node(produced.clone(), scope.clone()),
-                    si.clone(),
-                )) {
-                    Rc::new(vec![type_mismatch_error(
-                        node_type_shape(declared.clone(), si.clone()),
-                        node_type_shape(produced.clone(), si.clone()),
-                        span.clone(),
-                        scope.module_name.clone(),
-                    )])
-                } else {
-                    Rc::new(vec![make_error_node(
-                        Rc::new(CompilerDiagnostic::DeclaredTypeConformanceUnjudged {
-                            declared_type: node_type_shape(declared.clone(), si.clone()),
-                            produced_type: node_type_shape(produced.clone(), si.clone()),
-                            span: span.clone(),
-                        }),
-                        scope.module_name.clone(),
-                    )])
-                }
+                Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::DeclaredTypeConformanceUnjudged {
+                        declared_type: node_type_shape(declared.clone(), si.clone()),
+                        produced_type: node_type_shape(produced.clone(), si.clone()),
+                        span: span.clone(),
+                    }),
+                    scope.module_name.clone(),
+                )])
             }
         } else {
             if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
