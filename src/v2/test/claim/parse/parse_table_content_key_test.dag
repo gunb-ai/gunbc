@@ -1,9 +1,5 @@
 module v2.test.parse.parse_table_content_key
 
-import v2.compiler.parse { ParsePositionKey, ParseTable, ParseTableRealization, parse_table_empty, parse_table_subject }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Hash }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {

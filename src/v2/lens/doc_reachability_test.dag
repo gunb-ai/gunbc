@@ -25,5 +25,3 @@ test fn doc_graph_universe_is_nonempty() -> Bool {
 test fn doc_graph_is_clean() -> Bool {
   return doc_graph_clean_holds(plan_roots: doc_graph_roots_all())
 }
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.std.live_tree { LiveTreeDisposition }

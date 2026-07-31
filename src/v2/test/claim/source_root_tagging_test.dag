@@ -1,11 +1,5 @@
 module v2.test.claim.source_root_tagging
 
-import extdeps.communication.medium { Medium }
-import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, source_root_set_from_ingest }
-import v2.std.artifact { Artifact }
-import v2.std.cross_tree.import_model { source_root_set_contains }
-import v2.std.live_tree { LiveTreeDisposition }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

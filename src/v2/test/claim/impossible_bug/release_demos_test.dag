@@ -54,7 +54,6 @@ fn release_idempotency_claim_catches() -> Bool {
     _ => false
   }
 }
-import v2.std.node { Atom, Edge, Node, Symbol, TypeNode }
 
 fn release_transport_target_contract_drift_catches() -> Bool {
   match test_claim_expected_outcome(c: claim_target_contract_drift_impossible) {

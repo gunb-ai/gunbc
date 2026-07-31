@@ -1,11 +1,5 @@
 module v2.test.tokenize.lex_match_thunk_claims
 
-import std.algebra { Cons }
-import v2.compiler.tokenize { lex_try_rule }
-import v2.std.algebra { is_empty }
-import v2.std.compilers.lexing { CharClassPattern, CharPattern, ChoicePattern, DelimitedPattern, KeywordPattern, LiteralPattern, OneOrMorePattern, OptionalPattern, RepeatPattern, SequencePattern, TriviaRule }
-import v2.std.live_tree { LiveTreeDisposition }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,9 +1,5 @@
 module v2.test.claim.loop_multiplicity_measure
 
-import v2.std.cardinality { LoopBound, MeasureDescentFact, Multiplicity, loop_bound_witness_for_node, loop_multiplicity, loop_multiplicity_with, node_multiplicity, termination_proof_witness_for_node }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Atom, ComputationNode, Edge, Node, Symbol, TypeNode }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

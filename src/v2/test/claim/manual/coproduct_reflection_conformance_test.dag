@@ -52,7 +52,6 @@ fn imported_derive_trait_discriminants(
     }
   )
 }
-import v2.std.live_tree { LiveTreeDisposition }
 
 test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper() -> Bool {
   match nullary_reflection_through_generic_wrapper(

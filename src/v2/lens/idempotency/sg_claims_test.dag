@@ -1,8 +1,5 @@
 module v2.test.lens_idempotency.sg_claims
 
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.test.lens_idempotency.write_effect { idempotency_write_effect_claim_holds }
-
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,7 +1,5 @@
 module v2.test.claim.witness_cost_locality_test
 
-import v2.lens.witness_cost_locality { ModuleImportFact, admission_is_continuous, couples_on_data_breadth, couples_on_layer_depth, locality_is_local, per_pr_admission, witness_cost_locality, witness_cost_locality_from_facts }
-
 
 data fixture_carriers: List<String> = ["fix.corpus_reader"]
 

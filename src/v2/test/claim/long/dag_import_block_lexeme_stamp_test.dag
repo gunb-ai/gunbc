@@ -1,13 +1,5 @@
 module v2.test.long.dag_import_block_lexeme_stamp
 
-import v2.compiler.parse { parse }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model, parse_import_block_idents, parse_production_emitted_identity_optional }
-import v2.std.diagnostic { Unavailable, bind_outcome, outcome_rejected, port_locus }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Symbol }
-import v2.std.optional { optional_absent, optional_present }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

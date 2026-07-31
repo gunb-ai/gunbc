@@ -1,13 +1,5 @@
 module v2.test.long.door_real_module_probe
 
-import std.algebra { Cons }
-import v2.compiler.name_resolve { Admission, Import, ResolutionSubject, resolve_with_admission_policy }
-import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model, dag_named_edge }
-import v2.std.algebra { fold_list_node }
-import v2.std.cross_tree.resolution { source_root_index_empty }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Atom, Edge, Node, Symbol, TypeNode }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

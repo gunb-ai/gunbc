@@ -56,11 +56,6 @@ test fn raw_get_miss_differs_from_optional_absent() -> Bool {
   let m = empty_map()
   (m |> get("missing")) != optional_absent()
 }
-import v2.lens.testgen { cross_repr_native_value_bool, cross_repr_native_value_null, cross_representation_equality_anchor, testgen_emit_cross_representation_equality_claim, testgen_scheduled_cross_representation_equality_generators }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Symbol }
-import v2.std.node_query { coproduct_arm_keys }
-import v2.std.verification { ClaimAnchorKey, GeneratedAnchorKey, TestClaim, test_claim_anchor }
 
 test fn witness_holds_matches_holds_pattern() -> Bool {
   match Holds { value: 1 } {

@@ -1,12 +1,5 @@
 module v2.test.fn_family.lens_unit.discriminators_test
 
-import v2.lens.fn_family { module_fn_decl_subtrees, module_sigma_family_count, sigma_families_of_defs, sigma_family_related }
-import v2.lens.intent_linearity { decl_forest_is_redundant }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.grammar { grammar_named_edge }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Atom, Edge, Symbol, TypeNode, node_synthetic }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -48,4 +48,3 @@ fn witness_cargo_build_run_argv_materializes() -> Bool {
 test fn cargo_build_run_argv_holds() -> Bool {
   witness_cargo_build_run_argv_materializes()
 }
-import v2.std.live_tree { LiveTreeDisposition }

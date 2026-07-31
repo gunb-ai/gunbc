@@ -14,8 +14,6 @@ import v2.std.effect_reach { EffectReachClassification }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.std.algebra { fold_list, list_append, list_snoc_item }
 
 data sn_source_rel_path: String = "src/v2/compiler/03_normalize.dag"
 

@@ -1,11 +1,5 @@
 module v2.test.manual.typescript_eager_materialize_dedup_cutover
 
-import v2.extdeps.languages.typescript { ts_eager_grammar_relation_row_witness, ts_emitted_add_fn_node, ts_exemplar_emitted_for_lhs, ts_fn_add_scaffold_relation_row_node, ts_inhabitant_atom, ts_pr3_identity_relation_row_witness, ts_task_formal_productions, ts_task_type_alias_relation_row_witness, ts_type_annotation_task_record_emitted }
-import v2.std.grammar { derive_grammar_relation_row_node, formal_production_for_lhs_exact }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Edge, Node, TypeNode, content_hash }
-import v2.std.node_query { find_named_child }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ts_arc1_eager_row_round_trip_holds() -> Bool {

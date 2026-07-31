@@ -1,7 +1,5 @@
 module v2.test.emit.type_alias_emit
 
-import v2.std.node { Symbol }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data type_alias_core_node_golden: String = "type CoreNode = Node;"

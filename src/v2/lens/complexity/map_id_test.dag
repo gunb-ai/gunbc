@@ -1,14 +1,7 @@
 module v2.test.lens_complexity.map_id
 
 import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
-import v2.lens.cost {
-  LinearCost,
-  PolyLogExponent,
-  PolynomialDegree,
-  SizeVariable,
-  SymbolicCost,
-  cost_lens,
-}
+import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
   AmbiguousIntent,

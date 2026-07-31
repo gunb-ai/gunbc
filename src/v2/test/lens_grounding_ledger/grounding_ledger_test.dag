@@ -1,8 +1,5 @@
 module v2.test.lens_grounding_ledger.grounding_ledger_test
 
-import v2.lens.grounding_ledger { DecidedBy, GroundingVerdict, residue_forced_verdict, structural_ledger_entry }
-import v2.std.live_tree { LiveTreeDisposition }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

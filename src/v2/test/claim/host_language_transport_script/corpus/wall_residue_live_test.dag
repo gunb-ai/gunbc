@@ -1,8 +1,5 @@
 module v2.test.host_language_transport_script.corpus.wall_residue_live
 
-import v2.lens.host_language_transport_script { transport_script_live_literal_violation_count_for_path }
-import v2.std.live_tree { LiveTreeDisposition }
-
 
 data wall_residue_live_note: String = "§5.E wall activation (operator ruling 2026-07-24): the previously-inert host_language_transport_script lens is wired as a per-PR live consumer over the shell.Exec.Run anchor sites that route host/foreign shell bodies through the RetainedShellScript record wall + the retained_* counted bridges. Each site must carry ZERO literal-blob transport-script positions: after the wall every script body is either a RetainedShellScript row or a retained_foreign/retained_runtime/retained_transport call (ComputedApplication, deliberately green — the counted, reviewed path), never a bare/let/interp literal typed directly at Exec.Run. A NEW raw literal at any enrolled Run position reds this witness. Disposition is ReadsLiveTree: the lens re-reads module source text by path (parse_module_items_for_transport_script), reaching outside a root lens's hermetic compiled-tree input, so it is stamped live and never predict-skips per the CI floor's host/live-tree rule."
 

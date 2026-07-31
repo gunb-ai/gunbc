@@ -1,10 +1,5 @@
 module v2.test.long.identity_captured_navigation_fidelity
 
-import v2.lens.dependency_fidelity { FidelityDiscrepancy }
-import v2.lens.identity_captured_navigation.fidelity { identity_captured_navigation_as_fidelity_discrepancies }
-import v2.std.collection { list_at_optional }
-import v2.std.live_tree { LiveTreeDisposition }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

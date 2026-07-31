@@ -1,10 +1,5 @@
 module v2.test.lens_complexity_lowering.loop_invariant_hoist
 
-import v2.lens.complexity_lowering { cost_class_is_lowerable, cost_is_lowerable, minimized_class }
-import v2.lens.cost { ClassPolynomial, LinearCost, ProductCost, SizeVariable, SumCost, SymbolicCost, asymptotic_class_dominates, asymptotic_class_of_cost, polynomial_degree_two }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Atom, Symbol, TypeNode, node_synthetic }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

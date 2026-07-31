@@ -1,13 +1,5 @@
 module v2.test.parse.parse_table_claims
 
-import std.algebra { Cons }
-import std.types { Set }
-import v2.compiler.parse { expr_direct_left_corner_list, expr_has_undefined_nonterminal, expr_is_nullable_given_set, parse_expr, parse_prov_initial, parse_table_empty, token_position_indices }
-import v2.std.compilers.lexing { Token }
-import v2.std.grammar { Choice, GrammarProduction, GrammarRoot, ModeledGrammar, Nonterminal, ParseGrammar, Sequence, grammar_atom, grammar_carries_symbol, grammar_empty_sync_tokens }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Symbol }
-
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

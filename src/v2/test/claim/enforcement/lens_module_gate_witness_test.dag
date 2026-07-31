@@ -23,7 +23,6 @@ import v2.workflow.enforcement_live { lens_closure_question_zero_holds_live }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.lens.cost { SymbolicCost }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

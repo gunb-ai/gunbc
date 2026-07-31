@@ -1,9 +1,5 @@
 module v2.test.structural_similarity.lens_unit.discriminators
 
-import v2.lens.structural_similarity { type_decls_anti_unify }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Atom, Edge, Symbol, TypeNode, node_synthetic }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

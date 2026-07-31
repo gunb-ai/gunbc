@@ -32,15 +32,6 @@ data emit_host_native_only_verdict_ci_placement_note: String = "KERNEL-D TESTING
 fn native_only_stdout_matches(stdout: HostRunStdout, expected_octet: Int) -> Bool {
   stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
 }
-import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
-import v2.extdeps.languages.rust { RustGramBuild1StateReady, RustGrammarRelationRow, rust_add_declared_inhabitants_root, rust_binding_spellings, rust_collection_realization_catalog_node, rust_concrete_token_node, rust_declared_inhabitants_root, rust_emit_host_cargo_manifest, rust_emit_host_runtime_primitive_type_node, rust_emit_host_toolchain_pin, rust_fn_add_lex, rust_fn_add_lex_rules, rust_formal_production_fn_add, rust_formal_rhs_from_tokens, rust_grammar_atom, rust_grammar_relation_row_node, rust_grammar_sequence_from_concrete_tokens, rust_grammar_terminal, rust_ident_lex_rule, rust_inhabitant_atom, rust_int_literal_lex_rule, rust_lex_rule, rust_named_edge, rust_operator_realizations_catalog_node, rust_reference_layer_tokens, rust_runtime_row, rust_selection_policy_node, rust_sg_rc_use_site_ownership_catalog, rust_source_text_authority, rust_staging_lex, rust_target_model_bundle_core, rust_target_model_core_edges_with_operators, rust_type_expression_projection_bundle_node, rust_value_expression_projection, rust_value_semantics_carrier_atoms, rust_whitespace_trivia_rule }
-import v2.std.algebra { fold_list, list_append, list_snoc_item }
-import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, ModeledLexRules }
-import v2.std.compilers.target_model { BoundToken, ConcreteSyntaxToken, FixedToken, TargetBodiedArrowStatementScaffold, TargetModel, concrete_syntax_token_class, derive_bodied_arrow_scaffold, grammar_relation_row_attach_bodied_scaffold, target_model_emit_transforms_empty, target_model_make_with_emit_transforms, target_operator_realizations_catalog_node, target_reference_layer_tokens_node, target_use_site_ownership_catalog_node, target_value_semantics_carriers_node, value_expr_projection_bundle_node }
-import v2.std.grammar { FormalGrammarSymbol, FormalProduction, GrammarExpr, GrammarProduction, Sequence, derive_grammar_relation_row_node, formal_production_for_lhs_exact, formal_productions_catalog_to_node, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, grammar_relation_tokens_node }
-import v2.std.host_transport { EmitHostRuntimeRow, EmittedWithSuffix, FixedText, FixedWidthBytes, HostRuntimeRowPresent, HostToolProgram, HostTransportDescriptor, LiteralArg, ProcessInvocation, TargetEmitHostRuntimeRow, WorkspaceFile, emitted_family_runtime_row_gated, target_emit_host_runtime_row_unconfigured }
-import v2.std.node { Atom, ComputationNode, Edge, Node, Symbol, TypeNode }
-import v2.std.witness { Violates }
 
 fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
   match ingested_inferred_tree_from_source(source: source) {

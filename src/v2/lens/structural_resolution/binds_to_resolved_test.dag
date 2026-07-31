@@ -1,14 +1,5 @@
 module v2.test.lens_structural_resolution.binds_to_resolved
 
-import std.types { Map }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.lens.structural_resolution { StructuralResolutionFact, fact_eq, fact_single_dependency_projects_status }
-import v2.std.dependency { ClassifiedDependencyView, DependencyView }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Atom, Edge, Hash, Node, Symbol, TypeNode }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts }
-import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim, lens_structural_resolution_actual }
-
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

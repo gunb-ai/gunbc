@@ -1,7 +1,5 @@
 module v2.test.manual.recompute_trace_probe
 
-import v2.std.live_tree { LiveTreeDisposition }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

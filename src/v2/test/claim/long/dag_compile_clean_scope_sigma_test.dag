@@ -1,13 +1,5 @@
 module v2.test.long.dag_compile_clean_scope_sigma_test
 
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.fn_family { module_sigma_family_count }
-import v2.std.algebra { fold_list }
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.node { Symbol }
-
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data corpus_scope_subject_path: String = "dag/tools/dag_compile_clean_scope.dag"
