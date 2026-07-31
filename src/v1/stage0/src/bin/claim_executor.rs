@@ -277,8 +277,23 @@ enum ParsedMemoryClass {
 ///
 /// Retained as a unit rather than as four sibling fields on the runnable so that adding
 /// a fifth profile fact is one edit here, not a fifth thing to remember to thread.
+/// Whether the plan actually DESCRIBED this runnable's resources, or the parse supplied
+/// fail-closed values because no profile was present. Hermetic is genuinely conservative
+/// for effects, but `heavy_whole_tree_resolve: false`, `spawns_host_compiler: false` and
+/// `memory: Negligible` are OPTIMISTIC assertions about work nobody described — and once
+/// a profileless ClaimRef becomes the same SingleClaim variant an explicitly-profiled one
+/// does, the stage validator cannot tell "declared Negligible" from "nothing declared"
+/// (review 2026-07-31). A pure but whole-tree-heavy ClaimRef would enter a stage looking
+/// negligible. Absence is therefore its own state, and stages refuse it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ParsedProfileProvenance {
+    Declared,
+    Undeclared,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct ParsedRunnableProfile {
+    provenance: ParsedProfileProvenance,
     heavy_whole_tree_resolve: bool,
     spawns_host_compiler: bool,
     memory: ParsedMemoryClass,
@@ -293,6 +308,7 @@ impl ParsedRunnableProfile {
     /// loudly at the effect boundary rather than silently dispatching them.
     fn undeclared() -> Self {
         ParsedRunnableProfile {
+            provenance: ParsedProfileProvenance::Undeclared,
             heavy_whole_tree_resolve: false,
             spawns_host_compiler: false,
             memory: ParsedMemoryClass::Negligible,
@@ -540,6 +556,7 @@ fn parsed_runnable_profile_from_field(
         }
     };
     Ok(ParsedRunnableProfile {
+        provenance: ParsedProfileProvenance::Declared,
         heavy_whole_tree_resolve,
         spawns_host_compiler,
         memory,
@@ -3394,23 +3411,58 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
                             si + 1
                         ));
                     }
-                    // THE PROFILE WALL, now expressible because the parse retains the
-                    // whole profile. The heavy-whole-tree-resolve refusal that used to
-                    // stand here is GONE: its stated reason was that stages bypassed
-                    // governor admission, and stages now run through `run_stage`, the
-                    // same executor the ordinary batches use — same unit grouping, same
-                    // lane partition, same AdmittedSlot — so a heavy-resolve claim in a
-                    // stage takes the memo lane exactly as it would in a batch. A wall
-                    // whose reason has become false is a stale claim, so it is removed
-                    // rather than left standing on a dead rationale.
+                    // THE PROFILE WALL. Two distinct classes refuse, for two distinct
+                    // reasons; neither is the reason an earlier draft of this function
+                    // gave, and the correction matters because it changed the code.
                     //
-                    // What DOES refuse is the class stages are genuinely not sized for:
-                    // a claim that spawns a host compiler or declares substantial
-                    // residency. Stages declare no clamp params
-                    // (`gunbc_ci_floor_batch_clamp_params` indexes the ORDINARY
-                    // batches), so such a claim would run admitted but unclamped — it
-                    // refuses here instead, and the refusal is now derived from the
-                    // profile rather than from the one field the parse happened to keep.
+                    // (1) HEAVY WHOLE-TREE RESOLVE still refuses, and the claim that
+                    // run_stage made this safe was WRONG (review 2026-07-31). The
+                    // reasoning was "stages now go through the same lane partition, so a
+                    // heavy claim takes the memo lane exactly as it would in a batch."
+                    // The partition is shared; the ADMISSION is not. `batch_unit_lane`
+                    // routes a heavy unit — and every unit sharing its entry — to
+                    // UnitLane::Memo, and the memo lane runs through
+                    // `run_memo_shared_claims`, which takes no governor and acquires no
+                    // AdmittedSlot. Only `run_batch_unit`, on the spawned lane, does
+                    // (the single acquire_blocking site in this file). So a heavy stage
+                    // claim would resolve and evaluate on the main thread, unadmitted,
+                    // while spawned units hold slots — exactly the unbounded stacking
+                    // the governor exists to prevent.
+                    //
+                    // Wrapping the memo call in an ordinary slot would NOT be the fix
+                    // either: the slot would release while the resolved InterpContext
+                    // stays resident in `stage_memo` for every later stage. The real fix
+                    // is a governor-aware resident lease whose lifetime is the memoized
+                    // context's, released on drop. Until that exists this refuses, and
+                    // the dissolve-on is that lease — not the lane partition.
+                    // (0) NO PROFILE AT ALL refuses first: the values below would be the
+                    // parse's fail-closed fillers, not the plan's statements, and reading
+                    // a wall off invented facts is worse than having no wall.
+                    if matches!(profile.provenance, ParsedProfileProvenance::Undeclared) {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} carries no resource profile — \
+                             stages admit only claims whose resources the plan declared; \
+                             an absent profile is not a negligible one",
+                            si + 1,
+                            function
+                        ));
+                    }
+                    if profile.heavy_whole_tree_resolve {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} declares a heavy whole-tree resolve — \
+                             the memo lane it would take runs unadmitted (no AdmittedSlot), so \
+                             it refuses rather than resolving a whole tree outside governor \
+                             admission; dissolves on a resident lease tied to the memoized \
+                             context's lifetime",
+                            si + 1,
+                            function
+                        ));
+                    }
+                    // (2) HOST-COMPILER OR SUBSTANTIAL RESIDENCY refuses because stages
+                    // carry no declared cost clamp — `gunbc_ci_floor_batch_clamp_params`
+                    // indexes the ORDINARY batches — so such a claim would run unclamped
+                    // until the outer workflow timeout. This wall is newly expressible:
+                    // the parse used to discard both facts.
                     if profile.is_substantial_or_spawns_compiler() {
                         refusals.push(format!(
                             "on-success stage {} claim {} declares spawns_host_compiler={} \
@@ -3925,19 +3977,41 @@ fn run_walk(
             label: label.clone(),
             selection_tag: batch_selection_tag(batch),
         });
+        // LOCAL, not aggregate. This used to test the cumulative `any_failed`, so under
+        // FullLedger every batch after the first failure was announced as "batch N had
+        // failures" whether or not it had any — the same local-versus-aggregate
+        // conflation that made the falsifier alert misattribute green components
+        // (review 2026-07-31). The stop DECISION is still the walk's, because
+        // StopBeforeDependents must halt on any prior failure; only the message is local.
+        let this_batch_failed = thread_panicked
+            || over_budget
+            || batch_records
+                .last()
+                .map(|r| r.results.iter().any(|x| !x.ok))
+                .unwrap_or(false);
         if any_failed {
             match stop_policy {
                 FloorBatchStopPolicy::StopBeforeDependents => {
                     eprintln!(
-                        "claim_executor: batch {} had failures — stopping before dependent batches",
-                        bi + 1
+                        "claim_executor: stopping before dependent batches (batch {} {})",
+                        bi + 1,
+                        if this_batch_failed {
+                            "failed"
+                        } else {
+                            "green; an earlier batch failed"
+                        }
                     );
                     break;
                 }
                 FloorBatchStopPolicy::FullLedger => {
                     eprintln!(
-                        "claim_executor: batch {} had failures — continuing (FullLedger stop policy)",
-                        bi + 1
+                        "claim_executor: continuing (FullLedger stop policy) — batch {} {}",
+                        bi + 1,
+                        if this_batch_failed {
+                            "failed"
+                        } else {
+                            "green; an earlier batch failed"
+                        }
                     );
                 }
             }
@@ -4056,7 +4130,18 @@ fn run_walk(
                     None,
                     budget_tighten_ms,
                 );
-                let mut stage_failed = run.thread_panicked;
+                // A supplied clamp must have teeth. Stages pass None today (see the
+                // call above), so this is currently unreachable — it is wired now so that
+                // adding a declared stage clamp is a one-line change rather than a
+                // one-line change plus remembering this fold, which is exactly the kind of
+                // omission the ordinary path's own clamp handling had to be corrected for.
+                let mut stage_failed = run.thread_panicked || run.over_budget;
+                if run.over_budget {
+                    failure_details.push(format!(
+                        "on-success stage {} exceeded its declared clamp",
+                        si + 1
+                    ));
+                }
                 if run.thread_panicked {
                     println!(
                         "{}",
@@ -5477,6 +5562,7 @@ mod tests {
             entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
             function: f.to_string(),
             profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
                 heavy_whole_tree_resolve: false,
                 spawns_host_compiler: false,
                 memory: ParsedMemoryClass::Negligible,
@@ -5487,6 +5573,7 @@ mod tests {
             entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
             function: "dag_compile_clean_gate_passes".to_string(),
             profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
                 heavy_whole_tree_resolve: true,
                 spawns_host_compiler: false,
                 memory: ParsedMemoryClass::Negligible,
@@ -5535,6 +5622,7 @@ mod tests {
             entry: "dag/x.dag".to_string(),
             function: "f".to_string(),
             profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
                 heavy_whole_tree_resolve: true,
                 spawns_host_compiler: false,
                 memory: ParsedMemoryClass::Negligible,
@@ -5546,6 +5634,7 @@ mod tests {
             entry: "dag/x.dag".to_string(),
             function: "g".to_string(),
             profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
                 heavy_whole_tree_resolve: false,
                 spawns_host_compiler: false,
                 memory: ParsedMemoryClass::Negligible,
@@ -6335,6 +6424,7 @@ mod tests {
             entry: entry.to_string(),
             function: function.to_string(),
             profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
                 heavy_whole_tree_resolve: false,
                 spawns_host_compiler: false,
                 memory: ParsedMemoryClass::Negligible,
