@@ -1,5 +1,12 @@
 module v2.test.execution.fold_assembly_round_trip
 
+import v2.std.algebra { freemonoid_empty, list_snoc_item, zip_eq }
+import v2.std.anti_unification { ChainGeneralization, anti_unify_chain, extract_fillings }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.fold_assembly { apply_fills, assemble_fold, encode_per_element, expand_fold, fold_per_element_of, fold_template_edge, fold_template_of }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Atom, Edge, Symbol, TypeNode, name_occurrences, node_synthetic }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

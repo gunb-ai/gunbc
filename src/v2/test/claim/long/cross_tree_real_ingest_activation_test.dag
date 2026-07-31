@@ -1,5 +1,15 @@
 module v2.test.long.cross_tree_real_ingest_activation
 
+import extdeps.communication.medium { Medium }
+import std.algebra { Cons }
+import v2.compiler.program_assembly { program_assembly_fold_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, source_root_set_from_ingest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact }
+import v2.std.cross_tree.resolution { CrossTreeEdgeDecision, cross_tree_edge_decision }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.qualified_name { QualifiedName }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ct_real_v2_subject_source: Medium<String> = Medium {

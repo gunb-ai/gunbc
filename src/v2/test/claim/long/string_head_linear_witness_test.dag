@@ -1,5 +1,14 @@
 module v2.test.long.string_head_linear_witness
 
+import std.algebra { Cons }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list }
+import v2.std.collection { list_at_optional }
+import v2.std.compilers.lexing { Token, token_stream_all }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Symbol }
+
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

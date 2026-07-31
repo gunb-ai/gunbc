@@ -1,6 +1,7 @@
 module v2.test.lens_registry.sg_claims
 
 import v2.lens.registry {
+import v2.std.live_tree { LiveTreeDisposition }
   Complexity,
   ComplexityAccumulatorCopy,
   ComplexityLinearityAudit,

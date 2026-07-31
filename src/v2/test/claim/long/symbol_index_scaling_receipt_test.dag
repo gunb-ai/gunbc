@@ -30,3 +30,11 @@ test fn symbol_index_fill_refusal_count_within_ratchet_holds() -> Bool {
 test fn name_resolve_fill_path_refusal_count_within_ratchet_holds() -> Bool {
   file_gate(path: "src/v2/compiler/03_name_resolve.dag", refusal_ceiling: 8)
 }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.complexity_accumulator_copy.analyze { accumulator_copy_findings }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { port_locus }

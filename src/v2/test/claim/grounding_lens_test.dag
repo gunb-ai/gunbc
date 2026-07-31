@@ -1,5 +1,10 @@
 module v2.test.claim.grounding_lens
 
+import v2.lens.grounding { GroundingWorklistEntry, candidates_over_decls, compute_layer_excluded, name_coincides }
+import v2.std.concept_index { ConceptDecl, ConceptStruct, FieldRef, QualifiedConcept }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Atom, Edge, Node, Symbol, TypeNode }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_coincide_caseinsensitive() -> Bool {

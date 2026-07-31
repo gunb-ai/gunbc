@@ -54,6 +54,11 @@ fn body_only_edit_preserves_export_fingerprint() -> Bool {
     Absent => false
   }
 }
+import std.content_hash { content_hash_atom }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.algebra { list_snoc_item }
+import v2.std.node { content_hash }
+import v2.std.optional { optional_absent }
 
 fn signature_edit_changes_export_fingerprint() -> Bool {
   let baseline = export_fingerprint_for_gate(

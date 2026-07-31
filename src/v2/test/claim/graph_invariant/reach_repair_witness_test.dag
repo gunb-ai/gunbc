@@ -53,6 +53,9 @@ data reach_repair_surgical_body_edit: Edit = Edit {
 data reach_repair_surgical_body_diff: Diff = Diff {
   edits: [reach_repair_surgical_body_edit]
 }
+import std.decl_ref { DeclarationRef }
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import v2.std.compilers.target_model { TargetModel }
 
 fn rr_atom(identity: Symbol) -> Node {
   Node {

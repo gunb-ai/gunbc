@@ -1,5 +1,17 @@
 module v2.test.provenance.parse_stamp_span_index
 
+import std.algebra { Cons }
+import std.occurrence_identity { occurrence_id_eq }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.std.collection { list_nth }
+import v2.std.compilers.lexing { Token }
+import v2.std.diagnostic { Unavailable, node_locus, port_locus }
+import v2.std.grammar { GrammarProduction, GrammarRoot, Sequence, grammar_atom, grammar_empty_sync_tokens }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Node, TypeNode }
+import v2.std.node_query { find_named_child }
+import v2.std.provenance { SpanIndex, span_index_lookup }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn parse_stamp_list_absent_diagnostic() -> Diagnostic {

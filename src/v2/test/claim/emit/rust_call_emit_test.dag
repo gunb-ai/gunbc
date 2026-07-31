@@ -57,6 +57,10 @@ fn rust_call_type_atom(id: Symbol) -> Node {
     children: []
   )
 }
+import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.grammar { FormalGrammarSymbol, FormalProduction, GrammarExpr, GrammarProduction, Sequence, derive_grammar_relation_row_node, formal_production_for_lhs_exact, formal_productions_catalog_to_node, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, grammar_relation_tokens_node }
 
 fn rust_call_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }

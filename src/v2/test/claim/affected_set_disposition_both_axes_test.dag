@@ -1,5 +1,9 @@
 module v2.test.claim.affected_set_disposition_both_axes
 
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Atom, Node, TypeNode }
+import v2.workflow.affected_set_floor_runner { DiffPathsProduced, floor_kernel_would_skip, floor_witness_run_disposition }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disposition_fixture_node: Node = Node {

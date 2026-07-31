@@ -1,5 +1,8 @@
 module v2.test.claim.cross_tree_import_model
 
+import v2.std.cross_tree.import_model { CrossTreeImport, SourceRootSet, cross_tree_import_admitted, cross_tree_import_closure_admitted }
+import v2.std.live_tree { LiveTreeDisposition }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data both_roots: SourceRootSet = [V2Tree, DagTree]

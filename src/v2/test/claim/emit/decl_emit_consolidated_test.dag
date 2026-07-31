@@ -1,5 +1,7 @@
 module v2.test.emit.decl_emit_consolidated
 
+import v2.std.node { Symbol }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data dc_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")

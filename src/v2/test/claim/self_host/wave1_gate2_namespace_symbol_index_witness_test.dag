@@ -40,3 +40,9 @@ test fn wave1_gate2_name_resolution_gap_modules_import_resolve_holds() -> Bool {
     && (compiler_frontier_row_01_tokenize.module_path == "src/v2/compiler/01_tokenize.dag")
     && (compiler_frontier_row_03_body_producer.module_path == "src/v2/compiler/03_body_producer.dag")
 }
+import std.algebra { Cons }
+import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node, symbol_index_fill_module_root, symbol_index_fill_module_roots }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
+import v2.std.node { Atom, Edge, Node, Symbol, TypeNode }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_global_unique_lookup, symbol_index_insert, symbol_index_lexical_lookup, symbol_index_lookup }

@@ -1,5 +1,9 @@
 module v2.test.claim.use_site_verdict_test
 
+import v2.compiler.use_site_verdict { MoveField, UseSiteVerdict, attach_use_site_verdict, use_site_verdict_lookup }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { ComputationNode, node_synthetic }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

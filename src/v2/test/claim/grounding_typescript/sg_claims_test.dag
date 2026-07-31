@@ -1,5 +1,13 @@
 module v2.test.grounding_typescript.sg_claims
 
+import v2.compiler.translate { collection_realization_from_target, free_monoid_collection_realization_from_target, target_bundle_child_optional_type_expr_projection, translate_type_expression_project }
+import v2.extdeps.languages.typescript { ts_build_per_language_fact_bundle_registry, ts_sg2_foobar_xy_emitted, ts_sg2_instantiation_source_type_node, ts_sg2_type_expr_target_model, ts_std_text_string_type_node, ts_target_atom_realization_catalog, ts_type_expression_projection }
+import v2.std.compilers.target_model { symbol_kernel_type_node, target_atom_realization_lookup_in_catalog, target_carrier_free_monoid_node, target_collection_set_carrier_node }
+import v2.std.grounding { GroundingEvidenceSchema, Sg1Evidence, Sg2Evidence, Sg5Evidence }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.logic { bool_node }
+import v2.std.node { Atom, Node, TypeNode, content_hash }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn ts_g2_claim_fail_node() -> Node {

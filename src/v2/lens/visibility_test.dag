@@ -1,5 +1,10 @@
 module v2.test.lens_visibility.visibility_test
 
+import std.algebra { Cons }
+import v2.lens.visibility { ModuleVisibilityFact, visibility_clean, visibility_leak_count }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.qualified_name { QualifiedName }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

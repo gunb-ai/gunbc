@@ -1,5 +1,8 @@
 module v2.test.host_language_transport_script.corpus.facts_readback_verdict_perturb
 
+import v2.lens.host_language_transport_script { transport_script_lens_verdict, transport_script_literal_ban_holds, transport_script_literal_violation_count, transport_script_position_facts_live }
+import v2.std.live_tree { LiveTreeDisposition }
+
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data corpus_computed_path: String = "dag/tools/dag_compile_clean_transport.dag"

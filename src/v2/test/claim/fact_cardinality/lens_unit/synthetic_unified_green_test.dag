@@ -33,3 +33,5 @@ test fn synthetic_unified_green_holds() -> Bool {
       right: synthetic_unified_v2
     )
 }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.algebra { fold_list, list_snoc_item }

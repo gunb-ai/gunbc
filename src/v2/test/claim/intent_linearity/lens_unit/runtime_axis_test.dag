@@ -12,9 +12,10 @@ import v2.std.node {
   Edge,
   Node,
   Positional,
+  Symbol,
   Transform,
   TypeNode,
-  node_synthetic
+  node_synthetic,
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }

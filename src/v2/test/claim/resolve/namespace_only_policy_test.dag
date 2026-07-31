@@ -55,6 +55,9 @@ fn policy_pilot_atom(identity: Symbol) -> Node {
     occurrence_id: SyntheticOccurrence
   }
 }
+import std.algebra { Cons }
+import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node, symbol_index_fill_module_root, symbol_index_fill_module_roots }
+import v2.std.algebra { fold_list_node }
 
 fn policy_pilot_resolve(
   policy: NameResolutionPolicy,

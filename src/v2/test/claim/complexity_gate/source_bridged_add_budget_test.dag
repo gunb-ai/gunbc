@@ -57,3 +57,4 @@ test fn table_fixture_add_budget_claim_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+import v2.std.node_query { find_arrow_body_child }

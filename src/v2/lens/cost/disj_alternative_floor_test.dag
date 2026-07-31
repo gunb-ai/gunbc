@@ -1,5 +1,9 @@
 module v2.test.lens_cost.disj_alternative_floor
 
+import v2.lens.cost { cost_lens, symbolic_max, unit_cost, zero_cost }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Atom, Edge, Node, TypeNode }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disj_floor_arm_a: Node = Node {

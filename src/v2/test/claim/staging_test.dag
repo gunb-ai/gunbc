@@ -1,5 +1,9 @@
 module v2.test.claim.staging
 
+import v2.std.diagnostic { outcome_accepted }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.staging { cached_stage, then_outcome }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,9 @@
 module v2.test.claim.qualified_name.freemonoid_eq_witness
 
+import std.algebra { Cons }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Symbol }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,9 @@
 module v2.test.spine.spine_receipt_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Atom, Edge, Symbol, TypeNode, node_synthetic }
+import v2.std.spine { critical_path_depth, independence_width, spine_has_recoverable_parallelism, spine_is_serial_chain, spine_receipt }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,8 @@
 module v2.test.manual.witness_option_bridge
 
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.test.lens_affected_set.excluded_propagation_proof { excluded_propagation_proof_claim_holds }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

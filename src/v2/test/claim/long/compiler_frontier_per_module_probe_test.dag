@@ -19,8 +19,9 @@ import v2.compiler.self_host.frontier_probe_survey {
 }
 import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
+  FrontierProbeReceipt,
   NameResolutionGap,
-  SelfEmitReady
+  SelfEmitReady,
 }
 import v2.test.workflow.host_frontier_probe_survey_manifest {
   host_frontier_probe_survey,

@@ -1,5 +1,11 @@
 module v2.test.extdeps.spice_rc_passive_deck_claims
 
+import v2.extdeps.formats.spice { DeckStatement, NodeRef }
+import v2.std.collection { list_at_optional }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Symbol }
+import v2.test.fixture.spice_rc_passive_deck { spice_rc_passive_deck }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

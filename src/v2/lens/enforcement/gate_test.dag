@@ -1,5 +1,15 @@
 module v2.test.lens_enforcement.gate_test
 
+import v2.lens.common.construction_justification { ConstructionJustification }
+import v2.lens.enforcement.contract { CoverageReceipt, LensContract }
+import v2.lens.enforcement.gate { all_intents_admissible, contract_internally_consistent, enforcement_consistency_holds, intent_family_holds, intent_family_verdict, leg_fails, leg_holds }
+import v2.lens.enforcement.standing_intent { LensFamily, StandingIntent, standing_intent_registry }
+import v2.lens.enforcement.vocab { ExternalRuntimeOnly, OneOf, ScopeNarrowed, ScopeRoster, SubjectRoster, consumer_satisfies, enforcement_mode_satisfies }
+import v2.lens.registry { lens_registry_v0_parallelism }
+import v2.std.leaf_model_verification { Advisory }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,5 +1,8 @@
 module v2.test.host_language_transport_script.lens_unit.transport_script_position
 
+import v2.lens.host_language_transport_script { TransportScriptPositionFact, transport_script_lens_verdict, transport_script_literal_ban_holds, transport_script_literal_violation_count }
+import v2.std.live_tree { LiveTreeDisposition }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data path_dag: String = "dag/tools/dag_compile_clean_transport.dag"

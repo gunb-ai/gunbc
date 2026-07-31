@@ -1,5 +1,11 @@
 module v2.test.claim.grammar.validate_grammar
 
+import std.algebra { Cons }
+import std.types { Set }
+import v2.std.grammar { FormalGrammar, FormalTerminal, grammar_alphabet_enumeration_deferred_4766, grammar_formal_nonterminal, grammar_formal_production, grammar_formal_terminal, validate_grammar }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Symbol }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data validate_grammar_fixture_start: Symbol = ^validate_grammar_fixture_start

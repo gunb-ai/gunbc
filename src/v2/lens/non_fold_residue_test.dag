@@ -26,3 +26,4 @@ test fn non_fold_residue_synthetic_unrostered_red_holds() -> Bool {
 test fn non_fold_residue_wildcard_red_fixture_holds() -> Bool {
   witness_non_fold_residue_wildcard_red_fixture_holds()
 }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }

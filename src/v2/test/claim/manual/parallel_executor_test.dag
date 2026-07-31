@@ -46,6 +46,7 @@ data parallel_executor_expected_second_batch: ExecutorBatch = ExecutorBatch {
     executor_job_for_node(node: scheduler_emit_node)
   ]
 }
+import v2.std.node { Atom, Edge, Node, TypeNode }
 
 data parallel_executor_expected_batches: List<ExecutorBatch> = [
   parallel_executor_expected_first_batch,

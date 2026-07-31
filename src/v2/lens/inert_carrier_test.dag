@@ -32,3 +32,5 @@ test fn count_not_in_roster_detects_unrostered() -> Bool {
 test fn count_stale_roster_detects_stale_entry() -> Bool {
   return count_stale_roster(roster: roster_one, inert_names: empty_inert_carrier_names) == 1
 }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.algebra { fold_list }

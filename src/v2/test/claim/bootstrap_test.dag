@@ -1,5 +1,8 @@
 module v2.test.claim.bootstrap
 
+import tools.bootstrap_witness_transport { run_bootstrap_witness }
+import v2.std.live_tree { LiveTreeDisposition }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

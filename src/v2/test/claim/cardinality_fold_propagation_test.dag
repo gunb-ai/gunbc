@@ -1,5 +1,10 @@
 module v2.test.claim.cardinality_fold_propagation
 
+import v2.std.algebra { fold_list, list_append }
+import v2.std.diagnostic { Locus, port_locus }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.refinement { Validation, refine }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

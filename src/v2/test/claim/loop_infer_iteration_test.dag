@@ -1,5 +1,10 @@
 module v2.test.claim.loop_infer_iteration
 
+import v2.compiler.infer { InferredTree, infer, infer_branch_type_atoms_equal, inferred_facts_resolved_type, inferred_facts_witness_for_node }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.node { Atom, ComputationNode, Edge, Node, Symbol, TypeNode }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

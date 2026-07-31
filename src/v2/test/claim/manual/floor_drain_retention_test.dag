@@ -1,5 +1,12 @@
 module v2.test.manual.floor_drain_retention
 
+import extdeps.cache { cache_interface_facts_from_catalog }
+import extdeps.cache.materialization { provider_from_catalog }
+import extdeps.cache.types { catalog_key_derivation_classification }
+import extdeps.realization.reconcile_in_process { typed_module_cache_facts }
+import std.materialization_ladder { empty_frame_path }
+import v2.std.live_tree { LiveTreeDisposition }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data floor_drain_retention_note: String = "Width=1 floor drain reuses one in-process typed_module_cache across entry groups (term-3 retention axis). The catalog row cites Never eviction at the mechanism layer; the interim host-budget entry cap in cli_run.rs is the counted runtime backstop until cross-entry-typed-module-memo (PR-beta) lands SpacePacked eviction on the ladder."

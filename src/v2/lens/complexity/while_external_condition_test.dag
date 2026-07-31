@@ -1,5 +1,8 @@
 module v2.test.lens_complexity.while_external_condition
 
+import v2.lens.complexity { ComplexityBound }
+import v2.lens.cost { SymbolicCost }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

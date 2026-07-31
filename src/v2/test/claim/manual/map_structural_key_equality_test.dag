@@ -1,5 +1,7 @@
 module v2.test.manual.map_structural_key_equality
 
+import v2.std.live_tree { LiveTreeDisposition }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type SKey {
   a: Int

@@ -1,5 +1,8 @@
 module v2.test.claim.infer_semantics_witness
 
+import tools.infer_semantics_witness_transport { run_infer_semantics_witness }
+import v2.std.live_tree { LiveTreeDisposition }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -58,6 +58,7 @@ fn seed_honesty_fabricated_agreement(
     }
   }
 }
+import v2.std.diagnostic { Unavailable }
 
 fn seed_honesty_discharge_refuses_when_unavailable() -> Bool {
   match bootstrap_seed_honesty_discharge {

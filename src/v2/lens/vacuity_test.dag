@@ -58,6 +58,16 @@ import v2.test.nat_semiring.rung_5 {
   claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
 }
 import v2.test.rung_3_4_common { rung34_emit_host_rust_target_model }
+import std.types { Map }
+import v2.compiler.emit_host { run_test_claim_emit_vs_eval }
+import v2.compiler.eval { eval_test_claim_subject, run_test_claim }
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.rust { rust_target_model_staging }
+import v2.std.compilers.target_model { TargetModel }
+import v2.test.algebra_laws.nat_semiring { nat_add_associativity_input, nat_add_left_identity_input, nat_add_right_identity_input, nat_mul_annihilator_input, nat_mul_associativity_input, nat_mul_left_identity_input }
+import v2.test.lens_common.infer_fixture { claim_atom_node, claim_inferred_facts_from_nodes }
+import v2.test.manual.eval_runtime { eval_context }
+import v2.test.rung_5_6_common { rung56_emit_host_go_target_model, rung56_emit_host_python_target_model, rung56_emit_vs_eval_run }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

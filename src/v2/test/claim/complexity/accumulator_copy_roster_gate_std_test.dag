@@ -18,3 +18,11 @@ test fn roster_std_change_dag_zero_suspects_within_ratchet() -> Bool {
 test fn roster_std_render_repeat_string_bootstrap_within_ratchet() -> Bool {
   file_gate(path: "dag/std/render_repeat_string_bootstrap.dag", refusal_ceiling: 0)
 }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.complexity_accumulator_copy.analyze { accumulator_copy_findings }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { port_locus }
