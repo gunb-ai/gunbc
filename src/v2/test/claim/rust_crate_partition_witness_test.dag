@@ -2,7 +2,8 @@ module v2.test.claim.rust_crate_partition_witness
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
-import std.types { ContentHash, NonEmptyStr }
+import std.types { NonEmptyStr }
+import std.content_hash { ContentHash, content_hash_of_value }
 import v2.std.collection { Absent, Present, empty_map, map_insert }
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
@@ -66,11 +67,11 @@ data witness_red_control_note: String = "Discriminating RED: (1) assign std_alge
 data witness_mod_a: ModuleId = "witness.scc.a" as NonEmptyStr
 data witness_mod_b: ModuleId = "witness.scc.b" as NonEmptyStr
 data witness_mod_c: ModuleId = "witness.scc.c" as NonEmptyStr
-data witness_unit_x: CompilationUnitId = "witness-unit-x" as ContentHash
-data witness_unit_y: CompilationUnitId = "witness-unit-y" as ContentHash
+data witness_unit_x: CompilationUnitId = content_hash_of_value(value: "witness-unit-x" as NonEmptyStr)
+data witness_unit_y: CompilationUnitId = content_hash_of_value(value: "witness-unit-y" as NonEmptyStr)
 
-data witness_unit_p: CompilationUnitId = "witness-unit-p" as ContentHash
-data witness_unit_q: CompilationUnitId = "witness-unit-q" as ContentHash
+data witness_unit_p: CompilationUnitId = content_hash_of_value(value: "witness-unit-p" as NonEmptyStr)
+data witness_unit_q: CompilationUnitId = content_hash_of_value(value: "witness-unit-q" as NonEmptyStr)
 data witness_mod_p: ModuleId = "witness.unit.p" as NonEmptyStr
 data witness_mod_q: ModuleId = "witness.unit.q" as NonEmptyStr
 

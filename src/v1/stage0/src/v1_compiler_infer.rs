@@ -2,12 +2,18 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
+pub use crate::extdeps_container_oci_digest::oci_other_digest_algorithm;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_content_hash::{content_hash_atom, content_hash_combine, content_hash_tagged};
+use crate::std_content_hash::ContentHash::*;
+pub use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
+    content_hash_validate_lower_hex_length,
+};
+pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -35,7 +41,7 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
-pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
+pub use crate::std_types::{NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -1718,7 +1724,12 @@ pub fn where_refinement_is_int_literal_predicate(pred_name: String) -> bool {
 }
 
 pub fn where_refinement_is_string_literal_predicate(pred_name: String) -> bool {
-    (pred_name.clone() == "non_empty".to_string())
+    ((((((pred_name.clone() == "non_empty".to_string())
+        || (pred_name.clone() == "lower_hex_64".to_string()))
+        || (pred_name.clone() == "lower_hex_40".to_string()))
+        || (pred_name.clone() == "lower_hex_128".to_string()))
+        || (pred_name.clone() == "lower_hex_16".to_string()))
+        || (pred_name.clone() == "oci_other_digest_algorithm".to_string()))
 }
 
 pub fn where_refinement_is_deferred_predicate(pred_name: String) -> bool {
@@ -1736,7 +1747,27 @@ pub fn decidable_where_string_predicate_holds(pred_name: String, value: String) 
     if (pred_name.clone() == "non_empty".to_string()) {
         Some((v1_rt::string_length(&value) > 0))
     } else {
-        None
+        if (pred_name.clone() == "lower_hex_64".to_string()) {
+            Some(content_hash_validate_lower_hex_length(value.clone(), 64))
+        } else {
+            if (pred_name.clone() == "lower_hex_40".to_string()) {
+                Some(content_hash_validate_lower_hex_length(value.clone(), 40))
+            } else {
+                if (pred_name.clone() == "lower_hex_128".to_string()) {
+                    Some(content_hash_validate_lower_hex_length(value.clone(), 128))
+                } else {
+                    if (pred_name.clone() == "lower_hex_16".to_string()) {
+                        Some(content_hash_validate_lower_hex_length(value.clone(), 16))
+                    } else {
+                        if (pred_name.clone() == "oci_other_digest_algorithm".to_string()) {
+                            Some(oci_other_digest_algorithm(value.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -13886,19 +13917,19 @@ pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
 pub fn fn_signature_fingerprint(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> NonEmptyStr {
+) -> Rc<Fnv1a64Structural> {
     {
         let params_acc = item.params.clone().iter().cloned().fold(
             content_hash_atom("v1-interface-fn-sig-v0".to_string()),
-            |acc: NonEmptyStr, p: Rc<Node>| {
-                content_hash_combine(
+            |acc: Rc<Fnv1a64Structural>, p: Rc<Node>| {
+                content_hash_combine_structural(
                     acc,
                     content_hash_atom(resolved_type_name(p.clone(), source_indices.clone())),
                 )
             },
         );
         match item.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => content_hash_combine(
+            Some(InferredNode::Resolved { node: rt, .. }) => content_hash_combine_structural(
                 params_acc.clone(),
                 content_hash_atom(authored_name_at(source_indices.clone(), rt.clone())),
             ),
@@ -13920,9 +13951,9 @@ pub fn export_entry_from_item(
                 ExportKind::ExportFn => Some(Rc::new(ExportEntry {
                     name: name.clone(),
                     kind: kind.clone(),
-                    contract: signature_contract(content_hash_tagged(
+                    contract: signature_contract(content_hash_tagged_structural(
                         "v1-interface-fn-sig-v0".to_string(),
-                        content_hash_combine(
+                        content_hash_combine_structural(
                             content_hash_atom(name.clone()),
                             fn_signature_fingerprint(item.clone(), source_indices.clone()),
                         ),
@@ -13932,9 +13963,9 @@ pub fn export_entry_from_item(
                     Some(binding) => Some(Rc::new(ExportEntry {
                         name: name.clone(),
                         kind: kind.clone(),
-                        contract: signature_contract(content_hash_tagged(
+                        contract: signature_contract(content_hash_tagged_structural(
                             "v1-interface-sig-v0".to_string(),
-                            content_hash_combine(
+                            content_hash_combine_structural(
                                 content_hash_atom(binding.name.clone()),
                                 content_hash_atom(authored_name_at(
                                     source_indices.clone(),

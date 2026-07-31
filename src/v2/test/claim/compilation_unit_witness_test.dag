@@ -1,7 +1,8 @@
 module v2.test.claim.compilation_unit_witness
 
 import std.algebra { Empty }
-import std.types { NonEmptyStr, ContentHash, List }
+import std.types { NonEmptyStr, List }
+import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
@@ -54,9 +55,9 @@ data witness_mod_a: ModuleId = "mod.a" as NonEmptyStr
 data witness_mod_b: ModuleId = "mod.b" as NonEmptyStr
 data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
 
-data witness_unit_one: CompilationUnitId = "cu-one" as ContentHash
-data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
-data witness_unit_all: CompilationUnitId = "cu-all" as ContentHash
+data witness_unit_one: CompilationUnitId = content_hash_of_value(value: "cu-one" as NonEmptyStr)
+data witness_unit_two: CompilationUnitId = content_hash_of_value(value: "cu-two" as NonEmptyStr)
+data witness_unit_all: CompilationUnitId = content_hash_of_value(value: "cu-all" as NonEmptyStr)
 
 data witness_type_point: Symbol = ^witness_cu_point
 data witness_type_int: Symbol = ^witness_cu_int

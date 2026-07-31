@@ -1,13 +1,7 @@
 module gunbc.workflow.types
 
-import std.types {
-  ContentHash,
-  FermiDepth,
-  FilePath,
-  Milliseconds,
-  NonEmptyStr,
-  Timestamp
-}
+import std.types { FermiDepth, FilePath, Milliseconds, NonEmptyStr, Timestamp }
+import std.content_hash { ContentHash }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.uri { Uri }
 import gunbc.review_verdict { FindingSeverity }

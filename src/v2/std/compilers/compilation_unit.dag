@@ -1,7 +1,8 @@
 module v2.std.compilers.compilation_unit
 
 import std.algebra { Empty }
-import std.types { ContentHash, NonEmptyStr, List, Bool, String, Int }
+import std.types { NonEmptyStr, List, Bool, String, Int }
+import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }

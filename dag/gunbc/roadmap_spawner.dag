@@ -8,19 +8,10 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
-  section_group,
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_authority {
-  roadmap_authority, authored_merged_prs,
-  roadmap_authority_for,
-  declared_roadmap_nodes,
-  closing_contract_task_nodes,
-  active_sized,
-  fields,
-}
-import gunbc.roadmap_focus { NoFocus }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull,
   serialize_json,
@@ -64,61 +55,6 @@ fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
 fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
   let lane_edges = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_edges(s: s)))
   fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
-}
-
-data roadmap_rendered_containment_note: String = "RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — membership is the WHOLE NODE VALUE, never the identity alone, and the traversal is doc_all_nodes, the one canonical document walker. The 2026-07-31 operator verdict on gunbc#7489 found the guarantee-ladder nodes rendered from a section-local list outside declared_roadmap_nodes() — a second roadmap universe: uncounted, receipt-unreachable, invisible to active_roadmap_nodes() and the identity/endpoint/acyclicity witnesses. The section was deleted and the nodes joined the declared graph; these predicates close the CLASS: every node any rendered document carries must be value-equal to a declared node or a projection-derived closing-contract task. Two refused first cuts are recorded because each was a review catch of this wall violating the laws it enforces: identity-only membership (review 45406 — an altered copy reusing a declared identity would pass as sanctioned while forking content, the drifting duplicate authority DESIGN 3 forbids) and a hand-rolled document walker beside doc_all_nodes (review 45412 — a traversal fork; the predicates live HERE, in the walker's module, because roadmap_spawner already imports roadmap_authority and the reverse import would cycle). Two RED probes, each a synthetic document the wall must red: a fresh-identity ghost, and an altered copy of a real declared node (same identity, one field changed — derived from the canonical node so the probe duplicates no literals). Neither probe node enters the declared graph; the altered-copy probe returns 0 if its anchor node disappears, failing its witness loudly rather than vacuously passing."
-
-fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
-  let sanctioned = concat(declared_roadmap_nodes(), closing_contract_task_nodes())
-  doc_all_nodes(doc: doc)
-    |> filter(n => !any(sanctioned, s => s == n))
-    |> count
-}
-
-fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
-  let base = roadmap_authority_for(focus: NoFocus)
-  RoadmapDocument {
-    preamble: base.preamble,
-    lead_lanes: base.lead_lanes,
-    sections: concat(base.sections, [RoadmapSection {
-      title: "SYNTHETIC ghost section (test probe only)",
-      elements: [section_group(label: "", nodes: [ghost], edges: [])],
-    }]),
-  }
-}
-
-fn roadmap_ghost_node_red_probe_count() -> Int {
-  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: active_sized(
-    identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
-    owner: "compiler-guarantee",
-    path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
-    t: fields(
-      headline: "SYNTHETIC: a rendered node that no declared authority carries",
-      boundary: "Negative control for the containment witness — never declared, never rendered outside the probe.",
-      displaced_cost: "None; this row exists to be caught.",
-      first_slice: "None.",
-      red_control: "Its own detection: the containment predicate must count exactly this node.",
-      out_of_scope: "Everything.",
-      handback: "None."
-    ))))
-}
-
-fn roadmap_altered_copy_red_probe_count() -> Int {
-  match declared_roadmap_nodes() |> filter(n => (n.node as String) == "ladder-claims-carrier") |> first {
-    Absent => 0
-    Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: RoadmapNode {
-      identity: n.identity,
-      node: n.node,
-      line: n.line,
-      carriers: n.carriers,
-      sizing: n.sizing,
-      execution: n.execution,
-      owner: "SYNTHETIC-altered-copy-probe",
-      signoff: n.signoff,
-    }))
-  }
 }
 
 data spawn_frontier_completion_note: String = "Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket checkbox moves the page status to review, but never completes the node, removes its dispatch action, or unblocks a dependent node. Only an accepting operator sign-off completes work. Supersession is a separate terminal disposition: it never enters the done bucket, but it closes dependency edges because the named successor owns the work. The same acceptance and dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections."

@@ -1,6 +1,7 @@
 module gunbc.scm_compatibility.mercurial
 
-import std.types { ContentHash, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
 import std.integer { UInt8 }
 import extdeps.mercurial {
   MercurialNamedBranchName,

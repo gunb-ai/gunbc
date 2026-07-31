@@ -1,6 +1,7 @@
 module gunbc.scm_compatibility.git
 
-import std.types { Bool, Bytes, ContentHash, List, NonEmptyStr, String }
+import std.types { Bool, Bytes, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
 import std.integer { NonNegativeInt, UInt8 }
 import std.bytes { bytes_octets }
 import extdeps.git { ObjectType }
@@ -67,6 +68,7 @@ import extdeps.git.object_store {
   git_model_update_ref_exact,
   git_lookup_object,
   git_object_id_content_hash,
+  git_object_id_wire_hex,
   git_path_octets,
   git_unavailable_object_fold,
   git_r0_unsupported_boundary,
@@ -432,7 +434,7 @@ fn git_compatibility_object_id_identity(
 ) -> ContentHash {
   compatibility_identity_text(
     tag: "git-object-id",
-    value: git_object_id_content_hash(oid: oid) as String,
+    value: git_object_id_wire_hex(oid: oid) as String,
   )
 }
 
@@ -719,7 +721,7 @@ fn git_compatibility_fidelity() -> CompatibilityFidelityProfile {
 fn git_compatibility_projection_receipt(
   receipt: GitCompatibilityReceipt,
 ) -> CompatibilityProjectionReceipt {
-  let generation = git_object_id_content_hash(oid: receipt.generation) as NonEmptyStr
+  let generation = git_object_id_wire_hex(oid: receipt.generation) as NonEmptyStr
   let state = git_compatibility_observed_state_identity(
     observation: receipt.read_back,
   )

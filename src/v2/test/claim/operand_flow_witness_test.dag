@@ -1,7 +1,7 @@
 module v2.test.claim.operand_flow_witness
 
 import std.measure { byte_size, byte_size_count }
-import std.types { ContentHash }
+import std.content_hash { ContentHash }
 import v2.std.algebra { length }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

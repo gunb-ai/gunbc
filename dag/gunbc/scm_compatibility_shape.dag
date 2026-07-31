@@ -1,9 +1,10 @@
 module gunbc.scm_compatibility_shape
 
-import std.types { Bool, ContentHash, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
 import std.content_hash {
   content_hash_atom,
-  content_hash_combine,
+  content_hash_combine_structural,
   content_hash_tagged,
 }
 
@@ -35,7 +36,7 @@ fn compatibility_identity_sequence(
     members,
     init: content_hash_atom(value: tag),
     f: fn(acc, member) {
-      content_hash_combine(left: acc, right: member)
+      content_hash_combine_structural(left: acc, right: member)
     },
   )
 }
@@ -63,7 +64,7 @@ fn compatibility_read_back_handle(
       "compatibility-readback:",
       realization as String,
     ) as NonEmptyStr,
-    payload: content_hash_combine(
+    payload: content_hash_combine_structural(
       left: compatibility_identity_text(
         tag: "producer",
         value: producer as String,

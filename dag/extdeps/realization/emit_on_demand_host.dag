@@ -2,9 +2,15 @@ module extdeps.realization.emit_on_demand_host
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { ContentHash, String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  as_content_hash_structural,
+}
 import std.integer { NonNegativeInt }
-import std.content_hash { content_hash_atom, content_hash_combine }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import v2.std.optional { Present, Absent }
 
@@ -37,15 +43,27 @@ type ResolvedBuildContext {
   cargo_configuration_identity: ContentHash
 }
 
-fn toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
+fn emit_host_identity_structural(identity: ContentHash) -> Fnv1a64Structural {
+  match identity {
+    Fnv1a64(s) => s
+    Sha256Hash(_) => content_hash_atom(value: "emit-host-identity-refused-sha256")
+    Sha1Hash(_) => content_hash_atom(value: "emit-host-identity-refused-sha1")
+  }
+}
+
+fn toolchain_identity_structural(context: ResolvedBuildContext) -> Fnv1a64Structural {
   fold(
     context.observed_tool_identities,
     init: content_hash_atom(value: "emit-host-resolved-build-toolchain-v1"),
-    f: (acc, observed_tool_identity) => content_hash_combine(
+    f: (acc, observed_tool_identity) => content_hash_combine_structural(
       left: acc,
-      right: observed_tool_identity.observed_identity
+      right: emit_host_identity_structural(identity: observed_tool_identity.observed_identity)
     )
   )
+}
+
+fn toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
+  as_content_hash_structural(structural: toolchain_identity_structural(context: context))
 }
 
 fn observed_tool_identity(
@@ -69,15 +87,15 @@ fn resolved_build_context_identity(context: ResolvedBuildContext) -> ContentHash
   artifact_realization_digest(inputs: [
     ArtifactRealizationInput {
       identity: "resolved-build-toolchain",
-      content_digest: toolchain_identity(context: context)
+      content_digest: toolchain_identity_structural(context: context)
     },
     ArtifactRealizationInput {
       identity: "constructed-build-environment",
-      content_digest: context.environment_identity
+      content_digest: emit_host_identity_structural(identity: context.environment_identity)
     },
     ArtifactRealizationInput {
       identity: "cargo-configuration",
-      content_digest: context.cargo_configuration_identity
+      content_digest: emit_host_identity_structural(identity: context.cargo_configuration_identity)
     },
   ])
 }

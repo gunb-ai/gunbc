@@ -5,7 +5,11 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.types { ContentHash }
+import std.content_hash {
+  fnv1a64_structural_hex_digest,
+  Fnv1a64Structural,
+  structural_content_hash,
+}
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
@@ -1502,7 +1506,15 @@ data criteria_digest_reword_note: String = "Both digests below moved on 2026-07-
 
 data scm_prerequisite_acceptance_note: String = "The operator explicitly accepted the three independent R0 models and the separate P−1 evidence carrier, then accepted R1 after merging its three-realization compatibility extraction. R1 depends only on the three R0 receipts; P0 is the first source-intent slice that consumes both accepted R1 and accepted P−1. These receipts preserve every prerequisite and handback as durable facts. Replacing accepted rows with their child would erase history and violate roadmap_acceptance_receipt_note."
 
-fn chash(s: String) -> ContentHash { s }
+fn chash(s: String) -> Fnv1a64Structural {
+  match fnv1a64_structural_hex_digest(hex: s) {
+    Present { value: digest } => digest
+    Absent =>
+      structural_content_hash(
+        digest: s as Fnv1a64StructuralDigestHex,
+      )
+  }
+}
 
 fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
   [
