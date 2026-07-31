@@ -94,5 +94,40 @@ test fn every_control_character_an_emitter_escapes_comes_back_unchanged() -> Boo
 
 test fn a_lowercase_hex_escape_decodes_the_same_as_uppercase() -> Bool {
   parsed_string_of(text: "\"\\u001b\"") == parsed_string_of(text: "\"\\u001B\"")
-    && parsed_string_of(text: "\"\\u001b\"") == from_code_point(cp: 27)
+    && parsed_string_of(text: "\"\\u001B\"") == from_code_point(cp: 27)
+}
+
+fn parses(text: String) -> Bool {
+  match parse_json(s: text) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+data trailing_comma_regression_note: String = "These exist because the recovered parser accepted a trailing comma and the roadmap_provider_events witness caught it, not this file. The accumulator checked for the closing bracket at the top of each round, so after consuming a separator it reached the empty-container case again and closed the container. Nothing in a round-trip claim can see this: serialize_json never EMITS a trailing comma, so emitter-to-parser round-trips stay green over exactly the documents that cannot expose it. The defect is only reachable from foreign text, which is what json_text_parseable guards - the Codex JSONL reader refuses a malformed provider line with it, and a truncated-then-closed event would have read as well-formed. The last claim names the fixture that failed."
+
+test fn a_trailing_comma_is_refused_in_objects_and_arrays() -> Bool {
+  parses(text: "\{\"a\": 1}")
+    && parses(text: "[1]")
+    && !parses(text: "\{\"a\": 1,}")
+    && !parses(text: "[1,]")
+    && !parses(text: "\{\"a\": 1, \"b\": 2,}")
+    && !parses(text: "[1, 2,]")
+}
+
+test fn empty_containers_still_parse() -> Bool {
+  parses(text: "\{}")
+    && parses(text: "[]")
+    && parses(text: "\{\"a\": [], \"b\": \{}}")
+}
+
+test fn a_lone_comma_is_not_a_member_or_an_element() -> Bool {
+  !parses(text: "\{,}")
+    && !parses(text: "[,]")
+    && !parses(text: "\{\"a\": 1,,\"b\": 2}")
+}
+
+test fn the_provider_event_line_that_caught_the_trailing_comma_is_refused() -> Bool {
+  !parses(text: "\{\"type\":\"turn.completed\",}")
+    && parses(text: "\{\"type\":\"turn.completed\"}")
 }
