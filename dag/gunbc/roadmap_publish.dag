@@ -57,6 +57,11 @@ type PublicationOutcome
       remote_head: CommitSha,
       expected_head: CommitSha,
     }
+  | RemoteBranchBindingAmbiguous {
+      branch: NonEmptyStr,
+      remote: NonEmptyStr,
+      refs_matched: Int,
+    }
   | BranchNotPublished {
       branch: NonEmptyStr,
       remote_branches_seen: Int,
@@ -67,7 +72,7 @@ type PublicationOutcome
 
 data draft_is_carried_not_judged_note: String = "Draft is REPORTED, never derived from. A draft pull request is a perfectly good publication surface for the roadmap's own review process — readiness for review is decided by the roadmap's Run Review action, not by the forge's draft flag — so this module carries the flag and refuses to conclude anything from it. Treating draft as not-yet-published would import a forge convention into a roadmap decision, and would make the roadmap's own trigger unable to review a subject the operator deliberately kept out of the forge's review queue."
 
-data no_silent_pick_note: String = "0/1/MANY, NEVER first() (review correction, 2026-07-31). The previous cut selected the FIRST pull request whose head ref matched the branch. Nothing in the model establishes that the match is unique — a branch can carry pull requests against different bases — so first() silently picked one and reported it as THE publication. That is the same silent-pick defect the namespace lane is eliminating, reintroduced in a module whose whole thesis is that the subject must be exact.\\n\\nUniqueness is therefore established rather than assumed: the match is keyed by head branch AND expected base, and a two-or-more result is its own arm carrying every matching number, so an ambiguous binding is visible instead of resolved by list order."
+data no_silent_pick_note: String = "0/1/MANY, NEVER first() (review correction, 2026-07-31). The previous cut selected the FIRST pull request whose head ref matched the branch. Nothing in the model establishes that the match is unique — a branch can carry pull requests against different bases — so first() silently picked one and reported it as THE publication. That is the same silent-pick defect the namespace lane is eliminating, reintroduced in a module whose whole thesis is that the subject must be exact.\\n\\nUniqueness is therefore established rather than assumed: the match is keyed by head branch AND expected base, and a two-or-more result is its own arm carrying every matching number, so an ambiguous binding is visible instead of resolved by list order.\\n\\nTHE SAME RULE, APPLIED TO THE FOLD BESIDE IT (self-review, 2026-07-31). The first cut of this correction fixed the pull-request fold and left adjudicate_remote_branch handling 0 and then taking the first of the rest — so the note above declared a rule the module did not uniformly keep, one screen below where it was written. A well-formed ref listing cannot carry two refs of one name, so no live observation reaches it; that is exactly the argument this note already rejects for pull requests, because the observation is a caller-supplied list and nothing in the MODEL establishes the uniqueness the code was relying on. Both folds are now 0/1/many. The old singleton arm was worse than a silent pick on top of that: count was already known to be nonzero, so its Absent branch was unreachable, and if reached it answered BranchNotPublished — a confident wrong answer to a question it had not decided. An unreachable arm still has to name what it would mean, and the honest meaning is that the binding was not established, never that the branch is absent."
 
 fn pull_requests_for_target(
   pulls: List<PullRequest>,
@@ -113,6 +118,10 @@ fn remote_branch_for(
       && (b.branch as String) == (branch as String))
 }
 
+fn sole_remote_branch(branches: List<RemoteBranch>) -> RemoteBranch? {
+  fold(branches, init: none, f: (acc, r) => Present { value: r })
+}
+
 fn adjudicate_remote_branch(
   branches: List<RemoteBranch>,
   remote: NonEmptyStr,
@@ -120,17 +129,25 @@ fn adjudicate_remote_branch(
   expected_head: CommitSha,
 ) -> PublicationOutcome {
   let matches = remote_branch_for(branches: branches, remote: remote, branch: branch)
-  if count(matches) == 0 {
+  let matched = count(matches)
+  if matched == 0 {
     BranchNotPublished {
       branch: branch,
       remote_branches_seen: count(branches),
     }
+  } else if matched > 1 {
+    RemoteBranchBindingAmbiguous {
+      branch: branch,
+      remote: remote,
+      refs_matched: matched,
+    }
   } else {
-    match first(matches) {
+    match sole_remote_branch(branches: matches) {
       Absent =>
-        BranchNotPublished {
+        RemoteBranchBindingAmbiguous {
           branch: branch,
-          remote_branches_seen: count(branches),
+          remote: remote,
+          refs_matched: matched,
         }
       Present { value: ref } =>
         if (ref.head_sha as String) == (expected_head as String) {
@@ -256,6 +273,15 @@ fn publication_detail(outcome: PublicationOutcome) -> String {
         ", not at the commit under judgment ",
         expected_head as String,
       ], "")
+    RemoteBranchBindingAmbiguous { branch, remote, refs_matched } =>
+      join([
+        to_string(refs_matched),
+        " refs on ",
+        remote as String,
+        " answer to ",
+        branch as String,
+        ", so which ref carries the commit under judgment is not decidable from the observation",
+      ], "")
     BranchNotPublished { branch, remote_branches_seen } =>
       join([
         "the branch ",
@@ -279,6 +305,7 @@ fn publication_offers_the_expected_head(outcome: PublicationOutcome) -> Bool {
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
     PublicationObservationRefused { detail: _ } => false
   }

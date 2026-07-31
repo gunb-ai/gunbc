@@ -10,6 +10,7 @@ import gunbc.roadmap_publish {
   PublicationOutcome,
   PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous,
   RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged,
+  RemoteBranchBindingAmbiguous,
   BranchNotPublished, PublicationObservationRefused,
   adjudicate_publication,
   publication_detail,
@@ -100,6 +101,7 @@ test fn a_pull_request_at_the_expected_head_is_bound() -> Bool {
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationObservationRefused { detail: _ } => false
   }
 }
@@ -117,6 +119,7 @@ test fn a_pull_request_at_another_head_diverges_and_names_both() -> Bool {
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationObservationRefused { detail: _ } => false
   }
 }
@@ -144,6 +147,7 @@ test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationObservationRefused { detail: _ } => false
   }
 }
@@ -166,6 +170,7 @@ test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationObservationRefused { detail: _ } => false
   }
 }
@@ -191,6 +196,7 @@ test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_a
     PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
     PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationObservationRefused { detail: _ } => false
   }
 }
@@ -211,7 +217,59 @@ test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bo
     PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
     PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+data remote_ref_ambiguity_note: String = "The pull-request fold got 0/1/many in the first cut of that correction and the remote-ref fold beside it did not - it handled zero and then took the first of the rest, which is the same silent pick one screen below the note forbidding it. This is stated in BOTH orders on purpose: with the expected head first, the old code answered RemoteBranchAtExpectedHeadWithoutPullRequest, and with the stale ref first it answered RemoteBranchHeadDiverged, so a single-order claim would have been satisfied by list position rather than by a decision. Two orders over one observation make the answer order-independent, which is the property that was actually missing."
+
+fn ambiguous_over_two_refs(outcome: PublicationOutcome) -> Bool {
+  match outcome {
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched } =>
+      refs_matched == 2
+    _ => false
+  }
+}
+
+test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
+  let expected_first = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
+        fixture_ref(branch: fixture_branch as String, sha: fixture_older),
+      ],
+    },
+  )
+  let stale_first = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: fixture_branch as String, sha: fixture_older),
+        fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
+      ],
+    },
+  )
+  ambiguous_over_two_refs(outcome: expected_first)
+    && ambiguous_over_two_refs(outcome: stale_first)
+    && !publication_offers_the_expected_head(outcome: expected_first)
+}
+
+test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool {
+  let outcome = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
+        fixture_ref(branch: "other", sha: fixture_older),
+      ],
+    },
+  )
+  match outcome {
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha } =>
+      (head_sha as String) == (fixture_expected as String)
+    _ => false
   }
 }
 
@@ -233,6 +291,7 @@ test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
     PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
     PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationObservationRefused { detail: _ } => false
   }
 }
@@ -249,6 +308,7 @@ test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
     PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
@@ -265,6 +325,7 @@ test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpubl
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
     PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
     PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
