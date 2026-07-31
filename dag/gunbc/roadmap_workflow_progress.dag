@@ -319,18 +319,24 @@ fn verification_receipt_segment(receipt: String) -> WorkflowSegment {
     ValidationReceiptDecoded { verdict_key } =>
       WorkflowSegment {
         kind: VerificationWorkflowSegment,
-        state: if verdict_key == "passed" {
+        state: if verdict_key == "not_run" {
+          WorkflowSegmentPending
+        } else if verdict_key == "passed" {
           WorkflowSegmentComplete
         } else if verdict_key == "failed" {
           WorkflowSegmentFailed
         } else {
           WorkflowSegmentRefused
         },
-        detail: join([
-          "declared validation ",
-          verdict_key,
-          " against the oracle pinned at dispatch",
-        ], ""),
+        detail: if verdict_key == "not_run" {
+          "the declared validation has not run yet; this pending state is read from the attempt's own receipt rather than inferred from its absence"
+        } else {
+          join([
+            "declared validation ",
+            verdict_key,
+            " against the oracle pinned at dispatch",
+          ], "")
+        },
       }
   }
 }

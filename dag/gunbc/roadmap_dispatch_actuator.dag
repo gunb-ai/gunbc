@@ -541,6 +541,21 @@ fn dispatch_current_attempt_oracle_revision_path_for_instance(
   ], "")
 }
 
+fn dispatch_attempt_validation_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/validation-receipt.json",
+  ], "")
+}
+
 fn dispatch_current_attempt_validation_receipt_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,

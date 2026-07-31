@@ -298,8 +298,11 @@ type ValidationRefusalCause
       reason: String,
     }
 
+data validation_not_run_note: String = "review 45271. ValidationNotRun exists so that the ABSENCE of a receipt stops being a state the verification seam has to interpret. The seam previously asked `is the receipt text empty` and got `\"\"` from three different worlds — no file, an unreadable file, and an empty one — then RAN THE VALIDATION AND OVERWROTE whatever was there. Absent and unreadable have opposite correct actions (run it; stop and do not touch the evidence), so collapsing them let an I/O fault regenerate a verdict against a worktree the agent may have moved since. The fix is construction rather than a better classifier, because the Filesystem.Read surface exposes no typed absence and deciding it from an error string would be a guess: dispatch WRITES this verdict beside the attempt during state initialization, exactly as it already writes an empty provider-events.jsonl so that stream's absence is meaningful. After that, a receipt is always present, so a failed read is unambiguously a fault and refuses. The Verify lamp reads this as pending — which makes its pending state evidence-backed rather than inferred from nothing."
+
 type ValidationVerdict
-  = ValidationPassed {
+  = ValidationNotRun
+  | ValidationPassed {
       command: String,
       oracle_identity: ContentHash,
     }
@@ -514,6 +517,7 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
 
 fn validation_verdict_key(verdict: ValidationVerdict) -> String {
   match verdict {
+    ValidationNotRun => "not_run"
     ValidationPassed { command: _, oracle_identity: _ } => "passed"
     ValidationFailed { command: _, exit_code: _, detail: _ } => "failed"
     ValidationRefused { cause: _ } => "refused"
@@ -522,6 +526,8 @@ fn validation_verdict_key(verdict: ValidationVerdict) -> String {
 
 fn validation_verdict_detail(verdict: ValidationVerdict) -> String {
   match verdict {
+    ValidationNotRun =>
+      "the declared validation has not run for this attempt; this receipt was written at dispatch so that a later unreadable receipt is a fault rather than an absence"
     ValidationPassed { command, oracle_identity } =>
       join([
         "declared validation passed against the pinned oracle ",
@@ -619,6 +625,11 @@ fn validation_receipt_decode(receipt: String) -> ValidationReceiptDecode {
     ValidationReceiptUndecodable {
       reason: "validation receipt is not one well-formed JSON value",
     }
+  } else if starts_with(
+    s: receipt,
+    prefix: validation_receipt_identity_prefix(verdict_key: "not_run"),
+  ) {
+    ValidationReceiptDecoded { verdict_key: "not_run" }
   } else if starts_with(
     s: receipt,
     prefix: validation_receipt_identity_prefix(verdict_key: "passed"),

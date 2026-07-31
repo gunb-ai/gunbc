@@ -45,6 +45,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_oracle_identity_path_for_instance,
   dispatch_attempt_oracle_revision_path_for_instance,
   dispatch_attempt_oracle_pin_refusal_path_for_instance,
+  dispatch_attempt_validation_receipt_path_for_instance,
   dispatch_current_attempt_oracle_identity_path_for_instance,
   dispatch_current_attempt_oracle_revision_path_for_instance,
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
@@ -144,6 +145,11 @@ import gunbc.roadmap_validation_oracle {
   ValidationPassed,
   ValidationFailed,
   ValidationRefused,
+  ValidationNotRun,
+  ValidationReceiptDecode,
+  ValidationReceiptDecoded,
+  ValidationReceiptUndecodable,
+  validation_receipt_decode,
   ValidationCommandUnrealized,
   ValidationCommandRefused,
   validation_oracle_scopes,
@@ -344,7 +350,30 @@ fn belt_attempt_state_initialize_for_instance(
             attempt_key: attempt_key,
           ),
         )
-        if pin_persisted {
+        let receipt_initialized = Filesystem.Write(
+          path: dispatch_attempt_validation_receipt_path_for_instance(
+            instance: instance,
+            node_id: node.node,
+            attempt_key: attempt_key,
+          ),
+          content: validation_receipt_json(
+            verdict: ValidationNotRun,
+            observations: belt_oracle_observations_in_worktree(
+              contract: node.execution,
+              worktree: dispatch_worktree_path_for_instance(
+                instance: instance,
+                node_id: node.node,
+                attempt_key: attempt_key,
+              ),
+            ),
+          ),
+        ).success
+        if !receipt_initialized {
+          AttemptStateInitializationFailed {
+            step: "attempt-validation-receipt-initialize",
+            detail: "the not-run validation receipt could not be written beside the attempt; without it a later unreadable receipt is indistinguishable from an absent one, which is the conflation this initialization exists to remove",
+          }
+        } else if pin_persisted {
           AttemptStateInitialized
         } else {
           AttemptStateInitializationFailed {
@@ -1422,6 +1451,12 @@ fn belt_verify_outcome_json(o: BeltVerifyOutcome) -> JsonValue {
         json_kv(key: "outcome", value: json_string(s: "write-failed")),
         json_kv(key: "detail", value: json_string(s: detail)),
       ])
+    VerifyEvidenceUnreadable { node_id, detail } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "evidence-unreadable")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
   }
 }
 
@@ -1432,12 +1467,14 @@ fn belt_tick_verify_recorded_count(t: BeltTickResult) -> Int {
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => true
     VerifyDeferred { node_id: _, reason: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
+    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
   }))
 }
 
 fn belt_tick_verify_write_failed_count(t: BeltTickResult) -> Int {
   count(t.verify_outcomes |> filter(o => match o {
     VerifyWriteFailed { node_id: _, detail: _ } => true
+    VerifyEvidenceUnreadable { node_id: _, detail: _ } => true
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyDeferred { node_id: _, reason: _ } => false
   }))
@@ -1840,6 +1877,9 @@ type BeltVerifyOutcome
       detail: String,
     }
   | VerifyWriteFailed { node_id: String, detail: String }
+  | VerifyEvidenceUnreadable { node_id: String, detail: String }
+
+data belt_read_or_empty_scope_note: String = "review 45271, and the scope of this collapse is now deliberate rather than incidental. Reducing a read to `\"\"` conflates absent with unreadable, which is only safe where BOTH branches take the same action. That holds for the PIN reads below — an absent identity and an unreadable one both leave pin_recorded false, and the gate refuses either way, actuating nothing — so the distinction would change the message and not the behaviour. It did NOT hold for the receipt-presence read, which gated whether to RUN the validation and OVERWRITE the evidence: there, absent means run and unreadable means stop, so the collapse let an I/O fault regenerate a verdict against a worktree that may have moved. That seam no longer uses this function; it reads with status preserved and decodes."
 
 fn belt_read_or_empty(path: String) -> String {
   let read = Filesystem.Read(path: path)
@@ -1873,6 +1913,7 @@ fn belt_run_validation_commands(
     },
     f: fn(acc, maybe_command) {
       match acc {
+        ValidationNotRun => acc
         ValidationFailed { command: _, exit_code: _, detail: _ } => acc
         ValidationRefused { cause: _ } => acc
         ValidationPassed { command: prior, oracle_identity: _ } =>
@@ -1924,18 +1965,42 @@ fn belt_verify_attempt_for_instance(
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
   match progress.provider {
-    ProviderCompleted { activity: _ } =>
-      if belt_read_or_empty(
+    ProviderCompleted { activity: _ } => {
+      let receipt_read = Filesystem.Read(
         path: dispatch_current_attempt_validation_receipt_path_for_instance(
           instance: instance,
           node_id: node_id,
         ),
-      ) != "" {
-        VerifyDeferred {
+      )
+      if !receipt_read.success {
+        VerifyEvidenceUnreadable {
           node_id: progress.node_id,
-          reason: "a validation receipt is already recorded for this attempt",
+          detail: join([
+            "the validation receipt beside this attempt could not be read, so whether a verdict already exists is unknown; the belt refuses to run the validation rather than overwrite evidence it cannot see (",
+            receipt_read.error,
+            "). An attempt dispatched before verification receipts existed reports this until it is re-dispatched",
+          ], ""),
         }
       } else {
+        match validation_receipt_decode(receipt: receipt_read.content) {
+          ValidationReceiptUndecodable { reason } =>
+            VerifyEvidenceUnreadable {
+              node_id: progress.node_id,
+              detail: join([
+                "the validation receipt beside this attempt does not decode, so the belt refuses to replace it: ",
+                reason,
+              ], ""),
+            }
+          ValidationReceiptDecoded { verdict_key } =>
+            if verdict_key != "not_run" {
+              VerifyDeferred {
+                node_id: progress.node_id,
+                reason: join([
+                  "a validation verdict is already recorded for this attempt: ",
+                  verdict_key,
+                ], ""),
+              }
+            } else {
         match belt_lookup_node(node_id: progress.node_id) {
           NodeMissing =>
             VerifyDeferred {
@@ -2020,6 +2085,9 @@ fn belt_verify_attempt_for_instance(
           }
         }
       }
+        }
+      }
+    }
     _ =>
       VerifyDeferred {
         node_id: progress.node_id,

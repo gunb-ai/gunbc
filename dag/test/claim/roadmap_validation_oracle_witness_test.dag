@@ -39,6 +39,7 @@ import gunbc.roadmap_validation_oracle {
   ValidationPassed,
   ValidationFailed,
   ValidationRefused,
+  ValidationNotRun,
   validation_oracle_source_identity,
   validation_oracle_declaration_count,
   validation_oracle_observe_from_source,
@@ -517,6 +518,27 @@ test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
   refused == "refused" && failed == "failed" && refused != failed
 }
 
+data not_run_receipt_note: String = "review 45271. The receipt-presence seam used to ask whether the receipt TEXT was empty, which answered the same way for three different worlds — no file, an unreadable file, an empty one — and then ran the validation and overwrote whatever was there. Absent and unreadable have opposite correct actions, so dispatch now writes a not-run receipt and absence stops being a state the seam has to interpret. These assert the two halves that makes true: a not-run receipt is DISTINGUISHABLE from every recorded verdict (so the belt can tell 'never ran' from 'already ran' without consulting the filesystem's error string), and it reads as pending at the lamp rather than as a verdict."
+
+test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
+  let not_run = receipt_for(verdict: ValidationNotRun)
+  let passed = receipt_for(verdict: ValidationPassed {
+    command: "gunbc run --claim-run",
+    oracle_identity: pinned_identity(),
+  })
+  let decoded_key = match validation_receipt_decode(receipt: not_run) {
+    ValidationReceiptDecoded { verdict_key } => verdict_key
+    ValidationReceiptUndecodable { reason: _ } => "undecodable"
+  }
+  decoded_key == "not_run"
+    && validation_verdict_key(verdict: ValidationNotRun) == "not_run"
+    && not_run != passed
+}
+
+test fn not_run_receipt_reads_as_pending_not_as_a_verdict() -> Bool {
+  verify_lamp_state(receipt: receipt_for(verdict: ValidationNotRun)) == "pending"
+}
+
 test fn verify_lamp_refuses_a_foreign_receipt_document() -> Bool {
   verify_lamp_state(
     receipt: "{\"schema\": \"something-else/v1\", \"verdict\": \"passed\"}",
@@ -542,5 +564,7 @@ test fn roadmap_validation_oracle_keystone_holds() -> Bool {
     && verify_lamp_stays_pending_without_a_receipt()
     && verify_lamp_completes_only_on_a_passed_receipt()
     && verify_lamp_shows_a_refusal_as_refused_not_failed()
+    && not_run_receipt_is_distinct_from_every_recorded_verdict()
+    && not_run_receipt_reads_as_pending_not_as_a_verdict()
     && verify_lamp_refuses_a_foreign_receipt_document()
 }
