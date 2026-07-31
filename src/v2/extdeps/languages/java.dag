@@ -111,10 +111,6 @@ type JavaScalar
   | BoolScalar
   | VoidScalar
 
-type OverflowAction
-  = PanicOnOverflow
-  | TwoComplementWrap
-
 type JavaIntegerPrimitiveFacts {
   surface_spelling: Symbol
   signedness: JavaIntKind
@@ -140,6 +136,10 @@ type JavaNonIntegerPrimitiveFacts {
   std_projection: Symbol
   representation: Symbol
 }
+
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap
 
 type JavaGrammarRelationRow {
   production: GrammarProduction
