@@ -24,7 +24,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MissingField, AmbiguousReference,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -1607,9 +1607,28 @@ fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scop
       Absent => MethodPipeFallback { result_ty: recv_rt, kernel_diags: [] }
     }
   } else {
-    MethodPipeFallback { result_ty: recv_rt, kernel_diags: [] }
+    let recv_shape = node_type_shape(n: recv_rt, source_indices: scope.type_env.source_indices)
+    if is_fully_resolved(n: recv_rt, source_indices: scope.type_env.source_indices) {
+      MethodPipeFallback {
+        result_ty: error_type,
+        kernel_diags: [make_error_node(
+          diagnostic: MethodNotFound { method: method_name, receiver_type: recv_shape, span: span },
+          module_name: scope.module_name
+        )]
+      }
+    } else {
+      MethodPipeFallback {
+        result_ty: error_type,
+        kernel_diags: [make_error_node(
+          diagnostic: MethodExistenceUndecided { method: method_name, receiver_type: recv_shape, span: span },
+          module_name: scope.module_name
+        )]
+      }
+    }
   }
 }
+
+data method_existence_wall_note: String = "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline and looked plausible to downstream inference, with the method expression stamped PlainMethodSemantics as if typed. The failure surfaced only at InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). Two states, two variants (DESIGN §5 state-space conflation): MethodNotFound is the DECIDABLE refusal — the receiver type is fully resolved, so the method is provably absent; MethodExistenceUndecided is the frontier — an under-resolved receiver (type variables present) cannot PROVE the method missing, so it is a typed, located, COUNTED refusal rather than a silent widen back to recv_rt. Both arms return error_type, never recv_rt: node_type_compatible treats error_type as compatible with everything, so one located refusal does not cascade into a fan of derived mismatches at every downstream consumer. Positive controls that must stay green: map/filter/fold/flat_map and the other algebra method templates resolve at tier0 (lookup_structural_method) and service ops at tier1 (check_service_method_call_node) — neither reaches this arm. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition and target realization, at which point method existence is decided against that authority instead of the structural/service tier pair and MethodExistenceUndecided's frontier closes."
 
 fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)

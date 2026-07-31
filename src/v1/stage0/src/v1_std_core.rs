@@ -394,6 +394,16 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    MethodNotFound {
+        method: String,
+        receiver_type: String,
+        span: Rc<SourceSpan>,
+    },
+    MethodExistenceUndecided {
+        method: String,
+        receiver_type: String,
+        span: Rc<SourceSpan>,
+    },
     MissingField {
         field: String,
         type_name: String,
@@ -519,6 +529,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
         CompilerDiagnostic::FieldNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodExistenceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
@@ -639,6 +651,34 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                 t.clone(),
             ),
             "'".to_string(),
+        ),
+        CompilerDiagnostic::MethodNotFound {
+            method: m,
+            receiver_type: t,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("method '".to_string(), m.clone()),
+                    "' not found on receiver type '".to_string(),
+                ),
+                t.clone(),
+            ),
+            "'".to_string(),
+        ),
+        CompilerDiagnostic::MethodExistenceUndecided {
+            method: m,
+            receiver_type: t,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("method '".to_string(), m.clone()),
+                    "' cannot be resolved: receiver type '".to_string(),
+                ),
+                t.clone(),
+            ),
+            "' is under-resolved, so the method's existence is not established".to_string(),
         ),
         CompilerDiagnostic::MissingField {
             field: f,

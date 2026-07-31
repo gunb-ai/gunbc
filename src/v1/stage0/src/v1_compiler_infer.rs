@@ -129,8 +129,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, FieldNotFound, InternalError, MissingField, SoleConstructorViolation,
-    TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, FieldNotFound, InternalError, MethodExistenceUndecided, MethodNotFound,
+    MissingField, SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2742,12 +2742,51 @@ pub fn method_pipe_map_keys_values_fallback(
                 }),
             }
         } else {
-            Rc::new(MethodPipeFallback {
-                result_ty: recv_rt.clone(),
-                kernel_diags: Rc::new(vec![]),
-            })
+            {
+                let recv_shape = node_type_shape(
+                    recv_rt.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                if is_fully_resolved(
+                    recv_rt.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Rc::new(MethodPipeFallback {
+                        result_ty: error_type(),
+                        kernel_diags: Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::MethodNotFound {
+                                method: method_name.clone(),
+                                receiver_type: recv_shape.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                    })
+                } else {
+                    Rc::new(MethodPipeFallback {
+                        result_ty: error_type(),
+                        kernel_diags: Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
+                                method: method_name.clone(),
+                                receiver_type: recv_shape.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                    })
+                }
+            }
         }
     }
+}
+
+pub fn method_existence_wall_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline and looked plausible to downstream inference, with the method expression stamped PlainMethodSemantics as if typed. The failure surfaced only at InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). Two states, two variants (DESIGN §5 state-space conflation): MethodNotFound is the DECIDABLE refusal — the receiver type is fully resolved, so the method is provably absent; MethodExistenceUndecided is the frontier — an under-resolved receiver (type variables present) cannot PROVE the method missing, so it is a typed, located, COUNTED refusal rather than a silent widen back to recv_rt. Both arms return error_type, never recv_rt: node_type_compatible treats error_type as compatible with everything, so one located refusal does not cascade into a fan of derived mismatches at every downstream consumer. Positive controls that must stay green: map/filter/fold/flat_map and the other algebra method templates resolve at tier0 (lookup_structural_method) and service ops at tier1 (check_service_method_call_node) — neither reaches this arm. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition and target realization, at which point method existence is decided against that authority instead of the structural/service tier pair and MethodExistenceUndecided's frontier closes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn categorized_error(
