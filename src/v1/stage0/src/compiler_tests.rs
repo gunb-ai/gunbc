@@ -594,10 +594,16 @@ mod compiler_tests {
                 // an untyped lambda parameter inside a record-field fn, the shape the
                 // real sites have -- and it produced no diagnostic at all, so it did
                 // not reproduce the shape and is not asserted here as though it did.
-                // What this control does pin is the classification, which is the part
-                // a later edit could silently flip: the class must be COUNTED and
-                // NON-BLOCKING. Blocking it fabricates a refusal over 18 correct sites;
-                // dropping it restores the #7479 silence.
+                // ADMISSION is roster-gated, not automatic: an anonymous receiver is
+                // admitted only where a declared row names (module, method,
+                // Primitive()), and the perturbation loop above proves that gate for
+                // every row. Admitting on the CAUSE alone was the earlier version and
+                // was an unbounded green path — sound about decidability, wrong about
+                // admission, since it made every future anonymous-receiver call pass
+                // including one whose method does not exist (codex review 45459).
+                // What THIS control pins is the remaining half, the classification of
+                // an admitted one: COUNTED and NON-BLOCKING. Blocking it fabricates a
+                // refusal over the 18 measured sites; dropping it restores #7479 silence.
                 let unestablished_diag = std::rc::Rc::new(
                     crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
                         method: "probe".to_string(),
