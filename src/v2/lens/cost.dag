@@ -285,7 +285,7 @@ fn nonzero_nat_dominates(a: NonZeroNat, b: NonZeroNat) -> Bool {
 }
 
 fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
-  match nat_compare(a: a, b: b) {
+  match v2.std.nat.nat_compare(a: a, b: b) {
     Greater => true
     Equal => true
     _ => false
