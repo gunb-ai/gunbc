@@ -51,6 +51,16 @@ Earlier corrections, retained:
   the headline. The single authoritative statement is now the dependency graph in §5: **slice 4
   requires slice 3, and nothing else in this ticket gates anything.**
 
+**A note on how this note cites.** Receipts below name **module + declaration**, not `file:line`.
+That is not a style preference — it is a defect this document demonstrated on itself. The first
+draft cited positions, and within a day **5 of its 7 positional receipts pointed at the wrong
+declaration**: `emit.dag:123` (cited for `Type=simple`) had drifted onto a `Description=` line,
+`:158` (the degenerate `observed: []`) onto an unrelated ownership helper, `:288` (the roadmap
+restart) onto the tree-sync restart, `spec.dag:38` onto a coproduct arm, and `cli_run.rs:11918`
+(the bind) onto a `println!`. Every underlying *claim* still held — only the positions moved, as
+main advanced. A document whose entire value is traceable evidence cannot carry receipts with that
+half-life, so positions are retained only where no named declaration exists.
+
 ---
 
 ## 1. Grounding — what the tree actually says
@@ -62,13 +72,13 @@ disputed — is **correct**, with the tree's competing figure being the stale on
 
 | Brief claim | Verdict | Receipt |
 |---|---|---|
-| (1) Transport failure and typed refusal render identically | **Confirmed, line-exact** | `dag/gunbc/roadmap_component.dag:2463` (the `.then` arm, guarded by `wj.observe_refused`) and `:2507` (the `.catch` arm) both build the literal `"workflow observation refused: "`, then both call `workflow_refuse_visible_stmt()` and `observation_refused_banner_stmts(source_class: "workflow-observe-refused")` — same prefix, same banner, same source class |
-| (2) `Type=simple`, so systemd reports ready before it is | **Confirmed** | `dag/gunbc/live_deploy/emit.dag:123` emits `Type=simple`; the seed has **no** systemd integration at all — zero hits for `sd_notify`, `NOTIFY_SOCKET`, or `LISTEN_FDS` anywhere in `src/v1/stage0/src/` |
-| (3) The deploy restarts unconditionally | **Confirmed, and the cause is upstream of the arm** — see §2 | `emit.dag:283–289`: the `SystemdUnit` upsert arm is a fixed 5-step list ending in daemon-reload → enable → restart, with no predicate |
+| (1) Transport failure and typed refusal render identically | **Confirmed** | `dag/gunbc/roadmap_component.dag` `workflow_fetch_request_statements` — its `.then` arm (guarded by `wj.observe_refused`) and its `.catch` arm both build the literal `"workflow observation refused: "`, then both call `workflow_refuse_visible_stmt()` and `observation_refused_banner_stmts(source_class: "workflow-observe-refused")` — same prefix, same banner, same source class |
+| (2) `Type=simple`, so systemd reports ready before it is | **Confirmed** | `dag/gunbc/live_deploy/emit.dag` `emit_systemd_unit_doc` emits `Type=simple`; the seed has **no** systemd integration at all — zero hits for `sd_notify`, `NOTIFY_SOCKET`, or `LISTEN_FDS` anywhere in `src/v1/stage0/src/` |
+| (3) The deploy restarts unconditionally | **Confirmed, and the cause is upstream of the arm** — see §2 | `emit.dag` `emit_artifact_upsert`, `SystemdUnit` arm: a fixed 5-step list ending in daemon-reload → enable → restart, with no predicate |
 | (4) No handover | **Confirmed** | One unit, one `ExecStart`, `systemctl restart` in place; nothing holds the socket or overlaps instances |
 | Outage is 60–90s | **Confirmed and calibrated** | `live_deploy_roadmap_unit_expected_startup = 40s`; poll bound = 40 × 3 = 120s; four independent srv1 journal observations recorded at 35s, 36s, 36s, 39s to listening, all successful starts (`service_ready.dag`, `live_deploy_service_ready_poll_bound_reason`) |
 | Browser polls every 2s | **Confirmed** | `workflow_observation_poll_interval = millisecond(count: 2000)` |
-| Bind happens after the compile | **Confirmed, with the four exit paths** | `cli_run.rs`: `load_sources_for_entry` → `compile_to_resolved` → `TcpListener::bind` at `:11918`. Four distinct `exit(1)` paths precede the bind |
+| Bind happens after the compile | **Confirmed, with the four exit paths** | `cli_run.rs` `handle_serve`: `load_sources_for_entry` → `compile_to_resolved` → `TcpListener::bind`, in that order. Four distinct `exit(1)` paths precede the bind |
 
 ### Two corrections
 
@@ -181,7 +191,7 @@ There are **two distinct facts** here, not two representations of one:
 - **F1 — process-bind readiness.** *A process on this unit has acquired the listener and can
   answer.* systemd asserts this today via `Type=simple`, and its assertion is **false by ~35–40s,
   every time** — ready ≡ spawned. This one *is* wrongly modeled, and `sd_notify(READY=1)` at the
-  bind (`cli_run.rs:11918`) is a genuine single-authority fix for it.
+  bind (`cli_run.rs` `handle_serve`) is a genuine single-authority fix for it.
 - **F2 — deployment surface identity.** *The answering process is serving the tree this deploy
   installed.* Only the digest comparison establishes this. **systemd can never know it**, so it is
   not a duplicate of F1 and it never dissolves.
@@ -220,7 +230,7 @@ The brief says the `SystemdUnit` arm restarts *"whether or not the unit, binary,
 That is true, but the cause is one level up, and it matters because it changes the fix from a
 validation to a construction.
 
-`emit.dag:158` — the apply pole calls the grain-agnostic spine with **`observed: []`**:
+`emit.dag` `deployment_apply_plan` — the apply pole calls the grain-agnostic spine with **`observed: []`**:
 
 ```
 membership_reconcile(desired: <all deploy members>, observed: [], key_of: …, value_eq: …)
@@ -243,7 +253,7 @@ that already implements it.
 **Correction (review 45229): supplying `observed` alone does not work, and the naive version fails
 dangerously.** An earlier draft of this section claimed the observed set could be supplied with "no
 new comparison logic, no new authority." That is wrong, and the reason is one level down in the
-model. `spec.dag:38–41` declares:
+model. `spec.dag` `DeploymentArtifactStep` declares:
 
 ```
 type DeploymentArtifactStep { kind: OwnedArtifactKind, path: NonEmptyStr }
@@ -264,8 +274,8 @@ is faking the key.
 
 **Second correction (review 45232): content identity alone still does not restart the service.**
 Reconciliation is **per member**, and the restart of `gunbc-roadmap.service` exists in exactly one
-place — `emit.dag:288`, inside the `SystemdUnit` upsert arm. (The other restart in the module,
-`:219`, targets `gunbc-tree-sync.service`, a different unit.) So under a real diff:
+place — `emit.dag` `emit_artifact_upsert`'s `SystemdUnit` arm. (The other restart in the module,
+`tree_sync_restart_step_with_diagnosis`, targets `gunbc-tree-sync.service`, a different unit.) So under a real diff:
 
 > binary content changes → `ServeBinary` is Modified → its arm installs the new binary → **but**
 > the unit file is unchanged → `SystemdUnit` is `Unchanged` → noop → **no restart**. New binary on
@@ -445,7 +455,7 @@ viewers × 30 polls. The brief's reasoning here is correct.
 **Three things to decide before it is built:**
 
 1. **It requires a seed change, and the seed is supposed to shrink.** The process currently *binds*
-   (`TcpListener::bind`, `cli_run.rs:11918`). Socket activation requires it to *inherit* fd 3 via
+   (`TcpListener::bind`, in `cli_run.rs` `handle_serve`). Socket activation requires it to *inherit* fd 3 via
    `LISTEN_FDS`. There is no systemd integration in the seed today. Per DESIGN §7 this needs
    justifying rather than just doing. The clean framing — which I think holds — is that
    **listener acquisition is a §2 Realization**: one shape (*the serve process obtains a bound
@@ -486,7 +496,7 @@ trigger recorded on the poll bound (`live_deploy_service_ready_poll_bound_reason
 So the deep fix is already named, already has a trigger, and this ticket is a **second counted
 consumer** of it — which is exactly the argument the brief makes for depending on
 `v1-materialization-kernel` rather than duplicating it. Concretely, the roadmap node exists
-(`roadmap_authority.dag:948`, id `v1-materialization-kernel`, owner `self-host`, path
+(`roadmap_authority.dag`, the node row with id `v1-materialization-kernel`, owner `self-host`, path
 `docs/plans/witness-realization-plan.md`) and the edge mechanism is `edge(child:, parent:)`.
 
 Two observations on that dependency:
@@ -628,15 +638,19 @@ Adopting the brief's, and adding the ones the analysis surfaced:
 Grounded against the tree at `0d6ffc4db9` (2026-07-30; first drafted at `a07d1b73f8` and re-checked
 after merging main).
 
-**Item receipts:** `dag/gunbc/roadmap_component.dag` (:2463, :2507,
+**Item receipts** — cited by symbol, since positions rot (5 of this note's 7 original `file:line` receipts had already drifted within a day; see the citation note below). `dag/gunbc/roadmap_component.dag` (`workflow_fetch_request_statements`,
 `workflow_observation_poll_interval`, `workflow_poll_single_flight_note`) ·
-`dag/gunbc/live_deploy/emit.dag` (:110, :123, :158, :219, :283–289,
-`live_deploy_reconcile_binding_note`, `emit_deploy_member_effect_note`) ·
-`dag/gunbc/live_deploy/spec.dag` (:38–41 `DeploymentArtifactStep`, `deployment_apply_order_note`) ·
+`dag/gunbc/live_deploy/emit.dag` (`emit_systemd_unit_serve_note`, `emit_systemd_unit_doc`,
+`deployment_apply_plan`, `deployment_step_value_eq`, `emit_artifact_upsert`,
+`tree_sync_restart_step_with_diagnosis`, `live_deploy_reconcile_binding_note`,
+`emit_deploy_member_effect_note`) ·
+`dag/gunbc/live_deploy/spec.dag` (`DeploymentArtifactStep`, `deployment_apply_order_note`) ·
 `dag/gunbc/live_deploy/service_ready.dag` (`live_deploy_service_ready_poll_bound_reason`,
 `live_deploy_roadmap_unit_expected_startup`) · `dag/gunbc/live_deploy/readiness.dag`
 (`service_ready_means_serving_this_tree_note`, the F1/F2 split and the 2026-07-24 incident) ·
-`src/v1/stage0/src/cli_run.rs` (:11885, :11893, :11918) · `dag/gunbc/roadmap_authority.dag` (:948).
+`src/v1/stage0/src/cli_run.rs` (`handle_serve` — `load_sources_for_entry` → `compile_to_resolved` →
+`TcpListener::bind`, in that order) · `dag/gunbc/roadmap_authority.dag` (the
+`v1-materialization-kernel` node row).
 
 **Reconcile-precedent receipts** (added for the operator's reconcile-to-intent direction):
 `dag/gunbc/membership_reconcile.dag` (`membership_reconcile_authority_note`) ·
@@ -644,7 +658,8 @@ after merging main).
 `dag/gunbc/tool_readiness.dag` (live observation, `observed_pin_projection_note`) ·
 `dag/extdeps/realization/emit_on_demand_host.dag` (`observed_tool_identity`, Found/Missing/Duplicate)
 · `dag/gunbc/roadmap_belt.dag` (process-as-member; `dispatch_member_value_eq` constant `true`) ·
-`dag/gunbc/host_effect_realize.dag` (:990, :1076, reconciles inside srvN apply).
+`dag/gunbc/host_effect_realize.dag` (`srv3_realize_os_install_actuator_toolchain_ensure_body`,
+`realize_provision_build_cache_body` — reconciles inside srvN apply).
 
 **Measurements:** deploy-job count — GitHub Actions, `deploy_dashboard_srv1`, 24h window ending
 2026-07-30T20:11Z (40 jobs). Serve closure and phase split — the unit's exact ExecStart run on a
