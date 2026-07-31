@@ -20,6 +20,12 @@ data walk_plan_stage_stage1_receipt_path: String = "target/floor-attempt-walk-pl
 
 data walk_plan_stage_stage2_receipt_path: String = "target/floor-attempt-walk-plan-stage-fixture/on-success-stage-2-receipt.tsv"
 
+data walk_plan_stage_overlap_peer_a_entry: String = "src/v2/test/fixture/walk_plan_stage/overlap_peer_a_test.dag"
+
+data walk_plan_stage_overlap_peer_b_entry: String = "src/v2/test/fixture/walk_plan_stage/overlap_peer_b_test.dag"
+
+data walk_plan_stage_barrier_receipt_row_note: String = "Per-stage receipt claim rows are tab-separated: claim, function, outcome, wall_ms on the current executor head; after #7518 lands and A rebases, the row gains entry (and plan_site in the header) — update barrier_witness_test.dag patterns then."
+
 fn walk_plan_stage_negligible_wet_profile() -> RunnableResourceProfile {
   runnable_resource_profile(
     heavy_whole_tree_resolve: false,

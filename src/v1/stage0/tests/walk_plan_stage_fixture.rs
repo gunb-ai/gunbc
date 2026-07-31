@@ -15,6 +15,21 @@ const ATTEMPT_ID: &str = "walk-plan-stage-fixture";
 const STAGE1_RECEIPT_REL: &str =
     "target/floor-attempt-walk-plan-stage-fixture/on-success-stage-1-receipt.tsv";
 
+struct FixtureOutput {
+    code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+impl FixtureOutput {
+    fn combined(&self) -> String {
+        format!(
+            "--- stdout ---\n{}\n--- stderr ---\n{}",
+            self.stdout, self.stderr
+        )
+    }
+}
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -36,7 +51,7 @@ fn claim_executor_bin() -> PathBuf {
         })
 }
 
-fn run_fixture_plan(plan_function: &str) -> (i32, String) {
+fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
     let root = workspace_root();
     let bin = claim_executor_bin();
     assert!(
@@ -59,9 +74,11 @@ fn run_fixture_plan(plan_function: &str) -> (i32, String) {
         ])
         .output()
         .expect("spawn claim_executor");
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    let code = output.status.code().unwrap_or(-1);
-    (code, stderr)
+    FixtureOutput {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
 }
 
 fn stage2_marker_path(root: &PathBuf) -> PathBuf {
@@ -77,30 +94,35 @@ fn stage1_receipt_path(root: &PathBuf) -> PathBuf {
 fn walk_plan_stage_overlap_barrier_production_path() {
     let root = workspace_root();
     let _ = std::fs::remove_file(stage2_marker_path(&root));
-    let (code, stderr) = run_fixture_plan("walk_plan_stage_overlap_barrier_plan");
+    let out = run_fixture_plan("walk_plan_stage_overlap_barrier_plan");
     assert!(
-        stderr.contains("on-success stage 1"),
-        "fixture must reach on-success stages, not fail-fast on budget; stderr:\n{stderr}"
+        out.stderr.contains("on-success stage 1"),
+        "fixture must reach on-success stages, not fail-fast on budget;\n{}",
+        out.combined()
     );
     assert!(
-        stderr.contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_a_holds"),
-        "overlap peer A must pass; stderr:\n{stderr}"
+        out.stdout.contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_a_holds"),
+        "overlap peer A must pass;\n{}",
+        out.combined()
     );
     assert!(
-        stderr.contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_b_holds"),
-        "overlap peer B must pass; stderr:\n{stderr}"
+        out.stdout.contains("PASS [on-success stage 1] walk_plan_stage_overlap_peer_b_holds"),
+        "overlap peer B must pass;\n{}",
+        out.combined()
     );
     assert!(
         stage1_receipt_path(&root).is_file(),
         "stage-1 per-stage receipt must exist before stage 2"
     );
     assert!(
-        stderr.contains("PASS [on-success stage 2] walk_plan_stage_barrier_witness_holds"),
-        "barrier witness must read stage-1 receipt; stderr:\n{stderr}"
+        out.stdout.contains("PASS [on-success stage 2] walk_plan_stage_barrier_witness_holds"),
+        "barrier witness must read stage-1 receipt;\n{}",
+        out.combined()
     );
     assert_eq!(
-        code, 0,
-        "overlap+barrier plan must exit zero; stderr:\n{stderr}"
+        out.code, 0,
+        "overlap+barrier plan must exit zero;\n{}",
+        out.combined()
     );
 }
 
@@ -110,16 +132,17 @@ fn walk_plan_stage_failure_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
     let _ = std::fs::remove_file(&marker);
-    let (code, stderr) = run_fixture_plan("walk_plan_stage_failure_barrier_plan");
+    let out = run_fixture_plan("walk_plan_stage_failure_barrier_plan");
     assert!(
-        stderr.contains("remaining stage(s) NOT run"),
-        "failed stage 1 must block stage 2; stderr:\n{stderr}"
+        out.stderr.contains("remaining stage(s) NOT run"),
+        "failed stage 1 must block stage 2;\n{}",
+        out.combined()
     );
     assert!(
         !marker.exists(),
         "stage-2 marker must not exist when stage-1 claim is red"
     );
-    assert_ne!(code, 0, "failure plan must exit nonzero; stderr:\n{stderr}");
+    assert_ne!(out.code, 0, "failure plan must exit nonzero;\n{}", out.combined());
 }
 
 #[test]
@@ -128,16 +151,27 @@ fn walk_plan_stage_panic_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
     let _ = std::fs::remove_file(&marker);
-    let (code, stderr) = run_fixture_plan("walk_plan_stage_panic_barrier_plan");
+    let out = run_fixture_plan("walk_plan_stage_panic_barrier_plan");
     assert!(
-        stderr.contains("remaining stage(s) NOT run") || stderr.contains("infra=thread_panic"),
-        "panicking stage-1 member must block stage 2; stderr:\n{stderr}"
+        out.stdout.contains("<claim thread panicked>"),
+        "panicking member must surface structural thread-panic evidence on stdout;\n{}",
+        out.combined()
+    );
+    assert!(
+        out.stderr.contains("infra=thread_panic") || out.stdout.contains("infra=thread_panic"),
+        "panicking member must classify as infra=thread_panic;\n{}",
+        out.combined()
+    );
+    assert!(
+        out.stderr.contains("remaining stage(s) NOT run"),
+        "panicking stage 1 must block stage 2;\n{}",
+        out.combined()
     );
     assert!(
         !marker.exists(),
         "stage-2 marker must not exist when stage-1 thread panicked"
     );
-    assert_ne!(code, 0, "panic plan must exit nonzero; stderr:\n{stderr}");
+    assert_ne!(out.code, 0, "panic plan must exit nonzero;\n{}", out.combined());
 }
 
 #[test]
@@ -146,17 +180,29 @@ fn walk_plan_stage_receipt_refusal_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
     let _ = std::fs::remove_file(&marker);
-    let (code, stderr) = run_fixture_plan("walk_plan_stage_receipt_refusal_barrier_plan");
+    let out = run_fixture_plan("walk_plan_stage_receipt_refusal_barrier_plan");
     assert!(
-        stderr.contains("receipt write failed") || stderr.contains("remaining stage(s) NOT run"),
-        "stage-1 receipt refusal must block stage 2; stderr:\n{stderr}"
+        out.stdout.contains("PASS [on-success stage 1] walk_plan_stage_receipt_refusal_poison_holds"),
+        "poison claim must pass before receipt write is attempted;\n{}",
+        out.combined()
+    );
+    assert!(
+        out.stderr.contains("receipt write failed"),
+        "stage-1 receipt write must fail closed;\n{}",
+        out.combined()
+    );
+    assert!(
+        out.stderr.contains("remaining stage(s) NOT run"),
+        "receipt refusal must block stage 2;\n{}",
+        out.combined()
     );
     assert!(
         !marker.exists(),
         "stage-2 marker must not exist when stage-1 receipt write refused"
     );
     assert_ne!(
-        code, 0,
-        "receipt-refusal plan must exit nonzero; stderr:\n{stderr}"
+        out.code, 0,
+        "receipt-refusal plan must exit nonzero;\n{}",
+        out.combined()
     );
 }
