@@ -15,6 +15,7 @@ import gunbc.roadmap_authority {
   observation_scoped_run_seed_growth_justification,
   roadmap_rendered_ghost_count,
   roadmap_ghost_node_red_probe_count,
+  roadmap_altered_copy_red_probe_count,
 }
 import gunbc.v1_deletion_plan {
   V1FinishLine,
@@ -631,4 +632,8 @@ test fn witness_rendered_nodes_are_declared_or_derived() -> Bool {
 
 test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
   roadmap_ghost_node_red_probe_count() == 1
+}
+
+test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
+  roadmap_altered_copy_red_probe_count() == 1
 }
