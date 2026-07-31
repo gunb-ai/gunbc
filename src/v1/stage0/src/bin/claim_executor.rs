@@ -2861,8 +2861,12 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
     true
 }
 
-fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
-    write_gate_warm_cost_receipt_at(std::path::Path::new("target"), batch_records)
+fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
+    write_gate_warm_cost_receipt_at(
+        std::path::Path::new("target"),
+        batch_records,
+        emit_full_tsv_log,
+    )
 }
 
 /// Per-gate warm-cost TSV (D2 placement probe, ci-two-tier-placement-redesign §9.1): one row per
@@ -2877,7 +2881,11 @@ fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
 /// probe reads a WARM run's rows; run cold-then-warm on >=2 hosts and the roster records value +
 /// host basis. Fail-closed on a write error (shares target/ with the gated receipts, so a write
 /// failure here is the same disk fault that fails them); never a verdict term.
-fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+fn write_gate_warm_cost_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    emit_full_tsv_log: bool,
+) -> bool {
     let mut body =
         String::from("gate\tbatch\teval_ms\tresolve_ms\twarm_ms\twitnesses\ts_per_witness_us\n");
     for rec in batch_records {
@@ -2904,11 +2912,13 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
             }
         }
     }
-    // Mirror the TSV into the log (prefixed, grep-collectable) so the placement probe can lift
-    // it from get_job_logs on a fleet run without an artifact-upload step — the file stays for
-    // future .dag consumers (Piece 1 roster fill).
-    for line in body.lines() {
-        eprintln!("[gate-warm-cost] {line}");
+    // The falsifier cadence mirrors the TSV into the log (prefixed, grep-collectable) so the
+    // placement probe can lift it from get_job_logs without an artifact-upload step. Per-PR
+    // runs keep only the summary below; the complete file remains available on every cadence.
+    if emit_full_tsv_log {
+        for line in body.lines() {
+            eprintln!("[gate-warm-cost] {line}");
+        }
     }
     let path = base.join("floor-gate-warm-cost-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
@@ -2931,13 +2941,18 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
 /// requires before per-row placement is admissible. The complete machine-readable record is
 /// the TSV file; rendered streams may project a subset later (W2 ruling: one record, two
 /// projections). Fail-closed on write error.
-fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
-    write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
+fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
+    write_witness_row_cost_receipt_at(
+        std::path::Path::new("target"),
+        batch_records,
+        emit_full_tsv_log,
+    )
 }
 
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
+    emit_full_tsv_log: bool,
 ) -> bool {
     let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
     let mut row_count = 0usize;
@@ -2956,8 +2971,13 @@ fn write_witness_row_cost_receipt_at(
             }
         }
     }
-    for line in body.lines() {
-        eprintln!("[witness-row-cost] {line}");
+    // Task #20's falsifier reproduction protocol consumes these grep-collectable lines. The
+    // per-PR floor keeps the identical TSV file plus the summary below without duplicating the
+    // full body on stderr.
+    if emit_full_tsv_log {
+        for line in body.lines() {
+            eprintln!("[witness-row-cost] {line}");
+        }
     }
     let path = base.join("floor-witness-row-cost-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
@@ -3876,8 +3896,10 @@ fn run_walk(
     emit_gantt(&batch_records, total_wall_nanos);
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
     let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
-    let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records);
-    let witness_row_cost_receipt_ok = write_witness_row_cost_receipt(&batch_records);
+    let gate_warm_cost_receipt_ok =
+        write_gate_warm_cost_receipt(&batch_records, emit_witness_row_cost_drift);
+    let witness_row_cost_receipt_ok =
+        write_witness_row_cost_receipt(&batch_records, emit_witness_row_cost_drift);
     let witness_row_cost_drift_receipt_ok = if emit_witness_row_cost_drift {
         write_witness_row_cost_drift_receipt_at(
             std::path::Path::new("target"),
