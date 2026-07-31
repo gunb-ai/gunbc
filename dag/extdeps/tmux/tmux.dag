@@ -1,6 +1,6 @@
 module extdeps.tmux
 
-import std.types { List, String, NonEmptyStr }
+import std.types { List, String, NonEmptyStr, RenderedTerminalText }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -107,6 +107,49 @@ fn shape_tmux_respawn_pane_argv_for(
       inner_argv,
     ),
   )
+}
+
+data tmux_capture_fidelity_note: String = "WHETHER A CAPTURE CARRIES ESCAPES IS A tmux FACT, and it is a fact about capture-pane specifically rather than about whatever program happened to write into the pane. tmux keeps a RENDERED grid: the pane's contents are the characters currently displayed, with the control sequences that positioned and coloured them already consumed by the renderer. So `capture-pane -p` emits plain text, and `-e` re-serializes escape sequences for the attributes it stored. Cited against tmux's own manual, which documents -e as 'the output includes escape sequences for text and background attributes' — the flag ADDS them back; their absence is the default, not an accident.\\n\\nThe distinction is typed rather than left as a bare flag because the two outputs are different kinds of thing and only one of them is safe to parse. A caller that wants values out of a pane wants CapturePlainText; a caller reproducing a terminal's appearance wants CaptureWithEscapes; and a Bool named include_escapes at the call site would let the wrong one through with no signal. Verified on srv2: a plain capture of a colour-emitting CLI contains zero escape bytes under cat -v.\\n\\nThis module says nothing about which program is being captured. That is the point — the fidelity is tmux's, the format inside the pane belongs to whoever wrote it, and a consumer composes the two."
+
+type TmuxCaptureFidelity
+  = CapturePlainText
+  | CaptureWithEscapes
+
+fn tmux_capture_fidelity_argv(fidelity: TmuxCaptureFidelity) -> List<String> {
+  match fidelity {
+    CapturePlainText => []
+    CaptureWithEscapes => ["-e"]
+  }
+}
+
+fn shape_tmux_capture_pane_argv_for(
+  scope: TmuxServerScope,
+  target: String,
+  fidelity: TmuxCaptureFidelity,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    concat(
+      ["capture-pane", "-p"],
+      concat(tmux_capture_fidelity_argv(fidelity: fidelity), ["-t", target]),
+    ),
+  )
+}
+
+data tmux_capture_rendering_note: String = "THE PRODUCER SIDE OF THE SEAM, without which the brand was a claim nothing could satisfy (review, 2026-07-30). std.types.RenderedTerminalText says a capture surface PRODUCES it and a parser CONSUMES it, and the composition is admissible because the types line up — but the argv shaper above returns argv, so nothing in the tree inhabited the type. A consumer with no producer is a described surface never checked against the surface; the types could not line up because only one side existed.\\n\\nThis is the fn that makes the claim true, and it is a tmux fact rather than a caller's convenience: the fidelity that was REQUESTED determines whether the bytes that came back are rendered text. A plain capture inhabits the brand because tmux's renderer already consumed the control sequences; a -e capture re-serialized them, so it does not, and it says so with a typed arm rather than branding the bytes anyway.\\n\\nThat is the whole construction. A caller cannot reach RenderedTerminalText from an escape-carrying capture at all, so the failure the brand exists to prevent — a one-time code extracted with escape bytes still inside it, pasted, and rejected at the far end with no sign the dashboard mangled it — is unwritable rather than merely discouraged. The captured bytes are taken as a parameter because performing the capture is a transport question this module does not answer."
+
+type TmuxCaptureRendering
+  = TmuxPaneRendered { text: RenderedTerminalText }
+  | TmuxCaptureRetainedEscapes { fidelity: TmuxCaptureFidelity }
+
+fn tmux_captured_pane_rendering(
+  fidelity: TmuxCaptureFidelity,
+  captured: String,
+) -> TmuxCaptureRendering {
+  match fidelity {
+    CapturePlainText => TmuxPaneRendered { text: captured as RenderedTerminalText }
+    CaptureWithEscapes => TmuxCaptureRetainedEscapes { fidelity: CaptureWithEscapes }
+  }
 }
 
 fn shape_tmux_ls_argv_for(scope: TmuxServerScope) -> List<String> {

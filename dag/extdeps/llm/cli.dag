@@ -1,6 +1,6 @@
 module extdeps.llm.cli
 
-import std.types { List, String, Int, Bool }
+import std.types { List, String, Int, Bool, NonEmptyStr, RenderedTerminalText }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.grammar {
@@ -210,6 +210,80 @@ fn shape_codex_login_status_env_args(codex_home: String) -> List<String> {
     program: codex_cli_program,
     codex_home: codex_home,
   )
+}
+
+data codex_device_login_note: String = "THE ONLY LOGIN FLOW A REMOTE HOST CAN COMPLETE. Plain `codex login` starts a callback server and prints redirect_uri=http://localhost:1455/auth/callback; on a headless machine that redirect can never resolve from the operator's browser, because localhost is the server rather than their laptop. codex states this itself in its own final line: 'On a remote or headless machine? Use codex login --device-auth instead.' The device flow needs no inbound port and no browser on the host — a URL plus a short code, entered from anywhere — so it is the only flow a dashboard on another machine can usefully surface.\\n\\nCited against codex-cli 0.145.0, whose `login --help` lists exactly -c/--config, --with-api-key and --device-auth, with `status` and `help` as the subcommands. There is NO --json on login or on login status, so the URL and code are readable only from a text surface. A parser over that surface is therefore the honest realization rather than a shortcut: the richer structured source DESIGN would prefer does not exist to be read, and the receipt at dag/test/fixture/codex_device_login records the bytes the tool actually emits so the parser is written against them and not against memory."
+
+fn shape_codex_device_login_env_args_for_program(
+  program: String,
+  codex_home: String,
+) -> List<String> {
+  [
+    codex_home_env_assignment(codex_home: codex_home),
+    program,
+    "login",
+    "--device-auth",
+  ]
+}
+
+data codex_device_prompt_input_contract_note: String = "WHAT codex EMITS IS A codex FACT; WHO STRIPS IT IS NOT THIS MODULE'S BUSINESS. Written to a terminal, the device prompt wraps the URL and the one-time code in SGR sequences and the expiry note in a dim attribute. A parser reading that stream directly would extract a code carrying escape bytes, which the operator pastes and OpenAI rejects with no sign that the dashboard mangled it rather than the code being wrong.\\n\\nSo the parser's input is typed std.types.RenderedTerminalText — text with the control sequences already consumed — and this module names no transport that could provide it. An earlier draft explained here what a terminal multiplexer strips; that was a fact filed under the wrong authority, and it would have gone stale the moment a second capture path existed (operator, 2026-07-30). The brand is the seam: whatever renders a terminal grid produces the type, this parser consumes it, and the composition is admissible because the types line up rather than because either side was written knowing about the other.\\n\\nThe format itself is cited against codex-cli 0.145.0, whose `login --help` lists exactly -c/--config, --with-api-key and --device-auth with `status` and `help` as subcommands. There is NO --json on login or login status, so a text surface is the only surface: a parser over it is the honest realization rather than a shortcut, because the structured source DESIGN would prefer does not exist to be read. dag/test/fixture/codex_device_login holds the bytes the tool actually emits, in both renderings, so the parser is written against them and not against memory."
+
+type CodexDeviceLoginPrompt
+  = CodexDeviceLoginReady {
+      verification_url: NonEmptyStr,
+      user_code: NonEmptyStr,
+    }
+  | CodexDeviceLoginPromptUnavailable { reason: NonEmptyStr }
+
+data codex_device_prompt_marker_url: String = "https://auth.openai.com/codex/device"
+data codex_device_prompt_marker_code_line: String = "Enter this one-time code"
+
+data codex_device_code_scan_note: String = "THE CODE IS POSITIONAL — the line after the marker — so reading it needs a state machine rather than a filter. codex prints 'Enter this one-time code (expires in 15 minutes)' and then the code on its own following line, so no predicate over a single line identifies it: the code itself is an opaque token with no distinguishing shape a matcher could key on, and keying on one (four characters, a hyphen, five characters) would silently stop finding it the day the format widens.\\n\\nThree states rather than an Optional accumulator, because 'have not seen the marker' and 'seen the marker, still waiting for a non-empty line' are different situations with different meanings for what comes next — collapsing them loses the ability to say WHICH failure the pane shows. A pane captured mid-render legitimately sits in AfterMarker, and reporting that as 'no code line' would be wrong about a prompt that is merely still arriving."
+
+type CodexCodeScan
+  = CodeScanSeeking
+  | CodeScanAfterMarker
+  | CodeScanFound { code: String }
+
+fn codex_device_prompt_code_scan(lines: List<String>) -> CodexCodeScan {
+  fold(lines, init: CodeScanSeeking, f: fn(acc, l) {
+    match acc {
+      CodeScanSeeking =>
+        if string_contains(s: l, pattern: codex_device_prompt_marker_code_line) {
+          CodeScanAfterMarker
+        } else {
+          CodeScanSeeking
+        }
+      CodeScanAfterMarker =>
+        if l == "" { CodeScanAfterMarker } else { CodeScanFound { code: l } }
+      CodeScanFound { code } => CodeScanFound { code: code }
+    }
+  })
+}
+
+fn codex_device_prompt_parse(pane: RenderedTerminalText) -> CodexDeviceLoginPrompt {
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  let url_hit = lines
+    |> filter(l => string_contains(s: l, pattern: codex_device_prompt_marker_url))
+    |> first
+  match url_hit {
+    Absent => CodexDeviceLoginPromptUnavailable {
+      reason: "no verification url in pane" as NonEmptyStr,
+    }
+    Present { value: url_line } =>
+      match codex_device_prompt_code_scan(lines: lines) {
+        CodeScanSeeking => CodexDeviceLoginPromptUnavailable {
+          reason: "verification url present but no one-time code line" as NonEmptyStr,
+        }
+        CodeScanAfterMarker => CodexDeviceLoginPromptUnavailable {
+          reason: "one-time code line present but code not yet rendered" as NonEmptyStr,
+        }
+        CodeScanFound { code } => CodexDeviceLoginReady {
+          verification_url: url_line as NonEmptyStr,
+          user_code: code as NonEmptyStr,
+        }
+      }
+  }
 }
 
 fn shape_codex_exec_argv_for_program(

@@ -1,6 +1,6 @@
 module test.claim.live_deploy.emit
 
-import std.types { Bool, String }
+import std.types { Bool, String, List, NonEmptyStr }
 import std.os.types { Apt }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -12,8 +12,25 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_owned_steps,
   deployment_owned_steps_retract_order,
+  deployment_steps_apply_order,
+  deployment_spec_for,
+  derived_deployment_names,
+  deployment_srv1_target,
+  DeploymentHostTarget,
+  srv1_live_deployment_names,
+  ArtifactStep,
+  Dependency,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
+  ServeBinary,
+  TailscaleServeMapping,
+  TeardownDisposition,
+  TeardownActs,
+  TeardownRefuses,
+  TeardownRefusalCause,
+  TeardownOutsideOwnership,
+  owned_artifact_teardown_disposition,
+  deployment_step_teardown_disposition,
   gunbc_service_user,
 }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root }
@@ -22,6 +39,13 @@ import gunbc.managed_directory {
   managed_directory_permissions,
   srv1_attempt_state_directory,
 }
+import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
+import extdeps.version.semver { SemVerVersion }
+import extdeps.tailscale.serve {
+  ScopedRemovalUnobserved,
+  tailscale_scoped_removal_capability,
+}
+import extdeps.exec.command { shell_quote }
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script,
@@ -30,6 +54,8 @@ import gunbc.live_deploy.emit {
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
   live_deploy_wholesale_refused_poison,
+  live_deploy_apply_script_for,
+  live_deploy_retract_script_for,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
@@ -90,14 +116,6 @@ test fn witness_owned_vs_ensured_typed() -> Bool {
     }
   )
   has_owned && has_ensured
-}
-
-data retract_order_witness_note: String = "This replaced `count(deployment_owned_steps_retract_order()) == 5`, which was a live-state count transcription of the class the operator ruled on 2026-07-30 (roadmap_authority_test live_state_count_transcription_note): the number came from the live roster rather than a fixture the test constructs, so authoring any correct member redded it and the reviewer's habit became editing the number to match. It also proved nothing its own name claimed — `deployment_owned_steps_retract_order` returns List<DeploymentArtifactStep>, so `owned only` is already true by construction and no count can falsify it. The invariant that IS load-bearing and IS magnitude-independent: retract order is the apply order exactly reversed, which deployment_apply_order_note declares in prose. That catches the real defect class — a member added to one order and forgotten in the other, which is precisely the mistake available while adding AttemptStateRoot — and it stays green as the roster grows."
-
-test fn witness_retract_order_is_apply_order_reversed() -> Bool {
-  let apply_reversed = join(map(reverse(deployment_owned_steps()), s => s.path as String), "|")
-  let retract_declared = join(map(deployment_owned_steps_retract_order(), s => s.path as String), "|")
-  apply_reversed == retract_declared
 }
 
 data attempt_state_mode_derivation_witness_note: String = "This asserts the DERIVED mode, not a chosen one. srv1_attempt_state_directory declares exactly one dependent — the service principal, needing read, write, and execute — so managed_directory_permissions computes owner rwx and nothing for group or other, which serializes 0700. The witness compares against managed_directory_mode_octal rather than the literal `0700` on purpose: pinning the string would let the derivation break while the test stayed green by agreeing with itself in the wrong place, and it would also red for the RIGHT reason (a genuine new dependent widening the mode) as if it were a regression. What is actually being witnessed is that the emitted argv carries whatever the dependents imply — so this stays green when a dependent is legitimately added, and reds when emission stops consuming the derivation at all."
@@ -189,7 +207,7 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-roadmap.service")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg 8080")
+    && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg --https=443 8080")
     && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi")
     && string_contains(s: sh, pattern: "if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi")
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
@@ -226,10 +244,13 @@ test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }")
 }
 
+data owned_only_removes_exactly_its_own_endpoint_note: String = "THIS CONJUNCT HAS NOW BEEN WRONG IN BOTH DIRECTIONS, which is what makes the third version worth stating carefully. It first REQUIRED `sudo -n tailscale serve reset` — a claim named owned_only demanding the one command on the host that is definitionally not owned-only (review 45207). It was then inverted to forbid every privileged tailscale invocation and require a refusal marker, which was honest about the emission but rested on the emission being right, and it was not: the refusal existed because the model asserted, without citation, that the CLI has no scoped removal.\\n\\nSo the pattern to watch is that a witness cannot be more correct than the claim it transcribes. Both earlier versions were faithful readings of the artifact in front of them; neither could have found that the artifact was answering the wrong question, and no strengthening of a string match over the retract would have surfaced it.\\n\\nThe assertion is now positive and specific: the retract issues the scoped `off` for the endpoint this deployment configured, and never the node-global reset. Requiring the exact off spelling is what ties it to the apply — the upstream demands every original flag on an off command, so a retract whose flags drift from its apply removes nothing while exiting zero, and that is the failure this conjunct exists to catch."
+
 test fn witness_retract_script_owned_only() -> Bool {
   let sh = expected_live_deploy_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve reset")
+    && !string_contains(s: sh, pattern: "tailscale serve reset")
+    && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
     && string_contains(s: sh, pattern: "sudo -n systemctl disable --now gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: "sudo -n rm -d /opt/gunbc/dispatch-worktrees")
@@ -270,7 +291,8 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
   let sh = expected_live_deploy_retract_script()
   string_contains(s: sh, pattern: "/opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
-    && string_contains(s: sh, pattern: "tailscale serve reset")
+    && !string_contains(s: sh, pattern: "tailscale serve reset")
+    && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
     && string_contains(s: sh, pattern: "systemctl disable --now")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
@@ -362,4 +384,195 @@ test fn witness_deploy_access_job_principal_refused_poison_golden_independent() 
 test fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
+}
+
+data twin_on_one_host_witness_note: String = "THE CLAIM THAT WAS UNWRITABLE BEFORE THIS CHANGE, and it is the whole point of it. deployment_owned_steps and deployment_service_config took no arguments, so there was exactly one deployment in the model and a second one on the SAME machine could not be constructed at all — not merely inconvenient, unexpressible. That is what proved host was the wrong axis: if the only thing that varies is which host, then two deployments on one host is a contradiction, and a model that makes it a contradiction has fused two independent facts.\\n\\nSo the test is the twin. Same target — one machine, one ssh host, one package manager — and a different instance, and every owned path, the unit, the tailscale mapping and the port must come out disjoint. srv1_lab is a real declared instance rather than a synthetic one, so this also states that the two dashboards already declared today CAN both be deployed, which was false an hour ago.\\n\\nThe conjunct that would survive a bad fix is the target equality. Without it the claim passes trivially if someone makes the twin differ by host, which is precisely the abstraction this replaces."
+
+fn srv1_twin_spec() -> DeploymentSpec {
+  deployment_spec_for(
+    instance: srv1_lab_dashboard_instance(),
+    target: deployment_srv1_target(),
+    names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
+  )
+}
+
+fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
+  deployment_owned_steps_retract_order(spec: spec) |> map(s => s.path as String)
+}
+
+test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
+  let live = deployment_spec_srv1()
+  let twin = srv1_twin_spec()
+  let live_paths = spec_owned_paths(spec: live)
+  let twin_paths = spec_owned_paths(spec: twin)
+  deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: twin)
+    && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
+    && !(live.service.unit_name == twin.service.unit_name)
+    && !(live.service.repo_root == twin.service.repo_root)
+    && !(live.service.serve_binary == twin.service.serve_binary)
+    && count(live_paths) > 0
+    && count(twin_paths) == count(live_paths)
+    && all(twin_paths, t => !any(live_paths, l => l == t))
+}
+
+data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
+
+data teardown_safety_witness_note: String = "THE CLAIM THAT NAMES WHAT THE COLLISION WOULD HAVE COST, rather than only that paths differ. Every owned artifact is torn down by retract, so an overlap between two specs' owned sets is not an untidy duplicate — it is one deployment's retract deleting another's live files. The first version of the twin claim above went RED on exactly one path, the serve binary, because both instances read it from the host layout; a lab retract would have removed the binary production was executing.\\n\\nThis states the property directly in retract's own terms: nothing production owns appears in what the twin's teardown would remove. It is written over the retract order specifically, not the apply order, because teardown is the destructive direction and a claim about apply would not have caught it."
+
+test fn twin_teardown_removes_nothing_production_owns() -> Bool {
+  let live_paths = spec_owned_paths(spec: deployment_spec_srv1())
+  let twin_teardown = deployment_owned_steps_retract_order(spec: srv1_twin_spec())
+  count(twin_teardown) > 0
+    && all(twin_teardown, t => !any(live_paths, l => l == (t.path as String)))
+}
+
+data two_lanes_converged_on_one_claim_note: String = "MAIN AND THIS BRANCH INDEPENDENTLY DELETED THE SAME COUNT TRANSCRIPTION AND WROTE THE SAME REPLACEMENT, which is worth recording because the merge resolution DROPPED one of them. #7478 replaced `count(deployment_owned_steps_retract_order()) == 5` with witness_retract_order_is_apply_order_reversed, citing the 2026-07-30 live-state-count ruling; this branch replaced it with the claim below, citing the same ruling. Same defect, same diagnosis, two lanes, no coordination.\\n\\nThis one is kept because it is strictly stronger, not because it was here first. #7478's version reads the NULLARY rosters this PR removed, and it compares the fixed production roster against its own reverse. This one takes a spec and asserts the retract order is the reverse of what THAT SPEC ACTUALLY APPLIED — so it holds for the twin as well as production, and it catches the case a fixed-roster comparison cannot: a spec constructed with a non-standard order, which is exactly when a hand-mirrored list goes wrong. It is exercised on the twin spec for that reason.\\n\\nThe coverage #7478 added around AttemptStateRoot is kept in full above; only the duplicated ordering claim was dropped."
+
+test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
+  let twin = srv1_twin_spec()
+  let applied = deployment_steps_apply_order(
+    instance: srv1_lab_dashboard_instance(),
+    names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
+  )
+  let applied_paths = applied |> flat_map(s => match s {
+    ArtifactStep { step } => [step.path as String]
+    Dependency { step: _ } => []
+  })
+  spec_owned_paths(spec: twin) == reverse(applied_paths)
+}
+
+data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the SCRIPTS. It asserts over the actual apply and retract text that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
+
+test fn emitted_twin_scripts_touch_none_of_productions_effects() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1())
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec())
+  string_contains(s: live, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: live, pattern: "/etc/gunbc-tree-sync.env")
+    && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
+    && !string_contains(s: twin, pattern: "/etc/systemd/system/gunbc-roadmap.service")
+}
+
+test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
+  let twin = live_deploy_retract_script_for(spec: srv1_twin_spec())
+  !string_contains(s: twin, pattern: "rm -f /etc/systemd/system/gunbc-roadmap.service")
+    && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
+    && !string_contains(s: twin, pattern: "tailscale serve reset")
+    && !string_contains(s: twin, pattern: "sudo -n tailscale serve --https=443 off")
+    && string_contains(s: twin, pattern: "sudo -n tailscale serve --https=443 --set-path=/srv1-lab-codex-feedback-v0 off")
+}
+
+
+data shell_quote_authority_note: String = "The authority itself, exercised on the character that broke the call site. This is the consume-never-fork half of the fix: the call site no longer spells quotes, and the one place that does is checked here rather than trusted. A second hand-rolled quoter elsewhere in the tree would not be caught by this claim — that is a lens question — but a regression in the shared one would be."
+
+test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
+  shell_quote(arg: "deployment's routing") == "'deployment'\\''s routing'"
+    && shell_quote(arg: "plain") == "'plain'"
+}
+
+
+data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE LAST srv1 LITERAL IN THE APPLY (review 45197). serve_binary became instance-derived while the step that creates its containing directory kept production's `/opt/gunbc/bin`, and `install` does not create missing parents — so a twin apply would reach the copy with nowhere to copy to and fail on what reads as a permissions problem.\\n\\nThe claim is stated in BOTH directions because only the negative half proves it. Asserting the twin creates its own bin directory passes even if the emission ALSO still creates production's; asserting production's literal is absent from the twin script is what closes it. The production conjunct pins that the derivation did not move production — /opt/gunbc/bin/gunbc has parent /opt/gunbc/bin, so its emitted command is unchanged, which the committed golden independently confirms."
+
+test fn twin_apply_creates_its_own_binary_parent_directory() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1())
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec())
+  string_contains(s: live, pattern: "install -d -m 0755 /opt/gunbc/bin")
+    && !string_contains(s: twin, pattern: "install -d -m 0755 /opt/gunbc/bin")
+    && string_contains(
+         s: twin,
+         pattern: "install -d -m 0755 /home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin",
+       )
+}
+
+data teardown_disposition_after_the_mapping_started_acting_note: String = "THIS CLAIM ASSERTED THE WRONG ANSWER CONFIDENTLY, and it is worth keeping the record of how. review 45217 correctly found that the emitter was hand-walking three coproducts to decide teardown, and the repair lifted the fact to the model and gave the refusal a CAUSE — so the claim then pinned TailscaleServeMapping to TeardownWouldExceedOwnership and treated that as the discriminating half.\\n\\nThe discrimination was real and the cause was fiction. The mapping refused because the model asserted, with no citation, that the CLI's only removal verb is node-global; the upstream documents scoped removal. So a well-formed claim, over a well-modeled fact, faithfully pinned a false premise — and every conjunct here would have stayed green for as long as the premise went unchecked. A cause is only as good as its grounding, and nothing in a claim can supply that.\\n\\nWHAT SURVIVES is the shape rather than the cause list: every OWNED artifact acts, and the one surviving refusal is about ownership rather than tooling. TeardownWouldExceedOwnership is deleted with its premise, so the cause coproduct has one variant and this claim can no longer discriminate between two — it discriminates between the two LAYERS instead, which is the distinction that was always load-bearing.\\n\\nThe acting arms are the ratchet: if a future change made refusal the default for an owned artifact — the safe-looking direction — this reds instead of silently converting the retract into a no-op that still prints its convergence receipt."
+
+test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
+  let mapping = match owned_artifact_teardown_disposition(kind: TailscaleServeMapping) {
+    TeardownActs => true
+    TeardownRefuses { cause: _ } => false
+  }
+  let binary = match owned_artifact_teardown_disposition(kind: ServeBinary) {
+    TeardownActs => true
+    TeardownRefuses { cause: _ } => false
+  }
+  let package = match deployment_step_teardown_disposition(
+    step: Dependency {
+      step: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
+    },
+  ) {
+    TeardownActs => false
+    TeardownRefuses { cause } =>
+      match cause {
+        TeardownOutsideOwnership => true
+      }
+  }
+  mapping && binary && package
+}
+
+data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint — because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half — the twin carries its own --set-path — would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently — an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value."
+
+test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
+  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1())
+  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec())
+  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
+  string_contains(s: live_apply, pattern: "sudo -n tailscale serve --bg --https=443 8080")
+    && !string_contains(s: live_apply, pattern: "--set-path")
+    && string_contains(s: twin_apply, pattern: "sudo -n tailscale serve --bg --https=443 --set-path=/srv1-lab-codex-feedback-v0 18081")
+    && !string_contains(s: twin_apply, pattern: "sudo -n tailscale serve --bg --https=443 8080")
+    && string_contains(s: live_retract, pattern: "sudo -n tailscale serve --https=443 off")
+    && string_contains(s: twin_retract, pattern: "sudo -n tailscale serve --https=443 --set-path=/srv1-lab-codex-feedback-v0 off")
+    && !string_contains(s: twin_retract, pattern: "sudo -n tailscale serve --https=443 off")
+}
+
+data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.98.3 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
+
+fn unmeasured_client_target() -> DeploymentHostTarget {
+  let t = deployment_srv1_target()
+  DeploymentHostTarget {
+    host: t.host,
+    ssh_host: t.ssh_host,
+    tailscale_endpoint: t.tailscale_endpoint,
+    tailnet_domain: t.tailnet_domain,
+    os_package_manager: t.os_package_manager,
+    tailscale_client: ScopedRemovalUnobserved { reason: "host never probed for a tailscale client version" },
+  }
+}
+
+fn preserve_removal_client_target() -> DeploymentHostTarget {
+  let t = deployment_srv1_target()
+  DeploymentHostTarget {
+    host: t.host,
+    ssh_host: t.ssh_host,
+    tailscale_endpoint: t.tailscale_endpoint,
+    tailnet_domain: t.tailnet_domain,
+    os_package_manager: t.os_package_manager,
+    tailscale_client: tailscale_scoped_removal_capability(
+      observed: SemVerVersion { major: 1, minor: 40, patch: 0, pre_release: [], build: [] },
+    ),
+  }
+}
+
+fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
+  deployment_spec_for(
+    instance: srv1_live_dashboard_instance(),
+    target: target,
+    names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
+  )
+}
+
+test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
+  let unobserved = live_deploy_retract_script_for(spec: spec_with_target(target: unmeasured_client_target()))
+  let too_old = live_deploy_retract_script_for(spec: spec_with_target(target: preserve_removal_client_target()))
+  let measured = expected_live_deploy_retract_script()
+  string_contains(s: unobserved, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && string_contains(s: unobserved, pattern: "UNOBSERVED")
+    && !string_contains(s: unobserved, pattern: "sudo -n tailscale")
+    && string_contains(s: too_old, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && string_contains(s: too_old, pattern: "1.40.0")
+    && !string_contains(s: too_old, pattern: "UNOBSERVED")
+    && !string_contains(s: too_old, pattern: "sudo -n tailscale")
+    && !string_contains(s: measured, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && string_contains(s: measured, pattern: "sudo -n tailscale serve --https=443 off")
 }

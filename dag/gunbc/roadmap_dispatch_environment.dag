@@ -32,6 +32,11 @@ import gunbc.roadmap_execution_contract {
   dispatch_required_capabilities,
   dispatch_host_realization,
   execution_contract_validation_summary,
+  ContractClosure,
+  ContractDeclaresNoValidation,
+  ContractClosesNothing,
+  ContractCloses,
+  contract_closure,
 }
 import extdeps.languages.json.grammar { json_text_parseable }
 import extdeps.languages.json.emit {
@@ -277,21 +282,21 @@ fn dispatch_environment_admission_decision(
               receipt_matches_requirement(receipt: receipt, cap: cap)),
         ) == 1,
     )
-  match contract {
-    ExecutionContractUnspecified =>
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation =>
     EnvironmentRefused {
       receipts: receipts,
       validation_summary: validation_summary,
       reason: "work item execution contract is unspecified; dispatch will not guess validation or dependencies",
     }
-    ExecutionContract { validations, extra_capabilities: _ } =>
-    if count(validations) == 0 {
+    ContractClosesNothing =>
     EnvironmentRefused {
       receipts: receipts,
       validation_summary: validation_summary,
       reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit dispatch",
     }
-  } else if !exact_coverage {
+    ContractCloses { validations: _ } =>
+    if !exact_coverage {
     EnvironmentRefused {
       receipts: receipts,
       validation_summary: validation_summary,

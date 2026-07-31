@@ -255,7 +255,37 @@ pub type SecretName = String;
 
 pub type PathSegment = String;
 
+pub fn path_segment_safety_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.\n\nThis is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn path_segment_is_safe(raw: String) -> bool {
+    !((((((((raw.clone() == "".to_string()) || (raw.clone() == ".".to_string()))
+        || (raw.clone() == "..".to_string()))
+        || v1_rt::string_contains(&raw, "/".to_string()))
+        || v1_rt::string_contains(&raw, "\\".to_string()))
+        || v1_rt::string_contains(&raw, "\n".to_string()))
+        || v1_rt::string_contains(&raw, "\x0d".to_string()))
+        || v1_rt::string_contains(&raw, "\x00".to_string()))
+}
+
 pub type GlobSegment = String;
+
+pub fn rendered_terminal_text_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the values it highlights; a parser reading those values needs them absent. Those are facts about DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's module explaining what a terminal multiplexer strips is a fact filed under the wrong authority, and it stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the interaction should be emergent').\\n\\nSo the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText; a prompt parser CONSUMES it; and the composition is admissible because the types line up, not because one module was written knowing about the other. A raw stdout pipe cannot inhabit the brand, so feeding one to a parser that requires it is a type error rather than a runtime paste of escape bytes the operator discovers when the far end rejects them.\\n\\nIt lives in std because it is a property of text, not of any one tool — the same reason FilePath is not owned by whichever dependency happens to open files.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub type RenderedTerminalText = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {

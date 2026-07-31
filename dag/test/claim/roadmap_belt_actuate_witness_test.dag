@@ -9,7 +9,19 @@ import gunbc.roadmap_model {
   Sized,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified,
+  gunbc_claim_execution_contract,
+  cargo_test_execution_contract,
+}
+import std.types { NonEmptyStr, FilePath }
+import gunbc.roadmap_validation_oracle { ValidationOracleRef }
+import gunbc.roadmap_workflow_progress {
+  WorkflowAttemptEvidence,
+  WorkflowAttemptProgress,
+  workflow_attempt_progress,
+}
+import gunbc.worker_lifecycle { WorkerProcessExited, WorkerProcessRunning }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
@@ -35,6 +47,13 @@ import gunbc.roadmap_belt_actuate {
   BeltObserve, Observed, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
+  belt_oracle_refs_for_contract,
+  belt_verify_attempt_for_instance,
+  BeltVerifyOutcome,
+  VerifyDeferred,
+  VerifyRecorded,
+  VerifyWriteFailed,
+  VerifyEvidenceUnreadable,
   belt_dispatch_node_for_instance,
   belt_stop_node_for_instance,
   BeltStopResult, StopDisabled,
@@ -667,6 +686,97 @@ test fn codex_provider_v0_preflight_keystone_holds() -> Bool {
     && witness_fresh_spawn_wire_names_selected_provider()
 }
 
+data oracle_refs_execution_note: String = "This witness exists because its subject SHIPPED BROKEN and a whole-tree compile with 0 blocking errors said otherwise. belt_oracle_refs_for_contract called filter_map, a primitive std.primitives declares a contract for and the seed implements nothing for, so the call type-checked and died as `not yet implemented` the first time a real dispatch reached it — a 500, found on the lab. The lane's other witnesses covered the pure oracle carrier thoroughly and never drove THIS function, which is the whole lesson: a projection that only the effectful path calls needs a witness even when it is itself pure, because purity is what makes it cheap to witness, not what makes it covered. The assertions deliberately RUN the fold and read its output rather than checking a type: a version calling any unregistered primitive fails here at execution, which is the only place that class of defect is observable."
+
+test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
+  let claim_contract = gunbc_claim_execution_contract(
+    entry: "dag/test/claim/probe_witness_test.dag" as FilePath,
+    function: "probe_holds" as NonEmptyStr,
+  )
+  let claim_refs = belt_oracle_refs_for_contract(contract: claim_contract)
+  let cargo_refs = belt_oracle_refs_for_contract(
+    contract: cargo_test_execution_contract(filter: "roadmap_" as NonEmptyStr),
+  )
+  let unspecified_refs = belt_oracle_refs_for_contract(
+    contract: ExecutionContractUnspecified,
+  )
+  count(claim_refs) == 1
+    && count(cargo_refs) == 0
+    && count(unspecified_refs) == 0
+    && match claim_refs.first() {
+      Absent => false
+      Present { value: oracle } =>
+        (oracle.entry as String) == "dag/test/claim/probe_witness_test.dag"
+          && (oracle.function as String) == "probe_holds"
+    }
+}
+
+data unreadable_receipt_refuses_note: String = "review 45271, the arm itself rather than its model. The finding was that an unreadable receipt was collapsed into an absent one and the belt then RAN the validation and overwrote the evidence. This drives the real fn against an instance whose attempt-state paths do not exist, so the receipt read genuinely fails, and asserts the belt answers EvidenceUnreadable — refusing without actuating — rather than treating the failed read as 'no verdict yet'. The provider is a completed turn, which is precisely the state that previously reached the run-and-overwrite path; a version that still collapses read failure into absence reaches the validation instead and this goes red."
+
+fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
+  workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: node_id,
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/{node_id}-afeedfacefeedface",
+    modeled_state_present: true,
+    admission_receipt_readable: true,
+    admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: true,
+    provider_events: "{\"type\":\"turn.completed\",\"usage\":\{\}\}\n",
+    provider_events_error: "",
+    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    validation_summary: "gunbc run --claim-run",
+    validation_receipt_readable: false,
+    validation_receipt: "",
+  })
+}
+
+test fn unreadable_validation_receipt_refuses_instead_of_rerunning() -> Bool {
+  match belt_verify_attempt_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
+  ) {
+    VerifyEvidenceUnreadable { node_id, detail } =>
+      node_id == "belt-verify-probe-node"
+        && string_contains(s: detail, pattern: "could not be read")
+        && string_contains(s: detail, pattern: "overwrite")
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    VerifyDeferred { node_id: _, reason: _ } => false
+    VerifyWriteFailed { node_id: _, detail: _ } => false
+  }
+}
+
+test fn agent_incomplete_attempt_defers_verification() -> Bool {
+  match belt_verify_attempt_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    progress: workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+      node_id: "belt-verify-running-node",
+      attempt_key: "feedfacefeedface",
+      branch: "dispatch/belt-verify-running-node-afeedfacefeedface",
+      modeled_state_present: true,
+      admission_receipt_readable: true,
+      admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
+      spawn_failure_present: false,
+      spawn_failure: "",
+      provider_events_readable: true,
+      provider_events: "",
+      provider_events_error: "",
+      process: WorkerProcessRunning { command: "codex" },
+      validation_summary: "gunbc run --claim-run",
+      validation_receipt_readable: false,
+      validation_receipt: "",
+    }),
+  ) {
+    VerifyDeferred { node_id: _, reason } =>
+      string_contains(s: reason, pattern: "agent obligation is not satisfied")
+    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    VerifyWriteFailed { node_id: _, detail: _ } => false
+  }
+}
+
 test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
   witness_dispatch_result_ok_spawned_and_live()
     && witness_dispatch_result_refusals_not_ok()
@@ -679,6 +789,9 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && witness_exemplar_roster_reconciles_variant_set()
     && witness_exemplar_roster_missing_variant_reds()
     && codex_provider_v0_preflight_keystone_holds()
+    && oracle_refs_projection_runs_and_selects_pinnable_scopes()
+    && unreadable_validation_receipt_refuses_instead_of_rerunning()
+    && agent_incomplete_attempt_defers_verification()
 }
 
 data attempt_grain_home_note: String = "The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host commands; a pure row parked here is enrolled with zero executing consumers, which is exactly what the Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION the row needs, never of the module it happens to name."
