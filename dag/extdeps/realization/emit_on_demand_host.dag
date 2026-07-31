@@ -14,6 +14,7 @@ import std.content_hash {
   as_content_hash_structural,
   as_content_hash_cryptographic,
   as_content_hash_sha1,
+  serialize_content_hash,
 }
 import std.integer { NonNegativeInt }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
@@ -220,21 +221,25 @@ fn resolved_build_context_identity_outcome(
 }
 
 fn native_cache_workspace_root(cache_root: String, key: ContentHash) -> String {
-  concat(cache_root, "/", key as String)
+  concat(cache_root, "/", serialize_content_hash(hash: key) as String)
 }
 
 fn native_cache_realization_workspace_root(
   workspace_root: String,
   realization_digest: ContentHash
 ) -> String {
-  concat(workspace_root, "/", realization_digest as String)
+  concat(workspace_root, "/", serialize_content_hash(hash: realization_digest) as String)
 }
 
 fn native_cache_resolved_build_context_workspace_root(
   realization_workspace_root: String,
   resolved_build_context_identity: ContentHash
 ) -> String {
-  concat(realization_workspace_root, "/", resolved_build_context_identity as String)
+  concat(
+    realization_workspace_root,
+    "/",
+    serialize_content_hash(hash: resolved_build_context_identity) as String
+  )
 }
 
 fn emit_on_demand_evict_native_cache(cache_root: String, key: ContentHash) -> Bool {
