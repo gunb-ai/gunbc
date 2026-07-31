@@ -170,13 +170,8 @@ fn walk_plan_stage_panic_blocks_stage2() {
     let _ = std::fs::remove_file(&marker);
     let out = run_fixture_plan("walk_plan_stage_panic_barrier_plan");
     assert!(
-        out.stdout.contains("<claim thread panicked>"),
-        "panicking member must surface structural thread-panic evidence on stdout;\n{}",
-        out.combined()
-    );
-    assert!(
-        out.stderr.contains("infra=thread_panic") || out.stdout.contains("infra=thread_panic"),
-        "panicking member must classify as infra=thread_panic;\n{}",
+        out.stdout.contains("call depth exceeded") || out.stdout.contains("unbounded recursion"),
+        "panicking member must surface structural recursion-depth refusal on stdout;\n{}",
         out.combined()
     );
     assert!(

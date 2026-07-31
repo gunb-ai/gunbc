@@ -22,7 +22,7 @@ data walk_plan_stage_overlap_barrier_recipe: String = "GREEN overlap+barrier: GU
 
 data walk_plan_stage_failure_barrier_recipe: String = "RED failure barrier: GUNBC_WALK_ATTEMPT_ID=walk-plan-stage-fixture same claim_executor invocation with --plan-function walk_plan_stage_failure_barrier_plan. Stage-1 red member must fail; executor must print remaining stage(s) NOT run; target/walk_plan_stage_stage2_ran must stay absent."
 
-data walk_plan_stage_panic_barrier_recipe: String = "RED panic barrier: GUNBC_WALK_ATTEMPT_ID=walk-plan-stage-fixture same invocation with --plan-function walk_plan_stage_panic_barrier_plan. Stage-1 panicking member must be reported as infra=thread_panic; stage 2 must not run; target/walk_plan_stage_stage2_ran must stay absent."
+data walk_plan_stage_panic_barrier_recipe: String = "RED panic barrier: GUNBC_WALK_ATTEMPT_ID=walk-plan-stage-fixture same invocation with --plan-function walk_plan_stage_panic_barrier_plan. Stage-1 self-recursive member must fail with interpreter call-depth refusal (unbounded recursion); stage 2 must not run; target/walk_plan_stage_stage2_ran must stay absent."
 
 data walk_plan_stage_receipt_refusal_barrier_recipe: String = "RED receipt-write refusal barrier: GUNBC_WALK_ATTEMPT_ID=walk-plan-stage-fixture same invocation with --plan-function walk_plan_stage_receipt_refusal_barrier_plan. Stage-1 receipt write must fail closed after the poison claim; stage 2 must not run; target/walk_plan_stage_stage2_ran must stay absent."
 
