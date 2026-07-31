@@ -2121,7 +2121,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "Accepted means established: the acceptance-completeness door closes the contract",
-        boundary: "The terminal P0 wall (the recovered P0.0 meta-guarantee — no exhaustive acceptance contract exists today): for every Required guarantee path in the claims carrier, exactly one live consumer, consumed before the relevant Accepted constructor; acceptance refuses when a required class or path is Unmeasured, BelowFloor, FrontierAccepted, or lacks its live consumer. Depends on the carrier and the floor walls — a door closing over known-open obligations would refuse the corpus or lie.",
+        boundary: "The terminal P0 wall (the recovered P0.0 meta-guarantee — no exhaustive acceptance contract exists today): for every Required guarantee path in the claims carrier, exactly one live consumer, consumed before the relevant Accepted constructor; acceptance refuses when a required class or path is Unmeasured, BelowFloor, FrontierAccepted, or lacks its live consumer. Depends on the carrier and EVERY required-now climb — the floor walls, the ambiguity wall, and the cardinality seam included (review 45545: a door closing over known-open required judgments would certify its own headline falsely).",
         displaced_cost: "The original thesis promise — if it compiles, declared intent is sound inside the modeled system — becomes checkable instead of aspirational; the carrier turns from observability into the contract.",
         first_slice: "The closure check over the floor domain only, census-first (count, then flip).",
         red_control: "A Required path with no live consumer reds; a FrontierAccepted path admitted into Accepted reds; the whole-tree compile stays green at flip.",
@@ -2196,7 +2196,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "Residual prevalence: the post-climb rerun that prices what remains",
-        boundary: "The baseline's bucketing classifier re-run after the declared climbs land, diffed against the anchored baseline: per-class delta receipts showing which buckets each wall emptied, and the residual histogram pricing the next round (DESIGN 6 displaced-cost denomination). Depends on the acceptance-closure door plus the climbs outside it (ambiguity, cardinality) so a partial rerun cannot masquerade as the residual.",
+        boundary: "The baseline's bucketing classifier re-run after the declared climbs land, diffed against the anchored baseline: per-class delta receipts showing which buckets each wall emptied, and the residual histogram pricing the next round (DESIGN 6 displaced-cost denomination). Depends on the acceptance-closure door alone — every required climb, ambiguity and the cardinality seam included, now flows through that door (review 45545) — so a partial rerun cannot masquerade as the residual.",
         displaced_cost: "Turns each wall's landing into a measured before/after instead of an assumed win; the residual table is the priced backlog for the next design round.",
         first_slice: "The diff projection over one class (method existence) with its wall's before/after receipts.",
         red_control: "Bucket counts reconcile to the total; a class whose wall landed but whose bucket did not shrink is a counted finding, never smoothed over.",
@@ -2241,9 +2241,9 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "compiler-accepted-obligation-closure", parent: "floor-parse-formation-wall"),
     edge(child: "compiler-accepted-obligation-closure", parent: "v2-translate-underived-refusal"),
     edge(child: "compiler-accepted-obligation-closure", parent: "v2-target-realization-gate"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "floor-method-ambiguity-wall"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "cardinality-vertical-slice"),
     edge(child: "guarantee-residual-prevalence", parent: "compiler-accepted-obligation-closure"),
-    edge(child: "guarantee-residual-prevalence", parent: "floor-method-ambiguity-wall"),
-    edge(child: "guarantee-residual-prevalence", parent: "cardinality-vertical-slice"),
   ]
 }
 

@@ -808,7 +808,11 @@ added per the post-merge verdict):** the terminal P0 wall making the carrier the
 rather than observability — every `Required` guarantee path has exactly one live consumer,
 consumed before the relevant `Accepted` constructor; acceptance refuses when a required
 class/path is `Unmeasured`, `BelowFloor`, `FrontierAccepted`, or lacks its live consumer.
-Census-first (count, then flip).
+Census-first (count, then flip). **Every required-now climb is a prerequisite of the door
+— the floor walls, the ambiguity wall, and the cardinality seam included** (review 45545
+caught the first edge set leaving ambiguity and cardinality outside it, which would have
+let the headline guarantee land while required judgments stayed open; residual prevalence
+now depends on the door alone).
 
 **Stage 7 — residual prevalence, measured last** (the baseline half moved to Stage 1c per
 the operator's verdict, anchored at `anchor_commit 6c6e2dcb8587` — the #7489 merge — so it
