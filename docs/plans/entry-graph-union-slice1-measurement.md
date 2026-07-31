@@ -81,7 +81,7 @@ Per entry — machinery is **37.7%** of all resolve-span time even in a single-e
 ### A.6 What `load` actually is — RETRACTED and replaced
 
 **An earlier version of this section claimed** `load` is dominated by
-`referenced_module_paths_in_text` (`cli_run.rs:2062`), an unmemoized full-content scan run
+`referenced_module_paths_in_text`, an unmemoized full-content scan run
 once per (entry, module) pair, and concluded that B's duplication factor is "directly the
 multiplier on the dominant exclusive cost."
 

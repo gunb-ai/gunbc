@@ -8489,11 +8489,11 @@ fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
 // already declare; this scaffold does not add a second measurement authority, it makes
 // the existing rows' denominator honest.
 // Unblock: Phase 0 lands the `.dag`-native measurement carrier — a
-// `compute_fabric.PerformanceReceipt { wall_duration, sample_count, confidence }`
-// (`compute_fabric.dag:414-423`) keyed by the cache-subject hash, rolled into
-// `CostAccount.time = Measured` (`realization_schedule.dag:25-26,33-39`) — consumed by a
-// floor witness. At that point the partition is a lens over those rows and the exclusive
-// law is a property of the model, not of this host-side projection.
+// `gunbc.fleet_intent.PerformanceReceipt { cost, sample_count, confidence }` keyed by the
+// cache-subject hash, rolled up by `gunbc.fleet_intent.cost_account_from_performance_receipts`
+// into a `std.realization_schedule.CostAccount` whose `CostBasis` is `Measured` — consumed
+// by a floor witness. At that point the partition is a lens over those rows and the
+// exclusive law is a property of the model, not of this host-side projection.
 // DELETE WHEN dissolved: `ResolveSpanAccount`, `RESOLVE_SPAN_ACCOUNT`,
 // `RESOLVE_SPAN_BY_ENTRY`, `RESOLVE_STAGE_BY_ENTRY`, `resolve_span_account`,
 // `resolve_span_rows_by_entry`, `resolve_stage_rows_by_entry`, `resolve_span_enter`,
