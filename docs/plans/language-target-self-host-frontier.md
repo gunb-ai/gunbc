@@ -34,12 +34,11 @@ The whole point of exotic-first is that the curly-brace family *confirms* the de
 | **F4** | `ProcessProgram` transport + `run_emit_host`; executable identity **bound per extdeps transport row** (`v2.std.host_transport` `HostTransportDescriptor` / `ProcessProgram`), compiler dispatch **generic** (`v2.compiler.emit_host` `process_program_name`) | ✓ done — `HostToolProgram.executable` is carried by the row and generic dispatch returns that value; target-specific work is only to configure a runtime row where one is absent |
 | **F5** | self-host frontier runner (`run_test_claim_module_emit_vs_eval`: emit → build → run → compare-to-eval) | ✓ machinery **for Rust only**, run **OFFLINE** (excluded from discovery). Rust is **not** self-hosted: `compiler_frontier_self_emitted_baseline = 0` of `compiler_frontier_module_count_expected = 27` (`src/v2/compiler/self_host/frontier.dag`) |
 | **F6** | `solve` — **structural** = existing `solve_constraints` / `ConstraintGraph` authority (extend, no fork); **numerical** = *absent* typed gap (finite measure + `TerminationProof`, typed residual-acceptance contract, extdeps solver handler) | **off critical path** — not needed for emit-to-simulator; see solve doc |
-| **F7** | declaration emission generic over target (`emit_semantic_decl.dag`) | **FORKED — `emit_semantic_decl.dag` is rust-hardwired**; de-fork to row-driven per-target decl spellings is a front-loaded barrier |
+| **F7** | declaration emission generic over target (`v2.compiler.emit_semantic_decl` `emit_semantic_type_decl`) | ✓ done — the declaration emitter accepts a `TargetModel` and reads its emission bundle through `v2.std.compilers.semantic_decl_emission` `semantic_decl_emission_from_target` |
 
 ### The highest-leverage shared dependencies (do these once, everyone inherits)
 
-1. **F7 declaration-emission de-fork** — `emit_semantic_decl.dag` remains rust-hardwired; move declaration spellings onto the target rows so every target inherits the generic declaration path.
-2. **F2 VEP completion** — wire the unwired forms **once** (rust's `^rust_token_unwired_{else,loop,match,fat_arrow}`; TS's match / loop / bind-in) in the `StatementSequenced` arm; the family inherits body breadth. Python additionally needs its *first* VEP edge.
+1. **F2 VEP completion** — wire the unwired forms **once** (rust's `^rust_token_unwired_{else,loop,match,fat_arrow}`; TS's match / loop / bind-in) in the `StatementSequenced` arm; the family inherits body breadth. Python additionally needs its *first* VEP edge.
 
 ---
 
@@ -67,7 +66,7 @@ The whole point of exotic-first is that the curly-brace family *confirms* the de
 ## Sequencing — Rust-as-model, then stress (dependency-ordered)
 
 - **Phase A — now-ish (pre-un-shelve):** this map + the `solve` rationale. No emit code. ← *we are here*
-- **Phase B — foundation de-fork (the barrier; everything downstream inherits):** F7 decl-emission de-fork (`emit_semantic_decl.dag`) + F2 VEP completion (rust + TS). Once B lands, C/D/E run largely in parallel.
+- **Phase B — foundation completion (the barrier; everything downstream inherits):** F2 VEP completion (rust + TS). Once B lands, C/D/E run largely in parallel.
 - **Phase C — self-host axis proof:** generalize F5 past Rust to **Go** (first non-Rust self-host) — and land Rust's own self-host (0/27 today). This is the real "does the seed-shrink story generalize" milestone. If it holds, java/kotlin/swift are near-mechanical parallel fan-out.
 - **Phase D — emit-generality axis (parallel):** Verilog · SPICE · LLVM-IR to bar-c + frontier rows. Verilog and LLVM-IR first need a **committed TargetModel** (both below bar-a today); SPICE needs its witness to actually run ngspice (bar-b → bar-c). Each decomposes its `body_lexeme:String` scars and binds its simulator/toolchain transport in a row. This is where the design gets *stressed*; a construct that won't lower produces a typed, located refusal that *names the design gap* — the refusal is the product.
 - **Phase E — interpreted self-host:** TS → Python (Python inherits TS's VEP completion).
@@ -79,7 +78,7 @@ Each language is **priced by the design risk it displaces**, not by completeness
 
 ## Staffing note (for continuous dispatch)
 
-Off this map, the natural fan-out is **one child session per language axis**, gated on Phase B. The dependency structure that makes this safe: **B is the only hard barrier** (F7 de-fork + F2 completion); after it, the self-host axis (C, then the compiled fan-out) and the emit-generality axis (D) have no cross-dependency, so they staff independently. Lean (F) and the interpreted family (E) each ride one Phase-B deliverable (F3-expression-mode and F2-completion respectively) plus their own missing TargetModel where noted. ecmascript's adopt-or-delete decision is a prerequisite gate on the interpreted family, not parallel work.
+Off this map, the natural fan-out is **one child session per language axis**, gated on Phase B. The dependency structure that makes this safe: **B is the only hard barrier** (F2 completion); after it, the self-host axis (C, then the compiled fan-out) and the emit-generality axis (D) have no cross-dependency, so they staff independently. Lean (F) and the interpreted family (E) each ride one Phase-B deliverable (F3-expression-mode and F2-completion respectively) plus their own missing TargetModel where noted. ecmascript's adopt-or-delete decision is a prerequisite gate on the interpreted family, not parallel work.
 
 ## Dissolution trigger (DESIGN §6)
 
