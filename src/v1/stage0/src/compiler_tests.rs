@@ -572,6 +572,21 @@ mod compiler_tests {
                     "a method on the refinement's String base must RESOLVE once the base is peeled — no diagnostic of any severity, got: {:?}",
                     peel_green.diagnostics
                 );
+                // DISCRIMINATING RED for the two special-case arms (codex review
+                // 45430). The wall was reached only from the FINAL else, so an
+                // unresolved map_keys / map_values still returned the RECEIVER type
+                // with an empty diagnostic list — the exact success-shaped fallback
+                // this PR deletes, surviving in the two branches that ran before it.
+                let special = compile_one("special.dag",
+                    "module special\nfn f(xs: List<Int>) -> List<Int> {{ xs |> map_keys }}\nfn g(xs: List<Int>) -> List<Int> {{ xs |> map_values }}\n".replace("{{", "{").replace("}}", "}"));
+                let special_missing: Vec<_> = special.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. }))
+                    .collect();
+                assert!(
+                    special_missing.len() >= 2,
+                    "map_keys and map_values must route through the SAME refusal as every other method when the receiver is not a keyed collection — a wall reachable only from the final else is not a wall, got: {:?}",
+                    special.diagnostics
+                );
                 let peel_red = compile_one("peel_red.dag", peel_src("filter_map(x => x)"));
                 assert!(
                     peel_red.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. })),
@@ -622,6 +637,45 @@ mod compiler_tests {
                     green_result.diagnostics.is_empty(),
                     "conforming declarations must produce NO diagnostic of any severity — filtering to the blocking variant would let an advisory pass unnoticed (codex review 45357), got: {:?}",
                     green_result.diagnostics
+                );
+                // DISCRIMINATING RED for the container widening (codex review 45398:
+                // a provable mismatch in container ELEMENT types was indistinguishable
+                // from a valid declaration, because the ground-scalar gate required a
+                // plain shape and a List is not one). A List of a ground kernel scalar
+                // carries no alias, brand, coproduct or cardinality representation
+                // between the two sides either, so the same positive-establishment
+                // argument that admits Int-vs-String admits List<Int>-vs-List<String>.
+                let container_red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "container_red.dag".to_string(),
+                    content: "module container_red\nfn f() -> List<Int> { [\"a\", \"b\"] }\ndata d: List<String> = [1, 2]\n".to_string(),
+                });
+                let container_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![container_red]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let container_mismatches: Vec<_> = container_result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. }))
+                    .collect();
+                assert!(
+                    container_mismatches.len() >= 2,
+                    "a declared container whose ELEMENT type the body contradicts must refuse, for BOTH the fn return and the data annotation, got: {:?}",
+                    container_result.diagnostics
+                );
+                // POSITIVE CONTROL for the same widening: matching element types, and a
+                // container of a NON-ground element, which stays unjudged rather than
+                // guessed at.
+                let container_green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "container_green.dag".to_string(),
+                    content: "module container_green\nfn g() -> List<Int> { [1, 2] }\ndata h: List<String> = [\"x\"]\n".to_string(),
+                });
+                let container_green_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![container_green]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                assert!(
+                    container_green_result.diagnostics.is_empty(),
+                    "a conforming container declaration must produce NO diagnostic, got: {:?}",
+                    container_green_result.diagnostics
                 );
             })
             .expect("failed to spawn thread")
