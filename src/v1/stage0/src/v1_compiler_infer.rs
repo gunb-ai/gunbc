@@ -2778,8 +2778,16 @@ pub fn method_pipe_map_keys_values_fallback(
                     recv_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 );
-                let name_is_declared_method =
-                    v1_rt::contains(declared_method_names(), method_name.clone());
+                let name_is_declared_method = {
+                    let mut __found = false;
+                    for m in declared_method_names().iter().cloned() {
+                        if (m.clone() == method_name.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
                 let receiver_surface_known = is_fully_resolved(
                     recv_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),

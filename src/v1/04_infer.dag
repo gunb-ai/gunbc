@@ -1624,7 +1624,7 @@ fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scop
     }
   } else {
     let recv_shape = node_type_shape(n: recv_rt, source_indices: scope.type_env.source_indices)
-    let name_is_declared_method = declared_method_names() |> contains(method_name)
+    let name_is_declared_method = declared_method_names() |> any(m => m == method_name)
     let receiver_surface_known = is_fully_resolved(n: recv_rt, source_indices: scope.type_env.source_indices)
     if !name_is_declared_method && receiver_surface_known {
       MethodPipeFallback {
