@@ -195,4 +195,17 @@ data ci_floor_materialization_receipt_note: String = "Increment 1 of INFERRED ma
 
 data ci_floor_materialization_receipt_path: String = "target/floor-materialization-receipt.txt"
 
+data ci_floor_on_success_materialization_receipt_path: String = "target/floor-attempt-<attempt_id>/floor-on-success-materialization-receipt.txt"
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_note: String = "§7 seed-retained HAND-RUST bridge (#7499 blocker 6, src/v1/stage0/src/bin/claim_executor.rs): the ordinary materialization receipt is harvested before on_success_stages run; a second receipt at ci_floor_on_success_materialization_receipt_path (attempt-scoped like the other on-success receipts, with attempt_id= in the payload) captures the stage population after stage_memo drops, with the same keyed/unkeyed/duplicated/memo fields. Reason: the process-wide accumulator and fs write at the walk boundary are executor realization — not yet expressible as substrate behavior inside claim_executor. Checkable receipt: on_success_materialization_receipt_separates_from_ordinary_floor in claim_executor tests (serialized on PROCESS_EVAL_RECOMPUTE_TEST_LOCK). Dissolve-on: v2 self-emitted claim_executor run_walk when the executor bin crosses the self-host frontier (DESIGN §7 terminal collapse of stage0 host bins), same trigger as ci_floor_materialization_receipt_note."
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_materialization",
+    decl_name: "ci_floor_on_success_materialization_receipt_path",
+    field: WholeDeclaration
+  }
+}
+
 data ci_sccache_provider_skip_is_counted_note: String = "The skip arm is LOUD and COUNTED, not silent (§5: a degradation must be a typed, located, countable diagnostic so its frequency is observable and prioritizable). This guard was a bare `if` with no else until 2026-07-24 — when the daemon was down the release build simply ran uncached, and the deficit's frequency was zero by construction, so it never ranked for fixing (shell→dag census §4.I lists it as an absorbing fallback). It is NOT yet a refusal: STEP 2 of the srvN build-cache design flips this to fail-closed, and that flip is operator-sequenced AFTER a live T4 read-back proves P1b provisioning converges on srv1/srv2/srv4 — refusing before then would red the whole fleet, which is why the interim is loudness rather than a wall. The receipt line names the host, so a single misconfigured runner is attributable rather than fleet-wide noise."
