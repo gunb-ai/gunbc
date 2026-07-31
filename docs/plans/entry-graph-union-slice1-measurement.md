@@ -148,9 +148,66 @@ A share is a ratio of a stable numerator to a noisy one, so the share moves with
 is the most likely source of the 1.7× spread in a cost that should be constant. That does not
 rescue the shares — it explains why they cannot be quoted.
 
-**A floor-representative partition requires the `claim_executor` discovery path** (wired,
-emitting `[cost-partition]` against per-entry receipts from one universe) and **has not been
-run**. Until it is, no share in A.4 should be quoted as a floor fact.
+### A.8 The amortization is now measured, not assumed
+
+§A.7 said `load`'s share on a floor run "must be smaller — by how much is unmeasured." It is
+measured here. Two runs on the **explicit-entry** path (`--entry` + `--functions`), which
+puts N entries against **one shared index**, holding everything else fixed:
+
+| row | N=1 (2 spans) | N=6 (7 spans) | growth |
+|---|---:|---:|---:|
+| parent | 69.97 s | 114.12 s | 1.63× |
+| **`load`** | **47.44 s** | **51.32 s** | **1.08×** |
+| `load_bare_edge_index` | 47.40 s | 51.18 s | 1.08× |
+| `typecheck_compute` | 17.34 s | 49.64 s | 2.86× |
+| `parse` | 1.14 s | 3.66 s | 3.21× |
+| `normalize` | 0.09 s | 0.35 s | 4.05× |
+| `resolve_modules` | 0.02 s | 0.11 s | 4.40× |
+| **`load` share of parent** | **67.79%** | **44.97%** | — |
+
+Span count rises 3.5× and every per-entry row rises with it, while `load` rises 8%. That 8%
+is within the run-to-run noise band already established for this row (44.96–77.11 s), so the
+measurement is *consistent with `load` being flat in N* and does not resolve a small residual
+slope. **`load` is paid once per index, not once per entry** — the existing per-index memo
+already amortizes it, with no union graph involved.
+
+The N=1 run reproduces the discovery-path receipts (67.79% against 68.11% / 67.68%),
+confirming the explicit-entry path measures the same thing.
+
+**Direction, with the extrapolation marked as such.** Non-`load` work is 22.53 s at N=1 and
+62.80 s at N=6, i.e. ~8.05 s per added entry. Holding the fixed cost at 51.32 s, that model
+puts `load` at ~11% of parent by N=50 and ~2% by N=316 (the typical subject's selected set).
+**This is a projection from two points over six small entries, not a receipt** — per-entry
+cost varies by closure size, and no floor run has been executed. What is *measured* is the
+sign and the magnitude at N=6: the share falls, steeply, with no change to the code.
+
+**Whole-corpus floor runs were attempted and could not complete on this host** — OOM-killed
+twice (exit 137, at 1,513 and 1,046 entries), including under
+`GUNBC_MEMORY_BUDGET_BYTES=44 GiB`, which governs realization admission rather than
+resolve-pool retention. The `claim_executor` discovery path remains the surface that would
+produce a floor receipt, and no share in §A.4 may be quoted as a floor fact.
+
+### A.9 Where this leaves the union program's target
+
+The consequence is a redirection, and it is the sharpest thing in this receipt.
+
+`load` — the row that dominated every single-entry partition and that this receipt originally
+built its whole case on — **cannot be what a union graph displaces**, because it is already
+paid once per index and is flat in the number of entries sharing that index. There is no
+repeated work there to remove.
+
+The only measured row that grows with *both* entry count (2.86× over 6 entries) and closure
+size (3.6× for 3.2× the modules) is **`typecheck_compute`**, which is also the row whose unit
+of work is module membership — the quantity §B measures repeating 38× by count and 48× by
+bytes. So if a union prize exists, that is where it is, and it is the lane's original
+typecheck framing rather than the loading framing this receipt spent §A.6 chasing.
+
+**Not established, and deliberately not claimed:** whether typecheck work is genuinely
+*repeated* across entries, or whether each entry's typecheck is already specific to its own
+environment such that shared membership implies no shared computation. That is a different
+measurement — per-entry typecheck attribution against a shared env — and nothing here
+answers it. §B's duplication is a bound on repeated *membership*; converting it to repeated
+*computation* still requires the mechanism this receipt has twice failed to establish.
 
 ---
 
@@ -181,7 +238,7 @@ Largest closures (narrow): `generated_artifact_drift_test.dag` 504, `srv3_runner
 
 ### B.1 Four structural reads
 
-1. **The factor is stable across breadth.** 35.9 → 38.4 → 38.3 while changed paths go 3 → 13 → 29. Overlap is a property of the corpus's shape, not of the diff.
+1. **The factor is stable across breadth *by module count*, and rises by bytes.** 35.9 → 38.4 → 38.3 while changed paths go 3 → 13 → 29 — so by count, overlap is a property of the corpus's shape rather than of the diff. Byte-weighted the same three subjects give 43.0 → 47.9 → 49.3, monotonically rising (§B.1a): a broader diff adds proportionally more *large* shared modules. Both readings come from the same probe runs; the count one alone would have understated how breadth interacts with overlap.
 2. **The union is nearly saturated at the narrow subject.** N grows 37% (286 → 393) while |⋃Cᵢ| grows 15% (1,196 → 1,378). Most of what a broader diff adds is *already in the union*.
 3. **Max fanout ≈ N** in every subject (281/286, 311/316, 388/393). A small `std` core sits in essentially every selected closure.
 4. **The median module is rare and falls as N rises** (5 → 3 → 2). The distribution is a universal core plus a long private tail — not uniform sharing. Any union benefit is concentrated in the core.
@@ -192,21 +249,31 @@ Largest closures (narrow): `generated_artifact_drift_test.dag` 504, `srv3_runner
 a 200-KB module as one membership each, which is a uniformity assumption the count itself
 cannot expose (operator review point 3).
 
-Redone with each membership weighted by its module's source bytes, same subject, same
-selection, same probe run:
+Redone with each membership weighted by its module's source bytes — all three subjects, same
+selection as the table above (N = 286 / 316 / 393, matching entry-for-entry):
 
-| typical subject | module-count | byte-weighted |
-|---|---:|---:|
-| Σ over memberships | 47,759 modules | 548,899,266 bytes |
-| union | 1,243 modules | 11,454,316 bytes |
-| **duplication factor** | **38.42** | **47.92** |
-| upper bound on repeats | 46,516 | 537,444,950 bytes |
-| repeats as share of Σ | 97.40% | 97.91% |
+| | narrow | typical | broad |
+|---|---:|---:|---:|
+| `duplication_factor` (module count) | 35.89 | 38.42 | 38.27 |
+| **`byte_duplication_factor`** | **43.04** | **47.92** | **49.25** |
+| byte / count | 1.199 | 1.247 | 1.287 |
+| repeats as share of Σ, by count | 97.21% | 97.40% | 97.39% |
+| repeats as share of Σ, by bytes | 97.68% | 97.91% | 97.97% |
 
-**The count-weighted figure was the conservative one.** Byte-weighted duplication is 24.7%
-*higher*, which says the modules with high fanout are systematically **larger** than average —
-consistent with B.1 read 3, since the universal core is `std.algebra`, `std.types`,
-`std.error_primitives` and friends rather than small leaf modules.
+For the typical subject in full: Σ over memberships is 548,899,266 bytes against a union of
+11,454,316 bytes, upper bound on repeats 537,444,950 bytes.
+
+**The count-weighted figure was the conservative one.** Byte-weighted duplication is 20–29%
+*higher* in every subject, which says the modules with high fanout are systematically
+**larger** than average — consistent with B.1 read 3, since the universal core is
+`std.algebra`, `std.types`, `std.error_primitives` and friends rather than small leaf modules.
+
+**The weighting also changes a reading, not just a magnitude.** By module count the factor
+plateaus and dips at the broad subject (35.89 → 38.42 → **38.27**); byte-weighted it rises
+monotonically (43.04 → 47.92 → **49.25**), and the byte/count ratio itself climbs with
+breadth. So B.1 read 1's "stable across breadth" holds by count but not by bytes: a broader
+diff pulls in proportionally *more* large shared modules. The read is corrected in place
+below.
 
 This moves the weighting question in the direction that *favours* the union program, and it
 is worth being explicit that it does not rescue it: both numbers are still counts of repeated
@@ -262,26 +329,43 @@ Recorded because it is the failure mode this kind of measurement is most exposed
 
 ### Does the evidence strengthen, shrink, or close the union program?
 
-**Neither, yet — the question is not answerable from this data, and saying otherwise would
-repeat the error above.** The reason is §A.7: every share in section A comes from a
-one-or-two-entry `claim_batch` harness whose dominant row is a *fixed per-index
-construction*. On a floor run that cost amortizes across hundreds of entries, so the
-harness systematically overstates it. A union program justified by these shares would be
-justified by an artifact of the instrument.
+**It shrinks the program by eliminating its apparent target, and relocates what remains onto
+a claim this slice does not establish.** That is a narrower answer than "not answerable," and
+§A.8 is what earned it.
 
-What B establishes independently still stands and is not harness-bound: the selected
-closures genuinely do repeat module membership 36–38×, and the pole that would have closed
-the program outright (disjoint closures → factor 1.0) is decisively absent. But repeated
-*membership* only becomes a repeated *cost* through a mechanism, and the mechanism this
-receipt proposed has been refuted. No replacement mechanism is offered here.
+The elimination is the firm part. The union program's implicit target was the row that
+dominates every single-entry partition — `load`, at 67–68%. §A.8 measures that row growing
+**1.08× while entry count grows 6×** on one shared index. It is a per-index fixed cost that
+the existing memo already amortizes; its share falls to 44.97% at N=6 and, on a marked
+projection, to a few percent at floor-scale N. **A union graph cannot displace a cost that is
+already paid once.** Any case for the program built on §A.4's shares was built on an artifact
+of a one-entry instrument, and that case is now closed rather than merely unproven.
+
+What remains is narrower and is *not* established here. `typecheck_compute` is the only
+measured row that scales with both entry count and closure size, and its unit of work is
+module membership — the quantity §B measures repeating 38× by count and 48× by bytes. That
+makes it the only surviving candidate. But the conversion from repeated *membership* to
+repeated *computation* is exactly the mechanism this receipt has now failed to establish
+twice: once via the refuted content-scan story (§A.6), and once by finding that the row it
+would have applied to is fixed (§A.8). **No mechanism is offered here, and the duplication
+factor must not be quoted as a multiplier on typecheck time without one.**
+
+The pole that would have closed the program outright — disjoint closures, factor 1.0 — is
+still decisively absent, so the program is not dead. It is smaller, pointed at a different
+row, and gated on a measurement nobody has taken.
 
 ### The one measurement that would decide it
 
-A partition from the **`claim_executor` discovery path** — wired in this PR, emitting
-`[cost-partition]` over per-entry receipts drawn from a single universe, and never run.
-That is the only surface where the parent is the floor's own work and per-index fixed costs
-sit in their true proportion. Until it exists, no share in §A.4 may be quoted as a floor
-fact.
+**Per-entry typecheck attribution against a shared environment** — does typechecking entry
+B re-do work already done for entry A when their closures overlap, or is each entry's
+typecheck specific to its own env such that shared membership implies no shared computation?
+That is the question §A.8 promoted from "one of several" to "the only one left," and nothing
+in this slice answers it.
+
+A floor-scale partition from the **`claim_executor` discovery path** remains wanted for the
+denominators, but it is no longer the deciding measurement — §A.8 obtained the amortization
+direction without it. Whole-corpus runs OOM-killed twice on this host (exit 137), so the
+floor receipt still does not exist and no share in §A.4 may be quoted as a floor fact.
 
 ### Kept separate, as instructed
 
