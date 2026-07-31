@@ -1,0 +1,7 @@
+module probe_surplus
+
+fn two(a: Int, b: Int) -> Int { a + b }
+
+fn main() -> Int {
+  two(1, 2, 3)
+}

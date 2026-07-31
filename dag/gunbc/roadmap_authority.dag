@@ -1926,12 +1926,12 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "Call shape: the silent positional label bind gets loud, then exact bijection",
-        boundary: "Two moves in order. Floor first: a named argument matching no formal must diagnose — today direct_call_arg_mismatch_diags falls back to positional binding, so a misspelled label silently computes the wrong thing. Then the wall: argument population in exact bijection with non-default formals (missing, extra, duplicate, mislabeled each a typed located refusal). Invocation arity is a new judgment — ArityMismatch is type-constructor grain and stays so.",
-        displaced_cost: "A misspelled label silently computing the wrong thing is the harm shape DESIGN 5 prices at interest, paid by the end user; the floor move alone retires it.",
-        first_slice: "The floor diagnostic (any label matching no formal refuses), probe-paired.",
-        red_control: "Probe: misspelled label with a type-compatible positional slot — must refuse naming the unknown label; control: every legitimate labeled and positional form in corpus compiles.",
-        out_of_scope: "The v2.*/v1.compiler.* exemption (its own node); default-parameter semantics changes.",
-        handback: "The judgment's module path, refusal variants added, probe flip receipt."
+        boundary: "Floor LANDED (cool-badger-514): unknown label and surplus positional refuse at the direct-call seam, blocking, exemption-free — the two classes the interpreter's call_function_inner already refuses, mirrored so the authorities agree. Census refused 28 live rename fossils, all fixed. Remaining wall: duplicate and missing land as an interpreter-first parity pair; method-pipe seam with the method wall. ArityMismatch stays type-constructor grain.",
+        displaced_cost: "A misspelled label silently computing the wrong thing is the harm shape DESIGN 5 prices at interest, paid by the end user; the landed floor retires it at the direct-call seam.",
+        first_slice: "DONE — direct_call_shape_diags, probe-paired (pre 0 diagnostics, post two located refusals), census-adjudicated.",
+        red_control: "Landed: ct_call_shape_wall_witness_test — mislabel and surplus REDs, zero-diagnostic controls incl. the underscore idiom; every legitimate corpus form compiles (census dry).",
+        out_of_scope: "The v2.*/v1.compiler.* exemption (its own node); default-parameter semantics changes; the sig-unresolved fallthrough (closes with resolution coverage).",
+        handback: "v1.compiler.infer direct_call_shape_diags; CallArgumentNameUnknown + CallPositionalSurplus; receipts in direct_call_shape_wall_note."
       )
     ),
     active_sized(identity: "rn_6W5ACS5ZE3ZMTA7BFCQLY76VW4", id: "floor-inhabitance-wall",
