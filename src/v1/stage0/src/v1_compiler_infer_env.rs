@@ -64,7 +64,7 @@ pub struct TypeBinding {
 pub fn global_bare_fallback_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Corpus-wide bare-name census (operator ruling 2026-07-18: filepaths are irrelevant — the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup / unique_on_chain_policy_note — ONE authority, review 45102): candidates are filtered to the referencing module's containment chain (declaring module path is a leading-segment prefix of TypeEnv.module_path, or equal); cardinality then routes through module_path_owner_binding_decide (0 → Unresolved/Absent, 1 → bind, 2+ → Ambiguous). A corpus-unique name off-chain does NOT resolve from anywhere — zero on-chain never authorizes whole-corpus search. Nearest-ancestor / first-hit selection is retired on these production surfaces (global_bare_nearest_ancestor* remains only for silent-pick recording of the old LCP heuristic, not for binding). lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
+            "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -427,7 +427,10 @@ pub fn guarded_union_str_bindings_into_acc(
             bindings: acc.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: _, name: String| match v1_rt::map_get(&overlay, name.clone()) {
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
             None => state.clone(),
             Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
                 None => Rc::new(GuardedStrBindingsUnion {
@@ -494,7 +497,8 @@ pub fn guarded_union_str_bindings_into_overlay(
             bindings: overlay.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: _, name: String| match v1_rt::map_get(&acc, name.clone()) {
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
+        {
             None => state.clone(),
             Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
                 None => Rc::new(GuardedStrBindingsUnion {
@@ -683,38 +687,38 @@ pub fn union_variant_locals_into_acc(
     acc: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(v1_rt::map_keys(&overlay))
-        .iter()
-        .cloned()
-        .fold(acc.clone(), |m: _, name: String| {
-            match v1_rt::map_get(&overlay, name.clone()) {
-                None => m.clone(),
-                Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
-                    None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
-                    Some(_existing) => {
-                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
-                    }
-                },
-            }
-        })
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                Some(_existing) => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+            },
+        },
+    )
 }
 
 pub fn union_variant_locals_into_overlay(
     acc: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(v1_rt::map_keys(&acc))
-        .iter()
-        .cloned()
-        .fold(overlay.clone(), |m: _, name: String| {
-            match v1_rt::map_get(&acc, name.clone()) {
-                None => m.clone(),
-                Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
-                    None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
-                    Some(_incoming) => m.clone(),
-                },
-            }
-        })
+    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
+        overlay.clone(),
+        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &acc,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                Some(_incoming) => m.clone(),
+            },
+        },
+    )
 }
 
 pub fn union_variant_locals_skip_equal(
@@ -792,7 +796,9 @@ pub fn str_bindings_from_bindings(
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: _, binding: _| v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone()),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+            v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
+        },
     )
 }
 
@@ -921,7 +927,7 @@ pub fn global_bare_nearest_ancestor_candidate(
                 best: None,
                 tie: false,
             }),
-            |acc: _, cand: _| {
+            |acc: Rc<GlobalBareNearestCandidateScan>, cand: Rc<GlobalBareCandidate>| {
                 let l = segment_lcp_len(
                     env_segs.clone(),
                     module_path_segments(cand.module_path.clone()),
@@ -965,7 +971,7 @@ pub fn global_bare_nearest_ancestor(
 pub fn unique_on_chain_policy_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), namespace-canonical-binding: bare homonym cardinality on chain-filtered populations routes through module_path_owner_binding_decide (0 → Unresolved, 1 → bind, 2+ → Ambiguous with full chain population). A candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Zero on-chain never authorizes whole-corpus search. The host NameResolutionPolicy gate no longer selects parallel nearest-wins/first-hit paths on these production surfaces (roadmap out_of_scope: no configuration switch between old and new behaviour).".to_string()
+            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through module_path_owner_binding_decide.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1029,30 +1035,39 @@ pub fn global_bare_policy_candidate(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
-    global_bare_unique_chain_candidate(env_module_path.clone(), candidates.clone())
+    if v1_rt::name_resolution_policy_is_namespace_only() {
+        global_bare_unique_chain_candidate(env_module_path.clone(), candidates.clone())
+    } else {
+        global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone())
+    }
 }
 
 pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
-    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
-        .as_deref()
-        .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-            candidates: cands, ..
-        }) => {
-            let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-            ambiguity_labels_from_decide(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in chain.clone().iter().cloned() {
-                        __result.push(c.module_path.clone());
-                    }
-                    __result
-                }),
-                name.clone(),
-            )
+        if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
+            return Rc::new(vec![]);
         }
-        _ => Rc::new(vec![]),
+        match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+            .as_deref()
+            .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                candidates: cands, ..
+            }) => {
+                let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+                ambiguity_labels_from_decide(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.clone().iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    }),
+                    name.clone(),
+                )
+            }
+            _ => Rc::new(vec![]),
+        }
     }
 }
 
@@ -1091,22 +1106,9 @@ pub fn global_bare_owner_module(
             module_path: mp,
             binding: b,
             ..
-        }) => match global_bare_unique_chain_candidate(
-            owner_module_path.clone(),
-            Rc::new(vec![Rc::new(GlobalBareCandidate {
-                module_path: mp.clone(),
-                binding: b.clone(),
-            })]),
-        ) {
-            Some(cand) => match binding_declares_name(
-                cand.binding.clone(),
-                name.clone(),
-                env.source_indices.clone(),
-            ) {
-                true => Some(cand.module_path.clone()),
-                false => None,
-            },
-            None => None,
+        }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
+            true => Some(mp.clone()),
+            false => None,
         },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
@@ -1401,26 +1403,32 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-            module_path: mp,
-            binding,
-            ..
-        }) => match global_bare_unique_chain_candidate(
-            env.module_path.clone(),
-            Rc::new(vec![Rc::new(GlobalBareCandidate {
-                module_path: mp.clone(),
-                binding: binding.clone(),
-            })]),
-        ) {
-            Some(cand) => Some(cand.binding.clone()),
-            None => None,
-        },
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
+            Some(binding.clone())
+        }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
-        }) => match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
-            Some(cand) => Some(cand.binding.clone()),
-            None => None,
-        },
+        }) => {
+            if v1_rt::name_resolution_policy_is_namespace_only() {
+                match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
+                    Some(cand) => Some(cand.binding.clone()),
+                    None => None,
+                }
+            } else {
+                {
+                    if (v1_rt::resolution_silent_pick_is_enabled()
+                        && ((cands.clone().len() as i64) >= 2))
+                    {
+                        record_global_bare_ambiguous_silent_pick(
+                            env.module_path.clone(),
+                            name.clone(),
+                            cands.clone(),
+                        )
+                    }
+                    global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
+                }
+            }
+        }
         None => None,
     }
 }
@@ -1433,19 +1441,29 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => {
-            let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-            match (*module_path_owner_binding_decide(Rc::new({
-                let mut __result = Vec::new();
-                for c in chain.clone().iter().cloned() {
-                    __result.push(c.module_path.clone());
+            if v1_rt::name_resolution_policy_is_namespace_only() {
+                {
+                    let chain =
+                        global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+                    match (*module_path_owner_binding_decide(Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.clone().iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    })))
+                    .clone()
+                    {
+                        ModulePathBindingProjection::ModulePathBindingAmbiguous {
+                            owners: _,
+                            ..
+                        } => true,
+                        ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => false,
+                        ModulePathBindingProjection::ModulePathBindingMiss => false,
+                    }
                 }
-                __result
-            })))
-            .clone()
-            {
-                ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => true,
-                ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => false,
-                ModulePathBindingProjection::ModulePathBindingMiss => false,
+            } else {
+                (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
             }
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => false,
@@ -1570,7 +1588,7 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
         } else {
             env.parents.clone().iter().cloned().fold(
                 Rc::new(vec![]),
-                |acc: _, parent: Rc<TypeEnv>| {
+                |acc: Rc<Vec<Rc<InductiveField>>>, parent: Rc<TypeEnv>| {
                     if ((acc.clone().len() as i64) > 0) {
                         acc.clone()
                     } else {
@@ -1737,45 +1755,49 @@ pub fn merge_inductive_fields(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
-        |acc: _, type_name: String| match v1_rt::map_get(&right, type_name.clone()) {
-            Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
-                Some(existing) => {
-                    if (existing.clone() == incoming.clone()) {
-                        acc.clone()
-                    } else {
-                        {
-                            let seen = existing.clone().iter().cloned().fold(
-                                v1_rt::rc_empty_set::<_>(),
-                                |s: _, f: _| {
-                                    v1_rt::rc_set_insert(s, inductive_field_key(f.clone()))
-                                },
-                            );
-                            let additions = Rc::new({
-                                let mut __result = Vec::new();
-                                for f in incoming.clone().iter().cloned() {
-                                    if (v1_rt::set_contains(&seen, inductive_field_key(f.clone()))
-                                        == false)
-                                    {
-                                        __result.push(f);
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
+            match v1_rt::map_get(&right, type_name.clone()) {
+                Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
+                    Some(existing) => {
+                        if (existing.clone() == incoming.clone()) {
+                            acc.clone()
+                        } else {
+                            {
+                                let seen = existing.clone().iter().cloned().fold(
+                                    v1_rt::rc_empty_set::<_>(),
+                                    |s: _, f: Rc<InductiveField>| {
+                                        v1_rt::rc_set_insert(s, inductive_field_key(f.clone()))
+                                    },
+                                );
+                                let additions = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for f in incoming.clone().iter().cloned() {
+                                        if (v1_rt::set_contains(
+                                            &seen,
+                                            inductive_field_key(f.clone()),
+                                        ) == false)
+                                        {
+                                            __result.push(f);
+                                        }
                                     }
+                                    __result
+                                });
+                                if ((additions.clone().len() as i64) == 0) {
+                                    acc.clone()
+                                } else {
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        type_name.clone(),
+                                        v1_rt::concat(existing.clone(), additions.clone()),
+                                    )
                                 }
-                                __result
-                            });
-                            if ((additions.clone().len() as i64) == 0) {
-                                acc.clone()
-                            } else {
-                                v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    type_name.clone(),
-                                    v1_rt::concat(existing.clone(), additions.clone()),
-                                )
                             }
                         }
                     }
-                }
-                None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
-            },
-            None => acc.clone(),
+                    None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
+                },
+                None => acc.clone(),
+            }
         },
     )
 }
@@ -1785,7 +1807,7 @@ pub fn inductive_fields_list_to_map(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     fields.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        |acc: _, field: _| {
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
             let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
                 Some(fs) => fs.clone(),
                 None => Rc::new(vec![]),

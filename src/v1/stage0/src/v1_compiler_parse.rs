@@ -2251,7 +2251,7 @@ pub fn stamp_parsed_node_list(
             nodes: Rc::new(vec![]),
             ctx: ctx.clone(),
         }),
-        |acc: _, node: Rc<Node>| {
+        |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
             let acc = v1_rt::take_owned(acc);
             {
                 let stamped =

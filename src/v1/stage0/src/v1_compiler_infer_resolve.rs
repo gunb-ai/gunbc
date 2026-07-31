@@ -126,27 +126,26 @@ pub fn collect_unit_variant_phantom_matches(
     variant_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
     {
-        let direct_bindings = env
-            .parents
-            .clone()
-            .iter()
-            .cloned()
-            .fold(env.str_bindings.clone(), |acc: _, parent: Rc<TypeEnv>| {
+        let direct_bindings = env.parents.clone().iter().cloned().fold(
+            env.str_bindings.clone(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
                 v1_rt::rc_map_merge(parent.str_bindings.clone(), acc)
-            });
+            },
+        );
         Rc::new(v1_rt::map_values(&direct_bindings))
             .iter()
             .cloned()
-            .fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Node>>>, binding: _| {
-                match unit_variant_in_coproduct(
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<Node>>>, binding: Rc<TypeBinding>| match unit_variant_in_coproduct(
                     env.clone(),
                     structural_type_for_variant_lookup(env.clone(), binding.resolved.clone()),
                     variant_name.clone(),
                 ) {
                     Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
                     None => acc.clone(),
-                }
-            })
+                },
+            )
     }
 }
 

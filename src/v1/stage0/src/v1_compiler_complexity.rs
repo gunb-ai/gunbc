@@ -649,13 +649,12 @@ pub fn parser_state_expr_progress(
                     __result
                 });
                 match arm_progresses.clone().first().cloned() {
-                    Some(initial) => arm_progresses
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .fold(initial.clone(), |acc: _, p: _| {
+                    Some(initial) => arm_progresses.clone().iter().cloned().fold(
+                        initial.clone(),
+                        |acc: DescentEvidence, p: DescentEvidence| {
                             descent_evidence_lattice_meet(acc, p.clone())
-                        }),
+                        },
+                    ),
                     None => DescentEvidence::DescentUnknown,
                 }
             }
@@ -691,28 +690,26 @@ pub fn parser_block_state_progress(
                     .take(((stmts.clone().len() as i64) - 1) as usize)
                     .collect::<Vec<_>>(),
             );
-            let final_env =
-                leading
+            let final_env = leading.clone().iter().cloned().fold(
+                env.clone(),
+                |acc_env: Rc<ParserProgressEnv>, stmt: Rc<Node>| match (*stmt.expr_data.clone())
                     .clone()
-                    .iter()
-                    .cloned()
-                    .fold(env.clone(), |acc_env: _, stmt: Rc<Node>| {
-                        match (*stmt.expr_data.clone()).clone() {
-                            ExprData::ExprLet => match let_body(stmt.clone()) {
-                                None => parser_env_with_binding(
-                                    let_binding_name_at(stmt.clone(), si.clone()),
-                                    let_value(stmt.clone()),
-                                    acc_env.clone(),
-                                    state_param.clone(),
-                                    parser_always_advancing.clone(),
-                                    consumed_true_set.clone(),
-                                    si.clone(),
-                                ),
-                                Some(_) => acc_env.clone(),
-                            },
-                            _ => acc_env.clone(),
-                        }
-                    });
+                {
+                    ExprData::ExprLet => match let_body(stmt.clone()) {
+                        None => parser_env_with_binding(
+                            let_binding_name_at(stmt.clone(), si.clone()),
+                            let_value(stmt.clone()),
+                            acc_env.clone(),
+                            state_param.clone(),
+                            parser_always_advancing.clone(),
+                            consumed_true_set.clone(),
+                            si.clone(),
+                        ),
+                        Some(_) => acc_env.clone(),
+                    },
+                    _ => acc_env.clone(),
+                },
+            );
             parser_state_expr_progress(
                 last_stmt.clone(),
                 state_param.clone(),
@@ -893,7 +890,7 @@ pub fn collect_parser_progress_block_edges(
                 edges: Rc::new(vec![]),
                 env: env.clone(),
             }),
-            |acc: _, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
+            |acc: Rc<ParserProgressAcc>, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
                 ExprData::ExprLet => match let_body(stmt.clone()) {
                     None => {
                         let value_expr = let_value(stmt.clone());
@@ -1335,7 +1332,9 @@ pub fn parser_success_progress(
                         edges: Rc::new(vec![]),
                         env: env.clone(),
                     }),
-                    |acc: _, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
+                    |acc: Rc<ParserProgressAcc>, stmt: Rc<Node>| match (*stmt.expr_data.clone())
+                        .clone()
+                    {
                         ExprData::ExprLet => match let_body(stmt.clone()) {
                             None => {
                                 let next_env = parser_env_with_binding(
@@ -4850,7 +4849,7 @@ pub fn collect_evidence_incremental(
                         evidence: None,
                         vars: vars.clone(),
                     }),
-                    |acc: _, stmt: Rc<Node>| {
+                    |acc: Rc<EvidenceBlockAcc>, stmt: Rc<Node>| {
                         let stmt_ev = collect_evidence_incremental(
                             stmt.clone(),
                             func_name.clone(),
@@ -6448,7 +6447,7 @@ pub fn collect_scc_child_edges(
                         edges: Rc::new(vec![]),
                         vars: descent_vars.clone(),
                     }),
-                    |acc: _, stmt: Rc<Node>| {
+                    |acc: Rc<SccEdgeBlockAcc>, stmt: Rc<Node>| {
                         let stmt_edges = collect_scc_child_edges(
                             stmt.clone(),
                             caller.clone(),
@@ -6662,62 +6661,29 @@ pub fn collect_scc_proof_edges_for_dim(
         Rc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => {
-                            let best_map = entry.params.clone().iter().cloned().fold(
-                                v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                |best: _, p: Rc<Node>| {
-                                    let pname = param_node_name_at(p.clone(), si.clone());
-                                    let descent_vars = collect_descent_vars(
-                                        entry.body.clone(),
-                                        pname.clone(),
-                                        v1_rt::rc_empty_map::<String, bool>(),
-                                        check_child.clone(),
-                                        check_list.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_edges = collect_scc_child_edges(
-                                        entry.body.clone(),
-                                        name.clone(),
-                                        pname.clone(),
-                                        descent_vars.clone(),
-                                        scc_name_set.clone(),
-                                        check_child.clone(),
-                                        check_list.clone(),
-                                        measure_params.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_map = param_edges.clone().iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                        |bm: _, pe: _| merge_edge_evidence(bm, pe.clone()),
-                                    );
-                                    pick_best_param_edges(best, param_map.clone())
-                                },
-                            );
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for callee in Rc::new(v1_rt::map_keys(&best_map)).iter().cloned() {
-                                    __result.push({
-                                        let ev = match v1_rt::map_get(&best_map, callee.clone()) {
-                                            Some(e) => e.clone(),
-                                            None => DescentEvidence::DescentUnknown,
-                                        };
-                                        Rc::new(ProofEdge {
-                                            caller: name.clone(),
-                                            callee: callee.clone(),
-                                            evidence: Rc::new(vec![ev.clone()]),
-                                        })
-                                    });
-                                }
-                                __result
-                            })
-                        }
-                        None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
+                __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+            let best_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                let pname = param_node_name_at(p.clone(), si.clone());
+let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best, param_map.clone())
+});
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&best_map)).iter().cloned() { __result.push({
+                let ev = match v1_rt::map_get(&best_map, callee.clone()) {
+    Some(e) => e.clone(),
+    None => DescentEvidence::DescentUnknown,
+};
+Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![ev.clone()]),
+})
+}); } __result })
+},
+    None => Rc::new(vec![]),
+}).iter().cloned());
             }
             __result
         })
@@ -6770,112 +6736,42 @@ pub fn collect_scc_independent_dim_edges(
         Rc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => {
-                            let tree_edge_map = entry.params.clone().iter().cloned().fold(
-                                v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                |best_map: _, p: Rc<Node>| {
-                                    let pname = param_node_name_at(p.clone(), si.clone());
-                                    let tree_vars = collect_descent_vars(
-                                        entry.body.clone(),
-                                        pname.clone(),
-                                        v1_rt::rc_empty_map::<String, bool>(),
-                                        true,
-                                        false,
-                                        si.clone(),
-                                    );
-                                    let param_edges = collect_scc_child_edges(
-                                        entry.body.clone(),
-                                        name.clone(),
-                                        pname.clone(),
-                                        tree_vars.clone(),
-                                        scc_name_set.clone(),
-                                        true,
-                                        false,
-                                        measure_params.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_map = param_edges.clone().iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                        |bm: _, pe: _| merge_edge_evidence(bm, pe.clone()),
-                                    );
-                                    pick_best_param_edges(best_map, param_map.clone())
-                                },
-                            );
-                            let list_edge_map = entry.params.clone().iter().cloned().fold(
-                                v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                |best_map: _, p: Rc<Node>| {
-                                    let pname = param_node_name_at(p.clone(), si.clone());
-                                    let list_vars = collect_descent_vars(
-                                        entry.body.clone(),
-                                        pname.clone(),
-                                        v1_rt::rc_empty_map::<String, bool>(),
-                                        false,
-                                        true,
-                                        si.clone(),
-                                    );
-                                    let param_edges = collect_scc_child_edges(
-                                        entry.body.clone(),
-                                        name.clone(),
-                                        pname.clone(),
-                                        list_vars.clone(),
-                                        scc_name_set.clone(),
-                                        false,
-                                        true,
-                                        measure_params.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_map = param_edges.clone().iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                        |bm: _, pe: _| merge_edge_evidence(bm, pe.clone()),
-                                    );
-                                    pick_best_param_edges(best_map, param_map.clone())
-                                },
-                            );
-                            let all_keys = v1_rt::concat(
-                                Rc::new(v1_rt::map_keys(&tree_edge_map)),
-                                Rc::new(v1_rt::map_keys(&list_edge_map)),
-                            );
-                            let unique_keys = all_keys.clone().iter().cloned().fold(
-                                v1_rt::rc_empty_map::<String, bool>(),
-                                |acc: Rc<HashMap<String, bool>>, k: String| {
-                                    v1_rt::rc_map_insert(acc, k.clone(), true)
-                                },
-                            );
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned()
-                                {
-                                    __result.push({
-                                        let tree_ev =
-                                            match v1_rt::map_get(&tree_edge_map, callee.clone()) {
-                                                Some(ev) => ev.clone(),
-                                                None => DescentEvidence::DescentUnknown,
-                                            };
-                                        let list_ev =
-                                            match v1_rt::map_get(&list_edge_map, callee.clone()) {
-                                                Some(ev) => ev.clone(),
-                                                None => DescentEvidence::DescentUnknown,
-                                            };
-                                        Rc::new(ProofEdge {
-                                            caller: name.clone(),
-                                            callee: callee.clone(),
-                                            evidence: Rc::new(vec![
-                                                tree_ev.clone(),
-                                                list_ev.clone(),
-                                            ]),
-                                        })
-                                    });
-                                }
-                                __result
-                            })
-                        }
-                        None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
+                __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+            let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                let pname = param_node_name_at(p.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best_map, param_map.clone())
+});
+let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                let pname = param_node_name_at(p.clone(), si.clone());
+let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best_map, param_map.clone())
+});
+let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&list_edge_map)));
+let unique_keys = all_keys.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+                let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    None => DescentEvidence::DescentUnknown,
+};
+let list_ev = match v1_rt::map_get(&list_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    None => DescentEvidence::DescentUnknown,
+};
+Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![tree_ev.clone(), list_ev.clone()]),
+})
+}); } __result })
+},
+    None => Rc::new(vec![]),
+}).iter().cloned());
             }
             __result
         })
@@ -6927,105 +6823,37 @@ pub fn collect_scc_tree_parser_dim_edges(
                 Rc::new({
                     let mut __result = Vec::new();
                     for name in members.clone().iter().cloned() {
-                        __result.extend(
-                            (*match v1_rt::map_get(&func_index, name.clone()) {
-                                Some(entry) => {
-                                    let tree_edge_map = entry.params.clone().iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                        |best_map: _, p: Rc<Node>| {
-                                            let pname = param_node_name_at(p.clone(), si.clone());
-                                            let tree_vars = collect_descent_vars(
-                                                entry.body.clone(),
-                                                pname.clone(),
-                                                v1_rt::rc_empty_map::<String, bool>(),
-                                                true,
-                                                false,
-                                                si.clone(),
-                                            );
-                                            let param_edges = collect_scc_child_edges(
-                                                entry.body.clone(),
-                                                name.clone(),
-                                                pname.clone(),
-                                                tree_vars.clone(),
-                                                scc_name_set.clone(),
-                                                true,
-                                                false,
-                                                measure_params.clone(),
-                                                si.clone(),
-                                            );
-                                            let param_map =
-                                                param_edges.clone().iter().cloned().fold(
-                                                    v1_rt::rc_empty_map::<String, DescentEvidence>(
-                                                    ),
-                                                    |bm: _, pe: _| {
-                                                        merge_edge_evidence(bm, pe.clone())
-                                                    },
-                                                );
-                                            pick_best_param_edges(best_map, param_map.clone())
-                                        },
-                                    );
-                                    let my_parser_edges = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for pe in all_parser_edges.clone().iter().cloned() {
-                                            if (pe.caller.clone() == name.clone()) {
-                                                __result.push(pe);
-                                            }
-                                        }
-                                        __result
-                                    });
-                                    let parser_edge_map =
-                                        my_parser_edges.clone().iter().cloned().fold(
-                                            v1_rt::rc_empty_map::<String, DescentEvidence>(),
-                                            |bm: _, pe: _| merge_edge_evidence(bm, pe.clone()),
-                                        );
-                                    let all_keys = v1_rt::concat(
-                                        Rc::new(v1_rt::map_keys(&tree_edge_map)),
-                                        Rc::new(v1_rt::map_keys(&parser_edge_map)),
-                                    );
-                                    let unique_keys = all_keys.clone().iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<String, bool>(),
-                                        |acc: Rc<HashMap<String, bool>>, k: String| {
-                                            v1_rt::rc_map_insert(acc, k.clone(), true)
-                                        },
-                                    );
-                                    Rc::new({
-                                        let mut __result = Vec::new();
-                                        for callee in
-                                            Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned()
-                                        {
-                                            __result.push({
-                                                let tree_ev = match v1_rt::map_get(
-                                                    &tree_edge_map,
-                                                    callee.clone(),
-                                                ) {
-                                                    Some(ev) => ev.clone(),
-                                                    None => DescentEvidence::DescentUnknown,
-                                                };
-                                                let parser_ev = match v1_rt::map_get(
-                                                    &parser_edge_map,
-                                                    callee.clone(),
-                                                ) {
-                                                    Some(ev) => ev.clone(),
-                                                    None => DescentEvidence::DescentUnknown,
-                                                };
-                                                Rc::new(ProofEdge {
-                                                    caller: name.clone(),
-                                                    callee: callee.clone(),
-                                                    evidence: Rc::new(vec![
-                                                        tree_ev.clone(),
-                                                        parser_ev.clone(),
-                                                    ]),
-                                                })
-                                            });
-                                        }
-                                        __result
-                                    })
-                                }
-                                None => Rc::new(vec![]),
-                            })
-                            .iter()
-                            .cloned(),
-                        );
+                        __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+                    let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                        let pname = param_node_name_at(p.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best_map, param_map.clone())
+});
+let my_parser_edges = Rc::new({ let mut __result = Vec::new(); for pe in all_parser_edges.clone().iter().cloned() { if (pe.caller.clone() == name.clone()) { __result.push(pe); } } __result });
+let parser_edge_map = my_parser_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&parser_edge_map)));
+let unique_keys = all_keys.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+                        let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    None => DescentEvidence::DescentUnknown,
+};
+let parser_ev = match v1_rt::map_get(&parser_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    None => DescentEvidence::DescentUnknown,
+};
+Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![tree_ev.clone(), parser_ev.clone()]),
+})
+}); } __result })
+},
+    None => Rc::new(vec![]),
+}).iter().cloned());
                     }
                     __result
                 })
@@ -7046,163 +6874,81 @@ pub fn collect_scc_cx_l2_tree_edges(
         Rc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => {
-                            let self_evidence = collect_self_call_evidence(
-                                entry.body.clone(),
-                                name.clone(),
-                                si.clone(),
-                            );
-                            let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
-                            let self_all_structural = (self_has_calls.clone() && {
-                                let mut __all = true;
-                                for call_ev in self_evidence.clone().iter().cloned() {
-                                    if !({
-                                        let mut __found = false;
-                                        for rel in call_ev.clone().iter().cloned() {
-                                            if match (*rel.clone()).clone() {
-                                                SubValueRelation::StrictSubValue { .. } => true,
-                                                SubValueRelation::IteratedSubValue {
-                                                    field: _,
-                                                    ..
-                                                } => true,
-                                                SubValueRelation::ArithmeticDescent { .. } => true,
-                                                _ => false,
-                                            } {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    }) {
-                                        __all = false;
-                                        break;
-                                    }
-                                }
-                                __all
-                            });
-                            let descending_param = match self_evidence.clone().first().cloned() {
-                                Some(call_ev) => call_ev.clone().iter().cloned().fold(
-                                    "".to_string(),
-                                    |found: String, rel: _| {
-                                        if (found.clone() != "".to_string()) {
-                                            found.clone()
-                                        } else {
-                                            match (*rel.clone()).clone() {
-                                                SubValueRelation::StrictSubValue {
-                                                    field: f,
-                                                    ..
-                                                } => f.element_type.clone(),
-                                                SubValueRelation::IteratedSubValue {
-                                                    field: f,
-                                                    ..
-                                                } => f.element_type.clone(),
-                                                SubValueRelation::ArithmeticDescent {
-                                                    param: p,
-                                                    ..
-                                                } => p.clone(),
-                                                _ => "".to_string(),
-                                            }
-                                        }
-                                    },
-                                ),
-                                None => "".to_string(),
-                            };
-                            let self_edge = if self_has_calls.clone() {
-                                if self_all_structural.clone() {
-                                    {
-                                        let derived = self_evidence.clone().iter().cloned().fold(
-                                            DescentEvidence::Strict,
-                                            |worst: DescentEvidence, call_ev: _| {
-                                                let call_best =
-                                                    call_ev.clone().iter().cloned().fold(
-                                                        DescentEvidence::DescentUnknown,
-                                                        |best: DescentEvidence, rel: _| {
-                                                            let ev =
-                                                                sub_value_to_evidence(rel.clone());
-                                                            match ev.clone() {
-                                                                DescentEvidence::Strict => {
-                                                                    DescentEvidence::Strict
-                                                                }
-                                                                _ => match best {
-                                                                    DescentEvidence::Strict => {
-                                                                        DescentEvidence::Strict
-                                                                    }
-                                                                    _ => ev.clone(),
-                                                                },
-                                                            }
-                                                        },
-                                                    );
-                                                descent_evidence_lattice_meet(
-                                                    worst,
-                                                    call_best.clone(),
-                                                )
-                                            },
-                                        );
-                                        Rc::new(vec![Rc::new(ProofEdge {
-                                            caller: name.clone(),
-                                            callee: name.clone(),
-                                            evidence: Rc::new(vec![derived.clone()]),
-                                        })])
-                                    }
-                                } else {
-                                    Rc::new(vec![Rc::new(ProofEdge {
-                                        caller: name.clone(),
-                                        callee: name.clone(),
-                                        evidence: Rc::new(vec![DescentEvidence::DescentUnknown]),
-                                    })])
-                                }
-                            } else {
-                                Rc::new(vec![])
-                            };
-                            let other_members = Rc::new({
-                                let mut __result = Vec::new();
-                                for m in Rc::new(v1_rt::map_keys(&scc_name_set)).iter().cloned() {
-                                    if (m.clone() != name.clone()) {
-                                        __result.push(m);
-                                    }
-                                }
-                                __result
-                            });
-                            let cross_edges = Rc::new({
-                                let mut __result = Vec::new();
-                                for callee in other_members.clone().iter().cloned() {
-                                    __result.extend(
-                                        (*{
-                                            let callee_evidence = collect_callee_evidence(
-                                                entry.body.clone(),
-                                                callee.clone(),
-                                                si.clone(),
-                                            );
-                                            if ((callee_evidence.clone().len() as i64) > 0) {
-                                                {
-                                                    let ev = derive_edge_evidence(
-                                                        callee_evidence.clone(),
-                                                    );
-                                                    Rc::new(vec![Rc::new(ProofEdge {
-                                                        caller: name.clone(),
-                                                        callee: callee.clone(),
-                                                        evidence: Rc::new(vec![ev.clone()]),
-                                                    })])
-                                                }
-                                            } else {
-                                                Rc::new(vec![])
-                                            }
-                                        })
-                                        .iter()
-                                        .cloned(),
-                                    );
-                                }
-                                __result
-                            });
-                            v1_rt::concat(self_edge.clone(), cross_edges.clone())
-                        }
-                        None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
+                __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+            let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone(), si.clone());
+let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
+let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { field: _, .. } => true,
+    SubValueRelation::ArithmeticDescent { .. } => true,
+    _ => false,
+} { __found = true; break; } } __found }) { __all = false; break; } } __all });
+let descending_param = match self_evidence.clone().first().cloned() {
+    Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |found: String, rel: Rc<SubValueRelation>| if (found.clone() != "".to_string()) {
+                found.clone()
+            } else {
+                match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::ArithmeticDescent { param: p, .. } => p.clone(),
+    _ => "".to_string(),
+}
+            }),
+    None => "".to_string(),
+};
+let self_edge = if self_has_calls.clone() {
+                if self_all_structural.clone() {
+                    {
+                        let derived = self_evidence.clone().iter().cloned().fold(DescentEvidence::Strict, |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
+                            let call_best = call_ev.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |best: DescentEvidence, rel: Rc<SubValueRelation>| {
+                                let ev = sub_value_to_evidence(rel.clone());
+match ev.clone() {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => match best {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => ev.clone(),
+},
+}
+});
+descent_evidence_lattice_meet(worst, call_best.clone())
+});
+Rc::new(vec![Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: name.clone(),
+    evidence: Rc::new(vec![derived.clone()]),
+})])
+}
+                } else {
+                    Rc::new(vec![Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: name.clone(),
+    evidence: Rc::new(vec![DescentEvidence::DescentUnknown]),
+})])
+                }
+            } else {
+                Rc::new(vec![])
+            };
+let other_members = Rc::new({ let mut __result = Vec::new(); for m in Rc::new(v1_rt::map_keys(&scc_name_set)).iter().cloned() { if (m.clone() != name.clone()) { __result.push(m); } } __result });
+let cross_edges = Rc::new({ let mut __result = Vec::new(); for callee in other_members.clone().iter().cloned() { __result.extend((*{
+                let callee_evidence = collect_callee_evidence(entry.body.clone(), callee.clone(), si.clone());
+if ((callee_evidence.clone().len() as i64) > 0) {
+                    {
+                        let ev = derive_edge_evidence(callee_evidence.clone());
+Rc::new(vec![Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![ev.clone()]),
+})])
+}
+                } else {
+                    Rc::new(vec![])
+                }
+}).iter().cloned()); } __result });
+v1_rt::concat(self_edge.clone(), cross_edges.clone())
+},
+    None => Rc::new(vec![]),
+}).iter().cloned());
             }
             __result
         })
@@ -7232,7 +6978,7 @@ pub fn scc_descending_param(
                         match evidence.clone().first().cloned() {
                             Some(call_ev) => call_ev.clone().iter().cloned().fold(
                                 "".to_string(),
-                                |p: String, rel: _| {
+                                |p: String, rel: Rc<SubValueRelation>| {
                                     if (p.clone() != "".to_string()) {
                                         p.clone()
                                     } else {
@@ -7646,7 +7392,7 @@ pub fn build_scc_index(
                 assigned: v1_rt::rc_empty_set::<String>(),
                 index: v1_rt::rc_empty_map::<String, Rc<SccInfo>>(),
             }),
-            |acc: _, name: String| {
+            |acc: Rc<SccBuildAcc>, name: String| {
                 if v1_rt::set_contains(&acc.assigned.clone(), name.clone()) {
                     acc.clone()
                 } else {
@@ -7689,7 +7435,7 @@ pub fn build_scc_index(
                                 });
                                 let next_index = members.clone().iter().cloned().fold(
                                     acc.index.clone(),
-                                    |inner: _, member: String| {
+                                    |inner: Rc<HashMap<String, Rc<SccInfo>>>, member: String| {
                                         v1_rt::rc_map_insert(inner, member.clone(), info.clone())
                                     },
                                 );
@@ -9984,7 +9730,7 @@ pub fn collect_call_evidence(
             }
             _ => body.children.clone().iter().cloned().fold(
                 Rc::new(vec![]),
-                |acc: _, child: Rc<Node>| {
+                |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| {
                     v1_rt::concat(
                         acc,
                         collect_call_evidence(child.clone(), target_set.clone(), si.clone()),
@@ -10026,10 +9772,10 @@ pub fn collect_callee_evidence(
 pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -> DescentEvidence {
     all_calls.clone().iter().cloned().fold(
         DescentEvidence::Strict,
-        |worst: DescentEvidence, call_ev: _| {
+        |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
             let call_best = call_ev.clone().iter().cloned().fold(
                 DescentEvidence::DescentUnknown,
-                |best: DescentEvidence, rel: _| {
+                |best: DescentEvidence, rel: Rc<SubValueRelation>| {
                     let ev = sub_value_to_evidence(rel.clone());
                     match ev.clone() {
                         DescentEvidence::Strict => DescentEvidence::Strict,
@@ -10052,7 +9798,7 @@ pub fn merge_param_evidence(
 ) -> DescentEvidence {
     all_calls.clone().iter().cloned().fold(
         DescentEvidence::Strict,
-        |acc: DescentEvidence, call_evidence: _| match call_evidence
+        |acc: DescentEvidence, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence
             .clone()
             .iter()
             .cloned()
@@ -10073,7 +9819,9 @@ pub fn extract_shrink_factor(
 ) -> Option<Rc<ShrinkFactor>> {
     all_calls.clone().iter().cloned().fold(
         Some(Rc::new(ShrinkFactor::UnitShrink)),
-        |acc: Option<Rc<ShrinkFactor>>, call_evidence: _| match acc.clone() {
+        |acc: Option<Rc<ShrinkFactor>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match acc
+            .clone()
+        {
             None => None,
             Some(prev) => match call_evidence
                 .clone()
@@ -10246,23 +9994,25 @@ pub fn distinct_descended_fields(
     {
         let field_set = all_calls.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, call_evidence: _| match call_evidence
-                .clone()
-                .iter()
-                .cloned()
-                .skip(param_index.clone() as usize)
-                .next()
-            {
-                Some(rel) => match (*rel.clone()).clone() {
-                    SubValueRelation::StrictSubValue { field: f, .. } => {
-                        v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
-                    }
-                    SubValueRelation::IteratedSubValue { field: f, .. } => {
-                        v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
-                    }
-                    _ => acc.clone(),
-                },
-                None => acc.clone(),
+            |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| {
+                match call_evidence
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(param_index.clone() as usize)
+                    .next()
+                {
+                    Some(rel) => match (*rel.clone()).clone() {
+                        SubValueRelation::StrictSubValue { field: f, .. } => {
+                            v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
+                        }
+                        SubValueRelation::IteratedSubValue { field: f, .. } => {
+                            v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
+                        }
+                        _ => acc.clone(),
+                    },
+                    None => acc.clone(),
+                }
             },
         );
         (Rc::new(v1_rt::map_keys(&field_set)).len() as i64)
@@ -10400,7 +10150,10 @@ pub fn build_complexity_report(
             infer_all_parser_always_advancing(func_index.clone(), si.clone());
         let full_scc_index = func_entries.clone().iter().cloned().fold(
             scc_result.index.clone(),
-            |acc: _, entry: Rc<FuncEntry>| match v1_rt::map_get(&acc, entry.name.clone()) {
+            |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v1_rt::map_get(
+                &acc,
+                entry.name.clone(),
+            ) {
                 Some(_) => acc.clone(),
                 None => {
                     if (max_path_self_calls(entry.body.clone(), entry.name.clone(), si.clone()) > 0)

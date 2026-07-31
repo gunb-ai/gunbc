@@ -1,8 +1,6 @@
-//! Canonical binding witness (namespace-canonical-binding / namespace-resolution-design.md §13):
-//! production global-bare and fn-parent cardinality always routes through the one
-//! `module_path_owner_binding_decide` fold on chain-filtered populations — no policy
-//! bracket may re-enable nearest-wins or first-hit silent picks on these paths
-//! (roadmap `namespace-canonical-binding` out_of_scope: no configuration switch).
+//! Cardinality-kernel witness (namespace-resolution-design.md §13): NamespaceOnlyY
+//! routes ambiguous chain and fn-parent populations through the one 0/1/many fold.
+//! The corpus-unique fallback remains live until reference-derived closure can replace it.
 
 use std::rc::Rc;
 
@@ -16,8 +14,7 @@ use v1_compiler::v1_std_core::{
     diagnostic_to_message, diagnostic_to_span, is_error_diagnostic, no_span, CompilerDiagnostic,
 };
 
-/// Panic-safe policy bracket: retained only to prove the host gate no longer bypasses
-/// canonical binding on the production paths this PR routes.
+/// Panic-safe policy bracket: save and restore the pre-existing host policy.
 struct ResolutionPolicyGuard(bool);
 
 impl ResolutionPolicyGuard {
@@ -122,18 +119,15 @@ fn unbound_fixture() -> Vec<Rc<SourceFile>> {
 }
 
 #[test]
-fn policy_bracket_does_not_bypass_canonical_homonym_refusal() {
+/// PRE-FLIP EXPECTATION: ImportScoped retains nearest-wins and first-hit resolution.
+/// INVERT WHEN: canonical-binding-as-production-flip lands after reference-derived
+/// provider closure can replace the whole-pool fallback.
+fn import_scoped_resolves_homonym_fixture_clean() {
     let _guard = ResolutionPolicyGuard::set(false);
     let diags = error_diag_messages(homonym_fixture());
     assert!(
-        diags.iter().any(|m| m.contains("ambiguous reference 'Homonym'")),
-        "host policy bracket false must not restore nearest-wins for on-chain homonyms; got {diags:?}"
-    );
-    assert!(
-        diags
-            .iter()
-            .any(|m| m.contains("ambiguous reference 'pick'")),
-        "host policy bracket false must not restore first-hit fn resolution; got {diags:?}"
+        diags.is_empty(),
+        "ImportScoped must retain nearest-wins and first-hit behavior until the downstream production flip; got {diags:?}"
     );
 }
 
@@ -225,17 +219,17 @@ fn zero_on_chain_containment_census_matches_inference_unresolved() {
 }
 
 #[test]
-fn single_off_chain_unique_refuses_regardless_of_policy_bracket() {
+/// PRE-FLIP EXPECTATION: a corpus-unique declaration remains the degenerate global-bare
+/// fallback even when it is off the referencing module's containment chain.
+/// INVERT WHEN: canonical-binding-as-production-flip lands after reference-derived
+/// provider closure can replace that fallback.
+fn single_off_chain_unique_uses_corpus_fallback_until_production_flip() {
     for namespace_only in [false, true] {
         let _guard = ResolutionPolicyGuard::set(namespace_only);
         let diags = error_diag_messages(single_off_chain_unique_fixture());
         assert!(
-            diags.iter().any(|m| m.contains("unresolved type 'Solo'")),
-            "corpus-unique off-chain name must refuse as UnresolvedType (policy={namespace_only}); got {diags:?}"
-        );
-        assert!(
-            !diags.iter().any(|m| m.contains("ambiguous")),
-            "single off-chain candidate is Unresolved, not Ambiguous (policy={namespace_only}); got {diags:?}"
+            diags.is_empty(),
+            "corpus-unique fallback must remain live before reference-derived closure (policy={namespace_only}); got {diags:?}"
         );
     }
 }
