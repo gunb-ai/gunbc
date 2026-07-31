@@ -1,0 +1,108 @@
+module test.claim.receipt_log_witness_test
+
+import std.types { Bool, String, Int, List }
+import gunbc.receipt_log {
+  field_separator, record_separator, escape_marker,
+  escape_field, unescape_field,
+  serialize_record, parse_record,
+  append_record, parse_log,
+  RecordRead, RecordFields, RecordArityMismatch,
+  read_record,
+}
+
+data witness_scope_note: String = "THE FORMAT EXISTS TO BE READ BACK, so every claim here is a round trip rather than a rendering. A serializer alone is what the corpus already had — serialize_json with no parser anywhere — which is why the live validation receipt can only be interrogated by byte prefix and why writing a revision into it would not have made the revision readable.\\n\\nThe adversarial inputs are the point. Evidence fields carry command output, so tabs and newlines are ordinary content rather than edge cases, and a format that only round-trips well-behaved strings is a format that misparses exactly the records worth keeping."
+
+fn round_trips(value: String) -> Bool {
+  unescape_field(value: escape_field(value: value)) == value
+}
+
+test fn a_field_containing_the_delimiter_round_trips() -> Bool {
+  round_trips(value: join(["before", field_separator, "after"], ""))
+}
+
+test fn a_field_containing_a_newline_round_trips() -> Bool {
+  round_trips(value: join(["line one", record_separator, "line two"], ""))
+}
+
+test fn a_field_containing_a_backslash_round_trips() -> Bool {
+  round_trips(value: join(["C:", escape_marker, "path"], ""))
+}
+
+data ordering_is_the_correctness_argument_note: String = "THE CLAIM THAT KILLS THE WRONG ESCAPE ORDER. A field whose literal text is the two characters backslash and t must survive as those two characters. If the writer escapes the tab before the backslash — or the reader unescapes the backslash before the tab — then an authored backslash-t becomes a REAL tab on the way back, and that tab splits the record into an extra field.\\n\\nThe damage is not a parse error. A record that gains a field shifts every value after it, so the receipt reads as being about a different subject while remaining perfectly well formed. This is the one input that distinguishes a correct implementation from a plausible one, and the three round-trip claims above all pass without it."
+
+test fn a_literal_backslash_t_does_not_become_a_tab() -> Bool {
+  let authored = join([escape_marker, "t"], "")
+  let recovered = unescape_field(value: escape_field(value: authored))
+  recovered == authored
+    && !string_contains(s: recovered, pattern: field_separator)
+}
+
+test fn a_literal_backslash_n_does_not_become_a_newline() -> Bool {
+  let authored = join([escape_marker, "n"], "")
+  let recovered = unescape_field(value: escape_field(value: authored))
+  recovered == authored
+    && !string_contains(s: recovered, pattern: record_separator)
+}
+
+test fn a_record_whose_fields_contain_delimiters_parses_back_to_the_same_fields() -> Bool {
+  let fields = [
+    "roadmap-verification/v1",
+    "some-node",
+    join(["evidence with a ", field_separator, " tab and a ", record_separator, " newline"], ""),
+    join(["a ", escape_marker, " backslash"], ""),
+  ]
+  let parsed = parse_record(line: serialize_record(fields: fields))
+  count(parsed) == 4
+    && parsed == fields
+}
+
+data empty_fields_note: String = "An empty field is a legitimate value — an evidence column is empty when a validation produced no output — and it must not vanish. A serializer that dropped empties would shift every later column, which is the same silent corruption the escape ordering prevents, arriving from the other direction."
+
+test fn empty_fields_are_preserved_and_do_not_shift_the_record() -> Bool {
+  let fields = ["first", "", "third", ""]
+  let parsed = parse_record(line: serialize_record(fields: fields))
+  count(parsed) == 4 && parsed == fields
+}
+
+data append_is_not_rewrite_note: String = "APPEND-ONLY IS THE PROPERTY THE ATTEMPT-GRAIN RECEIPT COULD NOT HAVE. A whole-document write has no choice but to overwrite, so a later verification replaced an earlier one and the earlier verdict stopped existing. Here a record is one line and appending is a concatenation, so a verification of a later head coexists with the earlier one and both remain true about their own subjects."
+
+test fn appending_twice_keeps_both_records_in_order() -> Bool {
+  let log = ""
+    |> append_record(fields: ["v1", "head-one", "passed"])
+    |> append_record(fields: ["v1", "head-two", "failed"])
+  let rows = parse_log(content: log)
+  count(rows) == 2
+    && match first(rows) {
+         Present { value: r } => count(r) == 3 && any(r, f => f == "head-one")
+         Absent => false
+       }
+    && any(rows, r => any(r, f => f == "head-two"))
+}
+
+test fn a_blank_trailing_line_is_not_a_record() -> Bool {
+  let log = "" |> append_record(fields: ["v1", "only"])
+  count(parse_log(content: log)) == 1
+}
+
+data arity_refusal_note: String = "A SHORT RECORD IS REFUSED, NOT PADDED. A reader supplying a default for a missing column would most plausibly supply the empty string, and an empty subject field reads as a receipt about nothing rather than as a corrupt record — defeating the format's entire purpose at exactly the moment it matters."
+
+test fn a_record_with_the_wrong_field_count_is_refused_not_padded() -> Bool {
+  let short = serialize_record(fields: ["v1", "some-node"])
+  let exact = serialize_record(fields: ["v1", "some-node", "passed"])
+  let refused = match read_record(line: short, expected: 3) {
+    RecordArityMismatch { expected, observed } => expected == 3 && observed == 2
+    RecordFields { fields: _ } => false
+  }
+  let accepted = match read_record(line: exact, expected: 3) {
+    RecordFields { fields } => count(fields) == 3
+    RecordArityMismatch { expected: _, observed: _ } => false
+  }
+  refused && accepted
+}
+
+test fn an_escaped_field_carries_no_raw_delimiter() -> Bool {
+  let nasty = join(["a", field_separator, "b", record_separator, "c"], "")
+  let escaped = escape_field(value: nasty)
+  !string_contains(s: escaped, pattern: field_separator)
+    && !string_contains(s: escaped, pattern: record_separator)
+}
