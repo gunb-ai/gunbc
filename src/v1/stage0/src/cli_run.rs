@@ -8371,6 +8371,34 @@ fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
     RESOLVE_STAGE_SLOT.with(|s| s.get())
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
+// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap_authority /
+// ROADMAP.md; docs/plans/realization-measurement-loop.md **Phase 0 — Measured cost**, the
+// keystone) — host-side stage attribution for the per-entry resolve, and the accounting
+// law over it. Same lane and same trigger the `ResolveStageNanos` rows it partitions
+// already declare; this scaffold does not add a second measurement authority, it makes
+// the existing rows' denominator honest.
+// Unblock: Phase 0 lands the `.dag`-native measurement carrier — a
+// `compute_fabric.PerformanceReceipt { wall_duration, sample_count, confidence }`
+// (`compute_fabric.dag:414-423`) keyed by the cache-subject hash, rolled into
+// `CostAccount.time = Measured` (`realization_schedule.dag:25-26,33-39`) — consumed by a
+// floor witness. At that point the partition is a lens over those rows and the exclusive
+// law is a property of the model, not of this host-side projection.
+// DELETE WHEN dissolved: `ResolveSpanAccount`, `RESOLVE_SPAN_ACCOUNT`,
+// `RESOLVE_SPAN_BY_ENTRY`, `RESOLVE_STAGE_BY_ENTRY`, `resolve_span_account`,
+// `resolve_span_rows_by_entry`, `resolve_stage_rows_by_entry`, `resolve_span_enter`,
+// `resolve_span_exit`, the `resolve_entry_with_parse_cache` timing wrapper (fold back into
+// `_inner`), `CostPartitionRow`, `InclusiveCostRow`, `CostAccountingVerdict`,
+// `CostAccountingRefusal`, `ExclusiveCostPartition`, `exclusive_cost_partition`,
+// `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
+// `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
+// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
+// Receipt: `rg cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs` == 1
+// until deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in the
+// module census).
+pub(crate) const CLI_RUN_EXCLUSIVE_COST_PARTITION_SCAFFOLD_MARKER: &str =
+    "cli_run_exclusive_cost_partition_probe";
+
 /// The SPAN account for `resolve_entry_with_parse_cache` — the one window that, by
 /// construction, contains every `ResolveStageNanos` row above.
 ///
