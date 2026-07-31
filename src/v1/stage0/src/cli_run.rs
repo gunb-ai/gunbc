@@ -3300,6 +3300,60 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
+/// Cost snapshot of the ONE compile-clean leg — the "receipt keys" half of the
+/// prelude-coverage-hole follow-up (`gunbc_ci_floor_batch_clamp_note` row (a)):
+/// the leg's wall, its closure unit count (modules in the compiled closure — the
+/// clamp's runtime denominator, mirroring batch unit counts), and the per-module
+/// typecheck walls the resolve leg measured while this compile ran (computed
+/// misses only — cache hits cost no typecheck and record no row, the same
+/// "genuine computes" grain as `typecheck_compute_count`). Consumed by
+/// `claim_executor` for the clamp verdict and the basis-drift comparator.
+pub struct FloorCompileCleanCost {
+    pub wall_ms: u128,
+    pub closure_units: u128,
+    /// One row per computed module: (module path, typecheck wall ms).
+    pub module_typecheck_walls: Vec<(String, u64)>,
+    /// Scope identity of the pass row for basis keying: "whole_tree" only when the
+    /// scope disposition selected the whole-tree entry closure; scoped/affected-set
+    /// passes carry "affected_set" (closure varies per diff, so no dated basis row
+    /// can honestly cover them — they record BasisAbsent, the honest third state).
+    pub pass_subject: &'static str,
+}
+
+static FLOOR_COMPILE_CLEAN_COST: Mutex<Option<FloorCompileCleanCost>> = Mutex::new(None);
+
+/// Per-module typecheck walls accumulated by the resolve leg (computed misses only).
+/// Drained at compile-clean install so the receipt scopes to that leg's modules.
+static MODULE_TYPECHECK_WALL_ROWS: Mutex<Vec<(String, u64)>> = Mutex::new(Vec::new());
+
+fn note_module_typecheck_wall(module: &str, wall_ms: u128) {
+    if let Ok(mut rows) = MODULE_TYPECHECK_WALL_ROWS.lock() {
+        rows.push((module.to_string(), wall_ms as u64));
+    }
+}
+
+fn drain_module_typecheck_walls() -> Vec<(String, u64)> {
+    MODULE_TYPECHECK_WALL_ROWS
+        .lock()
+        .map(|mut rows| std::mem::take(&mut *rows))
+        .unwrap_or_default()
+}
+
+/// Clone of the leg's cost snapshot for `claim_executor`'s clamp + drift consumers.
+/// `None` until `install_floor_compile_clean_receipt` ran a Compiled leg.
+pub fn floor_compile_clean_cost_snapshot() -> Option<(u128, u128, Vec<(String, u64)>, String)> {
+    FLOOR_COMPILE_CLEAN_COST.lock().ok().and_then(|guard| {
+        guard.as_ref().map(|c| {
+            (
+                c.wall_ms,
+                c.closure_units,
+                c.module_typecheck_walls.clone(),
+                c.pass_subject.to_string(),
+            )
+        })
+    })
+}
+
 /// When set by `claim_executor` for `gunbc_ci_floor_plan`, the first gate consume installs
 /// the one whole-tree receipt (after plan resolve has warmed the module-graph facts cache).
 static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
@@ -3422,14 +3476,81 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
             }
         }
     };
-    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+    let plan = compile_clean_scope_plan_for_ci();
+    // Pass-row basis identity: only the whole-tree closure is a stable, dated-basis-
+    // comparable subject; a scoped pass is diff-denominated (FloorCompileCleanCost doc).
+    let pass_subject = match &plan {
+        CompileCleanScopePlan::WholeTree => "whole_tree",
+        _ => "affected_set",
+    };
+    match witness_layer_roots_compile_clean_sources_for_plan(&plan) {
         Ok(None) => FloorCompileCleanReceipt::Skipped {
             reason: "no compile-clean entry affected".to_string(),
         },
         Err(msg) => FloorCompileCleanReceipt::Refused { reason: msg },
-        Ok(Some(sources)) => FloorCompileCleanReceipt::Compiled {
-            ok: floor_compile_clean_emit_ok_via_index(sources, &index_roots),
-        },
+        Ok(Some(sources)) => {
+            let closure_units = sources.len() as u128;
+            let leg_started = std::time::Instant::now();
+            let _ = drain_module_typecheck_walls();
+            let ok = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
+            let wall_ms = leg_started.elapsed().as_millis();
+            let module_typecheck_walls = drain_module_typecheck_walls();
+            write_floor_compile_clean_cost_receipt(
+                wall_ms,
+                closure_units,
+                &module_typecheck_walls,
+                pass_subject,
+            );
+            if let Ok(mut cost) = FLOOR_COMPILE_CLEAN_COST.lock() {
+                *cost = Some(FloorCompileCleanCost {
+                    wall_ms,
+                    closure_units,
+                    module_typecheck_walls,
+                    pass_subject,
+                });
+            }
+            FloorCompileCleanReceipt::Compiled { ok }
+        }
+    }
+}
+
+/// The compile-clean leg's own cost receipt — the "phase_mark walls get their own
+/// receipt keys" prerequisite `gunbc_ci_floor_batch_clamp_note` follow-up (a) names.
+/// Same one-record-two-projections posture as the witness row-cost receipt: every
+/// row prints as a `[compile-clean-cost]` line AND lands in the TSV. Write failure
+/// is loud but does not turn the compile's verdict — the gate's ok is a compile
+/// fact; cost receipts are walk-grain observations (the signed admission/verdict
+/// split in gunbc_ci_floor_batch_wall_budget_note).
+fn write_floor_compile_clean_cost_receipt(
+    wall_ms: u128,
+    closure_units: u128,
+    module_rows: &[(String, u64)],
+    pass_subject: &str,
+) {
+    let mut body = String::from("kind\tsubject\twall_ms\tunits\n");
+    body.push_str(&format!(
+        "pass\t{pass_subject}\t{wall_ms}\t{closure_units}\n"
+    ));
+    for (module, ms) in module_rows {
+        body.push_str(&format!("module_typecheck\t{module}\t{ms}\t1\n"));
+    }
+    for line in body.lines() {
+        eprintln!("[compile-clean-cost] {line}");
+    }
+    let path = std::path::Path::new("target").join("floor-compile-clean-cost-receipt.tsv");
+    if let Err(e) =
+        std::fs::create_dir_all("target").and_then(|_| std::fs::write(&path, body.as_bytes()))
+    {
+        eprintln!(
+            "floor compile-clean: failed to write cost receipt {}: {e} — receipt loss is loud, the compile verdict stands",
+            path.display()
+        );
+    } else {
+        eprintln!(
+            "[receipt] floor compile-clean cost: pass wall_ms={wall_ms} units={closure_units} module_rows={} (TSV: {})",
+            module_rows.len(),
+            path.display()
+        );
     }
 }
 
@@ -10457,6 +10578,11 @@ fn reconcile_with_typed_cache(
                             s.typecheck_compute += module_tc_elapsed.as_nanos()
                         });
                         let module_tc_ms = module_tc_elapsed.as_millis();
+                        // Compile-clean cost receipt key (prelude-coverage follow-up (a)):
+                        // every COMPUTED module's typecheck wall, not just the >=2s render
+                        // threshold below — the receipt is the complete record, the render
+                        // line a projection (one record, two projections).
+                        note_module_typecheck_wall(&mod_name, module_tc_ms);
                         if module_tc_ms >= 2_000 {
                             let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                             eprintln!(

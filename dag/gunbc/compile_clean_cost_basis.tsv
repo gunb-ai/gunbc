@@ -1,0 +1,13 @@
+kind	subject	wall_ms_basis	run_ref	host_class
+# Dated basis rows for the compile-clean leg's cost drift comparator
+# (gunbc_ci_compile_clean_clamp_note; shares the witness_row_cost model: same 5-col
+# schema, same parser, same srv_fleet_arm64 host-class refusal, same zero-basis
+# refusal, same 2x comparator authority witness_row_cost_exceeds_basis).
+# Keys are (kind, subject): the pass row is (pass, whole_tree) — scoped passes are
+# diff-denominated and stay BasisAbsent by design; module rows are
+# (module_typecheck, <module path>).
+# UNSEEDED ON PURPOSE (the #7475 discipline): rows may only cite an arm64 srv-fleet
+# run's OWN [compile-clean-cost] receipt lines, and no fleet run has emitted them
+# yet — run 30602520347's walls predate this receipt and its per-module lines were
+# rounded render text, not receipt rows. Until seeded, every row counts BasisAbsent
+# in the [compile-clean-cost-drift] summary — loud, never read as no-drift.
