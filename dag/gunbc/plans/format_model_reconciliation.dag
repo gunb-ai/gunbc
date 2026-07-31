@@ -4,37 +4,34 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone, CodeBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
-data format_model_reconciliation_unresolved_citation_note: String = "4 positional citations in this plan cannot be resolved against the current tree and are deliberately LEFT UNCONVERTED rather than repointed (DESIGN §3 standing rule; repointing to a near-miss symbol would falsify the claim). The two languages.dag:36 citations claim std.languages FormatModel, which is absent; the two render.dag:160 citations claim std.render OutputFormat, which is absent. This is evidence that the plan describes a superseded tree state, not merely a stale pointer; resolving it requires re-grounding the plan, which is out of scope for a citation sweep. dissolve-on: feature:format-model-reconciliation-regrounded — the plan's claims are re-verified against the live tree, at which point each citation is either converted or the row deletes with the claim it supported."
-
 fn format_model_reconciliation_body() -> List<MarkdownBlock> {
   [
-    p(text: format_model_reconciliation_unresolved_citation_note),
-    BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was forked across three models, and no text format routes serialization through any of them today. DESIGN refs: §2 (one concept every scale — decompress the leaf, map to existing carriers, reduce duplicates), §3 (single authority — field-by-field decomposition onto ConfigFormat, CommentSyntax, LayoutProtocol; delete uninhabited scaffolds), §5 (construction over validation — the swap test is execution-grounded), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
-    p(text: "**Status:** planning tracker · **`.dag` carrier is authority** (§6). Linked from `ROADMAP.md` §6 cross-media band. Carrier facts verified against the live tree 2026-06-30. **Code keystone:** still-wolf-292 / PR #6045 (C1) — this doc captures only; no serializer code here."),
-    h2(text: "1. The fork — three models, zero routed serializers"),
+    BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was historically forked across three models. The live tree has dissolved the two legacy models into `ConfigFormat`, `CommentSyntax`, `LayoutProtocol`, and `SerializationKnobs`; this tracker now owns only the remaining emitter migrations. DESIGN refs: §2 (one concept every scale), §3 (single authority), §5 (execution-grounded swap test), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
+    p(text: "**Status:** implementation tail · **`.dag` carrier is authority** (§6). Carrier facts re-verified against the live tree 2026-07-31."),
+    h2(text: "1. The historical fork and its live resolution"),
     p(text: "Layout (line/indent/newline) is [regime-2 shared emission fold](regime2-shared-emission-fold.md). **This doc owns record spelling** — how key/value, assign, quoting, and nesting render into text or JSON:"),
     TableBlock {
       header: row(cells: [cell(text: "model"), cell(text: "where"), cell(text: "role"), cell(text: "verdict")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "`ConfigFormat`"), cell(text: "`dag/std/languages.dag`"), cell(text: "format **identity** (id, name, extensions, comment)"), cell(text: "**keep**")]),
-        row(cells: [cell(text: "`FormatModel`"), cell(text: "`dag/std/languages.dag:36`"), cell(text: "indent, max_line_width, import_grouping, trailing_newline"), cell(text: "**uninhabited dead scaffold** — delete")]),
-        row(cells: [cell(text: "`OutputFormat`"), cell(text: "`dag/std/render.dag:160`"), cell(text: "name, indent_unit, kv_separator, list_prefix, comment_prefix, section_separator, trailing_newline"), cell(text: "**only live knob record** — sole consumer `gitignore_output_format`; `comment_prefix` is a §3 nickname of `CommentSyntax.line_prefix`")]),
+        row(cells: [cell(text: "`ConfigFormat`"), cell(text: "`std.languages` `ConfigFormat`"), cell(text: "format identity plus optional record knobs"), cell(text: "**live authority**")]),
+        row(cells: [cell(text: "`FormatModel`"), cell(text: "absent from the live tree"), cell(text: "legacy layout scaffold"), cell(text: "**deleted**")]),
+        row(cells: [cell(text: "`OutputFormat`"), cell(text: "absent from the live tree"), cell(text: "legacy mixed layout/record knobs"), cell(text: "**deleted and decomposed**")]),
       ],
     },
-    p(text: "No text format today routes record serialization through any of these types — emitters hand-roll `concat` / `match` per site."),
+    p(text: "`std.languages` `SerializationKnobs` and `std.serialize` `serialize_record_doc` now carry record spelling. `gunbc.runner_deploy_emit` routes manifest and JSON projections through them; remaining boutique emitters are scoped below."),
     h2(text: "2. The decomposition — map each field to its single authority (§3)"),
-    p(text: "Decompose `OutputFormat` field-by-field onto existing carriers; the irreducible residue is the record-spelling knobs only:"),
+    p(text: "The deleted `OutputFormat` was decomposed field-by-field onto existing carriers; the irreducible residue is the record-spelling knobs only:"),
     ul(items: [
       li(text: "`name` → `ConfigFormat` (identity already lives there)"),
       li(text: "`comment_prefix` → `CommentSyntax.line_prefix` (derive `#` from format comment, never duplicate)"),
       li(text: "`indent_unit`, `trailing_newline` → `std.layout.LayoutProtocol` (line-layout half; owned by regime-2)"),
       li(text: "**Residue → `SerializationKnobs`** in `std.languages`: assign separator, entry separator, open/close delimiters, quoting policy — a comment-free record-spelling value"),
     ]),
-    p(text: "**Target pipeline:** a total `serialize_record` fold producing `std.layout.Doc` (recursive — JSON/proto nesting fits). Compose with regime-2 `render(doc, protocol)` for the line half."),
+    p(text: "**Live pipeline:** `std.serialize` `serialize_record_doc` produces `std.layout` `Doc` recursively; compose it with `std.layout` `render` for the line half."),
     CodeBlock { code: "doc = serialize_record(record, knobs)   // record half (this doc)\ntext = render(doc, layout_protocol)     // line half (regime-2)\n" },
     h3(text: "The swap test (acid test)"),
-    p(text: "The **same** record projection renders as manifest text **and** JSON by swapping only the `SerializationKnobs` value — one `serialize_record`, two knob instances, byte-identical witnesses. This is the substrate that makes JSON-as-first-class real under §6 cross-media."),
+    p(text: "`test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness_test` exercise the same record projection with manifest and JSON knob values. This is the execution-grounded substrate for JSON-as-first-class under §6 cross-media."),
     h3(text: "Relationship to regime-2 (complementary, not duplicate)"),
     ul(items: [
       li(text: "[regime-2 shared emission fold](regime2-shared-emission-fold.md) — **line-layout half**: one `render(doc, protocol)` fold over `std.layout.Doc` for yaml/gitignore/runner-deploy/ci.yml projections."),
@@ -42,27 +39,27 @@ fn format_model_reconciliation_body() -> List<MarkdownBlock> {
     ]),
     h2(text: "3. Hazard — do not build on `std.render` kv helpers"),
     p(text: "`std.render` `kv_pair` / `kv_block` are **broken** for real emission: in `.dag` runtime literals bare curly-brace interpolation is live, while the escaped-brace form in `std.render` `kv_pair` emits literal brace characters, not key=value pairs. `digest_render.dag` and friends must route through `serialize_record`, not these helpers."),
-    h2(text: "4. Ordered scope (C1–C6)"),
+    h2(text: "4. Ordered scope (completed foundation, then remaining tail)"),
     ol(items: [
-      li(text: "**C1 (keystone — still-wolf-292 / PR #6045):** `SerializationKnobs` residue in `std.languages` + recursive `serialize_record` → `Doc` + delete `FormatModel`; migrate runner manifest (`dag/gunbc/runner_deploy_emit.dag` — `manifest_host_text` / `session_host_text` / `operating_row_text`) byte-identically; JSON knobs instance + swap-test witness."),
-      li(text: "**C2 (folded into C1):** runner manifest + JSON as the first proving instance — not a separate roadmap row."),
-      li(text: "**C3:** gitignore de-fork — migrate live `OutputFormat` consumer (`dag/gunbc/gitignore_emit.dag` + `extdeps/git/gitignore.dag`) onto `SerializationKnobs` + `ConfigFormat`, derive `#` via `CommentSyntax`, then **delete `OutputFormat`** and orphan `extdeps/git/gitignore_render.dag` (declares knobs then ignores them)."),
-      li(text: "**C4:** dnsmasq emit — add dnsmasq `ConfigFormat` + knobs; keep cited positional micro-syntax honest (do not force pure key=value)."),
+      li(text: "**C1 complete:** `std.languages` `SerializationKnobs` + recursive `std.serialize` `serialize_record_doc` → `Doc`; `FormatModel` deleted; `gunbc.runner_deploy_emit` manifest fields migrated byte-identically."),
+      li(text: "**C2 complete (folded into C1):** runner manifest + JSON are the first proving instance, witnessed by `test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness_test`."),
+      li(text: "**C3 complete:** `OutputFormat` and the orphan gitignore renderer are absent. `gunbc.gitignore_emit` derives comments from `std.languages` `gitignore_format` and renders a `Doc` with its `gitignore_protocol`; because gitignore is a line-list rather than a record, it does not acquire fake `SerializationKnobs`."),
+      li(text: "**C4 complete at the honest boundary:** `extdeps.formats.dnsmasq` projects directives to `Doc` with `dnsmasq_protocol`; its positional micro-syntax remains explicit rather than being forced into a key/value record."),
       li(text: "**C5 (low):** digest/accelerator kv blocks (`dag/gunbc/digest_render.dag` and friends) — route through `serialize_record`; supersedes broken `std.render` kv helpers."),
-      li(text: "**C6 (cosmetic):** CSS declaration blocks — `dag/gunbc/roadmap_style.dag` `css_rule(selector, props)` has `props` as raw `String` (`css_rule_props_scaffold`); flat `property:value` records (assign `: `, separator `; `) are `serialize_record` candidates; selector nesting stays structural. Plus yaml/markdown/html identity-link cosmetics."),
+      li(text: "**C6 complete:** `gunbc.roadmap_style` now uses typed `CssDecl` rows on shared `BuildRule` machinery; the old `css_rule_props_scaffold` remains only as historical text in its dissolution note."),
     ]),
-    h2(text: "5. Audit receipts (live tree 2026-06-30)"),
+    h2(text: "5. Audit receipts (live tree 2026-07-31)"),
     ul(items: [
-      li(text: "`FormatModel` at `languages.dag:36` — type only, zero `data` rows, not in `LanguageSpec`."),
-      li(text: "`OutputFormat` at `render.dag:160` — consumed by `extdeps/git/gitignore.dag` `gitignore_output_format` only."),
-      li(text: "`extdeps/git/gitignore_render.dag` — orphan knob declarations, ignored at emit."),
+      li(text: "No `FormatModel`, `OutputFormat`, `gitignore_output_format`, or `gitignore_render` declaration remains in the live tree."),
+      li(text: "`std.languages` `ConfigFormat.record` carries optional `SerializationKnobs`; `json_record_knobs` is a live instance."),
+      li(text: "`std.serialize` `serialize_record_doc` is the recursive record-spelling fold; `gunbc.runner_deploy_emit` is its live manifest/JSON consumer."),
       li(text: "`v2.lens.languages_consumer_census` baselines: `languages_consumer_census_data_decl_baseline`, `languages_consumer_census_per_language_row_baseline`, `languages_consumer_census_format_row_baseline`."),
     ]),
     h2(text: "6. Open / boundaries"),
     ul(items: [
-      li(text: "C1 code lands in still-wolf-292 / PR #6045 — this capture PR is docs + roadmap authority only."),
+      li(text: "The remaining work is emitter migration, not another model declaration."),
       li(text: "Regime-1 grammar-inverse language emit stays out of scope (v2 `TargetModel` rows)."),
-      li(text: "`import_grouping` on deleted `FormatModel` — language-emit-only if it survives at all; do not carry into `SerializationKnobs`."),
+      li(text: "Language-emission `import_grouping` stays outside `SerializationKnobs`."),
     ]),
   ]
 }
@@ -72,6 +69,6 @@ data format_model_reconciliation_plan: Plan = Plan {
   title: "Format-model reconciliation — record spelling onto single authority",
   body: format_model_reconciliation_body(),
   dissolution: HasTrigger {
-    text: "Delete this doc when all three knob models are collapsed into one: FormatModel deleted, OutputFormat dissolved into ConfigFormat + CommentSyntax + LayoutProtocol + SerializationKnobs, and every record-emitting format routes through serialize_record — byte-identical-witnessed on runner manifest, gitignore, and the manifest-text vs JSON swap test."
+    text: "Delete this doc when the remaining real record emitters (the C5 digest/accelerator tail) route through `std.serialize` `serialize_record_doc` with byte-identical witnesses. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete."
   }
 }
