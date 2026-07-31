@@ -1105,6 +1105,28 @@ pub fn conformance_ground_type(
         || conformance_ground_element_collection(n.clone(), source_indices.clone()))
 }
 
+pub fn conformance_named_structured(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let structured = ((n.connective.clone() == Connective::Conj)
+            || (n.connective.clone() == Connective::Disj));
+        let named = (authored_name_at(source_indices.clone(), n.clone()) != "".to_string());
+        let plain_cardinality = (n.return_cardinality.clone() == Cardinality::Required);
+        ((structured.clone() && named.clone()) && plain_cardinality.clone())
+    }
+}
+
+pub fn conformance_named_structured_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE UNJUDGED BRANCH WAS A LIVE HOLE, not merely an unmeasured one, and it took an executed probe to see it: `type R { x: Int }` `type S { y: String }` `fn wrong_record() -> R { S { y: \"a\" } }` compiled with EXIT 0 and EMITTED TWO FILES while reporting the mismatch as a counted advisory. Two structurally unrelated named records is not a representation gap and never was — it is the conformance half of #7479, a success-shaped acceptance of a program that is simply wrong, and counting it protects nothing (codex review 45647, confirmed by execution before the fix and after). The predicate that closes it is POSITIVE ESTABLISHMENT, the same discipline the method wall uses rather than a fifth carve-out: refuse only when BOTH sides are STRUCTURED (a product or coproduct, so no bare leaf), BOTH carry an authored name (so an anonymous record literal, which is the corpus idiom for writing a typed row without repeating its type, can never reach the arm), and BOTH are Required (so the two optionality representations cannot straddle it). Every one of the four measured false-positive classes is excluded BY THAT SHAPE rather than by naming it: Nat-vs-Int and Symbol-vs-String and Fragment-vs-Element are leaf-to-leaf so they fail `structured`; NonEmptyStr-vs-String is structured on one side only; PrimitiveContract-vs-anon fails `named`. What is left is exactly the class where a name difference IS a real difference, because two structured named types with different names have no alias, brand, literal-shorthand or cardinality representation standing between them. Measured whole-corpus after the change: still 0 blocking, so the arm reds nothing correct that the corpus contains.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn conformance_expanded_node(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Node> {
     {
         let peeled = peel_where_refinement_base(n.clone(), scope.type_env.clone());
@@ -1142,14 +1164,29 @@ pub fn declared_type_conformance_diags(
             ) {
                 Rc::new(vec![])
             } else {
-                Rc::new(vec![make_error_node(
-                    Rc::new(CompilerDiagnostic::DeclaredTypeConformanceUnjudged {
-                        declared_type: node_type_shape(declared.clone(), si.clone()),
-                        produced_type: node_type_shape(produced.clone(), si.clone()),
-                        span: span.clone(),
-                    }),
-                    scope.module_name.clone(),
-                )])
+                if (conformance_named_structured(
+                    conformance_expanded_node(declared.clone(), scope.clone()),
+                    si.clone(),
+                ) && conformance_named_structured(
+                    conformance_expanded_node(produced.clone(), scope.clone()),
+                    si.clone(),
+                )) {
+                    Rc::new(vec![type_mismatch_error(
+                        node_type_shape(declared.clone(), si.clone()),
+                        node_type_shape(produced.clone(), si.clone()),
+                        span.clone(),
+                        scope.module_name.clone(),
+                    )])
+                } else {
+                    Rc::new(vec![make_error_node(
+                        Rc::new(CompilerDiagnostic::DeclaredTypeConformanceUnjudged {
+                            declared_type: node_type_shape(declared.clone(), si.clone()),
+                            produced_type: node_type_shape(produced.clone(), si.clone()),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    )])
+                }
             }
         } else {
             if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {

@@ -653,6 +653,15 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
     || conformance_ground_element_collection(n: n, source_indices: source_indices)
 }
 
+fn conformance_named_structured(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let structured = n.connective == Conj || n.connective == Disj
+  let named = authored_name_at(source_indices: source_indices, node: n) != ""
+  let plain_cardinality = n.return_cardinality == Required
+  structured && named && plain_cardinality
+}
+
+data conformance_named_structured_note: String = "THE UNJUDGED BRANCH WAS A LIVE HOLE, not merely an unmeasured one, and it took an executed probe to see it: `type R { x: Int }` `type S { y: String }` `fn wrong_record() -> R { S { y: \"a\" } }` compiled with EXIT 0 and EMITTED TWO FILES while reporting the mismatch as a counted advisory. Two structurally unrelated named records is not a representation gap and never was — it is the conformance half of #7479, a success-shaped acceptance of a program that is simply wrong, and counting it protects nothing (codex review 45647, confirmed by execution before the fix and after). The predicate that closes it is POSITIVE ESTABLISHMENT, the same discipline the method wall uses rather than a fifth carve-out: refuse only when BOTH sides are STRUCTURED (a product or coproduct, so no bare leaf), BOTH carry an authored name (so an anonymous record literal, which is the corpus idiom for writing a typed row without repeating its type, can never reach the arm), and BOTH are Required (so the two optionality representations cannot straddle it). Every one of the four measured false-positive classes is excluded BY THAT SHAPE rather than by naming it: Nat-vs-Int and Symbol-vs-String and Fragment-vs-Element are leaf-to-leaf so they fail `structured`; NonEmptyStr-vs-String is structured on one side only; PrimitiveContract-vs-anon fails `named`. What is left is exactly the class where a name difference IS a real difference, because two structured named types with different names have no alias, brand, literal-shorthand or cardinality representation standing between them. Measured whole-corpus after the change: still 0 blocking, so the arm reds nothing correct that the corpus contains."
+
 fn conformance_expanded_node(n: Node, scope: InferScope) -> Node {
   let peeled = peel_where_refinement_base(ty: n, type_env: scope.type_env)
   match lookup_type_for(env: scope.type_env, node: peeled) {
@@ -673,6 +682,14 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
          right: conformance_expanded_node(n: produced, scope: scope),
          source_indices: si) {
       []
+    } else if conformance_named_structured(n: conformance_expanded_node(n: declared, scope: scope), source_indices: si)
+           && conformance_named_structured(n: conformance_expanded_node(n: produced, scope: scope), source_indices: si) {
+      [type_mismatch_error(
+        expected: node_type_shape(n: declared, source_indices: si),
+        got: node_type_shape(n: produced, source_indices: si),
+        span: span,
+        module_name: scope.module_name
+      )]
     } else {
       [make_error_node(
         diagnostic: DeclaredTypeConformanceUnjudged {
