@@ -1015,6 +1015,34 @@ pub fn conformance_ground_kernel_scalar(
     }
 }
 
+pub fn conformance_ground_element_collection(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let shaped_container = (((n.connective.clone() == Connective::NoConnective)
+            && node_is_element_collection(n.clone(), source_indices.clone()))
+            && (node_is_keyed_collection(n.clone(), source_indices.clone()) == false));
+        let required = (n.return_cardinality.clone() == Cardinality::Required);
+        let element_ground = match n.children.clone().first().cloned() {
+            Some(el) => conformance_ground_kernel_scalar(
+                child_type_node(el.clone()),
+                source_indices.clone(),
+            ),
+            None => false,
+        };
+        ((shaped_container.clone() && required.clone()) && element_ground.clone())
+    }
+}
+
+pub fn conformance_ground_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (conformance_ground_kernel_scalar(n.clone(), source_indices.clone())
+        || conformance_ground_element_collection(n.clone(), source_indices.clone()))
+}
+
 pub fn declared_type_conformance_diags(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -1023,8 +1051,8 @@ pub fn declared_type_conformance_diags(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let both_ground = (conformance_ground_kernel_scalar(declared.clone(), si.clone())
-            && conformance_ground_kernel_scalar(produced.clone(), si.clone()));
+        let both_ground = (conformance_ground_type(declared.clone(), si.clone())
+            && conformance_ground_type(produced.clone(), si.clone()));
         if !both_ground.clone() {
             Rc::new(vec![])
         } else {

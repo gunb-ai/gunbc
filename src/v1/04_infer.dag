@@ -613,10 +613,27 @@ fn conformance_ground_kernel_scalar(n: Node, source_indices: Map<String, Newline
   plain_shape && required && kernel_named
 }
 
+fn conformance_ground_element_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let shaped_container = n.connective == NoConnective
+    && node_is_element_collection(n: n, source_indices: source_indices)
+    && node_is_keyed_collection(n: n, source_indices: source_indices) == false
+  let required = n.return_cardinality == Required
+  let element_ground = match n.children |> first {
+    Present { value: el } => conformance_ground_kernel_scalar(n: child_type_node(ch: el), source_indices: source_indices)
+    Absent => false
+  }
+  shaped_container && required && element_ground
+}
+
+fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  conformance_ground_kernel_scalar(n: n, source_indices: source_indices)
+    || conformance_ground_element_collection(n: n, source_indices: source_indices)
+}
+
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
-  let both_ground = conformance_ground_kernel_scalar(n: declared, source_indices: si)
-    && conformance_ground_kernel_scalar(n: produced, source_indices: si)
+  let both_ground = conformance_ground_type(n: declared, source_indices: si)
+    && conformance_ground_type(n: produced, source_indices: si)
   if !both_ground { [] }
   else if node_type_compatible(left: declared, right: produced, source_indices: si) { [] }
   else {
