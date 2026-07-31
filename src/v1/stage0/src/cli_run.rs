@@ -2021,7 +2021,19 @@ fn extend_with_reference_closure(
         .collect();
     let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
     while let Some(sf) = scan_queue.pop() {
-        for module_path in referenced_module_paths_in_text(&sf.content, index) {
+        // Sub-attribution of `load` (entry-graph-union slice 1, operator review):
+        // `load` being 68% of resolve-span time does not by itself say whether the cost is
+        // this content scan, file I/O, or pool bookkeeping — and THAT ratio is what
+        // separates "a content-hash memo on a pure function" from "a union graph". Timed
+        // here because this is the call the duplication factor multiplies.
+        let scan_started = std::time::Instant::now();
+        let referenced = referenced_module_paths_in_text(&sf.content, index);
+        resolve_stage_slot_add(|s| {
+            s.load_reference_scan += scan_started.elapsed().as_nanos();
+            s.load_reference_scan_bytes += sf.content.len() as u128;
+            s.load_reference_scan_calls += 1;
+        });
+        for module_path in referenced {
             let Some(dep) = index.get(&module_path) else {
                 continue;
             };
@@ -5865,13 +5877,27 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    // Sub-attribution inside the bare-reference closure (entry-graph-union slice 1). The
+    // fixpoint measured ~100% of `load`; these three rows say WHICH of its parts, which is
+    // what decides whether the fix is a memo, an incremental closure, or a union graph.
+    let edge_started = std::time::Instant::now();
     let edges = both_closure_edge_index(index)?;
-    extend_sources_via_edge_map(
+    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_started.elapsed().as_nanos());
+    let lookup_started = std::time::Instant::now();
+    let lookup = path_to_source_lookup(&index.source_files);
+    resolve_stage_slot_add(|s| {
+        s.load_bare_path_lookup += lookup_started.elapsed().as_nanos();
+        s.load_bare_path_lookup_calls += 1;
+    });
+    let walk_started = std::time::Instant::now();
+    let out = extend_sources_via_edge_map(
         sources,
         &edges.bare_out,
         Some(&edges.bare_scan_eligible),
-        &path_to_source_lookup(&index.source_files),
-    )
+        &lookup,
+    );
+    resolve_stage_slot_add(|s| s.load_bare_edge_walk += walk_started.elapsed().as_nanos());
+    out
 }
 
 /// The full name-derived closure for one entry: import edges + dotted-reference
@@ -5894,8 +5920,21 @@ fn extend_sources_to_both_closure_fixpoint(
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     loop {
         let before = sources.len();
+        // Sub-attribution of `load` (entry-graph-union slice 1). This fixpoint is the
+        // "#6848 once-per-entry bare-reference fixpoint" DESIGN's floor-memoization thread
+        // names as the residual; the rows below are what let that claim be priced instead
+        // of asserted.
+        let bare_started = std::time::Instant::now();
         sources = extend_with_bare_reference_closure(sources, mei)?;
+        resolve_stage_slot_add(|s| {
+            s.load_bare_reference_closure += bare_started.elapsed().as_nanos()
+        });
+        let pool_started = std::time::Instant::now();
         sources = extend_with_reference_closure_for_pool(sources, mei)?;
+        resolve_stage_slot_add(|s| {
+            s.load_pool_reference_closure += pool_started.elapsed().as_nanos();
+            s.load_fixpoint_rounds += 1;
+        });
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         sources.dedup_by(|a, b| a.path == b.path);
         if sources.len() == before {
@@ -5934,7 +5973,11 @@ fn load_sources_for_entry_with_index(
     let entry_source = entry_source_from_index_or_disk(index, entry_path)?;
     let rel_path = entry_source.path.clone();
 
+    let import_closure_started = std::time::Instant::now();
     let sources = resolve_transitively(vec![entry_source.clone()], index, facts)?;
+    resolve_stage_slot_add(|s| {
+        s.load_import_closure += import_closure_started.elapsed().as_nanos()
+    });
     let mut sources = sources;
     if !sources
         .iter()
@@ -8288,6 +8331,35 @@ pub struct ResolveStageNanos {
     pub assembly_rewire_func_env: u128,
     /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
     pub assembly_emit_info: u128,
+    // `load` sub-rows (entry-graph-union slice 1, operator review 2026-07-31). INCLUSIVE
+    // within `load` — never added to the exclusive sum. `load` dominating the partition
+    // does not say WHICH part of the closure walk costs; the split below is the number
+    // that decides whether a per-source content-hash memo suffices or a union graph is
+    // needed, because only `load_reference_scan` is a pure function of source content.
+    /// `referenced_module_paths_in_text` — the unmemoized full-content byte scan run once
+    /// per (entry, module) pair. The unit the duplication factor multiplies.
+    pub load_reference_scan: u128,
+    /// Bytes fed to that scan (sum over calls) — lets the scan be priced per byte rather
+    /// than per module, which is what the closure-size spread demands.
+    pub load_reference_scan_bytes: u128,
+    /// Number of scan calls.
+    pub load_reference_scan_calls: u128,
+    /// `resolve_transitively` — the import-edge closure, including its file reads.
+    pub load_import_closure: u128,
+    /// `extend_with_bare_reference_closure` inside the both-closure fixpoint — the
+    /// "#6848 once-per-entry bare-reference fixpoint" DESIGN names as the floor residual.
+    pub load_bare_reference_closure: u128,
+    /// `extend_with_reference_closure_for_pool` inside the same fixpoint.
+    pub load_pool_reference_closure: u128,
+    /// Fixpoint iterations (a round is one bare + one pool pass).
+    pub load_fixpoint_rounds: u128,
+    /// `both_closure_edge_index` (memoized on the index; nonzero here is the first build).
+    pub load_bare_edge_index: u128,
+    /// `path_to_source_lookup` — a corpus-wide map rebuilt on EVERY call (no memo).
+    pub load_bare_path_lookup: u128,
+    pub load_bare_path_lookup_calls: u128,
+    /// `extend_sources_via_edge_map` — the actual closure walk over the edge map.
+    pub load_bare_edge_walk: u128,
 }
 
 impl ResolveStageNanos {
@@ -8309,6 +8381,17 @@ impl ResolveStageNanos {
         self.assembly_rewire_import_str += other.assembly_rewire_import_str;
         self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
+        self.load_reference_scan += other.load_reference_scan;
+        self.load_reference_scan_bytes += other.load_reference_scan_bytes;
+        self.load_reference_scan_calls += other.load_reference_scan_calls;
+        self.load_import_closure += other.load_import_closure;
+        self.load_bare_reference_closure += other.load_bare_reference_closure;
+        self.load_pool_reference_closure += other.load_pool_reference_closure;
+        self.load_fixpoint_rounds += other.load_fixpoint_rounds;
+        self.load_bare_edge_index += other.load_bare_edge_index;
+        self.load_bare_path_lookup += other.load_bare_path_lookup;
+        self.load_bare_path_lookup_calls += other.load_bare_path_lookup_calls;
+        self.load_bare_edge_walk += other.load_bare_edge_walk;
     }
 
     /// Sum of the attributed stages; the caller's lump minus this is the
@@ -8351,6 +8434,17 @@ thread_local! {
             assembly_rewire_import_str: 0,
             assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
+            load_reference_scan: 0,
+            load_reference_scan_bytes: 0,
+            load_reference_scan_calls: 0,
+            load_import_closure: 0,
+            load_bare_reference_closure: 0,
+            load_pool_reference_closure: 0,
+            load_fixpoint_rounds: 0,
+            load_bare_edge_index: 0,
+            load_bare_path_lookup: 0,
+            load_bare_path_lookup_calls: 0,
+            load_bare_edge_walk: 0,
         }) };
 }
 
@@ -8563,6 +8657,10 @@ pub struct ExclusiveCostPartition {
     /// Parent minus the exclusive rows: the work inside a resolve span that no row claims.
     pub remainder_nanos: u128,
     pub verdict: CostAccountingVerdict,
+    /// Volume fed to `load_reference_scan`, so it can be priced per byte.
+    pub load_reference_scan_bytes: u128,
+    pub load_reference_scan_calls: u128,
+    pub load_fixpoint_rounds: u128,
     /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
     /// descending by span nanos. Lets a witness entry's split be read apart from the
     /// machinery entries that share the thread's stage totals.
@@ -8709,6 +8807,45 @@ pub fn exclusive_cost_partition_from(
             nanos: st.assembly_rewire_func_env,
             contained_in: "assembly_rewire",
         },
+        // Inside `load` — the split that decides whether a per-source content-hash memo
+        // suffices. `load_reference_scan` is the only part that is a pure function of
+        // source content; `load_import_closure` carries file I/O and pool bookkeeping.
+        // What `load` does NOT account for beyond these two is the sort/dedup tail.
+        InclusiveCostRow {
+            name: "load_reference_scan",
+            nanos: st.load_reference_scan,
+            contained_in: "load",
+        },
+        InclusiveCostRow {
+            name: "load_import_closure",
+            nanos: st.load_import_closure,
+            contained_in: "load",
+        },
+        InclusiveCostRow {
+            name: "load_bare_reference_closure",
+            nanos: st.load_bare_reference_closure,
+            contained_in: "load",
+        },
+        InclusiveCostRow {
+            name: "load_pool_reference_closure",
+            nanos: st.load_pool_reference_closure,
+            contained_in: "load",
+        },
+        InclusiveCostRow {
+            name: "load_bare_edge_index",
+            nanos: st.load_bare_edge_index,
+            contained_in: "load_bare_reference_closure",
+        },
+        InclusiveCostRow {
+            name: "load_bare_path_lookup",
+            nanos: st.load_bare_path_lookup,
+            contained_in: "load_bare_reference_closure",
+        },
+        InclusiveCostRow {
+            name: "load_bare_edge_walk",
+            nanos: st.load_bare_edge_walk,
+            contained_in: "load_bare_reference_closure",
+        },
     ];
 
     let sum_exclusive: u128 = exclusive.iter().map(|r| r.nanos).sum();
@@ -8758,6 +8895,9 @@ pub fn exclusive_cost_partition_from(
         inclusive,
         remainder_nanos,
         verdict,
+        load_reference_scan_bytes: st.load_reference_scan_bytes,
+        load_reference_scan_calls: st.load_reference_scan_calls,
+        load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
     }
 }
@@ -8818,6 +8958,18 @@ pub fn render_exclusive_cost_partition_json(
         out.push_str(&esc(row.contained_in.to_string()));
         out.push_str("\"}");
     }
+    out.push('}');
+
+    // Scan volume, so `load_reference_scan` can be priced per BYTE rather than per module.
+    // The closure-size spread (504 modules down to a median of 2-5) makes a per-module
+    // weighting a different claim from a per-byte one, and only the per-byte one matches
+    // how the scan actually costs.
+    out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
+    out.push_str(&json_num(p.load_reference_scan_bytes));
+    out.push_str(",\"calls\":");
+    out.push_str(&json_num(p.load_reference_scan_calls));
+    out.push_str(",\"fixpoint_rounds\":");
+    out.push_str(&json_num(p.load_fixpoint_rounds));
     out.push('}');
 
     out.push_str(
@@ -15174,6 +15326,14 @@ pub struct SelectedEntryClosureOverlap {
     pub closure_sizes: Vec<(String, usize)>,
     pub sum_closure_memberships: usize,
     pub union_modules: usize,
+    /// BYTE-weighted counterparts (operator review 2026-07-31). A module-count duplication
+    /// factor weights every membership equally, but the repeated unit
+    /// (`referenced_module_paths_in_text`) costs in proportion to CONTENT BYTES, and
+    /// closure sizes here span 504 modules down to a median of 2-5. So the module-count
+    /// factor and the byte factor are different claims, and only the byte one matches how
+    /// the scan actually costs. Both are reported; neither is presented as the other.
+    pub sum_closure_bytes: u128,
+    pub union_bytes: u128,
     /// (module, number of selected entries whose closure contains it), descending.
     pub fanout_by_module: Vec<(String, usize)>,
 }
@@ -15189,6 +15349,19 @@ impl SelectedEntryClosureOverlap {
         } else {
             Some(self.sum_closure_memberships as f64 / self.union_modules as f64)
         }
+    }
+    /// Byte-weighted duplication: Σ bytes over closures / distinct bytes in the union.
+    /// This is the factor that matches the scan's actual cost model.
+    pub fn byte_duplication_factor(&self) -> Option<f64> {
+        if self.union_bytes == 0 {
+            None
+        } else {
+            Some(self.sum_closure_bytes as f64 / self.union_bytes as f64)
+        }
+    }
+    /// Repeated BYTES a union could at most collapse.
+    pub fn byte_upper_bound(&self) -> u128 {
+        self.sum_closure_bytes.saturating_sub(self.union_bytes)
     }
     /// Σ|Cᵢ| − |⋃Cᵢ| — repeated memberships a union could at most collapse.
     pub fn membership_upper_bound(&self) -> usize {
@@ -15272,15 +15445,32 @@ pub fn measure_selected_entry_closure_overlap(
     let mut closure_sizes: Vec<(String, usize)> = Vec::new();
     let mut sum_closure_memberships: usize = 0;
     let mut fanout: HashMap<String, usize> = HashMap::new();
+    let mut sum_closure_bytes: u128 = 0;
+    let mut union_bytes_by_module: HashMap<String, u128> = HashMap::new();
     for entry in &selected_entries {
+        // Same pooled loader the floor uses; bytes come from the very sources the scan
+        // reads, so the byte weighting is the scan's own input volume, not an estimate.
         let mut members: HashSet<String> = HashSet::new();
-        collect_both_closure_module_names_for_entry(&index, entry, &mut members)?;
+        for source in load_sources_for_entry_with_pool(&index, entry)? {
+            let Some(name) = extract_module_path(&source.content) else {
+                return Err(format!(
+                    "closure overlap: source '{}' in entry '{}' closure declares no module                      header (fail-closed)",
+                    source.path, entry
+                ));
+            };
+            let bytes = source.content.len() as u128;
+            if members.insert(name.clone()) {
+                sum_closure_bytes += bytes;
+            }
+            union_bytes_by_module.insert(name, bytes);
+        }
         closure_sizes.push((entry.clone(), members.len()));
         sum_closure_memberships += members.len();
         for m in members {
             *fanout.entry(m).or_insert(0) += 1;
         }
     }
+    let union_bytes: u128 = union_bytes_by_module.values().sum();
     let union_modules = fanout.len();
     let mut fanout_by_module: Vec<(String, usize)> =
         fanout.into_iter().map(|(k, v)| (k, v)).collect();
@@ -15320,6 +15510,8 @@ pub fn measure_selected_entry_closure_overlap(
         closure_sizes,
         sum_closure_memberships,
         union_modules,
+        sum_closure_bytes,
+        union_bytes,
         fanout_by_module,
     })
 }
@@ -15382,6 +15574,17 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
     }
     out.push_str(",\"membership_upper_bound\":");
     out.push_str(&m.membership_upper_bound().to_string());
+    out.push_str(",\"sum_closure_bytes\":");
+    out.push_str(&m.sum_closure_bytes.to_string());
+    out.push_str(",\"union_bytes\":");
+    out.push_str(&m.union_bytes.to_string());
+    out.push_str(",\"byte_duplication_factor\":");
+    match m.byte_duplication_factor() {
+        Some(f) => out.push_str(&format!("{f:.4}")),
+        None => out.push_str("null"),
+    }
+    out.push_str(",\"byte_upper_bound\":");
+    out.push_str(&m.byte_upper_bound().to_string());
     out.push_str("},\"fanout\":{");
     for (i, p) in [50.0_f64, 90.0, 99.0].iter().enumerate() {
         if i > 0 {
@@ -33735,6 +33938,8 @@ mod selected_entry_closure_overlap_arithmetic {
             closure_sizes: sizes,
             sum_closure_memberships: sum,
             union_modules,
+            sum_closure_bytes: 0,
+            union_bytes: 0,
             fanout_by_module,
         }
     }
