@@ -101,9 +101,15 @@ fn oci_other_digest_algorithm(value: String) -> Bool {
     && value != "sha512"
 }
 
+fn oci_other_digest_encoded(value: String) -> Bool {
+  oci_encoded_digest_syntax_valid(text: value, index: 0)
+}
+
 type OciSha512DigestHex = String where lower_hex_128
 
 type OciOtherDigestAlgorithm = String where oci_other_digest_algorithm
+
+type OciOtherDigestEncoded = NonEmptyStr where oci_other_digest_encoded
 
 type OciSha512DigestBody {
   hex: OciSha512DigestHex
@@ -111,7 +117,7 @@ type OciSha512DigestBody {
 
 type OciOtherDigestBody {
   algorithm: OciOtherDigestAlgorithm
-  encoded: NonEmptyStr
+  encoded: OciOtherDigestEncoded
 }
 
 type OciContentDigest
