@@ -10,7 +10,7 @@ import extdeps.languages.simd.kernel {
   elemwise_add_wire_op_code,
   elemwise_relu_wire_op_code,
 }
-import std.bytes { pure_dag_seam_unreachable }
+import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -85,7 +85,7 @@ fn wgsl_relu_mul_add_float_kernel_execute(
   b: List<Float>,
   c: List<Float>
 ) -> List<Float> {
-  [pure_dag_seam_unreachable()]
+  [pure_dag_seam_unreachable_float()]
 }
 
 data wgsl_kernel_int_execution_host_realization_marker: Disposition = Scaffold {

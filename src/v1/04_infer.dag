@@ -24,7 +24,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, MissingField, AmbiguousReference,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -922,7 +922,15 @@ fn type_where_refinement_predicates_transitive(ty: Node, type_env: TypeEnv) -> L
 }
 
 fn peel_where_refinement_base(ty: Node, type_env: TypeEnv) -> Node {
-  match where_refinement_chain(ty: ty, type_env: type_env) |> last {
+  let head = if is_where_refinement_type(ty: ty) {
+    ty
+  } else {
+    match lookup_type_for(env: type_env, node: ty) {
+      Present { value: resolved } => resolved
+      Absent => ty
+    }
+  }
+  match where_refinement_chain(ty: head, type_env: type_env) |> last {
     Present { value: ground } => ground
     Absent => ty
   }
@@ -1683,6 +1691,14 @@ fn method_existence_decision(recv_rt: Node, method_name: String, scope: InferSco
               module_name: scope.module_name
             )]
           }
+        } else if authored_name_at(source_indices: scope.type_env.source_indices, node: recv_rt) == "" {
+          MethodPipeFallback {
+            result_ty: error_type,
+            kernel_diags: [make_error_node(
+              diagnostic: ReceiverTypeUnestablished { method: method_name, span: span },
+              module_name: scope.module_name
+            )]
+          }
         } else {
           match unresolved_method_frontier_trigger(module_name: scope.module_name, method: method_name, receiver_shape: recv_shape) {
             Present { value: trigger } =>
@@ -1742,27 +1758,6 @@ type UnresolvedMethodFrontierRow {
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   [
     {
-      module_name: "v2.compiler.tokenize",
-      method: "apply",
-      receiver_shape: "Primitive()",
-      cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.",
-      dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field"
-    },
-    {
-      module_name: "extdeps.git.object_store",
-      method: "map",
-      receiver_shape: "Primitive()",
-      cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
-    },
-    {
-      module_name: "extdeps.git.object_store",
-      method: "flat_map",
-      receiver_shape: "Primitive()",
-      cause: "same StoreObjectFold lambda-parameter shape as the `map` row above; listed separately because the frontier key names one method on one receiver shape, never a module-wide pass.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
-    },
-    {
       module_name: "extdeps.dns.domain_name",
       method: "list_push",
       receiver_shape: "Primitive(ok)",
@@ -1775,6 +1770,13 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       receiver_shape: "Product(SpanMapping)",
       cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
       dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup"
+    },
+    {
+      module_name: "gunbc.source_integration_landing_spine",
+      method: "map",
+      receiver_shape: "Node(Optional)",
+      cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.",
+      dissolution_trigger: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup"
     },
     {
       module_name: "v2.std.compilers.target_model",

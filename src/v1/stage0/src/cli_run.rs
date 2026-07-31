@@ -3750,6 +3750,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
         CompilerDiagnostic::MethodNotFound { .. } => "MethodNotFound",
         CompilerDiagnostic::MethodExistenceUndecided { .. } => "MethodExistenceUndecided",
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "ReceiverTypeUnestablished",
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => {
             "MethodExistenceFrontierAdmitted"
         }
@@ -3780,6 +3781,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodNotFound { method, .. } => method.clone(),
         CompilerDiagnostic::MethodExistenceUndecided { method, .. } => method.clone(),
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { method, .. } => method.clone(),
+        CompilerDiagnostic::ReceiverTypeUnestablished { method, .. } => method.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),

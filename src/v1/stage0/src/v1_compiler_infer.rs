@@ -131,8 +131,8 @@ use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics}
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, FieldNotFound, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, SoleConstructorViolation, TypeMismatch,
-    UnresolvedType, VariantCollision,
+    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
+    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -1583,12 +1583,22 @@ pub fn type_where_refinement_predicates_transitive(
 }
 
 pub fn peel_where_refinement_base(ty: Rc<Node>, type_env: Rc<TypeEnv>) -> Rc<Node> {
-    match where_refinement_chain(ty.clone(), type_env.clone())
-        .last()
-        .cloned()
     {
-        Some(ground) => ground.clone(),
-        None => ty.clone(),
+        let head = if is_where_refinement_type(ty.clone()) {
+            ty.clone()
+        } else {
+            match lookup_type_for(type_env.clone(), ty.clone()) {
+                Some(resolved) => resolved.clone(),
+                None => ty.clone(),
+            }
+        };
+        match where_refinement_chain(head.clone(), type_env.clone())
+            .last()
+            .cloned()
+        {
+            Some(ground) => ground.clone(),
+            None => ty.clone(),
+        }
     }
 }
 
@@ -2885,36 +2895,41 @@ pub fn method_existence_decision(
                                 )]),
                             })
                         } else {
-                            match unresolved_method_frontier_trigger(
-                                scope.module_name.clone(),
-                                method_name.clone(),
-                                recv_shape.clone(),
-                            ) {
-                                Some(trigger) => Rc::new(MethodPipeFallback {
+                            if (authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                recv_rt.clone(),
+                            ) == "".to_string())
+                            {
+                                Rc::new(MethodPipeFallback {
                                     result_ty: error_type(),
                                     kernel_diags: Rc::new(vec![make_error_node(
-                                        Rc::new(
-                                            CompilerDiagnostic::MethodExistenceFrontierAdmitted {
-                                                method: method_name.clone(),
-                                                receiver_type: recv_shape.clone(),
-                                                trigger: trigger.clone(),
-                                                span: span.clone(),
-                                            },
-                                        ),
-                                        scope.module_name.clone(),
-                                    )]),
-                                }),
-                                None => Rc::new(MethodPipeFallback {
-                                    result_ty: error_type(),
-                                    kernel_diags: Rc::new(vec![make_error_node(
-                                        Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
+                                        Rc::new(CompilerDiagnostic::ReceiverTypeUnestablished {
                                             method: method_name.clone(),
-                                            receiver_type: recv_shape.clone(),
                                             span: span.clone(),
                                         }),
                                         scope.module_name.clone(),
                                     )]),
-                                }),
+                                })
+                            } else {
+                                match unresolved_method_frontier_trigger(scope.module_name.clone(), method_name.clone(), recv_shape.clone()) {
+    Some(trigger) => Rc::new(MethodPipeFallback {
+    result_ty: error_type(),
+    kernel_diags: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::MethodExistenceFrontierAdmitted {
+    method: method_name.clone(),
+    receiver_type: recv_shape.clone(),
+    trigger: trigger.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+}),
+    None => Rc::new(MethodPipeFallback {
+    result_ty: error_type(),
+    kernel_diags: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
+    method: method_name.clone(),
+    receiver_type: recv_shape.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+}),
+}
                             }
                         }
                     }
@@ -3005,24 +3020,6 @@ pub struct UnresolvedMethodFrontierRow {
 
 pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> {
     Rc::new(vec![Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "v2.compiler.tokenize".to_string(),
-    method: "apply".to_string(),
-    receiver_shape: "Primitive()".to_string(),
-    cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field".to_string(),
-}), Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "extdeps.git.object_store".to_string(),
-    method: "map".to_string(),
-    receiver_shape: "Primitive()".to_string(),
-    cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
-}), Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "extdeps.git.object_store".to_string(),
-    method: "flat_map".to_string(),
-    receiver_shape: "Primitive()".to_string(),
-    cause: "same StoreObjectFold lambda-parameter shape as the `map` row above; listed separately because the frontier key names one method on one receiver shape, never a module-wide pass.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
-}), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.dns.domain_name".to_string(),
     method: "list_push".to_string(),
     receiver_shape: "Primitive(ok)".to_string(),
@@ -3034,6 +3031,12 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     receiver_shape: "Product(SpanMapping)".to_string(),
     cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
     dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "gunbc.source_integration_landing_spine".to_string(),
+    method: "map".to_string(),
+    receiver_shape: "Node(Optional)".to_string(),
+    cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.".to_string(),
+    dissolution_trigger: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "v2.std.compilers.target_model".to_string(),
     method: "lookup".to_string(),
