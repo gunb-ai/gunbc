@@ -40,16 +40,16 @@ At capture, `v1.compiler.infer_method` `builtin_function_registry` held 76 names
 
 The flat live registry remains a known §3 fork (duplicate authority); the two broken marker references are a second §3 gap that must repair or dissolve with it. Two registry properties make the resolution seam fail-open:
 
-- **Global, not tree-scoped.** The same registry is consulted whether the entry root is `src/v1` (the seed, which legitimately needs `utf8_decode_bytes`/`scan_while`/… as its runtime kernel — used in `05_emit_rust.dag`, `runtime_rust.dag`) or `dag/` (the substrate, which must not depend on seed intrinsics). A name in the registry resolves in *any* tree.
+- **Global, not tree-scoped.** The same registry is consulted whether the entry root is `src/v1` (the seed, which legitimately needs seed-only intrinsics such as `scan_while`) or `dag/` (the substrate, which must not depend on seed intrinsics). A name in the registry resolves in *any* tree.
 - **Resolution without definition or arg-check.** A registry hit yields a fabricated return type with no parameter typing and no requirement that a definition exist in the compiled closure — DESIGN §5's "fabricated plausible output" anti-pattern, at the call-head resolution seam.
 
 (`v1.compiler.infer_method` `resolve_builtin_call_type`'s `Absent => unit_type` is *not* a live leak for call syntax — unregistered names are caught upstream as "function not found in scope". It is a latent fail-open kept for non-call uses; out of scope here, noted for the audit.)
 
 ## 3. Construction-correct direction (DESIGN §5/§3)
 
-The gate's claim is "the dag substrate is well-typed **and self-contained**." Made *unwritable* (§5 construction, not a post-hoc lens): **the set of resolvable builtins must be derived from the tree being compiled, not a global seed allowlist.** This is exactly the registry's own stated deletion point — builtins become real `.dag` definitions resolved through normal import/definition resolution, the global registry is deleted, and a substrate that neither defines nor imports `utf8_decode_bytes` fails closed on it ("function not found in scope", identical to probe 2). At that point the leak is dead by construction, not by a roster.
+The gate's claim is "the dag substrate is well-typed **and self-contained**." Made *unwritable* (§5 construction, not a post-hoc lens): **the set of resolvable builtins must be derived from the tree being compiled, not a global seed allowlist.** This is exactly the registry's own stated deletion point — builtins become real `.dag` definitions resolved through normal import/definition resolution, the global registry is deleted, and a substrate that neither defines nor imports a live seed-only name such as `scan_while` fails closed on it ("function not found in scope", identical to probe 2). At that point the leak is dead by construction, not by a roster.
 
-Full dissolution (76 builtins → `.dag` defs) is a large migration, out of this node's scope. The bounded options below are stepping stones; (A) is the one that closes the literal witness *by construction*.
+Full dissolution of the flat registry into `.dag` definitions is a large migration, out of this node's scope. The bounded options below are stepping stones; (A) closes the leak class *by construction*.
 
 ## 4. Scope decision (parent-confirmed) — (A), as design + measure only
 
@@ -87,11 +87,11 @@ Result: **102 diagnostics, all "not found in scope", 10 distinct names** (all in
 | `set_contains` | 3 | dag/std | set primitive |
 | `set_insert` | 2 | dag/std | set primitive |
 | `count` | 2 | dag/gunbc/tools | general primitive |
-| `utf8_decode_bytes` | 1 | **dag/extdeps/cloud/gcp** | **the brief's witness — true domain leak (2(i) grounds it)** |
+| `utf8_decode_bytes` | 1 | **dag/extdeps/cloud/gcp** | **historical brief witness — domain leak later grounded under completed (C)** |
 | `hash_combine` | 1 | dag/std | hashing primitive |
 | `atom_identity_hash` | 1 | dag/std | hashing primitive |
 
-**Reading of the number:** the (A) rollout is **small and tractable**, not a corpus-wide flag day. 8 of the 10 (96 sites) are the accepted general-purpose primitive surface (`string_contains`, `to_string`, `concat`, `count`, `set_contains`, `set_insert`, `hash_combine`, `atom_identity_hash`) — these become `SubstrateAvailable` and are the std-grounding backlog. `filesystem_read` (5) is the already-known lens reflection fork. Exactly **one** name — `utf8_decode_bytes` — is a genuine domain leak, and it is already owned by 2(i). So (A) tags 8–9 substrate primitives + the lens-reflection intrinsic, and the only domain code that fails closed under (A) today is the single gcp site, which 2(i) is already grounding. The blast radius gates the rollout: tag the 8 primitives `SubstrateAvailable` first (no breakage), then flip seed-only enforcement once `utf8_decode_bytes` is grounded.
+**Reading of the captured number:** on 2026-06-21, 8 of the 10 names (96 sites) were general-purpose primitive calls (`string_contains`, `to_string`, `concat`, `count`, `set_contains`, `set_insert`, `hash_combine`, `atom_identity_hash`), `filesystem_read` (5) was the known lens-reflection fork, and `utf8_decode_bytes` (1) was the sole domain leak. Completed (C) has since grounded `std.encoding` `utf8_decode_bytes` and removed its registry row, so this capture does **not** identify a live domain-code failure or establish today's rollout size. Before enforcing (A), re-run the real compile measurement against the current registry, classify each remaining live row as `SubstrateAvailable` or `SeedOnly`, then prove the partition with the `scan_while` red in §7.
 
 ## 7. Discriminating witness (must go RED when the behavior is wrong)
 
