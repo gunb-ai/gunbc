@@ -29,23 +29,13 @@ import std.occurrence_identity {
   occurrence_transport_validate,
 }
 
-data occurrence_binding_resolve_authority_note: String = "THE one name-decision function for namespace canonical binding. Every type, value, and callee resolution path routes candidate populations through occurrence_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate producers enumerate structurally admissible declarations; cardinality is never decided elsewhere."
+data occurrence_binding_resolve_authority_note: String = "THE one name-decision function for namespace canonical binding. Every type, value, and callee resolution path routes candidate populations through std.occurrence_binding occurrence_binding_from_candidates, called directly. There is no forwarding wrapper: occurrence_binding_decide was a signature-identical forwarder around that function, so it was a second public name for one decision -- the section 3 nickname this module exists to prevent, in the module that claims to prevent it (review 45443). Deleted; callers here and in the witness suite now name the authority. Candidate producers enumerate structurally admissible declarations; cardinality is never decided elsewhere."
 
-data occurrence_binding_resolve_module_path_scaffold_note: String = "STAGED ADOPTION: module-path keyed candidate producers (global_bare chain, func parent closure) bridge owner module paths into BindingCandidate<String> containment paths until every production reference site threads exact OccurrenceContainmentPath identity from OccurrenceTransport. Cardinality still folds only through occurrence_binding_decide."
+data occurrence_binding_resolve_module_path_scaffold_note: String = "STAGED ADOPTION: module-path keyed candidate producers (global_bare chain, func parent closure) bridge owner module paths into BindingCandidate<String> containment paths until every production reference site threads exact OccurrenceContainmentPath identity from OccurrenceTransport. Cardinality still folds only through occurrence_binding_from_candidates."
 
 data occurrence_binding_resolve_module_path_scaffold_dissolve_on: String = "DISSOLVE-ON: type, value, and callee production consumers enumerate BindingCandidate<OccurrenceId> from OccurrenceTransport by execution; then delete module-path scaffold producers and both scaffold rows."
 
 data occurrence_binding_resolve_transport_boundary_note: String = "Transport validity is outside OccurrenceBindingResult (review 45043): malformed transports refuse as OccurrenceReferenceBindingTransportRefused before any Bound/Unbound/Ambiguous decision. ValidatedOccurrenceTransport.entries_by_id and .references_by_id are the indexed lookup authorities — resolvers never rescan OccurrenceIndex.entries per declaration, and reference_occurrence_by_id is a map_get on the carried index rather than a filter over the references list (review 45329). resolve_reference_occurrence_binding takes only OccurrenceId (review 45106): the ReferenceOccurrence row and authored segment are derived from the validated carrier — caller-supplied reference/segment facts cannot bypass that authority."
-
-fn occurrence_binding_decide<N>(
-  occurrence: BindingOccurrence<N>,
-  candidates: FreeMonoid<BindingCandidate<N>>
-) -> OccurrenceBindingResult<N> {
-  occurrence_binding_from_candidates(
-    occurrence: occurrence,
-    candidates: candidates,
-  )
-}
 
 fn occurrence_containment_to_binding_path(
   path: OccurrenceContainmentPath
@@ -178,7 +168,7 @@ fn resolve_reference_occurrence_binding_validated(
           }
         Present { value: reference } =>
           OccurrenceReferenceBindingDecided {
-            result: occurrence_binding_decide(
+            result: occurrence_binding_from_candidates(
               occurrence: binding_occurrence_from_reference(reference: reference),
               candidates: binding_candidates_for_reference(
                 validated: validated,
@@ -228,7 +218,7 @@ fn module_path_binding_decide(
   env_module_path: String,
   owners: List<String>
 ) -> OccurrenceBindingResult<String> {
-  occurrence_binding_decide(
+  occurrence_binding_from_candidates(
     occurrence: module_path_binding_occurrence(module_path: env_module_path),
     candidates: owners |> map(owner => module_path_binding_candidate(owner: owner)),
   )

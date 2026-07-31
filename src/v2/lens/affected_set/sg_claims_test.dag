@@ -1,6 +1,7 @@
 module v2.test.lens_affected_set.sg_claims
 
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.lens_affected_set.fail_closed_pending_escalation {
   fail_closed_pending_escalation_claim_holds
 }

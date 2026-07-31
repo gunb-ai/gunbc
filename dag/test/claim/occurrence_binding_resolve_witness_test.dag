@@ -18,13 +18,13 @@ import std.occurrence_identity {
   UnknownOccurrenceIdentity,
 }
 import std.occurrence_binding {
+  occurrence_binding_from_candidates,
   OccurrenceBound,
   OccurrenceUnbound,
   OccurrenceAmbiguous,
   AmbiguousBindingCandidates,
 }
 import std.occurrence_binding_resolve {
-  occurrence_binding_decide,
   binding_occurrence_from_reference,
   binding_candidate_from_declaration,
   resolve_reference_occurrence_binding,
@@ -276,7 +276,7 @@ test fn occurrence_binding_resolve_duplicate_candidates_remain_ambiguous_holds()
       match declaration {
         Present { value: decl } =>
           let duplicate = binding_candidate_from_declaration(declaration: decl)
-          match occurrence_binding_decide(
+          match occurrence_binding_from_candidates(
             occurrence: binding_occurrence_from_reference(reference: ref),
             candidates: Cons {
               head: duplicate,
@@ -347,7 +347,7 @@ test fn occurrence_binding_resolve_decide_is_the_single_fold_authority_holds() -
         transport: transport,
         occurrence: ref.occurrence,
       )
-      let manual = occurrence_binding_decide(
+      let manual = occurrence_binding_from_candidates(
         occurrence: binding_occurrence_from_reference(reference: ref),
         candidates: transport.declarations
           |> map(binding_candidate_from_declaration),
