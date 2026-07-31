@@ -57,6 +57,15 @@ pub enum Signedness {
     Unsigned,
 }
 
+pub fn std_integer_std_nat_fork_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "PR1 Signedness lift imports std.nat here, co-resolving std.nat with v2.std.nat in whole-tree compile-clean closures. Known two-std-trees fork: std.nat.Nat = CommutativeSemiring<Magnitude> with std.nat.nat_compare versus v2.std.nat.Nat = Zero|Succ with v2.std.nat.nat_compare — not consolidated in this PR. Dissolve-on: two-std-trees consolidation lands a single Nat authority and retires the parallel compare fns; until then ambiguous bare references must qualify by containment path (namespace-resolution-design section 13).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub type IntPlatform = crate::std_machine_constraints::Compose<
     i64,
     crate::std_machine_constraints::MachineWidth<PointerWidth>,
