@@ -9,7 +9,7 @@ hand-written glue.
 | Feature | Where |
 |---------|--------|
 | Product types | `Temperature`, `Forecast` |
-| Sum types | `Condition` (four variants, two with payloads) |
+| Sum types | `WeatherCondition` (four variants, two with payloads) |
 | Pattern matching | `describe_condition` |
 | Collection pipeline | `freezing_locations` (`filter` / `map`) |
 | String formatting | `daily_summary` |
