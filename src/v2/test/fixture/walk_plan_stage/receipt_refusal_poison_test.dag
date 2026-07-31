@@ -1,15 +1,14 @@
 module v2.test.fixture.walk_plan_stage.receipt_refusal_poison
 
 import extdeps.shell
-
-data walk_plan_stage_receipt_poison_path: String = "target/floor-on-success-stage-1-receipt.tsv"
+import v2.test.fixture.walk_plan_stage.common { walk_plan_stage_stage1_receipt_path }
 
 test fn walk_plan_stage_receipt_refusal_poison_holds() -> Bool {
   let target_ready = shell.Mkdir.Parents(path: "target")
   if !target_ready.success {
     false
   } else {
-    let _cleared = shell.Remove.RecursiveForce(path: walk_plan_stage_receipt_poison_path)
-    shell.Mkdir.Parents(path: walk_plan_stage_receipt_poison_path).success
+    let _cleared = shell.Remove.RecursiveForce(path: walk_plan_stage_stage1_receipt_path)
+    shell.Mkdir.Parents(path: walk_plan_stage_stage1_receipt_path).success
   }
 }
