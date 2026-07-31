@@ -148,16 +148,23 @@ type OciWireDigestParts {
   encoded: String
 }
 
+fn oci_wire_digest_parts_from_split(algorithm: String, encoded: String) -> OciWireDigestParts {
+  OciWireDigestParts {
+    algorithm: algorithm,
+    encoded: encoded,
+  }
+}
+
 fn oci_wire_digest_parts(raw: String) -> OciWireDigestParts? {
   let parts = split(s: raw, delimiter: ":")
   if length(parts) != 2 {
     none
   } else {
     Present {
-      value: OciWireDigestParts {
+      value: oci_wire_digest_parts_from_split(
         algorithm: parts.first(),
         encoded: parts.skip(n: 1).first(),
-      }
+      )
     }
   }
 }
@@ -189,12 +196,12 @@ fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
         none
       } else {
         match oci_encoded_digest(text: parts.encoded) {
-          Present { value: payload } =>
+          Present { value: encoded } =>
             Present {
               value: OciOtherDigest(
                 OciOtherDigestBody {
                   algorithm: parts.algorithm as OciOtherDigestAlgorithm,
-                  encoded: payload.encoded,
+                  encoded: encoded,
                 },
               )
             }

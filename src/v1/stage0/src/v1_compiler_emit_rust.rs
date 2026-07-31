@@ -23351,7 +23351,10 @@ pub fn emit_typed_record_lit(
         };
         let variant_surface_name = match type_name.clone() {
             Some(n) => n.clone(),
-            None => bare_qualified_name.clone().unwrap_or_default(),
+            None => match bare_qualified_name.clone() {
+                Some(qn) => qn.clone(),
+                None => "".to_string(),
+            },
         };
         match bare_qualified_name.clone() {
             None => {
@@ -23735,10 +23738,10 @@ pub fn emit_typed_record_lit(
                     None => false,
                 };
                 let optional_variant = (is_optional_variant_name(variant_surface_name.clone())
-                    && ((is_optional_parent(bare_parent_enum.clone())
+                    && (((is_optional_parent(bare_parent_enum.clone())
                         || is_optional_parent(effective_parent.clone()))
                         || (resolved_type.return_cardinality.clone()
-                            == Cardinality::CardOptional)
+                            == Cardinality::CardOptional))
                         || fn_returns_optional.clone()));
                 let rust_tn = if optional_variant.clone() {
                     if is_some_like_variant_name(variant_surface_name.clone()) {
