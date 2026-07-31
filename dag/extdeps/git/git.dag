@@ -256,6 +256,138 @@ fn git_diff_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<
   }
 }
 
+data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-remote"
+  }
+}
+
+data advertised_ref_note: String = "WHY THIS EXISTS BESIDE RemoteBranches, which already lists remote branches. RemoteBranches runs `git branch -r`, whose output is ref NAMES and nothing else, and it reads the local remote-tracking refs rather than asking the remote. Neither property is a defect in it - it answers `which remote branches does this clone know about` - but it cannot answer `what commit is the remote branch AT`, and a consumer that needs an exact head therefore cannot be built on it at all. `git ls-remote --heads` is the ref-advertisement protocol reading: it contacts the remote and returns object id plus full ref name per line, which is the pair an exact-head judgment needs.\\n\\nThe two are kept separate rather than one being widened because they answer different questions with different freshness: `branch -r` is local and offline, ls-remote is a network read that can fail on its own. Collapsing them would make every name listing pay a network round trip and inherit its failure modes."
+
+type AdvertisedRef {
+  object_id: CommitSha
+  ref_name: String
+}
+
+data advertised_ref_scan_note: String = "The scan REFUSES on a line it cannot read rather than skipping it, and the located line is carried so the refusal names what it choked on. Dropping unparseable lines is the shape DESIGN 5 calls the absorbing fallback: the answer would still be a well-formed ref list, so a consumer could not tell a complete advertisement from a partial one, and the deficit's frequency would be zero by construction. A partial ref list is exactly the input that makes an exact-head judgment answer `not published` about a branch that is in fact published."
+
+type AdvertisedRefScan
+  = AdvertisedRefsRead { refs: List<AdvertisedRef> }
+  | AdvertisedRefLineUnparsed { line: String, index: Int }
+
+data advertised_ref_heads_prefix: String = "refs/heads/"
+
+fn advertised_ref_branch_name(ref_name: String) -> String {
+  if starts_with(s: ref_name, prefix: advertised_ref_heads_prefix) {
+    substring(
+      s: ref_name,
+      start: advertised_ref_heads_prefix.length(),
+      end: ref_name.length(),
+    )
+  } else {
+    ref_name
+  }
+}
+
+type AdvertisedRefFields {
+  object_id: String
+  ref_name: String
+  seen: Int
+}
+
+fn advertised_ref_field_step(acc: AdvertisedRefFields, p: String) -> AdvertisedRefFields {
+  if acc.seen == 0 {
+    AdvertisedRefFields { object_id: p, ref_name: acc.ref_name, seen: 1 }
+  } else {
+    AdvertisedRefFields { object_id: acc.object_id, ref_name: p, seen: acc.seen + 1 }
+  }
+}
+
+fn parse_advertised_ref_line(line: String) -> AdvertisedRef? {
+  let parts = split(s: line, delimiter: "\t")
+  if count(parts) != 2 {
+    none
+  } else {
+    let fields = fold(
+      parts,
+      init: AdvertisedRefFields { object_id: "", ref_name: "", seen: 0 },
+      f: (acc, p) => advertised_ref_field_step(acc: acc, p: p),
+    )
+    if fields.object_id == "" || fields.ref_name == "" {
+      none
+    } else {
+      Present {
+        value: AdvertisedRef {
+          object_id: fields.object_id as CommitSha,
+          ref_name: fields.ref_name,
+        },
+      }
+    }
+  }
+}
+
+type AdvertisedRefFold {
+  refs: List<AdvertisedRef>
+  index: Int
+  failed_line: String
+  failed_index: Int
+  failed: Bool
+}
+
+fn advertised_ref_step(acc: AdvertisedRefFold, line: String) -> AdvertisedRefFold {
+  if acc.failed {
+    AdvertisedRefFold {
+      refs: acc.refs,
+      index: acc.index + 1,
+      failed_line: acc.failed_line,
+      failed_index: acc.failed_index,
+      failed: true,
+    }
+  } else {
+    match parse_advertised_ref_line(line: line) {
+      Absent =>
+        AdvertisedRefFold {
+          refs: acc.refs,
+          index: acc.index + 1,
+          failed_line: line,
+          failed_index: acc.index,
+          failed: true,
+        }
+      Present { value: r } =>
+        AdvertisedRefFold {
+          refs: acc.refs |> list_push(r),
+          index: acc.index + 1,
+          failed_line: "",
+          failed_index: 0,
+          failed: false,
+        }
+    }
+  }
+}
+
+fn scan_advertised_refs(lines: List<String>) -> AdvertisedRefScan {
+  let folded = fold(
+    lines,
+    init: AdvertisedRefFold {
+      refs: [],
+      index: 0,
+      failed_line: "",
+      failed_index: 0,
+      failed: false,
+    },
+    f: (acc, line) => advertised_ref_step(acc: acc, line: line),
+  )
+  if folded.failed {
+    AdvertisedRefLineUnparsed {
+      line: folded.failed_line,
+      index: folded.failed_index,
+    }
+  } else {
+    AdvertisedRefsRead { refs: folded.refs }
+  }
+}
+
 type GitRemoteRefParts {
   remote: String
   ref_name: String
@@ -442,6 +574,18 @@ service git.Core {
     transport shell { argv: ["git", "branch", "-r", "--format=%(refname:short)"] }
     exit {
       0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation LsRemoteHeads {
+    input { remote: String }
+    output { advertised: List<String> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "ls-remote", "--heads", "{remote}"] }
+    exit {
+      0 => Unit
+      2 => String "Remote unreachable or refused the ref advertisement"
       128 => String "Not a git repository"
     }
   }
