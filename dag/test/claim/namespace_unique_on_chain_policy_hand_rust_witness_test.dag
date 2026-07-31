@@ -1,6 +1,10 @@
 module test.claim.namespace_unique_on_chain_policy_hand_rust_witness_test
 
 import std.disposition { Scaffold, SingleAuthority }
+import test.retirement.model { TestModuleRetirement, RetainedNonMigratable }
+import test.retirement.namespace_unique_on_chain_policy_retained {
+  namespace_unique_on_chain_policy_retention,
+}
 import gunbc.namespace_unique_on_chain_policy_scaffold {
   namespace_unique_on_chain_policy_hand_rust_scaffold,
   namespace_unique_on_chain_policy_hand_rust_dissolve_trigger,
@@ -76,6 +80,16 @@ test fn namespace_unique_on_chain_policy_merge_repair_growth_is_censused() -> Bo
       s: namespace_unique_on_chain_policy_merge_repair_hand_rust_census_note,
       pattern: "DISSOLVE-ON:",
     )
+}
+
+test fn namespace_unique_on_chain_policy_retention_defers_to_one_census_authority() -> Bool {
+  match namespace_unique_on_chain_policy_retention.disposition {
+    RetainedNonMigratable { reason: reason } =>
+      !string_contains(s: reason, pattern: "net=+") &&
+        !string_contains(s: reason, pattern: "after=") &&
+        string_contains(s: reason, pattern: "ONE LOC census authority")
+    _ => false
+  }
 }
 
 test fn namespace_unique_on_chain_policy_cli_run_carries_no_stale_absolutes() -> Bool {
