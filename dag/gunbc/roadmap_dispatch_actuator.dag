@@ -440,6 +440,23 @@ fn dispatch_attempt_admission_path_for_instance(
   ], "")
 }
 
+data attempt_verification_receipt_path_note: String = "The attempt's verification evidence sits beside its admission receipt and its event stream, in the same attempt-state directory and keyed by the same attempt key. That placement is what lets a Publication step find the evidence for the revision it is about to publish without being told where to look: the attempt identity already addresses everything else the attempt produced, and a verification record filed anywhere else would need a second index."
+
+fn dispatch_attempt_verification_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/verification.json",
+  ], "")
+}
+
 fn dispatch_attempt_spawn_failure_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
