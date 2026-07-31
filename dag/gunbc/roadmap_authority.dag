@@ -29,7 +29,7 @@ import gunbc.roadmap_model {
   section_group,
   section_prose,
 }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
   RoadmapFocus,
   NoFocus,
@@ -1711,11 +1711,10 @@ fn node_is_startable(n: RoadmapNode) -> Bool {
   )
 }
 
+data node_closing_validation_defork_note: String = "This used to answer the binding question locally, and its answer differed from the verifier's: any ExecutionContract counted as bound here, while an empty validation list counted as UNBOUND in gunbc.roadmap_verify and refused in gunbc.roadmap_dispatch_environment. It now reads the single authority, so a node bound to a contract that closes nothing keeps its acceptance task instead of vanishing from the frontier while remaining unverifiable."
+
 fn node_lacks_closing_validation(n: RoadmapNode) -> Bool {
-  match n.execution {
-    ExecutionContractUnspecified => true
-    ExecutionContract { validations: _, extra_capabilities: _ } => false
-  }
+  !contract_has_closing_validation(contract: n.execution)
 }
 
 fn ticket_headline_of(n: RoadmapNode) -> String {

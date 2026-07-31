@@ -132,6 +132,33 @@ fn execution_contract_required_capabilities(
   }
 }
 
+data contract_closure_note: String = "ONE BINDING LAW, BECAUSE THERE WERE THREE AND THEY DISAGREED. Whether a contract closes anything was decided independently in three places and two answers were given. gunbc.roadmap_authority's node_lacks_closing_validation treated ANY ExecutionContract as bound, so a contract declaring an empty validation list counted as closed; gunbc.roadmap_verify treated the empty list as unbound; gunbc.roadmap_dispatch_environment refused it with its own reason. Empty lists are constructible — nothing stops ExecutionContract with no validations from being written — so the disagreement is reachable rather than theoretical.\\n\\nThe consequence lands on the acceptance frontier. A node bound to an empty contract disappears from nodes_needing_acceptance, because the projection reads it as bound; the verifier then reports it Unbound, and dispatch refuses to admit an environment for it. The node is simultaneously finished, unverifiable and undispatchable, and no single reading of the model says so.\\n\\nThis is the one decision, and it returns a THREE-valued closure rather than a Bool because the two unclosed states have different remedies — author a contract, versus fix the contract you authored — and dispatch_environment's located diagnostics depend on telling them apart. contract_has_closing_validation is the Bool projection for the callers that genuinely only need the predicate. No consumer re-derives either from the coproduct's shape.\\n\\nNo behaviour changes on today's corpus: all four bound nodes route through gunbc_claim_execution_contract, which always emits exactly one validation. The de-fork is what keeps that true when the fifth binding is written by hand."
+
+type ContractClosure
+  = ContractDeclaresNoValidation
+  | ContractClosesNothing
+  | ContractCloses { validations: List<ValidationOperation> }
+
+fn contract_closure(contract: WorkItemExecutionContract) -> ContractClosure {
+  match contract {
+    ExecutionContractUnspecified => ContractDeclaresNoValidation
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      if count(validations) == 0 {
+        ContractClosesNothing
+      } else {
+        ContractCloses { validations: validations }
+      }
+  }
+}
+
+fn contract_has_closing_validation(contract: WorkItemExecutionContract) -> Bool {
+  match contract_closure(contract: contract) {
+    ContractCloses { validations: _ } => true
+    ContractClosesNothing => false
+    ContractDeclaresNoValidation => false
+  }
+}
+
 fn dispatch_platform_required_capabilities() -> List<ExecutionCapability> {
   [
     GitWorkspaceCapability,

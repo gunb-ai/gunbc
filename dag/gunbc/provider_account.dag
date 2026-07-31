@@ -1,0 +1,229 @@
+module gunbc.provider_account
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import extdeps.llm.codex_auth {
+  CodexStateRoot,
+  CodexRefreshPersistence,
+  CodexPersistenceUnobserved,
+  CodexPersistenceObservedLoginOnly,
+  CodexPersistsOnRefresh,
+  codex_state_root_default_relative,
+  codex_observed_refresh_persistence,
+  codex_observed_concurrent_sessions_per_root,
+}
+
+data provider_account_naming_note: String = "THE SUFFIX CONVENTION IS OURS; THE ISOLATION IS CODEX'S. extdeps.llm.codex_auth records that CODEX_HOME selects an independent credential store — that is the CLI's capability and exists regardless of what anyone names the directories. What lives here is the choice to name them ~/.codex@<label>, which is a gunbc fact and must not be written into the extdeps module, or a reader would take our policy for the tool's requirement.\\n\\nIT WAS ALREADY IN USE BEFORE IT WAS MODELED, which is why this cites rather than invents. Observed on srv2, 2026-07-30: ~/.codex (the default), ~/.codex@briansrls-gunb.ai, and ~/.codex@gunbc-roadmap coexisting under one user. Minting a different scheme — accounts/<label>/codex, or a flat registry — would have forked a convention with three live instances and forced a migration to satisfy a model nobody needed.\\n\\nThe default root is deliberately representable. ~/.codex has no label and holds the seventeen-session personal account; a model that could only express labelled roots would have been unable to describe the account carrying nearly all the current load."
+
+type ProviderAccountLabel = NonEmptyStr where brand("ProviderAccountLabel")
+
+type CodexAccountSelection
+  = CodexDefaultAccount
+  | CodexLabelledAccount { label: ProviderAccountLabel }
+
+data codex_account_label_separator: String = "@"
+
+fn codex_account_directory_name(selection: CodexAccountSelection) -> String {
+  match selection {
+    CodexDefaultAccount => codex_state_root_default_relative as String
+    CodexLabelledAccount { label } =>
+      join([
+        codex_state_root_default_relative as String,
+        codex_account_label_separator,
+        label as String,
+      ], "")
+  }
+}
+
+fn codex_account_state_root(home: FilePath, selection: CodexAccountSelection) -> CodexStateRoot {
+  join([
+    home as String,
+    "/",
+    codex_account_directory_name(selection: selection),
+  ], "") as CodexStateRoot
+}
+
+data session_concurrency_carrier_note: String = "HOW MANY SESSIONS IS NOT AN Int, because the Int admitted numbers that are not counts. concurrent_sessions was a bare Int on every admission arm, so ExclusiveBinding's guard — greater than one refuses — passed zero and passed negative, admitting a binding of minus three sessions as comfortably as a binding of one. ConcurrentBindingSafe was worse: it admitted every Int there is without looking.\\n\\nThe two nonsense values are not equally silly. Zero is the one that would actually be written, by a caller computing a roster length that came back empty, and BindingAdmitted with zero sessions reads downstream as a successful binding of a deployment that will never run. Negative arrives from a subtraction. Neither is a count, and a guard phrased as greater-than-one cannot say so.\\n\\nSo the count becomes a shape with no zero and no negative to write. One session is its own constructor rather than the number 1, which also makes the common case — a single serve process per instance — legible at every call site. The decoder is the only way in from arithmetic, and it refuses below one with the raw value named. What stays writable is a hand-authored ManySessions literal carrying a bad total; that is the residue a coproduct cannot close, and it is not the path any caller takes."
+
+type SessionConcurrency
+  = SingleSession
+  | ManySessions { total: Int }
+
+type SessionConcurrencyDecode
+  = ConcurrencyDecoded { value: SessionConcurrency }
+  | ConcurrencyRefused { raw: Int, reason: String }
+
+fn session_concurrency_of_count(raw: Int) -> SessionConcurrencyDecode {
+  if raw < 1 {
+    ConcurrencyRefused {
+      raw: raw,
+      reason: "a session count below one is not a count; a binding of zero or fewer sessions is not a deployment",
+    }
+  } else if raw == 1 {
+    ConcurrencyDecoded { value: SingleSession }
+  } else {
+    ConcurrencyDecoded { value: ManySessions { total: raw } }
+  }
+}
+
+fn session_concurrency_total(concurrency: SessionConcurrency) -> Int {
+  match concurrency {
+    SingleSession => 1
+    ManySessions { total } => total
+  }
+}
+
+data provider_account_sharing_note: String = "HOW MANY CONCURRENT SESSIONS MAY BIND TO ONE ACCOUNT IS DERIVED FROM THE CREDENTIAL'S PERSISTENCE, never declared beside it. A declared number is a second representation of a fact the credential already determines: a store rewritten on every refresh is a write-contention point and cannot take concurrent binders, while one written only at login is read-mostly and can. Letting a deployment state its own concurrency would let it state a number the credential cannot honour, and the failure would appear an hour later as an intermittent auth error attributed to the network.\\n\\nAN OBSERVATION DOES NOT PROMOTE TO AN UNBOUNDED GUARANTEE, and the earlier mapping did exactly that. CodexPersistenceObservedLoginOnly went to ConcurrentBindingSafe, which admits ANY session count — while the observation's own note in extdeps.llm.codex_auth says, in the same breath, that it establishes neither that a refresh exchange happens at all nor how simultaneous cold starts behave. The evidence was seventeen sessions on one root on one host for three days. Reading that as 'any number of sessions is safe' is the inference the note explicitly refused, restated as a type.\\n\\nSo the observed case gets its own arm carrying the CEILING it was observed at. A binding within that ceiling is backed by evidence; a binding beyond it is refused with the ceiling named, because nothing was measured up there. ConcurrentBindingSafe survives as the arm that a PROOF would justify — the two-host experiment codex_refresh_rotation_note describes — and is deliberately unreachable from any codex persistence value today. An arm nothing can currently produce is the honest shape for a guarantee nobody has earned.\\n\\nSharingDisciplineUnknown remains the absence of an answer rather than a cautious default meaning exclusive: it is a state with no admission arm at all, so a deployment cannot be built against a credential whose behaviour has not been observed."
+
+type CredentialSharingDiscipline
+  = SharingDisciplineUnknown
+  | ExclusiveBinding
+  | ConcurrentBindingObservedUpTo { ceiling: SessionConcurrency }
+  | ConcurrentBindingSafe
+
+fn codex_observed_ceiling() -> SessionConcurrency {
+  ManySessions { total: codex_observed_concurrent_sessions_per_root }
+}
+
+fn codex_sharing_discipline(
+  persistence: CodexRefreshPersistence,
+) -> CredentialSharingDiscipline {
+  match persistence {
+    CodexPersistenceUnobserved => SharingDisciplineUnknown
+    CodexPersistenceObservedLoginOnly =>
+      ConcurrentBindingObservedUpTo { ceiling: codex_observed_ceiling() }
+    CodexPersistsOnRefresh => ExclusiveBinding
+  }
+}
+
+fn codex_current_sharing_discipline() -> CredentialSharingDiscipline {
+  codex_sharing_discipline(persistence: codex_observed_refresh_persistence)
+}
+
+data provider_account_binding_admission_note: String = "THE EARLIER VERSION OF THIS NOTE CLAIMED THE INVALID ARCHITECTURE WAS UNWRITABLE, AND THAT WAS FALSE. It said the admission is a typed value a caller must match, so the arm that proceeds anyway does not exist to be written. Both halves were true of THIS function and irrelevant to the system, because nothing called it. admit_account_binding returned a value no consumer ever received: gunbc.roadmap_dashboard_instance wrote DashboardExistingProviderState directly, with a state root and an executable and no binding at all, so every deployment in the fleet was constructed along a path this admission never touched. A wall with no doorway in front of it is vocabulary.\\n\\nThat is the exact construction-versus-validation error the rule exists to catch, committed while quoting the rule. The test the earlier note should have been held to: can the bad state be written? It could — by not calling this function, which is what every caller did.\\n\\nTHE FIX IS THAT THE TOKEN IS NOW A REQUIRED FIELD. AdmittedAccountBinding is a separate type produced by the admitted arm below, and DashboardExistingProviderState carries one, so a provider state cannot be constructed without naming an admitted binding. The admission is no longer something a caller may consult; it is something the value cannot exist without.\\n\\nWhat this closes and what it does not, stated plainly rather than claimed away: a caller cannot reach a provider state by skipping admission, because the field has no default and the type has no other constructor. A caller CAN still hand-author an AdmittedAccountBinding literal, since this language has no module-private constructors — that residue is real, it is the same one every branded carrier in this tree carries, and it is a lens question rather than a construction one. What is gone is the accidental bypass, which is the one that was actually being taken."
+
+type AdmittedAccountBinding {
+  selection: CodexAccountSelection
+  concurrency: SessionConcurrency
+  discipline: CredentialSharingDiscipline
+}
+
+type AccountBindingAdmission
+  = BindingAdmitted {
+      admitted: AdmittedAccountBinding,
+    }
+  | BindingRefusedUnknownDiscipline {
+      selection: CodexAccountSelection,
+      concurrency: SessionConcurrency,
+    }
+  | BindingRefusedExclusiveOverbound {
+      selection: CodexAccountSelection,
+      concurrency: SessionConcurrency,
+    }
+  | BindingRefusedBeyondObservedEvidence {
+      selection: CodexAccountSelection,
+      concurrency: SessionConcurrency,
+      ceiling: SessionConcurrency,
+    }
+
+fn admit_account_binding(
+  selection: CodexAccountSelection,
+  concurrency: SessionConcurrency,
+  discipline: CredentialSharingDiscipline,
+) -> AccountBindingAdmission {
+  match discipline {
+    SharingDisciplineUnknown =>
+      BindingRefusedUnknownDiscipline {
+        selection: selection,
+        concurrency: concurrency,
+      }
+    ExclusiveBinding =>
+      match concurrency {
+        SingleSession =>
+          BindingAdmitted {
+            admitted: AdmittedAccountBinding {
+              selection: selection,
+              concurrency: concurrency,
+              discipline: discipline,
+            },
+          }
+        ManySessions { total: _ } =>
+          BindingRefusedExclusiveOverbound {
+            selection: selection,
+            concurrency: concurrency,
+          }
+      }
+    ConcurrentBindingObservedUpTo { ceiling } =>
+      if session_concurrency_total(concurrency: concurrency) > session_concurrency_total(concurrency: ceiling) {
+        BindingRefusedBeyondObservedEvidence {
+          selection: selection,
+          concurrency: concurrency,
+          ceiling: ceiling,
+        }
+      } else {
+        BindingAdmitted {
+          admitted: AdmittedAccountBinding {
+            selection: selection,
+            concurrency: concurrency,
+            discipline: discipline,
+          },
+        }
+      }
+    ConcurrentBindingSafe =>
+      BindingAdmitted {
+        admitted: AdmittedAccountBinding {
+          selection: selection,
+          concurrency: concurrency,
+          discipline: discipline,
+        },
+      }
+  }
+}
+
+data evidenced_discipline_note: String = "THE SINGLE-SESSION PATH IS TOTAL BY SHAPE, which is what lets the four fleet instance declarations require an admitted token without every one of them growing a refusal arm. One session is admissible under every discipline that rests on evidence — exclusive admits exactly one, an observed ceiling is at least one, and a proven-safe credential admits any count — so the only discipline that can refuse a single session is the unknown one.\\n\\nEvidenced disciplines are therefore a separate coproduct with SharingDisciplineUnknown deliberately absent. A caller holding one of these values can mint a single-session binding with no match, because there is no arm on which that fails; a caller holding an unobserved credential cannot construct the evidence value at all. The refusal has not been softened, it has been moved to where the missing information is, which is the point at which someone must go and observe the credential.\\n\\nA binding of more than one session stays on the partial admit_account_binding above, where the ceiling is checked and the caller must match. That asymmetry is deliberate: the common case is one serve process per instance, and making the rare case carry the ceremony is cheaper than making every case carry it."
+
+type EvidencedSharingDiscipline
+  = EvidencedExclusive
+  | EvidencedObservedUpTo { ceiling: SessionConcurrency }
+  | EvidencedConcurrentSafe
+
+fn evidenced_discipline(
+  evidence: EvidencedSharingDiscipline,
+) -> CredentialSharingDiscipline {
+  match evidence {
+    EvidencedExclusive => ExclusiveBinding
+    EvidencedObservedUpTo { ceiling } =>
+      ConcurrentBindingObservedUpTo { ceiling: ceiling }
+    EvidencedConcurrentSafe => ConcurrentBindingSafe
+  }
+}
+
+fn admitted_single_session_binding(
+  selection: CodexAccountSelection,
+  evidence: EvidencedSharingDiscipline,
+) -> AdmittedAccountBinding {
+  AdmittedAccountBinding {
+    selection: selection,
+    concurrency: SingleSession,
+    discipline: evidenced_discipline(evidence: evidence),
+  }
+}
+
+data codex_roadmap_account_evidence_note: String = "The evidence the fleet's codex account actually rests on, authored as an EvidencedSharingDiscipline so that stating 'unknown' here is not expressible. It tracks codex_observed_refresh_persistence rather than restating it, and the witness pins the two together so a change to the observation that did not reach this row reds rather than drifting."
+
+data codex_roadmap_account_evidence: EvidencedSharingDiscipline = EvidencedObservedUpTo { ceiling: ManySessions { total: codex_observed_concurrent_sessions_per_root } }
+
+data codex_roadmap_account_selection_note: String = "The dedicated dashboard account, named once here rather than inferred from a path. Every instance's provider state root ends in this label by the @-suffix convention above, so reading the account back out of the directory string would work and would be a second representation — the selection is the fact and the path is derived from it, not the other way round."
+
+data codex_roadmap_account_label: ProviderAccountLabel = "gunbc-roadmap" as ProviderAccountLabel
+
+fn codex_roadmap_account_selection() -> CodexAccountSelection {
+  CodexLabelledAccount { label: codex_roadmap_account_label }
+}
+
+data provider_account_observed_roster_note: String = "THE THREE ROOTS ACTUALLY PRESENT ON srv2 as of 2026-07-30, recorded so the model can be checked against the machine rather than describing an imagined fleet. The default account carries seventeen concurrent sessions; the two labelled accounts exist and are separately authenticated. gunbc-roadmap is the dedicated dashboard account and had zero sessions at the time of observation, which is the state the belt is being built to change.\\n\\nA roster is a snapshot and will go stale — that is expected and acceptable here, because its purpose is to ground the naming convention in instances that existed rather than to track live state. Anything needing current occupancy observes the host."
+
+data srv2_observed_codex_accounts: List<String> = [
+  ".codex",
+  ".codex@briansrls-gunb.ai",
+  ".codex@gunbc-roadmap",
+]

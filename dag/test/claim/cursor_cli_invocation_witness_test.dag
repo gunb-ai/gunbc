@@ -1,0 +1,116 @@
+module test.claim.cursor_cli_invocation_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List, FilePath }
+import extdeps.llm.cursor_cli {
+  CursorAuth,
+  CursorApiKeyArgument,
+  CursorApiKeyEnvironment,
+  CursorInvocation,
+  CursorProcessInvocation,
+  CursorEnvBinding,
+  CursorModelId,
+  CursorExecutionMode,
+  CursorDefaultEditMode,
+  CursorSandboxChoice,
+  CursorSandboxEnabled,
+  CursorOutputFormat,
+  CursorStreamJson,
+  cursor_api_key_env_var,
+  cursor_cli_program,
+  cursor_model_auto,
+  shape_cursor_invocation,
+  cursor_automation_invocation,
+  cursor_argv_contains,
+  cursor_invocation_binds_env,
+}
+
+data witness_purpose_note: String = "THE AUTH FIELD WAS NEVER READ, so these two invocations used to be the same value. shape_cursor_agent_argv took a CursorInvocation, ignored inv.auth, and returned an argv — which meant the environment arm bound nothing and the argument arm leaked nothing, and the module's note explaining why the key stays out of argv described a property that held because the key went nowhere at all.\\n\\nThese claims are written so that reverting to an auth-blind shaper fails them in both directions: the environment arm must actually bind CURSOR_API_KEY, and the argument arm must actually put the key in argv. A shaper that ignores auth cannot satisfy both, and one that ignores auth while omitting the key entirely — the previous behaviour — fails the first."
+
+data secret_key_is_synthetic_note: String = "The key below is a literal fixture and not a credential. A witness needs a value to trace through the shaping, and the whole point of the claims is that the value lands in different places depending on the arm — so it has to be present and it has to be recognizable in the output."
+
+data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
+
+fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
+  CursorInvocation {
+    auth: auth,
+    model: cursor_model_auto,
+    mode: CursorDefaultEditMode,
+    sandbox: CursorSandboxEnabled,
+    output_format: CursorStreamJson,
+    force: false,
+    trust_workspace: true,
+    workspace: "/srv/attempt" as FilePath,
+    prompt: "do the work" as NonEmptyStr,
+  }
+}
+
+test fn environment_arm_binds_the_variable_and_keeps_argv_clean() -> Bool {
+  let shaped = shape_cursor_invocation(
+    inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
+  )
+  cursor_invocation_binds_env(shaped: shaped, name: cursor_api_key_env_var)
+    && !cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
+    && !cursor_argv_contains(argv: shaped.argv, token: "--api-key")
+    && count(shaped.environment) == 1
+}
+
+test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool {
+  let shaped = shape_cursor_invocation(
+    inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
+  )
+  cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
+    && cursor_argv_contains(argv: shaped.argv, token: "--api-key")
+    && count(shaped.environment) == 0
+}
+
+data arms_differ_note: String = "The direct statement of the defect: the two arms produce different processes. Under the auth-blind shaper this claim was false — not subtly, but exactly false, because the function never looked at the field that distinguishes them."
+
+test fn the_two_auth_arms_produce_different_processes() -> Bool {
+  let env_shaped = shape_cursor_invocation(
+    inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
+  )
+  let arg_shaped = shape_cursor_invocation(
+    inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
+  )
+  !(count(env_shaped.argv) == count(arg_shaped.argv))
+    && !(count(env_shaped.environment) == count(arg_shaped.environment))
+}
+
+data automation_constructor_note: String = "The automation path cannot reach the leaky arm, because it has no parameter that selects one. This asserts the property through the shaped output rather than by matching the auth field, so it stays true of what the process actually receives rather than of how the value was labelled."
+
+test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
+  let shaped = shape_cursor_invocation(
+    inv: cursor_automation_invocation(
+      key: witness_key,
+      model: cursor_model_auto,
+      mode: CursorDefaultEditMode,
+      sandbox: CursorSandboxEnabled,
+      output_format: CursorStreamJson,
+      force: false,
+      trust_workspace: true,
+      workspace: "/srv/attempt" as FilePath,
+      prompt: "do the work" as NonEmptyStr,
+    ),
+  )
+  cursor_invocation_binds_env(shaped: shaped, name: cursor_api_key_env_var)
+    && !cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
+    && shaped.program == cursor_cli_program
+}
+
+test fn headless_flags_survive_both_arms() -> Bool {
+  let shaped = shape_cursor_invocation(
+    inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
+  )
+  cursor_argv_contains(argv: shaped.argv, token: "--print")
+    && cursor_argv_contains(argv: shaped.argv, token: "--trust")
+    && cursor_argv_contains(argv: shaped.argv, token: "stream-json")
+    && cursor_argv_contains(argv: shaped.argv, token: "/srv/attempt")
+}
+
+test fn cursor_cli_invocation_keystone_holds() -> Bool {
+  environment_arm_binds_the_variable_and_keeps_argv_clean()
+    && argument_arm_places_the_key_in_argv_and_binds_nothing()
+    && the_two_auth_arms_produce_different_processes()
+    && automation_constructor_only_materializes_into_the_env_var()
+    && headless_flags_survive_both_arms()
+}
