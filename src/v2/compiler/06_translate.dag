@@ -1263,11 +1263,11 @@ fn coerce_grounded_node(
               bind_outcome(
                 o: canonical_grounding_for_node(tree: tree, node: source),
                 f: fn(grounding) {
-              coercion_fold_with_declared_priority(
-                source: grounding,
-                candidates: candidates,
-                priority: priority
-              )
+                  coercion_fold_with_declared_priority(
+                    source: grounding,
+                    candidates: candidates,
+                    priority: priority
+                  )
                 }
               )
           }

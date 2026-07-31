@@ -125,7 +125,25 @@ fn coercion_candidate_set_from_declared_inhabitants(
     )
   }
 }
-data identity_coercion_grounding_ruling: String = "Identity admission and semantic coercion are distinct judgments. When source is selected from the target model's AUTHORED target_model_edge_declared_inhabitants roster, source already inhabits that model: the closed candidate set plus exact structural witness grounds CoercionQuality.Identity without claiming a resolved type for source. This authority must never receive a candidate roster derived from source itself — that would recreate self-certification with an extra step. Non-identity coercion still requires the compiler's derived CanonicalGrounding."
+data identity_coercion_grounding_ruling: String = "Identity admission and semantic coercion are distinct judgments. When source is selected from the target model's AUTHORED target_model_edge_declared_inhabitants roster, source already inhabits that model: the closed candidate set plus exact structural witness grounds CoercionQuality.Identity without claiming a resolved type for source. This authority is reached only after v2.compiler.translate has read the roster from the target model bundle; it must never receive a candidate roster derived from source itself — that would recreate self-certification with an extra step. Non-identity coercion still requires the compiler's derived CanonicalGrounding."
+
+fn coercion_homomorphism_evidence_for_node(
+  source: Node,
+  fw: FindWitnessResult,
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source },
+      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge {
+        label: Named { name: ^coercion_homomorphism_evidence_find_witness },
+        target: fw.witness.evidence
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
 
 fn coercion_identity_from_declared_inhabitants(
   source: Node,
@@ -151,24 +169,7 @@ fn coercion_identity_from_declared_inhabitants(
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
               rule: ^homomorphism_rule_exact_structural_equality,
-              evidence: Node {
-                kind: TypeNode { connective: Conj },
-                children: [
-                  Edge {
-                    label: Named { name: ^coercion_homomorphism_evidence_source },
-                    target: source
-                  },
-                  Edge {
-                    label: Named { name: ^coercion_homomorphism_evidence_candidate },
-                    target: fw.candidate
-                  },
-                  Edge {
-                    label: Named { name: ^coercion_homomorphism_evidence_find_witness },
-                    target: fw.witness.evidence
-                  }
-                ],
-                occurrence_id: SyntheticOccurrence
-              }
+              evidence: coercion_homomorphism_evidence_for_node(source: source, fw: fw)
             }
           }
         },
@@ -276,15 +277,7 @@ fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
 ) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source.node },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  coercion_homomorphism_evidence_for_node(source: source.node, fw: fw)
 }
 fn coercion_fold_exact_structural(
   source: CanonicalGrounding,

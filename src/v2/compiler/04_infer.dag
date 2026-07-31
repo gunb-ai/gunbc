@@ -397,7 +397,7 @@ fn concat_inferred_facts_entries(
   })
 }
 
-data infer_node_facts_no_derivation_note: String = "infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts && candidate == source_facts) with algebra bound to the root itself — so the witness search reduced to root == root and always succeeded. The grounding it minted carried the source node as its own structural evidence, which inferred_facts_resolved_type reads as the node's resolved type. That is source identity standing where a derivation belongs, so this path no longer mints a grounding at all: the descent proof is still derived (it is a real judgment), and the grounding is the typed GroundingNotDerived frontier. solve_constraints itself is untouched — it remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag, to be EXTENDED with real candidate generation, never forked."
+data infer_node_facts_no_derivation_note: String = "infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts && candidate == source_facts) with algebra bound to the root itself — so the witness search reduced to root == root and always succeeded. The grounding it minted carried the source node as its own structural evidence, which inferred_facts_resolved_type reads as the node's resolved type. That is source identity standing where a derivation belongs. The two literal classes already modeled by infer_branch_is_bool_literal_atom and infer_branch_is_int_literal_atom now raise those existing derivations to leaf facts; every other node on this path carries the typed GroundingNotDerived frontier. solve_constraints itself is untouched — it remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag, to be EXTENDED with real candidate generation, never forked."
 
 fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
@@ -1444,6 +1444,8 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
   }
 }
 
+data infer_literal_subtree_diagnostic_discharge_note: String = "A literal's modeled type derives from its whole representation, including the magnitude subtree. Its derivation discharges that subtree's local type frontier; propagating those diagnostics past the literal would report GroundingNotDerived after Int or Bool was derived. This discharge is restricted to the two modeled literal predicates, so unrelated underived children remain counted."
+
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -1467,7 +1469,12 @@ fn infer_gather_fold_step(
     )
   } else {
     let merged_entries = concat_inferred_facts_entries(a: acc.entries, b: child.entries)
-    let merged_pending = diagnostics_merge(outer: acc.pending, inner: child.pending)
+    let merged_pending = if infer_branch_is_bool_literal_atom(node: acc.node)
+      || infer_branch_is_int_literal_atom(node: acc.node) {
+      acc.pending
+    } else {
+      diagnostics_merge(outer: acc.pending, inner: child.pending)
+    }
     let children_remaining = acc.children_remaining - 1
     if acc.await_branch_row && children_remaining == 0 {
       infer_gather_branch_row_on_entries(
