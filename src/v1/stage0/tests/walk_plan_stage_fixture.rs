@@ -7,6 +7,14 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+/// Must match `walk_plan_stage_attempt_id` in `common.dag` — the executor refuses
+/// staged walks without `GUNBC_WALK_ATTEMPT_ID` or the GitHub triple.
+const ATTEMPT_ID: &str = "walk-plan-stage-fixture";
+
+/// Must match `walk_plan_stage_stage1_receipt_path` in `common.dag`.
+const STAGE1_RECEIPT_REL: &str =
+    "target/floor-attempt-walk-plan-stage-fixture/on-success-stage-1-receipt.tsv";
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -38,6 +46,7 @@ fn run_fixture_plan(plan_function: &str) -> (i32, String) {
     );
     let output = Command::new(&bin)
         .current_dir(&root)
+        .env("GUNBC_WALK_ATTEMPT_ID", ATTEMPT_ID)
         .args([
             "--source-root",
             "dag",
@@ -60,7 +69,7 @@ fn stage2_marker_path(root: &PathBuf) -> PathBuf {
 }
 
 fn stage1_receipt_path(root: &PathBuf) -> PathBuf {
-    root.join("target/floor-on-success-stage-1-receipt.tsv")
+    root.join(STAGE1_RECEIPT_REL)
 }
 
 #[test]
