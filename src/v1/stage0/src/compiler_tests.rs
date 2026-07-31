@@ -2030,10 +2030,6 @@ mod compiler_tests {
                         source_indices.clone(),
                         intern_table.clone(),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
-                        crate::v1_rt::rc_empty_map::<
-                            String,
-                            std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>,
-                        >(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();

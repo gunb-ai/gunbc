@@ -134,10 +134,6 @@ name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"
 
 [[bin]]
-name = "measure_selected_closure_overlap"
-path = "src/bin/measure_selected_closure_overlap.rs"
-
-[[bin]]
 name = "resolution_divergence_census"
 path = "src/bin/resolution_divergence_census.rs"
 
