@@ -378,10 +378,4 @@ fn json_text_parse_value(s: String, i: Int) -> JsonTextParseResult {
   }
 }
 
-fn json_text_parseable(s: String) -> Bool {
-  match json_text_parse_value(s: s, i: 0) {
-    JsonTextParseOk { end: end } =>
-      json_text_skip_ws(s: s, i: end) == s.length()
-    JsonTextParseFail { end: _ } => false
-  }
-}
+data json_text_whole_document_reading_note: String = "json_text_parseable used to live here, deciding on the span scanner alone whether a whole document was JSON. That is the same question extdeps.languages.json.parse answers by CONSTRUCTING the value, so the corpus had one procedure deciding whether text is JSON and another deciding what it contains - two readings of one RFC that can disagree (DESIGN 3; review 44043 was that disagreement, on the exponent production, found only because a witness pinned the surfaces together). The whole-document reading now derives from parse_json and lives beside it. What stays here is the SPAN question, which is a different question and has its own consumer: json_text_parse_value answers where a value ends at an offset INSIDE a larger text, which extdeps.llm.cli needs to walk a config document and which parse_json cannot answer because it requires full consumption. RESIDUAL FORK, declared rather than left silent: json_text_parse_object/_array and their counterparts in parse.dag still decide object and array syntax independently - parse.dag reuses the string and number scanners here but recurses on its own for the two container productions. Dissolve-on: extdeps.llm.cli takes its span from parse_json_value_at's next field, at which point json_text_parse_value/_object/_object_members/_array/_array_values/_literal have no consumer and delete, leaving one reading of every production."

@@ -1,0 +1,278 @@
+module extdeps.languages.json.parse
+
+import std.types { String, Int, List, Bool }
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  JsonKeyValue, json_kv,
+}
+import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
+  json_text_skip_ws, json_text_parse_string, json_text_parse_number,
+  json_number_lexeme_unchecked, is_json_digit_char,
+}
+
+data json_parse_note: String = "parse_json is the FORWARD reading of RFC 8259: text -> JsonValue, the inverse of extdeps.languages.json.emit.serialize_json. It reuses the recursive-descent span scanner in extdeps.languages.json.grammar (json_text_parse_string / json_text_parse_number / json_text_skip_ws) to find value boundaries, and builds the JsonValue at each span. Interim standalone parser (a second reading alongside emit); DISSOLVES WHEN json_production_rows are wired into the general GrammarRelationRow ingest machinery (src/v2/compiler/03_ingest) so parse is a witnessed instance of emit^-1 (DESIGN 4). Escapes: single-char backslash escapes are decoded; a lone trailing backslash and unknown escapes pass the following char through. \\uXXXX IS decoded to its code point, which is what makes the round-trip total against escape_json_string: that emitter maps code points 0-31 other than the six with short escapes to \\uXXXX, so a parser that passed \\u through would silently corrupt every control character a receipt detail field can carry. Surrogate PAIRS are not recombined - serialize_json never emits one (it escapes only 0-31), so a lone \\uXXXX decode is exact over this emitter's output; foreign JSON carrying an astral character as a surrogate pair is outside the declared fragment. A malformed \\u (fewer than four hex digits) takes the unknown-escape arm rather than refusing, matching the arm above it."
+
+type JsonParse =
+    JsonParsed { value: JsonValue, next: Int }
+  | JsonParseFail { at: Int }
+
+fn json_hex_nibble(c: String) -> Int {
+  if c == "0" { 0 }
+  else if c == "1" { 1 }
+  else if c == "2" { 2 }
+  else if c == "3" { 3 }
+  else if c == "4" { 4 }
+  else if c == "5" { 5 }
+  else if c == "6" { 6 }
+  else if c == "7" { 7 }
+  else if c == "8" { 8 }
+  else if c == "9" { 9 }
+  else if c == "a" || c == "A" { 10 }
+  else if c == "b" || c == "B" { 11 }
+  else if c == "c" || c == "C" { 12 }
+  else if c == "d" || c == "D" { 13 }
+  else if c == "e" || c == "E" { 14 }
+  else if c == "f" || c == "F" { 15 }
+  else { 0 - 1 }
+}
+
+fn json_hex4_at(s: String, i: Int) -> Int {
+  if i + 4 > s.length() {
+    0 - 1
+  } else {
+    let h0 = json_hex_nibble(c: char_at(s: s, i: i))
+    let h1 = json_hex_nibble(c: char_at(s: s, i: i + 1))
+    let h2 = json_hex_nibble(c: char_at(s: s, i: i + 2))
+    let h3 = json_hex_nibble(c: char_at(s: s, i: i + 3))
+    if h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0 {
+      0 - 1
+    } else {
+      h0 * 4096 + h1 * 256 + h2 * 16 + h3
+    }
+  }
+}
+
+fn json_unescape_from(s: String, i: Int, acc: String) -> String {
+  if i >= s.length() {
+    acc
+  } else {
+    let c = char_at(s: s, i: i)
+    if c == "\\" {
+      if i + 1 >= s.length() {
+        acc
+      } else {
+        let e = char_at(s: s, i: i + 1)
+        if e == "u" {
+          let cp = json_hex4_at(s: s, i: i + 2)
+          if cp < 0 {
+            json_unescape_from(s: s, i: i + 2, acc: concat(acc, e))
+          } else {
+            json_unescape_from(s: s, i: i + 6, acc: concat(acc, from_code_point(cp: cp)))
+          }
+        } else {
+          let u = if e == "n" { from_code_point(cp: 10) }
+            else if e == "t" { from_code_point(cp: 9) }
+            else if e == "r" { from_code_point(cp: 13) }
+            else if e == "b" { from_code_point(cp: 8) }
+            else if e == "f" { from_code_point(cp: 12) }
+            else { e }
+          json_unescape_from(s: s, i: i + 2, acc: concat(acc, u))
+        }
+      }
+    } else {
+      json_unescape_from(s: s, i: i + 1, acc: concat(acc, c))
+    }
+  }
+}
+
+fn json_unescape(s: String) -> String {
+  json_unescape_from(s: s, i: 0, acc: "")
+}
+
+fn parse_json_string_at(s: String, i: Int) -> JsonParse {
+  match json_text_parse_string(s: s, i: i) {
+    JsonTextParseFail { end: e } => JsonParseFail { at: e }
+    JsonTextParseOk { end: e } =>
+      JsonParsed {
+        value: JsonString { value: json_unescape(s: substring(s: s, start: i + 1, end: e - 1)) },
+        next: e,
+      }
+  }
+}
+
+fn parse_json_number_at(s: String, i: Int) -> JsonParse {
+  match json_text_parse_number(s: s, i: i) {
+    JsonTextParseFail { end: e } => JsonParseFail { at: e }
+    JsonTextParseOk { end: e } =>
+      JsonParsed {
+        value: JsonNumber { lexeme: json_number_lexeme_unchecked(s: substring(s: s, start: i, end: e)) },
+        next: e,
+      }
+  }
+}
+
+fn parse_json_literal_at(s: String, i: Int, lit: String, v: JsonValue) -> JsonParse {
+  if substring(s: s, start: i, end: i + lit.length()) == lit {
+    JsonParsed { value: v, next: i + lit.length() }
+  } else {
+    JsonParseFail { at: i }
+  }
+}
+
+fn json_string_value_or_empty(v: JsonValue) -> String {
+  match v {
+    JsonString { value: sv } => sv
+    _ => ""
+  }
+}
+
+data json_member_lookup_note: String = "RFC 8259 permits duplicate names in an object and does not say which one wins, so JsonObject keeps members as an authored LIST rather than a map. A reader that folds that list into last-wins silently picks a value the document never committed to - and for an identity field like schema or verdict, last-wins is exactly how a document carrying two verdicts reads as whichever one an attacker put second. This lookup therefore reports duplication as its own outcome instead of resolving it, leaving the choice to refuse with the domain decoder that knows the field is an identity. JsonMemberNotAnObject is separate from JsonMemberAbsent for the same reason: a scalar document has not omitted a field, it has no fields at all, and collapsing the two would let a bare string satisfy an absence check."
+
+type JsonMemberLookup
+  = JsonMemberFound { value: JsonValue }
+  | JsonMemberAbsent
+  | JsonMemberDuplicated { count: Int }
+  | JsonMemberNotAnObject
+
+fn json_object_members_named(members: List<JsonKeyValue>, key: String) -> List<JsonValue> {
+  map(filter(members, m => m.key == key), m => m.value)
+}
+
+fn json_object_unique_member(v: JsonValue, key: String) -> JsonMemberLookup {
+  match v {
+    JsonObject { members: ms } => {
+      let hits = json_object_members_named(members: ms, key: key)
+      let n = count(hits)
+      if n == 0 {
+        JsonMemberAbsent
+      } else if n == 1 {
+        JsonMemberFound { value: fold(hits, init: JsonNull, f: (acc, x) => x) }
+      } else {
+        JsonMemberDuplicated { count: n }
+      }
+    }
+    _ => JsonMemberNotAnObject
+  }
+}
+
+type JsonArrayAcc =
+    JsonArrayAccOk { elements: List<JsonValue>, next: Int }
+  | JsonArrayAccFail { at: Int }
+
+fn parse_json_array_elements(s: String, i: Int, acc: List<JsonValue>) -> JsonArrayAcc {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, i: p) == "]" {
+    JsonArrayAccOk { elements: acc, next: p + 1 }
+  } else {
+    match parse_json_value_at(s: s, i: p) {
+      JsonParseFail { at: a } => JsonArrayAccFail { at: a }
+      JsonParsed { value: v, next: n } => {
+        let acc2 = acc |> list_push(v)
+        let q = json_text_skip_ws(s: s, i: n)
+        if char_at(s: s, i: q) == "]" {
+          JsonArrayAccOk { elements: acc2, next: q + 1 }
+        } else if char_at(s: s, i: q) == "," {
+          parse_json_array_elements(s: s, i: q + 1, acc: acc2)
+        } else {
+          JsonArrayAccFail { at: q }
+        }
+      }
+    }
+  }
+}
+
+fn parse_json_array_at(s: String, i: Int) -> JsonParse {
+  match parse_json_array_elements(s: s, i: i + 1, acc: []) {
+    JsonArrayAccFail { at: a } => JsonParseFail { at: a }
+    JsonArrayAccOk { elements: els, next: n } => JsonParsed { value: JsonArray { elements: els }, next: n }
+  }
+}
+
+type JsonObjectAcc =
+    JsonObjectAccOk { members: List<JsonKeyValue>, next: Int }
+  | JsonObjectAccFail { at: Int }
+
+fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> JsonObjectAcc {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, i: p) == "}" {
+    JsonObjectAccOk { members: acc, next: p + 1 }
+  } else {
+    match parse_json_string_at(s: s, i: p) {
+      JsonParseFail { at: a } => JsonObjectAccFail { at: a }
+      JsonParsed { value: keyval, next: key_end } => {
+        let c = json_text_skip_ws(s: s, i: key_end)
+        if char_at(s: s, i: c) != ":" {
+          JsonObjectAccFail { at: c }
+        } else {
+          match parse_json_value_at(s: s, i: c + 1) {
+            JsonParseFail { at: a } => JsonObjectAccFail { at: a }
+            JsonParsed { value: v, next: val_end } => {
+              let acc2 = acc |> list_push(json_kv(key: json_string_value_or_empty(v: keyval), value: v))
+              let q = json_text_skip_ws(s: s, i: val_end)
+              if char_at(s: s, i: q) == "}" {
+                JsonObjectAccOk { members: acc2, next: q + 1 }
+              } else if char_at(s: s, i: q) == "," {
+                parse_json_object_members(s: s, i: q + 1, acc: acc2)
+              } else {
+                JsonObjectAccFail { at: q }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn parse_json_object_at(s: String, i: Int) -> JsonParse {
+  match parse_json_object_members(s: s, i: i + 1, acc: []) {
+    JsonObjectAccFail { at: a } => JsonParseFail { at: a }
+    JsonObjectAccOk { members: ms, next: n } => JsonParsed { value: JsonObject { members: ms }, next: n }
+  }
+}
+
+fn parse_json_value_at(s: String, i: Int) -> JsonParse {
+  let p = json_text_skip_ws(s: s, i: i)
+  if p >= s.length() {
+    JsonParseFail { at: p }
+  } else {
+    let c = char_at(s: s, i: p)
+    if c == "{" { parse_json_object_at(s: s, i: p) }
+    else if c == "[" { parse_json_array_at(s: s, i: p) }
+    else if c == "\"" { parse_json_string_at(s: s, i: p) }
+    else if c == "t" { parse_json_literal_at(s: s, i: p, lit: "true", v: JsonBool { value: true }) }
+    else if c == "f" { parse_json_literal_at(s: s, i: p, lit: "false", v: JsonBool { value: false }) }
+    else if c == "n" { parse_json_literal_at(s: s, i: p, lit: "null", v: JsonNull) }
+    else if c == "-" || is_json_digit_char(c: c) { parse_json_number_at(s: s, i: p) }
+    else { JsonParseFail { at: p } }
+  }
+}
+
+fn some_json_value(v: JsonValue) -> JsonValue? {
+  Present { value: v }
+}
+
+fn parse_json_fully_consumed(s: String, v: JsonValue, n: Int) -> JsonValue? {
+  if json_text_skip_ws(s: s, i: n) == s.length() {
+    some_json_value(v: v)
+  } else {
+    none
+  }
+}
+
+fn parse_json(s: String) -> JsonValue? {
+  match parse_json_value_at(s: s, i: 0) {
+    JsonParseFail { at: _ } => none
+    JsonParsed { value: v, next: n } => parse_json_fully_consumed(s: s, v: v, n: n)
+  }
+}
+
+data json_text_parseable_derivation_note: String = "This is the single recognition authority: whether text IS JSON is decided by whether it PARSES, not by a second scanner that answers the same question independently. The span scanner in extdeps.languages.json.grammar previously carried its own json_text_parseable, which meant one procedure decided whether a document was JSON and another decided what it contained - two readings of one RFC that can disagree, which is the fork DESIGN 3 names (the exponent defect in review 44043 was exactly that, caught only because a witness pinned the two surfaces to each other). Recognition now derives from construction, so a document this returns true for is a document parse_json produced a value from, by definition rather than by agreement. The scanner keeps its span productions, which parse_json calls to find value boundaries; what it no longer keeps is an opinion about the whole document."
+
+fn json_text_parseable(s: String) -> Bool {
+  match parse_json(s: s) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}

@@ -9,11 +9,11 @@ import std.measure {
 }
 import extdeps.languages.json.grammar {
   JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
-  json_text_parseable,
   json_text_parse_string,
   json_text_skip_ws,
   json_text_starts_with_at,
 }
+import extdeps.languages.json.parse { json_text_parseable }
 
 type CodexItemActivity
   = CodexRunningCommand

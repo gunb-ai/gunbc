@@ -1,0 +1,98 @@
+module test.claim.json_parse_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data json_parse_witness_note: String = "parse_json is the forward reading of RFC 8259 and serialize_json is the backward one, so the claims below are stated as round-trips over one JsonValue rather than against golden bytes (DESIGN 4). The escape claims are the discriminating ones: three plain round-trips pass without the escape decoding being right at all, which is exactly how a plausible-but-wrong unescaper survives. The \\u claims fail against an unescaper that passes \\u through, which is what this parser did before it carried json_hex4_at - a receipt detail field carrying a control character would have silently gained four literal hex characters and lost the character itself."
+
+fn parsed_string_of(text: String) -> String {
+  match parse_json(s: text) {
+    Present { value: v } => json_string_value_or_empty(v: v)
+    Absent => "<refused>"
+  }
+}
+
+fn round_trips(text: String) -> Bool {
+  match parse_json(s: text) {
+    Present { value: v } => serialize_json(v: v) == text
+    Absent => false
+  }
+}
+
+test fn an_object_round_trips_through_both_readings() -> Bool {
+  round_trips(text: "\{\"a\": [1, 2], \"b\": \"x\"}")
+}
+
+test fn a_nested_object_round_trips() -> Bool {
+  round_trips(text: "\{\"reading\": \{\"0\": 40, \"1\": 55}, \"output\": \{\"0\": 30}}")
+}
+
+test fn literals_and_numbers_round_trip() -> Bool {
+  round_trips(text: "[true, false, null, -7, 1.5]")
+}
+
+test fn garbage_is_refused() -> Bool {
+  match parse_json(s: "\{not json") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn trailing_content_after_a_complete_value_is_refused() -> Bool {
+  match parse_json(s: "\{} extra") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_newline_inside_a_string_survives_the_round_trip() -> Bool {
+  let expected = concat("a", concat(from_code_point(cp: 10), "b"))
+  parsed_string_of(text: "\"a\\nb\"") == expected
+    && round_trips(text: "\"a\\nb\"")
+}
+
+test fn a_tab_inside_a_string_survives_the_round_trip() -> Bool {
+  let expected = concat("a", concat(from_code_point(cp: 9), "b"))
+  parsed_string_of(text: "\"a\\tb\"") == expected
+    && round_trips(text: "\"a\\tb\"")
+}
+
+test fn a_quote_and_a_backslash_survive_the_round_trip() -> Bool {
+  let expected = concat("a", concat("\"", concat("\\", "b")))
+  parsed_string_of(text: "\"a\\\"\\\\b\"") == expected
+    && round_trips(text: "\"a\\\"\\\\b\"")
+}
+
+test fn a_literal_backslash_t_does_not_become_a_tab() -> Bool {
+  let two_chars = concat("\\", "t")
+  let emitted = serialize_json(v: JsonString { value: two_chars })
+  parsed_string_of(text: emitted) == two_chars
+    && parsed_string_of(text: emitted) != from_code_point(cp: 9)
+}
+
+test fn a_unicode_escape_is_decoded_not_passed_through() -> Bool {
+  parsed_string_of(text: "\"\\u0041\"") == "A"
+}
+
+test fn a_control_character_with_no_short_escape_survives_the_round_trip() -> Bool {
+  let vertical_tab = from_code_point(cp: 11)
+  parsed_string_of(text: "\"\\u000B\"") == vertical_tab
+    && round_trips(text: "\"\\u000B\"")
+    && serialize_json(v: JsonString { value: vertical_tab }) == "\"\\u000B\""
+}
+
+test fn every_control_character_an_emitter_escapes_comes_back_unchanged() -> Bool {
+  let sample = concat(
+    from_code_point(cp: 1),
+    concat(from_code_point(cp: 9),
+    concat(from_code_point(cp: 10),
+    concat(from_code_point(cp: 11),
+    concat(from_code_point(cp: 27), from_code_point(cp: 31))))),
+  )
+  parsed_string_of(text: serialize_json(v: JsonString { value: sample })) == sample
+}
+
+test fn a_lowercase_hex_escape_decodes_the_same_as_uppercase() -> Bool {
+  parsed_string_of(text: "\"\\u001b\"") == parsed_string_of(text: "\"\\u001B\"")
+    && parsed_string_of(text: "\"\\u001b\"") == from_code_point(cp: 27)
+}
