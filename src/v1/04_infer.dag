@@ -25,7 +25,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, DeclaredTypeConformanceUnjudged, MissingField, AmbiguousReference,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -653,7 +653,19 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  if !both_ground { [] }
+  if !both_ground {
+    if node_type_shape(n: declared, source_indices: si) == node_type_shape(n: produced, source_indices: si) {
+      []
+    } else {
+      [make_error_node(
+        diagnostic: DeclaredTypeConformanceUnjudged {
+          declared_type: node_type_shape(n: declared, source_indices: si),
+          produced_type: node_type_shape(n: produced, source_indices: si),
+          span: span
+        },
+        module_name: scope.module_name)]
+    }
+  }
   else if node_type_compatible(left: declared, right: produced, source_indices: si) { [] }
   else {
     [type_mismatch_error(
