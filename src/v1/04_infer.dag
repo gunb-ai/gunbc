@@ -655,6 +655,16 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
     || conformance_ground_element_collection(n: n, source_indices: source_indices)
 }
 
+fn conformance_declared_record_name(n: Node, scope: InferScope) -> String {
+  let nm = authored_name_at(source_indices: scope.type_env.source_indices, node: n)
+  if n.connective == Conj && n.return_cardinality == Required && nm != "" && !is_kernel_type(name: nm) {
+    match lookup_type_by_name(env: scope.type_env, name: nm) {
+      Present { value: decl } => if decl.connective == Conj { nm } else { "" }
+      Absent => ""
+    }
+  } else { "" }
+}
+
 fn conformance_expanded_node(n: Node, scope: InferScope) -> Node {
   let peeled = peel_where_refinement_base(ty: n, type_env: scope.type_env)
   match lookup_type_for(env: scope.type_env, node: peeled) {
@@ -677,6 +687,16 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
          right: conformance_expanded_node(n: produced, scope: scope),
          source_indices: si) {
       []
+    } else if conformance_declared_record_name(n: declared, scope: scope) != ""
+           && conformance_declared_record_name(n: produced, scope: scope) != ""
+           && conformance_declared_record_name(n: declared, scope: scope)
+              != conformance_declared_record_name(n: produced, scope: scope) {
+      [type_mismatch_error(
+        expected: node_type_shape(n: declared, source_indices: si),
+        got: node_type_shape(n: produced, source_indices: si),
+        span: span,
+        module_name: scope.module_name
+      )]
     } else {
       [make_error_node(
         diagnostic: DeclaredTypeConformanceUnjudged {
