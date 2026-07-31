@@ -1,6 +1,6 @@
 module tools.artifact_div_probe
 
-fn probe_len(a: GeneratedArtifact) -> Int {
+fn probe_len(a: gunbc.generated_artifact.GeneratedArtifact) -> Int {
   string_length(s: artifact_generate(a: a))
 }
 
@@ -17,3 +17,21 @@ func probe_crate_layout_rs() -> Int { probe_len(a: Stage0CrateLayoutGeneratedRsA
 func probe_crate_partition() -> Int { probe_len(a: Stage0CratePartitionGeneratedDagArtifact) }
 func probe_live_apply() -> Int { probe_len(a: LiveDeployApplyScriptArtifact) }
 func probe_live_retract() -> Int { probe_len(a: LiveDeployRetractScriptArtifact) }
+
+func probe_plans() -> Int {
+  fold(all_plans, init: 0, f: fn(acc, pl) {
+    acc + probe_len(a: PlanArtifact { plan: pl })
+  })
+}
+
+func probe_autoinstall() -> Int {
+  fold(fleet_autoinstall_specs, init: 0, f: fn(acc, s) {
+    acc + probe_len(a: AutoinstallUserDataArtifact { spec: s })
+  })
+}
+
+func probe_proxydhcp() -> Int {
+  fold(fleet_install_server_specs, init: 0, f: fn(acc, s) {
+    acc + probe_len(a: ProxyDhcpDnsmasqArtifact { spec: s })
+  })
+}
