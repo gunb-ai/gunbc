@@ -5720,7 +5720,16 @@ mod tests {
         let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
             .lock()
             .unwrap_or_else(|p| p.into_inner());
-        f()
+        let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match prior_trace {
+            Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
+            None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
+        }
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
     }
 
     fn finalization_record(resolve_counts: &[u64]) -> BatchRecord {
@@ -7087,7 +7096,9 @@ mod tests {
 
     // Discriminating control (DESIGN §5): post-floor pure demand must appear in the
     // on-success materialization receipt and NOT in the ordinary-floor receipt, which
-    // is harvested before stages run.
+    // is harvested before stages run. PROCESS_EVAL_RECOMPUTE_TEST_LOCK serializes every
+    // trace-enabled ctx Drop and restores GUNBC_RECOMPUTE_TRACE afterward so sibling
+    // tests cannot pollute the process accumulator between fixture drains (review 45737).
     #[test]
     fn on_success_materialization_receipt_separates_from_ordinary_floor() {
         with_process_eval_recompute_test_lock(|| {
@@ -7188,53 +7199,56 @@ mod tests {
     // equivalence oracle at the value grain — and (b) record verified hits, so
     // "the cache worked" is a counted fact, never an assumption. Assertions
     // are per-ctx (eval_call_memo_counters), immune to test-process sharing.
+    // Serialized on PROCESS_EVAL_RECOMPUTE_TEST_LOCK: ctx Drop absorbs ledger
+    // totals into the process accumulator when trace is on, so this test must
+    // not overlap materialization-receipt walks (review 45737).
     #[test]
     fn eval_call_memo_serves_verified_hits_with_identical_values() {
-        // Every ledger-touching test must set the trace var BEFORE its first
-        // eval: the enablement latch is process-wide and initialized once, so
-        // whichever test evaluates first fixes it for every sibling (this
-        // exact ordering red-failed the receipt test when this test ran
-        // first without the var).
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
-        let root = workspace_root();
-        let roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
-        ];
-        let entry = root
-            .join("dag/test/claim/materialization_ladder_witness_test.dag")
-            .to_string_lossy()
-            .into_owned();
-        let (graph, indices) =
-            resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
-        // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
-        // the hermetic envelope is exact; a service call sneaking in refuses loudly.
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-        let first = run_value(
-            &ctx,
-            "cross_frame_duplicate_discharged_by_covering_provider",
-        )
-        .expect("first evaluation");
-        let (_, misses_after_first, _) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
-        let second = run_value(
-            &ctx,
-            "cross_frame_duplicate_discharged_by_covering_provider",
-        )
-        .expect("second evaluation");
-        assert!(
-            first == second,
-            "memo-served evaluation must equal the recomputed one"
-        );
-        let (hits, misses, overflow) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
-        assert!(
-            hits > 0,
-            "second identical evaluation must serve verified hits from the eval memo"
-        );
-        assert!(
-            misses >= misses_after_first,
-            "miss counter is monotone (counted, never reset)"
-        );
-        assert_eq!(overflow, 0, "tiny workload must not hit the entry cap");
+        with_process_eval_recompute_test_lock(|| {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            let root = workspace_root();
+            let roots = vec![
+                root.join("src/v2").to_string_lossy().into_owned(),
+                root.join("dag").to_string_lossy().into_owned(),
+            ];
+            let entry = root
+                .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                .to_string_lossy()
+                .into_owned();
+            let (graph, indices) =
+                resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
+            // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+            // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+            let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let first = run_value(
+                &ctx,
+                "cross_frame_duplicate_discharged_by_covering_provider",
+            )
+            .expect("first evaluation");
+            let (_, misses_after_first, _) =
+                v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+            let second = run_value(
+                &ctx,
+                "cross_frame_duplicate_discharged_by_covering_provider",
+            )
+            .expect("second evaluation");
+            assert!(
+                first == second,
+                "memo-served evaluation must equal the recomputed one"
+            );
+            let (hits, misses, overflow) =
+                v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+            assert!(
+                hits > 0,
+                "second identical evaluation must serve verified hits from the eval memo"
+            );
+            assert!(
+                misses >= misses_after_first,
+                "miss counter is monotone (counted, never reset)"
+            );
+            assert_eq!(overflow, 0, "tiny workload must not hit the entry cap");
+        });
     }
 
     fn single(entry: &str, function: &str) -> Runnable {
