@@ -19,7 +19,7 @@ env:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 75
+    timeout-minutes: 70
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -75,11 +75,6 @@ jobs:
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: cargo fmt --all --check (fast gate; fails in seconds, before the release build)
         run: "\"$CARGO_BIN\" fmt --all --check"
-        timeout-minutes: 5
-      - name: cargo check -p v1-compiler-tests --tests (compile gate; no test execution)
-        run: |
-          # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
-          "$CARGO_BIN" 'check' '-p' 'v1-compiler-tests' '--tests'
         timeout-minutes: 5
       - name: Build release bins (claim_executor + gunbc)
         run: |

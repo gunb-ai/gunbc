@@ -190,7 +190,6 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
         source_indices.clone(),
         intern_table.clone(),
         v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
-        global_bare_variant_locals.clone(),
     );
     assert!(
         tc.diagnostics.is_empty(),

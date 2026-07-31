@@ -601,12 +601,12 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StringScanResult {
-    ClosedString { content: Rc<Vec<i64>>, end_pos: i64 },
-    InterpolationStart { content: Rc<Vec<i64>>, end_pos: i64 },
-    UnterminatedString { content: Rc<Vec<i64>>, end_pos: i64 },
+    ClosedString { content: String, end_pos: i64 },
+    InterpolationStart { content: String, end_pos: i64 },
+    UnterminatedString { content: String, end_pos: i64 },
 }
 impl StringScanResult {
-    pub fn content(&self) -> Rc<Vec<i64>> {
+    pub fn content(&self) -> String {
         match self {
             StringScanResult::ClosedString { content: __val, .. } => __val.clone(),
             StringScanResult::InterpolationStart { content: __val, .. } => __val.clone(),
@@ -749,51 +749,53 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
 pub fn scan_string_body(
     mut source: Rc<SourceRef>,
     mut pos: i64,
-    mut acc: Rc<Vec<i64>>,
+    mut acc: Rc<Vec<String>>,
 ) -> Rc<StringScanResult> {
     loop {
         if (pos.clone() >= source_len(source.clone())) {
             break Rc::new(StringScanResult::UnterminatedString {
-                content: acc.clone(),
+                content: acc.clone().join(&"".to_string()),
                 end_pos: pos.clone(),
             });
         } else {
-            let ch = source.source_chars.clone()[(pos.clone()) as usize].clone();
-            if (ch.clone() == 34) {
+            let ch = source_char(source.clone(), pos.clone());
+            if (ch.clone() == "\"".to_string()) {
                 break Rc::new(StringScanResult::ClosedString {
-                    content: acc.clone(),
+                    content: acc.clone().join(&"".to_string()),
                     end_pos: pos.clone(),
                 });
             } else {
-                if (ch.clone() == 92) {
+                if (ch.clone() == "\\".to_string()) {
                     if ((pos.clone() + 1) < source_len(source.clone())) {
-                        let escaped =
-                            source.source_chars.clone()[(pos.clone() + 1) as usize].clone();
+                        let escaped = source_char(source.clone(), (pos.clone() + 1));
                         {
                             let __tco_0 = (pos + 2);
-                            let __tco_1 =
-                                v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), escaped.clone());
+                            let __tco_1 = v1_rt::rc_list_push(
+                                v1_rt::rc_list_push(acc, "\\".to_string()),
+                                escaped.clone(),
+                            );
                             pos = __tco_0;
                             acc = __tco_1;
                             continue;
                         }
                     } else {
                         break Rc::new(StringScanResult::UnterminatedString {
-                            content: v1_rt::rc_list_push(acc.clone(), 92),
+                            content: v1_rt::rc_list_push(acc.clone(), "\\".to_string())
+                                .join(&"".to_string()),
                             end_pos: (pos.clone() + 1),
                         });
                     }
                 } else {
-                    if (ch.clone() == 123) {
+                    if (ch.clone() == "{".to_string()) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
-                                content: acc.clone(),
+                                content: acc.clone().join(&"".to_string()),
                                 end_pos: pos.clone(),
                             });
                         } else {
                             {
                                 let __tco_0 = (pos + 1);
-                                let __tco_1 = v1_rt::rc_list_push(acc, 123);
+                                let __tco_1 = v1_rt::rc_list_push(acc, "{".to_string());
                                 pos = __tco_0;
                                 acc = __tco_1;
                                 continue;
@@ -826,39 +828,8 @@ pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
     }
 }
 
-pub fn process_escapes(chars: Rc<Vec<i64>>) -> String {
-    process_escapes_loop(chars.clone(), 0, Rc::new(vec![]))
-}
-
-pub fn code_point_at_accessor_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but the Rust realization of an index is a bare element that panics out of range. The two disagree, so wherever the emitter acts on the declared type it emits a coercion the realization cannot satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64` (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary. It works because return position is not checked against the body (recorded on the finalization carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together with those two when the index model and its realization are reconciled — either the index realizes as an Option or it types as the element — at which point return-position typechecking would red all three at once.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
-    chars.clone()[(pos.clone()) as usize].clone()
-}
-
-pub fn escape_code_point_table_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 92 backslash, 110 `n`, 116 `t`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO are 10 line-feed and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn escape_receipt_seed_growth_mark() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, and it is counted here rather than left silent. WHAT IT CARRIES, GATING: the escape decode table, the malformed-\\x decline, and the retained unknown-escape passthrough — all deterministic. WHAT IT CARRIES, NON-GATING: the cost separation that reds at 14.2x against the pre-migration implementation, the discriminating half of this lane's oracle, which a corpus equivalence check cannot supply because equivalence is satisfied by changing nothing. That half is an `#[ignore]`d benchmark rather than a required test, because gating correctness on wall clock can fail correct code when the larger run catches contention (review 45416), and the deterministic alternative does not rescue it: the only work counter in the tree sits behind the non-default `text_lookup_work_counter` feature and does not instrument `char_at`/`string_length` at all, so a counter-based test would be equally non-gating while also changing a core primitive. The oracle was still discharged BY EXECUTION in the landing PR — observed red before, green after — which is the DESIGN §5 bar; what is deferred is the standing regression GUARD, and the repo's native form for that is a structural lens over the Node tree, as v2.lens.complexity_accumulator_copy is for the copied-accumulator class. WHY HAND RUST AND NOT A .dag WITNESS: the .dag form is a claim witness, and enrolling one bumps gunbc.ci_spec's ci_floor_declared_resolve_count, which that gate's own note reserves for an operator-signed line; a session cannot raise it for its own receipt. So this is a DEFERRAL with a named owner, not a preference. It does not enter the hand-maintained stage0 ratchet: hand_maintained_stage0_filenames is built from seed-retained and emitter-produced `pub mod` basenames under src/v1/stage0/src/, and a tests/ target is not a crate module. DISSOLVES ON either trigger, whichever comes first: the resolve-count line is signed and these claims move to a dag/test/claim witness over the same tokenize entry point; or the v1 terminal deletion path reaches this tree, at which point the coverage must be carried per the v1-test-migration bar and the file deletes with src/v1. SEPARATE, SMALLER TRIGGER for the benchmark half alone: a structural lens that reds a per-character raw-String index walk (char_at / string_length in a loop) supersedes it, and would also cover the ~30 sites this lane's audit found still carrying that shape — at which point the `#[ignore]`d test deletes rather than being promoted. Precedent for this shape: namespace_occurrence_serde_seed_test_dissolution.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+pub fn process_escapes(raw: String) -> String {
+    process_escapes_loop(raw.clone(), 0, Rc::new(vec![]))
 }
 
 pub fn hex_escape_note() -> String {
@@ -873,54 +844,58 @@ pub fn hex_escape_note() -> String {
 pub fn unknown_escape_passthrough_frontier() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 dissolve-on: tokenizer_unknown_escape_strict_close (opened 2026-07-25) — the else-arm below resolves an UNRECOGNIZED escape by pushing backslash and next unchanged, so \\s silently means backslash-s and is indistinguishable from a typo'd escape. That is a closed-vocabulary violation (DESIGN §4: the vocabulary is closed; §5: a failure arm refuses, never widens) and it is knowingly RETAINED, not accepted: refusing today would red 142 occurrences across 38 files (textual census 2026-07-25 — grep over .dag, so an upper bound, and DESIGN's own caution about grep census applies), overwhelmingly regex fragments (\\' 28, \\. 19, \\| 13, \\/ 12, \\B 10) that intend the backslash to survive. NOT the four sites a \\x-only count suggests. DISSOLVES WHEN a raw-string form lands to carry regex fragments, the 142 occurrences migrate onto it, and this arm becomes a typed located parse refusal (the Rust rule: unknown escape is an error, a literal backslash is spelled \\\\). Because that is a PARSE-SEMANTICS change over a tokenizer every lane's probes compile through, the strict close lands with a corpus-wide compile receipt, never the site migration alone.".to_string()
+            "🟡 dissolve-on: tokenizer_unknown_escape_strict_close (opened 2026-07-25) — the else-arm below resolves an UNRECOGNIZED escape to concat(backslash, next), so \\s silently means backslash-s and is indistinguishable from a typo'd escape. That is a closed-vocabulary violation (DESIGN §4: the vocabulary is closed; §5: a failure arm refuses, never widens) and it is knowingly RETAINED, not accepted: refusing today would red 142 occurrences across 38 files (textual census 2026-07-25 — grep over .dag, so an upper bound, and DESIGN's own caution about grep census applies), overwhelmingly regex fragments (\\' 28, \\. 19, \\| 13, \\/ 12, \\B 10) that intend the backslash to survive. NOT the four sites a \\x-only count suggests. DISSOLVES WHEN a raw-string form lands to carry regex fragments, the 142 occurrences migrate onto it, and this arm becomes a typed located parse refusal (the Rust rule: unknown escape is an error, a literal backslash is spelled \\\\). Because that is a PARSE-SEMANTICS change over a tokenizer every lane's probes compile through, the strict close lands with a corpus-wide compile receipt, never the site migration alone.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn hex_digit_value(cp: i64) -> Option<i64> {
-    if ((cp.clone() >= 48) && (cp.clone() <= 57)) {
-        Some((cp.clone() - 48))
-    } else {
-        if ((cp.clone() >= 97) && (cp.clone() <= 102)) {
-            Some((cp.clone() - 87))
+pub fn hex_digit_value(ch: String) -> Option<i64> {
+    {
+        let cp = v1_rt::code_point(ch.clone());
+        if ((cp.clone() >= 48) && (cp.clone() <= 57)) {
+            Some((cp.clone() - 48))
         } else {
-            if ((cp.clone() >= 65) && (cp.clone() <= 70)) {
-                Some((cp.clone() - 55))
+            if ((cp.clone() >= 97) && (cp.clone() <= 102)) {
+                Some((cp.clone() - 87))
             } else {
-                None
+                if ((cp.clone() >= 65) && (cp.clone() <= 70)) {
+                    Some((cp.clone() - 55))
+                } else {
+                    None
+                }
             }
         }
     }
 }
 
-pub fn hex_escape_char(hi: i64, lo: i64) -> Option<i64> {
+pub fn hex_escape_char(hi: String, lo: String) -> Option<String> {
     match hex_digit_value(hi.clone()) {
         Some(h) => match hex_digit_value(lo.clone()) {
-            Some(l) => Some(((h.clone() * 16) + l.clone())),
+            Some(l) => Some(v1_rt::from_code_point(((h.clone() * 16) + l.clone()))),
             None => None,
         },
         None => None,
     }
 }
 
-pub fn process_escapes_loop(
-    mut source: Rc<Vec<i64>>,
-    mut pos: i64,
-    mut acc: Rc<Vec<i64>>,
-) -> String {
+pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
     loop {
-        if (pos.clone() >= (source.clone().len() as i64)) {
-            break v1_rt::chars_to_string(&acc, 0, (acc.clone().len() as i64));
+        if (pos.clone() >= v1_rt::string_length(&source)) {
+            break acc.clone().join(&"".to_string());
         } else {
-            let ch = code_point_at(source.clone(), pos.clone());
-            if ((ch.clone() == 92) && ((pos.clone() + 1) < (source.clone().len() as i64))) {
-                let next = code_point_at(source.clone(), (pos.clone() + 1));
-                if ((next.clone() == 120) && ((pos.clone() + 3) < (source.clone().len() as i64))) {
-                    let hi = code_point_at(source.clone(), (pos.clone() + 2));
-                    let lo = code_point_at(source.clone(), (pos.clone() + 3));
-                    match hex_escape_char(hi.clone(), lo.clone()) {
+            let ch = v1_rt::char_at(&source, pos.clone());
+            if ((ch.clone() == "\\".to_string())
+                && ((pos.clone() + 1) < v1_rt::string_length(&source)))
+            {
+                let next = v1_rt::char_at(&source, (pos.clone() + 1));
+                if ((next.clone() == "x".to_string())
+                    && ((pos.clone() + 3) < v1_rt::string_length(&source)))
+                {
+                    match hex_escape_char(
+                        v1_rt::char_at(&source, (pos.clone() + 2)),
+                        v1_rt::char_at(&source, (pos.clone() + 3)),
+                    ) {
                         Some(decoded) => {
                             let __tco_0 = (pos + 4);
                             let __tco_1 = v1_rt::rc_list_push(acc, decoded.clone());
@@ -930,36 +905,35 @@ pub fn process_escapes_loop(
                         }
                         None => {
                             let __tco_0 = (pos + 2);
-                            let __tco_1 =
-                                v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), next.clone());
+                            let __tco_1 = v1_rt::rc_list_push(
+                                acc,
+                                v1_rt::concat("\\".to_string(), next.clone()),
+                            );
                             pos = __tco_0;
                             acc = __tco_1;
                             continue;
                         }
                     }
                 } else {
-                    let acc_with_escape = if (next.clone() == 34) {
-                        v1_rt::rc_list_push(acc.clone(), 34)
+                    let resolved = if (next.clone() == "\"".to_string()) {
+                        "\"".to_string()
                     } else {
-                        if (next.clone() == 92) {
-                            v1_rt::rc_list_push(acc.clone(), 92)
+                        if (next.clone() == "\\".to_string()) {
+                            "\\".to_string()
                         } else {
-                            if (next.clone() == 110) {
-                                v1_rt::rc_list_push(acc.clone(), 10)
+                            if (next.clone() == "n".to_string()) {
+                                "\n".to_string()
                             } else {
-                                if (next.clone() == 116) {
-                                    v1_rt::rc_list_push(acc.clone(), 9)
+                                if (next.clone() == "t".to_string()) {
+                                    "\t".to_string()
                                 } else {
-                                    if (next.clone() == 123) {
-                                        v1_rt::rc_list_push(acc.clone(), 123)
+                                    if (next.clone() == "{".to_string()) {
+                                        "{".to_string()
                                     } else {
-                                        if (next.clone() == 125) {
-                                            v1_rt::rc_list_push(acc.clone(), 125)
+                                        if (next.clone() == "}".to_string()) {
+                                            "}".to_string()
                                         } else {
-                                            v1_rt::rc_list_push(
-                                                v1_rt::rc_list_push(acc.clone(), 92),
-                                                next.clone(),
-                                            )
+                                            v1_rt::concat("\\".to_string(), next.clone())
                                         }
                                     }
                                 }
@@ -968,7 +942,7 @@ pub fn process_escapes_loop(
                     };
                     {
                         let __tco_0 = (pos + 2);
-                        let __tco_1 = acc_with_escape.clone();
+                        let __tco_1 = v1_rt::rc_list_push(acc, resolved.clone());
                         pos = __tco_0;
                         acc = __tco_1;
                         continue;

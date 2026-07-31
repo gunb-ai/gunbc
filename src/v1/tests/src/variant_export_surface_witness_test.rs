@@ -87,7 +87,6 @@ fn typecheck_resolved_incremental(
             source_indices.clone(),
             intern_table.clone(),
             v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
-            v1_rt::rc_empty_map(),
         );
         let typed = tc.typed.clone();
         let path = authored_name_at(source_indices.clone(), typed.module.clone());

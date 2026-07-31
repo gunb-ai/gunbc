@@ -13,66 +13,42 @@ resolve does per entry.
 
 ## Lane A — frontend construction
 
-**LANDED.** `v1.compiler.tokenize` `process_escapes_loop` now consumes the pre-decoded code points.
-The measured result and the two corrections this lane produced are recorded below; the scoping that
-follows is kept because Lane B is still open and the two share this note.
-
 **Contained slice: `process_escapes_loop`.**
 
-`v1.compiler.tokenize` `process_escapes_loop`. It was the one function in its file still walking a
-raw `String` by index while the rest of the file had migrated to the pre-decoded `SourceRef` /
-`source_chars` idiom. That is the whole defect: the surrounding file already had the fix.
+`src/v1/stage0/src/v1_compiler_tokenize.rs:882`. It is the one function in its file still walking a
+raw `String` by index while the rest of the file has migrated to the pre-decoded `SourceRef` /
+`source_chars` idiom. That is the whole defect: the surrounding file already has the fix.
 
 ### The cost shape, read off the primitives
 
-Both primitives it called are branch-on-ASCII (`v1_rt` `char_at`, `string_length`):
+Both primitives it calls are branch-on-ASCII (`src/v1/stage0/src/v1_rt.rs:251,266`):
 
 | call | ASCII | non-ASCII |
 |---|---|---|
-| `char_at(s, pos)` | `is_ascii()` scan then `bytes[pos]`, **O(n)** | `is_ascii()` scan then `s.chars().nth(pos)`, **O(n)** |
-| `string_length(s)` | `is_ascii()` scan then `s.len()`, **O(n)** | `s.chars().count()`, **O(n)** |
+| `char_at(s, pos)` | `bytes[pos]`, O(1) | `s.chars().nth(pos)`, **O(pos)** |
+| `string_length(s)` | `s.len()`, O(1) | `s.chars().count()`, **O(n)** |
 
-**Correction (2026-07-31, measured).** An earlier version of this table read the ASCII column as
-O(1) and concluded "ASCII input: O(n), non-ASCII input: O(n²)". That is wrong, and the error was in
-reading the fast path as free: both primitives *begin* with `s.is_ascii()`, which scans the whole
-string on **every call**, so the ASCII branch is O(n) per call too. A per-character loop over either
-primitive is therefore quadratic **regardless of encoding**. Measured directly on `v1_rt::char_at`
-over a pure-ASCII string, per-character loop: n=4,000 1.50ms, 8,000 5.66ms, 16,000 22.03ms, 32,000
-86.88ms — ~3.9× per doubling. Non-ASCII is not a different asymptotic class, only a worse constant
-(`nth` walks as well). This matters beyond this slice: it means every surviving `char_at`-indexed
-loop in the corpus is quadratic, not just the ones handling non-ASCII text.
-
-`process_escapes_loop` called `string_length` on the *same unchanging source* on every iteration —
+`process_escapes_loop` calls `string_length` on the *same unchanging source* on every iteration —
 several times per iteration across its branches — and `char_at` at up to four offsets per iteration.
 
-Second, smaller correction: the defect was not confined to `process_escapes_loop`. `scan_string_body`
-had already walked `source_chars` correctly, then `join`ed the characters into a `String` **purely so
-that `process_escapes` could re-split it** — a decompress→recompress round trip across the
-`StringScanResult` boundary. The fix had to cross that boundary to be real.
+So the realized cost is:
+
+- **ASCII input: O(n)** in time, but with one heap `String` allocated *per character*, accumulated
+  into `Rc<Vec<String>>` and `join`ed at the end.
+- **Non-ASCII input: O(n²)**, twice over — once through `char_at`'s `nth`, once through the
+  re-counted `string_length`.
+
+The non-ASCII path is the one that bites, and it is not exotic: any string literal containing a
+non-ASCII character anywhere flips the entire scan for that literal onto the quadratic branch,
+including the ASCII portions of it.
 
 ### The fix
 
 Migrate the loop onto `source_chars` (the pre-decoded array the rest of the file already builds), so
-both `char_at` and `string_length` disappear from the escape path entirely, and drop the
-`Rc<Vec<String>>` accumulator. That removes the quadratic *and* the per-character allocation in one
-motion — the accumulator-copy class DESIGN §6 already rules is always fixed regardless of realized n,
-because "n is small here" is not a time-stable fact.
-
-Landed shape: `StringScanResult.content` carries `List<Int>`, so `scan_string_body` stops joining and
-`process_escapes` stops re-splitting; the accumulator is code points converted once by
-`chars_to_string`; the escape table compares code points, which is what the rest of the file already
-did (`ch == 61 && next_ch == 62` for `=>`).
-
-**Measured, one string literal, non-ASCII with escapes (before → after):**
-
-| literal chars | before | after | speedup |
-|---|---|---|---|
-| 2,769 | 7.79 ms | 0.90 ms | 8.6× |
-| 11,019 | 41.34 ms | 1.44 ms | 28.7× |
-| 44,019 | 583.9 ms | 5.95 ms | 98.1× |
-
-The speedup grows with n because the quadratic term is gone: after the change, 2× the input costs
-2.01× then 2.05× the time.
+both `char_at` and `string_length` become O(1) regardless of encoding, and replace the
+`Rc<Vec<String>>` accumulator with a single `String` buffer. That removes the quadratic *and* the
+per-character allocation in one motion — the accumulator-copy class DESIGN §6 already rules is always
+fixed regardless of realized n, because "n is small here" is not a time-stable fact.
 
 ### Oracle
 
@@ -82,33 +58,6 @@ string literal with non-ASCII content and escapes, which separates the two imple
 asymptotically, plus a RED that a wrong escape decode changes the output. Both halves execute, per
 DESIGN §5: a typecheck and a grep are not consumers.
 
-Discharged by `src/v1/stage0/tests/tokenize_escape_receipt.rs`, executed on both sides of the change:
-
-- Equivalence, corpus grain: `regen_stage0 --verify` reports `regen_divergence_count=0`. Regen
-  re-tokenizes all of `src/v1` and `dag` and emits the seed; a byte-identical seed across a
-  2-generation fixed point is the corpus token-stream equivalence, established by execution rather
-  than asserted.
-- Equivalence, decode grain: `escape_decode_table`, `malformed_hex_escape_declines_rather_than_fabricating`,
-  `unknown_escape_passthrough_is_retained` — green against the pre-migration seed *and* after.
-- Separation: `escape_cost_is_linear_in_literal_length` asserts a **ratio** (4× input must not cost
-  ≥8× time) so it does not encode one machine's speed. Against the pre-migration seed it reds at
-  **14.2×**; after, it passes. That RED was observed by running it, not predicted.
-
-  It ships **`#[ignore]`d — a benchmark, not a gate** (review 45416). A wall-clock assertion can
-  fail correct code when the larger run is the one that catches contention, and gating correctness
-  on timing is against hermetic-first test discipline. The deterministic alternative does not
-  rescue it: the tree's only work counter (`v1_rt::take_text_lookup_chars_walked`) is behind the
-  non-default `text_lookup_work_counter` feature and does not instrument `char_at`/`string_length`
-  at all, so a counter-based test would be `#[cfg(feature = ...)]` and equally non-gating while
-  additionally changing a core primitive.
-
-  The distinction that matters: the oracle was **discharged by execution** in the landing PR — red
-  observed before, green after — which is what DESIGN §5 asks for. What is deferred is the standing
-  regression *guard*, and the repo's native form for that is a structural lens over the `Node` tree,
-  as `v2.lens.complexity_accumulator_copy` is for the copied-accumulator class. Such a lens would
-  also cover the ~30 raw-index sites the audit below found, which a per-function test never could —
-  so it is the better instrument, not merely the substitute.
-
 ### Beyond the slice
 
 The named generalization is `SourceCursor` / `TokenBuilder` / `FrozenTokenStream` and enforceable
@@ -117,34 +66,6 @@ rather than found later. That is downstream of the slice, not a prerequisite for
 priced against a second measured instance rather than authored speculatively (the purity trap, §6).
 Task #3 tracks auditing the v2 parser for the same class; if it is clean, the generalization is worth
 less and should say so.
-
-**Audit result (task #3, 2026-07-31): the v2 parser is clean, and the generalization is worth less
-than it looked — but the class is not extinct, and it is bigger than the parser.**
-
-`v2.compiler.tokenize` and `v2.compiler.parse` contain **zero** `char_at` / `string_length`
-occurrences. v2's `String` is `FreeMonoid<Char>`, a cons list; the tokenizer consumes it through
-`fold_source` / `string_head` / `string_tail`, and `list_tail` is `Cons { tail: t } => TailFound`,
-i.e. O(1) with structural sharing. There is no position to re-index and no length to re-count, so the
-defect cannot be written in that shape. A `SourceCursor` abstraction would therefore be modelling a
-problem v2's carrier already dissolved — it should not be authored for the parser's sake.
-
-What the audit *did* find is that the raw-index idiom survives at 28 sites across `src/v2`, none of
-them in the parser. The concentration is in shell-emission validators —
-`v2.compiler.emit_orchestration` (`char_at` loops over a path, a binder, a test operand) and
-`extdeps.languages.bash_orch_if` — each pairing a per-character `char_at` loop with a hoisted
-`string_length`. Under the corrected cost table above these are quadratic, not linear: the earlier
-reading would have excused them as "ASCII, so O(1) per call", which is exactly the reasoning the
-measurement refutes. `v1.compiler.tokenize` itself still has two more in `sentinel_prefix_matches` /
-`sentinel_suffix_matches`.
-
-None of these were touched here: they are short-input call sites, so the realized cost is small
-today, and DESIGN §6's bare-minimum-cost rule says a proven cost-shape defect is fixed regardless of
-realized n — which makes them real work, not non-work. They are named rather than folded in because
-the honest lever is now a different one: **the cheapest fix is `char_at` / `string_length`
-themselves.** Removing the per-call `is_ascii()` scan (or caching the decode) makes all 30 sites
-linear at once, without an abstraction and without touching 30 call sites — a `v1_rt` change whose
-authority is `v1.runtime_rust`. That is the second measured instance the "price it against one"
-condition asked for, and it points at the primitive rather than at `SourceCursor`.
 
 ---
 

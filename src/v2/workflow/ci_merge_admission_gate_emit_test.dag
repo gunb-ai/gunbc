@@ -8,7 +8,9 @@ import gunbc.merge_admission_produce {
 }
 import v2.std.effect_plan { Do, EffectPlan }
 import v2.std.operation_argv {
+  BoundOperationInvocation,
   OperationRef,
+  bind_operation_invocation,
   operation_argv_bind_text
 }
 import v2.std.orchestration { Continue, FailFast }
@@ -21,17 +23,15 @@ import v2.workflow.ci_merge_admission_gate_emit {
   ci_merge_admission_gate_script
 }
 import v2.workflow.effect_plan_bash_materialize {
-  BashBoundOperationInvocation,
   EffectPlanBashMaterializationRefused,
   EffectPlanBashMaterialized,
-  bash_bind_operation_invocation,
   effect_plan_bash_materialize
 }
 
 data gate_emit_witness_note: String = "Wave B acceptance. The claims that matter are the two the migration could silently break — the gate still fetches the SAME merge base and still invokes the SAME admission tool — plus the two the migration exists to make true: the run text is derived from the typed plan rather than spelled, and FailFast is enforced by the carrier rather than inherited from the runner's shell flags. Each positive has a control that goes red when the corresponding property is absent: perturbing the plan to Continue must refuse (not emit a weaker chain), and a plan whose operation does not exist must render a located refusal marker instead of shell."
 
 fn gate_materialized_source(
-  plan: EffectPlan<BashBoundOperationInvocation>
+  plan: EffectPlan<BoundOperationInvocation>
 ) -> String {
   match effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: source } => source
@@ -39,7 +39,7 @@ fn gate_materialized_source(
   }
 }
 
-fn gate_plan_refuses(plan: EffectPlan<BashBoundOperationInvocation>) -> Bool {
+fn gate_plan_refuses(plan: EffectPlan<BoundOperationInvocation>) -> Bool {
   match effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: _ } => false
     EffectPlanBashMaterializationRefused { refusal: _ } => true
@@ -109,7 +109,7 @@ test fn gate_absent_operation_renders_located_refusal_red_control() -> Bool {
   let script_of_absent = ci_merge_admission_gate_render(plan: EffectPlan {
     steps: [
       Do { effect: ci_merge_admission_gate_fetch_step() },
-      Do { effect: bash_bind_operation_invocation(
+      Do { effect: bind_operation_invocation(
         at: OperationRef {
           path: "dag/extdeps/gunbc/gunbc.dag",
           service: "gunbc.WitnessBin",
@@ -130,7 +130,7 @@ test fn gate_absent_operation_renders_located_refusal_red_control() -> Bool {
 test fn gate_invoke_step_binds_the_bin_path_outside_argv_zero() -> Bool {
   let step = ci_merge_admission_gate_invoke_step()
   let script = ci_merge_admission_gate_script()
-  (step.invocation.at.service == "gunbc.WitnessBin")
-    && (step.invocation.at.operation == "Run")
+  (step.at.service == "gunbc.WitnessBin")
+    && (step.at.operation == "Run")
     && string_contains(s: script, pattern: "'env' '-C' '.' 'target/release/gunbc'")
 }

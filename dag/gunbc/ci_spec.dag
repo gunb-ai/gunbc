@@ -226,8 +226,6 @@ fn ci_fmt_gate_line() -> String {
   "\"$CARGO_BIN\" fmt --all --check"
 }
 
-data ci_v1_compiler_tests_compile_gate_note: String = "cargo check -p v1-compiler-tests --tests, RE-ENROLLED 2026-07-31 (operator ruling, PR #7490 repair): the nextest RUN half of commit_gate_rust_suite_removed_disposition stays retired (~37 GiB, seed-runtime red), but #7490's typecheck_module signature migration updated stage0 call sites and left four direct integration-test callers stale on main — compile breakage invisible to DagCompileCleanGate (dag-only) and the release build (v1-compiler stage0 only; v1-compiler-tests is a separate workspace crate). This is the fmt-amendment pattern applied to the missing COMPILE half: compile-only, no test execution, ~41s measured cold on the repair host — not RustMonolithGate re-enrollment. Placement: build job immediately after fmt, before the ~33min release build. Operation shape and shell scaffold: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Check)."
-
 fn ci_retry_body_run(command: String) -> Run {
   Run {
     command: command,
