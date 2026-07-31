@@ -4,6 +4,11 @@
 use self::FuncSigLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
+use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
+pub use crate::v1_compiler_infer_occurrence_binding::{
+    ambiguity_labels_from_decide, module_path_owner_binding_decide,
+};
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -114,7 +119,7 @@ pub struct ParentSigScan {
 pub fn func_sig_lookup_outcome_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the Ambiguous arm is unreachable (first-hit preserved verbatim); under the default NamespaceOnlyY policy exactly-one match across the flat parent closure resolves, two-plus refuses. Own-module local hit stays first on both arms: the killed class is the pick among >=2 PARENT matches (the census's fn_parent_first_hit definition), not own-decl precedence. Analysis-only consumers (provenance/descent enrichment) project through func_sig_if_resolved in infer_lookup — they never fabricate a bind; the semantic bind sites in 04_infer match the full outcome and emit the typed AmbiguousReference.".to_string()
+            "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. lookup_resolved_sig always routes parent misses through lookup_resolved_sig_unique_across_parents (module_path_owner_binding_decide): exactly-one owner across the parent closure resolves, zero is Unresolved, two-plus is Ambiguous — the ImportScoped first-hit branch is deleted, and the policy bracket must not restore it. Own-module local hit stays first: the killed class is the pick among >=2 PARENT matches (the census's fn_parent_first_hit definition), not own-decl precedence. Analysis-only consumers (provenance/descent enrichment) project through func_sig_if_resolved in infer_lookup — they never fabricate a bind; the semantic bind sites in 04_infer match the full outcome and emit the typed AmbiguousReference.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -144,10 +149,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
                 first_sig: None,
                 owners: Rc::new(vec![]),
             }),
-            |acc: Rc<ChainSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
-                &p.local.clone(),
-                name.clone(),
-            ) {
+            |acc: _, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(&p.local.clone(), name.clone()) {
                 Some(sig) => Rc::new(ChainSigScan {
                     first_sig: if (acc.first_sig.clone() != None) {
                         acc.first_sig.clone()
@@ -159,27 +161,19 @@ pub fn lookup_resolved_sig_unique_across_parents(
                 None => acc.clone(),
             },
         );
-        let owner_count = (scan.owners.clone().len() as i64);
-        if (owner_count.clone() == 0) {
-            Rc::new(FuncSigLookup::FuncSigUnresolved)
-        } else {
-            if (owner_count.clone() == 1) {
+        match (*module_path_owner_binding_decide(scan.owners.clone())).clone() {
+            ModulePathBindingProjection::ModulePathBindingMiss => {
+                Rc::new(FuncSigLookup::FuncSigUnresolved)
+            }
+            ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => {
                 match scan.first_sig.clone() {
                     Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
                     None => Rc::new(FuncSigLookup::FuncSigUnresolved),
                 }
-            } else {
+            }
+            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
                 Rc::new(FuncSigLookup::FuncSigAmbiguous {
-                    candidates: Rc::new({
-                        let mut __result = Vec::new();
-                        for o in scan.owners.clone().iter().cloned() {
-                            __result.push(v1_rt::concat(
-                                v1_rt::concat(o.clone(), ".".to_string()),
-                                name.clone(),
-                            ));
-                        }
-                        __result
-                    }),
+                    candidates: ambiguity_labels_from_decide(scan.owners.clone(), name.clone()),
                 })
             }
         }
@@ -197,10 +191,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                 match_count: 0,
                 first_parent: None,
             }),
-            |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
-                &p.local.clone(),
-                name.clone(),
-            ) {
+            |acc: _, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(&p.local.clone(), name.clone()) {
                 Some(sig) => Rc::new(ParentSigScan {
                     sig: if (acc.sig.clone() != None) {
                         acc.sig.clone()
@@ -235,31 +226,7 @@ pub fn lookup_resolved_sig_with_telemetry(
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSigLookup> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-        None => {
-            if v1_rt::name_resolution_policy_is_namespace_only() {
-                lookup_resolved_sig_unique_across_parents(env.clone(), name.clone())
-            } else {
-                {
-                    let first_hit = if v1_rt::resolution_silent_pick_is_enabled() {
-                        lookup_resolved_sig_with_telemetry(env.clone(), name.clone())
-                    } else {
-                        env.parents.clone().iter().cloned().fold(
-                            none_resolved_sig(),
-                            |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc
-                                .clone()
-                            {
-                                Some(sig) => Some(sig.clone()),
-                                None => v1_rt::map_get(&p.local.clone(), name.clone()),
-                            },
-                        )
-                    };
-                    match first_hit.clone() {
-                        Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-                        None => Rc::new(FuncSigLookup::FuncSigUnresolved),
-                    }
-                }
-            }
-        }
+        None => lookup_resolved_sig_unique_across_parents(env.clone(), name.clone()),
     }
 }
 
@@ -417,20 +384,17 @@ pub fn merge_remaining_declared(
     Rc::new(v1_rt::map_values(&declared_sigs))
         .iter()
         .cloned()
-        .fold(
-            resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if (dsig.inferred.clone() != None) {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        dsig.name.clone(),
-                        declared_to_resolved(dsig.clone()),
-                    )
-                } else {
-                    acc.clone()
-                }
-            },
-        )
+        .fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| {
+            if (dsig.inferred.clone() != None) {
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    dsig.name.clone(),
+                    declared_to_resolved(dsig.clone()),
+                )
+            } else {
+                acc.clone()
+            }
+        })
 }
 
 pub fn topo_resolve_loop(
@@ -450,21 +414,17 @@ pub fn topo_resolve_loop(
                 let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
                     .iter()
                     .cloned()
-                    .fold(
-                        resolved.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != None) {
-                                v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    dsig.name.clone(),
-                                    declared_to_resolved(dsig.clone()),
-                                )
-                            } else {
-                                acc.clone()
-                            }
-                        },
-                    );
+                    .fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| {
+                        if (dsig.inferred.clone() != None) {
+                            v1_rt::rc_map_insert(
+                                acc.clone(),
+                                dsig.name.clone(),
+                                declared_to_resolved(dsig.clone()),
+                            )
+                        } else {
+                            acc.clone()
+                        }
+                    });
                 return Rc::new(ResolveFuncSigsResult {
                     func_env: Rc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
@@ -531,10 +491,8 @@ pub fn topo_resolve_loop(
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
-                        &declared_sigs,
-                        fn_name.clone(),
-                    ) {
+                    |acc: _, fn_name: String| match v1_rt::map_get(&declared_sigs, fn_name.clone())
+                    {
                         Some(dsig) => {
                             if (dsig.inferred.clone() != None) {
                                 Rc::new(SigsAccum {
@@ -570,8 +528,7 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
+                        |acc: _, dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -601,10 +558,7 @@ pub fn topo_resolve_loop(
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
             }),
-            |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
-                &declared_sigs,
-                fn_name.clone(),
-            ) {
+            |acc: _, fn_name: String| match v1_rt::map_get(&declared_sigs, fn_name.clone()) {
                 Some(dsig) => {
                     if (dsig.inferred.clone() != None) {
                         Rc::new(SigsAccum {
