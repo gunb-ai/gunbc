@@ -83,7 +83,7 @@ fn observed_cargo_paths_subset_of_tracked(
 ) -> Bool {
   fold_list(
     xs: cargo_bin_repo_paths,
-    init: true,
+    empty: true,
     cons: fn(ok, cargo_path) { ok && path_in_list(path: cargo_path, paths: tracked_paths) }
   )
 }
@@ -94,7 +94,7 @@ fn first_untracked_cargo_path(
 ) -> String {
   fold_list(
     xs: cargo_bin_repo_paths,
-    init: "",
+    empty: "",
     cons: fn(first, cargo_path) {
       if first != "" {
         first
@@ -110,7 +110,7 @@ fn first_untracked_cargo_path(
 fn count_tracked_unclassified(tracked_paths: List<String>, classified_paths: List<String>) -> Int {
   fold_list(
     xs: tracked_paths,
-    init: 0,
+    empty: 0,
     cons: fn(count, path) {
       if path_in_list(path: path, paths: classified_paths) {
         count
@@ -128,7 +128,7 @@ fn count_newly_unclassified_tracked(
 ) -> Int {
   fold_list(
     xs: tracked_paths,
-    init: 0,
+    empty: 0,
     cons: fn(count, path) {
       let is_new = !path_in_list(path: path, paths: prior_tracked_paths)
       let is_classified = path_in_list(path: path, paths: classified_paths)
@@ -144,7 +144,7 @@ fn count_newly_unclassified_tracked(
 fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List<String>) -> Int {
   fold_list(
     xs: lifecycle_paths,
-    init: 0,
+    empty: 0,
     cons: fn(count, path) {
       if path_in_list(path: path, paths: tracked_paths) {
         count
@@ -158,7 +158,7 @@ fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List
 fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
   fold_list(
     xs: derived_hand_maintained_stage0_repo_paths(),
-    init: 0,
+    empty: 0,
     cons: fn(count, hand_path) {
       if path_in_list(path: hand_path, paths: tracked_paths) {
         count + 1
@@ -172,7 +172,7 @@ fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
 fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> Int {
   fold_list(
     xs: derived_hand_maintained_stage0_repo_paths(),
-    init: 0,
+    empty: 0,
     cons: fn(count, hand_path) {
       if path_in_list(path: hand_path, paths: prior_tracked_paths) {
         count + 1
@@ -186,7 +186,7 @@ fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> 
 fn path_occurrence_count(paths: List<String>, needle: String) -> Int {
   fold_list(
     xs: paths,
-    init: 0,
+    empty: 0,
     cons: fn(count, path) {
       if path == needle {
         count + 1
@@ -200,7 +200,7 @@ fn path_occurrence_count(paths: List<String>, needle: String) -> Int {
 fn count_duplicate_path_excess(paths: List<String>) -> Int {
   fold_list(
     xs: paths,
-    init: 0,
+    empty: 0,
     cons: fn(excess, path) {
       let occurrences = path_occurrence_count(paths: paths, needle: path)
       if occurrences > 1 {
@@ -219,7 +219,7 @@ fn count_observed_manifest_duplicate_excess(
 ) -> Int {
   fold_list(
     xs: [tracked_paths, prior_tracked_paths, cargo_bin_repo_paths],
-    init: 0,
+    empty: 0,
     cons: fn(sum, paths) { sum + count_duplicate_path_excess(paths: paths) }
   )
 }
@@ -366,7 +366,7 @@ fn derived_partition_crate_lib_repo_paths() -> List<String> {
 fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
   fold_list(
     xs: items,
-    init: acc,
+    empty: acc,
     cons: fn(acc_paths, path) {
       if any(xs: acc_paths, predicate: fn(p) { p == path }) {
         acc_paths
@@ -539,7 +539,7 @@ fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
 fn first_classified_repo_path(classified: List<String>) -> String {
   fold_list(
     xs: classified,
-    init: "",
+    empty: "",
     cons: fn(first, path) {
       if first == "" {
         path
@@ -599,7 +599,7 @@ fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
     && length(xs: row.obligations) > 0
     && fold_list(
       xs: row.obligations,
-      init: true,
+      empty: true,
       cons: fn(ok, obligation) {
         ok && rust_source_lifecycle_obligation_well_formed(obligation: obligation)
       }
@@ -609,7 +609,7 @@ fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
 fn rust_source_lifecycle_residue_rows_well_formed() -> Bool {
   fold_list(
     xs: rust_source_lifecycle_residue_rows,
-    init: true,
+    empty: true,
     cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
   )
 }
@@ -617,7 +617,7 @@ fn rust_source_lifecycle_residue_rows_well_formed() -> Bool {
 fn list_paths_all_unique(paths: List<String>) -> Bool {
   fold_list(
     xs: paths,
-    init: true,
+    empty: true,
     cons: fn(ok, path) { ok && path_occurrence_count(paths: paths, needle: path) == 1 }
   )
 }
@@ -633,7 +633,7 @@ fn duplicate_exact_paths_zero_holds() -> Bool {
 fn generated_repo_paths_cover_authority_holds() -> Bool {
   fold_list(
     xs: generated_stage0_files,
-    init: true,
+    empty: true,
     cons: fn(ok, basename) {
       ok && any(
         xs: derived_generated_stage0_repo_paths(),
@@ -646,7 +646,7 @@ fn generated_repo_paths_cover_authority_holds() -> Bool {
 fn generated_authority_subset_of_derived_holds() -> Bool {
   fold_list(
     xs: derived_generated_stage0_repo_paths(),
-    init: true,
+    empty: true,
     cons: fn(ok, path) {
       let basename = replace(path, stage0_src_repo_prefix, "")
       ok && is_generated_stage0_file(basename: basename)
