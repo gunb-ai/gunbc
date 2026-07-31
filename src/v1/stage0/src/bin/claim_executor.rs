@@ -3039,11 +3039,94 @@ fn write_witness_row_cost_drift_receipt_at(
 /// exist for stage N while stage N+1 is running, and a process death between the two
 /// loses every stage that had in fact completed. Per-stage, the disk state answers
 /// "which stages ran, and what did each cost" at any instant.
+///
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `std.types` `path_segment_is_safe`,
+/// the single law for "safe as ONE path segment"). This mirrors that predicate clause for
+/// clause because the executor is the Rust seed and cannot call the `.dag` surface at the
+/// point it observes the environment. It is a REALIZATION of that authority, not a second
+/// rule: if the two ever disagree, the `.dag` predicate is right and this is the defect.
+/// dissolve-on: the executor's env observation running as a modeled effect, at which point
+/// the branding constructor `gunbc.merge_admission.walk_attempt_id` is the only gate and
+/// this function deletes.
+fn walk_attempt_id_segment_is_safe(raw: &str) -> bool {
+    !(raw.is_empty()
+        || raw == "."
+        || raw == ".."
+        || raw.contains('/')
+        || raw.contains('\\')
+        || raw.contains('\n')
+        || raw.contains('\r')
+        || raw.contains('\0'))
+}
+
+/// Observe the walk-attempt identity, per `gunbc.merge_admission`
+/// `merge_admission_attempt_scope_note`: derived from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT +
+/// GITHUB_JOB on GitHub, or supplied explicitly as GUNBC_WALK_ATTEMPT_ID off it.
+///
+/// REFUSES rather than defaulting. The ruling names the exact failure this prevents: "never
+/// a silent constant like a bare local, which would make every local run one attempt and
+/// the wrong-attempt refusal unreachable off CI". A default here would not be a convenience,
+/// it would disable the identity check everywhere except GitHub — the absorbing fallback in
+/// its purest form, since nothing would ever report that identity had been fabricated.
+///
+/// GUNBC_WALK_ATTEMPT_ID is NOT an escape hatch: it supplies a required input that the
+/// environment did not, and a value that fails the segment law still refuses. There is no
+/// value of it that makes a refusal not fire.
+fn observe_walk_attempt_id() -> Result<String, String> {
+    compose_walk_attempt_id(
+        &std::env::var("GUNBC_WALK_ATTEMPT_ID").unwrap_or_default(),
+        &std::env::var("GITHUB_RUN_ID").unwrap_or_default(),
+        &std::env::var("GITHUB_RUN_ATTEMPT").unwrap_or_default(),
+        &std::env::var("GITHUB_JOB").unwrap_or_default(),
+    )
+}
+
+/// The PURE half, split from the observation above for the same reason
+/// `gunbc.merge_admission_produce` splits them ("Pure composition of the walk-attempt
+/// identity from its parts; the ENV OBSERVATION lives with the wet entry"). It is also what
+/// makes the refusals reachable by a test: process env is global, so a test that set it
+/// would race every other test in the binary, and a rule that can only be exercised by a
+/// racing test is a rule nobody checks.
+fn compose_walk_attempt_id(
+    explicit: &str,
+    run_id: &str,
+    run_attempt: &str,
+    job: &str,
+) -> Result<String, String> {
+    if !explicit.trim().is_empty() {
+        return if walk_attempt_id_segment_is_safe(explicit) {
+            Ok(explicit.to_string())
+        } else {
+            Err(format!(
+                "GUNBC_WALK_ATTEMPT_ID={explicit:?} is not a safe path segment (std.types path_segment_is_safe: non-empty, not `.`/`..`, no `/` `\\` CR LF NUL)"
+            ))
+        };
+    }
+    if run_id.is_empty() || run_attempt.is_empty() || job.is_empty() {
+        return Err(
+            "no walk-attempt identity: GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT/GITHUB_JOB are not all \
+             present and GUNBC_WALK_ATTEMPT_ID was not supplied. On-success stages write \
+             attempt-scoped receipts, so an unidentified walk refuses here rather than \
+             stamping a receipt no consumer could tell apart from another run's"
+                .to_string(),
+        );
+    }
+    let composed = format!("{run_id}-{run_attempt}-{job}");
+    if walk_attempt_id_segment_is_safe(&composed) {
+        Ok(composed)
+    } else {
+        Err(format!(
+            "composed walk-attempt identity {composed:?} is not a safe path segment (std.types path_segment_is_safe)"
+        ))
+    }
+}
+
 fn write_on_success_stage_receipt(
     stage_index: usize,
     passed: bool,
     run: &StageRun,
     declared_stage_count: usize,
+    attempt_id: &str,
 ) -> bool {
     let mut resolves: u64 = 0;
     for r in &run.results {
@@ -3052,6 +3135,13 @@ fn write_on_success_stage_receipt(
         }
     }
     let mut body = String::new();
+    // IDENTITY FIRST, IN THE PAYLOAD. `gunbc.merge_admission`
+    // `merge_admission_attempt_scope_note`: "the receipt carries the walk-attempt identity
+    // in the PAYLOAD, not just the path ... path identity alone is not enough, because a
+    // misrouted read must fail on the content too". A receipt from another attempt is not
+    // stale-or-fresh, it is NOT THE SUBJECT, and a consumer that reads this file by path
+    // must be able to discover that from the bytes it just read.
+    body.push_str(&format!("attempt_id={attempt_id}\n"));
     body.push_str(&format!("stage_index={}\n", stage_index + 1));
     body.push_str(&format!("stage_count={declared_stage_count}\n"));
     body.push_str(&format!(
@@ -3079,11 +3169,13 @@ fn write_on_success_stage_receipt(
             r.wall_nanos / 1_000_000
         ));
     }
-    let base = std::path::Path::new("target");
-    let path = base.join(format!(
-        "floor-on-success-stage-{}-receipt.tsv",
-        stage_index + 1
-    ));
+    // Path scoping is HYGIENE, not the wall — the same ruling is explicit that "correctness
+    // never depends on cleaning a shared path". It earns its keep by keeping two attempts on
+    // one reused workspace (self-hosted runners do reuse `target/`) from overwriting each
+    // other's evidence; the payload check above is what makes a misroute detectable.
+    let base = std::path::Path::new("target").join(format!("floor-attempt-{attempt_id}"));
+    let base = base.as_path();
+    let path = base.join(format!("on-success-stage-{}-receipt.tsv", stage_index + 1));
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
         eprintln!(
             "claim_executor: failed to write on-success stage {} receipt {}: {e} — stage fails closed here",
@@ -3431,10 +3523,32 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
                     //
                     // Wrapping the memo call in an ordinary slot would NOT be the fix
                     // either: the slot would release while the resolved InterpContext
-                    // stays resident in `stage_memo` for every later stage. The real fix
-                    // is a governor-aware resident lease whose lifetime is the memoized
-                    // context's, released on drop. Until that exists this refuses, and
-                    // the dissolve-on is that lease — not the lane partition.
+                    // stays resident in `stage_memo` for every later stage.
+                    //
+                    // AND THE OBVIOUS REPAIR — hold an AdmittedSlot for the memoized
+                    // context's lifetime, released on drop — DEADLOCKS. An earlier draft
+                    // of this comment named exactly that as "the real fix", which
+                    // understated it in the same direction as the mistake above
+                    // (operator review 2026-07-31, probed against `decide_admission`).
+                    // `AdmittedSlot` is a CONCURRENCY slot, not a memory reservation:
+                    // it increments `active`, which is compared against `target_width`.
+                    // A resident hold pins `active >= 1` forever, so the progress floor
+                    // (`active == 0` admits unconditionally) never fires and every later
+                    // admission returns Hold(WindowFull). `target_width` only grows in
+                    // `note_completion`, which needs a completion, which needs an
+                    // admission — nothing breaks the cycle. This is not a corner case:
+                    // the runner starts at `target_width=1`. A resident hold that also
+                    // skips `note_first_cost_paid` leaves `undigested > 0`, which holds
+                    // admissions even after width grows.
+                    //
+                    // So the dissolve-on is NOT "a lease" as a standalone change. It is
+                    // SPLITTING the governor's single `active` counter into two
+                    // resources — an execution slot (paced, width-bounded) and a
+                    // resident memory reservation (counted against the memory budget,
+                    // NOT against width) — after which a lease is expressible. That
+                    // touches the path standing between the floor and the exit-137 OOM
+                    // kills, so it is its own work with its own receipt, not a step
+                    // inside a feature lane. Until then this refuses.
                     // (0) NO PROFILE AT ALL refuses first: the values below would be the
                     // parse's fail-closed fillers, not the plan's statements, and reading
                     // a wall off invented facts is worse than having no wall.
@@ -3876,6 +3990,13 @@ fn run_walk(
     budget_tighten_ms: Option<u128>,
     emit_witness_row_cost_drift: bool,
     witness_row_cost_basis_path: &Path,
+    // The observed walk-attempt identity. `None` is legitimate ONLY for a plan with no
+    // on-success stages: nothing writes an attempt-scoped receipt, so nothing needs the
+    // identity. With stages present the arm-time check has already refused an unidentified
+    // walk, so `None` here is unreachable — and the stage loop still treats it as a typed
+    // refusal rather than unwrapping, because "unreachable by an invariant elsewhere" is
+    // the assumption that stops being true when someone adds a second caller.
+    walk_attempt_id: Option<&str>,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -4198,8 +4319,26 @@ fn run_walk(
                 // sequence, it does not exist for stage N while stage N+1 runs, and a
                 // process death between the two loses every stage that had in fact
                 // completed. A receipt that cannot be written is itself a stage failure.
-                if !write_on_success_stage_receipt(si, !stage_failed, &run, on_success_stages.len())
-                {
+                let receipt_written = match walk_attempt_id {
+                    Some(attempt) => write_on_success_stage_receipt(
+                        si,
+                        !stage_failed,
+                        &run,
+                        on_success_stages.len(),
+                        attempt,
+                    ),
+                    None => {
+                        eprintln!(
+                            "claim_executor: on-success stage {} has no walk-attempt identity — \
+                             refusing to write an unidentifiable receipt (arm-time observation \
+                             should have refused this walk already; reaching here means a caller \
+                             ran stages without observing identity)",
+                            si + 1
+                        );
+                        false
+                    }
+                };
+                if !receipt_written {
                     stage_failed = true;
                     failure_details
                         .push(format!("on-success stage {} receipt write failed", si + 1));
@@ -4441,6 +4580,9 @@ fn run_perturb_check(
         None,
         false,
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        // The perturb re-walk passes `&[]` for stages, so no attempt-scoped receipt is
+        // written and no identity is owed.
+        None,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -4657,6 +4799,22 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
+    // Walk-attempt identity, observed at the SAME altitude and for the same reason as the
+    // shape refusal above: a walk that cannot identify itself cannot write a receipt anyone
+    // can attribute, and that is knowable now rather than after a 20-30 minute floor. Only
+    // demanded when stages exist — a plan with no on-success stages writes no attempt-scoped
+    // receipt, so requiring identity of it would be a refusal with no subject.
+    let walk_attempt_id: Option<String> = if on_success_stages.is_empty() {
+        None
+    } else {
+        match observe_walk_attempt_id() {
+            Ok(id) => Some(id),
+            Err(msg) => {
+                eprintln!("claim_executor: ON-SUCCESS-STAGE-REFUSED: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    };
     // Floor finalization is carried BY the plan value (walk_finalization_note) — the
     // name-keyed read this replaces was the same seed-roster convention the carrier
     // was built to remove, reintroduced and then caught in review.
@@ -4873,6 +5031,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         budget_tighten_ms,
         plan_function == "gunbc_falsifier_plan",
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        walk_attempt_id.as_deref(),
     );
     // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
     // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
@@ -7096,6 +7255,81 @@ mod tests {
             results.len(),
             1,
             "the surviving member's results must still be collected"
+        );
+    }
+
+    // ---- walk-attempt identity ----
+    //
+    // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
+    // not merely as "not equal to the good value". The positive controls exist so the
+    // negatives are discriminating: a `compose_walk_attempt_id` that refused everything
+    // would pass every Err assertion and fail these.
+
+    #[test]
+    fn attempt_identity_composes_from_the_github_triple() {
+        assert_eq!(
+            compose_walk_attempt_id("", "30654655022", "1", "ci").unwrap(),
+            "30654655022-1-ci"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_prefers_the_explicit_value() {
+        assert_eq!(
+            compose_walk_attempt_id("local-probe-7", "30654655022", "1", "ci").unwrap(),
+            "local-probe-7",
+            "an explicitly supplied identity must win over the ambient GitHub triple"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_refuses_rather_than_defaulting_when_absent() {
+        // THE load-bearing control. The ruling forbids "a silent constant like a bare
+        // local, which would make every local run one attempt and the wrong-attempt
+        // refusal unreachable off CI". If someone ever adds a default, this reds.
+        let refusal = compose_walk_attempt_id("", "", "", "")
+            .expect_err("an unidentified walk must refuse, never default");
+        assert!(
+            refusal.contains("GUNBC_WALK_ATTEMPT_ID"),
+            "the refusal must name the input that would satisfy it, got: {refusal}"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_refuses_a_partial_github_triple() {
+        // A partial triple is the shape a non-`ci` job or a changed workflow produces.
+        // Composing from it would silently collide two jobs of one run onto one identity.
+        for (run_id, attempt, job) in [
+            ("30654655022", "1", ""),
+            ("30654655022", "", "ci"),
+            ("", "1", "ci"),
+        ] {
+            assert!(
+                compose_walk_attempt_id("", run_id, attempt, job).is_err(),
+                "partial triple ({run_id:?},{attempt:?},{job:?}) must refuse"
+            );
+        }
+    }
+
+    #[test]
+    fn attempt_identity_refuses_every_unsafe_path_segment() {
+        // Mirrors `std.types.path_segment_is_safe` clause for clause. `..` and `/` are the
+        // escapes that would let a receipt be written outside its attempt directory; CR and
+        // LF are the ones that would split the line-oriented receipt written under that
+        // name, so two lines could be forged from one field.
+        for bad in ["", ".", "..", "a/b", "a\\b", "a\nb", "a\rb", "a\0b"] {
+            assert!(
+                compose_walk_attempt_id(bad, "run", "1", "ci").is_err() || bad.trim().is_empty(),
+                "unsafe explicit segment {bad:?} must refuse"
+            );
+            assert!(
+                !walk_attempt_id_segment_is_safe(bad),
+                "segment {bad:?} must not be considered safe"
+            );
+        }
+        assert!(
+            walk_attempt_id_segment_is_safe("30654655022-1-ci"),
+            "a real composed identity must be accepted — else the negatives above prove nothing"
         );
     }
 }
