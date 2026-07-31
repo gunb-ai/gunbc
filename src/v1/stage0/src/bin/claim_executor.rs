@@ -3638,7 +3638,7 @@ fn run_walk(
     stop_policy: FloorBatchStopPolicy,
     batch_clamp_params: Option<&[(u128, u128)]>,
     budget_tighten_ms: Option<u128>,
-    emit_witness_row_cost_drift: bool,
+    falsifier_cadence: bool,
     witness_row_cost_basis_path: &Path,
 ) -> WalkOutcome {
     let mut any_failed = false;
@@ -3896,11 +3896,10 @@ fn run_walk(
     emit_gantt(&batch_records, total_wall_nanos);
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
     let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
-    let gate_warm_cost_receipt_ok =
-        write_gate_warm_cost_receipt(&batch_records, emit_witness_row_cost_drift);
+    let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
     let witness_row_cost_receipt_ok =
-        write_witness_row_cost_receipt(&batch_records, emit_witness_row_cost_drift);
-    let witness_row_cost_drift_receipt_ok = if emit_witness_row_cost_drift {
+        write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
+    let witness_row_cost_drift_receipt_ok = if falsifier_cadence {
         write_witness_row_cost_drift_receipt_at(
             std::path::Path::new("target"),
             &batch_records,
