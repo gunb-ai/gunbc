@@ -4,9 +4,15 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { RealizationDispatch }
 import std.realization_schedule {
   RealizationPlan,
+  WalkPlan,
   Runnable,
+  OnSuccessRunnableDisposition,
+  OnSuccessRunnableAdmitted,
   schedule_batch_contains_label,
+  schedule_eq,
+  runnable_eq,
 }
+import v2.std.algebra { bag_eq }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.diagnostic {
   CorrectionNotModeled,
@@ -30,6 +36,10 @@ type ScheduleLensViolation
   | CompileGateNotSecond { expected: String }
   | CorpusBeforeCompile
   | SingleBatchOnly
+  | OrdinaryProjectionMismatch
+  | OnSuccessRunnableRefused
+  | OnSuccessStageMismatch
+  | OnSuccessDuplicateRunnable
 
 data schedule_lens_module: String = "v2.lens.schedule_lens"
 
@@ -86,10 +96,34 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic
         module_file: module_file,
         correction: Unavailable { reason: CorrectionNotModeled }
       )
+    OrdinaryProjectionMismatch =>
+      textual_whole_file_diagnostic(
+        reason: ^schedule_lens_ordinary_projection_mismatch,
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
+      )
+    OnSuccessRunnableRefused =>
+      textual_whole_file_diagnostic(
+        reason: ^schedule_lens_on_success_runnable_refused,
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
+      )
+    OnSuccessStageMismatch =>
+      textual_whole_file_diagnostic(
+        reason: ^schedule_lens_on_success_stage_mismatch,
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
+      )
+    OnSuccessDuplicateRunnable =>
+      textual_whole_file_diagnostic(
+        reason: ^schedule_lens_on_success_duplicate_runnable,
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
+      )
   }
 }
 
-fn schedule_lens_verdict_for_ci_floor(
+fn schedule_lens_verdict_for_ci_floor_ordinary(
   plan: RealizationPlan<Runnable>,
   compile_gate_fn: String,
   cheap_gate_labels: List<String>
@@ -142,6 +176,111 @@ fn schedule_lens_verdict_for_ci_floor(
           Holds
         }
       }
+    }
+  }
+}
+
+fn on_success_runnable_is_admitted(runnable: Runnable) -> Bool {
+  match on_success_runnable_disposition(runnable: runnable) {
+    OnSuccessRunnableAdmitted => true
+    _ => false
+  }
+}
+
+fn on_success_stage_is_admitted(stage: List<Runnable>) -> Bool {
+  fold(stage, init: true, f: fn(admitted, runnable) {
+    admitted && on_success_runnable_is_admitted(runnable: runnable)
+  })
+}
+
+fn on_success_stages_are_admitted(stages: List<List<Runnable>>) -> Bool {
+  fold(stages, init: true, f: fn(admitted, stage) {
+    admitted && on_success_stage_is_admitted(stage: stage)
+  })
+}
+
+fn runnable_occurs_in(runnable: Runnable, runnables: List<Runnable>) -> Bool {
+  fold(runnables, init: false, f: fn(found, candidate) {
+    found || runnable_eq(left: runnable, right: candidate)
+  })
+}
+
+fn on_success_stage_has_duplicate(stage: List<Runnable>) -> Bool {
+  if stage.count() == 0 {
+    false
+  } else if runnable_occurs_in(runnable: stage.first(), runnables: stage.skip(n: 1)) {
+    true
+  } else {
+    on_success_stage_has_duplicate(stage: stage.skip(n: 1))
+  }
+}
+
+fn on_success_stages_have_duplicate(stages: List<List<Runnable>>) -> Bool {
+  fold(stages, init: false, f: fn(found, stage) {
+    found || on_success_stage_has_duplicate(stage: stage)
+  })
+}
+
+fn on_success_stages_eq(
+  actual: List<List<Runnable>>,
+  expected: List<List<Runnable>>
+) -> Bool {
+  if actual.count() != expected.count() {
+    false
+  } else if actual.count() == 0 {
+    true
+  } else if !bag_eq(xs: actual.first(), ys: expected.first(), eq: runnable_eq) {
+    false
+  } else {
+    on_success_stages_eq(
+      actual: actual.skip(n: 1),
+      expected: expected.skip(n: 1)
+    )
+  }
+}
+
+data walk_plan_schedule_lens_note: String = "The WalkPlan schedule lens owns the join the executor consumes: batches must be the ordinary RealizationPlan projection; on-success stage barriers remain ordered; siblings inside one stage compare as an unordered multiset because WalkPlan promises no sibling order; and every stage member must have the modeled std.realization_schedule on_success_runnable_disposition OnSuccessRunnableAdmitted. Duplicate runnable identity (entry + function + full profile) refuses until duplication has an explicit model. Finalization is deliberately outside this lens: gunbc.ci_materialization finalization witnesses and the strict runtime parser own it. Complete WalkPlan coverage composes this ordinary schedule check, success-stage structure and admissibility, the finalization witness, and executor-semantics controls."
+
+fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
+  plan: WalkPlan<F>,
+  ordinary_plan: RealizationPlan<Runnable>,
+  expected_on_success_stages: List<List<Runnable>>,
+  compile_gate_fn: String,
+  cheap_gate_labels: List<String>
+) -> LensVerdict {
+  if !schedule_eq(left: plan.batches, right: ordinary_plan.schedule) {
+    Violation {
+      diagnostic: schedule_lens_violation_diagnostic(kind: OrdinaryProjectionMismatch)
+    }
+  } else {
+    match schedule_lens_verdict_for_ci_floor_ordinary(
+      plan: ordinary_plan,
+      compile_gate_fn: compile_gate_fn,
+      cheap_gate_labels: cheap_gate_labels
+    ) {
+      Violation { diagnostic: diagnostic } => Violation { diagnostic: diagnostic }
+      NotApplicable { diagnostic: diagnostic } => NotApplicable { diagnostic: diagnostic }
+      Unrealized { diagnostic: diagnostic } => Unrealized { diagnostic: diagnostic }
+      Holds =>
+        if !on_success_stages_are_admitted(stages: plan.on_success_stages) {
+          Violation {
+            diagnostic: schedule_lens_violation_diagnostic(kind: OnSuccessRunnableRefused)
+          }
+        } else if on_success_stages_have_duplicate(stages: plan.on_success_stages)
+          || on_success_stages_have_duplicate(stages: expected_on_success_stages) {
+          Violation {
+            diagnostic: schedule_lens_violation_diagnostic(kind: OnSuccessDuplicateRunnable)
+          }
+        } else if !on_success_stages_eq(
+          actual: plan.on_success_stages,
+          expected: expected_on_success_stages
+        ) {
+          Violation {
+            diagnostic: schedule_lens_violation_diagnostic(kind: OnSuccessStageMismatch)
+          }
+        } else {
+          Holds
+        }
     }
   }
 }

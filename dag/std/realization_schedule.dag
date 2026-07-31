@@ -205,6 +205,34 @@ type Runnable
     }
   | RunnableKernelWorkload { fused_op_count: Int }
 
+type OnSuccessRunnableDisposition
+  = OnSuccessRunnableAdmitted
+  | OnSuccessDiscoveryRefused
+  | OnSuccessKernelRefused
+  | OnSuccessHeavyResolveRefused
+  | OnSuccessHostCompilerRefused
+  | OnSuccessSubstantialRefused
+
+fn on_success_runnable_disposition(runnable: Runnable) -> OnSuccessRunnableDisposition {
+  match runnable {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
+      OnSuccessDiscoveryRefused
+    RunnableKernelWorkload { fused_op_count: _ } =>
+      OnSuccessKernelRefused
+    RunnableSingleClaim { entry: _, function: _, profile: profile } =>
+      if profile.heavy_whole_tree_resolve {
+        OnSuccessHeavyResolveRefused
+      } else if profile.spawns_host_compiler {
+        OnSuccessHostCompilerRefused
+      } else {
+        match profile.memory {
+          RunnableMemoryNegligible => OnSuccessRunnableAdmitted
+          RunnableMemorySubstantial => OnSuccessSubstantialRefused
+        }
+      }
+  }
+}
+
 data walk_plan_note: String = "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — ELIGIBLE INDEPENDENT RESOLVE GROUPS within a stage MAY overlap, subject to resource admission — no sibling ordering is guaranteed, so anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. The contract is deliberately weaker than \"members run concurrently\" (review 2026-07-31), because the executor can legitimately withdraw overlap without breaking anything: same-entry same-mode claims are COMBINED into one resolve group and run serially within it; memo-lane and discovery units run on the main thread; and at governor width 1 two spawned threads exist while only one claim body is admitted at a time. Promising wall-time concurrency would make grouping, memo placement, and the governor into contract violations when they are the design. What the admission occupants actually need is the absence of a guaranteed order, and that is what is stated. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).
 
 WHAT THE EXECUTOR PROVIDES, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). THE THREE GAPS THIS NOTE USED TO NAME ARE CLOSED. Both populations now run through ONE executor, `run_stage`: same unit grouping, same lane partition (`batch_unit_lane`), same derived cost clamp. ADMISSION IS PER-LANE, NOT UNIVERSAL, and this note states it precisely because an earlier draft's \{same governor admission\} shorthand was read as a property of every unit and used to justify deleting a real refusal (review 2026-07-31): `run_batch_unit` takes an `AdmittedSlot` for the unit's lifetime, and `run_batch_unit` is reached on the SPAWNED lane only. Memo-lane and main-thread units run UNADMITTED. That is why a heavy-whole-tree-resolve claim is refused admission to an on-success stage rather than merely admitted narrowly — it would route to the memo lane, where no slot governs it, and its context stays resident in `stage_memo` across later stages, so wrapping the call in an ordinary slot would not bound it either. Members within a stage may therefore OVERLAP subject to that per-lane admission, which is the weaker contract stated above and NOT the \{members run concurrently\} claim earlier drafts made; each stage writes ITS OWN receipt before the next begins, so a process death mid-sequence no longer erases the record of stages that had in fact completed; and the callers differ only in ordering and failure policy, which is the one real difference between the two populations.
