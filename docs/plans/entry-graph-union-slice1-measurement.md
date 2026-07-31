@@ -4,7 +4,7 @@
 
 **Lane:** `ci-cost` · **Subject:** `entry-graph-union-construction` · **Deliverable:** measurement only. No union implementation, no eviction/retention redesign, no fork of `walk_memo` or the #6999 entry-closure memo, no local timing claim offered as implementation acceptance.
 
-**The measurement is allowed to conclude the program is worth less than assumed.** It does not; but the axis it strengthens is not the one the program was framed around. See § Verdict.
+**The measurement is allowed to conclude the program is worth less than assumed.** Three claims an earlier draft of this receipt asserted were RETRACTED by further execution (§A.6, §A.7, § Verdict); they are kept visible rather than edited out, because the way they failed is the reusable part. See § Verdict for what survives.
 
 ---
 
@@ -78,11 +78,60 @@ Per entry — machinery is **37.7%** of all resolve-span time even in a single-e
 
 `measure_whole_tree_resolve` and `measure_dependency_view_build` — named as the starting point — carry **no stage attribution at all**. They run the monolithic `compile_to_resolved` path, which fills no `ResolveStageNanos` row and opens no resolve span. `measure_whole_tree_resolve` now emits the partition and **refuses with `NoSpans`**, making that an executed receipt rather than a prose claim. The counters the dispatch describes live on the per-entry path (`claim_batch`, `claim_executor`).
 
-### A.6 What `load` actually is — the load-bearing finding
+### A.6 What `load` actually is — RETRACTED and replaced
 
-`load` = `load_sources_for_entry_with_pool` → `resolve_transitively` + `extend_with_reference_closure`. The inner scan is `referenced_module_paths_in_text` (`cli_run.rs:2062`, called at `:2008`) — a **full-content byte scan, unmemoized, run once per (entry, module) pair**.
+**An earlier version of this section claimed** `load` is dominated by
+`referenced_module_paths_in_text` (`cli_run.rs:2062`), an unmemoized full-content scan run
+once per (entry, module) pair, and concluded that B's duplication factor is "directly the
+multiplier on the dominant exclusive cost."
 
-So the duplication factor measured in B is not an abstract membership ratio: **it is directly the multiplier on the dominant exclusive cost.**
+**That is refuted by execution.** Instrumenting exactly that call:
+
+| row (inclusive, inside `load`) | measured |
+|---|---:|
+| `load_reference_scan` | 3.9–23.0 ms (**~0.0% of load**) |
+| `load_import_closure` | 5.3–6.3 ms (~0.0%) |
+| `load_pool_reference_closure` | 7.9–16.1 ms (~0.0%) |
+| **`load_bare_reference_closure`** | **47.6–53.3 s (~100% of load)** |
+| └ `load_bare_edge_index` | **51.2 s (~100% of the above)** |
+| └ `load_bare_path_lookup` | 6.7 ms |
+| └ `load_bare_edge_walk` | 0.2 ms |
+
+The mechanism was inferred from reading the call path, never measured — the §5
+"specification without execution" trap, committed while writing about it. The missed step:
+`load_sources_for_entry_with_pool` calls `load_sources_for_entry_with_index` *and then*
+`extend_sources_to_both_closure_fixpoint`, which the first instrumentation never timed.
+
+**What `load` actually is:** `build_both_closure_edge_index` — a **corpus-wide** edge index,
+memoized per `MultiEntryIndex`, costing ~25.6 s per index. It is **independent of the
+entry's closure size** (159-module and 504-module closures pay the same), so it is fixed per
+index — *not* per entry, and *not* per membership. The single-entry `claim_batch` harness
+pays it twice only because two indices exist on that path: `claim_batch`'s own
+`build_multi_entry_index`, plus `process_shared_index` for the machinery entry.
+
+### A.7 The bound this puts on ALL of section A
+
+Because the dominant row is a fixed per-index construction, the shares in A.4 describe a
+**fixed-cost-dominated harness, not the floor**. On a floor run one index amortizes across
+hundreds of entries, so `load`'s share there must be smaller — by how much is unmeasured.
+
+Repeating the partition (operator review point 1) shows why this matters. Run-to-run within
+an entry is stable; **across entries the dominant row inverts**:
+
+| entry (closure modules) | run | parent | load | typecheck_compute |
+|---|---|---:|---:|---:|
+| `ci_floor_measurement_test` (159) | r1 | 70.0 s | **67.02%** | 25.62% |
+| `ci_floor_measurement_test` | r2 | 75.3 s | **67.96%** | 24.64% |
+| `generated_artifact_drift_test` (504) | r1 | 125.4 s | 37.89% | **51.48%** |
+| `generated_artifact_drift_test` | r2 | 133.2 s | 39.52% | **49.73%** |
+
+Typecheck scales with closure size; the index build does not. So "load is the dominant
+cost" was an artifact of the entry chosen, and the lane's original typecheck framing is
+correct on the larger closure.
+
+**A floor-representative partition requires the `claim_executor` discovery path** (wired,
+emitting `[cost-partition]` against per-entry receipts from one universe) and **has not been
+run**. Until it is, no share in A.4 should be quoted as a floor fact.
 
 ---
 
@@ -132,28 +181,66 @@ Recorded because it is the failure mode this kind of measurement is most exposed
 
 ---
 
-## Verdict — joining A and B
+## Verdict — what survives, and what was retracted
 
-**How much parent work is in repeatable graph construction?**
-`load` is **68.2%** of resolve-span time, and it *is* the closure walk. `typecheck_compute` is 24.4%; everything else together is 7.4%.
+### Survives (measured, repeated)
 
-**How much of that construction has overlapping module membership?**
-**97.2–97.4%** of closure memberships are repeats, at a duplication factor of **35.9–38.4×**, stable across a 10× range of diff breadth.
+- **The partition mechanism.** The `[resolve-split]` rows were never quotable as shares
+  because children were summed over every resolve a thread runs while the parent covered
+  only witness-entry resolves — two denominators, not a nesting. The exclusive partition
+  reconciles at 0 ns tolerance and refuses rather than clamps.
+- **B's membership numbers.** Duplication factor 35.9 / 38.4 / 38.3 across narrow / typical
+  / broad, 97.2–97.4% of memberships repeated, stable across a 10× range of diff breadth.
+- **`load` is `build_both_closure_edge_index`**, a corpus-wide index memoized per
+  `MultiEntryIndex` at ~25.6 s per index, independent of the entry's closure size.
 
-**What upper bound could a union displace?**
-On the membership axis, collapsing Σ|Cᵢ| → |⋃Cᵢ| removes up to **41.7k–51.4k** repeated memberships. Since the repeated unit is exactly the per-(entry, module) work that dominates `load`, the *ceiling* is ≈ 97% of 68% ≈ **66% of resolve-span time**. This is an upper bound on repeated membership, **not a promise of equivalent wall savings** — the `entry_closure_sources` memo already caches per-entry results and `index.source_files` already shares file reads, so only the scan-and-assemble portion is exposed.
+### Retracted
 
-**Does the evidence strengthen, shrink, or close the union program?**
+1. **"`load` is dominated by an unmemoized per-(entry, module) content scan."** Measured at
+   ~0.0% of `load` (§A.6). Inferred from the call path, never measured.
+2. **"`load` is the dominant cost."** True at 67–68% on a 159-module closure, false at
+   38–40% on a 504-module one where typecheck_compute is ~50% (§A.7).
+3. **"The duplication factor is the multiplier on the dominant cost," and the per-source
+   content-hash memo that followed.** The dominant row is fixed per index — not per entry,
+   not per membership — so neither A×B join direction holds, and the memo recommendation
+   has no measured support. Withdrawn.
 
-It **strengthens the premise and relocates the prize.**
+### Does the evidence strengthen, shrink, or close the union program?
 
-- Strengthened: the overlap is real, large, and stable — not an artifact of one subject. The pole that would have closed the program (disjoint closures → factor 1.0) is decisively absent.
-- Relocated: the prize is in **`load`**, not typecheck. `typecheck_compute` is already content-key memoized through `typed_module_cache`, so its cross-entry duplication is largely collapsed already. A union graph justified as "typecheck once" would be buying something mostly already owned.
-- **Cheaper rival that must be priced first.** Because the repeated unit is a *pure function of source content* (`referenced_module_paths_in_text(content)`), a per-source memo keyed on content hash would collapse the same 35.9–38.4× on the scan portion **without any union graph**. That is a far smaller intervention than an entry-graph union, and slice 2 should not commit to the union before pricing it. Recorded as a finding, deliberately **not implemented here** — it is an implementation decision, and this deliverable is measurement.
+**Neither, yet — the question is not answerable from this data, and saying otherwise would
+repeat the error above.** The reason is §A.7: every share in section A comes from a
+one-or-two-entry `claim_batch` harness whose dominant row is a *fixed per-index
+construction*. On a floor run that cost amortizes across hundreds of entries, so the
+harness systematically overstates it. A union program justified by these shares would be
+justified by an artifact of the instrument.
 
-**Kept separate, as instructed:** `resolution_divergence_census` runs as its own **binary** (`dag/tools/resolution_divergence_silent_pick_gate_witness_transport.dag`, `bin_name: "resolution_divergence_census"`, `--closure-scoped`). Its closure-scoped resolve is a **different process**, so an in-process union cannot displace it. It is not part of the union prize above and must not be laundered into it.
+What B establishes independently still stands and is not harness-bound: the selected
+closures genuinely do repeat module membership 36–38×, and the pole that would have closed
+the program outright (disjoint closures → factor 1.0) is decisively absent. But repeated
+*membership* only becomes a repeated *cost* through a mechanism, and the mechanism this
+receipt proposed has been refuted. No replacement mechanism is offered here.
 
-**Not established here, and required before any implementation:** identical verdicts plus arm64 fleet receipts showing no material increase in cgroup peak, hard backoff, or throttle wall at the real slot budget. No local timing figure in this receipt is offered as implementation acceptance.
+### The one measurement that would decide it
+
+A partition from the **`claim_executor` discovery path** — wired in this PR, emitting
+`[cost-partition]` over per-entry receipts drawn from a single universe, and never run.
+That is the only surface where the parent is the floor's own work and per-index fixed costs
+sit in their true proportion. Until it exists, no share in §A.4 may be quoted as a floor
+fact.
+
+### Kept separate, as instructed
+
+`resolution_divergence_census` runs as its own **binary**
+(`dag/tools/resolution_divergence_silent_pick_gate_witness_transport.dag`,
+`bin_name: "resolution_divergence_census"`, `--closure-scoped`). Its closure-scoped resolve
+is a **different process**, so an in-process union cannot displace it, and it must not be
+folded into any union prize.
+
+### Not established, and required before any implementation
+
+Identical verdicts plus arm64 fleet receipts showing no material increase in cgroup peak,
+hard backoff, or throttle wall at the real slot budget. No local timing figure in this
+receipt is offered as implementation acceptance.
 
 ---
 
