@@ -135,10 +135,6 @@ fn oci_content_digest_encoded_hex(d: OciContentDigest) -> String {
   }
 }
 
-fn oci_content_digest_hex_is_empty(digest: OciContentDigest) -> Bool {
-  oci_content_digest_encoded_hex(d: digest) == ""
-}
-
 fn render_oci_content_digest_wire(d: OciContentDigest) -> String {
   concat(
     oci_content_digest_wire_algorithm(d: d),

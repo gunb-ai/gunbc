@@ -1,6 +1,6 @@
 module extdeps.container.oci.descriptor
 
-import extdeps.container.oci.digest { OciContentDigest, oci_content_digest_hex_is_empty }
+import extdeps.container.oci.digest { OciContentDigest }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -17,7 +17,6 @@ type OciDescriptor {
 
 type DescriptorRejectReason
   = NegativeSize { size: Int }
-  | EmptyDigest
 
 type DescriptorOutcome
   = DescriptorAccepted { value: OciDescriptor }
@@ -26,8 +25,6 @@ type DescriptorOutcome
 fn accept_descriptor(d: OciDescriptor) -> DescriptorOutcome {
   if d.size < 0 {
     DescriptorRejected { reason: NegativeSize { size: d.size } }
-  } else if oci_content_digest_hex_is_empty(digest: d.digest) {
-    DescriptorRejected { reason: EmptyDigest }
   } else {
     DescriptorAccepted { value: d }
   }
