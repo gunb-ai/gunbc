@@ -1,10 +1,12 @@
 module test.claim.occurrence_identity_witness_test
 
 import std.types { Bool }
+import std.algebra { Empty, Cons }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
   OccurrenceIdAllocResult,
+  OccurrenceContainmentPath,
   NodeOccurrenceIdentity,
   OccurrenceSynthetic,
   OccurrenceMinted,
@@ -15,6 +17,7 @@ import std.occurrence_identity {
   occurrence_id_allocator_advance_to,
   node_occurrence_identity_minted,
   occurrence_identity_consumer_red_debts,
+  occurrence_containment_path_is_prefix_of,
 }
 import v2.std.node {
   NodeOccurrenceId,
@@ -156,4 +159,47 @@ test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
   occurrence_identity_consumer_red_debt_has(
     id: "same-spelling-parser-declaration-isolation"
   )
+}
+
+fn oi_path(
+  ancestors: List<OccurrenceId>,
+  terminal: OccurrenceId
+) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
+    ancestors: ancestors,
+    terminal: terminal,
+  }
+}
+
+test fn occurrence_containment_path_prefix_equal_paths_holds() -> Bool {
+  let a = OccurrenceId { value: 1 }
+  let path = oi_path(ancestors: Empty, terminal: a)
+  occurrence_containment_path_is_prefix_of(prefix: path, path: path)
+}
+
+test fn occurrence_containment_path_prefix_nested_ancestor_holds() -> Bool {
+  let a = OccurrenceId { value: 1 }
+  let x = OccurrenceId { value: 2 }
+  let prefix = oi_path(ancestors: Empty, terminal: a)
+  let nested = oi_path(
+    ancestors: Cons { head: a, tail: Empty },
+    terminal: x,
+  )
+  occurrence_containment_path_is_prefix_of(prefix: prefix, path: nested)
+}
+
+test fn occurrence_containment_path_prefix_rejects_cross_branch_terminal_in_ancestors_holds() -> Bool {
+  let a = OccurrenceId { value: 1 }
+  let b = OccurrenceId { value: 2 }
+  let x = OccurrenceId { value: 3 }
+  let y = OccurrenceId { value: 4 }
+  let prefix = oi_path(
+    ancestors: Cons { head: a, tail: Empty },
+    terminal: x,
+  )
+  let other_branch = oi_path(
+    ancestors: Cons { head: b, tail: Cons { head: x, tail: Empty } },
+    terminal: y,
+  )
+  !occurrence_containment_path_is_prefix_of(prefix: prefix, path: other_branch)
 }

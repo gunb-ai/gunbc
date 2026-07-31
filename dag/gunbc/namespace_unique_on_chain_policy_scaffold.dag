@@ -1,0 +1,41 @@
+module gunbc.namespace_unique_on_chain_policy_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data namespace_unique_on_chain_policy_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.retirement.namespace_unique_on_chain_policy_retained",
+    decl_name: "namespace_unique_on_chain_policy_retention",
+    field: WholeDeclaration
+  }
+}
+
+data namespace_unique_on_chain_policy_hand_rust_dissolve_trigger: String = "DISSOLVE-ON: v1 self-host deletes src/v1 and the host thread-local NameResolutionPolicy gate; dag-native policy witnesses replace src/v1/tests/src/namespace_unique_on_chain_policy_test.rs (hand-Rust LOC after → 0). ROADMAP row: gunbc.roadmap_authority namespace-canonical-binding."
+
+data namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor: String = "gunbc.roadmap_authority namespace-canonical-binding"
+
+data namespace_unique_on_chain_policy_hand_rust_loc_before: Int = 244
+
+data namespace_unique_on_chain_policy_hand_rust_loc_after: Int = 348
+
+data namespace_unique_on_chain_policy_loc_delta_net: Int = 104
+
+data namespace_unique_on_chain_policy_hand_rust_loc_census_note: String = "Hand-Rust keystone witness LOC census vs origin/main (src/v1/tests/src/namespace_unique_on_chain_policy_test.rs): before=244 after=348 net=+104. Interim growth is counted against ROADMAP row namespace-canonical-binding; dissolve-on deletes the rs (after → 0). A bare plan-filename is not the receipt — the checkable anchor is gunbc.roadmap_authority namespace-canonical-binding.\n\nGREW FROM +33 TO +104 (review 45364): the span-fabrication fix in v1.std.core diagnostic_to_span had to be provable by execution, not by inspection, and the dag witness corpus cannot reach it -- no dag/test/claim witness imports v1 at all, because the seed is not in the witness corpus's import universe. So the two discriminating tests live here: unknown_occurrence_refusal_renders_no_span_never_a_minted_pseudo_file (reds if the '<unknown-occurrence:N>' placeholder returns, because it rejects any span whose file names the occurrence id) and span_carrying_refusal_still_reports_its_authored_span (reds if the fix over-reaches and flattens real spans to no_span). Both green by execution."
+
+data namespace_unique_on_chain_policy_cli_run_hand_rust_loc_delta_net: Int = 83
+
+data namespace_unique_on_chain_policy_cli_run_hand_rust_census_note: String = "THE SECOND HAND-RUST FILE THIS WORK GROWS, censused here because the first receipt did not cover it (review 45162). src/v1/stage0/src/cli_run.rs, net +83 vs the merge base. It is reported as a delta and ONLY as a delta, because whole-file LOC on a 32k-line host module measures the file, not this change — the same shape cli_run_witness_admission_hand_rust_loc_delta_net already uses for the same file.\n\nTHE ABSOLUTES WERE DELETED, DELIBERATELY (review 45409): this row used to carry a before/after LOC pair for cli_run.rs alongside the delta. PR #7483 then grew that file by roughly 1,556 lines, so both halves of the pair became false on the next merge while the delta stayed exactly right. The stale pair is not quoted here even as illustration -- a dead number reprinted in prose is still a number this carrier appears to assert, and a later reader grepping for it finds a hit. A before/after pair on a file another lane is actively rewriting is a second representation of a fact this row already owns, and it rots without anyone touching this carrier — the same failure the merge-repair row's stale '+7 lines' showed. The delta is the measure; the absolutes are not carried, so there is nothing here to go stale.\n\nWHAT GREW AND WHY IT IS HAND-RUST: the bulk is containment_resolve_fn_v1_for_module, which now routes the v1 containment census through the SAME chain+decide authority inference uses (module_path_owner_binding_decide, global_bare_unique_chain_candidate) so zero-on-chain never authorizes a whole-corpus search, including the nearest-ancestor LCP widen. That is the point of the node: one name-decision function rather than two that can disagree. Consolidating onto one authority necessarily grows the caller until the seed itself goes, so this is counted interim growth, not a shrink.\n\nIt cannot be a dag witness today for the reason the retention row already states: the census walks the seed interpreter's own resolution state through a host thread-local policy gate, and a substrate program has no handle to flip that gate. So there is no deleted path to point at and no shrink to claim — the honest receipt is a counted delta with a dissolution trigger, which is what this row is.\n\nDISSOLVE-ON: identical to the sibling census above — v1 self-host deletes src/v1 and with it both this growth and the policy gate it serves (delta -> 0). Checkable anchor: gunbc.roadmap_authority namespace-canonical-binding. See namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note for the third lane file, which carries the PR total."
+
+data namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_loc_delta_net: Int = 14
+
+data namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note: String = "THE THIRD AND LAST HAND-RUST FILE THIS WORK GROWS. Found by enumerating every changed .rs against the generated roster in gunbc.stage0_emit_model rather than by inspecting the files this change was known to touch; the first receipt missed cli_run.rs (review 45162) and the follow-up receipt still missed this one, so the enumeration is the method that closes the class, not a third one-off. src/v1/stage0/src/module_path_index/parsed_dag_file.rs goes 39 -> 53, net +14.\n\nWHAT GREW AND WHY: parse_dag_file collapsed three distinct failure states -- read failed, parse error, parse produced no module -- into a single Option::None, which is the DESIGN section 5 state-space conflation, and it is what made the test-module hygiene bridge report the opaque unlocatable 'parse failed: <rel>' with the real diagnostic discarded. The growth adds parse_dag_file_or_err returning a typed Result that names the cause and the path, and reduces parse_dag_file to a wrapper over it. This is growth that BUYS a located refusal, which is the direction section 5 asks for.\n\nHONEST RESIDUE, NOT CLAIMED FIXED: the Option-returning parse_dag_file wrapper is retained, so callers that have not migrated still discard the cause. This PR converts the caller that needed the located refusal; it does not delete the lossy wrapper. Removing it is a separate migration over the remaining callers.\n\nTOTAL: hand-Rust growth for this PR is +104 (policy witness) +83 (cli_run) +14 (parsed_dag_file) = +201. Earlier receipts on this PR claimed +33, then +116, then +130, then +205; each was true when written. The drop from 205 to 201 is not a correction but a DISSOLUTION: the merge-repair row censused 4 lines repairing #7490's stale typecheck_module callers, and its stated trigger was that the delta goes to zero once that repair lands on main independently. PR #7494 merged, so it did, and the row deleted itself rather than being carried as a permanent 4. The total is re-derived from the rows each time rather than carried forward. src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs also changed but is net 0 lines, so it adds no growth to census. Every other .rs in this diff is generated stage0 output listed in gunbc.stage0_emit_model and is regen product, not hand-maintained -- including std_occurrence_identity.rs, which a review characterized as censused hand-Rust growth and which is in fact generated (stage0_emit_model.dag:65).\n\nDISSOLVE-ON: same trigger as the two censuses above -- v1 self-host deletes src/v1 (delta -> 0). Checkable anchor: gunbc.roadmap_authority namespace-canonical-binding."
+
+
+
+data namespace_unique_on_chain_policy_containment_census_test_discriminator: String = "zero_on_chain_containment_census_matches_inference_unresolved"
+
+data namespace_unique_on_chain_policy_zero_on_chain_test_discriminator: String = "zero_on_chain_homonym_discriminates_the_diagnostic_label"
+
+data namespace_unique_on_chain_policy_single_off_chain_test_discriminator: String = "single_off_chain_unique_refuses_under_namespace_only"

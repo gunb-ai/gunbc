@@ -1,0 +1,17 @@
+module gunbc.infer_occurrence_binding_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data infer_occurrence_binding_v1_adapter_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.occurrence_binding_resolve",
+    decl_name: "module_path_binding_decide",
+    field: WholeDeclaration
+  }
+}
+
+data infer_occurrence_binding_v1_adapter_dissolve_trigger: String = "DISSOLVE-ON: stage0 emits generic std.occurrence_binding_resolve (BindingCandidate<N> gains Clone/serde bounds); v1.compiler.infer_occurrence_binding deletes module_path_owner_binding_decide and delegates to module_path_binding_decide by execution. ROADMAP lane: namespace-canonical-binding."
+
+data infer_occurrence_binding_v1_adapter_receipt_plan_anchor: String = "docs/plans/namespace-unique-on-chain-operational-plan.md"

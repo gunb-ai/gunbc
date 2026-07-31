@@ -12,6 +12,12 @@ import v1.std.core {
 
 import v1.compiler.infer_types { emit_map_has }
 
+import v1.compiler.infer_occurrence_binding {
+  ambiguity_labels_from_decide,
+  module_path_owner_binding_decide,
+  ModulePathBindingProjection,
+}
+
 import std.induction { SubValueRelation }
 
 
@@ -67,7 +73,7 @@ type ParentSigScan {
   first_parent: String?
 }
 
-data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the Ambiguous arm is unreachable (first-hit preserved verbatim); under the default NamespaceOnlyY policy exactly-one match across the flat parent closure resolves, two-plus refuses. Own-module local hit stays first on both arms: the killed class is the pick among >=2 PARENT matches (the census's fn_parent_first_hit definition), not own-decl precedence. Analysis-only consumers (provenance/descent enrichment) project through func_sig_if_resolved in infer_lookup — they never fabricate a bind; the semantic bind sites in 04_infer match the full outcome and emit the typed AmbiguousReference."
+data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. lookup_resolved_sig always routes parent misses through lookup_resolved_sig_unique_across_parents (module_path_owner_binding_decide): exactly-one owner across the parent closure resolves, zero is Unresolved, two-plus is Ambiguous — the ImportScoped first-hit branch is deleted, and the policy bracket must not restore it. Own-module local hit stays first: the killed class is the pick among >=2 PARENT matches (the census's fn_parent_first_hit definition), not own-decl precedence. Analysis-only consumers (provenance/descent enrichment) project through func_sig_if_resolved in infer_lookup — they never fabricate a bind; the semantic bind sites in 04_infer match the full outcome and emit the typed AmbiguousReference."
 
 type FuncSigLookup
   = FuncSigResolved { sig: ResolvedFuncSig }
@@ -90,16 +96,20 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
       Absent => acc
     }
   )
-  let owner_count = scan.owners |> count
-  if owner_count == 0 {
-    FuncSigUnresolved
-  } else if owner_count == 1 {
-    match scan.first_sig {
-      Present { value: sig } => FuncSigResolved { sig: sig }
-      Absent => FuncSigUnresolved
-    }
-  } else {
-    FuncSigAmbiguous { candidates: scan.owners |> map(o => concat(o, ".", name)) }
+  match module_path_owner_binding_decide(owners: scan.owners) {
+    ModulePathBindingMiss => FuncSigUnresolved
+    ModulePathBindingHit { owner: _ } =>
+      match scan.first_sig {
+        Present { value: sig } => FuncSigResolved { sig: sig }
+        Absent => FuncSigUnresolved
+      }
+    ModulePathBindingAmbiguous { owners: _ } =>
+      FuncSigAmbiguous {
+        candidates: ambiguity_labels_from_decide(
+          owners: scan.owners,
+          name: name,
+        ),
+      }
   }
 }
 
@@ -133,25 +143,7 @@ fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> Res
 fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
   match map_get(env.local, name) {
     Present { value: sig } => FuncSigResolved { sig: sig }
-    Absent =>
-      if name_resolution_policy_is_namespace_only() {
-        lookup_resolved_sig_unique_across_parents(env: env, name: name)
-      } else {
-        let first_hit = if resolution_silent_pick_is_enabled() {
-          lookup_resolved_sig_with_telemetry(env: env, name: name)
-        } else {
-          fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
-            match acc {
-              Present { value: sig } => Present { value: sig }
-              Absent => map_get(p.local, name)
-            }
-          )
-        }
-        match first_hit {
-          Present { value: sig } => FuncSigResolved { sig: sig }
-          Absent => FuncSigUnresolved
-        }
-      }
+    Absent => lookup_resolved_sig_unique_across_parents(env: env, name: name)
   }
 }
 

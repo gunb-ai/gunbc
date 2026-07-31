@@ -1,0 +1,33 @@
+module test.claim.infer_occurrence_binding_scaffold_witness_test
+
+import std.disposition { Scaffold, SingleAuthority }
+import gunbc.infer_occurrence_binding_scaffold {
+  infer_occurrence_binding_v1_adapter_scaffold,
+  infer_occurrence_binding_v1_adapter_dissolve_trigger,
+  infer_occurrence_binding_v1_adapter_receipt_plan_anchor,
+}
+
+test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
+  match infer_occurrence_binding_v1_adapter_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn infer_occurrence_binding_v1_adapter_dissolve_trigger_names_authority_and_lane() -> Bool {
+  string_contains(
+    s: infer_occurrence_binding_v1_adapter_dissolve_trigger,
+    pattern: "module_path_binding_decide",
+  ) &&
+    string_contains(
+      s: infer_occurrence_binding_v1_adapter_dissolve_trigger,
+      pattern: "namespace-canonical-binding",
+    )
+}
+
+test fn infer_occurrence_binding_v1_adapter_receipt_plan_anchor_is_checkable() -> Bool {
+  string_contains(
+    s: infer_occurrence_binding_v1_adapter_receipt_plan_anchor,
+    pattern: "namespace-unique-on-chain-operational-plan.md",
+  )
+}
