@@ -601,12 +601,12 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StringScanResult {
-    ClosedString { content: String, end_pos: i64 },
-    InterpolationStart { content: String, end_pos: i64 },
-    UnterminatedString { content: String, end_pos: i64 },
+    ClosedString { content: Rc<Vec<i64>>, end_pos: i64 },
+    InterpolationStart { content: Rc<Vec<i64>>, end_pos: i64 },
+    UnterminatedString { content: Rc<Vec<i64>>, end_pos: i64 },
 }
 impl StringScanResult {
-    pub fn content(&self) -> String {
+    pub fn content(&self) -> Rc<Vec<i64>> {
         match self {
             StringScanResult::ClosedString { content: __val, .. } => __val.clone(),
             StringScanResult::InterpolationStart { content: __val, .. } => __val.clone(),
@@ -749,53 +749,51 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
 pub fn scan_string_body(
     mut source: Rc<SourceRef>,
     mut pos: i64,
-    mut acc: Rc<Vec<String>>,
+    mut acc: Rc<Vec<i64>>,
 ) -> Rc<StringScanResult> {
     loop {
         if (pos.clone() >= source_len(source.clone())) {
             break Rc::new(StringScanResult::UnterminatedString {
-                content: acc.clone().join(&"".to_string()),
+                content: acc.clone(),
                 end_pos: pos.clone(),
             });
         } else {
-            let ch = source_char(source.clone(), pos.clone());
-            if (ch.clone() == "\"".to_string()) {
+            let ch = source.source_chars.clone()[(pos.clone()) as usize].clone();
+            if (ch.clone() == 34) {
                 break Rc::new(StringScanResult::ClosedString {
-                    content: acc.clone().join(&"".to_string()),
+                    content: acc.clone(),
                     end_pos: pos.clone(),
                 });
             } else {
-                if (ch.clone() == "\\".to_string()) {
+                if (ch.clone() == 92) {
                     if ((pos.clone() + 1) < source_len(source.clone())) {
-                        let escaped = source_char(source.clone(), (pos.clone() + 1));
+                        let escaped =
+                            source.source_chars.clone()[(pos.clone() + 1) as usize].clone();
                         {
                             let __tco_0 = (pos + 2);
-                            let __tco_1 = v1_rt::rc_list_push(
-                                v1_rt::rc_list_push(acc, "\\".to_string()),
-                                escaped.clone(),
-                            );
+                            let __tco_1 =
+                                v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), escaped.clone());
                             pos = __tco_0;
                             acc = __tco_1;
                             continue;
                         }
                     } else {
                         break Rc::new(StringScanResult::UnterminatedString {
-                            content: v1_rt::rc_list_push(acc.clone(), "\\".to_string())
-                                .join(&"".to_string()),
+                            content: v1_rt::rc_list_push(acc.clone(), 92),
                             end_pos: (pos.clone() + 1),
                         });
                     }
                 } else {
-                    if (ch.clone() == "{".to_string()) {
+                    if (ch.clone() == 123) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
-                                content: acc.clone().join(&"".to_string()),
+                                content: acc.clone(),
                                 end_pos: pos.clone(),
                             });
                         } else {
                             {
                                 let __tco_0 = (pos + 1);
-                                let __tco_1 = v1_rt::rc_list_push(acc, "{".to_string());
+                                let __tco_1 = v1_rt::rc_list_push(acc, 123);
                                 pos = __tco_0;
                                 acc = __tco_1;
                                 continue;
@@ -828,8 +826,30 @@ pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
     }
 }
 
-pub fn process_escapes(raw: String) -> String {
-    process_escapes_loop(raw.clone(), 0, Rc::new(vec![]))
+pub fn process_escapes(chars: Rc<Vec<i64>>) -> String {
+    process_escapes_loop(chars.clone(), 0, Rc::new(vec![]))
+}
+
+pub fn code_point_at_accessor_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but the Rust realization of an index is a bare element that panics out of range. The two disagree, so wherever the emitter acts on the declared type it emits a coercion the realization cannot satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64` (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary. It works because return position is not checked against the body (recorded on the finalization carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together with those two when the index model and its realization are reconciled — either the index realizes as an Option or it types as the element — at which point return-position typechecking would red all three at once.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
+    chars.clone()[(pos.clone()) as usize].clone()
+}
+
+pub fn escape_code_point_table_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 92 backslash, 110 `n`, 116 `t`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO are 10 line-feed and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn hex_escape_note() -> String {
@@ -844,58 +864,54 @@ pub fn hex_escape_note() -> String {
 pub fn unknown_escape_passthrough_frontier() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 dissolve-on: tokenizer_unknown_escape_strict_close (opened 2026-07-25) — the else-arm below resolves an UNRECOGNIZED escape to concat(backslash, next), so \\s silently means backslash-s and is indistinguishable from a typo'd escape. That is a closed-vocabulary violation (DESIGN §4: the vocabulary is closed; §5: a failure arm refuses, never widens) and it is knowingly RETAINED, not accepted: refusing today would red 142 occurrences across 38 files (textual census 2026-07-25 — grep over .dag, so an upper bound, and DESIGN's own caution about grep census applies), overwhelmingly regex fragments (\\' 28, \\. 19, \\| 13, \\/ 12, \\B 10) that intend the backslash to survive. NOT the four sites a \\x-only count suggests. DISSOLVES WHEN a raw-string form lands to carry regex fragments, the 142 occurrences migrate onto it, and this arm becomes a typed located parse refusal (the Rust rule: unknown escape is an error, a literal backslash is spelled \\\\). Because that is a PARSE-SEMANTICS change over a tokenizer every lane's probes compile through, the strict close lands with a corpus-wide compile receipt, never the site migration alone.".to_string()
+            "🟡 dissolve-on: tokenizer_unknown_escape_strict_close (opened 2026-07-25) — the else-arm below resolves an UNRECOGNIZED escape by pushing backslash and next unchanged, so \\s silently means backslash-s and is indistinguishable from a typo'd escape. That is a closed-vocabulary violation (DESIGN §4: the vocabulary is closed; §5: a failure arm refuses, never widens) and it is knowingly RETAINED, not accepted: refusing today would red 142 occurrences across 38 files (textual census 2026-07-25 — grep over .dag, so an upper bound, and DESIGN's own caution about grep census applies), overwhelmingly regex fragments (\\' 28, \\. 19, \\| 13, \\/ 12, \\B 10) that intend the backslash to survive. NOT the four sites a \\x-only count suggests. DISSOLVES WHEN a raw-string form lands to carry regex fragments, the 142 occurrences migrate onto it, and this arm becomes a typed located parse refusal (the Rust rule: unknown escape is an error, a literal backslash is spelled \\\\). Because that is a PARSE-SEMANTICS change over a tokenizer every lane's probes compile through, the strict close lands with a corpus-wide compile receipt, never the site migration alone.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn hex_digit_value(ch: String) -> Option<i64> {
-    {
-        let cp = v1_rt::code_point(ch.clone());
-        if ((cp.clone() >= 48) && (cp.clone() <= 57)) {
-            Some((cp.clone() - 48))
+pub fn hex_digit_value(cp: i64) -> Option<i64> {
+    if ((cp.clone() >= 48) && (cp.clone() <= 57)) {
+        Some((cp.clone() - 48))
+    } else {
+        if ((cp.clone() >= 97) && (cp.clone() <= 102)) {
+            Some((cp.clone() - 87))
         } else {
-            if ((cp.clone() >= 97) && (cp.clone() <= 102)) {
-                Some((cp.clone() - 87))
+            if ((cp.clone() >= 65) && (cp.clone() <= 70)) {
+                Some((cp.clone() - 55))
             } else {
-                if ((cp.clone() >= 65) && (cp.clone() <= 70)) {
-                    Some((cp.clone() - 55))
-                } else {
-                    None
-                }
+                None
             }
         }
     }
 }
 
-pub fn hex_escape_char(hi: String, lo: String) -> Option<String> {
+pub fn hex_escape_char(hi: i64, lo: i64) -> Option<i64> {
     match hex_digit_value(hi.clone()) {
         Some(h) => match hex_digit_value(lo.clone()) {
-            Some(l) => Some(v1_rt::from_code_point(((h.clone() * 16) + l.clone()))),
+            Some(l) => Some(((h.clone() * 16) + l.clone())),
             None => None,
         },
         None => None,
     }
 }
 
-pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
+pub fn process_escapes_loop(
+    mut source: Rc<Vec<i64>>,
+    mut pos: i64,
+    mut acc: Rc<Vec<i64>>,
+) -> String {
     loop {
-        if (pos.clone() >= v1_rt::string_length(&source)) {
-            break acc.clone().join(&"".to_string());
+        if (pos.clone() >= (source.clone().len() as i64)) {
+            break v1_rt::chars_to_string(&acc, 0, (acc.clone().len() as i64));
         } else {
-            let ch = v1_rt::char_at(&source, pos.clone());
-            if ((ch.clone() == "\\".to_string())
-                && ((pos.clone() + 1) < v1_rt::string_length(&source)))
-            {
-                let next = v1_rt::char_at(&source, (pos.clone() + 1));
-                if ((next.clone() == "x".to_string())
-                    && ((pos.clone() + 3) < v1_rt::string_length(&source)))
-                {
-                    match hex_escape_char(
-                        v1_rt::char_at(&source, (pos.clone() + 2)),
-                        v1_rt::char_at(&source, (pos.clone() + 3)),
-                    ) {
+            let ch = code_point_at(source.clone(), pos.clone());
+            if ((ch.clone() == 92) && ((pos.clone() + 1) < (source.clone().len() as i64))) {
+                let next = code_point_at(source.clone(), (pos.clone() + 1));
+                if ((next.clone() == 120) && ((pos.clone() + 3) < (source.clone().len() as i64))) {
+                    let hi = code_point_at(source.clone(), (pos.clone() + 2));
+                    let lo = code_point_at(source.clone(), (pos.clone() + 3));
+                    match hex_escape_char(hi.clone(), lo.clone()) {
                         Some(decoded) => {
                             let __tco_0 = (pos + 4);
                             let __tco_1 = v1_rt::rc_list_push(acc, decoded.clone());
@@ -905,35 +921,36 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<St
                         }
                         None => {
                             let __tco_0 = (pos + 2);
-                            let __tco_1 = v1_rt::rc_list_push(
-                                acc,
-                                v1_rt::concat("\\".to_string(), next.clone()),
-                            );
+                            let __tco_1 =
+                                v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), next.clone());
                             pos = __tco_0;
                             acc = __tco_1;
                             continue;
                         }
                     }
                 } else {
-                    let resolved = if (next.clone() == "\"".to_string()) {
-                        "\"".to_string()
+                    let acc_with_escape = if (next.clone() == 34) {
+                        v1_rt::rc_list_push(acc.clone(), 34)
                     } else {
-                        if (next.clone() == "\\".to_string()) {
-                            "\\".to_string()
+                        if (next.clone() == 92) {
+                            v1_rt::rc_list_push(acc.clone(), 92)
                         } else {
-                            if (next.clone() == "n".to_string()) {
-                                "\n".to_string()
+                            if (next.clone() == 110) {
+                                v1_rt::rc_list_push(acc.clone(), 10)
                             } else {
-                                if (next.clone() == "t".to_string()) {
-                                    "\t".to_string()
+                                if (next.clone() == 116) {
+                                    v1_rt::rc_list_push(acc.clone(), 9)
                                 } else {
-                                    if (next.clone() == "{".to_string()) {
-                                        "{".to_string()
+                                    if (next.clone() == 123) {
+                                        v1_rt::rc_list_push(acc.clone(), 123)
                                     } else {
-                                        if (next.clone() == "}".to_string()) {
-                                            "}".to_string()
+                                        if (next.clone() == 125) {
+                                            v1_rt::rc_list_push(acc.clone(), 125)
                                         } else {
-                                            v1_rt::concat("\\".to_string(), next.clone())
+                                            v1_rt::rc_list_push(
+                                                v1_rt::rc_list_push(acc.clone(), 92),
+                                                next.clone(),
+                                            )
                                         }
                                     }
                                 }
@@ -942,7 +959,7 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<St
                     };
                     {
                         let __tco_0 = (pos + 2);
-                        let __tco_1 = v1_rt::rc_list_push(acc, resolved.clone());
+                        let __tco_1 = acc_with_escape.clone();
                         pos = __tco_0;
                         acc = __tco_1;
                         continue;
