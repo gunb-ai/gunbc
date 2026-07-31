@@ -35,7 +35,7 @@ This is §5 (fail-closed) turned on the cost axis: uncached non-redundant work i
 
 > **Pure schedule TOPOLOGY stays central and deterministic; every measurement-fed decision is a PERIPHERAL realization.**
 
-The schedule (`Schedule = List<List<Runnable>>`) is a deterministic partial order — it expresses what *can* run in parallel, hardware-free, and is pinned by the `schedule_eq` / `schedule_generates_identical_schedule` witnesses (`realization_schedule.dag:222-236`; `src/v2/test/claim/realization_schedule_witness.dag:35-48`). A schedule whose *width or membership* depended on a measured per-machine `HardwareThreadCount` would break that equality across hosts. So: **measured ⇒ peripheral, by construction.** Width, shard balance, cache-layer choice, and the timing tap all live in the periphery (`extdeps/realization`, the host realizer), checked by *"given these DeploymentFacts + these measured costs, the realizer picks X"* witnesses — deterministic *given their inputs*. This is exactly what the `CostAccount` dissolve-on comment anticipates (`realization_schedule.dag:25-26`). Most `.dag` programs are stateless/short-lived: they declare dependency structure and never mention hardware; the width-fold degenerates to "just run it."
+The schedule (`Schedule = List<List<Runnable>>`) is a deterministic partial order — it expresses what *can* run in parallel, hardware-free, and is pinned by `std.realization_schedule` `schedule_eq` / `schedule_generates_identical_schedule`. A schedule whose *width or membership* depended on a measured per-machine `HardwareThreadCount` would break that equality across hosts. So: **measured ⇒ peripheral, by construction.** Width, shard balance, cache-layer choice, and the timing tap all live in the periphery (`extdeps/realization`, the host realizer), checked by *"given these DeploymentFacts + these measured costs, the realizer picks X"* witnesses — deterministic *given their inputs*. This is exactly what `std.realization_schedule` `CostAccount` anticipates. Most `.dag` programs are stateless/short-lived: they declare dependency structure and never mention hardware; the width-fold degenerates to "just run it."
 
 ### Realization has THREE dimensions (schedule · cache · compute-fabric)
 
@@ -47,9 +47,9 @@ The schedule (`Schedule = List<List<Runnable>>`) is a deterministic partial orde
 | **cache** | `std.cache_interface` | *whether it needs to run at all* | §2 minimal work |
 | **compute fabric** | `product.compute_fabric` | *where / on what it runs* (provision) | placement / $ |
 
-The proof they are dimensions of *one* concept rather than three separate models is **structural and already in the tree**: cache `MUST NOT import compute_fabric` (`cache_interface.dag:4`) and compute_fabric `MUST NOT import cache_interface` (`compute_fabric.dag:9`); **both compose only over `ExecutionReceipt`**. They meet *only* at the content-addressed receipt — never by direct coupling (§3/§4).
+The proof they are dimensions of *one* concept rather than three separate models is **structural and already in the tree**: `std.cache_interface` `ExecutionReceiptRef` and `gunbc.fleet_intent` `ExecutionReceipt` compose through the receipt without direct cache↔fabric coupling. They meet *only* at the content-addressed receipt — never by direct coupling (§3/§4).
 
-**The `compute_fabric()` zero-arg interface is the same §3 move as the whole plan.** `compute_fabric` is a **demand → placement → supply** market: an execution emits a `WorkDemand` (isolation, memory, GPU) and `satisfies(offer, demand)` (`compute_fabric.dag:377`) places it on a satisfying `ComputeOffer`. "Provision compute for this execution" with **empty args** = the `WorkDemand` is *inferred from the .dag-modeled execution*, and placement is *resolved from the deployment's offers* — **neither is a caller argument**. Identical to the cache planner auto-wiring and the scheduler's hardware-budget fold: *caller declares intent; the realization is resolved from modeled deployment facts.* All three dimensions share this.
+**The `compute_fabric()` zero-arg interface is the same §3 move as the whole plan.** `product.compute_fabric` is a **demand → placement → supply** market: `ComputeNeed` is placed by `connect` on a satisfying `Opportunity`. "Provision compute for this execution" with **empty args** = the demand is *inferred from the .dag-modeled execution*, and placement is *resolved from the deployment's offers* — **neither is a caller argument**. Identical to the cache planner auto-wiring and the scheduler's hardware-budget fold: *caller declares intent; the realization is resolved from modeled deployment facts.* All three dimensions share this.
 
 **Layering discipline (§3):** `compute_fabric` and `placement_supply` are **product**; schedule/cache are **std** (imports point toward std). Split: product owns host identity (`product.placement_supply.HostIdentity` only — `PlacementSupplyRow` converged/deleted, #6687) and std owns the `{time,space,power}` cost-axis measure carriers it composes; product `compute_fabric` owns the **$/billing axis** (`CostClass`, `MoneyMicros`) and projects fleet offers into that carrier; the **peripheral host realizer** bridges product→std and runs the Pareto pick. std stays product-free; hardware grants live in `std.machine_shape` + extdeps `shape_from_catalog`.
 
@@ -63,7 +63,7 @@ This is *why* the keystone's measurement is modeled as an **effect-shape + `Perf
 
 ---
 
-## Verified ground truth (file:line — do not re-derive)
+## Verified ground truth (module + symbol — do not re-derive)
 
 | Fact | Evidence |
 | --- | --- |
