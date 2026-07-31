@@ -33,7 +33,7 @@ test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
   return hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind {
     home: PlanDoc,
     slug: "typescript-gap-census",
-    work: DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
+    works: [DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration }],
     dissolution: HasTrigger { text: "synthetic negative control: this slug IS registered, so the wall must refuse it" },
   }) == false
 }
