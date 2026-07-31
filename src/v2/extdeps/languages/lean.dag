@@ -1,4 +1,5 @@
 module v2.extdeps.languages.lean
+import v2.extdeps.languages.primitive_width { BitsWidth }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.grammar {
@@ -185,15 +186,10 @@ type LeanIntKind
   = Signed
   | Unsigned
 
-type LeanIntWidth
-  = Bits8
-  | Bits16
-  | Bits32
-  | Bits64
-  | Pointer
+data lean_bits_width_admissibility_note: String = "Lean fixed-precision integers admit Bits8|16|32|64 and platform word Pointer (usize); Bits128 is out of surface. Width variants are imported from v2.extdeps.languages.primitive_width.BitsWidth — not re-declared here (P3b collapse)."
 
 type LeanScalar
-  = IntScalar { kind: LeanIntKind, width: LeanIntWidth }
+  = IntScalar { kind: LeanIntKind, width: BitsWidth }
   | BoolScalar
 
 type LeanPrimitiveFacts {
@@ -297,7 +293,18 @@ fn lean_int_kind_node(kind: LeanIntKind) -> Node {
   }
 }
 
-fn lean_int_width_node(width: LeanIntWidth) -> Node {
+fn lean_admits_bits_width(width: BitsWidth) -> Bool {
+  match width {
+    Bits8 => true
+    Bits16 => true
+    Bits32 => true
+    Bits64 => true
+    Pointer => true
+    Bits128 => false
+  }
+}
+
+fn lean_int_width_node(width: BitsWidth) -> Node {
   match width {
     Bits8 => lean_inhabitant_atom(id: ^lean_tag_bits8)
     Bits16 => lean_inhabitant_atom(id: ^lean_tag_bits16)
@@ -364,7 +371,7 @@ fn lean_inhabitant_int32_node() -> Node {
   lean_primitive_inhabitant_node(id: ^lean_inhabitant_int32, facts: lean_facts_int32)
 }
 
-fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Map<Symbol, Node> {
+fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: BitsWidth) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -588,7 +595,7 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Node {
+fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: BitsWidth) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [

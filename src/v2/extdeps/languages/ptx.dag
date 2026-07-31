@@ -1,5 +1,6 @@
 module v2.extdeps.languages.ptx
 
+import v2.extdeps.languages.primitive_width { BitsWidth }
 import v2.std.grammar {
   StampClass,
   StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, Terminal, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
@@ -60,12 +61,7 @@ type ThreadCoordSource
   | ClusterInGrid
   | CtaInGrid
 
-type BitsWidth
-  = Bits8
-  | Bits16
-  | Bits32
-  | Bits64
-  | Bits128
+data ptx_bits_width_admissibility_note: String = "PTX register file admits Bits8|16|32|64|128 raw bit widths via imported primitive_width.BitsWidth; Pointer is not a PTX register width (category b admissibility — absent from PTX surface)."
 
 type IntegerWidth
   = IntBits8

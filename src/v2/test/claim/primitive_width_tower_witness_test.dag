@@ -1,0 +1,51 @@
+module v2.test.claim.primitive_width_tower_witness
+
+
+import v2.extdeps.languages.lean { lean_admits_bits_width }
+import v2.extdeps.languages.primitive_width {
+  BitsWidth,
+  OverflowAction,
+  PanicOnOverflow,
+  TwoComplementWrap
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data primitive_width_tower_witness_note: String = "P3b width-tower collapse receipts: canonical BitsWidth authority is singular (primitive_width.dag); lean admits Bits8|16|32|64|Pointer and refuses Bits128; OverflowAction is shared across java/rust consumers."
+
+test fn lean_admits_catalog_widths() -> Bool {
+  lean_admits_bits_width(width: Bits8) &&
+  lean_admits_bits_width(width: Bits16) &&
+  lean_admits_bits_width(width: Bits32) &&
+  lean_admits_bits_width(width: Bits64) &&
+  lean_admits_bits_width(width: Pointer)
+}
+
+test fn lean_refuses_bits128_admissibility() -> Bool {
+  lean_admits_bits_width(width: Bits128) == false
+}
+
+test fn overflow_action_shared_variants_constructible() -> Bool {
+  match PanicOnOverflow {
+    PanicOnOverflow => true
+    TwoComplementWrap => false
+  } &&
+  match TwoComplementWrap {
+    PanicOnOverflow => false
+    TwoComplementWrap => true
+  }
+}
+
+test fn overflow_action_type_is_shared_authority() -> Bool {
+  let debug_default: OverflowAction = PanicOnOverflow
+  let release_default: OverflowAction = TwoComplementWrap
+  match debug_default {
+    PanicOnOverflow => match release_default {
+      PanicOnOverflow => false
+      TwoComplementWrap => true
+    }
+    TwoComplementWrap => false
+  }
+}

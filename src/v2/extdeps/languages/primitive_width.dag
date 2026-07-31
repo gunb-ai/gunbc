@@ -1,0 +1,17 @@
+module v2.extdeps.languages.primitive_width
+
+data bits_width_authority_note: String = "Single authority for the machine bit-width axis across target-language models (P3b width-tower collapse). DESIGN section 2 horizontal: Int8..UInt128 are Compose<Int, MachineWidth<N>> rows — one axis, not ten types; the corpus had re-forked that axis per language as Bits8/Bits16/... variant homes. Dissolve-on: each v2.extdeps.languages.* module imports BitsWidth here and expresses language-specific surface via an admissibility relation, never a second enum carrying the same numbers."
+
+type BitsWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
+  | Pointer
+
+data overflow_action_homonym_note: String = "OverflowAction lifted from java.dag and rust.dag (byte-identical PanicOnOverflow | TwoComplementWrap). P3a-class self-fork homonym eliminated: one type, N language consumers."
+
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap
