@@ -13,6 +13,8 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
+  roadmap_rendered_ghost_count,
+  roadmap_ghost_node_red_probe_count,
 }
 import gunbc.v1_deletion_plan {
   V1FinishLine,
@@ -618,4 +620,15 @@ test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
       ExecutionContractUnspecified => false
       ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
     }
+}
+
+data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
+
+test fn witness_rendered_nodes_are_declared_or_derived() -> Bool {
+  roadmap_rendered_ghost_count(doc: roadmap_authority_for(focus: NoFocus)) == 0
+    && roadmap_rendered_ghost_count(doc: roadmap_authority()) == 0
+}
+
+test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
+  roadmap_ghost_node_red_probe_count() == 1
 }
