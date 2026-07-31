@@ -17,7 +17,7 @@ The test for "locked": (a) wired into the floor (discovered + run), (b) fail-clo
 | Gate | Scope | Evidence |
 | --- | --- | --- |
 | DagCompileCleanGate | whole tree (fail-fast root) | `gunbc.ci_gate` `DagCompileCleanGate`; `v2.workflow.ci_floor_plan` `gate_runnable` |
-| GeneratedArtifactDriftGate | `ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry | `ci_spec.dag` `GeneratedArtifactDriftGate`; `generated_artifact_gate.dag`; registry+commit-derivation `gunbc/generated_artifact.dag` |
+| GeneratedArtifactDriftGate | `ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry | `gunbc.ci_gate` `GeneratedArtifactDriftGate`; `tools.generated_artifact_gate` `run_generated_artifact_drift_gate`; `gunbc.generated_artifact` `committed_generated_artifacts` |
 
 These are the **structural** gates. The gap is everything *analytical* and the *bootstrap purity* gate.
 
