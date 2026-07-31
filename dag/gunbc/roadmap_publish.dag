@@ -6,82 +6,165 @@ import extdeps.github.pulls {
   PullRequestState, Open,
 }
 
-data publish_producer_note: String = "THE PRODUCER THE PUBLICATION SEGMENT DID NOT HAVE. roadmap_attempt_workflow_stage_note declares seven obligations and says Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. roadmap_verify.dag grounded the first. This grounds Publication, and only Publication.\\n\\nIT IS INSTANTIATION, NOT INVENTION. extdeps.github.pulls already models PullRequest and PullRequestRef against the cited upstream, and the mock corpus already keys the operations. What was missing was nothing at the extdeps layer and everything at the join: no function anywhere took an attempt's branch and returned the pull request it became.\\n\\nTHE BELT OBSERVES, IT DOES NOT PUBLISH (operator ruling, 2026-07-31). Nothing here pushes a branch or opens a pull request. Publication concludes on remote READ-BACK of an action the worker or agent performed, which keeps the belt a reconciler rather than making it an author — the same posture gunbc.membership_reconcile takes toward every other member it manages. Making the belt push would be a deliberate responsibility change with its own authorization story, not an implementation convenience."
+data publish_producer_note: String = "PUBLICATION IS ADJUDICATED AGAINST AN EXACT HEAD, NOT LOOKED UP BY BRANCH (operator ruling, 2026-07-31). An earlier cut of this module answered 'which pull request belongs to this branch', which is a lookup rather than a judgment: it reported whatever head that pull request happened to carry and left the caller to compare. Every downstream obligation — verify, review, audit, acceptance — is about one exact commit, so the question Publication has to answer is whether THIS commit is the one on offer.\\n\\nThe branch is a lookup and publication handle. A completed judgment belongs to a head sha.\\n\\nTHE ARM THAT MOTIVATES THE REWRITE is PublicationHeadDiverged. A pull request exists, its branch matches, and its head is NOT the commit under judgment — the ordinary state after a worker pushes a revision while a review is in flight. Under a branch lookup that reads as a successful publication, and every later receipt binds to a commit nobody assessed. It is the one outcome a lookup cannot express and the one most likely to occur."
 
-data review_is_not_observed_here_note: String = "REVIEW IS PRODUCED BY THE ROADMAP, NOT OBSERVED FROM A FORGE (operator ruling, 2026-07-31), and this module deliberately stops at Publication because of it.\\n\\nAn earlier cut of this file classified pull-request review verdicts read from github.Pulls.ListReviews, on the assumption that the Review obligation meant the forge's review of the candidate. It does not. The roadmap's Review stage is a review the roadmap TRIGGERS — from its own UI, against the item's candidate — whose findings are routed back to the worker so it can iterate. That is a control loop the belt drives, not a remote fact the belt reads, and the two have opposite shapes: an observation concludes, a loop continues.\\n\\nThe measured fact that made the error visible rather than merely theoretical: every review in this repository is produced by a system that never writes to the forge, so github.Pulls.ListReviews returns an empty list for every pull request here. A classifier over that surface would have answered 'no review' forever and never once looked wrong — the observation would have been perfectly stable and perfectly meaningless.\\n\\nReview's producer therefore belongs with the trigger that runs it, and gunbc.tools.review and gunbc.tools.review_codex — two forked, unconsumed LLM review agents that differ only by provider — are its prior art, not this module."
+data belt_observes_note: String = "THE BELT OBSERVES; THIS ADJUDICATES. Nothing here pushes a branch or opens a pull request, and nothing here calls a service. The adjudicator takes observations a caller already holds, so every arm is reachable from constructed values with no network and no token — which is what lets the judgment be witnessed at all.\\n\\nThe observations are COPRODUCTS rather than bare lists because a failed read must not be indistinguishable from an empty one. 'No pull requests exist' and 'I could not find out' have different remedies, and a caller handed an empty list for both would report the branch unpublished when the truth is that nothing was learned. That is the ignorance-as-answer conflation, arriving in the direction that looks like an ordinary negative result.\\n\\nThis also replaces the previous module's honest but awkward position that a refusal arm could not be built because the interpreter raises on transport failure. It could not be built THERE, in a function that called the service itself. Here the caller performs the read and reports what happened, so the refusal is an ordinary value and the arm is reachable."
 
-data publication_arms_note: String = "ABSENT IS NOT A FAILURE, AND THERE IS NO REFUSAL ARM BECAUSE THE SUBSTRATE CANNOT BUILD ONE. PublicationAbsent means the pull request list was READ and this branch is not in it — the agent has not opened one yet, which is ordinary progress. It carries the number of open pull requests it saw, which is what makes it a real negative observation rather than a failed one: a caller can tell 'read 9, none matched' from 'read nothing'.\\n\\nAn earlier draft of this module declared PublicationRefused for the failure case — a missing token, a rate limit, a transport that did not deliver — and NEVER CONSTRUCTED EITHER (review 45531). That is specification without the behaviour it documents, and the reviewer was right to reject it. The arms are deleted rather than left standing, because a declared-but-unreachable refusal is exactly the shape that lets a reader believe a failure is handled when it is not.\\n\\nWHY IT COULD NOT BE BUILT, stated so the gap is countable rather than implied: v1_interpreter turns every non-2xx response AND every transport error into an untyped InterpError::TypeError, so the `401 => GitHubErrorShape` arms extdeps.github.pulls declares are dead at runtime. There is no value for a .dag caller to match on. A failed observation therefore RAISES rather than returning, and a caller that needs to distinguish it must do so at its own boundary.\\n\\nDISSOLVES ON the interpreter surfacing a declared error-response arm as a value; at that point the refusal arms return here and the observe functions below stop being able to raise.\\n\\nThe head sha rides on the observed arm because it is the whole point. A pull request number identifies a conversation; the head sha identifies the CANDIDATE, and every downstream judgment — review verdicts, audit, acceptance — is about a candidate."
+type PullRequestObservation
+  = PullRequestsRead { pulls: List<PullRequest> }
+  | PullRequestsUnreadable { detail: String }
 
-data observation_is_split_from_classification_note: String = "THE CALL AND THE JUDGMENT ARE TWO FUNCTIONS, which is what makes the judgment testable at all. publication_from_pulls is pure and total over values a caller already holds; observe_publication is a thin impure wrapper that fetches and delegates. Before the split there was one function doing both, so nothing in the corpus could execute the classification without reaching GitHub — and the module landed with no witness at all (review 45531).\\n\\nThis is the same shape gunbc.roadmap_verify's witness already relies on: it claims the outcome-to-disposition mapping and the receipt projection, and never runs a process to do it."
-
+type RemoteBranchObservation
+  = RemoteBranchesRead { branches: List<String> }
+  | RemoteBranchesUnreadable { detail: String }
 
 type PublicationOutcome
-  = PublicationObserved {
+  = PublicationBound {
       branch: NonEmptyStr,
       pr_number: Int,
-      head_sha: CommitSha,
+      pr_head: CommitSha,
       url: NonEmptyStr,
       draft: Bool,
     }
-  | PublicationAbsent {
+  | PublicationHeadDiverged {
       branch: NonEmptyStr,
-      open_pull_requests_seen: Int,
+      pr_number: Int,
+      pr_head: CommitSha,
+      candidate_head: CommitSha,
+      url: NonEmptyStr,
     }
+  | BranchPublishedWithoutPullRequest {
+      branch: NonEmptyStr,
+    }
+  | BranchNotPublished {
+      branch: NonEmptyStr,
+      remote_branches_seen: Int,
+    }
+  | PublicationObservationRefused {
+      detail: String,
+    }
+
+data draft_is_carried_not_judged_note: String = "Draft is REPORTED, never derived from. A draft pull request is a perfectly good publication surface for the roadmap's own review process — readiness for review is decided by the roadmap's Run Review action, not by the forge's draft flag — so this module carries the flag and refuses to conclude anything from it. Treating draft as not-yet-published would import a forge convention into a roadmap decision, and would make the roadmap's own trigger unable to review a candidate the operator deliberately kept out of the forge's review queue."
 
 fn pull_request_for_branch(pulls: List<PullRequest>, branch: NonEmptyStr) -> PullRequest? {
   first(filter(pulls, p => (p.head.ref as String) == (branch as String)))
 }
 
-fn publication_from_pulls(pulls: List<PullRequest>, branch: NonEmptyStr) -> PublicationOutcome {
-  match pull_request_for_branch(pulls: pulls, branch: branch) {
-    Absent =>
-      PublicationAbsent {
-        branch: branch,
-        open_pull_requests_seen: count(pulls),
+data remote_qualification_note: String = "Remote branch listings arrive qualified by their remote (origin/dispatch/x), so the comparison qualifies the branch rather than searching for a substring. A contains-style match would accept origin/dispatch/x-old for the branch dispatch/x, which is exactly the near-miss this arm exists to catch: a stale sibling branch reported as the candidate's publication."
+
+fn remote_carries_branch(
+  branches: List<String>,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+) -> Bool {
+  let qualified = join([remote as String, "/", branch as String], "")
+  any(branches, b => trim(b) == qualified || trim(b) == (branch as String))
+}
+
+fn adjudicate_publication(
+  pulls: PullRequestObservation,
+  remotes: RemoteBranchObservation,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  candidate_head: CommitSha,
+) -> PublicationOutcome {
+  match pulls {
+    PullRequestsUnreadable { detail } =>
+      PublicationObservationRefused {
+        detail: join(["the open pull requests could not be read: ", detail], ""),
       }
-    Present { value: pr } =>
-      PublicationObserved {
-        branch: branch,
-        pr_number: pr.number,
-        head_sha: pr.head.sha,
-        url: pr.html_url,
-        draft: pr.draft,
+    PullRequestsRead { pulls: listed } =>
+      match pull_request_for_branch(pulls: listed, branch: branch) {
+        Present { value: pr } =>
+          if (pr.head.sha as String) == (candidate_head as String) {
+            PublicationBound {
+              branch: branch,
+              pr_number: pr.number,
+              pr_head: pr.head.sha,
+              url: pr.html_url,
+              draft: pr.draft,
+            }
+          } else {
+            PublicationHeadDiverged {
+              branch: branch,
+              pr_number: pr.number,
+              pr_head: pr.head.sha,
+              candidate_head: candidate_head,
+              url: pr.html_url,
+            }
+          }
+        Absent =>
+          match remotes {
+            RemoteBranchesUnreadable { detail } =>
+              PublicationObservationRefused {
+                detail: join([
+                  "no pull request names this branch, and the remote branches could not be read, so whether the branch was pushed at all is unknown: ",
+                  detail,
+                ], ""),
+              }
+            RemoteBranchesRead { branches } =>
+              if remote_carries_branch(branches: branches, remote: remote, branch: branch) {
+                BranchPublishedWithoutPullRequest { branch: branch }
+              } else {
+                BranchNotPublished {
+                  branch: branch,
+                  remote_branches_seen: count(branches),
+                }
+              }
+          }
       }
   }
 }
 
-fn observe_publication(
-  owner: String,
-  repo: String,
-  branch: NonEmptyStr,
-) -> PublicationOutcome {
-  let listed = github.Pulls.List(
-    auth_token: "",
-    owner: owner,
-    repo: repo,
-    state: Open,
-  )
-  publication_from_pulls(pulls: listed.pulls, branch: branch)
-}
-
-data publication_detail_note: String = "The segment detail is derived from the outcome rather than authored beside it, so a new arm cannot render as a stale sentence. These strings are what the row strip's reason surface shows an operator, and gunbc.roadmap_component's reason_surface_producers_note is the rule they obey: a located reason belongs on a surface the operator reads, never only in a title attribute."
+data publication_detail_note: String = "The segment detail is derived from the outcome rather than authored beside it, so a new arm cannot render as a stale sentence. The diverged arm names BOTH heads, because the operator's next action depends on which is stale: a worker that pushed during review needs a re-review of the new head, while a pull request pointing at an older commit than the one verified needs a push."
 
 fn publication_detail(outcome: PublicationOutcome) -> String {
   match outcome {
-    PublicationObserved { branch: _, pr_number, head_sha, url: _, draft } =>
+    PublicationBound { branch: _, pr_number, pr_head, url: _, draft } =>
       join([
         if draft { "draft pull request #" } else { "pull request #" },
         to_string(pr_number),
         " at ",
-        head_sha as String,
+        pr_head as String,
       ], "")
-    PublicationAbsent { branch, open_pull_requests_seen } =>
+    PublicationHeadDiverged { branch: _, pr_number, pr_head, candidate_head, url: _ } =>
       join([
-        "no open pull request for ",
-        branch as String,
-        " (",
-        to_string(open_pull_requests_seen),
-        " open pull requests read)",
+        "pull request #",
+        to_string(pr_number),
+        " is at ",
+        pr_head as String,
+        " but the commit under judgment is ",
+        candidate_head as String,
+        " — the branch moved, so this pull request offers a different change",
       ], "")
+    BranchPublishedWithoutPullRequest { branch } =>
+      join([
+        "the branch ",
+        branch as String,
+        " is on the remote but no open pull request names it",
+      ], "")
+    BranchNotPublished { branch, remote_branches_seen } =>
+      join([
+        "the branch ",
+        branch as String,
+        " is not on the remote (",
+        to_string(remote_branches_seen),
+        " remote branches read)",
+      ], "")
+    PublicationObservationRefused { detail } => detail
+  }
+}
+
+data offers_the_candidate_note: String = "The single question a downstream obligation asks of Publication: is the commit I am about to judge the one actually on offer? Exactly one arm answers yes. Diverged answers NO despite a pull request existing, which is the whole point — and a refusal answers no rather than propagating ignorance as permission."
+
+fn publication_offers_the_candidate(outcome: PublicationOutcome) -> Bool {
+  match outcome {
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => true
+    PublicationHeadDiverged {
+      branch: _, pr_number: _, pr_head: _, candidate_head: _, url: _,
+    } => false
+    BranchPublishedWithoutPullRequest { branch: _ } => false
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    PublicationObservationRefused { detail: _ } => false
   }
 }
