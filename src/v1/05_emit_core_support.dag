@@ -228,6 +228,8 @@ fn language_spec(target: RenderTarget) -> LanguageSpec {
   language_spec_for_target(target: target)
 }
 
+data escape_string_literal_control_chars_note: String = "TWO defects, one in each half of the CR step. The DELIMITER used to be \"\\r\", but this language's tokenizer has no \\r escape (its table is \\\" \\\\ \\n \\t \\{ \\} and \\xHH), so that delimiter was the two characters backslash and r, not a carriage return: carriage returns have passed through unescaped into every emitted target for as long as the function has existed, dead in practice only because no corpus string carried one. The first that did turned it into a hard emit failure. The REPLACEMENT was then briefly \\r and \\0, which is a second, subtler version of the same mistake: this function is TARGET-INDEPENDENT — emit_string_literal invokes it for Rust, Dag, Go and Python alike, and never sees a RenderTarget — so a Rust-shaped escape is only correct for one of the four projections, and \\r emitted into a Dag literal reproduces the exact backslash-r bug the delimiter half just fixed (review 2026-07-30). The spelling is therefore \\x0d and \\x00, the hex form all four target grammars accept, and the acceptance is a round trip through every target rather than a Rust regen fixed point, which proves only the Rust projection. Recorded rather than quietly respelled because the class is the point: a target-specific escape inside a target-independent function is invisible until a projection other than the one under test carries the character."
+
 fn escape_string_literal_body(s: String) -> String {
   let escaped_backslash = s
     |> split(delimiter: "\\") |> join(separator: "\\\\")
@@ -236,8 +238,10 @@ fn escape_string_literal_body(s: String) -> String {
   let escaped_newline = escaped_quote
     |> split(delimiter: "\n") |> join(separator: "\\n")
   let escaped_return = escaped_newline
-    |> split(delimiter: "\r") |> join(separator: "\\r")
-  escaped_return
+    |> split(delimiter: "\x0d") |> join(separator: "\\x0d")
+  let escaped_nul = escaped_return
+    |> split(delimiter: "\x00") |> join(separator: "\\x00")
+  escaped_nul
     |> split(delimiter: "\t") |> join(separator: "\\t")
 }
 

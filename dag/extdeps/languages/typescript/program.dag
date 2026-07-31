@@ -213,6 +213,95 @@ fn join_array_elements(elements: List<TsExpr>) -> String {
   })
 }
 
+data ts_operator_precedence_note: String = "THE SERIALIZER USED TO EMIT OPERAND TEXT WITHOUT REGARD FOR PRECEDENCE, which made it possible to build a well-typed TsExpr that serializes to syntactically valid JavaScript computing something ELSE. That is the sharpest failure shape a translator has: not a crash, not a refusal, a silent semantic substitution downstream of a green typecheck (DESIGN section 5). Every consumer of this module inherited it, because the defect is in the printer, not in any one program.\\n\\nFOUR LIVE PRODUCERS, found by reading the emitted asset rather than the model (2026-07-30, gunbc.roadmap_component). Every one of them was in a REASON channel — a tooltip, an accessible name, a refusal string — which is not a coincidence: a reason channel is read by a person on a bad day, never by a test, so it is exactly where a silent substitution survives longest.\\n  BinOp('+') over Cond -> `seg.label + ': ' + seg.state + seg.detail ? ' — ' + seg.detail : ''`, which parses as `(a+b+c+d) ? e : f`. A concatenation is a non-empty string, so the test was ALWAYS true and the workflow stage's accessible name became the bare detail, losing its label and state.\\n  BinOp('+') over Cond again, on the workflow tooltip: same shape, same always-true test.\\n  BinOp('+') over BinOp('||') -> `'workflow observation refused: ' + wj.reason || 'no reason on the wire'`, which parses as `('...' + wj.reason) || '...'`. The left side is truthy even when wj.reason is undefined, so the fallback could never fire and a reasonless refusal rendered as the word undefined.\\n  BinOp('+') over BinOp('||') -> `'host ' + ij.host_identity || 'unknown' + ' · repo ' + ij.repo_root || 'unknown'`, same mechanism, and here the entire repo half of the instance label was unreachable.\\n\\nThe model was never wrong in any of the four. The printer was. That is why the fix is a precedence-aware printer and not parentheses hand-added at four call sites: hand-parenthesizing concedes that the next author can write the same shape and get the same substitution, which is a validation standing where a construction was available. Grouping is now DERIVED from the table below.\\n\\nWHAT THE CHANGE COSTS, stated precisely because the tempting claim — 'only the defects move' — is FALSE and was written here before the diff was read. A group is emitted when an operand binds looser than its parent demands, AND when it ties under a parent that is not associative. The second case moves bytes at expressions that were already correct: right-nested `+` now renders as `a + (b + c)`, which appeared at seven sites in the roadmap client. That is not avoidable by declaring `+` associative, because it is not — `1 + (2 + 'x')` is '12x' and `(1 + 2) + 'x'` is '3x' — and a printer that cannot see operand types must therefore preserve the model's own grouping. Extra parentheses around a correct expression are noise; dropped parentheses around one are a wrong answer, so the trade is not close.\\n\\nAssociativity is honored where it is real: `||` and `&&` are associative, so a same-precedence right operand needs no group, and `=` is right-associative, which is exactly why the extremely common `x = c ? a : b` keeps its bare form rather than growing parentheses at every assignment in the corpus.\\n\\nUNRECOGNIZED OPERATORS FAIL CLOSED IN BOTH ROLES, and the two roles need opposite answers, which is why one table is read through two functions. As a PARENT an unknown operator claims the tightest binding, so any compound operand under it is grouped; as a CHILD it claims the loosest, so it is grouped inside its parent. Both directions over-parenthesize, which is the safe direction — the alternative is to guess a binding and silently re-associate, which is the defect this note exists to close. An ATOM operand is still left bare under an unknown parent, because an identifier or a literal has no internal structure to re-associate and grouping it would be noise standing in for a property."
+
+data ts_atom_precedence: Int = 20
+
+data ts_conditional_precedence: Int = 3
+
+data ts_prefix_precedence: Int = 14
+
+data ts_unrecognized_operator_as_child_precedence: Int = 1
+
+fn ts_operator_precedence_or(op: String, unrecognized: Int) -> Int {
+  if op == "=" {
+    2
+  } else if op == "||" {
+    4
+  } else if op == "&&" {
+    5
+  } else if op == "===" || op == "!==" || op == "==" || op == "!=" {
+    9
+  } else if op == "<" || op == ">" || op == "<=" || op == ">=" {
+    10
+  } else if op == "+" || op == "-" {
+    12
+  } else if op == "*" || op == "/" || op == "%" {
+    13
+  } else {
+    unrecognized
+  }
+}
+
+fn ts_precedence_as_parent(op: String) -> Int {
+  ts_operator_precedence_or(op: op, unrecognized: ts_atom_precedence)
+}
+
+fn ts_precedence_as_child(op: String) -> Int {
+  ts_operator_precedence_or(op: op, unrecognized: ts_unrecognized_operator_as_child_precedence)
+}
+
+fn ts_operator_is_associative(op: String) -> Bool {
+  op == "||" || op == "&&"
+}
+
+fn ts_operator_is_right_associative(op: String) -> Bool {
+  op == "="
+}
+
+fn ts_expr_precedence(e: TsExpr) -> Int {
+  match e {
+    BinOp { left: _, op: o, right: _ } => ts_precedence_as_child(op: o)
+    Cond { test: _, consequent: _, alternate: _ } => ts_conditional_precedence
+    Prefix { op: _, expr: _ } => ts_prefix_precedence
+    LitStr { value: _, quote: _ } => ts_atom_precedence
+    LitNum { text: _ } => ts_atom_precedence
+    LitRegex { source: _ } => ts_atom_precedence
+    Ident { name: _ } => ts_atom_precedence
+    Member { object: _, property: _ } => ts_atom_precedence
+    Index { object: _, index: _ } => ts_atom_precedence
+    Call { callee: _, args: _ } => ts_atom_precedence
+    New { callee: _, args: _ } => ts_atom_precedence
+    ArrowFn { params: _, body: _ } => ts_atom_precedence
+    ArrayLit { elements: _ } => ts_atom_precedence
+    ObjectLit { fields: _ } => ts_atom_precedence
+    Spread { expr: _ } => ts_atom_precedence
+  }
+}
+
+fn ts_group_if(text: String, needed: Bool) -> String {
+  if needed { concat("(", concat(text, ")")) } else { text }
+}
+
+fn ts_operand_tie_needs_group(parent_op: String, is_right: Bool) -> Bool {
+  if is_right {
+    !ts_operator_is_associative(op: parent_op) && !ts_operator_is_right_associative(op: parent_op)
+  } else {
+    ts_operator_is_right_associative(op: parent_op)
+  }
+}
+
+data atom_operand_never_grouped_note: String = "An operand that is already an atom — an identifier, a literal, a call, a member access — is NEVER grouped, and this guard states that invariant directly rather than letting it fall out of the arithmetic. Without it the numbers produce a genuinely wrong answer at one corner: an unrecognized parent operator claims atom precedence so that compound operands get grouped, which makes it TIE with atom operands, and the left-associative tie rule then parenthesized the right-hand atom — `a ?? (c)` — while leaving the left one bare. Asymmetric, pointless, and a sign the rule was being read off a number instead of the property. The property is that grouping exists to stop RE-ASSOCIATION, and an expression with no internal operator has nothing to re-associate."
+
+fn serialize_ts_operand(e: TsExpr, parent_op: String, is_right: Bool) -> String {
+  let parent = ts_precedence_as_parent(op: parent_op)
+  let child = ts_expr_precedence(e: e)
+  let tie = ts_operand_tie_needs_group(parent_op: parent_op, is_right: is_right)
+  let atom = child == ts_atom_precedence
+  let needed = !atom && ((child < parent) || ((child == parent) && tie))
+  ts_group_if(text: serialize_ts_expr(e: e), needed: needed)
+}
+
 fn serialize_ts_expr(e: TsExpr) -> String {
   match e {
     LitStr { value: v, quote: q } => serialize_string_literal(value: v, quote: q)
@@ -229,13 +318,26 @@ fn serialize_ts_expr(e: TsExpr) -> String {
     ArrowFn { params: ps, body: b } =>
       concat("(", concat(join(ps, ", "), concat(") => ", serialize_ts_stmt_body(s: b))))
     BinOp { left: l, op: o, right: r } =>
-      concat(serialize_ts_expr(e: l), concat(concat(" ", o), concat(" ", serialize_ts_expr(e: r))))
-    Prefix { op: o, expr: x } => concat(o, serialize_ts_expr(e: x))
+      concat(
+        serialize_ts_operand(e: l, parent_op: o, is_right: false),
+        concat(concat(" ", o), concat(" ", serialize_ts_operand(e: r, parent_op: o, is_right: true))))
+    Prefix { op: o, expr: x } =>
+      concat(o, ts_group_if(
+        text: serialize_ts_expr(e: x),
+        needed: ts_expr_precedence(e: x) < ts_prefix_precedence))
     ArrayLit { elements: els } => concat("[", concat(join_array_elements(elements: els), "]"))
     ObjectLit { fields: fs } => concat("{ ", concat(join_object_fields(fields: fs), " }"))
     Spread { expr: x } => concat("...", serialize_ts_expr(e: x))
     Cond { test: t, consequent: c, alternate: a } =>
-      concat(serialize_ts_expr(e: t), concat(" ? ", concat(serialize_ts_expr(e: c), concat(" : ", serialize_ts_expr(e: a)))))
+      concat(
+        ts_group_if(
+          text: serialize_ts_expr(e: t),
+          needed: ts_expr_precedence(e: t) <= ts_conditional_precedence),
+        concat(" ? ", concat(
+          serialize_ts_expr(e: c),
+          concat(" : ", ts_group_if(
+            text: serialize_ts_expr(e: a),
+            needed: ts_expr_precedence(e: a) < ts_conditional_precedence)))))
   }
 }
 

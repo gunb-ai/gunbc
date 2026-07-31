@@ -14,7 +14,6 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "AccessPolicy", reason: "modeled access-policy carrier with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader)"),
   inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
-  inert_row(unit: "FilePermissions", reason: "modeled filesystem-semantics carrier with no live consumer yet"),
   inert_row(unit: "FloorWitnessRow", reason: "modeled floor-receipt carrier with no live consumer yet"),
   inert_row(unit: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
   inert_row(unit: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),
