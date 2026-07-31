@@ -6,7 +6,6 @@ import std.realization_schedule {
   RealizationPlan,
   WalkPlan,
   Runnable,
-  OnSuccessRunnableDisposition,
   OnSuccessRunnableAdmitted,
   schedule_batch_contains_label,
   schedule_eq,
@@ -205,20 +204,40 @@ fn runnable_occurs_in(runnable: Runnable, runnables: List<Runnable>) -> Bool {
   })
 }
 
-fn on_success_stage_has_duplicate(stage: List<Runnable>) -> Bool {
+fn runnable_occurs_in_stages(runnable: Runnable, stages: List<List<Runnable>>) -> Bool {
+  fold(stages, init: false, f: fn(found, stage) {
+    found || runnable_occurs_in(runnable: runnable, runnables: stage)
+  })
+}
+
+fn on_success_stage_has_duplicate(
+  stage: List<Runnable>,
+  later_stages: List<List<Runnable>>
+) -> Bool {
   if stage.count() == 0 {
     false
-  } else if runnable_occurs_in(runnable: stage.first(), runnables: stage.skip(n: 1)) {
+  } else if runnable_occurs_in(runnable: stage.first(), runnables: stage.skip(n: 1))
+    || runnable_occurs_in_stages(runnable: stage.first(), stages: later_stages) {
     true
   } else {
-    on_success_stage_has_duplicate(stage: stage.skip(n: 1))
+    on_success_stage_has_duplicate(
+      stage: stage.skip(n: 1),
+      later_stages: later_stages
+    )
   }
 }
 
 fn on_success_stages_have_duplicate(stages: List<List<Runnable>>) -> Bool {
-  fold(stages, init: false, f: fn(found, stage) {
-    found || on_success_stage_has_duplicate(stage: stage)
-  })
+  if stages.count() == 0 {
+    false
+  } else if on_success_stage_has_duplicate(
+    stage: stages.first(),
+    later_stages: stages.skip(n: 1)
+  ) {
+    true
+  } else {
+    on_success_stages_have_duplicate(stages: stages.skip(n: 1))
+  }
 }
 
 fn on_success_stages_eq(

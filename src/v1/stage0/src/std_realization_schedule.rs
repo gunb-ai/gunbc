@@ -4,6 +4,7 @@
 use self::CostBasis::*;
 use self::NoWalkFinalization::*;
 use self::NodeFrontierSelection::*;
+use self::OnSuccessRunnableDisposition::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
 use self::WitnessKind::*;
@@ -309,6 +310,57 @@ pub enum Runnable {
     },
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OnSuccessRunnableDisposition {
+    OnSuccessRunnableAdmitted,
+    OnSuccessDiscoveryRefused,
+    OnSuccessKernelRefused,
+    OnSuccessHeavyResolveRefused,
+    OnSuccessHostCompilerRefused,
+    OnSuccessSubstantialRefused,
+}
+
+pub fn on_success_runnable_disposition_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The single modeled admission authority for a Runnable authored into WalkPlan.on_success_stages. Discovery and kernel workloads have no defined green-only meaning; whole-tree resolve, host-compiler spawn, and substantial residency refuse because success stages declare no resource clamp. A modeled RunnableSingleClaim always carries its full profile — absence or malformation is the strict executor parser's boundary, not a second disposition arm here. The seed executor mirrors this decision until it consumes the v2 model directly; when stage capabilities grow, this function is the one authority that changes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunnableDisposition {
+    match (*runnable.clone()).clone() {
+        Runnable::RunnableDiscoveryBatch { .. } => {
+            OnSuccessRunnableDisposition::OnSuccessDiscoveryRefused
+        }
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => OnSuccessRunnableDisposition::OnSuccessKernelRefused,
+        Runnable::RunnableSingleClaim { profile, .. } => {
+            if profile.heavy_whole_tree_resolve.clone() {
+                OnSuccessRunnableDisposition::OnSuccessHeavyResolveRefused
+            } else {
+                if profile.spawns_host_compiler.clone() {
+                    OnSuccessRunnableDisposition::OnSuccessHostCompilerRefused
+                } else {
+                    match profile.memory.clone() {
+                        RunnableMemoryClass::RunnableMemoryNegligible => {
+                            OnSuccessRunnableDisposition::OnSuccessRunnableAdmitted
+                        }
+                        RunnableMemoryClass::RunnableMemorySubstantial => {
+                            OnSuccessRunnableDisposition::OnSuccessSubstantialRefused
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn walk_plan_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -607,5 +659,17 @@ pub struct SelectionOff;
 pub struct SelectionApplied;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SelectionPredictOnly;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessRunnableAdmitted;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessDiscoveryRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessKernelRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessHeavyResolveRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessHostCompilerRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessSubstantialRefused;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFinalizationDeclared;

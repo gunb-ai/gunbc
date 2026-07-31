@@ -79,6 +79,14 @@ fn synthetic_walk(stages: List<List<Runnable>>) -> WalkPlan<NoWalkFinalization> 
   }
 }
 
+fn synthetic_walk_with_wrong_ordinary_projection() -> WalkPlan<NoWalkFinalization> {
+  WalkPlan {
+    batches: synthetic_ordinary_plan().schedule.skip(n: 1),
+    finalization: NoFinalizationDeclared {},
+    on_success_stages: expected_stages()
+  }
+}
+
 fn synthetic_verdict(stages: List<List<Runnable>>, expected: List<List<Runnable>>) -> LensVerdict {
   walk_plan_schedule_lens_verdict_for_ci_floor(
     plan: synthetic_walk(stages: stages),
@@ -143,6 +151,13 @@ test fn gunbc_ci_walk_plan_schedule_lens_holds() -> Bool {
 
 test fn walk_plan_schedule_lens_synthetic_controls_hold() -> Bool {
   verdict_holds(verdict: synthetic_verdict(stages: expected_stages(), expected: expected_stages()))
+    && verdict_violates(verdict: walk_plan_schedule_lens_verdict_for_ci_floor(
+      plan: synthetic_walk_with_wrong_ordinary_projection(),
+      ordinary_plan: synthetic_ordinary_plan(),
+      expected_on_success_stages: expected_stages(),
+      compile_gate_fn: synthetic_compile_gate_fn,
+      cheap_gate_labels: ["cheap_claim_pool_gate_passes"]
+    ))
     && verdict_violates(verdict: synthetic_verdict(stages: [], expected: expected_stages()))
     && verdict_violates(verdict: synthetic_verdict(
       stages: [[stage_c()], [stage_a(), stage_b()]],
@@ -150,6 +165,10 @@ test fn walk_plan_schedule_lens_synthetic_controls_hold() -> Bool {
     ))
     && verdict_violates(verdict: synthetic_verdict(
       stages: [[stage_a(), stage_b(), stage_c()]],
+      expected: expected_stages()
+    ))
+    && verdict_violates(verdict: synthetic_verdict(
+      stages: [[stage_a()], [stage_b()], [stage_c()]],
       expected: expected_stages()
     ))
     && verdict_violates(verdict: synthetic_verdict(
