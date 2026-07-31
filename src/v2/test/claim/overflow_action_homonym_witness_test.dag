@@ -13,25 +13,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data overflow_action_homonym_witness_note: String = "P3b cluster-7 receipt: OverflowAction is singular in v2.extdeps.languages.overflow_action; java.dag and rust.dag import it (no second declaration). Width-tower collapse deferred pending std.measure BitWidth / std.machine_constraints MachineWidth grounding column."
 
-test fn overflow_action_shared_variants_constructible() -> Bool {
-  match PanicOnOverflow {
+fn overflow_action_is_panic(o: OverflowAction) -> Bool {
+  match o {
     PanicOnOverflow => true
     TwoComplementWrap => false
-  } &&
-  match TwoComplementWrap {
-    PanicOnOverflow => false
-    TwoComplementWrap => true
   }
+}
+
+test fn overflow_action_shared_variants_constructible() -> Bool {
+  let panic: OverflowAction = PanicOnOverflow
+  let wrap: OverflowAction = TwoComplementWrap
+  overflow_action_is_panic(o: panic) && !overflow_action_is_panic(o: wrap)
 }
 
 test fn overflow_action_type_is_shared_authority() -> Bool {
   let debug_default: OverflowAction = PanicOnOverflow
   let release_default: OverflowAction = TwoComplementWrap
-  match debug_default {
-    PanicOnOverflow => match release_default {
-      PanicOnOverflow => false
-      TwoComplementWrap => true
-    }
-    TwoComplementWrap => false
-  }
+  overflow_action_is_panic(o: debug_default)
+    && !overflow_action_is_panic(o: release_default)
 }
