@@ -131,11 +131,13 @@ test fn wall_construction_authority_accepts_derived_type() -> Bool {
   }
 }
 
-test fn wall_admission_backstop_refuses_hand_built_self_grounding() -> Bool {
-  !canonical_grounding_admits_infer_facts(grounding: wall_self_grounding(node: wall_conj_node()))
+data wall_hand_built_residue_note: String = "The stated residue: a CanonicalGrounding written field-by-field, bypassing the construction authority, is still admitted. This is asserted rather than left implicit so the wall's edge is documented by a test and not by optimism — see canonical_grounding_admission_scope_note for why the 'evidence != node' read-path proxy was withdrawn (it false-positives on v2_evaluator's bool fixture, which uses one atom as both evaluand and primitive_type). Closing this residue needs CanonicalGrounding to stop being structurally constructible, not a wider predicate."
+
+test fn wall_hand_built_self_grounding_is_the_stated_residue() -> Bool {
+  canonical_grounding_admits_infer_facts(grounding: wall_self_grounding(node: wall_conj_node()))
 }
 
-test fn wall_admission_backstop_admits_hand_built_derived_grounding() -> Bool {
+test fn wall_admission_admits_hand_built_derived_grounding() -> Bool {
   canonical_grounding_admits_infer_facts(grounding: wall_derived_grounding(node: wall_conj_node()))
 }
 

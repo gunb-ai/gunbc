@@ -126,3 +126,13 @@ test fn isolate_t2_holds() -> Bool {
 test fn isolate_t3_holds() -> Bool {
   compile_eval_unit_unrepresentable_red_holds()
 }
+
+test fn probe_compile_entry_refusal_reason() -> Bool {
+  match compile(
+    source: v2_eval_bool_literal_pin,
+    mode: Eval { runtime: v2_eval_bool_literal_pin }
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_grounding_not_derived
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

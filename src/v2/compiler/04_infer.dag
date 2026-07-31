@@ -331,7 +331,7 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
   }
 }
 
-data canonical_grounding_self_evidence_backstop_note: String = "The evidence != node conjunct is the VALIDATION half of the self-grounding wall, and it exists only because of a residue the construction half cannot reach. canonical_grounding_from_derived_type is the single construction authority and refuses self-evidence outright, which covers every grounding the compiler itself mints; but CanonicalGrounding is a structural record, so any module — a test fixture, a hand-built claim tree — can still write one field-by-field without going through that authority. This conjunct is where such a record is caught, on the read path every consumer already funnels through (eval's inhabitance/canonical witnesses, translate's coerce_grounded_node). Per DESIGN §5 the ordering is deliberate: construction where the state is reachable-by-construction, a post-hoc check only for the structurally-constructible residue — not a check standing where construction was available."
+data canonical_grounding_admission_scope_note: String = "This predicate deliberately does NOT carry an 'evidence != node' conjunct, and the reason is worth recording because that conjunct was tried and withdrawn. As a read-path backstop against hand-built self-groundings it looked free, but it is a PROXY for the property actually at issue — 'was this grounding produced by a derivation?' — and the NodeGrounding carrier already answers that exactly. Proxies are what produced the defect in the first place: algebra_ref_is_grounded is a shape test on the connective, which is precisely why TypeNode{Conj}/{Disj} self-groundings walked through it. The proxy also has real false positives: v2_evaluator's bool fixture uses ONE atom as both the evaluand and the runtime value's primitive_type, so resolved == algebra there is the fixture's coherent encoding of 'this atom denotes Bool', not a fabrication. Refusing it would have meant rewriting a thesis-proof fixture to make a check go green — the inversion DESIGN §5 names explicitly. The wall therefore lives where it is exact: canonical_grounding_from_derived_type refuses self-evidence for every grounding the COMPILER mints, and GroundingNotDerived is what an underived node carries. A structurally hand-written CanonicalGrounding remains writable by any module; that residue is stated, not silently covered."
 
 fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   well_formed(n: grounding.node)
@@ -339,7 +339,6 @@ fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool
     && (grounding.witness.structural.property == ^constraint_property_being_canonical)
     && (grounding.witness.closedness.property == ^constraint_property_candidate_set_closedness)
     && (grounding.witness.closedness.evidence == grounding.node)
-    && (grounding.witness.structural.evidence != grounding.node)
 }
 
 fn inferred_facts_construction(
