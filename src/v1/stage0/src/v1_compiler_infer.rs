@@ -130,9 +130,10 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, FieldNotFound, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
+    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -160,7 +161,7 @@ use crate::v1_std_core::VarBindingKind::{
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
     binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
-    default_ident_span, empty_intern_table, error_type, expr_call_func_at,
+    default_ident_span, diagnostic_to_span, empty_intern_table, error_type, expr_call_func_at,
     expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
     expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
@@ -3015,6 +3016,7 @@ pub struct UnresolvedMethodFrontierRow {
     pub module_name: String,
     pub method: String,
     pub receiver_shape: String,
+    pub occurrences: i64,
     pub cause: String,
     pub dissolution_trigger: String,
 }
@@ -3023,76 +3025,218 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     Rc::new(vec![Rc::new(UnresolvedMethodFrontierRow {
     module_name: "v2.compiler.tokenize".to_string(),
     method: "apply".to_string(),
+    occurrences: 7,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.git.object_store".to_string(),
     method: "map".to_string(),
+    occurrences: 2,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.git.object_store".to_string(),
     method: "flat_map".to_string(),
+    occurrences: 1,
     receiver_shape: "Primitive()".to_string(),
     cause: "same StoreObjectFold lambda-parameter shape as the `map` row above; listed separately because the key names one method on one receiver shape, never a module-wide pass.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.mercurial".to_string(),
     method: "any".to_string(),
+    occurrences: 3,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is an untyped parameter of a lambda stored in a fold record field, the same shape as the object_store rows.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "gunbc.scm_compatibility.mercurial".to_string(),
     method: "map".to_string(),
+    occurrences: 3,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.language_source_scaffold_index_test".to_string(),
     method: "split".to_string(),
+    occurrences: 1,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is an untyped lambda parameter, the same propagation gap as the rows above.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.language_source_scaffold_index_test".to_string(),
     method: "count".to_string(),
+    occurrences: 1,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is an untyped lambda parameter, the same propagation gap as the `split` row above.".to_string(),
     dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.dns.domain_name".to_string(),
     method: "list_push".to_string(),
+    occurrences: 1,
     receiver_shape: "Primitive(ok)".to_string(),
     cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.".to_string(),
     dissolution_trigger: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "v1.compiler.trace".to_string(),
     method: "map".to_string(),
+    occurrences: 1,
     receiver_shape: "Product(SpanMapping)".to_string(),
     cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
     dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "gunbc.source_integration_landing_spine".to_string(),
     method: "map".to_string(),
+    occurrences: 1,
     receiver_shape: "Node(Optional)".to_string(),
     cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.".to_string(),
     dissolution_trigger: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.sccache_local_content_verified_on_read".to_string(),
     method: "contains".to_string(),
+    occurrences: 1,
     receiver_shape: "Primitive(std.types.NonEmptyStr)".to_string(),
     cause: "the brand-alias class in its LEAF form. The receiver is a coproduct variant payload whose declared type is NonEmptyStr, and it arrives not as the refinement Conj the peel walks but as a plain leaf carrying the QUALIFIED name std.types.NonEmptyStr — so there is no refinement chain to descend and no kernel profile under that name. Three head-resolution strategies were tried against this site and measured: resolving the leaf through lookup_type_for, through lookup_type_by_name on the qualified name, and on its last segment. NONE of them recovered the refinement, so the machinery was deleted rather than shipped unproven, and the site is declared here instead. Why the peel reaches the Conj form but not this one is not yet understood, and saying so is more useful than a fourth guess.".to_string(),
     dissolution_trigger: "one representation for a brand alias at method lookup — the same reconciliation the conformance wall's class (2) names — so the leaf and Conj forms stop being two shapes for one concept".to_string(),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "v2.std.compilers.target_model".to_string(),
     method: "lookup".to_string(),
+    occurrences: 1,
     receiver_shape: "Primitive(T)".to_string(),
     cause: "receiver is a bare type variable. This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.".to_string(),
     dissolution_trigger: "primitive-realization-single-authority, giving every receiver a complete declared method surface".to_string(),
 })])
+}
+
+pub fn frontier_diag_matches_row(
+    d: Rc<CompilerDiagnostic>,
+    method: String,
+    receiver_shape: String,
+) -> bool {
+    match (*d.clone()).clone() {
+        CompilerDiagnostic::ReceiverTypeUnestablished { method: m, .. } => {
+            ((m.clone() == method.clone()) && (receiver_shape.clone() == "Primitive()".to_string()))
+        }
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted {
+            method: m,
+            receiver_type: t,
+            ..
+        } => ((m.clone() == method.clone()) && (t.clone() == receiver_shape.clone())),
+        _ => false,
+    }
+}
+
+pub fn frontier_row_observed(
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    method: String,
+    receiver_shape: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for e in diagnostics.clone().iter().cloned() {
+            if frontier_diag_matches_row(
+                e.diagnostic.clone(),
+                method.clone(),
+                receiver_shape.clone(),
+            ) {
+                __result.push(e);
+            }
+        }
+        __result
+    })
+}
+
+pub fn frontier_row_budget_diags(
+    row: Rc<UnresolvedMethodFrontierRow>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match frontier_row_observed(
+        diagnostics.clone(),
+        row.method.clone(),
+        row.receiver_shape.clone(),
+    )
+    .first()
+    .cloned()
+    {
+        Some(witness) => {
+            if ((frontier_row_observed(
+                diagnostics.clone(),
+                row.method.clone(),
+                row.receiver_shape.clone(),
+            )
+            .len() as i64)
+                > row.occurrences.clone())
+            {
+                Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::FrontierOccurrenceBudgetExceeded {
+                        method: row.method.clone(),
+                        receiver_type: row.receiver_shape.clone(),
+                        declared: row.occurrences.clone(),
+                        observed: (frontier_row_observed(
+                            diagnostics.clone(),
+                            row.method.clone(),
+                            row.receiver_shape.clone(),
+                        )
+                        .len() as i64),
+                        span: diagnostic_to_span(witness.diagnostic.clone()),
+                    }),
+                    module_name.clone(),
+                )])
+            } else {
+                Rc::new(vec![])
+            }
+        }
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn frontier_occurrence_budget_diags(
+    module_name: String,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for r in Rc::new({
+            let mut __result = Vec::new();
+            for r in unresolved_method_frontier().iter().cloned() {
+                if (r.module_name.clone() == module_name.clone()) {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*frontier_row_budget_diags(r.clone(), diagnostics.clone(), module_name.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn frontier_occurrence_budget_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE COUNT IS WHAT MAKES THE FRONTIER A RATCHET INSTEAD OF AN EXEMPTION. Keying admission on (module, method, receiver_shape) bounds WHERE an unresolved call may live but not HOW MANY may live there, so a second call in the same module, on the same method, failing to resolve the same way, inherited the admission — and that is not hypothetical: the measured rows are not all singletons (v2.compiler.tokenize admits seven `apply` calls, extdeps.mercurial three `any`, gunbc.scm_compatibility.mercurial three `map`), so a row admitting seven would silently admit an eighth (codex review 45464). Each row therefore declares its MEASURED occurrence count and this fold refuses the excess, located on the first offending call. THE COMPARISON IS observed > declared, NEVER observed != declared, and the asymmetry is the load-bearing part: a narrower compile closure legitimately sees fewer occurrences of a module's rows, so equality would red on any partial build, while fixing a call legitimately lowers the count and must never red. So the budget can only be exceeded, never undershot — it ratchets down for free and refuses upward movement. WHY NOT A STABLE PER-OCCURRENCE KEY, which would close this exactly: std.occurrence_identity is the corpus authority for occurrence identity and its own scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, allocating OccurrenceId inside one graph-scoped allocator instead. An allocator-assigned integer cannot appear as a literal in a declared row, because it is not stable across compiles — so a per-occurrence key is not merely unimplemented here, it is unavailable from the authority that owns the concept. The count is the strongest bound the substrate currently supports. Dissolve-on: a content-addressed occurrence identity stable across edits (the namespace lane's containment addressing), at which point rows key on the occurrence itself and the count field deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn frontier_occurrence_budget_checked(
+    module_name: String,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    v1_rt::concat(
+        diagnostics.clone(),
+        frontier_occurrence_budget_diags(module_name.clone(), diagnostics.clone()),
+    )
 }
 
 pub fn unresolved_method_frontier_trigger(
@@ -17824,12 +17968,15 @@ pub fn typecheck_module(
                 item_registry: ctx.item_registry.clone(),
                 occurrence_transport: Some(resolved.occurrence_transport.clone()),
             }),
-            diagnostics: v1_rt::concat(
+            diagnostics: frontier_occurrence_budget_checked(
+                resolved_module_name.clone(),
                 v1_rt::concat(
-                    v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
-                    infer_diags.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
+                        infer_diags.clone(),
+                    ),
+                    seed_diags.clone(),
                 ),
-                seed_diags.clone(),
             ),
             binding_forks: env_result.binding_forks.clone(),
         })
