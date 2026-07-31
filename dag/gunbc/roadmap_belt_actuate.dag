@@ -42,6 +42,15 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_admission_path_for_instance,
   dispatch_attempt_events_path_for_instance,
   dispatch_attempt_spawn_failure_path_for_instance,
+  dispatch_attempt_oracle_identity_path_for_instance,
+  dispatch_attempt_oracle_revision_path_for_instance,
+  dispatch_attempt_oracle_pin_refusal_path_for_instance,
+  dispatch_attempt_validation_receipt_path_for_instance,
+  dispatch_current_attempt_oracle_identity_path_for_instance,
+  dispatch_current_attempt_oracle_revision_path_for_instance,
+  dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
+  dispatch_current_attempt_validation_receipt_path_for_instance,
+  dispatch_worktree_path_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
   dispatch_current_attempt_events_projection_argv_for_instance,
@@ -110,8 +119,51 @@ import gunbc.roadmap_dispatch_environment {
 }
 import gunbc.roadmap_execution_contract {
   EnvironmentBindingCapability,
+  GunbcClaimRunnerCapability,
+  WorkItemExecutionContract,
+  ExecutionContract,
+  ExecutionContractUnspecified,
+  ValidationOperation,
+  ModeledValidationCommand,
+  validation_operation_command,
+  modeled_validation_command_wire,
   execution_contract_validation_summary,
 }
+import gunbc.roadmap_validation_oracle {
+  ValidationOracleRef,
+  OracleObservation,
+  OraclePinScope,
+  OraclePinnable,
+  OracleNotPinnable,
+  OracleSetObservation,
+  OracleSetObserved,
+  OracleSetIncomplete,
+  ValidationOracleGate,
+  ValidationOracleAdmitted,
+  ValidationOracleGateRefused,
+  ValidationVerdict,
+  ValidationPassed,
+  ValidationFailed,
+  ValidationRefused,
+  ValidationNotRun,
+  ValidationReceiptDecode,
+  ValidationReceiptDecoded,
+  ValidationReceiptUndecodable,
+  validation_receipt_decode,
+  ValidationCommandUnrealized,
+  ValidationCommandRefused,
+  validation_oracle_scopes,
+  validation_oracle_observe_from_source,
+  validation_oracle_set_observe,
+  validation_oracle_gate,
+  validation_verdict_key,
+  validation_verdict_detail,
+  validation_receipt_json,
+}
+import extdeps.git { shape_git_rev_parse_head_args }
+import gunbc.roadmap_provider_events { ProviderCompleted }
+import extdeps.version { VersionIdentity }
+import std.types { ContentHash }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
@@ -288,13 +340,208 @@ fn belt_attempt_state_initialize_for_instance(
         content: "",
       )
       if events_write.success {
-        AttemptStateInitialized
+        let pin_persisted = belt_persist_oracle_pin_for_instance(
+          instance: instance,
+          node: node,
+          attempt_key: attempt_key,
+          capture: belt_attempt_oracle_pin_capture_for_instance(
+            instance: instance,
+            node: node,
+            attempt_key: attempt_key,
+          ),
+        )
+        let receipt_initialized = Filesystem.Write(
+          path: dispatch_attempt_validation_receipt_path_for_instance(
+            instance: instance,
+            node_id: node.node,
+            attempt_key: attempt_key,
+          ),
+          content: validation_receipt_json(
+            verdict: ValidationNotRun,
+            observations: belt_oracle_observations_in_worktree(
+              contract: node.execution,
+              worktree: dispatch_worktree_path_for_instance(
+                instance: instance,
+                node_id: node.node,
+                attempt_key: attempt_key,
+              ),
+            ),
+          ),
+        ).success
+        if !receipt_initialized {
+          AttemptStateInitializationFailed {
+            step: "attempt-validation-receipt-initialize",
+            detail: "the not-run validation receipt could not be written beside the attempt; without it a later unreadable receipt is indistinguishable from an absent one, which is the conflation this initialization exists to remove",
+          }
+        } else if pin_persisted {
+          AttemptStateInitialized
+        } else {
+          AttemptStateInitializationFailed {
+            step: "attempt-oracle-pin-persist",
+            detail: "the validation oracle pin could not be written beside the attempt; an attempt whose oracle is unrecorded can never be verified, and the write itself failing is a state-directory fault rather than a verification-side deficit",
+          }
+        }
       } else {
         AttemptStateInitializationFailed {
           step: "attempt-events-initialize",
           detail: events_write.error,
         }
       }
+    }
+  }
+}
+
+data belt_oracle_pin_capture_note: String = "The pin is captured from the FRESHLY CREATED WORKTREE, before the provider is spawned, because that is the only moment the oracle is known to be the base revision's oracle and not the attempt's. Reading it from the controller repo instead would be a different tree that nothing ties to this attempt; reading it after the agent runs is the fail-open this whole lane closes. Ordering is therefore load-bearing and it is already the ordering the staged spawn establishes: worktree-add and attempt-state-prepare run first, this capture runs inside state initialization, and tmux-session-create runs only after. A capture failure does NOT fail the spawn — the agent's work is still worth doing and a dispatch that refuses on a verification-side deficit would trade a whole attempt for a receipt — but it is never silent either: the reason is persisted to its own file, so verification reports a located cause instead of an absent pin, and the deficit stays countable at the Verify lamp rather than having its frequency zeroed."
+
+type AttemptOraclePinCapture
+  = OraclePinRecorded {
+      identity: ContentHash,
+      revision: String,
+    }
+  | OraclePinNotRecorded { reason: String }
+
+data belt_oracle_refs_primitive_note: String = "This projection used filter_map, which type-checks and DOES NOT RUN: std.primitives declares a filter_map contract but the seed registers no method for it, so the call reached the interpreter as `not yet implemented` and took the dispatch route to a 500. Found by a live dispatch on the lab, not by the whole-tree compile (0 blocking errors) and not by this lane's own witnesses — which is the specification-without-execution trap in DESIGN section 5 landing one layer below where this PR was watching for it: I checked that MY functions were exercised and never checked that the PRIMITIVES they call exist. The corpus had zero filter_map call sites before this change, which is why nothing else had already surfaced it. flat_map is the same fold with a registered implementation, and returning a one-or-zero element list is exactly the Present/none the contract described."
+
+fn belt_oracle_refs_for_contract(
+  contract: WorkItemExecutionContract,
+) -> List<ValidationOracleRef> {
+  validation_oracle_scopes(contract: contract)
+    |> flat_map(scope => match scope {
+      OraclePinnable { oracle } => [oracle]
+      OracleNotPinnable { validation_label: _, reason: _ } => []
+    })
+}
+
+fn belt_oracle_observe_in_worktree(
+  worktree: String,
+  oracle: ValidationOracleRef,
+) -> OracleObservation {
+  let read = Filesystem.Read(
+    path: join([worktree, "/", oracle.entry as String], ""),
+  )
+  validation_oracle_observe_from_source(
+    oracle: oracle,
+    source_readable: read.success,
+    source: read.content,
+    read_error: read.error,
+  )
+}
+
+fn belt_oracle_observations_in_worktree(
+  contract: WorkItemExecutionContract,
+  worktree: String,
+) -> List<OracleObservation> {
+  belt_oracle_refs_for_contract(contract: contract)
+    |> map(oracle => belt_oracle_observe_in_worktree(
+      worktree: worktree,
+      oracle: oracle,
+    ))
+}
+
+fn belt_worktree_head_revision(
+  instance: HostDashboardInstance,
+  worktree: String,
+) -> String {
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: GitWorkspaceCapability,
+      ),
+      args: shape_git_rev_parse_head_args(),
+    ),
+    workdir: worktree,
+  ) {
+    ExecOk { stdout } => trim(stdout)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+    ExecRefused { program: _, reason: _ } => ""
+  }
+}
+
+fn belt_attempt_oracle_pin_capture_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+) -> AttemptOraclePinCapture {
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node.node,
+    attempt_key: attempt_key,
+  )
+  let refs = belt_oracle_refs_for_contract(contract: node.execution)
+  if count(refs) == 0 {
+    OraclePinNotRecorded {
+      reason: "this node's execution contract declares no validation whose oracle can be pinned",
+    }
+  } else {
+    match validation_oracle_set_observe(
+      observations: belt_oracle_observations_in_worktree(
+        contract: node.execution,
+        worktree: worktree,
+      ),
+    ) {
+      OracleSetIncomplete { blocking: _, observations: _ } =>
+        OraclePinNotRecorded {
+          reason: join([
+            "the declared validation oracle was not observable in the attempt worktree at ",
+            worktree,
+            " when the attempt was created",
+          ], ""),
+        }
+      OracleSetObserved { identity, observations: _ } => {
+        let revision = belt_worktree_head_revision(
+          instance: instance,
+          worktree: worktree,
+        )
+        if revision == "" {
+          OraclePinNotRecorded {
+            reason: "the attempt worktree's head revision could not be read, so the pinned oracle could not be attributed to a revision",
+          }
+        } else {
+          OraclePinRecorded {
+            identity: identity,
+            revision: revision,
+          }
+        }
+      }
+    }
+  }
+}
+
+fn belt_persist_oracle_pin_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+  capture: AttemptOraclePinCapture,
+) -> Bool {
+  match capture {
+    OraclePinNotRecorded { reason } =>
+      Filesystem.Write(
+        path: dispatch_attempt_oracle_pin_refusal_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        content: reason,
+      ).success
+    OraclePinRecorded { identity, revision } => {
+      let identity_write = Filesystem.Write(
+        path: dispatch_attempt_oracle_identity_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        content: identity as String,
+      )
+      let revision_write = Filesystem.Write(
+        path: dispatch_attempt_oracle_revision_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        content: revision,
+      )
+      identity_write.success && revision_write.success
     }
   }
 }
@@ -1139,12 +1386,15 @@ fn belt_observe() -> BeltObserve {
   belt_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
+data belt_tick_verify_pass_note: String = "Verification runs on the SAME tick that spawns and reaps, because it is the same kind of fact: a desired obligation reconciled against an observed one. Putting it here rather than behind its own trigger is what makes the mechanism the thing the operator was doing by hand — the belt already runs, so an attempt whose turn completed gets its receipts run on the next tick without anyone noticing it finished. It runs AFTER the reconcile's actuations and reads its own evidence, so a session spawned by this same tick has no completed turn to verify and is simply deferred. An unknowable session set short-circuits the whole tick before verification, exactly as it does for spawn and teardown: no observation, no actuation."
+
 type BeltTickResult {
   observe_refused: Bool,
   observe_refusal_reason: String,
   reconcile: BeltReconcile,
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
+  verify_outcomes: List<BeltVerifyOutcome>,
 }
 
 fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
@@ -1175,6 +1425,7 @@ fn belt_tick(
         reconcile: belt_tick_empty_reconcile(state: state),
         spawn_outcomes: [],
         teardown_outcomes: [],
+        verify_outcomes: [],
       }
     Observed { live: live } => {
       let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
@@ -1184,6 +1435,7 @@ fn belt_tick(
         reconcile: r,
         spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir)),
         teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m)),
+        verify_outcomes: belt_verify_attempts(),
       }
     }
   }
@@ -1282,7 +1534,59 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
     json_kv(key: "reaped", value: json_int(n: belt_tick_teardown_ok_count(t: t))),
     json_kv(key: "spawn_outcomes", value: json_array(elements: t.spawn_outcomes |> map(o => belt_spawn_outcome_json(o: o)))),
     json_kv(key: "teardown_outcomes", value: json_array(elements: t.teardown_outcomes |> map(o => belt_teardown_outcome_json(o: o)))),
+    json_kv(key: "verified", value: json_int(n: belt_tick_verify_recorded_count(t: t))),
+    json_kv(key: "verify_outcomes", value: json_array(elements: t.verify_outcomes |> map(o => belt_verify_outcome_json(o: o)))),
   ])
+}
+
+fn belt_verify_outcome_json(o: BeltVerifyOutcome) -> JsonValue {
+  match o {
+    VerifyDeferred { node_id, reason } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "deferred")),
+        json_kv(key: "detail", value: json_string(s: reason)),
+      ])
+    VerifyRecorded { node_id, verdict_key, detail } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "recorded")),
+        json_kv(key: "verdict", value: json_string(s: verdict_key)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    VerifyWriteFailed { node_id, detail } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "write-failed")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    VerifyEvidenceUnreadable { node_id, detail } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "evidence-unreadable")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+data belt_tick_verify_counts_note: String = "The tick counts verdicts RECORDED, never verdicts passed. A tick that records four refusals did its job exactly as well as one that records four passes — the belt's obligation is to produce the receipt, not to produce a green — so counting passes here would make the belt's own receipt read as a quality metric and give a later reader a reason to want fewer refusals. Write failures are counted separately because they are the belt failing, not the validation."
+
+fn belt_tick_verify_recorded_count(t: BeltTickResult) -> Int {
+  count(t.verify_outcomes |> filter(o => match o {
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => true
+    VerifyDeferred { node_id: _, reason: _ } => false
+    VerifyWriteFailed { node_id: _, detail: _ } => false
+    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+  }))
+}
+
+fn belt_tick_verify_write_failed_count(t: BeltTickResult) -> Int {
+  count(t.verify_outcomes |> filter(o => match o {
+    VerifyWriteFailed { node_id: _, detail: _ } => true
+    VerifyEvidenceUnreadable { node_id: _, detail: _ } => true
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    VerifyDeferred { node_id: _, reason: _ } => false
+  }))
 }
 
 type BeltAttempts
@@ -1609,6 +1913,8 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
+      validation_receipt_readable: false,
+      validation_receipt: "",
     })
   } else {
     let current_key = trim(key_read.content)
@@ -1625,6 +1931,12 @@ fn belt_workflow_progress_for_attempt_ref(
     )
     let spawn_failure = Filesystem.Read(
       path: dispatch_current_attempt_spawn_failure_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ),
+    )
+    let validation_receipt = Filesystem.Read(
+      path: dispatch_current_attempt_validation_receipt_path_for_instance(
         instance: instance,
         node_id: node_id,
       ),
@@ -1658,8 +1970,267 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
+      validation_receipt_readable: validation_receipt.success,
+      validation_receipt: validation_receipt.content,
     })
   }
+}
+
+data belt_verify_pass_note: String = "The workflow's own verification actuation, and the reason it lives on the belt rather than in the /workflow.json handler: running a declared validation is an EFFECT that takes as long as the validation takes, while the progress route is a synchronous read that the browser polls every two seconds. Producing the verdict on the read path would make the lamp's own observation the thing that runs cargo. So the belt produces the receipt and the projection reads it — the same split the environment-admission receipt already uses, and the reason Verify can move without the observer changing shape. Idempotence comes from the receipt's presence, exactly as spawn idempotence comes from the observed session: a recorded verdict is not recomputed, so re-ticking neither re-runs the validation nor overwrites a verdict with a later one taken against a tree the agent has since touched. Agent completion is read from the reconciled provider state, so a turn that completed while its pane still runs, or completed with a nonzero exit, does not reach verification at all — the obligation order is preserved rather than restated."
+
+type BeltVerifyOutcome
+  = VerifyDeferred { node_id: String, reason: String }
+  | VerifyRecorded {
+      node_id: String,
+      verdict_key: String,
+      detail: String,
+    }
+  | VerifyWriteFailed { node_id: String, detail: String }
+  | VerifyEvidenceUnreadable { node_id: String, detail: String }
+
+data belt_read_or_empty_scope_note: String = "review 45271, and the scope of this collapse is now deliberate rather than incidental. Reducing a read to `\"\"` conflates absent with unreadable, which is only safe where BOTH branches take the same action. That holds for the PIN reads below — an absent identity and an unreadable one both leave pin_recorded false, and the gate refuses either way, actuating nothing — so the distinction would change the message and not the behaviour. It did NOT hold for the receipt-presence read, which gated whether to RUN the validation and OVERWRITE the evidence: there, absent means run and unreadable means stop, so the collapse let an I/O fault regenerate a verdict against a worktree that may have moved. That seam no longer uses this function; it reads with status preserved and decodes."
+
+fn belt_read_or_empty(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success { trim(read.content) } else { "" }
+}
+
+fn belt_validation_commands_for_contract(
+  instance: HostDashboardInstance,
+  contract: WorkItemExecutionContract,
+) -> List<ModeledValidationCommand?> {
+  match contract {
+    ExecutionContractUnspecified => []
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      map(validations, v => validation_operation_command(
+        validation: v,
+        environment: instance.execution_environment,
+      ))
+  }
+}
+
+fn belt_run_validation_commands(
+  commands: List<ModeledValidationCommand?>,
+  worktree: String,
+  oracle_identity: ContentHash,
+) -> ValidationVerdict {
+  fold(
+    commands,
+    init: ValidationPassed {
+      command: "",
+      oracle_identity: oracle_identity,
+    },
+    f: fn(acc, maybe_command) {
+      match acc {
+        ValidationNotRun => acc
+        ValidationFailed { command: _, exit_code: _, detail: _ } => acc
+        ValidationRefused { cause: _ } => acc
+        ValidationPassed { command: prior, oracle_identity: _ } =>
+          match maybe_command {
+            Absent =>
+              ValidationRefused { cause: ValidationCommandUnrealized }
+            Present { value: command } => {
+              let wire = modeled_validation_command_wire(command: command)
+              match belt_exec(
+                cmd: host_exec_argv(
+                  program: command.program as String,
+                  args: command.args,
+                ),
+                workdir: worktree,
+              ) {
+                ExecOk { stdout: _ } =>
+                  ValidationPassed {
+                    command: if prior == "" {
+                      wire
+                    } else {
+                      join([prior, "; ", wire], "")
+                    },
+                    oracle_identity: oracle_identity,
+                  }
+                ExecFailed { program: _, exit_code, stderr } =>
+                  ValidationFailed {
+                    command: wire,
+                    exit_code: exit_code,
+                    detail: stderr,
+                  }
+                ExecRefused { program, reason } =>
+                  ValidationRefused {
+                    cause: ValidationCommandRefused {
+                      program: program,
+                      reason: reason,
+                    },
+                  }
+              }
+            }
+          }
+      }
+    },
+  )
+}
+
+fn belt_verify_attempt_for_instance(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> BeltVerifyOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  match progress.provider {
+    ProviderCompleted { activity: _ } => {
+      let receipt_read = Filesystem.Read(
+        path: dispatch_current_attempt_validation_receipt_path_for_instance(
+          instance: instance,
+          node_id: node_id,
+        ),
+      )
+      if !receipt_read.success {
+        VerifyEvidenceUnreadable {
+          node_id: progress.node_id,
+          detail: join([
+            "the validation receipt beside this attempt could not be read, so whether a verdict already exists is unknown; the belt refuses to run the validation rather than overwrite evidence it cannot see (",
+            receipt_read.error,
+            "). An attempt dispatched before verification receipts existed reports this until it is re-dispatched",
+          ], ""),
+        }
+      } else {
+        match validation_receipt_decode(receipt: receipt_read.content) {
+          ValidationReceiptUndecodable { reason } =>
+            VerifyEvidenceUnreadable {
+              node_id: progress.node_id,
+              detail: join([
+                "the validation receipt beside this attempt does not decode, so the belt refuses to replace it: ",
+                reason,
+              ], ""),
+            }
+          ValidationReceiptDecoded { verdict_key } =>
+            if verdict_key != "not_run" {
+              VerifyDeferred {
+                node_id: progress.node_id,
+                reason: join([
+                  "a validation verdict is already recorded for this attempt: ",
+                  verdict_key,
+                ], ""),
+              }
+            } else {
+        match belt_lookup_node(node_id: progress.node_id) {
+          NodeMissing =>
+            VerifyDeferred {
+              node_id: progress.node_id,
+              reason: "the roadmap authority declares no node with this id, so there is no contract to verify against",
+            }
+          NodeFound { node } => {
+            let worktree = dispatch_worktree_path_for_instance(
+              instance: instance,
+              node_id: node_id,
+              attempt_key: progress.attempt_key,
+            )
+            let observations = belt_oracle_observations_in_worktree(
+              contract: node.execution,
+              worktree: worktree,
+            )
+            let pinned_identity = belt_read_or_empty(
+              path: dispatch_current_attempt_oracle_identity_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+            )
+            let pinned_revision = belt_read_or_empty(
+              path: dispatch_current_attempt_oracle_revision_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+            )
+            let pin_refusal = belt_read_or_empty(
+              path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+            )
+            let pin_recorded = pinned_identity != "" && pinned_revision != ""
+            let verdict = match validation_oracle_gate(
+              contract: node.execution,
+              observations: observations,
+              pin_recorded: pin_recorded,
+              expected_identity: pinned_identity as ContentHash,
+              revision: pinned_revision as VersionIdentity,
+              pin_read_detail: if pin_refusal == "" {
+                "no oracle identity was recorded for this attempt at dispatch"
+              } else {
+                pin_refusal
+              },
+            ) {
+              ValidationOracleGateRefused { cause } =>
+                ValidationRefused { cause: cause }
+              ValidationOracleAdmitted { identity } =>
+                belt_run_validation_commands(
+                  commands: belt_validation_commands_for_contract(
+                    instance: instance,
+                    contract: node.execution,
+                  ),
+                  worktree: worktree,
+                  oracle_identity: identity,
+                )
+            }
+            let write = Filesystem.Write(
+              path: dispatch_current_attempt_validation_receipt_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+              content: validation_receipt_json(
+                verdict: verdict,
+                observations: observations,
+              ),
+            )
+            if write.success {
+              VerifyRecorded {
+                node_id: progress.node_id,
+                verdict_key: validation_verdict_key(verdict: verdict),
+                detail: validation_verdict_detail(verdict: verdict),
+              }
+            } else {
+              VerifyWriteFailed {
+                node_id: progress.node_id,
+                detail: write.error,
+              }
+            }
+          }
+        }
+      }
+        }
+      }
+    }
+    _ =>
+      VerifyDeferred {
+        node_id: progress.node_id,
+        reason: "the agent obligation is not satisfied, so there is nothing to verify yet",
+      }
+  }
+}
+
+fn belt_verify_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<BeltVerifyOutcome> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [
+        VerifyDeferred {
+          node_id: "",
+          reason: join([
+            "the attempts ledger is unobservable, so no attempt can be verified: ",
+            reason,
+          ], ""),
+        },
+      ]
+    WorkflowAttemptsObserved { attempts } =>
+      map(attempts, progress => belt_verify_attempt_for_instance(
+        instance: instance,
+        progress: progress,
+      ))
+  }
+}
+
+fn belt_verify_attempts() -> List<BeltVerifyOutcome> {
+  belt_verify_attempts_for_instance(
+    instance: srv1_live_dashboard_instance(),
+  )
 }
 
 fn belt_workflow_attempts_observe_for_instance(
@@ -1960,7 +2531,7 @@ fn belt_run_once_json() -> String {
   serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
 }
 
-data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). Fail-closed exit mapping, idiomatic per srv3_boot_once_cd / host_build_cache_provision: a clean idempotent tick -> ExitSuccess (exit 0, silent). ANY problem surfaces the FULL JSON receipt loudly on stderr via exit_failure(reason): observe_refused (the live session set was unknowable, so no actions were taken) -> exit_failure(receipt); or one-or-more spawn_failed outcomes (a git-worktree/tmux/which failure) -> exit_failure(receipt). The receipt is the whole BeltTickResult projection, so the operator reads exactly which node failed at which step. Teardown failures are surfaced in the receipt but do NOT flip the exit — a reap that could not complete is not a reason to fail the tick (the session is still tracked and retried next tick); only a spawn failure or an unknowable observation is a hard stop. For always-on observation of a SUCCESSFUL tick's receipt, belt_run_once_json is the string form (witness/inspection)."
+data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). Fail-closed exit mapping, idiomatic per srv3_boot_once_cd / host_build_cache_provision: a clean idempotent tick -> ExitSuccess (exit 0, silent). ANY problem surfaces the FULL JSON receipt loudly on stderr via exit_failure(reason): observe_refused (the live session set was unknowable, so no actions were taken) -> exit_failure(receipt); or one-or-more spawn_failed outcomes (a git-worktree/tmux/which failure) -> exit_failure(receipt). The receipt is the whole BeltTickResult projection, so the operator reads exactly which node failed at which step. A verify outcome that could not be WRITTEN flips the exit for the same reason a spawn failure does — the belt failed to produce a receipt it was obliged to produce — while a recorded refusal or a recorded red does NOT, because those are the receipt working: the belt's obligation is to produce a verdict, never to produce a green, and flipping the exit on a refusal would make the tick's own success depend on what the validation said. Teardown failures are surfaced in the receipt but do NOT flip the exit — a reap that could not complete is not a reason to fail the tick (the session is still tracked and retried next tick); only a spawn failure or an unknowable observation is a hard stop. For always-on observation of a SUCCESSFUL tick's receipt, belt_run_once_json is the string form (witness/inspection)."
 
 fn belt_run_once_cli() -> ProcessExit {
   let t = belt_run_once()
@@ -1969,6 +2540,8 @@ fn belt_run_once_cli() -> ProcessExit {
     exit_failure(reason: receipt)
   } else {
     if belt_tick_spawn_failed_count(t: t) > 0 {
+      exit_failure(reason: receipt)
+    } else if belt_tick_verify_write_failed_count(t: t) > 0 {
       exit_failure(reason: receipt)
     } else {
       ExitSuccess

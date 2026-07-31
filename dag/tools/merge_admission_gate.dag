@@ -11,6 +11,8 @@ import gunbc.merge_admission {
   MergeDeniedStaleBase,
   MergeDeniedStaleRoster,
   MergeDeniedNotSuccess,
+  MergeDeniedWrongAttempt,
+  MergeDeniedSubjectMismatch,
   MergeAdmitted,
 }
 import gunbc.merge_admission_produce {
@@ -31,6 +33,7 @@ fn verdict_reason(v: MergeAdmissionVerdict) -> String {
     MergeDeniedStaleRoster => "stale gate roster — re-run CI after criteria change"
     MergeDeniedNotSuccess => "receipt conclusion is not success"
     MergeDeniedWrongAttempt => "receipt belongs to a different walk attempt — not the subject; re-run CI"
+    MergeDeniedSubjectMismatch => "receipt describes a different head or base tree than this attempt captured — not the subject; re-run CI"
   }
 }
 

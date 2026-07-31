@@ -18,7 +18,7 @@ data e0599_measured_producer: String = "V1SeedEmitter"
 
 data e0599_measured_producer_note: String = "PRODUCER TAG (operator design ruling, 2026-07-29, relayed by calm-badger-682). Every row and count in this census characterizes what the V1 SEED EMITTER (src/v1/05_emit_rust.dag, executed through gunbc) synthesizes when it emits v2 modules. CompilerFixedPoint now recenters on the V2 emitter: the v1 stage0 runtime may temporarily EXECUTE the v2 emitter as .dag, but the v1 emitter stops DECIDING the generated Rust, and emitter authority exits v1 before interpreter execution does. CONSEQUENCE, stated so this census cannot later be misread: the measured sites and occurrences are DIAGNOSTIC COMPARISON ONLY and are NOT CompilerFixedPoint progress, and NOT a v2 sizing authority. COUNTS ARE DELIBERATELY NOT RESTATED HERE (review 44386, codex/codex-default): this note previously restated the brief-sha site and occurrence counts, which went stale the moment #7324 moved the corpus and then contradicted the receipt — a §3 dual representation of a fact whose home is the measurement, not this module. The single authority for every count is the stamped receipt docs/probes/e0599_phase_b0_emitter_decision_receipt_2026-07-29.tsv, which carries its own base_sha and measured_corpus_sha; the audit docs/probes/e0599_phase_b0_emitter_decision_2026-07-29.md reports both the brief-sha and post-merge measurements and attributes the delta. Re-syncing a copy here would only re-arm the same drift. The v2 emitter is a different producer, built from target-model rows consumed by the shared translate/serialize path, so no row here transfers to it by assumption — some may, some are artifacts of seed lowering templates v2 does not have. WHAT IT IS LOAD-BEARING FOR: seed-emitter changes are a finite bootstrap adapter queue, and this census is what makes that queue enumerable — it names which seed lowering decisions exist and exactly where each is made."
 
-data e0599_emitter_decision_census_note: String = "Single authority for the P-fn Phase B0 emitter-decision census: the typed requirement causes, the v1 lowering operations that produce the Rust operations rustc reports as E0599, the cited external impl bounds those operations land on, and the operation->cause decision. Phase A (#7389) proved the requirement does not originate in a .dag body; this module names where it DOES originate — an emitter lowering decision — at the grain of one row per lowering operation. Realization: docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD) joins these rows against structured rustc diagnostics from the real compilation path. CENSUS VOCABULARY, NOT A MODEL CARRIER: B0 is explicitly forbidden from pre-committing the sharing carrier (the B1 authority question is whether the requirement rides RequiredTraitWitness in v2.std.compilers.target_model or a capability-keyed contract that subsumes it). These types exist to make the measurement typed and fail-closed, and they dissolve into whatever B1 rules. dissolve-on (two, independent): (1) B1 lands the sharing model on the materialization axis, at which point this module's rows migrate to it and the census becomes a projection of that authority; (2) PARTIALLY FIRED 2026-07-29 when #7399 merged: the Clone-impl row now cites extdeps.languages.rust.derive_contracts im_15_1_0_vector_clone_impl_authority through cited_upstream instead of restating its locator. The inherent-impl (mod.rs:180, carrying is_empty and iter) and Index-impl (mod.rs:1838) rows STAY local and carry cited_upstream Absent, because derive_contracts is scoped to DERIVE traits and has no row for either; their narrowed trigger is an extdeps home for non-derive im impl citations, which does not exist yet. This is a declared residue, not an oversight — vivid-swift-837 confirmed (2026-07-29) that the std::Vec keying this census flagged was a real authority mismatch, not a deliberate lane, and #7399 adds exact im 15.1.0 line authorities there. P-fn sequences AFTER #7399 and must not mint a parallel Vec authority: when it lands, delete e0599_im_vector_inherent_impl / _index_impl / _clone_impl and import the derive_contracts rows instead."
+data e0599_emitter_decision_census_note: String = "Single authority for the P-fn Phase B0 emitter-decision census: the typed requirement causes, the v1 lowering operations that produce the Rust operations rustc reports as E0599, the cited external impl bounds those operations land on, and the operation->cause decision. Phase A (#7389) proved the requirement does not originate in a .dag body; this module names where it DOES originate — an emitter lowering decision — at the grain of one row per lowering operation. Realization: docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD) joins these rows against structured rustc diagnostics from the real compilation path. CENSUS VOCABULARY, NOT A MODEL CARRIER: B0 is explicitly forbidden from pre-committing the sharing carrier (the B1 authority question is whether the requirement rides RequiredTraitWitness in v2.std.compilers.target_model or a capability-keyed contract that subsumes it). These types exist to make the measurement typed and fail-closed, and they dissolve into whatever B1 rules. dissolve-on (two, independent): (1) B1 lands the sharing model on the materialization axis, at which point this module's rows migrate to it and the census becomes a projection of that authority; (2) PARTIALLY FIRED 2026-07-29 when #7399 merged: the Clone-impl row now cites extdeps.languages.rust.derive_contracts im_15_1_0_vector_clone_impl_authority through cited_upstream instead of restating its locator. The im::vector inherent impl<A: Clone> Vector<A> (carrying Vector::is_empty and Vector::iter) and impl<A: Clone> Index<usize> for Vector<A> rows STAY local and carry cited_upstream Absent, because derive_contracts is scoped to DERIVE traits and has no row for either; their narrowed trigger is an extdeps home for non-derive im impl citations, which does not exist yet. This is a declared residue, not an oversight — vivid-swift-837 confirmed (2026-07-29) that the std::Vec keying this census flagged was a real authority mismatch, not a deliberate lane, and #7399 adds exact im 15.1.0 impl authorities there. P-fn sequences AFTER #7399 and must not mint a parallel Vec authority: when it lands, delete e0599_im_vector_inherent_impl / _index_impl / _clone_impl and import the derive_contracts rows instead."
 
 data e0599_cause_semantics_note: String = "WHAT CloneSharedRequirement MEANS, fixed by operator verdict 2026-07-29: the seed emitter INSERTED a clone at this seam. It does NOT mean the clone can safely be deleted. This census does not execute the per-site ownership verdict - it records which emitter predicate or alternative arm is ASSOCIATED with the site, never whether that site is SoleOwner, at last use, movable, or safely borrowable. The supported claim is that these occurrences are produced at seams owned by the ownership/lowering lane and their actual removability REMAINS TO BE PROVED. EmitterArmPresent means a move arm exists, not that the ownership verdict should select it; NoEmitterArm means no alternative arm exists, and a new lowering may still require Clone under sharing. Consequently the occurrence count is NOT a predicted burn-down and must not be used as one."
 
@@ -63,27 +63,27 @@ type E0599LoweringRow {
 data e0599_im_vector_inherent_impl: E0599ExternalAuthority = E0599ExternalAuthority {
   crate_name: "im",
   crate_version: "15.1.0",
-  impl_site: "src/vector/mod.rs:180",
+  impl_site: "im::vector impl<A: Clone> Vector<A> (src/vector/mod.rs:180)",
   impl_bound: "impl<A: Clone> Vector<A>",
-  member_site: "is_empty src/vector/mod.rs:315 | iter src/vector/mod.rs:383",
+  member_site: "im::vector Vector::is_empty | Vector::iter",
   cited_upstream: Absent,
 }
 
 data e0599_im_vector_index_impl: E0599ExternalAuthority = E0599ExternalAuthority {
   crate_name: "im",
   crate_version: "15.1.0",
-  impl_site: "src/vector/mod.rs:1838",
+  impl_site: "im::vector impl<A: Clone> Index<usize> for Vector<A> (src/vector/mod.rs:1838)",
   impl_bound: "impl<A: Clone> Index<usize> for Vector<A>",
-  member_site: "index src/vector/mod.rs:1841",
+  member_site: "im::vector Index::index",
   cited_upstream: Absent,
 }
 
 data e0599_im_vector_clone_impl: E0599ExternalAuthority = E0599ExternalAuthority {
   crate_name: "im",
   crate_version: "15.1.0",
-  impl_site: "src/vector/mod.rs:1686",
+  impl_site: "im::vector impl<A: Clone> Clone for Vector<A>",
   impl_bound: "impl<A: Clone> Clone for Vector<A>",
-  member_site: "clone src/vector/mod.rs:1688",
+  member_site: "im::vector Clone::clone",
   cited_upstream: Present { value: im_15_1_0_vector_clone_impl_authority },
 }
 
@@ -101,7 +101,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
     operation: FreeMonoidEmptyTest,
     ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
     source_construct: "match over the FreeMonoid coproduct — the Empty/Cons discrimination itself",
-    emitter_authority: "src/v1/05_emit_rust.dag:7859 (emit_native_freemonoid_match) | :8715 (tco fork)",
+    emitter_authority: "v1.compiler.emit_rust emit_native_freemonoid_match | emit_native_freemonoid_tco_match",
     emitted_literal: "{ let __fm = <scrut>; if __fm.is_empty() { .. } else { .. } }",
     cause: TargetApiRequirement,
     required_trait: "Clone",
@@ -112,7 +112,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
     operation: FreeMonoidTailIterate,
     ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
     source_construct: "match over the FreeMonoid coproduct — the Cons { tail } binding",
-    emitter_authority: "src/v1/05_emit_rust.dag:7817 (freemonoid_tail_let_from_fm)",
+    emitter_authority: "v1.compiler.emit_rust freemonoid_tail_let_from_fm",
     emitted_literal: "let <tail>: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ",
     cause: TargetApiRequirement,
     required_trait: "Clone",
@@ -123,7 +123,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
     operation: FreeMonoidHeadExtract,
     ownership_alternative: "NotApplicable - no move or borrow exists out of shared storage; the owned element must be materialized",
     source_construct: "match over the FreeMonoid coproduct — the Cons { head } binding",
-    emitter_authority: "src/v1/05_emit_rust.dag:7838 (freemonoid_nonempty_branch_body) | :8694 (tco fork)",
+    emitter_authority: "v1.compiler.emit_rust freemonoid_nonempty_branch_body | freemonoid_tco_nonempty_branch_body",
     emitted_literal: "let <head> = (*__fm)[0].clone(); ",
     cause: OwnedDeconstructionRequirement,
     required_trait: "Clone",
@@ -132,9 +132,9 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FreeMonoidCatchallBind,
-    ownership_alternative: "NoEmitterArm - the bind is unconditional at :7826/:7844/:8682/:8700 (row is uninhabited in the B0 measurement)",
+    ownership_alternative: "NoEmitterArm - the bind is unconditional in v1.compiler.emit_rust freemonoid_empty_branch_body | freemonoid_nonempty_branch_body | freemonoid_tco_empty_branch_body | freemonoid_tco_nonempty_branch_body (row is uninhabited in the B0 measurement)",
     source_construct: "match over the FreeMonoid coproduct — a catch-all arm binding the whole scrutinee",
-    emitter_authority: "src/v1/05_emit_rust.dag:7826 | :7844 | :8682 | :8700",
+    emitter_authority: "v1.compiler.emit_rust freemonoid_empty_branch_body | freemonoid_nonempty_branch_body | freemonoid_tco_empty_branch_body | freemonoid_tco_nonempty_branch_body",
     emitted_literal: "let <bind> = __fm.clone(); ",
     cause: CloneSharedRequirement,
     required_trait: "Clone",
@@ -143,36 +143,36 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: DerefCloneWholeValue,
-    ownership_alternative: "NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut, so no alternative arm exists to select. NO CLAIM IS MADE THAT A COPY-FREE ALTERNATIVE EXISTS (operator verdict 2026-07-29): Rc::make_mut is clone-on-write, is declared `where T: Clone`, and clones the pointee whenever another strong Rc is live - so it REQUIRES the very bound this census counts and cannot evidence its removal. Whether any alternative lowering here avoids Clone under sharing is unproved and belongs to the ownership/lowering lane.",
+    ownership_alternative: "NoEmitterArm - v1.compiler.emit_rust emit_typed_method_call and emit_rust_with_method_call choose deref_clone vs clone_value by needs_rc; emit_typed_match and emit_rust_tco_match clone unconditionally, and v1.compiler.emit_rust contains zero Rc::try_unwrap/make_mut, so no alternative arm exists to select. NO CLAIM IS MADE THAT A COPY-FREE ALTERNATIVE EXISTS (operator verdict 2026-07-29): Rc::make_mut is clone-on-write, is declared `where T: Clone`, and clones the pointee whenever another strong Rc is live - so it REQUIRES the very bound this census counts and cannot evidence its removal. Whether any alternative lowering here avoids Clone under sharing is unproved and belongs to the ownership/lowering lane.",
     source_construct: "whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee",
-    emitter_authority: "src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone",
+    emitter_authority: "v1.compiler.emit_rust emit_typed_field_access (field access) | emit_typed_method_call / emit_rust_with_method_call (record spread) | emit_typed_match / emit_rust_tco_match (match scrutinee) via v1.compiler.languages rust_spec.sharing.deref_clone",
     emitted_literal: "(*{0}).clone()",
     cause: CloneSharedRequirement,
     required_trait: "Clone",
     authority: e0599_im_vector_clone_impl,
-    rationale: "sharing.deref_clone (src/v1/languages.dag:393) derefs through the Rc and copies the whole pointee to obtain an owned value — the cons-cell spread shape (*acc.clone()).clone() then insert. This is an emitter-inserted copy at a seam the ownership/lowering lane owns; it is NOT a proof that the copy is deletable. The earlier Rc::make_mut rationale was withdrawn (operator verdict 2026-07-29): make_mut is clone-on-write, declared `where T: Clone`, and clones when another strong Rc is live. The site corresponds to the shape docs/plans/emitter-ownership-defork.md names UseSiteVerdict.CloneShared, which is a candidate for that lane to adjudicate, not a settled verdict.",
+    rationale: "v1.compiler.languages rust_spec.sharing.deref_clone derefs through the Rc and copies the whole pointee to obtain an owned value — the cons-cell spread shape (*acc.clone()).clone() then insert. This is an emitter-inserted copy at a seam the ownership/lowering lane owns; it is NOT a proof that the copy is deletable. The earlier Rc::make_mut rationale was withdrawn (operator verdict 2026-07-29): make_mut is clone-on-write, declared `where T: Clone`, and clones when another strong Rc is live. The site corresponds to the shape docs/plans/emitter-ownership-defork.md names UseSiteVerdict.CloneShared, which is a candidate for that lane to adjudicate, not a settled verdict.",
   },
   E0599LoweringRow {
     operation: IdentReferenceClone,
-    ownership_alternative: "EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)",
+    ownership_alternative: "EmitterArmPresent - v1.compiler.emit_rust emit_var_ref moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from v1.compiler.ownership build_movable_set)",
     source_construct: "bare identifier reference in a value position",
-    emitter_authority: "src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value",
+    emitter_authority: "v1.compiler.emit_rust emit_var_ref via v1.compiler.languages rust_spec.sharing.clone_value",
     emitted_literal: "{0}.clone()",
     cause: CloneSharedRequirement,
     required_trait: "Clone",
     authority: e0599_rust_clone_trait,
-    rationale: "sharing.clone_value (src/v1/languages.dag:392) on a bare identifier that is already owned at its use site. This is exactly the class build_movable_set / make_decision -> SoleOwner licenses as a move; it clones because the emitter's ownership fork bypasses that verdict. Belongs to emitter-ownership-defork.",
+    rationale: "v1.compiler.languages rust_spec.sharing.clone_value on a bare identifier that is already owned at its use site. This is exactly the class v1.compiler.ownership build_movable_set / make_decision -> SoleOwner licenses as a move; it clones because the emitter's ownership fork bypasses that verdict. Belongs to emitter-ownership-defork.",
   },
   E0599LoweringRow {
     operation: FieldAccessClone,
-    ownership_alternative: "EmitterArmPresent - :6435 base_is_owned selects a bare field move; the clone is the else-arm at :6438, so the ownership verdict alone decides it (owned_bindings)",
+    ownership_alternative: "EmitterArmPresent - v1.compiler.emit_rust emit_typed_field_access base_is_owned selects a bare field move; sharing.clone_value is the else-arm, so the ownership verdict alone decides it (owned_bindings)",
     source_construct: "field projection on a record-typed binding",
-    emitter_authority: "src/v1/05_emit_rust.dag:6438 (emit_typed_field_access, the non-owned arm) via sharing.clone_value",
+    emitter_authority: "v1.compiler.emit_rust emit_typed_field_access non-owned arm via v1.compiler.languages rust_spec.sharing.clone_value",
     emitted_literal: "{0}.{1}.clone()",
     cause: CloneSharedRequirement,
     required_trait: "Clone",
     authority: e0599_rust_clone_trait,
-    rationale: "The emitter chooses between a MOVE at :6435 (concat(base_str, field) when base_is_owned) and this clone at :6438, so the copy fires exactly when the ownership verdict says the base is not owned. That verdict comes from owned_bindings — the third, ad-hoc ownership set docs/plans/emitter-ownership-defork.md names, which is populated only with fold-accumulator names inside emit_rust_fold_method_call and therefore can never contain a parameter. acc.seen.clone() is the shape that doc calls the dominant dag_collect cost. Belongs to emitter-ownership-defork.",
+    rationale: "v1.compiler.emit_rust emit_typed_field_access chooses between a MOVE when base_is_owned and the sharing.clone_value arm, so the copy fires exactly when the ownership verdict says the base is not owned. That verdict comes from owned_bindings — the third, ad-hoc ownership set docs/plans/emitter-ownership-defork.md names, which is populated only with fold-accumulator names inside emit_rust_fold_method_call and therefore can never contain a parameter. acc.seen.clone() is the shape that doc calls the dominant dag_collect cost. Belongs to emitter-ownership-defork.",
   },
 ]
 
