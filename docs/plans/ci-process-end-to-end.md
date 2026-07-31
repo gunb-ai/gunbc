@@ -15,7 +15,7 @@ CI is **ROADMAP §1**, and it is *upstream of every §0 claim*: a flaky or green
 
 ## 1. The pipeline as it runs today
 
-One PR push → one CI run: trigger (`ci.yml` on `pull_request`+`workflow_dispatch`) → GitHub starts the run → concurrency-group eval → GitHub places the **single** `jobs.ci` (no `matrix`) on the first idle `[self-hosted, linux, arm64]` runner → the runner builds `v1-compiler` and invokes `claim_executor … --plan-function gunbc_ci_floor_batches` → the executor derives batches from `ci_floor_plan.dag`, reads the live cgroup budget, shards by `spawn_width`, and runs the `.dag` witness corpus + gates → exit code → GitHub marks the check → dashboard gates review/merge.
+One PR push → one CI run: trigger (`ci.yml` on `pull_request`+`workflow_dispatch`) → GitHub starts the run → concurrency-group eval → GitHub places the **single** `jobs.ci` (no `matrix`) on the first idle `[self-hosted, linux, arm64]` runner → the runner builds `v1-compiler` and invokes `claim_executor … --plan-function gunbc_ci_floor_plan` → the executor derives batches from `ci_floor_plan.dag`, reads the live cgroup budget, shards by `spawn_width`, and runs the `.dag` witness corpus + gates → exit code → GitHub marks the check → dashboard gates review/merge.
 
 `ci.yml` itself is a byte-for-byte projection of `gunbc.ci_yaml_emit` (`ci_workflow.dag` → `ci_yaml_emit`, authored steps incl. the build command and the `claim_executor` invocation), drift-gated by `tools/ci_yaml_gate.dag`. So the **workflow description is on fabric.** The question §2 answers is whether the *fabric* is.
 
@@ -36,7 +36,7 @@ One PR push → one CI run: trigger (`ci.yml` on `pull_request`+`workflow_dispat
 | 6 | the runner's cgroup cap bounds it | 🔴 | — | `TasksMax`/`MemoryMax` host-set by hand **(G3)**; `.dag` only *reads* it live — adaptive, not authoritative |
 | 7 | steps: isolate toolchain, checkout, setup-rust, cache | 🟢 *list* / 🔴 *tools* | **~15s** | step list derived; bodies shell out to git/rustup/cache |
 | 8 | `cargo build -p v1-compiler` + freshness/exists verify | 🟢 | **~1m45s** | command + §5 guards derived; sccache-warm (847/859 hits) at `BUILD_JOBS=1` |
-| 9 | `claim_executor … gunbc_ci_floor_batches` | 🔵 | *(batches ↓)* | **executor interprets `ci_floor_plan.dag`; batches from dependency edges** — strongest on-fabric link |
+| 9 | `claim_executor … gunbc_ci_floor_plan` | 🔵 | *(batches ↓)* | **executor interprets `ci_floor_plan.dag`; batches from dependency edges** — strongest on-fabric link |
 | · | ⤷ batch 1 — compile-clean gate | 🔵 | **~22s** | `gunbc compile --target rust` over the whole tree + a RED control |
 | · | ⤷ batch 2 — corpus + rust monolith + 5 gates (width 8) | 🔵/🔴 | **~43m20s** | **87% of the run; one atomic rust node holds it open — see §6** |
 | · | ⤷ batch 3 — source-root-ingest + self-host closure | 🔵 | **~4m29s** | 2 serial (width-1) sub-shells of heavy `gunbc run`s |

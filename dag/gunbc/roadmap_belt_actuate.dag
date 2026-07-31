@@ -848,11 +848,119 @@ fn belt_provider_preflight(provider: DispatchCliProvider) -> BeltProviderPreflig
   )
 }
 
+data belt_footprint_admission_note: String = "Step 0b: the runtime admits against its own deployment footprint BEFORE it mutates anything, because the 2026-07-30 incident proved the belt learns about a missing root in the worst possible order. Staging ran `git worktree add` (389ms, succeeded) and then `install -d` into an attempt-state root that did not exist under a root-owned parent (3ms, EACCES) — so the fail-closed short-circuit worked exactly as designed and still left an orphan branch and worktree behind on every click, because the first durable mutation had already happened by the time the deficit was discovered. Step 0a made the root a converged deployment member so it EXISTS; this gate makes its absence or unwritability REFUSE FIRST, which is the difference between a class that cannot recur and a class that recurs once per host between deploys.\\n\\nTHE ROOTS COME FROM THE INSTANCE, NOT FROM live_deploy's srv1 roster. That is deliberate and not a second footprint: the instance is the runtime's own view of the paths it writes, so a lab/preview instance under a disjoint root admits against ITS roots rather than production's, while gunbc.live_deploy.spec stays the provisioner's view of srv1. Step 1 unifies the two into one member list with permissions; until then the belt reads the value it was handed rather than importing a host-specific roster it has no business knowing.\\n\\nWRITABILITY IS PROBED AS WRITE **AND** SEARCH, because POSIX requires both to create an entry in a directory: `test -w` alone would pass on a mode-0644 directory and the very next `install -d` would still fail, which is the fabricated-precondition shape this gate exists to remove. Search permission reuses shell.Test.IsExecutable — `test -x` on a directory IS the search bit, so this is the cited operation read in its directory sense, never a minted directory-specific probe. The frame is the EFFECTIVE principal: these probes run in the serve process, so they answer for the account that will actually perform the mutation, which is the only question worth asking (a provisioner-side SSH probe would answer for the deploy principal and admit a root the runtime cannot write).\\n\\nKnown conflation, named rather than modeled away: a probe that could not execute at all reads as present=false, the same as a genuinely absent root. Both arms REFUSE, so nothing is fabricated in either direction and the remedy is a converge in both; only the detail line would misattribute, and `test` is a coreutils/shell builtin whose absence would have already broken belt_exec's which-check. Splitting it would add a third state whose two branches take the same action.\\n\\nOutcomeIsData ADMISSIBILITY (discharging the review obligation gunbc.output_policy outcome_is_data_note leaves open): all three probes are annotated because a non-zero `test` exit here is an ANSWER — root absent / not writable / not searchable — and it is ambient in both contexts, since production responds by refusing the spawn and the witnesses respond by asserting the refusal arm. The guard is satisfied structurally, not by assertion: belt_footprint_observe returns BeltFootprintObservation and belt_footprint_admission_for_instance returns BeltFootprintAdmission, so each exit provably feeds a typed consumer and neither returns unit. Dispatch failure of the probe ITSELF remains anomalous and is not silenced by the annotation."
+
+type BeltFootprintRoot {
+  member: String
+  path: String
+}
+
+fn belt_dispatch_footprint_roots(instance: HostDashboardInstance) -> List<BeltFootprintRoot> {
+  [
+    BeltFootprintRoot {
+      member: "dispatch-worktree-root",
+      path: instance.dispatch_worktree_root as String,
+    },
+    BeltFootprintRoot {
+      member: "attempt-state-root",
+      path: instance.dispatch_attempt_state_root as String,
+    },
+  ]
+}
+
+type BeltFootprintObservation {
+  member: String
+  path: String
+  present: Bool
+  writable: Bool
+  searchable: Bool
+}
+
+type BeltFootprintAdmission
+  = FootprintAdmitted
+  | FootprintRefused { step: String, detail: String }
+
+fn belt_footprint_root_verdict(obs: BeltFootprintObservation) -> BeltFootprintAdmission {
+  if !obs.present {
+    FootprintRefused {
+      step: "footprint-root-absent",
+      detail: join([
+        "deployment member ", obs.member, " is not a directory at ", obs.path,
+        " — the belt writes there on every dispatch, so staging would mutate the worktree and then fail; converge the member (gunbc.live_deploy.spec deployment_owned_steps) rather than creating it by hand",
+      ], ""),
+    }
+  } else if !obs.writable {
+    FootprintRefused {
+      step: "footprint-root-unwritable",
+      detail: join([
+        "deployment member ", obs.member, " at ", obs.path,
+        " is not writable by the effective runtime principal — the deploy converges it owned by the service user; a root owned by anyone else means the instance was hand-provisioned or the member's ownership drifted",
+      ], ""),
+    }
+  } else if !obs.searchable {
+    FootprintRefused {
+      step: "footprint-root-unsearchable",
+      detail: join([
+        "deployment member ", obs.member, " at ", obs.path,
+        " is writable but not searchable by the effective runtime principal — POSIX requires write AND search to create an entry, so staging would still fail on a directory this gate would otherwise admit",
+      ], ""),
+    }
+  } else {
+    FootprintAdmitted
+  }
+}
+
+fn belt_footprint_admission_decision(
+  observations: List<BeltFootprintObservation>,
+) -> BeltFootprintAdmission {
+  fold(observations, init: FootprintAdmitted, f: (acc, obs) =>
+    match acc {
+      FootprintRefused { step: st, detail: d } =>
+        FootprintRefused { step: st, detail: d }
+      FootprintAdmitted => belt_footprint_root_verdict(obs: obs)
+    }
+  )
+}
+
+fn belt_footprint_observe(root: BeltFootprintRoot) -> BeltFootprintObservation {
+  BeltFootprintObservation {
+    member: root.member,
+    path: root.path,
+    present: shell.Test.IsDirectory(
+      path: root.path as FilePath,
+      expect: OutcomeIsData,
+    ).is_directory,
+    writable: shell.Test.IsWritable(
+      path: root.path as FilePath,
+      expect: OutcomeIsData,
+    ).writable,
+    searchable: shell.Test.IsExecutable(
+      path: root.path as FilePath,
+      expect: OutcomeIsData,
+    ).executable,
+  }
+}
+
+fn belt_footprint_admission_for_instance(
+  instance: HostDashboardInstance,
+) -> BeltFootprintAdmission {
+  belt_footprint_admission_decision(
+    observations: map(
+      belt_dispatch_footprint_roots(instance: instance),
+      r => belt_footprint_observe(root: r),
+    ),
+  )
+}
+
 fn belt_actuate_spawn_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   probed_at: String,
 ) -> BeltSpawnOutcome {
+  match belt_footprint_admission_for_instance(instance: instance) {
+    FootprintRefused { step: fst, detail: fd } =>
+      SpawnFailed { node_id: node.node as String, step: fst, detail: fd }
+    FootprintAdmitted =>
   match dispatch_environment_admit(
     contract: node.execution,
     environment: instance.execution_environment,
@@ -889,6 +997,7 @@ fn belt_actuate_spawn_for_instance(
             ),
           )
       }
+  }
   }
 }
 
