@@ -1,7 +1,7 @@
 # Whole-corpus namespace census receipt — 2026-07-31
 
 This receipt makes the namespace measurement reproducible without committing its
-1.9 MB raw log or the synthetic compile root. Every reported number is labelled by
+raw log or the synthetic compile root. Every reported number is labelled by
 its actual authority; the regex catalogue is never presented as compiler resolution.
 
 ## Pinned inputs
