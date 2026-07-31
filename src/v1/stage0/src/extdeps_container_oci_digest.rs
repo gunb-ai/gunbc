@@ -69,11 +69,16 @@ pub fn oci_encoded_digest_syntax_valid(mut text: String, mut index: i64) -> bool
     }
 }
 
-pub fn oci_encoded_digest(text: String) -> Option<String> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OciEncodedPayload {
+    pub encoded: NonEmptyStr,
+}
+
+pub fn oci_encoded_digest(text: String) -> Option<Rc<OciEncodedPayload>> {
     if oci_encoded_digest_syntax_valid(text.clone(), 0) {
-        Optional::String {
-            value: text.clone(),
-        }
+        Some(Rc::new(OciEncodedPayload {
+            encoded: text.clone(),
+        }))
     } else {
         None
     }
@@ -158,7 +163,7 @@ pub struct OciSha512DigestBody {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OciOtherDigestBody {
     pub algorithm: OciOtherDigestAlgorithm,
-    pub hex: NonEmptyStr,
+    pub encoded: NonEmptyStr,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -181,7 +186,7 @@ pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
         OciContentDigest::OciSha256Digest(digest) => digest.hex.clone(),
         OciContentDigest::OciSha512Digest(body) => body.hex.clone(),
-        OciContentDigest::OciOtherDigest(body) => body.hex.clone(),
+        OciContentDigest::OciOtherDigest(body) => body.encoded.clone(),
     }
 }
 
@@ -196,93 +201,45 @@ pub fn render_oci_content_digest_wire(d: Rc<OciContentDigest>) -> String {
 }
 
 pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>> {
-    if !((Rc::new(
-        raw.clone()
-            .split(&":".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .len() as i64)
-        == 2)
     {
-        None
-    } else {
-        if (Rc::new(
+        let parts = Rc::new(
             raw.clone()
                 .split(&":".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
-        )
-        .first()
-        .cloned()
-        .as_deref()
-            == Some("sha256".to_string()).as_deref())
-        {
-            match sha256_hex_digest(Rc::new(raw.clone().split(&":".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned().skip(1 as usize).next().expect("fail-closed: an optional value flowed into non-optional parameter 0 of sha256_hex_digest (empty Optional at runtime)")) {
+        );
+        if ((parts.clone().len() as i64) != 2) {
+            None
+        } else {
+            {
+                let algo = parts.clone().first().cloned();
+                let encoded = parts.clone().iter().cloned().skip(1 as usize).next();
+                if (algo.clone().as_deref() == Some("sha256".to_string()).as_deref()) {
+                    match sha256_hex_digest(encoded.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of sha256_hex_digest (empty Optional at runtime)")) {
     Some(digest) => Some(Rc::new(OciContentDigest::OciSha256Digest(digest.clone()))),
     None => None,
 }
-        } else {
-            if (Rc::new(
-                raw.clone()
-                    .split(&":".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            )
-            .first()
-            .cloned()
-            .as_deref()
-                == Some("sha512".to_string()).as_deref())
-            {
-                {
-                    let hex = Rc::new(
-                        raw.clone()
-                            .split(&":".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .next();
-                    if content_hash_validate_lower_hex_length(hex.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of content_hash_validate_lower_hex_length (empty Optional at runtime)"), 128) {
-                        Some(Rc::new(OciContentDigest::OciSha512Digest(Rc::new(OciSha512DigestBody {
+                } else {
+                    if (algo.clone().as_deref() == Some("sha512".to_string()).as_deref()) {
+                        if content_hash_validate_lower_hex_length(encoded.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of content_hash_validate_lower_hex_length (empty Optional at runtime)"), 128) {
+                            Some(Rc::new(OciContentDigest::OciSha512Digest(Rc::new(OciSha512DigestBody {
     hex: panic!("unsupported cast from Option<String> to String"),
 }))))
+                        } else {
+                            None
+                        }
                     } else {
-                        None
-                    }
-                }
-            } else {
-                {
-                    let algo = Rc::new(
-                        raw.clone()
-                            .split(&":".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                    .first()
-                    .cloned();
-                    let encoded = Rc::new(
-                        raw.clone()
-                            .split(&":".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .next();
-                    if !oci_other_digest_algorithm(algo.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of oci_other_digest_algorithm (empty Optional at runtime)")) {
-                        None
-                    } else {
-                        match oci_encoded_digest(encoded.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of oci_encoded_digest (empty Optional at runtime)")) {
-    Some(hex) => Some(Rc::new(OciContentDigest::OciOtherDigest(Rc::new(OciOtherDigestBody {
+                        if !oci_other_digest_algorithm(algo.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of oci_other_digest_algorithm (empty Optional at runtime)")) {
+                            None
+                        } else {
+                            match oci_encoded_digest(encoded.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of oci_encoded_digest (empty Optional at runtime)")) {
+    Some(payload) => Some(Rc::new(OciContentDigest::OciOtherDigest(Rc::new(OciOtherDigestBody {
     algorithm: panic!("unsupported cast from Option<String> to String"),
-    hex: hex.clone(),
+    encoded: payload.encoded.clone(),
 })))),
     None => None,
 }
+                        }
                     }
                 }
             }

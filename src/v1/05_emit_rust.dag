@@ -8294,6 +8294,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
     Present { value: pe } => Present { value: qualified_last_segment(name: pe) }
     Absent => none
   }
+  let variant_surface_name = match type_name {
+    Present { value: n } => n
+    Absent => match bare_qualified_name { Present { value: qn } => qn  Absent => "" }
+  }
   match bare_qualified_name {
     Absent =>
       let is_product = is_product_type(n: resolved_type)
@@ -8365,15 +8369,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
+      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
           let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
           let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
 
-          if resolved_type.ident_span != none && rt_name != tn && !rt_is_type_var && rt_name != "Error"
-            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: tn, enum_name: rt_name) {
+          if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
+            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
             bare_parent_enum
@@ -8392,15 +8396,19 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
+      let fn_returns_optional = match emit_info.fn_return_type {
+        Present { value: rt } => rt.return_cardinality == CardOptional
+        Absent => false
+      }
+      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional || fn_returns_optional)
       let rust_tn = if optional_variant {
-        if is_some_like_variant_name(name: tn) { "Some" } else { "None" }
+        if is_some_like_variant_name(name: variant_surface_name) { "Some" } else { "None" }
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
           rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
         }
-      if optional_variant && is_some_like_variant_name(name: tn) && fields |> count == 1 {
+      if optional_variant && is_some_like_variant_name(name: variant_surface_name) && fields |> count == 1 {
         match fields |> first {
           Present { value: f } =>
             let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)

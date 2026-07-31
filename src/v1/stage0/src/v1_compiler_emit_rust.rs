@@ -23349,6 +23349,10 @@ pub fn emit_typed_record_lit(
             Some(pe) => Some(qualified_last_segment(pe.clone())),
             None => None,
         };
+        let variant_surface_name = match type_name.clone() {
+            Some(n) => n.clone(),
+            None => bare_qualified_name.clone().unwrap_or_default(),
+        };
         match bare_qualified_name.clone() {
             None => {
                 let is_product = is_product_type(resolved_type.clone());
@@ -23616,7 +23620,7 @@ pub fn emit_typed_record_lit(
                 };
                 let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
                 let context_lookup = contextual_variant_parent(
-                    tn.clone(),
+                    variant_surface_name.clone(),
                     bare_parent_enum.clone(),
                     resolved_type.clone(),
                     emit_info.clone(),
@@ -23635,12 +23639,12 @@ pub fn emit_typed_record_lit(
                             resolved_type.clone(),
                         ));
                         if (((((resolved_type.ident_span.clone() != None)
-                            && (rt_name.clone() != tn.clone()))
+                            && (rt_name.clone() != variant_surface_name.clone()))
                             && !rt_is_type_var.clone())
                             && (rt_name.clone() != "Error".to_string()))
                             && variant_belongs_to_enum(
                                 emit_info.type_summaries.clone(),
-                                tn.clone(),
+                                variant_surface_name.clone(),
                                 rt_name.clone(),
                             ))
                         {
@@ -23726,13 +23730,18 @@ pub fn emit_typed_record_lit(
                         );
                     }
                 }
-                let optional_variant = (is_optional_variant_name(tn.clone())
+                let fn_returns_optional = match emit_info.fn_return_type.clone() {
+                    Some(rt) => (rt.return_cardinality.clone() == Cardinality::CardOptional),
+                    None => false,
+                };
+                let optional_variant = (is_optional_variant_name(variant_surface_name.clone())
                     && ((is_optional_parent(bare_parent_enum.clone())
                         || is_optional_parent(effective_parent.clone()))
                         || (resolved_type.return_cardinality.clone()
-                            == Cardinality::CardOptional)));
+                            == Cardinality::CardOptional)
+                        || fn_returns_optional.clone()));
                 let rust_tn = if optional_variant.clone() {
-                    if is_some_like_variant_name(tn.clone()) {
+                    if is_some_like_variant_name(variant_surface_name.clone()) {
                         "Some".to_string()
                     } else {
                         "None".to_string()
@@ -23754,7 +23763,8 @@ pub fn emit_typed_record_lit(
                         si.clone(),
                     )
                 };
-                if ((optional_variant.clone() && is_some_like_variant_name(tn.clone()))
+                if ((optional_variant.clone()
+                    && is_some_like_variant_name(variant_surface_name.clone()))
                     && ((fields.clone().len() as i64) == 1))
                 {
                     match fields.clone().first().cloned() {

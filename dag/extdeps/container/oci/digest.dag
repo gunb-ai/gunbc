@@ -111,7 +111,7 @@ type OciSha512DigestBody {
 
 type OciOtherDigestBody {
   algorithm: OciOtherDigestAlgorithm
-  hex: NonEmptyStr
+  encoded: NonEmptyStr
 }
 
 type OciContentDigest
@@ -131,7 +131,7 @@ fn oci_content_digest_encoded_hex(d: OciContentDigest) -> String {
   match d {
     OciSha256Digest(digest) => digest.hex as String
     OciSha512Digest(body) => body.hex as String
-    OciOtherDigest(body) => body.hex as String
+    OciOtherDigest(body) => body.encoded as String
   }
 }
 
@@ -143,46 +143,65 @@ fn render_oci_content_digest_wire(d: OciContentDigest) -> String {
   )
 }
 
-fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
-  if !(length(split(s: raw, delimiter: ":")) == 2) {
+type OciWireDigestParts {
+  algorithm: String
+  encoded: String
+}
+
+fn oci_wire_digest_parts(raw: String) -> OciWireDigestParts? {
+  let parts = split(s: raw, delimiter: ":")
+  if length(parts) != 2 {
     none
-  } else if split(s: raw, delimiter: ":").first() == "sha256" {
-    match sha256_hex_digest(hex: split(s: raw, delimiter: ":").skip(n: 1).first()) {
-      Present { value: digest } => Present { value: OciSha256Digest(digest) }
-      Absent => none
-    }
-  } else if split(s: raw, delimiter: ":").first() == "sha512" {
-    let hex = split(s: raw, delimiter: ":").skip(n: 1).first()
-    if content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 128) {
-      Present {
-        value: OciSha512Digest(
-          OciSha512DigestBody {
-            hex: hex as OciSha512DigestHex,
-          },
-        )
-      }
-    } else {
-      none
-    }
   } else {
-    let algo = split(s: raw, delimiter: ":").first()
-    let encoded = split(s: raw, delimiter: ":").skip(n: 1).first()
-    if !(oci_other_digest_algorithm(value: algo)) {
-      none
-    } else {
-      match oci_encoded_digest(text: encoded) {
-        Present { value: hex } =>
+    Present {
+      value: OciWireDigestParts {
+        algorithm: parts.first(),
+        encoded: parts.skip(n: 1).first(),
+      }
+    }
+  }
+}
+
+fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
+  match oci_wire_digest_parts(raw: raw) {
+    Present { value: parts } =>
+      if parts.algorithm == "sha256" {
+        match sha256_hex_digest(hex: parts.encoded) {
+          Present { value: digest } => Present { value: OciSha256Digest(digest) }
+          Absent => none
+        }
+      } else if parts.algorithm == "sha512" {
+        if content_hash_validate_lower_hex_length(
+          text: parts.encoded,
+          expected_hex_digits: 128,
+        ) {
           Present {
-            value: OciOtherDigest(
-              OciOtherDigestBody {
-                algorithm: algo as OciOtherDigestAlgorithm,
-                hex: hex,
+            value: OciSha512Digest(
+              OciSha512DigestBody {
+                hex: parts.encoded as OciSha512DigestHex,
               },
             )
           }
-        Absent => none
+        } else {
+          none
+        }
+      } else if !(oci_other_digest_algorithm(value: parts.algorithm)) {
+        none
+      } else {
+        match oci_encoded_digest(text: parts.encoded) {
+          Present { value: payload } =>
+            Present {
+              value: OciOtherDigest(
+                OciOtherDigestBody {
+                  algorithm: parts.algorithm as OciOtherDigestAlgorithm,
+                  encoded: payload.encoded,
+                },
+              )
+            }
+          Absent => none
+        }
       }
-    }
+    Absent => none
   }
 }
 
