@@ -4,6 +4,10 @@ import gunbc.doc_graph_roots {
   doc_graph_roots_all,
   hand_authored_slugs_all_unregistered,
   hand_authored_plan_slug_is_unregistered,
+  hand_authored_binds_works_all_nonempty,
+  hand_authored_works_refs_all_carry_symbols,
+  hand_authored_bind_works_nonempty,
+  hand_authored_doc_binds,
   HandAuthoredDocBind, PlanDoc,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -33,9 +37,37 @@ test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
   return hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind {
     home: PlanDoc,
     slug: "typescript-gap-census",
-    work: DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
+    works: [DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration }],
     dissolution: HasTrigger { text: "synthetic negative control: this slug IS registered, so the wall must refuse it" },
   }) == false
+}
+
+test fn doc_graph_binds_works_all_nonempty() -> Bool {
+  return hand_authored_binds_works_all_nonempty()
+}
+
+test fn doc_graph_works_refs_carry_symbols() -> Bool {
+  return hand_authored_works_refs_all_carry_symbols()
+}
+
+test fn doc_graph_works_empty_red_control() -> Bool {
+  return hand_authored_bind_works_nonempty(b: HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "synthetic-empty-works-control",
+    works: [],
+    dissolution: HasTrigger { text: "synthetic negative control: an empty works list must fail the nonempty predicate — proves the consumer discriminates (review 45336)" },
+  }) == false
+}
+
+test fn guarantee_recovery_bind_pins_both_anchors() -> Bool {
+  let rows = hand_authored_doc_binds |> filter(b => b.slug == "compiler-guarantee-recovery-gap-analysis")
+  return (rows |> count) == 1 && match rows |> first {
+    Present { value: b } =>
+      (b.works |> count) == 2
+        && (b.works |> any(r => r.module_path == "v1.compiler.infer" && r.decl_name == "module_skips_direct_call_arg_check"))
+        && (b.works |> any(r => r.module_path == "v2.std.constraints" && r.decl_name == "solve_constraints"))
+    Absent => false
+  }
 }
 
 test fn doc_graph_has_no_dangling_links() -> Bool {
