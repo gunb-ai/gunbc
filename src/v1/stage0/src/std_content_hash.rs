@@ -93,44 +93,29 @@ pub fn structural_content_hash(digest: String) -> Rc<Fnv1a64Structural> {
     })
 }
 
-pub fn content_hash_lower_hex_nibble(cp: i64) -> Option<i64> {
-    if ((cp.clone() >= 48) && (cp.clone() <= 57)) {
-        Some((cp.clone() - 48))
-    } else {
-        if ((cp.clone() >= 97) && (cp.clone() <= 102)) {
-            Some((cp.clone() - 87))
-        } else {
-            None
-        }
-    }
+pub fn content_hash_is_lower_hex_code_point(cp: i64) -> bool {
+    ((cp.clone() >= 48) && (cp.clone() <= 57)) || ((cp.clone() >= 97) && (cp.clone() <= 102))
 }
 
-pub fn content_hash_validate_lower_hex_syntax(mut text: String, mut index: i64) -> bool {
-    loop {
-        if (index.clone() >= v1_rt::string_length(&text)) {
-            break true;
-        } else {
-            match content_hash_lower_hex_nibble(v1_rt::code_point(v1_rt::substring(
-                &text,
-                index.clone(),
-                (index.clone() + 1),
-            ))) {
-                Some(_) => {
-                    let __tco_0 = (index + 1);
-                    index = __tco_0;
-                    continue;
-                }
-                None => {
-                    break false;
-                }
+pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
+    {
+        let mut __all = true;
+        for c in Rc::new(text.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            .iter()
+            .cloned()
+        {
+            if !content_hash_is_lower_hex_code_point(c.clone()) {
+                __all = false;
+                break;
             }
         }
+        __all
     }
 }
 
 pub fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits: i64) -> bool {
     ((v1_rt::string_length(&text) == expected_hex_digits.clone())
-        && content_hash_validate_lower_hex_syntax(text.clone(), 0))
+        && content_hash_validate_lower_hex_syntax(text.clone()))
 }
 
 pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
