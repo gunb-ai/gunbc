@@ -2,14 +2,16 @@ module v2.extdeps.formats.yaml
 
 import v2.std.grammar { GrammarSchema }
 
-type YamlValue
+data yaml_schema_carrier_homonym_note: String = "Renamed from YamlValue (P3a-1 self-fork collapse): extdeps.languages.yaml.types owns YamlValue for production workflow YAML. This v2-tree grammar-schema witness carrier keeps a distinct name until format-unification lands."
+
+type YamlSchemaCarrierValue
   = YamlNull
   | YamlBool { value: Bool }
   | YamlInt { lexeme: String }
   | YamlFloat { lexeme: String }
   | YamlString { value: String }
-  | YamlSequence { elements: List<YamlValue> }
-  | YamlMapping { entries: Map<YamlValue, YamlValue> }
+  | YamlSequence { elements: List<YamlSchemaCarrierValue> }
+  | YamlMapping { entries: Map<YamlSchemaCarrierValue, YamlSchemaCarrierValue> }
 
 type YamlIntBase10DecimalOptionalSignWitness {}
 
@@ -78,5 +80,5 @@ type YamlDocument {
   grammar_schema: GrammarSchema,
   canonical_keys: YamlCanonicalKeyProfileFacts,
   anchor_alias_resolution: YamlAnchorAliasResolutionFacts,
-  value: YamlValue,
+  value: YamlSchemaCarrierValue,
 }
