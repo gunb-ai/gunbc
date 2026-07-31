@@ -166,6 +166,7 @@ import v1.compiler.infer_patterns {
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
   resolve_known_method_node, resolve_scrutinee_type_node, resolve_method_receiver_type,
+  lookup_structural_method,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
@@ -1648,22 +1649,41 @@ fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scop
         )]
       }
     } else {
-      match unresolved_method_frontier_trigger(module_name: scope.module_name, method: method_name) {
-        Present { value: trigger } =>
-          MethodPipeFallback {
-            result_ty: error_type,
-            kernel_diags: [make_error_node(
-              diagnostic: MethodExistenceFrontierAdmitted { method: method_name, receiver_type: recv_shape, trigger: trigger, span: span },
-              module_name: scope.module_name
-            )]
-          }
+      let peeled = peel_where_refinement_base(ty: recv_rt, type_env: scope.type_env)
+      let peeled_lookup = lookup_structural_method(receiver_type: peeled, method_name: method_name, source_indices: scope.type_env.source_indices)
+      match peeled_lookup.resolution {
+        Present { value: mfr } =>
+          MethodPipeFallback { result_ty: mfr.result_type, kernel_diags: peeled_lookup.kernel_diagnostics }
         Absent =>
-          MethodPipeFallback {
-            result_ty: error_type,
-            kernel_diags: [make_error_node(
-              diagnostic: MethodExistenceUndecided { method: method_name, receiver_type: recv_shape, span: span },
-              module_name: scope.module_name
-            )]
+          let peeled_shape = node_type_shape(n: peeled, source_indices: scope.type_env.source_indices)
+          let peeled_surface_established = kernel_profile_lookup(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled)) != none
+          if peeled_surface_established {
+            MethodPipeFallback {
+              result_ty: error_type,
+              kernel_diags: [make_error_node(
+                diagnostic: MethodNotFound { method: method_name, receiver_type: peeled_shape, span: span },
+                module_name: scope.module_name
+              )]
+            }
+          } else {
+            match unresolved_method_frontier_trigger(module_name: scope.module_name, method: method_name, receiver_shape: recv_shape) {
+              Present { value: trigger } =>
+                MethodPipeFallback {
+                  result_ty: error_type,
+                  kernel_diags: [make_error_node(
+                    diagnostic: MethodExistenceFrontierAdmitted { method: method_name, receiver_type: recv_shape, trigger: trigger, span: span },
+                    module_name: scope.module_name
+                  )]
+                }
+              Absent =>
+                MethodPipeFallback {
+                  result_ty: error_type,
+                  kernel_diags: [make_error_node(
+                    diagnostic: MethodExistenceUndecided { method: method_name, receiver_type: recv_shape, span: span },
+                    module_name: scope.module_name
+                  )]
+                }
+            }
           }
       }
     }
@@ -1672,9 +1692,28 @@ fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scop
 
 data method_existence_wall_note: String = "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. Three measured shapes live there — a where-refinement alias arriving as Product(NonEmptyStr) instead of peeling to its String base (8 correct .length() sites in extdeps/filesystem/linux.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), and a product FIELD holding a callable, the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. MethodExistenceUndecided carries that residue as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND NOT FIXED HERE, each a promotion trigger that would let the wall decide a non-kernel receiver: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted."
 
+fn peel_where_refinement_base(ty: Node, type_env: TypeEnv) -> Node {
+  if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
+    match ty.children |> first {
+      Present { value: base } =>
+        let base_resolved = match lookup_type_for(env: type_env, node: base) {
+          Present { value: resolved } => resolved
+          Absent => base
+        }
+        peel_where_refinement_base(ty: base_resolved, type_env: type_env)
+      Absent => ty
+    }
+  } else {
+    ty
+  }
+}
+
+data where_refinement_receiver_peel_note: String = "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and it is a REUSE rather than a new relation (§3): the walk is exactly the one type_where_refinement_predicates_transitive already performs to collect inherited predicates — same shape test, same lookup_type_for base resolution, same recursion — so the refinement chain has ONE traversal authority and this is its second consumer. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal."
+
 type UnresolvedMethodFrontierRow {
   module_name: String
   method: String
+  receiver_shape: String
   cause: String
   dissolution_trigger: String
 }
@@ -1684,44 +1723,58 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
     {
       module_name: "v2.compiler.tokenize",
       method: "apply",
-      cause: "receiver is a lambda parameter whose type is never inferred, so it arrives as Primitive() with no method surface. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.",
+      receiver_shape: "Primitive()",
+      cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.",
       dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field"
     },
     {
-      module_name: "extdeps.filesystem.linux",
-      method: "length",
-      cause: "receiver is NonEmptyStr, declared `String where non_empty`, which arrives as Product(NonEmptyStr) instead of peeling to its String base — so String's algebra profile, which declares length, is never consulted.",
-      dissolution_trigger: "where-refinement alias peeling in resolve_method_receiver_type, at which point the receiver is String, kernel-profiled and DECIDABLE"
+      module_name: "extdeps.git.object_store",
+      method: "map",
+      receiver_shape: "Primitive()",
+      cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.",
+      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
+    },
+    {
+      module_name: "extdeps.git.object_store",
+      method: "flat_map",
+      receiver_shape: "Primitive()",
+      cause: "same StoreObjectFold lambda-parameter shape as the `map` row above; listed separately because the frontier key names one method on one receiver shape, never a module-wide pass.",
+      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
     },
     {
       module_name: "extdeps.dns.domain_name",
       method: "list_push",
-      cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed Primitive(ok) — the VARIANT name rather than the field type.",
+      receiver_shape: "Primitive(ok)",
+      cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.",
       dissolution_trigger: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE"
     },
     {
       module_name: "v1.compiler.trace",
       method: "map",
-      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as Product(SpanMapping) — the inner product — because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
+      receiver_shape: "Product(SpanMapping)",
+      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
       dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup"
     },
     {
       module_name: "v2.std.compilers.target_model",
       method: "lookup",
-      cause: "receiver is a bare type variable Primitive(T). This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.",
+      receiver_shape: "Primitive(T)",
+      cause: "receiver is a bare type variable. This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.",
       dissolution_trigger: "primitive-realization-single-authority, giving every receiver a complete declared method surface"
     }
   ]
 }
 
-fn unresolved_method_frontier_trigger(module_name: String, method: String) -> String? {
-  match unresolved_method_frontier() |> filter(r => r.module_name == module_name && r.method == method) |> first {
+fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> String? {
+  match unresolved_method_frontier()
+    |> filter(r => r.module_name == module_name && r.method == method && r.receiver_shape == receiver_shape)
+    |> first {
     Present { value: row } => Present { value: row.dissolution_trigger }
     Absent => none
   }
 }
 
-data unresolved_method_frontier_note: String = "The declared frontier for method calls whose receiver establishes NO method surface (DESIGN §7 frontier discipline: a declared row with a reason and a migration trigger, countable and prioritizable, never a silent escape hatch). WHY THIS EXISTS RATHER THAN A BLANKET ADVISORY: MethodExistenceUndecided BLOCKS. Leaving the whole undecided class non-blocking meant emittable_graph still emitted code containing a method whose existence was never established — the same fail-open the wall claims to close, correctly refused twice in review (codex reviews 45357 and 45383). Blocking it outright was not available either: the corpus contains 17 such calls that are CORRECT and working, 7 of them the v2 tokenizer own LexMatchThunk { apply: fn(s) } idiom, so a blanket refusal would refuse the compiler v2 is migrating to — fabricating a refusal, which §5 forbids exactly as it forbids fabricating a success. The roster resolves the dilemma the way the project already resolves seed retention: enumerate the known set, give each row a cause and a trigger, and refuse EVERYTHING ELSE. The set is finite and can only shrink; a NEW unresolved method in any module not listed here is a hard MethodNotFound-class refusal, so no new fail-open can enter. Admitted rows still emit MethodExistenceFrontierAdmitted, which is counted and carries its own trigger, so the frequency stays observable rather than zeroed by construction (§5). Grain is (module, method) rather than a line-anchored site, because line numbers move and a stable key is what makes the row survivable; the cost is that a second unresolved `apply` inside v2.compiler.tokenize would also be admitted, which is a real if narrow widening and is why the rows name a trigger rather than a permanent exemption. Each row dissolves when its named defect is fixed; three of the four are receiver-type resolution defects reported to the compiler-correctness lane, and the fourth is the general primitive-identity join."
+data unresolved_method_frontier_note: String = "The declared frontier for method calls whose receiver establishes NO method surface even after where-refinement peeling (DESIGN §7: a declared row with a reason and a migration trigger, countable and prioritizable, never a silent escape hatch). WHY A ROSTER AT ALL: MethodExistenceUndecided BLOCKS. Leaving the undecided class non-blocking meant emittable_graph still emitted code containing a method whose existence was never established — the same fail-open the wall claims to close, correctly refused twice in review (codex reviews 45357 and 45383). Blocking it outright was not available either: the residue is CORRECT, WORKING code, seven sites of it the v2 tokenizer own LexMatchThunk { apply: fn(s) } idiom, so a blanket refusal would refuse the compiler v2 is migrating to — fabricating a refusal, which §5 forbids exactly as it forbids fabricating a success. THE KEY IS (module, method, receiver_shape), AND THE THIRD COMPONENT IS THE CORRECTION. A (module, method) key was shipped first and was wrong on two counts, one found by review and one by execution, which is worth recording because they are the same defect seen from two sides. Review found it as a fail-open: any NEW apply call in v2.compiler.tokenize would inherit the pass even on a fully resolved receiver, so the note claim that no new fail-open can enter was false (codex review 45398). Execution found it as an UNDERCOUNT: the roster was measured over the v1 self-compile closure alone, and the first whole-corpus run reded seven sites in three modules the roster had never seen. Both dissolve into the same fix — the frontier admits a receiver whose surface could not be established, so the SHAPE of that receiver is the evidence, and keying on it means a new call refuses unless it reproduces the exact unestablished shape the row was measured on. The residue after that is 13 sites in four shapes: Primitive() with no authored name (a lambda parameter whose type never propagates, 10 sites), Primitive(T) (a bare type variable), Primitive(ok) (a coproduct payload typed as its variant name), and a Product that is really an Optional whose cardinality was dropped. Every one is an upstream receiver-resolution defect, not a method-existence fact, which is exactly why the wall cannot decide them and why each row names the resolution fix rather than a permanent exemption. Admitted rows still emit MethodExistenceFrontierAdmitted, counted and carrying its own trigger, so the frequency stays observable rather than zeroed by construction (§5). THE RESIDUAL WIDENING, STATED RATHER THAN CLAIMED AWAY: a second unresolved call to the same method, in the same module, on a receiver that fails to resolve in the same way, is still admitted. That is narrower than the module-wide pass it replaces and it is not zero. Closing it entirely needs an occurrence identity stable across edits — content-addressed, not line-anchored — which is the same containment/content-hash authority the namespace lane is landing; until then the honest bound is this key, and the peel above is the mechanism that actually SHRINKS the frontier rather than administering it."
 
 fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)

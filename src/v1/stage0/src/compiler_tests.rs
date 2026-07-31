@@ -484,6 +484,56 @@ mod compiler_tests {
                     "legitimate methods must resolve with NO diagnostic of any severity — an advisory here means the call is not actually resolving, got: {:?}",
                     green_result.diagnostics
                 );
+                // DISCRIMINATING RED for the declared frontier (codex reviews 45357,
+                // 45383). An undecided method existence must BLOCK, so the graph is
+                // never emitted on an unestablished judgment; the only non-blocking
+                // path is a DECLARED frontier row, which is countable and carries its
+                // own dissolution trigger. The two halves must be discriminated by
+                // MODULE NAME on otherwise identical source — an admission that fires
+                // for any module is an escape hatch, not a frontier.
+                let frontier_src = |module: &str, method: &str| {
+                    format!("module {}\ntype T {{ a: Int }}\nfn f(t: T) -> Int {{ t |> {}(1) }}\n", module, method)
+                };
+                let compile_one = |path: &str, content: String| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content,
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let unlisted = compile_one("unlisted.dag", frontier_src("unlisted.module", "list_push"));
+                let undecided: Vec<_> = unlisted.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceUndecided { .. }))
+                    .collect();
+                assert!(
+                    !undecided.is_empty(),
+                    "a method whose existence is undecided in a module with NO declared frontier row must refuse, got: {:?}",
+                    unlisted.diagnostics
+                );
+                assert!(
+                    undecided.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                        && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
+                    "MethodExistenceUndecided must BLOCK both typecheck and the interpreter — a non-blocking undecided judgment is exactly the fail-open the wall exists to close"
+                );
+                // The listed half: same source, same method, only the module differs.
+                let listed = compile_one("listed.dag", frontier_src("extdeps.dns.domain_name", "list_push"));
+                let admitted: Vec<_> = listed.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }))
+                    .collect();
+                assert!(
+                    !admitted.is_empty(),
+                    "a declared frontier row must admit its own (module, method) as a COUNTED advisory, got: {:?}",
+                    listed.diagnostics
+                );
+                assert!(
+                    listed.diagnostics.iter().all(|d| !matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceUndecided { .. })),
+                    "the declared row must convert the refusal, not sit beside it, got: {:?}",
+                    listed.diagnostics
+                );
             })
             .expect("failed to spawn thread")
             .join();
