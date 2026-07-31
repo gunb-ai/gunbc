@@ -227,7 +227,7 @@ fn stage0_std_surface_modules() -> List<String> {
 }
 
 fn stage0_extdeps_base_modules() -> List<String> {
-  ["extdeps_external_authority", "extdeps_uri"]
+  ["extdeps_container_oci_digest", "extdeps_external_authority", "extdeps_uri"]
 }
 
 fn stage0_extdeps_language_modules() -> List<String> {
