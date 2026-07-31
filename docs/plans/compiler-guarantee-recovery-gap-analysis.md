@@ -409,17 +409,22 @@ statement into DESIGN.md" is mis-aimed as stated — the guarantee lands as **`.
 (the claims authority of §11), and the DESIGN.md text is derived. Hand-editing the markdown
 would mint a parallel representation of exactly the kind §3 forbids.
 
-**The prose has already drifted from the substrate, on the substrate's most load-bearing
-sentence.** DESIGN.md §4 says the closed vocabulary is *"6 connectives + 5 behaviors"*.
-`v2.std.node` declares **six** behaviors: `Value | Transform | Branch | Loop | Bind |
-Match`. The recovered thesis is sharper about what that means: it listed five behaviors and
-declared *"Substrate extension is a C1-class stop signal (seventh connective or **sixth
-behavior**) — all four dissolution patterns … must fail with structural arguments before
-extension is allowed."* Whether `Match`'s promotion to a behavior was adjudicated under that
-rule is not established here (it may well have been — v2's `Match` inference is real work);
-what is established is that the live authority's count is wrong against the live substrate,
-which is a clean specimen of why the guarantee must be modeled where a lens can read it,
-not written where only a reader can.
+**The prose had drifted from the substrate, on the substrate's most load-bearing sentence
+— found by this audit, CORRECTED 2026-07-31 (post-merge verdict; stale present-tense
+wording here caught by review 45558).** DESIGN.md §4 said the closed vocabulary is *"6
+connectives + 5 behaviors"* while `v2.std.node` declares **six** behaviors: `Value |
+Transform | Branch | Loop | Bind | Match`; the authority (`gunbc.design_document`) now
+states six with the members named, and the projection matches. The specimen retains its
+evidentiary value in past tense: the count sat wrong in the live authority for an unknown
+period, and the recovered thesis is sharper about what that means — it listed five
+behaviors and declared *"Substrate extension is a C1-class stop signal (seventh connective
+or **sixth behavior**) — all four dissolution patterns … must fail with structural
+arguments before extension is allowed."* Whether `Match`'s promotion was adjudicated under
+that rule is still not established here (it may well have been — v2's `Match` inference is
+real work; the §11 queue owns finding the adjudication or filing its absence). What the
+episode establishes either way: the denominator of the decidability argument drifted
+silently in prose, which is a clean specimen of why the guarantee must be modeled where a
+lens can read it, not written where only a reader can.
 
 ## 8. What the thesis predicted, in its own words
 
