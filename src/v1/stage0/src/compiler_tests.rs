@@ -439,6 +439,348 @@ mod compiler_tests {
     }
 
     #[test]
+    fn method_existence_wall_witness() {
+        // DISCRIMINATING RED for method_existence_wall_note. Before the wall an
+        // unresolved method inherited the RECEIVER's type with no diagnostic, so
+        // `xs |> filter_map(..)` on List<Int> typed as List<Int>, compiled clean, and
+        // died at InterpError::Unimplemented in live dispatch (#7479, HTTP 500).
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "red.dag".to_string(),
+                    content: "module red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n".to_string(),
+                });
+                let red_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![red]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let missing: Vec<_> = red_result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. }))
+                    .collect();
+                assert!(
+                    missing.len() >= 3,
+                    "expected MethodNotFound for the unresolved method AND for rostered names on a receiver that does not offer them (starts_with / to_upper on List<Int> — codex review 45327: a name-grain predicate admitted these), got: {:?}",
+                    red_result.diagnostics
+                );
+                // POSITIVE CONTROLS the wall must not touch: algebra method templates
+                // resolve at tier0, and `count` is in the declared std.methods roster
+                // even though free_monoid_scalar_templates omits it (the measured fork).
+                let green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "green.dag".to_string(),
+                    content: "module green\nfn p(xs: List<Int>) -> List<Int> { xs |> filter(x => x > 1) |> map(x => x + 1) }\nfn q(xs: List<Int>) -> Int { xs |> fold(0, (a, x) => a + x) }\nfn r(s: String) -> Int { s |> count }\n".to_string(),
+                });
+                let green_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![green]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                // The positive control asserts ZERO diagnostics, not merely no
+                // MethodNotFound. Filtering to the blocking variant let an ADVISORY
+                // MethodExistenceUndecided pass unnoticed, which is how `String |> count`
+                // was reported as a passing control while it was actually resolving
+                // through the non-blocking arm (codex review 45357).
+                assert!(
+                    green_result.diagnostics.is_empty(),
+                    "legitimate methods must resolve with NO diagnostic of any severity — an advisory here means the call is not actually resolving, got: {:?}",
+                    green_result.diagnostics
+                );
+                // DISCRIMINATING RED for the declared frontier (codex reviews 45357,
+                // 45383). An undecided method existence must BLOCK, so the graph is
+                // never emitted on an unestablished judgment; the only non-blocking
+                // path is a DECLARED frontier row, which is countable and carries its
+                // own dissolution trigger. The two halves must be discriminated by
+                // MODULE NAME on otherwise identical source — an admission that fires
+                // for any module is an escape hatch, not a frontier.
+                let frontier_src = |module: &str, method: &str| {
+                    format!("module {}\ntype T {{ a: Int }}\nfn f(t: T) -> Int {{ t |> {}(1) }}\n", module, method)
+                };
+                let compile_one = |path: &str, content: String| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content,
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let unlisted = compile_one("unlisted.dag", frontier_src("unlisted.module", "list_push"));
+                let undecided: Vec<_> = unlisted.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceUndecided { .. }))
+                    .collect();
+                assert!(
+                    !undecided.is_empty(),
+                    "a method whose existence is undecided in a module with NO declared frontier row must refuse, got: {:?}",
+                    unlisted.diagnostics
+                );
+                assert!(
+                    undecided.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                        && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
+                    "MethodExistenceUndecided must BLOCK both typecheck and the interpreter — a non-blocking undecided judgment is exactly the fail-open the wall exists to close"
+                );
+                // The SHAPE is part of the key, and this is the half that answers
+                // codex review 45398: the module and the method both match a declared
+                // row, and the call is STILL refused, because the receiver does not
+                // fail to resolve in the way the row was measured on. A (module, method)
+                // key passed this input; that is the fail-open the third component closes.
+                let listed_wrong_shape = compile_one("listed.dag", frontier_src("extdeps.dns.domain_name", "list_push"));
+                assert!(
+                    listed_wrong_shape.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodExistenceUndecided { .. })),
+                    "a declared row must NOT admit a new call in the same module on a receiver whose shape it was never measured on, got: {:?}",
+                    listed_wrong_shape.diagnostics
+                );
+                // The admission half, checked against the frontier data itself rather
+                // than a synthetic source, because the residual shapes (an unnamed
+                // lambda-parameter receiver, a coproduct payload typed as its variant)
+                // are upstream resolution defects that cannot be conjured on demand.
+                // Every declared row must be admitted by its own exact key, and
+                // perturbing ANY of the three components must withdraw the admission.
+                let rows = crate::v1_compiler_infer::unresolved_method_frontier();
+                assert!(!rows.is_empty(), "the frontier must be a declared, countable roster");
+                for r in rows.iter() {
+                    assert!(
+                        crate::v1_compiler_infer::unresolved_method_frontier_trigger(
+                            r.module_name.clone(), r.method.clone(), r.receiver_shape.clone()).is_some(),
+                        "row {}/{}/{} must be admitted by its own key", r.module_name, r.method, r.receiver_shape
+                    );
+                    for perturbed in [
+                        (format!("{}.other", r.module_name), r.method.clone(), r.receiver_shape.clone()),
+                        (r.module_name.clone(), format!("{}_other", r.method), r.receiver_shape.clone()),
+                        (r.module_name.clone(), r.method.clone(), format!("Product(Other{})", r.receiver_shape.len())),
+                    ] {
+                        assert!(
+                            crate::v1_compiler_infer::unresolved_method_frontier_trigger(
+                                perturbed.0.clone(), perturbed.1.clone(), perturbed.2.clone()).is_none(),
+                            "perturbing the key to {:?} must WITHDRAW the admission — each component is load-bearing", perturbed
+                        );
+                    }
+                }
+                // DISCRIMINATING RED for where_refinement_receiver_peel_note. A
+                // where-refinement alias reached method lookup as Product(<alias>)
+                // because resolve_method_receiver_type short-circuits on Conj, so the
+                // base's algebra profile was never consulted. The peel must make the
+                // receiver decidable in BOTH directions on the SAME alias — a green
+                // that only proves the refusal stopped is indistinguishable from
+                // deleting the wall.
+                let peel_src = |call: &str| {
+                    format!("module peel\ntype Tight = String where non_empty\nfn f(s: Tight) -> Int {{ s |> {} }}\n", call)
+                };
+                let peel_green = compile_one("peel_green.dag", peel_src("count"));
+                assert!(
+                    peel_green.diagnostics.is_empty(),
+                    "a method on the refinement's String base must RESOLVE once the base is peeled — no diagnostic of any severity, got: {:?}",
+                    peel_green.diagnostics
+                );
+                // DISCRIMINATING RED for the two special-case arms (codex review
+                // 45430). The wall was reached only from the FINAL else, so an
+                // unresolved map_keys / map_values still returned the RECEIVER type
+                // with an empty diagnostic list — the exact success-shaped fallback
+                // this PR deletes, surviving in the two branches that ran before it.
+                let special = compile_one("special.dag",
+                    "module special\nfn f(xs: List<Int>) -> List<Int> {{ xs |> map_keys }}\nfn g(xs: List<Int>) -> List<Int> {{ xs |> map_values }}\n".replace("{{", "{").replace("}}", "}"));
+                let special_missing: Vec<_> = special.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. }))
+                    .collect();
+                assert!(
+                    special_missing.len() >= 2,
+                    "map_keys and map_values must route through the SAME refusal as every other method when the receiver is not a keyed collection — a wall reachable only from the final else is not a wall, got: {:?}",
+                    special.diagnostics
+                );
+                // ReceiverTypeUnestablished CLASSIFICATION control. The behavioural
+                // evidence for this class is the corpus census, not a synthetic
+                // source: 18 sites whole-tree, counted as advisories with the gate at
+                // zero blocking diagnostics. A synthetic reproducer WAS attempted --
+                // an untyped lambda parameter inside a record-field fn, the shape the
+                // real sites have -- and it produced no diagnostic at all, so it did
+                // not reproduce the shape and is not asserted here as though it did.
+                // ADMISSION is roster-gated, not automatic: an anonymous receiver is
+                // admitted only where a declared row names (module, method,
+                // Primitive()), and the perturbation loop above proves that gate for
+                // every row. Admitting on the CAUSE alone was the earlier version and
+                // was an unbounded green path — sound about decidability, wrong about
+                // admission, since it made every future anonymous-receiver call pass
+                // including one whose method does not exist (codex review 45459).
+                // What THIS control pins is the remaining half, the classification of
+                // an admitted one: COUNTED and NON-BLOCKING. Blocking it fabricates a
+                // refusal over the 18 measured sites; dropping it restores #7479 silence.
+                let unestablished_diag = std::rc::Rc::new(
+                    crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
+                        method: "probe".to_string(),
+                        span: std::rc::Rc::new(crate::std_types::SourceSpan {
+                            file: "probe.dag".to_string(), start: 0, end: 0,
+                        }),
+                    });
+                assert!(
+                    !crate::v1_std_core::is_error_diagnostic(unestablished_diag.clone())
+                        && !crate::v1_std_core::is_interpreter_blocking_diagnostic(unestablished_diag.clone()),
+                    "ReceiverTypeUnestablished must not block — the receiver's type is an upstream deficit, so refusing here fabricates a refusal over correct code"
+                );
+                assert!(
+                    crate::v1_std_core::is_discovery_corpus_advisory_typecheck_diagnostic(unestablished_diag.clone()),
+                    "...and it must be a COUNTED advisory, never absent — an uncounted degradation is the absorbing fallback DESIGN §5 forbids"
+                );
+                // DISCRIMINATING RED for the occurrence budget (codex review 45464).
+                // A (module, method, receiver_shape) key bounds WHERE an unresolved
+                // call may live but not HOW MANY, and the rows are not all singletons
+                // — v2.compiler.tokenize admits seven `apply` — so a row admitting
+                // seven would silently admit an eighth. Exercised at the mechanism
+                // rather than through a corpus compile, so the boundary is exact:
+                // declared occurrences must pass and declared+1 must refuse.
+                let budget_row = rows.iter()
+                    .find(|r| r.receiver_shape == "Primitive()")
+                    .expect("expected at least one anonymous-receiver row to bound");
+                let unestablished_at = |n: usize| {
+                    std::rc::Rc::new((0..n).map(|_| std::rc::Rc::new(crate::v1_std_core::ErrorNode {
+                        diagnostic: std::rc::Rc::new(crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
+                            method: budget_row.method.clone(),
+                            span: std::rc::Rc::new(crate::std_types::SourceSpan {
+                                file: "probe.dag".to_string(), start: 0, end: 0,
+                            }),
+                        }),
+                        module_name: budget_row.module_name.clone(),
+                    })).collect::<im::Vector<_>>())
+                };
+                let at_budget = crate::v1_compiler_infer::frontier_occurrence_budget_diags(
+                    budget_row.module_name.clone(), unestablished_at(budget_row.occurrences as usize));
+                assert!(
+                    at_budget.is_empty(),
+                    "exactly the declared occurrence count must pass — the budget is a ceiling, not an equality, or any narrower compile closure would red"
+                );
+                let over_budget = crate::v1_compiler_infer::frontier_occurrence_budget_diags(
+                    budget_row.module_name.clone(), unestablished_at(budget_row.occurrences as usize + 1));
+                assert!(
+                    over_budget.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. })),
+                    "one MORE than the declared count must refuse — without this the row bounds where an unresolved call may live but not how many, got: {:?}",
+                    over_budget
+                );
+                assert!(
+                    over_budget.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
+                    "...and that refusal must BLOCK, or the ratchet is decorative"
+                );
+                let under_budget = crate::v1_compiler_infer::frontier_occurrence_budget_diags(
+                    budget_row.module_name.clone(), unestablished_at(0));
+                assert!(
+                    under_budget.is_empty(),
+                    "fewer occurrences must never red: fixing a call lowers the count, and a partial closure legitimately sees fewer"
+                );
+                // DISCRIMINATING PAIR for the early-return walk. An early return is a
+                // second exit from the same declaration and must meet its declared
+                // type; a return inside a nested LAMBDA belongs to the lambda's own
+                // callable return, so checking it against the enclosing declaration
+                // fabricates a refusal — the mirror image of the hole the walk closes
+                // (codex reviews 45472 and 45481, both confirmed by execution).
+                let early_return = compile_one("early_return.dag",
+                    "module early_return\nfn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }\n".to_string());
+                assert!(
+                    early_return.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. })),
+                    "an early return of the wrong type must refuse — the trailing expression conforming says nothing about the other exit, got: {:?}",
+                    early_return.diagnostics
+                );
+                let lambda_return = compile_one("lambda_return.dag",
+                    "module lambda_return\nfn apply_it(g: fn(Int) -> String, v: Int) -> String { g(v) }\nfn outer(v: Int) -> Int { apply_it(g: x => { return \"inner\" }, v: v) 1 }\n".to_string());
+                assert!(
+                    lambda_return.diagnostics.iter().all(|d| !matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. })),
+                    "a return inside a nested lambda belongs to the LAMBDA's declared return, not the enclosing function's — checking it here fabricates a refusal, got: {:?}",
+                    lambda_return.diagnostics
+                );
+                let peel_red = compile_one("peel_red.dag", peel_src("filter_map(x => x)"));
+                assert!(
+                    peel_red.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. })),
+                    "peeling must make the receiver DECIDABLE, not merely quiet: a method absent from the peeled base must refuse as MethodNotFound rather than resting in the frontier, got: {:?}",
+                    peel_red.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("method_existence_wall_witness panicked");
+    }
+
+    #[test]
+    fn declared_type_conformance_witness() {
+        // DISCRIMINATING RED for declared_type_conformance_note. infer_item kept the
+        // declaration's inferred return regardless of what the body produced, so
+        // `fn f() -> Int { \"wrong\" }` typechecked with ZERO diagnostics.
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "red.dag".to_string(),
+                    content: "module red\nfn f() -> Int { \"a string\" }\ndata d: Int = \"a string\"\n".to_string(),
+                });
+                let red_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![red]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let mismatches: Vec<_> = red_result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. }))
+                    .collect();
+                assert!(
+                    mismatches.len() >= 2,
+                    "expected a TypeMismatch for BOTH the fn return and the data annotation, got: {:?}",
+                    red_result.diagnostics
+                );
+                // POSITIVE CONTROLS: conforming declarations, and the optional-cardinality
+                // case (`first` yields Int? for a declared Int?) which must not red.
+                let green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "green.dag".to_string(),
+                    content: "module green\nfn a() -> Int { 42 }\nfn b() -> String { \"fine\" }\ndata c: Int = 7\nfn e(xs: List<Int>) -> Int? { xs |> first }\n".to_string(),
+                });
+                let green_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![green]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                assert!(
+                    green_result.diagnostics.is_empty(),
+                    "conforming declarations must produce NO diagnostic of any severity — filtering to the blocking variant would let an advisory pass unnoticed (codex review 45357), got: {:?}",
+                    green_result.diagnostics
+                );
+                // DISCRIMINATING RED for the container widening (codex review 45398:
+                // a provable mismatch in container ELEMENT types was indistinguishable
+                // from a valid declaration, because the ground-scalar gate required a
+                // plain shape and a List is not one). A List of a ground kernel scalar
+                // carries no alias, brand, coproduct or cardinality representation
+                // between the two sides either, so the same positive-establishment
+                // argument that admits Int-vs-String admits List<Int>-vs-List<String>.
+                let container_red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "container_red.dag".to_string(),
+                    content: "module container_red\nfn f() -> List<Int> { [\"a\", \"b\"] }\ndata d: List<String> = [1, 2]\n".to_string(),
+                });
+                let container_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![container_red]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let container_mismatches: Vec<_> = container_result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. }))
+                    .collect();
+                assert!(
+                    container_mismatches.len() >= 2,
+                    "a declared container whose ELEMENT type the body contradicts must refuse, for BOTH the fn return and the data annotation, got: {:?}",
+                    container_result.diagnostics
+                );
+                // POSITIVE CONTROL for the same widening: matching element types, and a
+                // container of a NON-ground element, which stays unjudged rather than
+                // guessed at.
+                let container_green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "container_green.dag".to_string(),
+                    content: "module container_green\nfn g() -> List<Int> { [1, 2] }\ndata h: List<String> = [\"x\"]\n".to_string(),
+                });
+                let container_green_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![container_green]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                assert!(
+                    container_green_result.diagnostics.is_empty(),
+                    "a conforming container declaration must produce NO diagnostic, got: {:?}",
+                    container_green_result.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("declared_type_conformance_witness panicked");
+    }
+
+    #[test]
     fn sole_constructor_violation_outside_module() {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)

@@ -394,6 +394,33 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    MethodNotFound {
+        method: String,
+        receiver_type: String,
+        span: Rc<SourceSpan>,
+    },
+    MethodExistenceUndecided {
+        method: String,
+        receiver_type: String,
+        span: Rc<SourceSpan>,
+    },
+    MethodExistenceFrontierAdmitted {
+        method: String,
+        receiver_type: String,
+        trigger: String,
+        span: Rc<SourceSpan>,
+    },
+    ReceiverTypeUnestablished {
+        method: String,
+        span: Rc<SourceSpan>,
+    },
+    FrontierOccurrenceBudgetExceeded {
+        method: String,
+        receiver_type: String,
+        declared: i64,
+        observed: i64,
+        span: Rc<SourceSpan>,
+    },
     MissingField {
         field: String,
         type_name: String,
@@ -519,6 +546,11 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
         CompilerDiagnostic::FieldNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodExistenceUndecided { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
+        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
@@ -541,253 +573,34 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
 
 pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     match (*d.clone()).clone() {
-        CompilerDiagnostic::UnresolvedImport {
-            module_path: m,
-            importing_module: i,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("unresolved import: module '".to_string(), m.clone()),
-                    "' not found (imported by '".to_string(),
-                ),
-                i.clone(),
-            ),
-            "')".to_string(),
-        ),
-        CompilerDiagnostic::MissingExport {
-            name: n,
-            module_path: m,
-            importing_module: i,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("name '".to_string(), n.clone()),
-                            "' not found in module '".to_string(),
-                        ),
-                        m.clone(),
-                    ),
-                    "' (imported by '".to_string(),
-                ),
-                i.clone(),
-            ),
-            "')".to_string(),
-        ),
-        CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("unresolved type '".to_string(), n.clone()),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::TypeMismatch {
-            expected: e,
-            got: g,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("type mismatch: expected '".to_string(), e.clone()),
-                    "', got '".to_string(),
-                ),
-                g.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::ArityMismatch {
-            name: n,
-            expected: e,
-            got: g,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("type ".to_string(), n.clone()),
-                        " expects ".to_string(),
-                    ),
-                    (e.clone()).to_string(),
-                ),
-                " type arguments, got ".to_string(),
-            ),
-            (g.clone()).to_string(),
-        ),
-        CompilerDiagnostic::VariantNotFound {
-            variant: v,
-            type_name: t,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("variant '".to_string(), v.clone()),
-                    "' not found in type '".to_string(),
-                ),
-                t.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::FieldNotFound {
-            field: f,
-            type_name: t,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("field '".to_string(), f.clone()),
-                    "' not found in type '".to_string(),
-                ),
-                t.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::MissingField {
-            field: f,
-            type_name: t,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("missing required field '".to_string(), f.clone()),
-                    "' in literal of type '".to_string(),
-                ),
-                t.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat(
-            "non-exhaustive match: missing variant(s) ".to_string(),
-            ms.clone().join(&", ".to_string()),
-        ),
-        CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat(
-            "circular dependency detected: ".to_string(),
-            ms.clone().join(&" -> ".to_string()),
-        ),
-        CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::MissingAnnotation {
-            fn_name: f,
-            what: w,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("function '".to_string(), f.clone()),
-                    "' requires ".to_string(),
-                ),
-                w.clone(),
-            ),
-            " annotation".to_string(),
-        ),
-        CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
-        CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
-        CompilerDiagnostic::ComplexityUnknown {
-            func_name: f,
-            reason: r,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat("complexity: ".to_string(), f.clone()),
-                ": ".to_string(),
-            ),
-            r.clone(),
-        ),
-        CompilerDiagnostic::WhereRefinementUnenforced {
-            predicate: p,
-            formal_type: t,
-            reason: r,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "where-refinement unenforced: predicate '".to_string(),
-                            p.clone(),
-                        ),
-                        "' on '".to_string(),
-                    ),
-                    t.clone(),
-                ),
-                "' — ".to_string(),
-            ),
-            r.clone(),
-        ),
-        CompilerDiagnostic::OwnershipViolation {
-            binding: b,
-            fn_name: f,
-            consumers: c,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("ownership: binding '".to_string(), b.clone()),
-                            "' in '".to_string(),
-                        ),
-                        f.clone(),
-                    ),
-                    "' has ".to_string(),
-                ),
-                (c.clone()).to_string(),
-            ),
-            " consumers".to_string(),
-        ),
-        CompilerDiagnostic::VariantCollision {
-            variant: v,
-            enum1: e1,
-            enum2: e2,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("variant '".to_string(), v.clone()),
-                            "' appears in both '".to_string(),
-                        ),
-                        e1.clone(),
-                    ),
-                    "' and '".to_string(),
-                ),
-                e2.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(
-            v1_rt::concat("sole_constructor type '".to_string(), t.clone()),
-            "' cannot be constructed outside its defining module".to_string(),
-        ),
-        CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("unlisted import use '".to_string(), n.clone()),
-            "' (referenced but not in any import's name list)".to_string(),
-        ),
-        CompilerDiagnostic::AmbiguousReference {
-            name: n,
-            candidates: cs,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("ambiguous reference '".to_string(), n.clone()),
-                            "': ".to_string(),
-                        ),
-                        (cs.clone().len() as i64).to_string(),
-                    ),
-                    " candidates: ".to_string(),
-                ),
-                cs.clone().join(&", ".to_string()),
-            ),
-            " — qualify by containment path, alias, or rename".to_string(),
-        ),
-        CompilerDiagnostic::OccurrenceTransportViolation {
-            refusal: refusal, ..
-        } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
-    }
+    CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
+    CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
+    CompilerDiagnostic::VariantNotFound { variant: v, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::FieldNotFound { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("field '".to_string(), f.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::MethodNotFound { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' not found on receiver type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::MethodExistenceUndecided { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' cannot be resolved: receiver type '".to_string()), t.clone()), "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it".to_string()),
+    CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
+    CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
+    CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("a NEW unresolved call to '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' has appeared under an existing declared frontier row, which admits fewer occurrences than this module now has. The declared and observed counts are carried on the diagnostic. Establish the receiver's type, or raise the declared count with a measured reason — the count is a ratchet and is meant to fall.".to_string()),
+    CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
+    CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
+    CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
+    CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::ComplexityUnknown { func_name: f, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("complexity: ".to_string(), f.clone()), ": ".to_string()), r.clone()),
+    CompilerDiagnostic::WhereRefinementUnenforced { predicate: p, formal_type: t, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("where-refinement unenforced: predicate '".to_string(), p.clone()), "' on '".to_string()), t.clone()), "' — ".to_string()), r.clone()),
+    CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
+    CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
+    CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
+    CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
+    CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
+    CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
+}
 }
 
 pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
@@ -798,9 +611,57 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
         || (reason.clone() == "string predicate not implemented".to_string()))
 }
 
+pub fn compiler_diagnostic_seed_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the five variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded): hand-written fn count in cli_run.rs is 742 at origin/main and 742 on this branch, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs` is 13 added lines containing zero `fn` — so the hand-Rust CARRIER census is flat and only arm count moved. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontierOccurrenceKey {
+    pub method: String,
+    pub receiver_shape: String,
+}
+
+pub fn diagnostic_frontier_occurrence_key(
+    d: Rc<CompilerDiagnostic>,
+) -> Option<Rc<FrontierOccurrenceKey>> {
+    match (*d.clone()).clone() {
+        CompilerDiagnostic::ReceiverTypeUnestablished { method: m, .. } => {
+            Some(Rc::new(FrontierOccurrenceKey {
+                method: m.clone(),
+                receiver_shape: "Primitive()".to_string(),
+            }))
+        }
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted {
+            method: m,
+            receiver_type: t,
+            ..
+        } => Some(Rc::new(FrontierOccurrenceKey {
+            method: m.clone(),
+            receiver_shape: t.clone(),
+        })),
+        _ => None,
+    }
+}
+
+pub fn diagnostic_frontier_occurrence_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             !is_where_refinement_unenforced_advisory_reason(r.clone())
         }
@@ -824,6 +685,8 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
             !is_where_refinement_unenforced_advisory_reason(r.clone())
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         _ => true,
     }
 }
@@ -831,6 +694,8 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             is_where_refinement_unenforced_advisory_reason(r.clone())
         }

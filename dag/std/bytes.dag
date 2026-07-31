@@ -9,6 +9,12 @@ fn pure_dag_seam_unreachable() -> Int {
   1 / 0
 }
 
+fn pure_dag_seam_unreachable_float() -> Float {
+  1.0 / 0.0
+}
+
+data pure_dag_seam_unreachable_typing_note: String = "One divergent seam, projected once per result type, because a divergent expression HAS no result type to project from. `1 / 0` never returns, so the honest type is bottom — the type that inhabits every type — and .dag has no bottom, so the seam is typed at whatever it is used as. Typing it Int alone was a silent lie wherever the enclosing declaration was not Int: `fn ... -> List<Float> { [pure_dag_seam_unreachable()] }` in the simd and wgsl float kernels declared List<Float> and produced List<Int>, and the declaration was the correct half — those are float kernels taking List<Float> arguments. The declared-type conformance wall found both by execution once it was widened to containers of ground kernel scalars; before that the gate required a plain shape and a List is not one, so the mismatch was indistinguishable from a conforming declaration (codex review 45398). The bodies are unreachable, so nothing MISBEHAVED — which is exactly why this had to be caught by construction rather than by a consumer. The two fns are a §2 duplication and are deliberately marked as one: dissolve-on a bottom type, at which point one divergent seam inhabits every result type and the Float projection deletes."
+
 fn bytes_octets(b: Bytes) -> List<UInt8> {
   [pure_dag_seam_unreachable()]
 }

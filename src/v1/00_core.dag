@@ -155,6 +155,11 @@ type CompilerDiagnostic
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
   | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
   | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
+  | MethodNotFound     { method: String, receiver_type: String, span: SourceSpan }
+  | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
+  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
+  | ReceiverTypeUnestablished { method: String, span: SourceSpan }
+  | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
   | MissingField       { field: String, type_name: String, span: SourceSpan }
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
@@ -243,6 +248,11 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
     VariantNotFound    { variant: _, type_name: _, span: s }   => s
     FieldNotFound      { field: _, type_name: _, span: s }     => s
+    MethodNotFound     { method: _, receiver_type: _, span: s } => s
+    MethodExistenceUndecided { method: _, receiver_type: _, span: s } => s
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: s } => s
+    ReceiverTypeUnestablished { method: _, span: s } => s
+    FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
     MissingField       { field: _, type_name: _, span: s }     => s
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
@@ -271,6 +281,12 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
     VariantNotFound    { variant: v, type_name: t, span: _ }      => concat("variant '", v, "' not found in type '", t, "'")
     FieldNotFound      { field: f, type_name: t, span: _ }        => concat("field '", f, "' not found in type '", t, "'")
+    MethodNotFound     { method: m, receiver_type: t, span: _ }   => concat("method '", m, "' not found on receiver type '", t, "'")
+    MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it")
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
+    ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
+    FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: _, observed: _, span: _ } =>
+      concat(concat(concat("a NEW unresolved call to '", m), concat("' on receiver type '", t)), "' has appeared under an existing declared frontier row, which admits fewer occurrences than this module now has. The declared and observed counts are carried on the diagnostic. Establish the receiver's type, or raise the declared count with a measured reason — the count is a ratchet and is meant to fall.")
     MissingField       { field: f, type_name: t, span: _ }        => concat("missing required field '", f, "' in literal of type '", t, "'")
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
@@ -299,9 +315,30 @@ fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
     || reason == "string predicate not implemented"
 }
 
+data compiler_diagnostic_seed_projection_note: String = "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the five variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded): hand-written fn count in cli_run.rs is 742 at origin/main and 742 on this branch, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs` is 13 added lines containing zero `fn` — so the hand-Rust CARRIER census is flat and only arm count moved. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate."
+
+type FrontierOccurrenceKey {
+  method: String
+  receiver_shape: String
+}
+
+fn diagnostic_frontier_occurrence_key(d: CompilerDiagnostic) -> FrontierOccurrenceKey? {
+  match d {
+    ReceiverTypeUnestablished { method: m, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: "Primitive()" } }
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: _, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: t } }
+    _ => none
+  }
+}
+
+data diagnostic_frontier_occurrence_key_note: String = "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins."
+
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
+    ReceiverTypeUnestablished { method: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => true
@@ -316,6 +353,8 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
     UnlistedImportUse { name: _, span: _ } => false
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
+    ReceiverTypeUnestablished { method: _, span: _ } => false
     _ => true
   }
 }
@@ -323,6 +362,8 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => true
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
+    ReceiverTypeUnestablished { method: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false
