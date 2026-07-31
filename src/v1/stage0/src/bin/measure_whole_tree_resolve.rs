@@ -101,6 +101,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         ),
     }
 
+    // Stage attribution of THIS probe's parent work, emitted so the gap is countable
+    // rather than asserted: `whole_tree_resolved_ctx` runs the monolithic
+    // `compile_to_resolved` path, which fills no `ResolveStageNanos` row and opens no
+    // resolve span, so the partition refuses with `NoSpans`. That refusal IS the receipt
+    // — this probe measures peak RSS and wall only, and no per-stage share can be quoted
+    // from it. The per-entry path (`claim_batch` / `claim_executor`) is where the stage
+    // counters live.
+    let partition = v1_compiler::cli_run::exclusive_cost_partition();
+    eprintln!(
+        "[cost-partition] {}",
+        v1_compiler::cli_run::render_exclusive_cost_partition_json(&partition, &[])
+    );
+
     let oracle =
         whole_corpus_semantic_oracle_snapshot(&source_roots, &exclude_subpaths).map_err(|e| {
             eprintln!("measure_whole_tree_resolve: corpus fingerprint failed:\n{e}");

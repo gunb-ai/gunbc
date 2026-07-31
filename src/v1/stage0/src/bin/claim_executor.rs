@@ -1620,6 +1620,53 @@ fn run_discovery_batch_node(
                 ms(st.assembly_emit_info),
                 ms(st.reconcile_assembly),
             );
+            // Both halves come from the SAME per-entry spans here (`total_resolve_nanos`
+            // and `total_stage_nanos` are accumulated entry by entry at the same two call
+            // sites), so the discovery corpus can be partitioned against its own parent
+            // rather than the thread-local account, which would see only the pump thread.
+            {
+                let span_rows: Vec<(String, u64, u128, v1_compiler::cli_run::ResolveStageNanos)> = {
+                    let mut by_entry: std::collections::HashMap<
+                        String,
+                        (u64, u128, v1_compiler::cli_run::ResolveStageNanos),
+                    > = std::collections::HashMap::new();
+                    for r in &summary.entry_resolve_receipts {
+                        let slot = by_entry.entry(r.entry.clone()).or_default();
+                        slot.0 += 1;
+                        slot.1 += r.resolve_nanos;
+                        slot.2.accumulate(&r.stage_nanos);
+                    }
+                    let mut rows: Vec<(
+                        String,
+                        u64,
+                        u128,
+                        v1_compiler::cli_run::ResolveStageNanos,
+                    )> = by_entry
+                        .into_iter()
+                        .map(|(k, (n, ns, st))| (k, n, ns, st))
+                        .collect();
+                    rows.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+                    rows
+                };
+                let partition = v1_compiler::cli_run::exclusive_cost_partition_from(
+                    st,
+                    "summed_per_entry_discovery_resolve_span_nanos",
+                    summary.total_resolve_nanos,
+                    summary.entry_resolve_receipts.len() as u64,
+                    0,
+                    span_rows,
+                );
+                eprintln!(
+                    "[cost-partition] {}",
+                    v1_compiler::cli_run::render_exclusive_cost_partition_json(
+                        &partition,
+                        &[(
+                            "witness_eval_measured_nanos",
+                            summary.total_measured_nanos as u128
+                        )],
+                    )
+                );
+            }
             let projected = project_witness_cost_receipt(&source_roots, &summary);
             match &projected {
                 Ok(rows) => {
