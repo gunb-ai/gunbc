@@ -10,7 +10,79 @@
 
 **Host regime (honesty):** dashboard session container, **uncapped** cgroup `memory.max` ≈ 31.27 GiB (`33578549248` B), `memory.high` absent. This is **not** the fleet 16 GiB slot with a 15 GiB `memory.high` throttle line. Comparisons to the M2 landed width-1 fleet receipt (9.24 GB RSS / 10.7 GB cgroup under 15 GiB) are **regime-relative** — the bound claimed here is “fits comfortably inside a 16 GiB envelope,” not byte-identical cgroup physics.
 
-**Instrument:** `docs/probes/m2_floor_retention_measure.sh` (additive probe wrapper; default `claim_executor` flow unchanged).
+**No shipped orchestration script** (operator precedent #7533 / valiant-lark: checked-in `run_matrix.sh` deleted — complete invocations live here as documentation, not as executable wrappers).
+
+---
+
+## 0 — Reproduction (verbatim invocations)
+
+All commands run from the worktree root on the measured SHA. **Snapshot the binary before a long probe** — `cargo build` changes the executable bytes and invalidates resolve-cache content-addressing.
+
+**1. Record SHA and build `claim_executor` (local; disable `sccache` if the host rustc ICEs under wrapper):**
+
+```bash
+git rev-parse HEAD
+CTRL_BUILD_MODE=local RUSTC_WRAPPER= CARGO_BUILD_JOBS=4 \
+  ctrl-build --local -- cargo build -p v1-compiler --bin claim_executor --release
+```
+
+**2. Snapshot binary (do not rebuild while the probe runs):**
+
+```bash
+cp -f target/release/claim_executor target/release/claim_executor-m2-45e7a8c
+```
+
+**3. Whole-corpus falsifier shape (primary probe — batch 1 `SelectionPredictOnly`):**
+
+```bash
+export GUNBC_FLOOR_DRAIN_RETENTION=1
+export GITHUB_EVENT_NAME=schedule
+LOG=docs/probes/m2_floor_retention_20260801T082411Z/falsifier_whole_corpus.log
+mkdir -p "$(dirname "$LOG")"
+target/release/claim_executor-m2-45e7a8c \
+  --source-root dag \
+  --source-root src/v2 \
+  --plan-entry src/v2/workflow/ci_floor_plan.dag \
+  --plan-function gunbc_falsifier_plan \
+  2>&1 | tee "$LOG"
+```
+
+Stop after batch 1 completes (`✓ PASS [batch 1] discovery-corpus`) if later falsifier batches (wet self-host, etc.) are out of scope. This measurement stopped there.
+
+**4. Main-push `SelectionApplied` shape (optional — not completed on this host):**
+
+```bash
+export GUNBC_FLOOR_DRAIN_RETENTION=1
+export GITHUB_EVENT_NAME=push
+LOG=docs/probes/m2_floor_retention_20260801T091619Z/main_push_floor.log
+mkdir -p "$(dirname "$LOG")"
+target/release/claim_executor-m2-45e7a8c \
+  --source-root dag \
+  --source-root src/v2 \
+  --plan-entry src/v2/workflow/ci_floor_plan.dag \
+  --plan-function gunbc_ci_floor_plan \
+  2>&1 | tee "$LOG"
+```
+
+**5. Extract receipt lines from a completed log (read-only; not a rerun):**
+
+```bash
+grep -E '\[floor-drain\]|\[floor-memory\]|governor receipt|schedule-retention|FLOOR-BATCH|◷|cgroup peak' \
+  docs/probes/m2_floor_retention_20260801T082411Z/falsifier_whole_corpus.log
+```
+
+**6. Cgroup regime readback (optional host context; not emitted by `claim_executor`):**
+
+```bash
+cat /sys/fs/cgroup/memory.max
+cat /sys/fs/cgroup/memory.high 2>/dev/null || echo 'memory.high absent'
+cat /sys/fs/cgroup/memory.current
+cat /sys/fs/cgroup/memory.swap.current
+# memory.events high only fires when memory.high is set — on uncapped hosts expect no throttle events:
+grep -E '^high |^oom ' /sys/fs/cgroup/memory.events 2>/dev/null || true
+```
+
+Default `claim_executor` behavior is unchanged — no env disables M2 eviction unless `GUNBC_SCHEDULE_RETENTION_EVICT=0` (retain-all measurement pole; not used here).
 
 ---
 
