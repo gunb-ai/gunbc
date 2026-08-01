@@ -457,20 +457,6 @@ fn compiler_identity_input(digest: Fnv1a64Structural) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
 }
 
-fn serve_resolved_graph_v1_disk_probe(
-  closure_digest: Fnv1a64Structural,
-  compiler_digest: Fnv1a64Structural
-) -> ProviderLookup {
-  let req = ResolveClosureRequest {
-    closure_digest: closure_digest,
-    compiler: compiler_identity_input(digest: compiler_digest)
-  }
-  provider_serve(
-    req: req,
-    probe: ProbeAbsent
-  )
-}
-
 fn serve_resolved_graph_v2_disk_probe(
   closure_digest: ContentHash,
   compiler_digest: ContentHash,
