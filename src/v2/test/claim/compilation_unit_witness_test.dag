@@ -321,18 +321,7 @@ test fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
 }
 
 
-// ── artifact identity is no longer a writable field (review 2026-08-01, #2) ──
-// CompilationUnit previously carried `artifact: CompilationUnitArtifactId`,
-// always populated by rebranding `id`. It claimed independent information while
-// carrying none, so `CompilationUnit { id: "unit-a", ..., artifact: "unit-b" }`
-// was writable and made one unit claim two target identities: `unit-a.h`/`.c`
-// against `unit-b.o`. The repair REMOVES the field, so that specimen is
-// unwritable rather than refused — the climb is to structural impossibility, and
-// per DESIGN section 4b the evidence stays enrolled even though the machinery is
-// deleted. A runtime falsifier can no longer be constructed (there is nothing to
-// mismatch), so the retained evidence is a compile-refusal pair: a record
-// literal carrying a field its declaration does not have must NOT compile clean,
-// while the same literal without it must. Both poles execute.
+data compilation_unit_artifact_unwritable_note: String = "Review 2026-08-01 finding 2. CompilationUnit previously carried an artifact field of type CompilationUnitArtifactId, always populated by rebranding id. It claimed independent information while carrying none, so a literal naming id unit-a and artifact unit-b was writable and made one unit claim two target identities: unit-a.h and unit-a.c against unit-b.o. The repair REMOVES the field, so that specimen is unwritable rather than refused — the climb is to structural impossibility, and per DESIGN section 4b the discriminating evidence stays enrolled even though the production machinery is deleted. A runtime falsifier can no longer be constructed because there is nothing left to mismatch, so the retained evidence is a compile-refusal pair: a record literal carrying a field its declaration does not have must NOT compile clean, while the same literal without it must. Both poles execute."
 
 fn w_extra_derived_field_is_unwritable() -> Bool {
   !compile_dag_rust_emit_check(

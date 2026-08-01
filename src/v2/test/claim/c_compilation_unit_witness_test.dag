@@ -461,7 +461,55 @@ test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
 }
 
 
+data c_spelling_safety_witness_note: String = "C-realization spelling controls for review 2026-08-01 finding 1. CompilationUnitId is a branded NonEmptyStr with NO spelling law, so ../peer, a/b, a-backslash-b, embedded CR/LF/NUL and the double-quote character all inhabit it and previously reached .h/.c/.o paths verbatim, with the header path concatenated between the include directive open-quote and close-quote. These controls execute against c_translation_unit_basename (the reversible encoder), not against the brand. Four acceptance axes, all executed: encoding-or-refusal for each hostile codepoint; the cu-one positive control that must stay byte-unchanged; injectivity, proven by escaping the percent marker itself so no unencoded id can collide with an encoded one (two distinct ids can never contend for one .o); and a C-source control proving the rendered include remains exactly one directive with no embedded newline and no premature string termination."
 
-data probe_backslash: CompilationUnitId = "a\\b" as CompilationUnitId
-data probe_quote: CompilationUnitId = "a\"b" as CompilationUnitId
-data probe_nul: CompilationUnitId = "a\u{0000}b" as CompilationUnitId
+test fn witness_c_basename_positive_control_unchanged() -> Bool {
+  (c_translation_unit_basename(unit_id: witness_unit_one) as String) == "cu-one"
+    && c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
+}
+
+test fn witness_c_basename_encodes_path_and_source_hostiles() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_slash) as String) == "a%00002fb"
+    && (c_translation_unit_basename(unit_id: hostile_backslash) as String) == "a%00005cb"
+    && (c_translation_unit_basename(unit_id: hostile_quote) as String) == "a%000022b"
+    && (c_translation_unit_basename(unit_id: hostile_newline) as String) == "a%00000ab"
+    && (c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00000db"
+    && (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%000000b"
+}
+
+test fn witness_c_basename_kills_parent_directory_segments() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_dot) as String) == "%00002e"
+    && (c_translation_unit_basename(unit_id: hostile_dotdot) as String) == "%00002e."
+    && (c_translation_unit_basename(unit_id: hostile_parent_dir) as String) == "%00002e.%00002fpeer"
+}
+
+test fn witness_c_basename_injective_on_escape_marker() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_percent) as String) == "a%000025b"
+    && (c_translation_unit_basename(unit_id: collide_left) as String)
+       != (c_translation_unit_basename(unit_id: collide_right) as String)
+}
+
+test fn witness_c_basename_output_always_safe() -> Bool {
+  c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_parent_dir) as String)
+    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_quote) as String)
+    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_newline) as String)
+    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_dotdot) as String)
+    && !c_translation_unit_basename_safe(value: "..")
+    && !c_translation_unit_basename_safe(value: "a/b")
+    && !c_translation_unit_basename_safe(value: "")
+}
+
+test fn witness_c_include_directive_stays_single_directive() -> Bool {
+  let hostile_include = c_include_directive_for_dep(dep_id: hostile_newline)
+  let quote_include = c_include_directive_for_dep(dep_id: hostile_quote)
+  hostile_include == "#include \"a%00000ab.h\""
+    && quote_include == "#include \"a%000022b.h\""
+    && !string_contains(s: hostile_include, pattern: "\n")
+    && !string_contains(s: quote_include, pattern: "\"a\"")
+}
+
+test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
+  c_unit_object_path(unit_id: hostile_slash) == "a%00002fb.o"
+    && c_unit_header_path(unit_id: hostile_slash) == "a%00002fb.h"
+    && c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
+}
