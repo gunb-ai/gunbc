@@ -1,0 +1,83 @@
+module test.claim.repo_local_git_config_witness
+
+import gunbc.repo_local_git_config {
+  RepoLocalGitConfigBinding,
+  desired_repo_local_git_config_bindings,
+  repo_local_git_config_reconcile,
+  repo_local_git_config_converged,
+  all_desired_bindings_read_back,
+  observed_binding,
+  reconcile_install_argv,
+  reconcile_read_back_argv,
+  generated_artifact_merge_driver_key,
+  generated_artifact_merge_driver_value,
+  core_hooks_path_key,
+  core_hooks_path_value,
+}
+import gunbc.membership_reconcile {
+  membership_upsert_count,
+  membership_teardown_count,
+  membership_refusal_count,
+}
+import extdeps.git { shape_git_config_local_argv, shape_git_config_get_argv }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "Lane 2 model witnesses for repository-local Git config desired state (generated-file conflict policy charter). Reconcile from empty yields one upsert per desired binding; matching observed state is converged with zero upserts; read-back requires exact value equality. RED controls: wrong observed value fails read-back and fails convergence. Install/read-back argv shapes route through extdeps.git cited shapes — no hand-rolled git argv in this module."
+
+test fn witness_desired_binding_count_holds() -> Bool {
+  count(desired_repo_local_git_config_bindings()) == 2
+}
+
+test fn witness_empty_observed_reconcile_upserts_holds() -> Bool {
+  let plan = repo_local_git_config_reconcile(desired: desired_repo_local_git_config_bindings(), observed: [])
+  membership_upsert_count(plan: plan) == 2
+    && membership_teardown_count(plan: plan) == 0
+    && membership_refusal_count(plan: plan) == 0
+}
+
+test fn witness_matching_observed_converged_holds() -> Bool {
+  repo_local_git_config_converged(observed: [
+    observed_binding(key: generated_artifact_merge_driver_key, value: generated_artifact_merge_driver_value),
+    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  ])
+}
+
+test fn witness_read_back_all_desired_holds() -> Bool {
+  all_desired_bindings_read_back(observed: [
+    observed_binding(key: generated_artifact_merge_driver_key, value: generated_artifact_merge_driver_value),
+    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  ])
+}
+
+test fn witness_red_wrong_value_fails_read_back_holds() -> Bool {
+  !all_desired_bindings_read_back(observed: [
+    observed_binding(key: generated_artifact_merge_driver_key, value: "false"),
+    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  ])
+}
+
+test fn witness_red_wrong_value_not_converged_holds() -> Bool {
+  !repo_local_git_config_converged(observed: [
+    observed_binding(key: generated_artifact_merge_driver_key, value: "false"),
+    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  ])
+}
+
+test fn witness_install_argv_uses_extdeps_shape_holds() -> Bool {
+  reconcile_install_argv(binding: observed_binding(key: core_hooks_path_key, value: core_hooks_path_value))
+    == shape_git_config_local_argv(key: core_hooks_path_key, value: core_hooks_path_value)
+    && reconcile_read_back_argv(binding: observed_binding(key: core_hooks_path_key, value: core_hooks_path_value))
+    == shape_git_config_get_argv(key: core_hooks_path_key)
+}
+
+test fn witness_holds() -> Bool {
+  witness_desired_binding_count_holds()
+    && witness_empty_observed_reconcile_upserts_holds()
+    && witness_matching_observed_converged_holds()
+    && witness_read_back_all_desired_holds()
+    && witness_red_wrong_value_fails_read_back_holds()
+    && witness_red_wrong_value_not_converged_holds()
+    && witness_install_argv_uses_extdeps_shape_holds()
+}

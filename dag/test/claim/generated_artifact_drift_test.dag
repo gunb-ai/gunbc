@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -54,6 +54,7 @@ test fn witness_all_known_committed() -> Bool {
   artifact_is_committed(a: CiYamlArtifact)
     && artifact_is_committed(a: FalsifierYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)
+    && artifact_is_committed(a: GitattributesArtifact)
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: GithooksPrePushArtifact)
@@ -108,6 +109,7 @@ test fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: CiYamlArtifact)
     && artifact_is_committed(a: FalsifierYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)
+    && artifact_is_committed(a: GitattributesArtifact)
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: GithooksPrePushArtifact)

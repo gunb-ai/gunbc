@@ -516,6 +516,14 @@ fn shape_git_config_argv(key: String, value: String) -> List<String> {
   ["git", "config", key, value]
 }
 
+fn shape_git_config_local_argv(key: String, value: String) -> List<String> {
+  ["git", "config", "--local", key, value]
+}
+
+fn shape_git_config_get_argv(key: String) -> List<String> {
+  ["git", "config", "--get", key]
+}
+
 fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
   ["git", "rev-parse", "--verify", "--quiet", target]
 }
