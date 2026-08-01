@@ -509,6 +509,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )
     ),
+    active_sized(
+      identity: "rn_D33CBEADA91C3E8C10D8515CC4",
+      id: "2-scm-p1-proof-kernel",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "Prove one bounded reconciliation rule works for directly authored changes",
+        boundary: "Model one public bounded fold that composes directly authored transformations over a declared decidable program fragment. Domains contribute facts, claims, procedures, invariants, and checkable certificates as data; the kernel never grows feature-pair branches and every refusal stays typed, located, and counted.",
+        displaced_cost: "Without one general fold, every new invariant or overlapping feature adds another pairwise case, hides order dependence, and lets pairwise agreement masquerade as n-way safety. That cost compounds across every later authoring and write realization.",
+        first_slice: "Declare the bounded fragment and carry occurrence-ID deduplication, context validity and transport, commuting squares, batch-partition invariance, grounded frame-preserving deltas, n-way invariants, order honesty, and all seven semantic closure certificates through one executing scenario corpus. Adding an invariant as data must change a later outcome without editing the fold.",
+        red_control: "Two observations of one occurrence enter once while distinct occurrence IDs never collapse; invalid or untransportable context refuses; pairwise-commuting transformations that fail together do not pass as n-way safe; changing batch partitions cannot change the result; ungrounded or out-of-frame deltas refuse; non-commuting order and unsupported order claims stay explicit; removing any of the seven closure certificates leaves the result unclosed; adding an invariant requires no feature-pair kernel arm.",
+        out_of_scope: "No source parser, quotient-delta edit lens, effect transport, executed target transition, writable SCM realization, command-line product, hosted service, arbitrary synthesis, unbounded proof search, or P2/P3 roadmap node.",
+        handback: "Return the modeled bounded fragment, one public reconciliation fold, data-driven invariant and certificate carriers, the executing discriminating scenario corpus, the closing validation bound and green, and the exact P2 capture and P3 effect work still absent."
+      )
+    ),
 
     active(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -1476,6 +1493,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
+    edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
