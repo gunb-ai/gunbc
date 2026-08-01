@@ -1,0 +1,47 @@
+module test.claim.rest_response_table_model_witness_test
+
+import extdeps.transports.rest {
+  Successful,
+  ExactStatus,
+  StatusHundredsRange,
+  rest_response_pattern_matches,
+  rest_response_arm_status_class,
+}
+
+test fn exact_pattern_matches_status() -> Bool {
+  rest_response_pattern_matches(
+    pattern: ExactStatus { code: 401 },
+    status: 401
+  ) && !rest_response_pattern_matches(
+    pattern: ExactStatus { code: 401 },
+    status: 403
+  )
+}
+
+test fn hundreds_pattern_matches_status() -> Bool {
+  rest_response_pattern_matches(
+    pattern: StatusHundredsRange { hundreds: 2 },
+    status: 200
+  ) && rest_response_pattern_matches(
+    pattern: StatusHundredsRange { hundreds: 4 },
+    status: 401
+  ) && !rest_response_pattern_matches(
+    pattern: StatusHundredsRange { hundreds: 2 },
+    status: 401
+  )
+}
+
+test fn arm_status_class_uses_http_status_class_not_bool() -> Bool {
+  match rest_response_arm_status_class(pattern: ExactStatus { code: 200 }) {
+    Successful => true
+    _ => false
+  }
+    && match rest_response_arm_status_class(pattern: ExactStatus { code: 401 }) {
+    Successful => false
+    _ => true
+  }
+    && match rest_response_arm_status_class(pattern: StatusHundredsRange { hundreds: 2 }) {
+    Successful => true
+    _ => false
+  }
+}

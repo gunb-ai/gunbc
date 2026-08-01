@@ -7372,36 +7372,219 @@ fn collect_rest_response_arms(
     arms
 }
 
-fn rest_status_key_matches(pattern_key: &str, status: u16) -> bool {
-    let bytes = pattern_key.as_bytes();
-    if bytes.len() == 3 && bytes[1] == b'x' && bytes[2] == b'x' {
-        if let Some(digit) = pattern_key.chars().next().and_then(|c| c.to_digit(10)) {
-            let lo = (digit * 100) as u16;
-            let hi = lo + 99;
-            return status >= lo && status <= hi;
-        }
-        return false;
-    }
-    pattern_key
-        .parse::<u16>()
-        .map(|code| code == status)
-        .unwrap_or(false)
+fn rest_response_table_authority_available(ctx: &InterpContext) -> bool {
+    ctx.lookup_fn("extdeps.transports.rest.rest_response_pattern_matches")
+        .is_some()
 }
 
-fn rest_arm_is_success(pattern_key: &str) -> bool {
-    pattern_key
-        .chars()
-        .next()
-        .map(|c| c == '2')
-        .unwrap_or(false)
+fn rest_response_table_authority_ctx(
+    caller: &InterpContext,
+) -> InterpResult<&'static InterpContext> {
+    if rest_response_table_authority_available(caller) {
+        return Ok(unsafe {
+            std::mem::transmute::<&InterpContext, &'static InterpContext>(caller)
+        });
+    }
+    static AUTHORITY: std::sync::OnceLock<Result<usize, String>> = std::sync::OnceLock::new();
+    let ptr = match AUTHORITY.get_or_init(|| {
+        compile_rest_response_table_authority().map(|ctx| Box::into_raw(Box::new(ctx)) as usize)
+    }) {
+        Ok(ptr) => *ptr,
+        Err(msg) => {
+            return Err(InterpError::Unimplemented {
+                what: format!("rest response table authority unavailable: {msg}"),
+            })
+        }
+    };
+    Ok(unsafe { &*(ptr as *const InterpContext) })
+}
+
+fn compile_rest_response_table_authority() -> Result<InterpContext, String> {
+    use crate::cli_run::workspace_root;
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use im::HashMap;
+    use std::collections::HashMap as StdHashMap;
+    use std::path::Path;
+
+    let ws = workspace_root();
+    let rest_path = ws.join("dag/extdeps/transports/rest.dag");
+    if !rest_path.is_file() {
+        return Err(format!("rest authority missing: {}", rest_path.display()));
+    }
+
+    fn scan_modules(dir: &Path, index: &mut StdHashMap<String, std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                scan_modules(&path, index);
+            } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Some(module_path) = content
+                        .lines()
+                        .map(str::trim)
+                        .find(|l| !l.is_empty())
+                        .and_then(|l| l.strip_prefix("module "))
+                        .and_then(|rest| rest.split_whitespace().next())
+                    {
+                        index.insert(module_path.to_string(), path);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut module_index = StdHashMap::new();
+    for root in [ws.join("dag"), ws.join("src/v1")] {
+        if root.is_dir() {
+            scan_modules(&root, &mut module_index);
+        }
+    }
+
+    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut queue = vec!["extdeps.transports.rest".to_string()];
+    while let Some(module_path) = queue.pop() {
+        if seen.contains_key(&module_path) {
+            continue;
+        }
+        let Some(file_path) = module_index.get(&module_path) else {
+            return Err(format!("module not found: {module_path}"));
+        };
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| format!("read {}: {e}", file_path.display()))?;
+        let rel_path = file_path
+            .strip_prefix(&ws)
+            .unwrap_or(file_path)
+            .to_string_lossy()
+            .to_string();
+        for imp in extract_module_import_names(&content, &rel_path) {
+            if !seen.contains_key(&imp) {
+                queue.push(imp);
+            }
+        }
+        seen.insert(
+            module_path,
+            Rc::new(SourceFile {
+                path: rel_path,
+                content,
+            }),
+        );
+    }
+
+    let sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let graph = resolved
+        .graph
+        .as_ref()
+        .ok_or_else(|| format!("compile rest authority failed: {:?}", resolved.diagnostics))?;
+    Ok(InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    ))
+}
+
+fn extract_module_import_names(content: &str, path: &str) -> Vec<String> {
+    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), path.to_string());
+    let source_index =
+        crate::v1_std_core::build_newline_index(path.to_string(), content.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(path.to_string(), source_index);
+    let result = crate::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
+    match &result.module {
+        Some(module) => crate::v1_std_core::module_imports(module.clone())
+            .iter()
+            .map(|imp| imp.name.clone())
+            .collect(),
+        None => vec![],
+    }
+}
+
+fn parse_response_pattern_key(ctx: &InterpContext, pattern_key: &str) -> InterpResult<Value> {
+    let bytes = pattern_key.as_bytes();
+    if bytes.len() == 3 && bytes[1] == b'x' && bytes[2] == b'x' {
+        let digit = pattern_key
+            .chars()
+            .next()
+            .and_then(|c| c.to_digit(10))
+            .ok_or_else(|| InterpError::TypeError {
+                msg: format!("invalid REST response pattern key: {pattern_key}"),
+            })?;
+        Ok(Value::Variant {
+            type_name: ctx.sym("RestResponseStatusPattern"),
+            variant_name: ctx.sym("StatusHundredsRange"),
+            fields: Rc::new(vec![(ctx.sym("hundreds"), Value::Int(digit as i64))]),
+        })
+    } else {
+        let code = pattern_key
+            .parse::<i64>()
+            .map_err(|_| InterpError::TypeError {
+                msg: format!("invalid REST response pattern key: {pattern_key}"),
+            })?;
+        Ok(Value::Variant {
+            type_name: ctx.sym("RestResponseStatusPattern"),
+            variant_name: ctx.sym("ExactStatus"),
+            fields: Rc::new(vec![(ctx.sym("code"), Value::Int(code))]),
+        })
+    }
+}
+
+fn rest_pattern_matches(ctx: &InterpContext, pattern_key: &str, status: u16) -> InterpResult<bool> {
+    let authority = rest_response_table_authority_ctx(ctx)?;
+    let pattern = parse_response_pattern_key(authority, pattern_key)?;
+    let result = run_in_context_with_args(
+        authority,
+        "extdeps.transports.rest.rest_response_pattern_matches",
+        &[
+            (Some("pattern".to_string()), pattern),
+            (Some("status".to_string()), Value::Int(status as i64)),
+        ],
+        false,
+    )?;
+    match result {
+        Value::Bool(b) => Ok(b),
+        other => Err(InterpError::TypeError {
+            msg: format!(
+                "rest_response_pattern_matches returned {}, expected Bool",
+                other.type_label()
+            ),
+        }),
+    }
+}
+
+fn rest_arm_is_successful(ctx: &InterpContext, pattern_key: &str) -> InterpResult<bool> {
+    let authority = rest_response_table_authority_ctx(ctx)?;
+    let pattern = parse_response_pattern_key(authority, pattern_key)?;
+    let result = run_in_context_with_args(
+        authority,
+        "extdeps.transports.rest.rest_response_arm_status_class",
+        &[(Some("pattern".to_string()), pattern)],
+        false,
+    )?;
+    match result {
+        Value::Variant { variant_name, .. } => Ok(authority.sym_eq(variant_name, "Successful")),
+        other => Err(InterpError::TypeError {
+            msg: format!(
+                "rest_response_arm_status_class returned {}, expected HttpStatusClass",
+                other.type_label()
+            ),
+        }),
+    }
 }
 
 fn match_rest_response_arm<'a>(
+    ctx: &InterpContext,
     arms: &'a [RestResponseArm],
     status: u16,
-) -> Option<&'a RestResponseArm> {
-    arms.iter()
-        .find(|arm| rest_status_key_matches(&arm.pattern_key, status))
+) -> InterpResult<Option<&'a RestResponseArm>> {
+    for arm in arms {
+        if rest_pattern_matches(ctx, &arm.pattern_key, status)? {
+            return Ok(Some(arm));
+        }
+    }
+    Ok(None)
 }
 
 fn format_rest_error_refusal(status: u16, body_type: &str, body: &str) -> String {
@@ -7435,7 +7618,7 @@ fn realize_rest_response_body(
         return map_response_to_value_json(&json, op_node, ctx);
     }
 
-    let arm = match_rest_response_arm(arms, status).ok_or_else(|| {
+    let arm = match_rest_response_arm(ctx, arms, status)?.ok_or_else(|| {
         let op_name = authored_name_at(ctx.si(), op_node.clone());
         InterpError::RestUndeclaredStatus {
             status: status as i64,
@@ -7443,7 +7626,7 @@ fn realize_rest_response_body(
         }
     })?;
 
-    if rest_arm_is_success(&arm.pattern_key) {
+    if rest_arm_is_successful(ctx, &arm.pattern_key)? {
         if response_format == "Text" {
             map_response_to_value(body, None, op_node, ctx)
         } else {

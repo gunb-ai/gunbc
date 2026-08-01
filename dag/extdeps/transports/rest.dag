@@ -43,7 +43,7 @@ type RestResponseStatusPattern
   = ExactStatus { code: HttpStatus }
   | StatusHundredsRange { hundreds: Int }
 
-data rest_response_table_authority_note: String = "The operation's declared response {} block is a status-pattern to body-type table — not a success/failure directive. Parse lowers each arm to a response_<pattern> property on the operation node; emit and interp realize the SAME table (§3 single authority). A success arm (2xx class) decodes into the operation's output {}; an error arm decodes the declared body type and the operation still refuses — the payload is richer, the disposition does not flip. An undeclared status is a typed refusal, never a silent widen."
+data rest_response_table_authority_note: String = "The operation's declared response {} block is a status-pattern to body-type table — not a success/failure directive. Parse lowers each arm to a response_<pattern> property on the operation node; emit and interp realize the SAME table via rest_response_pattern_matches and rest_response_arm_status_class (§3 single authority). A Successful-class arm decodes into the operation's output {}; other classes decode the declared body type and the operation still refuses — the payload is richer, the disposition does not flip. An undeclared status is a typed refusal, never a silent widen."
 
 type RestResponseTableRow {
   pattern: RestResponseStatusPattern
@@ -57,14 +57,22 @@ fn rest_response_pattern_matches(pattern: RestResponseStatusPattern, status: Htt
   }
 }
 
-fn rest_response_arm_is_success(pattern: RestResponseStatusPattern) -> Bool {
+fn rest_status_hundreds_class(hundreds: Int) -> HttpStatusClass {
+  if hundreds == 1 { Informational }
+  else if hundreds == 2 { Successful }
+  else if hundreds == 3 { Redirection }
+  else if hundreds == 4 { ClientErrorStatus }
+  else { ServerErrorStatus }
+}
+
+fn rest_response_arm_status_class(pattern: RestResponseStatusPattern) -> HttpStatusClass {
   match pattern {
-    ExactStatus { code: c } => c >= 200 && c < 300
-    StatusHundredsRange { hundreds: h } => h == 2
+    ExactStatus { code: c } => http_status_class(c)
+    StatusHundredsRange { hundreds: h } => rest_status_hundreds_class(h)
   }
 }
 
-data rest_response_table_modeled_surface_dissolution_note: String = "HttpStatusClass, RestResponseStatusPattern, RestResponseTableRow, rest_response_pattern_matches, and rest_response_arm_is_success are the modeled surface beside the RFC citation. Today parse lowers response arms to stringly response_<k> properties on the operation node and the v1 seed interpreter re-implements the same predicates in Rust (rest_status_key_matches, rest_arm_is_success). Dissolves when parse/interp/emit consume the modeled types directly — the seed predicates must stay aligned with these fns until then; land with the shared REST realization row when the seed shrinks."
+data rest_response_table_modeled_surface_dissolution_note: String = "Parse still lowers response arms to stringly response_<k> properties on the operation node; the v1 seed interpreter projects each key to RestResponseStatusPattern and calls rest_response_pattern_matches / rest_response_arm_status_class from this module (no parallel Rust predicates). Dissolves when parse stores RestResponseStatusPattern on the operation node directly and emit shares the same carrier — land with the shared REST realization row when the seed shrinks."
 
 type HttpTransportRefused {
   cause: String
