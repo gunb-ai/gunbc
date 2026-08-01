@@ -1,0 +1,27 @@
+module v2.test.claim.tmp_optcast_probe
+
+fn w_optional_payload_with_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optcast_cast\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> Carrier? {\n  if ok(v: text) {\n    Present { value: text as Carrier }\n  } else {\n    none\n  }\n}\n",
+    "src/optcast_cast.rs",
+    ["Some("],
+    ["Optional::"]
+  )
+}
+
+fn w_optional_payload_no_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optcast_plain\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\nfn f(text: String) -> String? {\n  if ok(v: text) {\n    Present { value: text }\n  } else {\n    none\n  }\n}\n",
+    "src/optcast_plain.rs",
+    ["Some("],
+    ["Optional::"]
+  )
+}
+
+test fn optional_payload_with_cast_emits_some() -> Bool {
+  w_optional_payload_with_cast()
+}
+
+test fn optional_payload_no_cast_emits_some() -> Bool {
+  w_optional_payload_no_cast()
+}
