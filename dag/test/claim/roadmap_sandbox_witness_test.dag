@@ -104,3 +104,18 @@ test fn witness_sandbox_gallery_and_live_render() -> Bool {
     && all(belt_dispatch_all_status_labels(), l => string_contains(s: h, pattern: join(["data-status=\"", l, "\""], "")))
 }
 
+
+data family_fixture_witness_note: String = "The A3 exhibit's discriminating pins, all through the serialized page so they prove the REAL band_entries -> workspace_entries_ul path: the family claim renders (once per width frame) with the '3 nodes' count; a member row carries its SUBJECT while its full task headline is provably ABSENT from the whole page (the subject swap happened in presentation, not styling); the undeclared neighbour row keeps its own headline OUTSIDE the group; and no open-lifecycle chip renders anywhere in the fixture (the A3 chip collapse — routine state earns no chip). The headline-absent pin is the RED control: reverting family_subject_row to pass the headline through turns it red."
+
+test fn witness_family_fixture_claim_grouped_with_subjects() -> Bool {
+  let h = sandbox_html()
+  string_contains(s: h, pattern: "family grouping — claim stated once, members carry subjects (static)")
+    && string_contains(s: h, pattern: "Every startable node carries a closing contract")
+    && string_contains(s: h, pattern: "3 nodes")
+    && string_contains(s: h, pattern: "dag_compile_clean_gate")
+    && string_contains(s: h, pattern: "affected_set_falsifier")
+    && !string_contains(s: h, pattern: "Declare the closing contract for dag_compile_clean_gate")
+    && string_contains(s: h, pattern: "Record which generator actually produced each result")
+    && string_contains(s: h, pattern: "class=\"family-group\"")
+    && string_contains(s: h, pattern: "class=\"family-rows\"")
+}
