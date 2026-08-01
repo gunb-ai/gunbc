@@ -99,7 +99,7 @@ import v1.compiler.infer_env {
   lookup_binding_by_name, binding_declares_name
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
-import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 import std.interface_summary {
   InterfaceSummary,
   ExportEntry,
@@ -7009,16 +7009,16 @@ fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
   }
 }
 
-fn fn_signature_fingerprint(item: Node, source_indices: Map<String, NewlineIndex>) -> ContentHash {
+fn fn_signature_fingerprint(item: Node, source_indices: Map<String, NewlineIndex>) -> Fnv1a64Structural {
   let params_acc = fold(item.params, init: content_hash_atom(value: "v1-interface-fn-sig-v0"), f: (acc, p) =>
-    content_hash_combine(
+    content_hash_combine_structural(
       left: acc,
       right: content_hash_atom(value: resolved_type_name(n: p, source_indices: source_indices))
     )
   )
   match item.inferred {
     Present { value: Resolved { node: rt } } =>
-      content_hash_combine(
+      content_hash_combine_structural(
         left: params_acc,
         right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: rt))
       )
@@ -7038,9 +7038,9 @@ fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, 
               name: name,
               kind: kind,
               contract: signature_contract(
-                signature: content_hash_tagged(
+                signature: content_hash_tagged_structural(
                   tag: "v1-interface-fn-sig-v0",
-                  payload: content_hash_combine(
+                  payload: content_hash_combine_structural(
                     left: content_hash_atom(value: name),
                     right: fn_signature_fingerprint(item: item, source_indices: source_indices)
                   )
@@ -7056,9 +7056,9 @@ fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, 
                   name: name,
                   kind: kind,
                   contract: signature_contract(
-                    signature: content_hash_tagged(
+                    signature: content_hash_tagged_structural(
                       tag: "v1-interface-sig-v0",
-                      payload: content_hash_combine(
+                      payload: content_hash_combine_structural(
                         left: content_hash_atom(value: binding.name),
                         right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: binding.resolved))
                       )
