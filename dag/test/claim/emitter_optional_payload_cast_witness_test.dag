@@ -56,6 +56,19 @@ fn w_user_defined_present_still_peels() -> Bool {
   )
 }
 
+fn w_user_present_inside_optional_fn_still_peels() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_upinopt\n\nimport std.types { Bool, String }\n\ntype MyOpt\n  = Present { value: String }\n  | Missing\n\nfn consume(value: MyOpt) -> Bool {\n  true\n}\n\nfn f(text: String) -> String? {\n  let used = consume(value: Present { value: text })\n  none\n}\n",
+    "src/optc_upinopt.rs",
+    ["MyOpt::Present"],
+    ["Some("]
+  )
+}
+
+test fn user_defined_present_inside_optional_returning_fn_is_unaffected() -> Bool {
+  w_user_present_inside_optional_fn_still_peels()
+}
+
 test fn optional_payload_cast_lowers_to_some() -> Bool {
   w_optional_payload_cast_lowers_to_some()
 }
