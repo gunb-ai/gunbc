@@ -157,7 +157,7 @@ fn bash_program_fixture_ensure_bin_specials(var_name: String, bin_name: String) 
     produces: [BuildArtifact { path: bin_path, name: bin_name }]
   )
   list_append(
-    xs: [
+    left: [
       bash_program_fold_tag_assign(node: bash_program_fixture_assign_root_node()),
       bash_program_fold_tag_assign(
         node: bash_build_assign(
@@ -178,7 +178,7 @@ fn bash_program_fixture_ensure_bin_specials(var_name: String, bin_name: String) 
         )
       )
     ],
-    ys: bash_program_fold_tag_if_nodes(nodes: verify_nodes)
+    right: bash_program_fold_tag_if_nodes(nodes: verify_nodes)
   )
 }
 
@@ -190,8 +190,8 @@ fn bash_program_fixture_witness_bin_specials(
   let root = bash_build_word_var(name: "ROOT")
   let invoke = bash_build_word_var(name: var_name)
   list_append(
-    xs: bash_program_fixture_ensure_bin_specials(var_name: var_name, bin_name: bin_name),
-    ys: [
+    left: bash_program_fixture_ensure_bin_specials(var_name: var_name, bin_name: bin_name),
+    right: [
       bash_program_fold_tag_command(
         node: bash_build_command_from_word_nodes(words: [
           bash_build_word_lit(text: "cd"),
@@ -201,8 +201,8 @@ fn bash_program_fixture_witness_bin_specials(
       bash_program_fold_tag_command(
         node: bash_build_command_from_word_nodes(
           words: list_append(
-            xs: [invoke],
-            ys: list_map(xs: args, f: fn(a) { bash_build_word_lit(text: a) })
+            left: [invoke],
+            right: list_map(xs: args, f: fn(a) { bash_build_word_lit(text: a) })
           )
         )
       )
@@ -212,8 +212,8 @@ fn bash_program_fixture_witness_bin_specials(
 
 fn bash_program_fixture_gunbc_claims_specials() -> List<BashEmitSpecial> {
   list_append(
-    xs: bash_program_fixture_ensure_bin_specials(var_name: "GUNBC", bin_name: "gunbc"),
-    ys: [
+    left: bash_program_fixture_ensure_bin_specials(var_name: "GUNBC", bin_name: "gunbc"),
+    right: [
       bash_program_fold_tag_command(
         node: bash_build_command_from_word_nodes(words: [
           bash_build_word_var(name: "GUNBC"),
@@ -232,4 +232,3 @@ fn bash_program_fixture_gunbc_claims_specials() -> List<BashEmitSpecial> {
     ]
   )
 }
-
