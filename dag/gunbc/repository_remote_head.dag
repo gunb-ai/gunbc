@@ -1,0 +1,183 @@
+module gunbc.repository_remote_head
+
+import std.types { String, NonEmptyStr, Int, List, Bytes, FilePath }
+import v2.std.operation_argv {
+  BoundOperationInvocation,
+  OperationRef,
+  bind_operation_invocation,
+  operation_argv_bind_text,
+}
+import gunbc.direct_process_observation {
+  DirectProcessObservation,
+  ProcessCompleted,
+  ProcessSpawnRefused,
+  ProcessWaitRefused,
+  ProcessExited,
+  ProcessSignaled,
+  ProcessTimedOut,
+  ProcessKilled,
+  direct_process_observation_from_shell,
+  direct_process_observation_stdout,
+  direct_process_observation_completed_p,
+}
+import extdeps.git
+import extdeps.git.ls_remote_advertisement {
+  GitAdvertisedRef,
+  GitAdvertisedRefDecodeOutcome,
+  GitAdvertisedRefsDecoded,
+  git_decode_ls_remote_stdout_bytes,
+  advertised_ref_branch_name,
+}
+import extdeps.git.object_store { GitObjectFormatSha1, git_object_id_content_hash }
+
+data repository_remote_head_note: String = "Repository-bound remote-head observation. Consumes an admitted GitRepositoryBinding (worktree, remote URL, forge identity, credential binding) — not a free origin string — and routes through v2.std.operation_argv BoundOperationInvocation. Process observation and advertisement decoding are separate layers: gunbc.direct_process_observation classifies the process result; extdeps.git.ls_remote_advertisement decodes stdout bytes."
+
+type GitForgeIdentity {
+  remote_name: NonEmptyStr
+}
+
+type GitCredentialBinding
+  = GitCredentialUnauthenticated
+  | GitCredentialSecretRef { secret_name: NonEmptyStr }
+
+type GitRepositoryBinding {
+  worktree: FilePath
+  remote_url: NonEmptyStr
+  forge: GitForgeIdentity
+  credential: GitCredentialBinding
+}
+
+data git_ls_remote_operation_ref: OperationRef = OperationRef {
+  path: "dag/extdeps/git/git.dag",
+  service: "git.Core",
+  operation: "LsRemoteHeads",
+}
+
+fn repository_remote_head_invocation(
+  binding: GitRepositoryBinding,
+) -> BoundOperationInvocation {
+  bind_operation_invocation(
+    at: git_ls_remote_operation_ref,
+    bindings: [
+      operation_argv_bind_text(
+        name: "remote",
+        text: binding.remote_url as String,
+      ),
+    ],
+  )
+}
+
+type GitRemoteHeadRow {
+  branch: NonEmptyStr
+  object_id_hex: NonEmptyStr
+  ref_name: NonEmptyStr
+}
+
+type RepositoryRemoteHeadObservation
+  = RepositoryRemoteHeadsRead { heads: List<GitRemoteHeadRow> }
+  | RepositoryRemoteHeadProcessRefused { observation: DirectProcessObservation }
+  | RepositoryRemoteHeadDecodeRefused { cause: GitAdvertisedRefDecodeOutcome }
+
+fn git_remote_head_row_of(ref: GitAdvertisedRef) -> GitRemoteHeadRow {
+  GitRemoteHeadRow {
+    branch: advertised_ref_branch_name(ref_name: ref.ref_name as String) as NonEmptyStr,
+    object_id_hex: git_object_id_content_hash(oid: ref.object_id) as String as NonEmptyStr,
+    ref_name: ref.ref_name,
+  }
+}
+
+fn repository_remote_head_observation_of(
+  binding: GitRepositoryBinding,
+  spawn_ok: Bool,
+  wait_ok: Bool,
+  timed_out: Bool,
+  exit_code: Int,
+  signaled: Bool,
+  signal: Int,
+  exit_code_present: Bool,
+  stdout: Bytes,
+  stderr: Bytes,
+  spawn_detail: String,
+  wait_detail: String,
+) -> RepositoryRemoteHeadObservation {
+  let process = direct_process_observation_from_shell(
+    spawn_ok: spawn_ok,
+    wait_ok: wait_ok,
+    timed_out: timed_out,
+    exit_code: exit_code,
+    signaled: signaled,
+    signal: signal,
+    exit_code_present: exit_code_present,
+    stdout: stdout,
+    stderr: stderr,
+    spawn_detail: spawn_detail,
+    wait_detail: wait_detail,
+  )
+  match process {
+    ProcessCompleted { termination, streams: _ } =>
+      match termination {
+        ProcessExited { code } =>
+          if code == 0 {
+            match git_decode_ls_remote_stdout_bytes(
+              stdout: direct_process_observation_stdout(observation: process),
+              format: GitObjectFormatSha1,
+            ) {
+              GitAdvertisedRefsDecoded { refs } =>
+                RepositoryRemoteHeadsRead {
+                  heads: map(refs, r => git_remote_head_row_of(ref: r)),
+                }
+              cause =>
+                RepositoryRemoteHeadDecodeRefused { cause: cause }
+            }
+          } else {
+            RepositoryRemoteHeadProcessRefused { observation: process }
+          }
+        ProcessSignaled { signal: _ } =>
+          RepositoryRemoteHeadProcessRefused { observation: process }
+        ProcessTimedOut =>
+          RepositoryRemoteHeadProcessRefused { observation: process }
+        ProcessKilled =>
+          RepositoryRemoteHeadProcessRefused { observation: process }
+      }
+    ProcessSpawnRefused { detail: _ } =>
+      RepositoryRemoteHeadProcessRefused { observation: process }
+    ProcessWaitRefused { detail: _ } =>
+      RepositoryRemoteHeadProcessRefused { observation: process }
+  }
+}
+
+fn observe_repository_remote_heads(
+  binding: GitRepositoryBinding,
+) -> RepositoryRemoteHeadObservation {
+  let _invocation = repository_remote_head_invocation(binding: binding)
+  let result = git.Core.LsRemoteHeads(remote: binding.remote_url as String)
+  repository_remote_head_observation_of(
+    binding: binding,
+    spawn_ok: true,
+    wait_ok: true,
+    timed_out: false,
+    exit_code: result.exit_code,
+    signaled: result.signaled,
+    signal: result.signal,
+    exit_code_present: result.exit_code_present,
+    stdout: result.stdout,
+    stderr: result.stderr_bytes,
+    spawn_detail: "",
+    wait_detail: "",
+  )
+}
+
+fn repository_remote_head_branch_sha(
+  observation: RepositoryRemoteHeadObservation,
+  branch: NonEmptyStr,
+) -> NonEmptyStr? {
+  match observation {
+    RepositoryRemoteHeadsRead { heads } =>
+      match filter(heads, row => row.branch == branch) |> first {
+        Present { value: row } => Present { value: row.object_id_hex }
+        Absent => none
+      }
+    RepositoryRemoteHeadProcessRefused { observation: _ } => none
+    RepositoryRemoteHeadDecodeRefused { cause: _ } => none
+  }
+}

@@ -1,37 +1,117 @@
 module test.claim.direct_process_observation_witness_test
 
-import std.types { Bool }
+import std.types { Bool, String, Int, Bytes }
+import std.bytes { utf8_encode_bytes }
 import gunbc.direct_process_observation {
-  DirectProviderEventsObserved,
-  DirectProviderEventsRefused,
-  direct_provider_events_observation_readable,
-  direct_provider_events_observation_content,
-  direct_provider_events_observation_error,
+  DirectProcessObservation,
+  ProcessCompleted,
+  ProcessSpawnRefused,
+  ProcessWaitRefused,
+  ProcessExited,
+  ProcessSignaled,
+  ProcessTimedOut,
+  ProcessKilled,
+  direct_process_observation_from_shell,
+  direct_process_observation_completed_p,
 }
 
-data direct_process_observation_witness_note: String = "The direct-read substrate is pure projection over Filesystem.Read semantics: success exposes content, failure carries a located reason and never fabricates an empty stream. These witnesses pin the three accessors the belt consumes so a refusal cannot be misread as readable-with-empty."
+data witness_note: String = "Hermetic witnesses for gunbc.direct_process_observation: spawn/wait refusal, termination variants, and the absence of a precomputed success Bool."
 
-test fn observed_content_is_readable_and_round_trips() -> Bool {
-  let observation = DirectProviderEventsObserved { content: "{\"type\":\"turn.started\"}\n" }
-  direct_provider_events_observation_readable(observation: observation)
-    && direct_provider_events_observation_content(observation: observation)
-      == "{\"type\":\"turn.started\"}\n"
-    && direct_provider_events_observation_error(observation: observation) == ""
-}
-
-test fn refused_observation_is_not_readable_and_carries_reason() -> Bool {
-  let observation = DirectProviderEventsRefused {
-    reason: "provider event stream is unreadable at /missing: no such file" as NonEmptyStr,
+fn spawn_refusal_is_typed() -> Bool {
+  match direct_process_observation_from_shell(
+    spawn_ok: false,
+    wait_ok: true,
+    timed_out: false,
+    exit_code: 0,
+    signaled: false,
+    signal: 0,
+    exit_code_present: true,
+    stdout: utf8_encode_bytes(s: ""),
+    stderr: utf8_encode_bytes(s: ""),
+    spawn_detail: "spawn refused",
+    wait_detail: "",
+  ) {
+    ProcessSpawnRefused { detail } => (detail as String) == "spawn refused"
+    ProcessCompleted { termination: _, streams: _ } => false
+    ProcessWaitRefused { detail: _ } => false
   }
-  !direct_provider_events_observation_readable(observation: observation)
-    && direct_provider_events_observation_content(observation: observation) == ""
-    && string_contains(
-      s: direct_provider_events_observation_error(observation: observation),
-      pattern: "/missing",
-    )
+}
+
+fn wait_refusal_is_typed() -> Bool {
+  match direct_process_observation_from_shell(
+    spawn_ok: true,
+    wait_ok: false,
+    timed_out: false,
+    exit_code: 0,
+    signaled: false,
+    signal: 0,
+    exit_code_present: true,
+    stdout: utf8_encode_bytes(s: ""),
+    stderr: utf8_encode_bytes(s: ""),
+    spawn_detail: "",
+    wait_detail: "wait refused",
+  ) {
+    ProcessWaitRefused { detail } => (detail as String) == "wait refused"
+    ProcessCompleted { termination: _, streams: _ } => false
+    ProcessSpawnRefused { detail: _ } => false
+  }
+}
+
+fn exited_termination_carries_code_without_sentinel() -> Bool {
+  match direct_process_observation_from_shell(
+    spawn_ok: true,
+    wait_ok: true,
+    timed_out: false,
+    exit_code: 17,
+    signaled: false,
+    signal: 0,
+    exit_code_present: true,
+    stdout: utf8_encode_bytes(s: "ok"),
+    stderr: utf8_encode_bytes(s: ""),
+    spawn_detail: "",
+    wait_detail: "",
+  ) {
+    ProcessCompleted { termination, streams: _ } =>
+      match termination {
+        ProcessExited { code } => code == 17
+        ProcessSignaled { signal: _ } => false
+        ProcessTimedOut => false
+        ProcessKilled => false
+      }
+    ProcessSpawnRefused { detail: _ } => false
+    ProcessWaitRefused { detail: _ } => false
+  }
+}
+
+fn absent_exit_code_becomes_killed_not_minus_one() -> Bool {
+  match direct_process_observation_from_shell(
+    spawn_ok: true,
+    wait_ok: true,
+    timed_out: false,
+    exit_code: 0,
+    signaled: false,
+    signal: 0,
+    exit_code_present: false,
+    stdout: utf8_encode_bytes(s: ""),
+    stderr: utf8_encode_bytes(s: ""),
+    spawn_detail: "",
+    wait_detail: "",
+  ) {
+    ProcessCompleted { termination, streams: _ } =>
+      match termination {
+        ProcessKilled => true
+        ProcessExited { code: _ } => false
+        ProcessSignaled { signal: _ } => false
+        ProcessTimedOut => false
+      }
+    ProcessSpawnRefused { detail: _ } => false
+    ProcessWaitRefused { detail: _ } => false
+  }
 }
 
 test fn direct_process_observation_keystone_holds() -> Bool {
-  observed_content_is_readable_and_round_trips()
-    && refused_observation_is_not_readable_and_carries_reason()
+  spawn_refusal_is_typed()
+    && wait_refusal_is_typed()
+    && exited_termination_carries_code_without_sentinel()
+    && absent_exit_code_becomes_killed_not_minus_one()
 }

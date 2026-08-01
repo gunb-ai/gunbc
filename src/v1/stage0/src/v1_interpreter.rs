@@ -5711,9 +5711,24 @@ fn build_service_param_env(
 }
 
 struct ShellResult {
-    exit_code: i32,
-    stdout: String,
-    stderr: String,
+    exit_code: Option<i32>,
+    signaled: bool,
+    signal: i32,
+    stdout_raw: Vec<u8>,
+    stderr_raw: Vec<u8>,
+}
+
+fn bytes_to_value(bytes: &[u8]) -> Value {
+    list_value(
+        bytes
+            .iter()
+            .map(|b| Value::Int(i64::from(*b)))
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn shell_stdout_string_lossy(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
@@ -6849,6 +6864,8 @@ fn dispatch_shell(
     intent: &str,
     expected: ExpectedOutcome,
 ) -> InterpResult<ShellResult> {
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
     // `expected` is the caller's DECLARED expectation, threaded from the sibling edge
     // on the call node (EFFECT_EXPECTATION_ARG). Absent at the call site it is
     // ExpectSuccess, which keeps every undeclared site behaviour-identical to the
@@ -6953,16 +6970,25 @@ fn dispatch_shell(
         output
     };
 
-    let exit_code = output.status.code().unwrap_or(-1);
+    let exit_code = output.status.code();
+    #[cfg(unix)]
+    let signaled = output
+        .status
+        .signal()
+        .is_some_and(|_| !output.status.success() && exit_code.is_none());
+    #[cfg(not(unix))]
+    let signaled = false;
+    #[cfg(unix)]
+    let signal = output.status.signal().unwrap_or(0) as i32;
+    #[cfg(not(unix))]
+    let signal = 0;
 
     Ok(ShellResult {
         exit_code,
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
+        signaled,
+        signal,
+        stdout_raw: output.stdout,
+        stderr_raw: output.stderr,
     })
 }
 
@@ -6974,7 +7000,7 @@ fn map_shell_outputs(
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => {
-            return Ok(Value::Str(result.stdout.clone()));
+            return Ok(Value::Str(shell_stdout_string_lossy(&result.stdout_raw)));
         }
     };
 
@@ -6988,27 +7014,40 @@ fn map_shell_outputs(
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
+        let exit_code_i64 = result.exit_code.map(i64::from).unwrap_or(0);
+        let process_failed = result.signaled || result.exit_code != Some(0);
+        let stdout_str = shell_stdout_string_lossy(&result.stdout_raw);
+        let stderr_str = shell_stdout_string_lossy(&result.stderr_raw);
         let value = match from_key.as_deref() {
-            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stdout") => Value::Str(result.stdout.clone()),
-            Some("stderr") => Value::Str(result.stderr.clone()),
-            Some("exit_success") => Value::Bool(result.exit_code == 0),
-            Some("exit_code") => Value::Int(result.exit_code as i64),
+            Some("stdout") if is_optional_field && process_failed => Value::Null,
+            Some("stderr") if is_optional_field && process_failed => Value::Null,
+            Some("stdout") => Value::Str(stdout_str.clone()),
+            Some("stderr") => Value::Str(stderr_str.clone()),
+            Some("stdout_bytes") => bytes_to_value(&result.stdout_raw),
+            Some("stderr_bytes") => bytes_to_value(&result.stderr_raw),
+            Some("exit_success") => Value::Bool(result.exit_code == Some(0)),
+            Some("exit_code") => Value::Int(exit_code_i64),
+            Some("exit_code_present") => Value::Bool(result.exit_code.is_some()),
+            Some("signaled") => Value::Bool(result.signaled),
+            Some("signal") => Value::Int(result.signal as i64),
             Some("stdout_lines") => {
-                let lines: Vec<Value> = result
-                    .stdout
+                let lines: Vec<Value> = stdout_str
                     .lines()
                     .map(|l| Value::Str(l.to_string()))
                     .collect();
                 list_value((lines))
             }
             _ => match field_name.as_str() {
-                "success" => Value::Bool(result.exit_code == 0),
-                "exit_code" => Value::Int(result.exit_code as i64),
-                "stdout" => Value::Str(result.stdout.clone()),
-                "stderr" => Value::Str(result.stderr.clone()),
-                "exists" => Value::Bool(result.exit_code == 0),
+                "success" => Value::Bool(result.exit_code == Some(0)),
+                "exit_code" => Value::Int(exit_code_i64),
+                "exit_code_present" => Value::Bool(result.exit_code.is_some()),
+                "signaled" => Value::Bool(result.signaled),
+                "signal" => Value::Int(result.signal as i64),
+                "stdout" => Value::Str(stdout_str.clone()),
+                "stderr" => Value::Str(stderr_str.clone()),
+                "stdout_bytes" => bytes_to_value(&result.stdout_raw),
+                "stderr_bytes" => bytes_to_value(&result.stderr_raw),
+                "exists" => Value::Bool(result.exit_code == Some(0)),
                 _ => Value::Null,
             },
         };

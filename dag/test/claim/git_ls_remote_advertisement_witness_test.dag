@@ -1,0 +1,112 @@
+module test.claim.git_ls_remote_advertisement_witness_test
+
+import std.types { Bool, String, Int, List, NonEmptyStr, Bytes }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git.ls_remote_advertisement {
+  GitAdvertisedRefDecodeOutcome,
+  GitAdvertisedRefsDecoded,
+  GitAdvertisedRefLineMalformed,
+  GitAdvertisedRefObjectIdRefused,
+  GitAdvertisedRefDuplicate,
+  GitAdvertisedRefEmptyBranchProjection,
+  git_decode_ls_remote_stdout,
+  git_decode_advertised_ref_line,
+  advertised_ref_branch_name,
+}
+import extdeps.git.object_store {
+  GitObjectFormatSha1,
+  GitObjectIdTextNonHexadecimal,
+  GitObjectIdTextNonCanonicalUppercase,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_sha_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn tab() -> String { from_code_point(cp: 9) }
+
+fn line_of(sha: String, ref_name: String) -> String {
+  concat(sha, concat(tab(), ref_name))
+}
+
+fn branch_name_projects_from_full_ref() -> Bool {
+  advertised_ref_branch_name(ref_name: "refs/heads/main") == "main"
+    && advertised_ref_branch_name(ref_name: "refs/heads/dispatch/node-a7") == "dispatch/node-a7"
+}
+
+fn malformed_line_refuses_at_index() -> Bool {
+  match git_decode_ls_remote_stdout(
+    stdout: concat(
+      line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+      concat("\n", "no-tab-line"),
+    ),
+    format: GitObjectFormatSha1,
+  ) {
+    GitAdvertisedRefLineMalformed { line_index, line } =>
+      line_index == 1 && line == "no-tab-line"
+    GitAdvertisedRefsDecoded { refs: _ } => false
+    GitAdvertisedRefObjectIdRefused { line_index: _, line: _, cause: _ } => false
+    GitAdvertisedRefDuplicate { ref_name: _, first_index: _, second_index: _ } => false
+    GitAdvertisedRefEmptyBranchProjection { line_index: _, ref_name: _ } => false
+  }
+}
+
+fn invalid_object_id_refuses_not_brands() -> Bool {
+  match git_decode_advertised_ref_line(
+    line: line_of(sha: "not-hex", ref_name: "refs/heads/main"),
+    line_index: 0,
+    format: GitObjectFormatSha1,
+  ) {
+    GitAdvertisedRefObjectIdRefused { cause, line_index: _, line: _ } =>
+      match cause {
+        GitObjectIdTextNonHexadecimal => true
+        _ => false
+      }
+    GitAdvertisedRefLineDecoded { row: _ } => false
+    GitAdvertisedRefLineMalformed { line_index: _, line: _ } => false
+    GitAdvertisedRefEmptyBranchProjection { line_index: _, ref_name: _ } => false
+  }
+}
+
+fn duplicate_ref_name_refuses_instead_of_first_match() -> Bool {
+  match git_decode_ls_remote_stdout(
+    stdout: concat(
+      concat(
+        line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+        "\n",
+      ),
+      line_of(sha: fixture_sha_b, ref_name: "refs/heads/main"),
+    ),
+    format: GitObjectFormatSha1,
+  ) {
+    GitAdvertisedRefDuplicate { ref_name, first_index, second_index } =>
+      ref_name == "refs/heads/main" && first_index == 0 && second_index == 1
+    GitAdvertisedRefsDecoded { refs: _ } => false
+    GitAdvertisedRefLineMalformed { line_index: _, line: _ } => false
+    GitAdvertisedRefObjectIdRefused { line_index: _, line: _, cause: _ } => false
+    GitAdvertisedRefEmptyBranchProjection { line_index: _, ref_name: _ } => false
+  }
+}
+
+fn empty_heads_prefix_projection_refuses() -> Bool {
+  match git_decode_ls_remote_stdout(
+    stdout: line_of(sha: fixture_sha_a, ref_name: "refs/heads/"),
+    format: GitObjectFormatSha1,
+  ) {
+    GitAdvertisedRefEmptyBranchProjection { line_index, ref_name } =>
+      line_index == 0 && ref_name == "refs/heads/"
+    GitAdvertisedRefsDecoded { refs: _ } => false
+    GitAdvertisedRefLineMalformed { line_index: _, line: _ } => false
+    GitAdvertisedRefObjectIdRefused { line_index: _, line: _, cause: _ } => false
+    GitAdvertisedRefDuplicate { ref_name: _, first_index: _, second_index: _ } => false
+  }
+}
+
+test fn git_ls_remote_advertisement_keystone_holds() -> Bool {
+  branch_name_projects_from_full_ref()
+    && malformed_line_refuses_at_index()
+    && invalid_object_id_refuses_not_brands()
+    && duplicate_ref_name_refuses_instead_of_first_match()
+    && empty_heads_prefix_projection_refuses()
+}

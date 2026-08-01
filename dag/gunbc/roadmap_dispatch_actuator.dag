@@ -110,12 +110,16 @@ import gunbc.roadmap_execution_contract {
   TmuxSessionCapability,
   TmuxPipeShellCapability,
   TeeEventCaptureCapability,
+  ProviderEventProjectionCapability,
   EnvironmentBindingCapability,
   AttemptStateDirectoryCapability,
   AttemptCurrentPointerCapability,
   dispatch_host_realization,
   execution_capability_label,
   execution_contract_validation_summary,
+}
+import gunbc.roadmap_provider_events {
+  codex_provider_event_projection_args,
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 
@@ -644,6 +648,24 @@ fn dispatch_current_attempt_events_path_for_instance(
     ),
     "/provider-events.jsonl",
   ], "")
+}
+
+fn dispatch_current_attempt_events_projection_argv_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: ProviderEventProjectionCapability,
+    ),
+    args: codex_provider_event_projection_args(
+      path: dispatch_current_attempt_events_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ) as FilePath,
+    ),
+  )
 }
 
 fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {

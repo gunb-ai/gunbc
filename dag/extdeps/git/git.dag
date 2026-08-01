@@ -587,6 +587,11 @@ service git.Core {
       success: Bool from "exit_success"
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
+      stdout: Bytes from "stdout_bytes"
+      stderr_bytes: Bytes from "stderr_bytes"
+      exit_code_present: Bool from "exit_code_present"
+      signaled: Bool from "signaled"
+      signal: Int from "signal"
     }
     readonly
     transport shell { argv: ["git", "ls-remote", "--heads", "{remote}"] }

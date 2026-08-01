@@ -1,0 +1,92 @@
+module test.claim.repository_remote_head_real_execution_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, Bytes }
+import extdeps.shell
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.repository_remote_head {
+  GitRepositoryBinding,
+  GitForgeIdentity,
+  GitCredentialUnauthenticated,
+  RepositoryRemoteHeadObservation,
+  RepositoryRemoteHeadsRead,
+  RepositoryRemoteHeadProcessRefused,
+  RepositoryRemoteHeadDecodeRefused,
+  observe_repository_remote_heads,
+  repository_remote_head_branch_sha,
+  repository_remote_head_invocation,
+}
+import v2.std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "Wet execution witnesses for repository-bound remote-head observation against a temporary local bare repository. No network, no credentials, no live GitHub. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries."
+
+fn witness_binding(remote_url: String, worktree: String) -> GitRepositoryBinding {
+  GitRepositoryBinding {
+    worktree: worktree as FilePath,
+    remote_url: remote_url as NonEmptyStr,
+    forge: GitForgeIdentity { remote_name: "origin" as NonEmptyStr },
+    credential: GitCredentialUnauthenticated,
+  }
+}
+
+fn run(script: String) -> Bool {
+  shell.Exec.Run(script: script as extdeps.shell.exec.TransportScript).success
+}
+
+test fn repository_remote_head_bare_repo_by_real_execution() -> Bool {
+  let root = shell.Mktemp.Dir()
+  let bare = concat(root.path as String, "/remote.git")
+  let work = concat(root.path as String, "/work")
+  let setup =
+    run(script: concat("git init --bare ", bare))
+      && run(script: concat("git init ", work))
+      && run(script: concat("cd ", work, " && git config user.email witness@test && git config user.name witness"))
+      && run(script: concat("cd ", work, " && git remote add origin ", bare))
+      && run(script: concat("cd ", work, " && echo file > f && git add f && git commit -m init && git push -u origin main"))
+  let binding = witness_binding(remote_url: bare, worktree: work)
+  let inv = repository_remote_head_invocation(binding: binding)
+  let materialized = shell_materialize_operation_argv(
+    path: inv.at.path,
+    service: inv.at.service,
+    operation: inv.at.operation,
+    bindings: inv.bindings,
+  )
+  let observed = observe_repository_remote_heads(binding: binding)
+  let moved =
+    run(script: concat("cd ", work, " && echo file2 >> f && git add f && git commit -m move && git push"))
+      && observe_repository_remote_heads(binding: binding)
+  let unavailable = observe_repository_remote_heads(
+    binding: witness_binding(remote_url: concat(bare, "-missing"), worktree: work),
+  )
+  let cleaned = shell.Remove.RecursiveForce(path: root.path)
+  match materialized {
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+    ArgvMaterialized { argv } =>
+      count(argv) >= 3 && argv.first() == "git"
+  }
+    && setup
+    && match observed {
+      RepositoryRemoteHeadsRead { heads } => count(heads) == 1
+      RepositoryRemoteHeadProcessRefused { observation: _ } => false
+      RepositoryRemoteHeadDecodeRefused { cause: _ } => false
+    }
+    && match moved {
+      RepositoryRemoteHeadsRead { heads } => count(heads) == 1
+      RepositoryRemoteHeadProcessRefused { observation: _ } => false
+      RepositoryRemoteHeadDecodeRefused { cause: _ } => false
+    }
+    && match unavailable {
+      RepositoryRemoteHeadProcessRefused { observation: _ } => true
+      RepositoryRemoteHeadsRead { heads: _ } => false
+      RepositoryRemoteHeadDecodeRefused { cause: _ } => false
+    }
+    && cleaned.success
+}
+
+test fn repository_remote_head_keystone_holds_by_real_execution() -> Bool {
+  repository_remote_head_bare_repo_by_real_execution()
+}

@@ -1,0 +1,263 @@
+module extdeps.git.ls_remote_advertisement
+
+import std.types { String, Int, List, NonEmptyStr, Bytes }
+import extdeps.git.object_store {
+  GitObjectFormat,
+  GitObjectFormatSha1,
+  GitObjectId,
+  GitObjectIdTextRefusal,
+  GitObjectIdTextDecoded,
+  GitObjectIdTextRefused,
+  git_decode_object_id_text,
+}
+
+data ls_remote_advertisement_authority_note: String = "Typed decoder for git ls-remote ref-advertisement output. Strict line framing, validated object ids through git_decode_object_id_text, full ref identity, located malformed-line refusal, duplicate-ref refusal. No cast from arbitrary text to CommitSha or NonEmptyStr — those brands are not construction-enforced in this corpus."
+
+data advertised_ref_heads_prefix: String = "refs/heads/"
+
+type GitAdvertisedRef {
+  object_id: GitObjectId
+  ref_name: NonEmptyStr
+}
+
+type GitAdvertisedRefDecodeOutcome
+  = GitAdvertisedRefsDecoded { refs: List<GitAdvertisedRef> }
+  | GitAdvertisedRefLineMalformed { line_index: Int, line: String }
+  | GitAdvertisedRefObjectIdRefused {
+      line_index: Int,
+      line: String,
+      cause: GitObjectIdTextRefusal,
+    }
+  | GitAdvertisedRefDuplicate {
+      ref_name: String,
+      first_index: Int,
+      second_index: Int,
+    }
+  | GitAdvertisedRefEmptyBranchProjection {
+      line_index: Int,
+      ref_name: String,
+    }
+
+type GitAdvertisedRefSeen {
+  ref_name: String
+  line_index: Int
+}
+
+type GitAdvertisedRefFold {
+  refs: List<GitAdvertisedRef>
+  index: Int
+  seen: List<GitAdvertisedRefSeen>
+  failed: Bool
+  outcome: GitAdvertisedRefDecodeOutcome
+}
+
+fn advertised_ref_branch_name(ref_name: String) -> String {
+  if starts_with(s: ref_name, prefix: advertised_ref_heads_prefix) {
+    substring(
+      s: ref_name,
+      start: advertised_ref_heads_prefix.length(),
+      end: ref_name.length(),
+    )
+  } else {
+    ref_name
+  }
+}
+
+type GitAdvertisedRefLineFields {
+  object_id_text: String
+  ref_name: String
+  field_count: Int
+}
+
+fn advertised_ref_line_field_step(acc: GitAdvertisedRefLineFields, part: String) -> GitAdvertisedRefLineFields {
+  if acc.field_count == 0 {
+    GitAdvertisedRefLineFields {
+      object_id_text: part,
+      ref_name: acc.ref_name,
+      field_count: 1,
+    }
+  } else if acc.field_count == 1 {
+    GitAdvertisedRefLineFields {
+      object_id_text: acc.object_id_text,
+      ref_name: part,
+      field_count: 2,
+    }
+  } else {
+    GitAdvertisedRefLineFields {
+      object_id_text: acc.object_id_text,
+      ref_name: acc.ref_name,
+      field_count: acc.field_count + 1,
+    }
+  }
+}
+
+type GitAdvertisedRefLineDecodeOutcome
+  = GitAdvertisedRefLineDecoded { row: GitAdvertisedRef }
+  | GitAdvertisedRefLineMalformed { line_index: Int, line: String }
+  | GitAdvertisedRefObjectIdRefused {
+      line_index: Int,
+      line: String,
+      cause: GitObjectIdTextRefusal,
+    }
+  | GitAdvertisedRefEmptyBranchProjection {
+      line_index: Int,
+      ref_name: String,
+    }
+
+fn git_decode_advertised_ref_line(
+  line: String,
+  line_index: Int,
+  format: GitObjectFormat,
+) -> GitAdvertisedRefLineDecodeOutcome {
+  let parts = split(s: line, delimiter: "\t")
+  let fields = fold(
+    parts,
+    init: GitAdvertisedRefLineFields {
+      object_id_text: "",
+      ref_name: "",
+      field_count: 0,
+    },
+    f: (acc, part) => advertised_ref_line_field_step(acc: acc, part: part),
+  )
+  if fields.field_count != 2 {
+    GitAdvertisedRefLineMalformed { line_index: line_index, line: line }
+  } else if fields.object_id_text == "" || fields.ref_name == "" {
+    GitAdvertisedRefLineMalformed { line_index: line_index, line: line }
+  } else if advertised_ref_branch_name(ref_name: fields.ref_name) == "" {
+    GitAdvertisedRefEmptyBranchProjection {
+      line_index: line_index,
+      ref_name: fields.ref_name,
+    }
+  } else {
+    match git_decode_object_id_text(format: format, text: fields.object_id_text) {
+      GitObjectIdTextRefused { cause } =>
+        GitAdvertisedRefObjectIdRefused {
+          line_index: line_index,
+          line: line,
+          cause: cause,
+        }
+      GitObjectIdTextDecoded { oid } =>
+        GitAdvertisedRefLineDecoded {
+          row: GitAdvertisedRef {
+            object_id: oid,
+            ref_name: fields.ref_name as NonEmptyStr,
+          },
+        }
+    }
+  }
+}
+
+fn git_advertised_ref_first_seen(
+  seen: List<GitAdvertisedRefSeen>,
+  ref_name: String,
+) -> GitAdvertisedRefSeen? {
+  filter(seen, row => row.ref_name == ref_name) |> first
+}
+
+fn git_advertised_ref_step(
+  acc: GitAdvertisedRefFold,
+  line: String,
+  format: GitObjectFormat,
+) -> GitAdvertisedRefFold {
+  if acc.failed {
+    acc
+  } else {
+    match git_decode_advertised_ref_line(line: line, line_index: acc.index, format: format) {
+      GitAdvertisedRefLineMalformed { line_index, line: bad } =>
+        GitAdvertisedRefFold {
+          refs: acc.refs,
+          index: acc.index + 1,
+          seen: acc.seen,
+          failed: true,
+          outcome: GitAdvertisedRefLineMalformed { line_index: line_index, line: bad },
+        }
+      GitAdvertisedRefObjectIdRefused { line_index, line: bad, cause } =>
+        GitAdvertisedRefFold {
+          refs: acc.refs,
+          index: acc.index + 1,
+          seen: acc.seen,
+          failed: true,
+          outcome: GitAdvertisedRefObjectIdRefused {
+            line_index: line_index,
+            line: bad,
+            cause: cause,
+          },
+        }
+      GitAdvertisedRefEmptyBranchProjection { line_index, ref_name } =>
+        GitAdvertisedRefFold {
+          refs: acc.refs,
+          index: acc.index + 1,
+          seen: acc.seen,
+          failed: true,
+          outcome: GitAdvertisedRefEmptyBranchProjection {
+            line_index: line_index,
+            ref_name: ref_name,
+          },
+        }
+      GitAdvertisedRefLineDecoded { row } =>
+        match git_advertised_ref_first_seen(seen: acc.seen, ref_name: row.ref_name as String) {
+          Present { value: prior } =>
+            GitAdvertisedRefFold {
+              refs: acc.refs,
+              index: acc.index + 1,
+              seen: acc.seen,
+              failed: true,
+              outcome: GitAdvertisedRefDuplicate {
+                ref_name: row.ref_name as String,
+                first_index: prior.line_index,
+                second_index: acc.index,
+              },
+            }
+          Absent =>
+            GitAdvertisedRefFold {
+              refs: acc.refs |> list_push(row),
+              index: acc.index + 1,
+              seen: acc.seen |> list_push(
+                GitAdvertisedRefSeen {
+                  ref_name: row.ref_name as String,
+                  line_index: acc.index,
+                },
+              ),
+              failed: false,
+              outcome: GitAdvertisedRefsDecoded { refs: [] },
+            }
+        }
+    }
+  }
+}
+
+fn git_decode_advertised_ref_lines(
+  lines: List<String>,
+  format: GitObjectFormat,
+) -> GitAdvertisedRefDecodeOutcome {
+  let folded = fold(
+    lines,
+    init: GitAdvertisedRefFold {
+      refs: [],
+      index: 0,
+      seen: [],
+      failed: false,
+      outcome: GitAdvertisedRefsDecoded { refs: [] },
+    },
+    f: (acc, line) => git_advertised_ref_step(acc: acc, line: line, format: format),
+  )
+  if folded.failed {
+    folded.outcome
+  } else {
+    GitAdvertisedRefsDecoded { refs: folded.refs }
+  }
+}
+
+fn git_decode_ls_remote_stdout_bytes(
+  stdout: Bytes,
+  format: GitObjectFormat,
+) -> GitAdvertisedRefDecodeOutcome {
+  git_decode_ls_remote_stdout(stdout: stdout as String, format: format)
+}
+
+fn git_decode_ls_remote_stdout(stdout: String, format: GitObjectFormat) -> GitAdvertisedRefDecodeOutcome {
+  git_decode_advertised_ref_lines(
+    lines: filter(split(s: stdout, delimiter: "\n"), line => line != ""),
+    format: format,
+  )
+}

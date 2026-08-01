@@ -1,52 +1,122 @@
 module gunbc.direct_process_observation
 
-import std.types { String, NonEmptyStr }
+import std.types { String, Int, NonEmptyStr, Bytes }
+import std.bytes { utf8_encode_bytes }
 
-type DirectProviderEventsObservation
-  = DirectProviderEventsObserved { content: String }
-  | DirectProviderEventsRefused { reason: NonEmptyStr }
+data direct_process_observation_note: String = "Minimum process observation shape for LocalProcess execution (v2.std.execution_mechanism.ExecutionMechanism.LocalProcess — classification lands in PR #7526; this module is the observation carrier, not the mechanism classifier). Completed versus spawn-refused versus wait-refused. Exited versus signaled versus timed-out versus killed. No precomputed success Bool. No minus-one sentinel for a missing exit code. Streams are retained as Bytes at this boundary; the operation names its decoder. Consumed first by gunbc.repository_remote_head."
 
-data direct_process_observation_note: String = "The substrate authority for reading attempt-owned provider evidence directly, without shelling out to a foreign projector. Complete Codex JSONL remains in provider-events.jsonl; observation reads that file through Filesystem.Read and hands the bytes to gunbc.roadmap_provider_events.parse_codex_jsonl, which enforces the CharacterCount line budget and anchored envelope classification in-process. This dissolves codex_provider_event_projection_filter and ProviderEventProjectionCapability (review 44058 scaffold; codex_projection_filter_scaffold_note) — the jq program existed only to bound a line before the substrate could read it, which is the purity trap DESIGN section 6 names once parse_codex_jsonl_with_line_budget landed. A read refusal is typed and located; it is never conflated with an empty event stream."
+type ProcessStreamBytes {
+  stdout: Bytes
+  stderr: Bytes
+}
 
-fn direct_provider_events_observation_readable(
-  observation: DirectProviderEventsObservation,
+type ProcessTermination
+  = ProcessExited { code: Int }
+  | ProcessSignaled { signal: Int }
+  | ProcessTimedOut
+  | ProcessKilled
+
+type DirectProcessObservation
+  = ProcessCompleted {
+      termination: ProcessTermination,
+      streams: ProcessStreamBytes,
+    }
+  | ProcessSpawnRefused { detail: NonEmptyStr }
+  | ProcessWaitRefused { detail: NonEmptyStr }
+
+type ObservedExitStatus
+  = ExitStatusCode { code: Int }
+  | ExitStatusSignaled { signal: Int }
+  | ExitStatusAbsent
+
+fn direct_process_observation_spawn_refused(detail: String) -> DirectProcessObservation {
+  ProcessSpawnRefused { detail: detail as NonEmptyStr }
+}
+
+fn direct_process_observation_wait_refused(detail: String) -> DirectProcessObservation {
+  ProcessWaitRefused { detail: detail as NonEmptyStr }
+}
+
+fn direct_process_termination_of(status: ObservedExitStatus) -> ProcessTermination {
+  match status {
+    ExitStatusCode { code } => ProcessExited { code: code }
+    ExitStatusSignaled { signal } => ProcessSignaled { signal: signal }
+    ExitStatusAbsent => ProcessKilled
+  }
+}
+
+fn direct_process_observation_completed(
+  status: ObservedExitStatus,
+  stdout: Bytes,
+  stderr: Bytes,
+) -> DirectProcessObservation {
+  ProcessCompleted {
+    termination: direct_process_termination_of(status: status),
+    streams: ProcessStreamBytes { stdout: stdout, stderr: stderr },
+  }
+}
+
+fn direct_process_observation_timed_out(
+  stdout: Bytes,
+  stderr: Bytes,
+) -> DirectProcessObservation {
+  ProcessCompleted {
+    termination: ProcessTimedOut,
+    streams: ProcessStreamBytes { stdout: stdout, stderr: stderr },
+  }
+}
+
+fn direct_process_observation_from_shell(
+  spawn_ok: Bool,
+  wait_ok: Bool,
+  timed_out: Bool,
+  exit_code: Int,
+  signaled: Bool,
+  signal: Int,
+  exit_code_present: Bool,
+  stdout: Bytes,
+  stderr: Bytes,
+  spawn_detail: String,
+  wait_detail: String,
+) -> DirectProcessObservation {
+  if !spawn_ok {
+    direct_process_observation_spawn_refused(detail: spawn_detail)
+  } else if !wait_ok {
+    direct_process_observation_wait_refused(detail: wait_detail)
+  } else if timed_out {
+    direct_process_observation_timed_out(stdout: stdout, stderr: stderr)
+  } else {
+    let status = if signaled {
+      ExitStatusSignaled { signal: signal }
+    } else if exit_code_present {
+      ExitStatusCode { code: exit_code }
+    } else {
+      ExitStatusAbsent
+    }
+    direct_process_observation_completed(
+      status: status,
+      stdout: stdout,
+      stderr: stderr,
+    )
+  }
+}
+
+fn direct_process_observation_stdout(
+  observation: DirectProcessObservation,
+) -> Bytes {
+  match observation {
+    ProcessCompleted { termination: _, streams } => streams.stdout
+    ProcessSpawnRefused { detail: _ } => utf8_encode_bytes(s: "")
+    ProcessWaitRefused { detail: _ } => utf8_encode_bytes(s: "")
+  }
+}
+
+fn direct_process_observation_completed_p(
+  observation: DirectProcessObservation,
 ) -> Bool {
   match observation {
-    DirectProviderEventsObserved { content: _ } => true
-    DirectProviderEventsRefused { reason: _ } => false
-  }
-}
-
-fn direct_provider_events_observation_content(
-  observation: DirectProviderEventsObservation,
-) -> String {
-  match observation {
-    DirectProviderEventsObserved { content } => content
-    DirectProviderEventsRefused { reason: _ } => ""
-  }
-}
-
-fn direct_provider_events_observation_error(
-  observation: DirectProviderEventsObservation,
-) -> String {
-  match observation {
-    DirectProviderEventsObserved { content: _ } => ""
-    DirectProviderEventsRefused { reason } => reason as String
-  }
-}
-
-fn observe_provider_events_file(path: String) -> DirectProviderEventsObservation {
-  let read = Filesystem.Read(path: path)
-  if read.success {
-    DirectProviderEventsObserved { content: read.content }
-  } else {
-    DirectProviderEventsRefused {
-      reason: join([
-        "provider event stream is unreadable at ",
-        path,
-        ": ",
-        read.error,
-      ], "") as NonEmptyStr,
-    }
+    ProcessCompleted { termination: _, streams: _ } => true
+    ProcessSpawnRefused { detail: _ } => false
+    ProcessWaitRefused { detail: _ } => false
   }
 }
