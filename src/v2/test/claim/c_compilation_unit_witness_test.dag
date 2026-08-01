@@ -61,11 +61,10 @@ data hostile_slash: CompilationUnitId = "a/b" as CompilationUnitId
 data hostile_backslash: CompilationUnitId = "a\\b" as CompilationUnitId
 data hostile_quote: CompilationUnitId = "a\"b" as CompilationUnitId
 data hostile_newline: CompilationUnitId = "a\nb" as CompilationUnitId
-data hostile_cr: CompilationUnitId = "a\u{000d}b" as CompilationUnitId
-data hostile_nul: CompilationUnitId = "a\u{0000}b" as CompilationUnitId
 data hostile_dot: CompilationUnitId = "." as CompilationUnitId
 data hostile_dotdot: CompilationUnitId = ".." as CompilationUnitId
 data hostile_percent: CompilationUnitId = "a%b" as CompilationUnitId
+data hostile_high_codepoint: CompilationUnitId = "aéb" as CompilationUnitId
 data collide_left: CompilationUnitId = "a/b" as CompilationUnitId
 data collide_right: CompilationUnitId = "a%00002fb" as CompilationUnitId
 data witness_unit_a: CompilationUnitId = "cu-a" as CompilationUnitId
@@ -484,13 +483,7 @@ test fn witness_c_basename_encodes_newline() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_newline) as String) == "a%00000ab"
 }
 
-test fn witness_c_basename_encodes_carriage_return() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00000db"
-}
 
-test fn witness_c_basename_encodes_nul() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%000000b"
-}
 
 test fn witness_c_basename_kills_parent_directory_segments() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_dot) as String) == "%00002e"
@@ -528,34 +521,16 @@ test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
     && c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
 }
 
-test fn probe_cr_literal_backslash() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00005crb"
-}
 
-test fn probe_cr_len() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_cr) as String).length() == 9
-}
 
-test fn probe_nul_literal_backslash() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%00005cu%0000007b0000%00007db"
-}
 
-test fn probe_nul_len() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 9
-}
 
-test fn probe_nul_len1() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 1
-}
 
-test fn probe_nul_len8() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 8
-}
 
-fn probe_cr_value() -> String {
-  c_translation_unit_basename(unit_id: hostile_cr) as String
-}
 
-fn probe_nul_value() -> String {
-  c_translation_unit_basename(unit_id: hostile_nul) as String
+
+data c_spelling_control_expressibility_note: String = "Coverage boundary for the hostile-spelling controls, stated rather than faked. The review asked for controls over slash, backslash, CR, LF, NUL and double-quote. Slash, backslash, LF, double-quote, the parent-directory segments, the percent escape-marker and a non-ASCII high codepoint are all directly witnessed above. CR and NUL are NOT, because they cannot be written as .dag string literals at all: the string lexer supports backslash-n, backslash-quote and backslash-backslash, but backslash-r is not an escape (it lexes as literal backslash then r, measured) and the backslash-u brace form is not an escape either (measured: a backslash-u{000d}b literal encodes to a%00005cu%00007b000d%00007db, i.e. the raw characters). This is a coverage gap in the CONTROLS, not in the encoder: c_basename_char_allowed is a WHITELIST with a single generic escape branch, so CR and NUL take the exact code path LF and the high codepoint already exercise — there is no per-codepoint arm that could diverge. The witnessed high-codepoint case is the discriminating evidence for that genericity, since it is neither ASCII nor a named escape. dissolve-on: when .dag string literals gain a numeric-escape form, add the direct CR and NUL rows here and delete this note."
+
+test fn witness_c_basename_escape_branch_is_codepoint_generic() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_high_codepoint) as String) == "a%0000e9b"
 }
