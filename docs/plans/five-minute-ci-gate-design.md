@@ -16,16 +16,18 @@ rung or wall-clock field.
 
 **Native witness execution — settled at small scale (#7599, open PR).** The
 program no longer debates whether moving semantic execution out of the
-interpreter works. **BANKED** executing slice (#7599): modeled `SelectedWitnessPlan`,
-content-addressed bundle identity, one-process direct calls, cold/warm receipts,
-interpreter equivalence per member, swapped-body divergence control, typed
-refusals (stale compiler identity, missing native realization, missing red
-evidence, invalid process counts, fallback use). **Open question (operational):**
-how rapidly can the production selected set migrate onto that native execution
-kind while keeping equivalence, fallback, artifact identity, and memory
-fail-closed? Next major CI slice after #7599 merges: **bounded production
-witness cutover** to the native execution kind (dispatched to the #7599 owner) —
-not another broad interpreted-path optimization.
+interpreter works. **In-flight executing slice** (#7599, head
+`2f9e780e6`): modeled `SelectedWitnessPlan`, content-addressed bundle identity,
+one-process direct calls, cold/warm receipts, interpreter equivalence per
+member, swapped-body divergence control, typed refusals (stale compiler identity,
+missing native realization, missing red evidence, invalid process counts, fallback
+use). Dispositive at small scale per branch witness receipts; **banking trigger =
+#7599 merge to main**. **Open question (operational):** how rapidly can the
+production selected set migrate onto that native execution kind while keeping
+equivalence, fallback, artifact identity, and memory fail-closed? Next major CI
+slice after #7599 merges: **bounded production witness cutover** to the native
+execution kind (dispatched to the #7599 owner) — not another broad interpreted-path
+optimization.
 
 **Interpreter endgame (linked, not duplicated):** moving `cli_run`/interpreter
 helpers to `.dag` improves authority but does **not** make CI fast while the
@@ -42,7 +44,7 @@ Registered as roadmap edges where noted; order is binding for dispatch.
 | step | work | disposition |
 |---|---|---|
 | 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **NEXT** — probable net recovery ~1–1.5 min (not ~3 min); final-head run decides |
-| 2 | Merge **#7599** once controls and reviews clear | **BANKED** slice on open PR |
+| 2 | Merge **#7599** once controls and reviews clear | **in-flight** — banking trigger = merge |
 | 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **NEXT** — #7599 owner; first major CI slice after merge |
 | 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **NEXT** under `module-grain-materialization` |
 | 5 | Union program **closed** per #7533; remaining assembly observation → `per-entry-assembly-decomposition` (narrow measured lane) | **CLOSED** / **NEXT** |
@@ -64,7 +66,7 @@ Roadmap edges encoding sequence: `native-selected-witness-bundle` →
 | id | role |
 |---|---|
 | `warm-merge-admission` | Stamp and admit merges from warm receipts — fold resolve/materialization receipt gates into merge admission. **NEXT:** #7522 in flight. |
-| `native-selected-witness-bundle` | **BANKED:** #7599 executing slice (plan, bundle identity, native one-process calls, interpreter oracle). **NEXT:** production cutover of bounded selected-witness population onto native execution kind. |
+| `native-selected-witness-bundle` | **in-flight:** #7599 executing slice (plan, bundle identity, native one-process calls, interpreter oracle; banking trigger = merge). **NEXT:** production cutover of bounded selected-witness population onto native execution kind. |
 | `module-grain-materialization` | Shared materialization substrate (#7534 continues). Hierarchy above; no default CI savings until ordinary invocations consume hits. **First rung:** exact-tree (#7534, opt-in). |
 | `pre-index-materialization-lookup` | Warm manifest lookup before corpus-scale index construction — serve/dashboard path. |
 | `phased-single-process-ci` | Regen, floor, and admission share one initialized substrate with separate verdict stamps. |
