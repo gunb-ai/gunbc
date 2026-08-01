@@ -83,6 +83,14 @@ fn all_green_requirements() -> List<DashboardMergeCriteriaRequirement> {
   ]
 }
 
+fn witness_approval_providers(approvals: Int) -> List<NonEmptyStr> {
+  if approvals == 2 {
+    ["codex" as NonEmptyStr, "claude" as NonEmptyStr]
+  } else {
+    []
+  }
+}
+
 fn criteria(
   ready: Bool,
   approvals: Int,
@@ -98,11 +106,7 @@ fn criteria(
     head_sha: witness_head,
     required_approval_count: 2,
     approval_count: approvals,
-    approval_providers: if approvals == 2 {
-      ["codex" as NonEmptyStr, "claude" as NonEmptyStr]
-    } else {
-      [] as List<NonEmptyStr>
-    },
+    approval_providers: witness_approval_providers(approvals: approvals),
     request_changes_count: count(request_changes),
     request_change_providers: request_changes,
     stale_provider_count: count(stale),
