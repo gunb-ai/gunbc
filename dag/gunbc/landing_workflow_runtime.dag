@@ -55,9 +55,9 @@ type LandingReviewArtifactObservation
   = LandingReviewArtifactObserved { body: String }
   | LandingReviewArtifactObserveRefused { reason: String }
 
-fn landing_dashboard_base_url() -> String? {
+fn landing_dashboard_base_url() -> session_dashboard.DashboardBaseUrl? {
   match shell.Env.Get(name: landing_dashboard_url_env).value {
-    Present { value } => if value == "" { none } else { Present { value: value } }
+    Present { value } => session_dashboard.dashboard_base_url(raw: value)
     Absent => none
   }
 }
@@ -79,32 +79,42 @@ fn landing_unique_tracked_prs(rows: List<LandingPullRequestProjection>) -> List<
     if tracked_has_pr(tracked: acc, number: pr.pr_number) { acc } else { append(acc, items: [pr]) })
 }
 
-fn landing_reviews_url(base: String, pr_number: Int) -> NonEmptyStr {
-  join([base, "/api/reviews/pr?repo=", gunbc_landing_repo as String, "&pr=", to_string(pr_number)], "") as NonEmptyStr
+fn landing_reviews_path(pr_number: Int) -> session_dashboard.DashboardRelativePath? {
+  session_dashboard.dashboard_relative_path(raw: join([
+    "/api/reviews/pr?repo=", gunbc_landing_repo as String, "&pr=", to_string(pr_number),
+  ], ""))
 }
 
-fn landing_decision_observe(base: String, pr: LandingPullRequestProjection) -> LandingDecision {
-  let got = session_dashboard.Api.Get(url: landing_reviews_url(base: base, pr_number: pr.pr_number))
-  if !got.success {
-    LandingObservationRefused { pull_request: pr, reason: "dashboard reviews summary GET failed" }
-  } else {
-    match landing_summary_decode(body: got.body) {
-      LandingSummaryDecodeRefused { issues } => LandingObservationRefused {
-        pull_request: pr,
-        reason: concat("dashboard reviews summary decode refused: ", landing_issues_text(issues: issues)),
+fn landing_decision_observe(
+  base: session_dashboard.DashboardBaseUrl,
+  pr: LandingPullRequestProjection,
+) -> LandingDecision {
+  match landing_reviews_path(pr_number: pr.pr_number) {
+    Absent => LandingObservationRefused { pull_request: pr, reason: "dashboard reviews path construction refused" }
+    Present { value: path } => {
+      let got = session_dashboard.Api.GetFromDashboard(base: base, path: path)
+      if !got.success {
+        LandingObservationRefused { pull_request: pr, reason: "dashboard reviews summary GET failed" }
+      } else {
+        match landing_summary_decode(body: got.body) {
+          LandingSummaryDecodeRefused { issues } => LandingObservationRefused {
+            pull_request: pr,
+            reason: concat("dashboard reviews summary decode refused: ", landing_issues_text(issues: issues)),
+          }
+          LandingSummaryRead { criteria, artifacts } => project_landing_decision(
+            pr: pr,
+            criteria: criteria,
+            review_artifacts: map(artifacts, artifact => LandingReviewArtifactProjection {
+              artifact_id: artifact.artifact_id,
+              provider: artifact.provider,
+              reviewed_head: artifact.reviewed_head,
+              verdict: artifact.verdict,
+              artifact_url: concat("/landing/review/", to_string(artifact.artifact_id)) as NonEmptyStr,
+            }),
+            actor_authority: srv1_tailnet_operator_authority,
+          )
+        }
       }
-      LandingSummaryRead { criteria, artifacts } => project_landing_decision(
-        pr: pr,
-        criteria: criteria,
-        review_artifacts: map(artifacts, artifact => LandingReviewArtifactProjection {
-          artifact_id: artifact.artifact_id,
-          provider: artifact.provider,
-          reviewed_head: artifact.reviewed_head,
-          verdict: artifact.verdict,
-          artifact_url: concat("/landing/review/", to_string(artifact.artifact_id)) as NonEmptyStr,
-        }),
-        actor_authority: srv1_tailnet_operator_authority,
-      )
     }
   }
 }
@@ -113,13 +123,18 @@ fn landing_review_artifact_observe(artifact_id: Int) -> LandingReviewArtifactObs
   match landing_dashboard_base_url() {
     Absent => LandingReviewArtifactObserveRefused { reason: "DASHBOARD_URL is absent or empty" }
     Present { value: base } => {
-      let got = session_dashboard.Api.Get(url: join([
-        base, "/api/reviews/", to_string(artifact_id), "/artifacts/stdout.log",
-      ], "") as NonEmptyStr)
-      if got.success {
-        LandingReviewArtifactObserved { body: got.body }
-      } else {
-        LandingReviewArtifactObserveRefused { reason: concat("dashboard review artifact GET failed: ", got.stderr) }
+      match session_dashboard.dashboard_relative_path(raw: join([
+        "/api/reviews/", to_string(artifact_id), "/artifacts/stdout.log",
+      ], "")) {
+        Absent => LandingReviewArtifactObserveRefused { reason: "dashboard review artifact path construction refused" }
+        Present { value: path } => {
+          let got = session_dashboard.Api.GetFromDashboard(base: base, path: path)
+          if got.success {
+            LandingReviewArtifactObserved { body: got.body }
+          } else {
+            LandingReviewArtifactObserveRefused { reason: concat("dashboard review artifact GET failed: ", got.stderr) }
+          }
+        }
       }
     }
   }
@@ -143,11 +158,13 @@ fn landing_queue_observe() -> LandingQueueObservation {
   match landing_dashboard_base_url() {
     Absent => LandingQueueObserveRefused { reason: "DASHBOARD_URL is absent or empty" }
     Present { value: base } => {
-      let sessions = session_dashboard.Api.Get(url: concat(base, "/api/sessions") as NonEmptyStr)
-      if !sessions.success {
-        LandingQueueObserveRefused { reason: "dashboard sessions GET failed" }
-      } else {
-        match landing_tracked_population_decode(body: sessions.body, repo_name: gunbc_landing_repo as String) {
+      match session_dashboard.dashboard_relative_path(raw: "/api/sessions") {
+        Absent => LandingQueueObserveRefused { reason: "dashboard sessions path construction refused" }
+        Present { value: sessions_path } => {
+          let sessions = session_dashboard.Api.GetFromDashboard(base: base, path: sessions_path)
+          if !sessions.success {
+            LandingQueueObserveRefused { reason: "dashboard sessions GET failed" }
+          } else match landing_tracked_population_decode(body: sessions.body, repo_name: gunbc_landing_repo as String) {
           LandingTrackedPopulationRefused { issues } => LandingQueueObserveRefused {
             reason: concat("dashboard tracked population decode refused: ", landing_issues_text(issues: issues)),
           }
@@ -171,6 +188,7 @@ fn landing_queue_observe() -> LandingQueueObservation {
               }
             }
           }
+          }
         }
       }
     }
@@ -185,7 +203,7 @@ fn landing_find_decision(projection: LandingQueueProjection, pr_number: Int) -> 
     LandingBlocked { pull_request, criteria: _, blockers: _, evidence: _ } => pull_request.pr_number == pr_number
     LandingSummaryDiverged { pull_request, criteria: _, projected_blocker_count: _, reason: _ } => pull_request.pr_number == pr_number
     LandingObservationRefused { pull_request, reason: _ } => pull_request.pr_number == pr_number
-    LandingAtDecisionBoundary { admission } => admission.pull_request.pr_number == pr_number
+    LandingAtDecisionBoundary { admission: _ } => false
   })
   let found = concat(ready, blocked)
   list_at_optional(xs: found, index: 0)
