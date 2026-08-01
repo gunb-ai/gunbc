@@ -7438,7 +7438,7 @@ pub fn call_locals_shadow_note() -> String {
 pub fn peel_alias_fixpoint_guard_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess is the judgment-producing caller and must carry those diagnostics. Record-literal field discovery, variant membership, and emit shaping are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier.".to_string()
+            "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -7856,10 +7856,10 @@ pub fn expand_type_for_field_access(
     )
 }
 
-pub fn record_lit_alias_struct_fields(
+pub fn record_lit_alias_struct_expansion(
     type_name: String,
     scope: Rc<InferScope>,
-) -> Option<Rc<Vec<Rc<Node>>>> {
+) -> Option<Rc<NodeResolveResult>> {
     match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
         Some(decl) => {
             let to_expand = if (((decl.connective.clone() == Connective::NoConnective)
@@ -7873,20 +7873,11 @@ pub fn record_lit_alias_struct_fields(
             } else {
                 decl.clone()
             };
-            let expanded = expand_type_for_field_access(
+            Some(expand_type_for_field_access(
                 to_expand.clone(),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
-            )
-            .resolved
-            .clone();
-            if ((expanded.connective.clone() == Connective::Conj)
-                && ((expanded.children.clone().len() as i64) > 0))
-            {
-                Some(expanded.children.clone())
-            } else {
-                None
-            }
+            ))
         }
         None => None,
     }
@@ -8009,30 +8000,63 @@ pub fn infer_record_lit(
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
-        let struct_fields = match type_name.clone() {
-            Some(tn) => match record_lit_instantiated_fields(
-                type_name.clone(),
-                expected.clone(),
-                scope.clone(),
-            ) {
-                Some(fields) => fields.clone(),
-                None => match record_lit_fields_from_expected(
+        let instantiated_struct_fields =
+            record_lit_instantiated_fields(type_name.clone(), expected.clone(), scope.clone());
+        let expected_struct_fields = if (instantiated_struct_fields.clone() == None) {
+            record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
+        } else {
+            None
+        };
+        let expected_variant_node = if ((instantiated_struct_fields.clone() == None)
+            && (expected_struct_fields.clone() == None))
+        {
+            match type_name.clone() {
+                Some(_) => record_lit_variant_from_expected(
                     type_name.clone(),
                     expected.clone(),
                     scope.clone(),
-                ) {
+                ),
+                None => None,
+            }
+        } else {
+            None
+        };
+        let alias_struct_expansion = match type_name.clone() {
+            Some(tn) => {
+                if ((((instantiated_struct_fields.clone() == None)
+                    && (expected_struct_fields.clone() == None))
+                    && (expected_variant_node.clone() == None))
+                    && (expected.clone() == None))
+                {
+                    record_lit_alias_struct_expansion(tn.clone(), scope.clone())
+                } else {
+                    None
+                }
+            }
+            None => None,
+        };
+        let struct_fields = match type_name.clone() {
+            Some(_) => match instantiated_struct_fields.clone() {
+                Some(fields) => fields.clone(),
+                None => match expected_struct_fields.clone() {
                     Some(fields) => fields.clone(),
-                    None => match record_lit_variant_from_expected(
-                        type_name.clone(),
-                        expected.clone(),
-                        scope.clone(),
-                    ) {
+                    None => match expected_variant_node.clone() {
                         Some(variant_node) => variant_node.children.clone(),
                         None => match expected.clone() {
                             Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
-                            None => match record_lit_alias_struct_fields(tn.clone(), scope.clone())
-                            {
-                                Some(fields) => fields.clone(),
+                            None => match alias_struct_expansion.clone() {
+                                Some(expansion) => {
+                                    if ((expansion.resolved.clone().connective.clone()
+                                        == Connective::Conj)
+                                        && ((expansion.resolved.clone().children.clone().len()
+                                            as i64)
+                                            > 0))
+                                    {
+                                        expansion.resolved.clone().children.clone()
+                                    } else {
+                                        record_lit_expected_fields(type_name.clone(), scope.clone())
+                                    }
+                                }
                                 None => {
                                     record_lit_expected_fields(type_name.clone(), scope.clone())
                                 }
@@ -8041,21 +8065,17 @@ pub fn infer_record_lit(
                     },
                 },
             },
-            None => match record_lit_instantiated_fields(
-                type_name.clone(),
-                expected.clone(),
-                scope.clone(),
-            ) {
+            None => match instantiated_struct_fields.clone() {
                 Some(fields) => fields.clone(),
-                None => match record_lit_fields_from_expected(
-                    type_name.clone(),
-                    expected.clone(),
-                    scope.clone(),
-                ) {
+                None => match expected_struct_fields.clone() {
                     Some(fields) => fields.clone(),
                     None => record_lit_expected_fields(type_name.clone(), scope.clone()),
                 },
             },
+        };
+        let alias_struct_diags = match alias_struct_expansion.clone() {
+            Some(expansion) => expansion.diagnostics.clone(),
+            None => Rc::new(vec![]),
         };
         let construction_field_names = match type_name.clone() {
             Some(tn) => record_lit_construction_field_names(tn.clone(), scope.clone()),
@@ -8447,7 +8467,7 @@ pub fn infer_record_lit(
                 );
                 Rc::new(InferResult {
                     typed: texpr.clone(),
-                    diagnostics: fi_diags.clone(),
+                    diagnostics: v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
                 })
             }
         } else {
@@ -8611,7 +8631,10 @@ pub fn infer_record_lit(
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(fi_diags.clone(), type_diags.clone()),
+                                v1_rt::concat(
+                                    v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                                    type_diags.clone(),
+                                ),
                                 sole_ctor_diags.clone(),
                             ),
                             missing_field_diags.clone(),
