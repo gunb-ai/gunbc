@@ -41,9 +41,9 @@ test fn witness_checked_in_screenshots_match_receipts() -> Bool {
 
 test fn witness_byte_count_verification_preserves_nonmatching_arms() -> Bool {
   verify_file_byte_count(
-    read: FileByteCountObserved { bytes: byte_size(3) },
+    read: FileByteCountObserved { count: 3 },
     expected: byte_size(4)) == FileByteCountDiffers {
-      observed: byte_size(3),
+      observed_count: 3,
       expected: byte_size(4),
     }
     && verify_file_byte_count(

@@ -1,7 +1,7 @@
 module extdeps.tools.wc
 
 import std.types { FilePath, String, NonEmptyStr }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -45,13 +45,13 @@ service wc.ByteCount {
 }
 
 type FileByteCountRead
-  = FileByteCountObserved { bytes: ByteSize }
+  = FileByteCountObserved { count: Int }
   | FileByteCountUnavailable { reason: NonEmptyStr }
 
 type FileByteCountVerification
   = FileByteCountMatches
   | FileByteCountDiffers {
-      observed: ByteSize,
+      observed_count: Int,
       expected: ByteSize,
     }
   | FileByteCountVerificationUnavailable { reason: NonEmptyStr }
@@ -65,7 +65,7 @@ fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
       Present { value: n } => if n < 0 {
         FileByteCountUnavailable { reason: "wc returned a negative byte count" as NonEmptyStr }
       } else {
-        FileByteCountObserved { bytes: byte_size(n as Nat) }
+        FileByteCountObserved { count: n }
       }
       Absent => FileByteCountUnavailable { reason: "wc byte count was not an integer" as NonEmptyStr }
     }
@@ -74,10 +74,10 @@ fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
 
 fn verify_file_byte_count(read: FileByteCountRead, expected: ByteSize) -> FileByteCountVerification {
   match read {
-    FileByteCountObserved { bytes } => if bytes == expected {
+    FileByteCountObserved { count } => if count == byte_size_count(expected) {
       FileByteCountMatches
     } else {
-      FileByteCountDiffers { observed: bytes, expected: expected }
+      FileByteCountDiffers { observed_count: count, expected: expected }
     }
     FileByteCountUnavailable { reason } => FileByteCountVerificationUnavailable { reason: reason }
   }
