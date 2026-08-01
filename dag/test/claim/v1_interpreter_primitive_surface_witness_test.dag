@@ -2,6 +2,7 @@ module test.claim.v1_interpreter_primitive_surface_witness_test
 
 import gunbc.v1_interpreter_primitive_surface {
   DerivedFromDispatch,
+  DeclaredHere,
   FreeCall,
   InterpreterPrimitiveArmId,
   InterpreterPrimitiveDispatchArm,
@@ -13,8 +14,10 @@ import gunbc.v1_interpreter_primitive_surface {
   form_is_unknown,
   shadowed_spellings,
   v1_interpreter_cross_form_spellings,
+  v1_interpreter_declared_arms,
   v1_interpreter_derived_arms,
   v1_interpreter_free_call_arms,
+  v1_interpreter_method_call_arms,
   v1_interpreter_primitive_arms,
   v1_interpreter_unknown_form_arms,
 }
@@ -43,6 +46,16 @@ test fn every_derived_site_contributes_rows() -> Bool {
     "try_parse_table_memo_dispatch",
   ]
   symbols |> all(s => v1_interpreter_derived_arms() |> any(r => r.dispatch_symbol == s))
+}
+
+test fn method_rows_are_derived_rather_than_transcribed() -> Bool {
+  let rows = v1_interpreter_method_call_arms() |> filter(r => r.dispatch_symbol == "eval_algebra_method_inner")
+  rows |> all(r => r.enumeration == DerivedFromDispatch)
+}
+
+test fn v4_bridge_rows_are_derived_rather_than_transcribed() -> Bool {
+  let rows = v1_interpreter_derived_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == FreeCall)
+  rows |> all(r => r.enumeration == DerivedFromDispatch)
 }
 
 test fn alias_spellings_share_one_arm_identity() -> Bool {
@@ -119,6 +132,21 @@ test fn no_live_row_carries_an_undecodable_form() -> Bool {
 
 test fn an_unrecognised_form_label_refuses_rather_than_defaulting() -> Bool {
   form_is_unknown(form: decode_dispatch_form(label: "NotAFormLabel")) && !form_is_unknown(form: decode_dispatch_form(label: "FreeCall"))
+}
+
+test fn every_declared_row_names_its_own_dissolution_trigger() -> Bool {
+  v1_interpreter_declared_arms() |> all(r =>
+    match r.enumeration {
+      DeclaredHere { dissolve_on } => length(dissolve_on) > 0
+      DerivedFromDispatch => false
+    })
+}
+
+test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
+  let expected = ["eval_method_call", "eval_service_call"]
+  let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
+  count(actual |> filter(s => !expected |> any(e => e == s))) == 0
+    && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
 }
 
 data witness_control_pairing_note: String = "THE CONTROLS ARE PAIRS AND NEITHER HALF IS OPTIONAL. Each detector here has a discriminating RED and a positive control, because a detector that always answered clean would pass every live-corpus witness and establish nothing, and a detector that refused legitimate structure would be refusing the language rather than the defect. shadow_detector_catches_a_planted_duplicate is paired with shadow_detector_admits_a_real_alias_pair -- two spellings under ONE arm identity is a legitimate alias, which is exactly why length, count and size cannot disagree. duplicate_detector_catches_a_row_repeated_under_one_identity is paired with duplicate_detector_admits_one_spelling_at_two_distinct_sites -- one spelling reached at two different dispatch symbols is the real structure of map_insert and lookup, not a defect. an_unrecognised_form_label_refuses_rather_than_defaulting asserts BOTH directions so that a decode which answered UnknownForm for everything would fail. The live witnesses execute against DERIVED rows projected from the interpreter's own dispatch tokens, so they read the tree rather than a transcript of it."
