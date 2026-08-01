@@ -4,7 +4,8 @@ module v2.test.claim.lean_bit_width_admissibility_witness
 import v2.extdeps.languages.lean {
   lean_admit_bit_width,
   LeanBitWidthAccepted,
-  LeanBitWidthRefused
+  LeanBitWidthRefused,
+  LeanAdmittedBitWidth
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -12,17 +13,21 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): BitWidth admission is LeanBitWidthAdmission; FixedIntScalar carries only LeanAdmittedBitWidth via LeanFixedWidth (128 cannot reach width projection). RED: lean_admit_bit_width(128) is Refused with the genuine width pinned."
+data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): LeanAdmittedBitWidth carries grounded BitWidth; lean_admit_bit_width is the admission boundary (Accepted | Refused). Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: lean_admit_bit_width(128) is Refused with the genuine width pinned."
 
 test fn lean_admit_accepts_catalog_fixed_widths() -> Bool {
   match lean_admit_bit_width(width: bit_width(count: 8)) {
-    LeanBitWidthAccepted { width: _ } =>
+    LeanBitWidthAccepted { width: w8 } =>
       match lean_admit_bit_width(width: bit_width(count: 16)) {
-        LeanBitWidthAccepted { width: _ } =>
+        LeanBitWidthAccepted { width: w16 } =>
           match lean_admit_bit_width(width: bit_width(count: 32)) {
-            LeanBitWidthAccepted { width: _ } =>
+            LeanBitWidthAccepted { width: w32 } =>
               match lean_admit_bit_width(width: bit_width(count: 64)) {
-                LeanBitWidthAccepted { width: _ } => true
+                LeanBitWidthAccepted { width: w64 } =>
+                  bit_width_count(w8.width) == 8 &&
+                    bit_width_count(w16.width) == 16 &&
+                    bit_width_count(w32.width) == 32 &&
+                    bit_width_count(w64.width) == 64
                 LeanBitWidthRefused { width: _ } => false
               }
             LeanBitWidthRefused { width: _ } => false
