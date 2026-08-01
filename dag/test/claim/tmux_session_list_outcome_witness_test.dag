@@ -135,6 +135,26 @@ test fn witness_truncated_stdout_refuses_not_empty_listed() -> Bool {
   }
 }
 
+test fn witness_corrupted_windows_token_refuses() -> Bool {
+  match parse_tmux_ls_output(output: "gunbc-dispatch-a: 1 corrupted windows\n") {
+    TmuxLsParsed { entries: _ } => false
+    TmuxLsParseRefused { line_number, raw, reason } =>
+      line_number == 1
+        && string_contains(s: raw, pattern: "corrupted")
+        && string_contains(s: reason, pattern: "positive_int")
+  }
+}
+
+test fn witness_negative_window_count_refuses() -> Bool {
+  match parse_tmux_ls_output(output: "gunbc-dispatch-a: -1 windows\n") {
+    TmuxLsParsed { entries: _ } => false
+    TmuxLsParseRefused { line_number, raw, reason } =>
+      line_number == 1
+        && string_contains(s: raw, pattern: "-1")
+        && string_contains(s: reason, pattern: "positive_int")
+  }
+}
+
 test fn witness_attempt_panes_parse_alive_and_exit() -> Bool {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t0\t\tnode\ngunbc-dispatch-b\t1\t7\tnode\n",
