@@ -153,10 +153,10 @@ unless the row says otherwise, and `Unknown` is the honest default.
 | Call shape (labels/count) | **floor landed at the direct-call seam** (unknown label + surplus positional refuse, blocking; was: misspelled label binds positionally, silent) | R3 (exact bijection in normalized IR) | formal-driven walk; `ArityMismatch` is constructor-grain; `direct_call_shape_diags` runs exemption-free (labels have no representation gap) | `direct_call_shape_diags` beside `direct_call_arg_mismatch_diags` | remaining: duplicate/missing (interpreter-first), method seam, sig-unresolved fallthrough |
 | Return conformance | **UnknownUnmeasured** (compile admission proven; runtime disposition and silent paths unmeasured) | R3 (body edge inhabits Arrow codomain) | no general judgment | #7481 | return-position checking |
 | `data` annotation | **UnknownUnmeasured** (same basis) | R3 | same lane | #7481 | same lane |
-| Generic instantiation | **UnknownUnmeasured** (same basis) | R2 | substitution unproven | #7481 | inhabitance at instantiation |
-| Field through generics | **UnknownUnmeasured** (same basis) | R2 (pending-constraint discharge) | `field_of_type_var` minted | §4 | constraint carried + unique discharge |
-| Closed-match exhaustiveness | below-floor candidate / **UnknownUnmeasured** (compile silence proven; runtime unmeasured) | R3 (full arm population at elimination) | `PatternLookupBlocked => []` | §4 | `ExhaustivenessUnknown` refuses |
-| Record completeness | **Unknown — unmeasured** | R3 | not audited this pass | — | audit probe |
+| Generic instantiation | **Below floor — silent** (measured 2026-08-01: `type Boxed<T> { inner: T }` constructed as `Boxed { inner: "not an int" }` at declared return `Boxed<Int>` compiles with zero diagnostics of any severity) | R2 | substitution unproven | ladder-probe-corpus probe pair, v1 CompileAccept | inhabitance at instantiation |
+| Field through generics | **Below floor — silent** (measured 2026-08-01: `fn get_field<T>(t: T) -> Int { t.no_such_field }` compiles with zero diagnostics — `field_of_type_var` fabricates rather than refusing or carrying a constraint) | R2 (pending-constraint discharge) | `field_of_type_var` minted | ladder-probe-corpus probe pair, v1 CompileAccept | constraint carried + unique discharge |
+| Closed-match exhaustiveness | **Path-split, measured 2026-08-01 — the class is not one rung.** Coproduct-typed scrutinee: **R2** (a missing arm on a declared closed variant refuses `NonExhaustiveMatch`, blocking, naming the absent variant). Type-variable scrutinee: **below floor — silent** (`fn pick<T>(t: T) -> Int { match t { Red => 1 } }` compiles with zero diagnostics — one arm, an unconstrained subject, and a variant belonging to an unrelated type). Class rung is the minimum, so **below floor** | R3 (full arm population at elimination) | the silent arm is `PatternDynamic { span: _ } => []`, **not** `PatternLookupBlocked => []` as this row previously said — `pattern_subject_from_node` reaches `PatternLookupBlocked` only when the scrutinee's inferred type `is_compiler_error`, i.e. where a diagnostic already exists, so that arm is not the silent one and its silence is **not** established by these probes | ladder-probe-corpus probe pair, v1 CompileAccept | `ExhaustivenessUnknown` refuses on the dynamic subject |
+| Record completeness | **R2 measured 2026-08-01** (a record literal omitting a declared required field refuses `MissingField`, blocking, naming the field and type — the class was carried as `Unknown — unmeasured` and the measurement raises it) | R3 | judgment is per-literal; construction-side and generic-instantiation completeness are separate and the latter measures **below floor** in the row above | ladder-probe-corpus probe pair, v1 CompileAccept | required-field construction at every construction form |
 | Parse: list separator dropped | **Below floor — silent** (measured: `[ {a}, {b}  {c} ]` compiles with zero diagnostics — a dropped comma is a silent semantic change, two- vs three-element list; survived regen, whole-corpus compile, fixed-point verify and a 15-case matrix, caught only by a human diff read) | R3 (decidable grammar fact) | separator omission parses as element juxtaposition | tidy-deer-730 probe on gunbc#7484 + review 45347, 2026-07-31 | probe pair in the corpus; refusal in the list production (§11 item 6) |
 | Producer/consumer cardinality | **UnknownUnmeasured** (typed-rejection vs silent-degeneration split unmeasured) | R3 (seam unwritable) | forgeable carrier; no signature propagation (`sole_constructor` audit pending) | §4b | Stage-3 vertical slice |
 
@@ -700,6 +700,38 @@ reconciliation PR itself): the extended activation's first cut was one requires-
 whose prose promised class-by-class widening — recut as four per-class admission nodes
 plus a terminal roster-completeness certification (§12 Stage 6b carries the shape).
 
+**Floor-class probe measurement + the observation surface it required (2026-08-01, eighth pass
+— `ladder-probe-corpus`, all by execution).** THE SURFACE, and why it was not optional: the only
+`.dag`-callable v1 compile was `compile_dag_rust_emit_check`, which counts diagnostics passing
+`compile_clean_diagnostic_is_hard` and answers `false` when that count is nonzero — so class
+identity, severity, and every advisory were discarded inside the host. That is not merely a
+weaker probe, it is three specific losses measured against the tests Stage 1a migrates: a probe
+refusing for *any* hard reason (a typo in the probe source included) reads as the wall firing;
+demoting a landed wall from blocking to advisory turns its RED silently GREEN, because the
+filter **is** the severity predicate; and a positive control cannot state
+zero-diagnostics-of-any-severity, the assertion review 45357 added after an advisory
+`MethodExistenceUndecided` passed unnoticed as a green control. Structurally it is worse than a
+fidelity preference: Stage 0's `RefusedTyped` and `AcceptedCounted` both carry a diagnostic class
+and a count, so **the Stage-0 vocabulary was uninhabitable on every v1 path** until a
+class-and-count surface existed. `compile_dag_diagnostic_census` is that surface (operator-amended
+scope, 2026-08-01) — one measurement-only builtin projecting `compile_clean_diagnostic_histogram_key`
+and the existing severity delegation, filtering nothing, with a typed `CensusNotRunnable` arm kept
+distinct from an empty census so could-not-measure never reads as the subject passing. THE
+MEASUREMENT, six floor classes as probe pairs (deliberately-bad input + legitimate control, v1
+pipeline → Rust target, synthetic single module): **four are below floor and silent** — generic
+instantiation, field-through-generics, the dropped list separator (reproducing tidy-deer-730's
+specimen independently), and closed-match exhaustiveness *on a type-variable scrutinee*; **two
+refuse** — record completeness (`MissingField`, blocking) and closed-match exhaustiveness on a
+coproduct-typed scrutinee (`NonExhaustiveMatch`, blocking). Every control compiles clean, so the
+harness is discriminating rather than uniformly refusing. TWO §1c ROWS CORRECTED BY THIS RUN, both
+in the direction the census's own `Unknown` default protects against: record completeness was
+carried as unmeasured and measures **R2**; and closed-match exhaustiveness is **not one rung** —
+it splits by scrutinee path, and the row's attribution of the silence to `PatternLookupBlocked =>
+[]` is wrong on the carrier, since `pattern_subject_from_node` reaches that arm only where the
+scrutinee's inferred type `is_compiler_error` (a diagnostic already exists). The silent arm is
+`PatternDynamic { span: _ } => []`. `PatternLookupBlocked`'s own silence remains **unestablished**
+— no probe here reproduced it, and it is not asserted as though one had.
+
 ## 11. Audit queue
 
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
@@ -752,7 +784,13 @@ plus a terminal roster-completeness certification (§12 Stage 6b carries the sha
    as exactly one of: migrated into an active `.dag` probe · kept and re-enrolled in an
    active Rust gate · superseded by stronger active coverage · deleted as genuinely
    redundant. "All guarantee probes moved" must never be read as "the suite is safe to
-   delete."
+   delete." **Prerequisite discharged (2026-08-01):** migration was blocked on something the
+   ruling did not name — the `.dag` side could observe only *that* a synthetic compile refused,
+   never *which* judgment fired, whether it blocked, or how many times, so every `ct_*` wall RED
+   would have lost its class and severity assertions on the way across. `compile_dag_diagnostic_census`
+   (§10 eighth pass) closes that; the per-test disposition ledger this item calls for opens with
+   the first migrated pair, and each row names the executing `.dag` probe that replaced the Rust
+   assert rather than merely recording that the Rust test was removed.
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 

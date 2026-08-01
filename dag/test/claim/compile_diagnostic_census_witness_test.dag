@@ -1,0 +1,63 @@
+module test.claim.compile_diagnostic_census_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows,
+  census_blocking_rows,
+  census_advisory_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, NonEmptyStr, Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data census_live_tree_note: String = "ReadsLiveTree, and the divergence from the sibling is deliberate. compile_dag_diagnostic_census resolves the synthetic source against build_module_path_index_from_witness_roots, which walks the live tree - so the read is real. dag/test/claim/transport_script_wall_compile_red_test.dag declares SubstrateInputsOnly while calling compile_dag_rust_emit_check, which takes the SAME host path; that row is either a latent mis-declaration or a judgment that the index is substrate, and the falsifier cadence is what would surface it either way. This file does not copy the claim it cannot verify: undeclared is ReadsLiveTree by the fail-closed default and the honest declaration costs only selection-eligibility."
+
+data census_scope_note: String = "WHAT THESE WITNESSES PROVE, and what they do not. They prove the observation SURFACE reports the three facts a Bool discards - which class fired, whether it blocks, and how many times - on the v1-pipeline / Rust-target / synthetic-single-module path, and that a clean source is distinguishable from a refusing one so the harness is not always-refusing. They prove NOTHING about the walls themselves: a wall's own regression control is its migrated probe pair, not this file. ONE HALF IS DELIBERATELY UNWITNESSED AND SAID SO RATHER THAN FAKED: blocking is carried as data in both directions structurally, but only blocking=true has a live specimen here. An ADVISORY specimen cannot be conjured from a synthetic source today - the reachable non-blocking arm is the #7484 method-existence frontier admission, and that PR's own witness records why it checks admission against the declared frontier rows instead of a synthetic source: the residual receiver shapes are upstream resolution defects that cannot be produced on demand. Probes were attempted (a where-refinement alias, an unlisted-import shape, an unresolved method on a bare type parameter) and each either compiled silent or refused BLOCKING, so none of them is an advisory and none is asserted here as though it were. Dissolve-on: the first reproducible advisory specimen - most likely the frontier admission once receiver normalization lands - becomes this file's advisory row and the AcceptedCounted probe path gets its executing evidence. They also do not prove the host EMITS CensusNotRunnable on a real infrastructural failure - the last witness asserts only that the coproduct keeps the two arms distinct, which is the property that lets a caller map could-not-measure to ProbeNotRunnable without guessing; provoking a genuine host panic on demand is not something a synthetic source can do, and asserting it as though it were measured would be the fabrication this corpus exists to count."
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+data mislabeled_call_source: String = "module census_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
+
+data clean_call_source: String = "module census_clean\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, b: 3) }\n"
+
+data twice_mislabeled_call_source: String = "module census_mislabel_twice\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\nfn g() -> Int { sub(a: 1, cc: 2) }\n"
+
+test fn census_names_the_class_that_fired() -> Bool {
+  let rows = census_rows_of_class(c: census_of(source: mislabeled_call_source), wanted: "CallArgumentNameUnknown")
+  census_total_count(rows: rows) >= 1
+}
+
+test fn census_reports_blocking_severity_as_data() -> Bool {
+  let c = census_of(source: mislabeled_call_source)
+  let blocking = census_blocking_rows(c: c) |> filter(r => (r.diagnostic_class as String) == "CallArgumentNameUnknown")
+  census_total_count(rows: blocking) >= 1
+}
+
+test fn census_clean_source_observes_zero_rows() -> Bool {
+  match census_of(source: clean_call_source) {
+    CensusObserved { rows: rows } => count(rows) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn census_counts_occurrences_not_merely_presence() -> Bool {
+  let one = census_total_count(rows: census_rows_of_class(c: census_of(source: mislabeled_call_source), wanted: "CallArgumentNameUnknown"))
+  let two = census_total_count(rows: census_rows_of_class(c: census_of(source: twice_mislabeled_call_source), wanted: "CallArgumentNameUnknown"))
+  two > one
+}
+
+test fn census_not_runnable_is_not_an_empty_observation() -> Bool {
+  let not_runnable = CensusNotRunnable { cause: "synthetic could-not-measure" as NonEmptyStr }
+  let empty_observed = CensusObserved { rows: [] }
+  count(census_rows(c: not_runnable)) == 0
+    && count(census_rows(c: empty_observed)) == 0
+    && not_runnable != empty_observed
+}

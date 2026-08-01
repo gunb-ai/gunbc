@@ -6122,6 +6122,43 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
     }
 }
 
+/// Projects a host diagnostic census into the `gunbc.compile_diagnostic_census` coproduct.
+/// The two arms stay distinct all the way to the substrate — `CensusNotRunnable` must never
+/// arrive as `CensusObserved` with an empty row list, because that is byte-identical to a clean
+/// compile and would let could-not-measure read as the subject passing (DESIGN §5).
+fn compile_diagnostic_census_value(
+    census: crate::cli_run::CompileDiagnosticCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::CompileDiagnosticCensus::Observed(rows) => Value::Variant {
+            type_name: ctx.sym("CompileDiagnosticCensus"),
+            variant_name: ctx.sym("CensusObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("rows"),
+                list_value(
+                    rows.into_iter()
+                        .map(|r| Value::Record {
+                            type_name: ctx.sym("CompileDiagnosticCensusRow"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (ctx.sym("diagnostic_class"), Value::Str(r.diagnostic_class)),
+                                (ctx.sym("subject_name"), Value::Str(r.subject_name)),
+                                (ctx.sym("blocking"), Value::Bool(r.blocking)),
+                                (ctx.sym("count"), Value::Int(r.count)),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+        crate::cli_run::CompileDiagnosticCensus::NotRunnable(cause) => Value::Variant {
+            type_name: ctx.sym("CompileDiagnosticCensus"),
+            variant_name: ctx.sym("CensusNotRunnable"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
+        },
+    }
+}
+
 fn argv_materialization_value(
     result: Result<Vec<String>, ArgvRefusalCause>,
     path: &str,
@@ -10166,6 +10203,14 @@ fn eval_builtin_inner(
                 crate::cli_run::compile_dag_rust_emit_check(
                     &source, &file_path, &includes, &excludes,
                 ),
+            )))
+        }
+
+        "compile_dag_diagnostic_census" => {
+            let source = expect_str(positional.first().copied(), name)?;
+            Ok(Some(compile_diagnostic_census_value(
+                crate::cli_run::compile_dag_diagnostic_census(&source),
+                ctx,
             )))
         }
 
