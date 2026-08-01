@@ -730,6 +730,8 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: false,
     validation_receipt: "",
+    publication_receipt_readable: false,
+    publication_receipt: "",
   })
 }
 
@@ -767,6 +769,8 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       validation_summary: "gunbc run --claim-run",
       validation_receipt_readable: false,
       validation_receipt: "",
+      publication_receipt_readable: false,
+      publication_receipt: "",
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>

@@ -47,6 +47,16 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_state_key,
 }
 import gunbc.workflow_reconcile { workflow_reconcile_status_key }
+import gunbc.roadmap_publish {
+  publication_receipt_json,
+  adjudicate_publication,
+  PullRequestsRead, PullRequestsUnreadable,
+  RemoteBranchesRead,
+  RemoteBranch,
+}
+import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
+import extdeps.github.github { GitHubUser, User }
+import std.types { String, Int, CommitSha }
 
 fn fixture_evidence(
   events: String,
@@ -68,6 +78,8 @@ fn fixture_evidence(
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: false,
     validation_receipt: "",
+    publication_receipt_readable: false,
+    publication_receipt: "",
   }
 }
 
@@ -306,9 +318,12 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     validation_summary: base.validation_summary,
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
+    publication_receipt_readable: base.publication_receipt_readable,
+    publication_receipt: base.publication_receipt,
   }
   let progress = workflow_attempt_progress(evidence: forged)
-  !(segment_state(progress.segments, "env") == "complete")
+  segment_state(progress.segments, "environment") != "" 
+    && segment_state(progress.segments, "environment") != "complete"
 }
 
 test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
@@ -332,6 +347,8 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     validation_summary: base.validation_summary,
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
+    publication_receipt_readable: base.publication_receipt_readable,
+    publication_receipt: base.publication_receipt,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -357,6 +374,8 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     validation_summary: "",
     validation_receipt_readable: false,
     validation_receipt: "",
+    publication_receipt_readable: false,
+    publication_receipt: "",
   })
   match progress.provider {
     ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
@@ -388,6 +407,8 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     validation_summary: base.validation_summary,
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
+    publication_receipt_readable: base.publication_receipt_readable,
+    publication_receipt: base.publication_receipt,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
@@ -446,4 +467,94 @@ test fn roadmap_workflow_progress_keystone_holds() -> Bool {
     && readable_but_invalid_admission_receipt_refuses_progress()
     && workflow_json_exposes_segment_and_provider_facts()
     && failed_or_refused_stage_is_visible_without_decoding_border_style()
+}
+
+data publication_projection_witness_note: String = "The Publication segment used to be a CONSTANT - WorkflowSegmentPending with a fixed sentence, returned whatever had happened. These claims are what make its replacement real rather than merely different: the same projection must answer differently for a branch published at the head under judgment, a branch whose pull request has moved on, a branch nobody pushed, and a receipt that will not decode.\\n\\nThe discriminating one is publication_at_the_expected_head_completes_where_the_old_constant_could_not. Under the constant that input produced `pending`, and it is the exact state the whole exact-head thesis exists to distinguish - so it is the claim that would have been impossible to write before this change and would go red if the arm regressed to a constant."
+
+data pub_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe"
+data pub_other: CommitSha = "d00dd00dd00dd00dd00dd00dd00dd00dd00dd00d"
+
+fn pub_pull(sha: CommitSha) -> PullRequest {
+  PullRequest {
+    number: 7552,
+    title: "publication slice",
+    body: none,
+    state: Open,
+    html_url: "https://github.com/gunb-ai/gunbc/pull/7552" as NonEmptyStr,
+    user: GitHubUser { login: "someone", id: 1, type: User },
+    head: PullRequestRef {
+      ref: "dispatch/node-1-afeedfacefeedface",
+      sha: sha,
+      label: "head",
+    },
+    base: PullRequestRef { ref: "main", sha: pub_other, label: "base" },
+    created_at: "2026-08-01T00:00:00Z",
+    updated_at: "2026-08-01T00:00:00Z",
+    merged_at: none,
+    draft: false,
+  }
+}
+
+fn pub_receipt(pull_sha: CommitSha) -> String {
+  publication_receipt_json(
+    outcome: adjudicate_publication(
+      pulls: PullRequestsRead { pulls: [pub_pull(sha: pull_sha)] },
+      remotes: RemoteBranchesRead { branches: [] },
+      remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+      branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+      expected_base: "main" as NonEmptyStr,
+      expected_head: pub_head,
+    ),
+    repository: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+    branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+    expected_head: pub_head,
+  )
+}
+
+fn publication_state_with(readable: Bool, receipt: String) -> String {
+  let base = fixture_evidence(events: "", process: WorkerProcessAbsent)
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    validation_receipt_readable: base.validation_receipt_readable,
+    validation_receipt: base.validation_receipt,
+    publication_receipt_readable: readable,
+    publication_receipt: receipt,
+  })
+  segment_state(progress.segments, "publish")
+}
+
+test fn publication_at_the_expected_head_completes_where_the_old_constant_could_not() -> Bool {
+  publication_state_with(readable: true, receipt: pub_receipt(pull_sha: pub_head)) == "complete"
+}
+
+test fn publication_at_another_head_fails_rather_than_reading_as_progress() -> Bool {
+  publication_state_with(readable: true, receipt: pub_receipt(pull_sha: pub_other)) == "failed"
+}
+
+test fn an_absent_publication_receipt_is_pending_not_a_judgment() -> Bool {
+  publication_state_with(readable: false, receipt: "") == "pending"
+}
+
+test fn an_undecodable_publication_receipt_refuses_rather_than_pending() -> Bool {
+  let refused = publication_state_with(readable: true, receipt: "not a receipt")
+  refused == "refused" && refused != "pending"
+}
+
+test fn the_three_publication_readings_are_distinct_states() -> Bool {
+  let bound = publication_state_with(readable: true, receipt: pub_receipt(pull_sha: pub_head))
+  let moved = publication_state_with(readable: true, receipt: pub_receipt(pull_sha: pub_other))
+  let absent = publication_state_with(readable: false, receipt: "")
+  bound != moved && moved != absent && bound != absent
 }

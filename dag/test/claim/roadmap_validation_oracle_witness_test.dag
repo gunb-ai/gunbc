@@ -664,6 +664,8 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: receipt != "",
     validation_receipt: receipt,
+    publication_receipt_readable: false,
+    publication_receipt: "",
   }
 }
 

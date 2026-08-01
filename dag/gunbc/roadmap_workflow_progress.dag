@@ -73,7 +73,12 @@ import gunbc.roadmap_validation_oracle {
   ValidationReceiptDecoded,
   ValidationReceiptUndecodable,
   validation_receipt_decode,
-
+}
+import gunbc.roadmap_publish {
+  PublicationReceiptDecode,
+  PublicationReceiptDecoded,
+  PublicationReceiptUndecodable,
+  publication_receipt_decode,
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
@@ -310,6 +315,67 @@ fn provider_workflow_segment(
 }
 
 data verification_segment_receipt_note: String = "Verify moves on ITS OWN receipt and on nothing else. The lamp used to be hardcoded pending, which was honest while no producer existed but stopped being honest the moment one did. What it must never become is a projection of the Agent obligation: a provider that completed has produced a diff, not a verified one, and painting Verify from provider completion would fabricate the very fact the receipt exists to establish. So the receipt's ABSENCE is still pending — the same answer as before — and only a decodable receipt moves the lamp. The three verdicts land on three different segment states because they mean three different things to whoever reads the row: a pass satisfies the obligation, a failure is the subject's problem, and a refusal is the mechanism declining to answer, which is not a red and must not be shown as one. An undecodable document is refused rather than ignored, because a receipt this reader cannot decode at the attempt's own path is a fact about that attempt, not an absence."
+
+data publication_segment_reads_a_receipt_note: String = "THIS ARM WAS A CONSTANT, AND THAT IS THE DEFECT IT REPLACES. It returned WorkflowSegmentPending with a fixed sentence no matter what had happened, so a row whose branch was published at exactly the head under judgment looked identical to one nobody had pushed. A constant cannot be wrong about a particular attempt because it is not about any attempt - which also means it can never become right.\\n\\nPENDING IS NOW TWO DIFFERENT STATES AND THEY SAY SO. No receipt on disk means publication has not been adjudicated yet; that is an ABSENT OBSERVATION and the detail says so. A receipt that decodes to an outcome is a JUDGMENT, and the eight outcomes map onto segment states rather than collapsing to done/not-done. Reading them as one pending was the state-space conflation the old constant hid.\\n\\nA RECEIPT THAT WILL NOT DECODE REFUSES, it does not fall back to pending. Pending means nothing has been established; undecodable means something was written and this projection cannot read it, which is a different problem with a different remedy. Painting the second as the first is the absorbing fallback in miniature - the failure would be indistinguishable from ordinary progress and nothing would ever count it."
+
+fn publication_segment_state_for(outcome_key: String) -> WorkflowSegmentState {
+  if outcome_key == "publication-bound" {
+    WorkflowSegmentComplete
+  } else if outcome_key == "publication-head-diverged" {
+    WorkflowSegmentFailed
+  } else if outcome_key == "remote-branch-head-diverged" {
+    WorkflowSegmentFailed
+  } else if outcome_key == "branch-not-published" {
+    WorkflowSegmentPending
+  } else if outcome_key == "remote-branch-at-expected-head-without-pull-request" {
+    WorkflowSegmentPending
+  } else if outcome_key == "publication-binding-ambiguous" {
+    WorkflowSegmentRefused
+  } else if outcome_key == "remote-branch-binding-ambiguous" {
+    WorkflowSegmentRefused
+  } else if outcome_key == "publication-observation-refused" {
+    WorkflowSegmentRefused
+  } else {
+    WorkflowSegmentRefused
+  }
+}
+
+fn publication_receipt_segment(receipt: String) -> WorkflowSegment {
+  match publication_receipt_decode(receipt: receipt) {
+    PublicationReceiptUndecodable { reason } =>
+      WorkflowSegment {
+        kind: PublicationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: reason,
+      }
+    PublicationReceiptDecoded {
+      outcome_key, detail, repository, branch, expected_head,
+    } =>
+      WorkflowSegment {
+        kind: PublicationWorkflowSegment,
+        state: publication_segment_state_for(outcome_key: outcome_key),
+        detail: join([
+          detail,
+          " (", branch, " at ", expected_head, " in ", repository, ")",
+        ], ""),
+      }
+  }
+}
+
+fn publication_segment(
+  publication_receipt_readable: Bool,
+  publication_receipt: String,
+) -> WorkflowSegment {
+  if publication_receipt_readable && trim(publication_receipt) != "" {
+    publication_receipt_segment(receipt: publication_receipt)
+  } else {
+    WorkflowSegment {
+      kind: PublicationWorkflowSegment,
+      state: WorkflowSegmentPending,
+      detail: "publication has not been adjudicated for this attempt: no receipt exists yet. This is an absent observation, not a judgment that the branch is unpublished",
+    }
+  }
+}
 
 fn verification_receipt_segment(receipt: String) -> WorkflowSegment {
   match validation_receipt_decode(receipt: receipt) {

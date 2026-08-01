@@ -50,6 +50,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_current_attempt_oracle_revision_path_for_instance,
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_current_attempt_validation_receipt_path_for_instance,
+  dispatch_current_attempt_publication_receipt_path_for_instance,
   dispatch_worktree_path_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
@@ -1915,6 +1916,8 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       validation_receipt_readable: false,
       validation_receipt: "",
+      publication_receipt_readable: false,
+      publication_receipt: "",
     })
   } else {
     let current_key = trim(key_read.content)
@@ -1937,6 +1940,12 @@ fn belt_workflow_progress_for_attempt_ref(
     )
     let validation_receipt = Filesystem.Read(
       path: dispatch_current_attempt_validation_receipt_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ),
+    )
+    let publication_receipt = Filesystem.Read(
+      path: dispatch_current_attempt_publication_receipt_path_for_instance(
         instance: instance,
         node_id: node_id,
       ),
@@ -1972,6 +1981,8 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       validation_receipt_readable: validation_receipt.success,
       validation_receipt: validation_receipt.content,
+      publication_receipt_readable: publication_receipt.success,
+      publication_receipt: publication_receipt.content,
     })
   }
 }
