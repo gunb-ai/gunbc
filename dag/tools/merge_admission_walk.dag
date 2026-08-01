@@ -43,6 +43,8 @@ data merge_admission_checkout_ancestry_note: String = "The tested base is captur
 
 data merge_admission_pr_number_deferred_note: String = "MergeAdmissionReceiptV2.pr_number is optional and is not an admission key: attempt, head, base tree, roster, and conclusion are the complete classifier inputs. The retired cold stamp process parsed GITHUB_EVENT_PATH through retained jq shell solely to populate this display field. The warm path deliberately writes Absent rather than carry that shell transport into the runtime-present claim. dissolve-on: a typed GitHub event payload projection supplies the optional number; admission behavior is unchanged because no verdict arm reads it."
 
+data merge_admission_current_main_cold_baseline_note: String = "CURRENT-MAIN BEFORE RECEIPT (not the stale pre-unification estimate): GitHub Actions run 30671526012, job 91291716818, head ddbc5fd6aa, 2026-07-31. The cold stamp process occupied 94.26s from the floor group's final receipt at 23:28:39.602Z through ExitSuccess at 23:30:13.861Z. The separate gate step occupied 102.87s from its step start at 23:30:16.977Z through ExitSuccess at 23:31:59.849Z. Combined merge-admission cold-process wall was therefore 197.13s per PR on that current-main receipt. The after number must come from this PR's own on-success receipt; no projected saving is asserted here."
+
 fn env_var(name: NonEmptyStr) -> String? {
   let env = shell.Env.Get(name: name)
   match env.value {
