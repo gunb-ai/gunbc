@@ -637,7 +637,7 @@ fn floor_discovery_sidecar_refusal_reason(
 fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryProducerResult {
   if state.walk_failures > 0 {
     FloorDiscoveryRefused {
-      reason: floor_discovery_walk_failure_refusal_reason(path: state.walk_failure_path)
+      reason: floor_discovery_walk_failure_refusal_reason(path_opt: state.walk_failure_path)
     }
   } else {
     match state.disposition_refusal {

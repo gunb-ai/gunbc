@@ -27,7 +27,7 @@ fn is_import_slot_node(n: Node) -> Bool {
 fn is_module_shell_node(n: Node) -> Bool {
   n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
     && n.transport == none && n.uses |> count == 0
-    && n.params |> all(p => is_import_slot_node(p: p))
+    && n.params |> all(p => is_import_slot_node(n: p))
 }
 
 fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
@@ -60,9 +60,9 @@ fn dag_node_key(node: Node) -> String {
     concat(":0..0:", dag_node_surface_fingerprint_memo(node: anchor))
   } else {
     concat(
-      anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+      anchor.span.file, ":", to_string(value: anchor.span.start), "..", to_string(value: anchor.span.end),
       match anchor.ident {
-        Present { value: id } => concat(":", to_string(i: id))
+        Present { value: id } => concat(":", to_string(value: id))
         Absent => ""
       })
   }
