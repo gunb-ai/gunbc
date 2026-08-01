@@ -4,6 +4,11 @@
 use self::FuncSigLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
+use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
+pub use crate::v1_compiler_infer_occurrence_binding::{
+    ambiguity_labels_from_decide, module_path_owner_binding_decide,
+};
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -114,7 +119,7 @@ pub struct ParentSigScan {
 pub fn func_sig_lookup_outcome_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the Ambiguous arm is unreachable (first-hit preserved verbatim); under the default NamespaceOnlyY policy exactly-one match across the flat parent closure resolves, two-plus refuses. Own-module local hit stays first on both arms: the killed class is the pick among >=2 PARENT matches (the census's fn_parent_first_hit definition), not own-decl precedence. Analysis-only consumers (provenance/descent enrichment) project through func_sig_if_resolved in infer_lookup — they never fabricate a bind; the semantic bind sites in 04_infer match the full outcome and emit the typed AmbiguousReference.".to_string()
+            "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -159,27 +164,19 @@ pub fn lookup_resolved_sig_unique_across_parents(
                 None => acc.clone(),
             },
         );
-        let owner_count = (scan.owners.clone().len() as i64);
-        if (owner_count.clone() == 0) {
-            Rc::new(FuncSigLookup::FuncSigUnresolved)
-        } else {
-            if (owner_count.clone() == 1) {
+        match (*module_path_owner_binding_decide(scan.owners.clone())).clone() {
+            ModulePathBindingProjection::ModulePathBindingMiss => {
+                Rc::new(FuncSigLookup::FuncSigUnresolved)
+            }
+            ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => {
                 match scan.first_sig.clone() {
                     Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
                     None => Rc::new(FuncSigLookup::FuncSigUnresolved),
                 }
-            } else {
+            }
+            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
                 Rc::new(FuncSigLookup::FuncSigAmbiguous {
-                    candidates: Rc::new({
-                        let mut __result = Vec::new();
-                        for o in scan.owners.clone().iter().cloned() {
-                            __result.push(v1_rt::concat(
-                                v1_rt::concat(o.clone(), ".".to_string()),
-                                name.clone(),
-                            ));
-                        }
-                        __result
-                    }),
+                    candidates: ambiguity_labels_from_decide(scan.owners.clone(), name.clone()),
                 })
             }
         }

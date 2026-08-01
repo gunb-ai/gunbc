@@ -4,8 +4,12 @@ import std.realization {
   RunnableDiscoveryBatch,
 }
 import v2.workflow.ci_floor_plan {
-  gunbc_falsifier_batches,
-  gunbc_ci_floor_batches,
+  gunbc_falsifier_ordinary_batches,
+  gunbc_ci_floor_ordinary_batches,
+  gunbc_ci_floor_plan,
+  gunbc_ci_regen_floor_plan,
+  gunbc_ci_plan_artifact_plan,
+  gunbc_falsifier_plan,
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
   corpus_witness_entries, execution_witness_entries,
@@ -61,7 +65,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries,
   falsifier_self_host_wet_known_red_batch_enrolled
 }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -69,6 +73,8 @@ import std.realization_schedule {
   ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
 }
+import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared }
+import gunbc.ci_materialization { FloorFinalization, ci_floor_declared_resolve_count }
 import std.execution_mode { Hermetic, Wet, execution_mode_eq }
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
@@ -175,7 +181,7 @@ fn batch_index_of(batches: List<List<Runnable>>, target: String) -> Int {
 }
 
 fn witness_live_floor_discovery_tracks_optin_roster() -> Bool {
-  let live_count = schedule_discovery_batch_count(batches: gunbc_ci_floor_batches())
+  let live_count = schedule_discovery_batch_count(batches: gunbc_ci_floor_ordinary_batches())
   if length(xs: gunbc_ci_spec.witness_entries) == 0 && length(xs: gunbc_ci_spec.discovery_scan_dirs) == 0 {
     live_count == 0
   } else {
@@ -184,7 +190,7 @@ fn witness_live_floor_discovery_tracks_optin_roster() -> Bool {
 }
 
 fn witness_cheap_gates_precede_compile_root() -> Bool {
-  let batches = gunbc_ci_floor_batches()
+  let batches = gunbc_ci_floor_ordinary_batches()
   let compile_idx = batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes")
   (compile_idx == 1)
     && floor_batch_has_any_cheap_gate(batch: batches.first())
@@ -192,20 +198,21 @@ fn witness_cheap_gates_precede_compile_root() -> Bool {
 }
 
 fn witness_cheap_gate_membership_declared() -> Bool {
-  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 3)
+  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 4)
     && gate_in_cheap_floor_membership(g: CheapClaimPoolGate)
     && gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
     && gate_in_cheap_floor_membership(g: GeneratedArtifactDriftGate)
+    && gate_in_cheap_floor_membership(g: ExtdepsScopePlacementGate)
     && !gate_in_cheap_floor_membership(g: DagCompileCleanGate)
 }
 
 fn witness_corpus_not_before_compile() -> Bool {
-  let batches = gunbc_ci_floor_batches()
+  let batches = gunbc_ci_floor_ordinary_batches()
   !list_contains_str(xs: batch_functions(b: batches.first()), target: corpus_sentinel)
 }
 
 fn witness_independent_jobs_parallelize() -> Bool {
-  fold(gunbc_ci_floor_batches().skip(n: 2), init: false, f: fn(found_parallel, batch) {
+  fold(gunbc_ci_floor_ordinary_batches().skip(n: 2), init: false, f: fn(found_parallel, batch) {
     found_parallel || (length(xs: batch) > 1)
   })
 }
@@ -358,7 +365,7 @@ fn discovery_batch_declares_hermetic(r: Runnable) -> Bool {
 fn witness_hermetic_floor_posture_declared() -> Bool {
   discovery_batch_declares_hermetic(r: corpus_runnable_for(spec: gunbc_ci_spec))
     && !discovery_batch_declares_hermetic(r: execution_corpus_runnable_for(spec: gunbc_ci_spec))
-    && discovery_batch_declares_hermetic(r: gunbc_falsifier_batches().first().first())
+    && discovery_batch_declares_hermetic(r: gunbc_falsifier_ordinary_batches().first().first())
 }
 
 test fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
@@ -515,7 +522,7 @@ fn falsifier_cadence_witness_batch_holds(r: Runnable) -> Bool {
 }
 
 fn falsifier_plan_structure_holds() -> Bool {
-  let batches = gunbc_falsifier_batches()
+  let batches = gunbc_falsifier_ordinary_batches()
   let predict_ok = (batches.first().length() == 1)
     && falsifier_predict_only_batch_holds(r: batches.first().first())
   let wet_enrolled = falsifier_self_host_wet_batch_enrolled()
@@ -642,4 +649,58 @@ test fn ci_corpus_discovery_flip_witnesses() -> Bool {
     && witness_floor_discovery_flip_gates_isolated_from_corpus()
     && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
+}
+
+data floor_finalization_witness_note: String = "THESE ROWS ARE THE ENFORCEMENT, and that is a correction to what was expected. The review that asked for finalization witnesses expected the parameterized WalkPlan<F> to do the work by construction — the floor's return type rejecting the empty policy — leaving these rows as secondary evidence. Probed by execution: it does not. Substituting NoFinalizationDeclared \{\} into gunbc_ci_floor_plan while its signature still reads WalkPlan<FloorFinalization> typechecks and fails only at the first field access, because the typechecker does not check a declared return type against the body (a narrower probe: `fn f() -> Int \{ \"not an int\" \}` also typechecks, while argument position IS checked). So the signature declares intent and the row below is what actually refuses. std.realization_schedule walk_finalization_note carries the finding and its dissolve-on.
+
+ONE property is genuinely not witnessable: materialization disclosure is intrinsic to FloorFinalization, so there is no Bool to assert.
+
+The three no-finalization rows below WERE briefly omitted as tautologies, and that reasoning was wrong (review 2026-07-30, corrected). It assumed the declared return type bounds the runtime value. The probe above shows it does not: a function declared `-> WalkPlan<NoWalkFinalization>` can return a record carrying FloorFinalization, and a caller reading the signature would never know. Matching the ACTUAL value is therefore load-bearing, not a match over a one-inhabitant type — the inhabitant set at runtime is not one. Their mutation control is to substitute FloorFinalization into each body while leaving the signature unchanged; each corresponding row must red.
+
+What IS falsifiable is WHICH count the floor projects: any Nat typechecks, so the row below asserts it projects the single authority gunbc.ci_materialization.ci_floor_declared_resolve_count, and the RED control forks that count by one and proves the same predicate refuses. Both execute."
+
+fn floor_plan_declared_resolve_count() -> Int {
+  gunbc_ci_floor_plan().finalization.declared_resolve_count
+}
+
+fn plan_declares_authority_count(p: WalkPlan<FloorFinalization>) -> Bool {
+  p.finalization.declared_resolve_count == ci_floor_declared_resolve_count
+}
+
+fn forked_count_floor_plan() -> WalkPlan<FloorFinalization> {
+  WalkPlan {
+    batches: gunbc_ci_floor_ordinary_batches(),
+    finalization: FloorFinalization {
+      declared_resolve_count: ci_floor_declared_resolve_count + 1,
+    },
+    on_success_stages: [],
+  }
+}
+
+test fn floor_plan_projects_the_declared_resolve_count_authority() -> Bool {
+  plan_declares_authority_count(p: gunbc_ci_floor_plan())
+    && floor_plan_declared_resolve_count() == ci_floor_declared_resolve_count
+}
+
+test fn forked_declared_count_is_refused_by_the_same_predicate() -> Bool {
+  !plan_declares_authority_count(p: forked_count_floor_plan())
+}
+
+fn plan_carries_no_finalization(plan: WalkPlan<NoWalkFinalization>) -> Bool {
+  match plan.finalization {
+    NoFinalizationDeclared => true
+    _ => false
+  }
+}
+
+test fn regen_plan_carries_no_finalization() -> Bool {
+  plan_carries_no_finalization(plan: gunbc_ci_regen_floor_plan())
+}
+
+test fn plan_artifact_plan_carries_no_finalization() -> Bool {
+  plan_carries_no_finalization(plan: gunbc_ci_plan_artifact_plan())
+}
+
+test fn falsifier_plan_carries_no_finalization() -> Bool {
+  plan_carries_no_finalization(plan: gunbc_falsifier_plan())
 }

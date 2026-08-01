@@ -3,14 +3,18 @@ module tools.merge_admission_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { GitRef }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission {
   current_gate_roster_hash,
   classify_merge_admission_verdict,
+  merge_admission_verdict_label,
   MergeAdmissionVerdict,
   MergeDeniedStaleBase,
   MergeDeniedStaleRoster,
   MergeDeniedNotSuccess,
+  MergeDeniedWrongAttempt,
+  MergeDeniedSubjectMismatch,
   MergeAdmitted,
 }
 import gunbc.merge_admission_produce {
@@ -24,17 +28,8 @@ import gunbc.merge_admission_produce {
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
 
-fn verdict_reason(v: MergeAdmissionVerdict) -> String {
-  match v {
-    MergeAdmitted => "admitted"
-    MergeDeniedStaleBase => "stale base tree — re-run CI against current main"
-    MergeDeniedStaleRoster => "stale gate roster — re-run CI after criteria change"
-    MergeDeniedNotSuccess => "receipt conclusion is not success"
-  }
-}
-
 func main() -> ProcessExit {
-  let root = git.Core.Toplevel().path as String
+  let root = git.Inspect.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let read = Filesystem.Read(path: path)
   if !read.success {
@@ -72,7 +67,7 @@ func main() -> ProcessExit {
             exit_failure(
               reason: concat(
                 "merge_admission_gate: blocked (",
-                concat(verdict_reason(v: verdict), ")")
+                concat(merge_admission_verdict_label(v: verdict), ")")
               )
             )
           } else {

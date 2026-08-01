@@ -1,7 +1,8 @@
 module test.claim.dispatch_stop_witness
 
+import extdeps.tmux { TmuxLsEntry }
 import gunbc.roadmap_dispatch_actuator {
-  TmuxSessionScope, TmuxLsEntry, TmuxPaneEntry,
+  TmuxSessionScope, TmuxPaneEntry,
   parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
   tmux_session_observation_with_panes, dispatch_tmux_session_scope,
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
@@ -155,23 +156,28 @@ test fn stop_wire_statuses_discriminate() -> Bool {
 
 test fn stop_client_carries_the_chip() -> Bool {
   let js = dispatch_client_js_source()
-  return string_contains(s: js, pattern: "'process-chip'")
-    && string_contains(s: js, pattern: "'cleanup-chip'")
+  return string_contains(s: js, pattern: "'cleanup-chip'")
+    && string_contains(s: js, pattern: "session-facts")
     && string_contains(s: js, pattern: "'/cleanup/' + sess.node_id")
     && string_contains(s: js, pattern: "{ method: 'POST' }")
     && string_contains(s: js, pattern: "j.ok === true")
     && string_contains(s: js, pattern: "window.location.reload()")
     && string_contains(s: js, pattern: "action + ' refused'")
-    && string_contains(s: js, pattern: "sess.cleanup_action")
-    && string_contains(s: js, pattern: "sess.cleanup_allowed")
-    && string_contains(s: js, pattern: "sess.process_state")
-    && string_contains(s: js, pattern: "sess.process_detail")
+    && string_contains(s: js, pattern: "dataset.cleanupAction = sact.label")
+    && string_contains(s: js, pattern: "sact.availability !== 'available'")
+    && !string_contains(s: js, pattern: "sess.cleanup_action")
+    && !string_contains(s: js, pattern: "sess.cleanup_allowed")
+    && !string_contains(s: js, pattern: "sess.process_state")
+    && !string_contains(s: js, pattern: "sess.process_detail")
 }
 
+data stop_chip_decided_facts_note: String = "A2 flip (operator blockers 4/5): the chip's action identity and availability come from the wire's DECIDED session action (sact.label onto dataset.cleanupAction, disabled when sact.availability is not 'available') — the client never reads the raw admission fields. The four former positives (sess.cleanup_action/cleanup_allowed/process_state/process_detail) are now discriminating NEGATIVES: any reappearing in the emitted source is the client re-deriving cleanup or process presentation from raw facts, a second authority beside session_facts_view."
+
 test fn stop_chip_is_styled() -> Bool {
-  return string_contains(s: roadmap_css(), pattern: ".process-chip { font-size: var(--text-10);")
-    && string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")
+  return string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")
     && string_contains(s: roadmap_css(), pattern: ".cleanup-chip:disabled")
+    && string_contains(s: roadmap_css(), pattern: ".session-facts { display: flex;")
+    && !string_contains(s: roadmap_css(), pattern: ".process-chip")
 }
 
 test fn stop_fingerprint_scaffold_is_discharged() -> Bool {

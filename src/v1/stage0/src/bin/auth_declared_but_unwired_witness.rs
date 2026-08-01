@@ -36,6 +36,130 @@ fn probe() -> String {
 }
 "#;
 
+// A service endpoint spelled as a DATA REFERENCE rather than a literal. This is the
+// shape thirteen dag/extdeps services use (production_api_base, default_api_base,
+// docker_default_endpoint, edgar_data_api_base) and none of them could execute: the
+// config read returned a value only for a string literal and otherwise fell through
+// to the identifier's own SOURCE TEXT, so the base URL became the string "svc_base".
+//
+// The auth guard is the observation point because it fires pre-send and reports the
+// endpoint it was about to use, so this needs no network. On the pre-fix seed the
+// reported service is "svc_base"; after the fix it is the resolved host. That
+// difference is the whole discrimination — a literal-endpoint case cannot express it,
+// which is why every existing case here passed while the class was broken.
+const SERVICE_ENDPOINT_BY_REFERENCE: &str = r#"module auth_unwired_t8
+
+data svc_base: String = "https://unreachable.invalid.example"
+
+service test.Svc {
+  config {
+    endpoint: svc_base
+    auth: Bearer
+  }
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "ok" }
+    }
+  }
+}
+
+fn probe() -> String {
+  let r = test.Svc.GetData()
+  r.data
+}
+"#;
+
+// The refusal arm. An endpoint that resolves to nothing must STOP, not proceed with an
+// empty base — an empty base and a garbage base produce the identical downstream
+// RelativeUrlWithoutBase, which is precisely how the reference defect stayed invisible.
+const SERVICE_ENDPOINT_RESOLVES_EMPTY: &str = r#"module auth_unwired_t9
+
+data svc_base_empty: String = ""
+
+service test.Svc {
+  config {
+    endpoint: svc_base_empty
+  }
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "ok" }
+    }
+  }
+}
+
+fn probe() -> String {
+  let r = test.Svc.GetData()
+  r.data
+}
+"#;
+
+// The second slip path, found in review of the first fix (review 45550). The empty check
+// above runs on a Display rendering, and Display is total over Value: Null renders as the
+// non-empty "null" and an Int renders as its digits, so a non-string endpoint would clear
+// the emptiness test and be sent as a base URL. An Int is the fixture because it makes the
+// rendering visibly plausible — "8080" looks like configuration, not like a defect.
+const SERVICE_ENDPOINT_RESOLVES_NON_STRING: &str = r#"module auth_unwired_t10
+
+data svc_base_port: Int = 8080
+
+service test.Svc {
+  config {
+    endpoint: svc_base_port
+  }
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "ok" }
+    }
+  }
+}
+
+fn probe() -> String {
+  let r = test.Svc.GetData()
+  r.data
+}
+"#;
+
+// The third slip path (review 45552). The two above cover a key that is PRESENT and
+// unreadable; this covers a key that is absent entirely, which reached `String::new()`
+// and sent the bare path as a relative URL. It gets its own error rather than sharing
+// ServiceConfigUnresolved: "declared nothing" and "declared something unreadable" are
+// different authoring mistakes whose fixes name different edits.
+const SERVICE_ENDPOINT_ABSENT: &str = r#"module auth_unwired_t11
+
+service test.Svc {
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "ok" }
+    }
+  }
+}
+
+fn probe() -> String {
+  let r = test.Svc.GetData()
+  r.data
+}
+"#;
+
 const SERVICE_AUTH_INPUT_NOT_PROVIDED: &str = r#"module auth_unwired_t2
 
 service test.Svc {
@@ -271,6 +395,110 @@ fn auth_declared_no_source_fails_closed_pre_send(module_index: &ModuleIndex) {
     }
 }
 
+fn endpoint_by_reference_resolves_to_its_value(module_index: &ModuleIndex) {
+    let resolved = resolve(module_index, SERVICE_ENDPOINT_BY_REFERENCE);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    match v1_interpreter::run_in_context(&ctx, "probe", false) {
+        Err(InterpError::AuthDeclaredButUnwired { service, reason }) => {
+            assert!(
+                service.contains("unreachable.invalid.example"),
+                "a data-reference endpoint must resolve to its VALUE; got service='{service}' \
+                 reason='{reason}' — a value of 'svc_base' means the config read returned the \
+                 identifier's source text and every reference-endpoint service is unrunnable"
+            );
+            assert!(
+                !service.contains("svc_base"),
+                "endpoint resolved to the identifier spelling, not its value: service='{service}'"
+            );
+        }
+        other => panic!("expected AuthDeclaredButUnwired pre-send, got {other:?}"),
+    }
+}
+
+fn endpoint_resolving_empty_refuses(module_index: &ModuleIndex) {
+    let resolved = resolve(module_index, SERVICE_ENDPOINT_RESOLVES_EMPTY);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    match v1_interpreter::run_in_context(&ctx, "probe", false) {
+        Err(InterpError::ServiceConfigUnresolved { key, spelled }) => {
+            assert_eq!(
+                key, "endpoint",
+                "refusal must name the config key it could not read"
+            );
+            assert!(
+                spelled.contains("svc_base_empty"),
+                "refusal must carry the spelling that failed, got '{spelled}'"
+            );
+        }
+        other => panic!(
+            "an endpoint resolving to empty must REFUSE, not proceed with an empty base \
+             (which fails downstream as an indistinguishable URL parse error); got {other:?}"
+        ),
+    }
+}
+
+fn endpoint_resolving_non_string_refuses(module_index: &ModuleIndex) {
+    let resolved = resolve(module_index, SERVICE_ENDPOINT_RESOLVES_NON_STRING);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    match v1_interpreter::run_in_context(&ctx, "probe", false) {
+        Err(InterpError::ServiceConfigUnresolved { key, spelled }) => {
+            assert_eq!(
+                key, "endpoint",
+                "refusal must name the config key it could not read"
+            );
+            assert!(
+                spelled.contains("svc_base_port"),
+                "refusal must carry the spelling that failed, got '{spelled}'"
+            );
+        }
+        other => panic!(
+            "an endpoint resolving to a non-string must REFUSE. Display is total over Value, \
+             so a rendering-based read would have sent \"8080\" as the base URL and passed \
+             the emptiness check; got {other:?}"
+        ),
+    }
+}
+
+fn endpoint_absent_refuses(module_index: &ModuleIndex) {
+    let resolved = resolve(module_index, SERVICE_ENDPOINT_ABSENT);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    match v1_interpreter::run_in_context(&ctx, "probe", false) {
+        Err(InterpError::ServiceConfigMissing { key, service }) => {
+            assert_eq!(
+                key, "endpoint",
+                "refusal must name the config key that was never declared"
+            );
+            assert!(
+                !service.is_empty(),
+                "refusal must name the service, or it cannot be located"
+            );
+        }
+        other => panic!(
+            "a service declaring no endpoint must REFUSE, not send the bare path as a \
+             relative URL; got {other:?}"
+        ),
+    }
+}
+
 fn auth_input_empty_fails_closed_pre_send(module_index: &ModuleIndex) {
     let resolved = resolve(module_index, SERVICE_AUTH_INPUT_NOT_PROVIDED);
     let graph = resolved.graph.as_ref().expect("graph");
@@ -394,6 +622,19 @@ fn main() -> ExitCode {
             "auth_input_empty_fails_closed_pre_send",
             auth_input_empty_fails_closed_pre_send,
         ),
+        (
+            "endpoint_by_reference_resolves_to_its_value",
+            endpoint_by_reference_resolves_to_its_value,
+        ),
+        (
+            "endpoint_resolving_empty_refuses",
+            endpoint_resolving_empty_refuses,
+        ),
+        (
+            "endpoint_resolving_non_string_refuses",
+            endpoint_resolving_non_string_refuses,
+        ),
+        ("endpoint_absent_refuses", endpoint_absent_refuses),
         (
             "no_auth_declared_does_not_fire_guard",
             no_auth_declared_does_not_fire_guard,

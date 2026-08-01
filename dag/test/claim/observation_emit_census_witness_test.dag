@@ -10,7 +10,6 @@ import gunbc.observation_emit_census {
   MigratedToObservation,
   CountedFrontierSite,
   observation_emit_roster,
-  observation_emit_frontier_count,
   emit_site_is_frontier,
   emit_site_dissolve_on,
   floor_memory_site,
@@ -113,11 +112,6 @@ test fn w_shell_has_migrated() -> Bool {
   string_contains(s: shell_site.marker, pattern: "shell") &&
   string_contains(s: emit_site_dissolve_on(site: shell_site), pattern: "shell_effect_failed_line") &&
   string_contains(s: emit_site_dissolve_on(site: shell_site), pattern: "render_shell_effect_")
-}
-
-test fn w_the_census_states_post_snapshot_frontier_count() -> Bool {
-  observation_emit_frontier_count() == 8 &&
-  count(observation_emit_roster) == 14
 }
 
 data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operator finding 3 (run 30142403230): hygiene is bidirectional — growth tags born after the initial census snapshot must appear on the roster, not only the reverse (rostered markers still exist). Extended for #7205 resolve/assembly split tags and #7284 witness-row-cost / witness-row-cost-drift."

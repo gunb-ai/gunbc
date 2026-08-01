@@ -13,6 +13,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data systemctl_authority: ExternalAuthority = extdeps_external_authority_anchor
+
 fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }

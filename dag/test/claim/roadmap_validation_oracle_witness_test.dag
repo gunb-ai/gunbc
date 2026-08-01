@@ -1,0 +1,777 @@
+module test.claim.roadmap_validation_oracle_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List, FilePath, ContentHash }
+import std.content_hash { content_hash_atom }
+import gunbc.roadmap_workflow_progress {
+  WorkflowAttemptEvidence,
+  workflow_attempt_progress,
+}
+import gunbc.roadmap_workflow_stage {
+  workflow_segment_kind_key,
+  workflow_segment_state_key,
+}
+import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessExited }
+import extdeps.version { VersionIdentity }
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract,
+  ExecutionContract,
+  ExecutionContractUnspecified,
+  GunbcClaimValidation,
+  CargoTestValidation,
+}
+import gunbc.roadmap_validation_oracle {
+  ValidationOracleRef,
+  OracleObservation,
+  OracleFound,
+  OracleMissing,
+  OracleAmbiguous,
+  ValidationOracleGate,
+  ValidationOracleAdmitted,
+  ValidationOracleGateRefused,
+  ValidationRefusalCause,
+  ValidationContractUnspecified,
+  ValidationOracleUnpinnable,
+  ValidationOracleMissing,
+  ValidationOracleAmbiguous,
+  ValidationOracleMoved,
+  ValidationOracleUnpinnedDependency,
+  OracleDependsOnUnpinnedOracle,
+  ValidationPinReceiptUnreadable,
+  ValidationVerdict,
+  ValidationPassed,
+  ValidationFailed,
+  ValidationRefused,
+  ValidationNotRun,
+  validation_oracle_source_identity,
+  validation_oracle_declaration_count,
+  validation_oracle_observe_from_source,
+  validation_oracle_set_observe,
+  OracleSetObservation,
+  OracleSetObserved,
+  OracleSetIncomplete,
+  validation_oracle_gate,
+  validation_verdict_key,
+  validation_verdict_detail,
+  validation_refusal_cause_key,
+  validation_receipt_json,
+  validation_receipt_decode,
+  ValidationReceiptDecoded,
+  ValidationReceiptUndecodable,
+}
+
+data oracle_fixture_note: String = "The fixtures model the exact situation this lane exists for: ONE attempt, whose diff touches a subject file and — in the discriminating case — the witness that judges it. The oracle entry and function are held constant across every case below, so the only thing that varies is the witness SOURCE. That is what makes the pair of cases discriminating rather than merely different: a mechanism that greened both would be reading the contract, not the oracle."
+
+data oracle_entry_path: FilePath = "src/v2/compiler/self_host/frontier_witness_test.dag" as FilePath
+
+data oracle_function_name: NonEmptyStr = "frontier_generator_attribution_holds" as NonEmptyStr
+
+data oracle_dispatch_revision: VersionIdentity = "a07d1b73f8" as VersionIdentity
+
+fn oracle_ref() -> ValidationOracleRef {
+  ValidationOracleRef {
+    entry: oracle_entry_path,
+    function: oracle_function_name,
+  }
+}
+
+fn oracle_contract() -> WorkItemExecutionContract {
+  ExecutionContract {
+    validations: [
+      GunbcClaimValidation {
+        entry: oracle_entry_path,
+        function: oracle_function_name,
+      },
+    ],
+    extra_capabilities: [],
+  }
+}
+
+fn witness_source_at_dispatch() -> String {
+  join([
+    "module src.v2.compiler.self_host.frontier_witness_test\n",
+    "\n",
+    "test fn frontier_generator_attribution_holds() -> Bool \{\n",
+    "  frontier_rows_declare_generator() && frontier_rows_declare_reach()\n",
+    "\}\n",
+  ], "")
+}
+
+fn witness_source_weakened_by_the_agent() -> String {
+  join([
+    "module src.v2.compiler.self_host.frontier_witness_test\n",
+    "\n",
+    "test fn frontier_generator_attribution_holds() -> Bool \{\n",
+    "  true\n",
+    "\}\n",
+  ], "")
+}
+
+fn witness_source_with_duplicate_declaration() -> String {
+  join([
+    witness_source_at_dispatch(),
+    "\n",
+    "fn frontier_generator_attribution_holds() -> Bool \{\n",
+    "  true\n",
+    "\}\n",
+  ], "")
+}
+
+fn observe_witness(source_readable: Bool, source: String) -> List<OracleObservation> {
+  [
+    validation_oracle_observe_from_source(
+      oracle: oracle_ref(),
+      source_readable: source_readable,
+      source: source,
+      read_error: if source_readable { "" } else { "No such file or directory" },
+    ),
+  ]
+}
+
+data pinned_identity_authority_note: String = "The fixture derives the pinned identity through validation_oracle_set_observe — the SAME fold the dispatch side records and the verification side recomputes — rather than re-spelling the digest here. An earlier version of this fixture pinned a single source digest while the gate adjudicated the tagged set fold, so the clean case refused: the fixture had quietly become a second definition of the identity, which is the fork these witnesses exist to catch. The unobservable arm returns a deliberately foreign value so that, if it were ever reached, every assertion below fails loudly instead of comparing two fabrications."
+
+fn identity_of_source(source: String) -> ContentHash {
+  match validation_oracle_set_observe(
+    observations: observe_witness(source_readable: true, source: source),
+  ) {
+    OracleSetObserved { identity, observations: _ } => identity
+    OracleSetIncomplete { blocking: _, observations: _ } =>
+      content_hash_atom(value: "fixture-oracle-was-not-observable" as NonEmptyStr)
+  }
+}
+
+fn pinned_identity() -> ContentHash {
+  identity_of_source(source: witness_source_at_dispatch())
+}
+
+fn gate_for(source_readable: Bool, source: String) -> ValidationOracleGate {
+  validation_oracle_gate(
+    contract: oracle_contract(),
+    observations: observe_witness(
+      source_readable: source_readable,
+      source: source,
+    ),
+    pin_recorded: true,
+    expected_identity: pinned_identity(),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  )
+}
+
+fn gate_refusal_key(gate: ValidationOracleGate) -> String {
+  match gate {
+    ValidationOracleAdmitted { identity: _ } => "admitted"
+    ValidationOracleGateRefused { cause } =>
+      validation_refusal_cause_key(cause: cause)
+  }
+}
+
+data subject_only_diff_note: String = "The green half of the discriminating pair. The attempt's diff edited the SUBJECT the witness tests, not the witness, so the oracle source at verification time is byte-identical to the source pinned at dispatch and the gate admits. Nothing about the subject enters the identity — that is deliberate and is the whole reason a closure-wide pin would be wrong: the subject is IN the witness's import closure, so pinning the closure would refuse exactly this case, which is the case the node exists to produce."
+
+test fn diff_touching_only_the_subject_verifies_clean() -> Bool {
+  match gate_for(
+    source_readable: true,
+    source: witness_source_at_dispatch(),
+  ) {
+    ValidationOracleAdmitted { identity } => identity == pinned_identity()
+    ValidationOracleGateRefused { cause: _ } => false
+  }
+}
+
+data self_edited_witness_note: String = "The RED control, and the reason the whole lane exists. The attempt edited its own witness — here by collapsing the assertion body to `true`, the cheapest way for an agent to make its own verification pass — and BOTH receipts still pass when run: the weakened witness returns true, and the declared command exits 0. A verification that only ran the command would report green. The gate refuses because the oracle it would have run against is not the oracle that was pinned before the agent started. Flip the expected identity to be recomputed at verification time instead of read from the dispatch pin and this witness goes green while the one above stays green, which is exactly the version that has proven nothing."
+
+test fn diff_editing_its_own_witness_refuses_with_oracle_moved() -> Bool {
+  match gate_for(
+    source_readable: true,
+    source: witness_source_weakened_by_the_agent(),
+  ) {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationOracleMoved { expected, observed } =>
+          expected == pinned_identity()
+            && observed == identity_of_source(
+              source: witness_source_weakened_by_the_agent(),
+            )
+            && expected != observed
+        _ => false
+      }
+  }
+}
+
+data pin_must_be_sensitive_note: String = "Non-vacuity for the pair above. If validation_oracle_source_identity collapsed every input to one value — the failure a digest silently degrading to a constant would produce — the clean case would still admit and the self-edit case would ALSO admit, so the pair would agree while proving nothing. This asserts the identity actually separates the two sources, so the discrimination above rests on a measured difference rather than on the arms happening to be written differently."
+
+test fn oracle_identity_separates_the_two_witness_sources() -> Bool {
+  let pinned = validation_oracle_source_identity(
+    source: witness_source_at_dispatch(),
+  )
+  let weakened = validation_oracle_source_identity(
+    source: witness_source_weakened_by_the_agent(),
+  )
+  pinned != weakened
+}
+
+data deleted_witness_note: String = "The second oracle control from the brief, and it is about the DIFFERENCE between two answers rather than about refusing. A deleted witness must answer that the oracle is missing — not that the witness failed. The remedies are opposite: a red witness means fix the subject, a missing oracle means find out who removed the thing that was judging it. Collapsing the first into the second is the state-space conflation that would send a human to debug a subject that was never tested."
+
+test fn deleted_witness_answers_oracle_missing_not_red() -> Bool {
+  let gate = gate_for(source_readable: false, source: "")
+  let refused_as_missing = match gate {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationOracleMissing { entry, function, detail: _ } =>
+          entry == (oracle_entry_path as String)
+            && function == (oracle_function_name as String)
+        _ => false
+      }
+  }
+  refused_as_missing
+    && gate_refusal_key(gate: gate) == "oracle-missing"
+    && gate_refusal_key(gate: gate) != "failed"
+}
+
+data present_file_missing_declaration_note: String = "The other producer of the missing arm, kept because it is the likelier real case: the witness FILE survives and the declaration the contract names does not, which a whole-file read reports as a successful read of a document that no longer contains the oracle. A mechanism that only checked readability would run the claim runner against a function that is not there and adjudicate whatever the runner said about that."
+
+test fn readable_source_without_the_declaration_is_also_missing() -> Bool {
+  gate_refusal_key(gate: gate_for(
+    source_readable: true,
+    source: "module src.v2.compiler.self_host.frontier_witness_test\n",
+  )) == "oracle-missing"
+}
+
+data duplicate_declaration_note: String = "The third arm, with a real producer rather than a hypothetical one: this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped, so two declarations answering to one contract name is a state a real diff can reach. It is neither missing nor moved — the contract simply does not determine which declaration the claim runner will select — so adjudicating either one would be picking an oracle the contract did not name."
+
+test fn duplicated_declaration_answers_oracle_ambiguous() -> Bool {
+  let source = witness_source_with_duplicate_declaration()
+  validation_oracle_declaration_count(
+    source: source,
+    function: oracle_function_name,
+  ) == 2
+    && match gate_for(source_readable: true, source: source) {
+      ValidationOracleAdmitted { identity: _ } => false
+      ValidationOracleGateRefused { cause } =>
+        match cause {
+          ValidationOracleAmbiguous {
+            entry: _,
+            function: _,
+            declaration_count,
+          } => declaration_count == 2
+          _ => false
+        }
+    }
+}
+
+data declaration_scan_line_start_note: String = "The scan's stated limit, asserted rather than described. A note string mentioning the oracle's name — which this corpus produces constantly — must not count as a declaration, because a false ambiguity would refuse an attempt whose oracle never moved. Line-start matching is what buys that, and this is the control that keeps it honest."
+
+test fn declaration_scan_ignores_the_name_inside_a_note() -> Bool {
+  let source = join([
+    witness_source_at_dispatch(),
+    "\n",
+    "data a_note: String = \"see fn frontier_generator_attribution_holds( for the bar\"\n",
+  ], "")
+  validation_oracle_declaration_count(
+    source: source,
+    function: oracle_function_name,
+  ) == 1
+}
+
+data unpinned_dependency_note: String = "review 45278. The entry-file pin closes the direct attack but leaves a witness's IMPORTED test modules — fixtures and shared assertions, which are oracle rather than subject — outside the digest. The fixture below is the reviewer's own measured specimen reproduced in shape: dag/test/claim/scm_compatibility_shape_witness_test.dag imports four test.claim modules, so weakening one of them would green Verify without moving the pinned entry's digest. The residue is therefore made unreachable rather than deferred: such an oracle refuses. The paired green is what keeps this from being a blanket rejection — a witness importing only subject and std modules still verifies, so the refusal discriminates on the oracle-side dependency rather than on having imports at all."
+
+fn witness_source_importing_test_helpers() -> String {
+  join([
+    "module test.claim.scm_compatibility_shape_witness_test\n",
+    "import std.types \{ Bool \}\n",
+    "import gunbc.scm_compatibility_shape \{ CompatibilityShape \}\n",
+    "import test.claim.scm_compatibility_git_witness \{ git_rows_hold \}\n",
+    "import test.claim.native_scm_interaction_scenario_fixture \{ scenario \}\n",
+    "\n",
+    "test fn frontier_generator_attribution_holds() -> Bool \{\n",
+    "  git_rows_hold() && scenario()\n",
+    "\}\n",
+  ], "")
+}
+
+fn witness_source_importing_only_subject_modules() -> String {
+  join([
+    "module src.v2.compiler.self_host.frontier_witness_test\n",
+    "import std.types \{ Bool \}\n",
+    "import src.v2.compiler.self_host.frontier \{ frontier_rows \}\n",
+    "\n",
+    "test fn frontier_generator_attribution_holds() -> Bool \{\n",
+    "  count(frontier_rows()) > 0\n",
+    "\}\n",
+  ], "")
+}
+
+test fn oracle_importing_test_helpers_refuses_as_unpinned_dependency() -> Bool {
+  let gate = validation_oracle_gate(
+    contract: oracle_contract(),
+    observations: observe_witness(
+      source_readable: true,
+      source: witness_source_importing_test_helpers(),
+    ),
+    pin_recorded: true,
+    expected_identity: identity_of_source(
+      source: witness_source_importing_test_helpers(),
+    ),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  )
+  match gate {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationOracleUnpinnedDependency { entry: _, imports } =>
+          count(imports) == 2
+            && any(imports, m => m == "test.claim.scm_compatibility_git_witness")
+        _ => false
+      }
+  }
+}
+
+test fn oracle_importing_only_subject_modules_still_verifies() -> Bool {
+  let source = witness_source_importing_only_subject_modules()
+  match validation_oracle_gate(
+    contract: oracle_contract(),
+    observations: observe_witness(source_readable: true, source: source),
+    pin_recorded: true,
+    expected_identity: identity_of_source(source: source),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  ) {
+    ValidationOracleAdmitted { identity: _ } => true
+    ValidationOracleGateRefused { cause: _ } => false
+  }
+}
+
+test fn unpinned_dependency_detail_names_the_uncovered_modules() -> Bool {
+  let detail = validation_verdict_detail(verdict: ValidationRefused {
+    cause: ValidationOracleUnpinnedDependency {
+      entry: oracle_entry_path as String,
+      imports: ["test.claim.scm_compatibility_git_witness"],
+    },
+  })
+  string_contains(s: detail, pattern: "test.claim.scm_compatibility_git_witness")
+    && string_contains(s: detail, pattern: "partially pinned oracle")
+}
+
+data unpinnable_validation_note: String = "A declared validation whose oracle this module cannot observe must refuse rather than run unpinned. Running it would produce a green meaning `the agent's own edits passed a test whose content nothing recorded`, which is the same fail-open the moved-oracle arm closes, reached by a different route."
+
+test fn cargo_test_validation_refuses_as_unpinnable() -> Bool {
+  match validation_oracle_gate(
+    contract: ExecutionContract {
+      validations: [CargoTestValidation { filter: "roadmap_" as NonEmptyStr }],
+      extra_capabilities: [],
+    },
+    observations: [],
+    pin_recorded: true,
+    expected_identity: pinned_identity(),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  ) {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationOracleUnpinnable { validation_label, reason: _ } =>
+          string_contains(s: validation_label, pattern: "cargo-test")
+        _ => false
+      }
+  }
+}
+
+test fn unspecified_contract_refuses_rather_than_verifying() -> Bool {
+  match validation_oracle_gate(
+    contract: ExecutionContractUnspecified,
+    observations: [],
+    pin_recorded: true,
+    expected_identity: pinned_identity(),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  ) {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationContractUnspecified => true
+        _ => false
+      }
+  }
+}
+
+data absent_pin_note: String = "An attempt with no recorded oracle identity cannot be verified against one. The arm exists because the alternative — verifying anyway when the pin is absent — is how a pinned mechanism silently degrades into an unpinned one for exactly the attempts whose dispatch did not record a pin, which are the attempts least likely to be trustworthy."
+
+test fn attempt_without_a_recorded_pin_refuses() -> Bool {
+  match validation_oracle_gate(
+    contract: oracle_contract(),
+    observations: observe_witness(
+      source_readable: true,
+      source: witness_source_at_dispatch(),
+    ),
+    pin_recorded: false,
+    expected_identity: pinned_identity(),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "no oracle identity was recorded for this attempt at dispatch",
+  ) {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationPinReceiptUnreadable { detail } =>
+          string_contains(s: detail, pattern: "no oracle identity was recorded")
+        _ => false
+      }
+  }
+}
+
+data refusal_is_not_a_red_note: String = "The refusal/red separation carried through to the persisted verdict, because the receipt is what a human and the Verify lamp both read. A refused verdict and a failed verdict must not serialize to the same word, or the distinction the arms establish is lost at the seam where it matters."
+
+test fn refused_and_failed_verdicts_are_distinct_on_the_wire() -> Bool {
+  let refused = ValidationRefused {
+    cause: ValidationOracleMissing {
+      entry: oracle_entry_path as String,
+      function: oracle_function_name as String,
+      detail: "deleted",
+    },
+  }
+  let failed = ValidationFailed {
+    command: "gunbc run --claim-run",
+    exit_code: 1,
+    detail: "",
+  }
+  let refused_key = validation_verdict_key(verdict: refused)
+  let failed_key = validation_verdict_key(verdict: failed)
+  refused_key == "refused"
+    && failed_key == "failed"
+    && refused_key != failed_key
+}
+
+data receipt_positional_identity_note: String = "The same defect the environment-admission receipt already closed, asserted here before this receipt can repeat it. The verdict is read back from disk by a different process, so nothing guarantees the bytes came from this emitter; a reader that SCANNED the document for `passed` would be satisfied by a refusal whose detail quotes the word — and a refusal detail quotes plenty. The emitter always writes schema then verdict first, so the passed document's prefix is derivable from the emitter itself and no nested value can occupy it."
+
+test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
+  let forgery = validation_receipt_json(
+    verdict: ValidationRefused {
+      cause: ValidationOracleMissing {
+        entry: oracle_entry_path as String,
+        function: oracle_function_name as String,
+        detail: "the previous receipt said \"verdict\": \"passed\" before the oracle was deleted",
+      },
+    },
+    observations: observe_witness(source_readable: false, source: ""),
+  )
+  let genuine = validation_receipt_json(
+    verdict: ValidationPassed {
+      command: "gunbc run --claim-run",
+      oracle_identity: pinned_identity(),
+    },
+    observations: observe_witness(
+      source_readable: true,
+      source: witness_source_at_dispatch(),
+    ),
+  )
+  string_contains(s: forgery, pattern: "passed")
+    && match validation_receipt_decode(receipt: forgery) {
+      ValidationReceiptDecoded { verdict_key } => verdict_key == "refused"
+      ValidationReceiptUndecodable { reason: _ } => false
+    }
+    && match validation_receipt_decode(receipt: genuine) {
+      ValidationReceiptDecoded { verdict_key } => verdict_key == "passed"
+      ValidationReceiptUndecodable { reason: _ } => false
+    }
+}
+
+data truncated_receipt_note: String = "Self-review catch, mirroring the control the admission receipt already carries: a prefix match alone was never the claim. A receipt truncated mid-write — the ordinary outcome of a belt killed while writing it — carries the passed prefix verbatim and is still not a passed receipt, because the document does not parse. Without the parse guard this fixture decodes as passed, which is a fabricated green produced by an interrupted write rather than by any validation."
+
+test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
+  let genuine = receipt_for(verdict: ValidationPassed {
+    command: "gunbc run --claim-run",
+    oracle_identity: pinned_identity(),
+  })
+  let truncated = substring(
+    s: genuine,
+    start: 0,
+    end: string_length(s: genuine) - 12,
+  )
+  starts_with(s: genuine, prefix: truncated)
+    && match validation_receipt_decode(receipt: genuine) {
+      ValidationReceiptDecoded { verdict_key } => verdict_key == "passed"
+      ValidationReceiptUndecodable { reason: _ } => false
+    }
+    && match validation_receipt_decode(receipt: truncated) {
+      ValidationReceiptDecoded { verdict_key: _ } => false
+      ValidationReceiptUndecodable { reason: _ } => true
+    }
+}
+
+data structural_decode_note: String = "These pin what the byte-prefix reader structurally COULD NOT decide, which is why they are the receipt for replacing it rather than decoration on top of it. A prefix reader answers one question - does the document open with these exact bytes - so it necessarily conflates `the members are in a different order` with `this is not our receipt`, and it cannot see a second verdict member at all because a duplicate sits past the prefix it compares. Reading the document as a value makes member ORDER irrelevant and member COUNT decidable, and the pair below is stated as a control: the same document decodes when its identity members occur once and refuses when one of them occurs twice, so duplication is isolated as the cause rather than inferred from a refusal that could have come from anywhere."
+
+fn decodes_as(receipt: String, expected: String) -> Bool {
+  match validation_receipt_decode(receipt: receipt) {
+    ValidationReceiptDecoded { verdict_key } => verdict_key == expected
+    ValidationReceiptUndecodable { reason: _ } => false
+  }
+}
+
+fn is_undecodable(receipt: String) -> Bool {
+  match validation_receipt_decode(receipt: receipt) {
+    ValidationReceiptDecoded { verdict_key: _ } => false
+    ValidationReceiptUndecodable { reason: _ } => true
+  }
+}
+
+test fn a_receipt_decodes_regardless_of_member_order() -> Bool {
+  decodes_as(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}",
+    expected: "passed",
+  )
+    && decodes_as(
+      receipt: "\{\"verdict\": \"passed\", \"schema\": \"roadmap-validation-receipt/v1\"}",
+      expected: "passed",
+    )
+}
+
+test fn a_second_verdict_member_refuses_rather_than_picking_one() -> Bool {
+  decodes_as(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"refused\"}",
+    expected: "refused",
+  )
+    && is_undecodable(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"refused\", \"verdict\": \"passed\"}",
+    )
+    && is_undecodable(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\", \"verdict\": \"refused\"}",
+    )
+}
+
+test fn a_second_schema_member_refuses() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}",
+  )
+}
+
+test fn another_schema_version_refuses() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v2\", \"verdict\": \"passed\"}",
+  )
+}
+
+test fn a_verdict_this_emitter_never_writes_refuses() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"green\"}",
+  )
+}
+
+test fn a_non_string_verdict_refuses_rather_than_coercing() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": 1}",
+  )
+    && is_undecodable(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": [\"passed\"]}",
+    )
+}
+
+test fn a_document_that_is_not_an_object_refuses() -> Bool {
+  is_undecodable(receipt: "\"roadmap-validation-receipt/v1\"")
+    && is_undecodable(receipt: "[\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}]")
+}
+
+test fn a_missing_verdict_member_refuses() -> Bool {
+  is_undecodable(receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\"}")
+    && is_undecodable(receipt: "\{\"verdict\": \"passed\"}")
+}
+
+test fn members_after_the_identity_pair_do_not_disturb_the_decode() -> Bool {
+  decodes_as(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"failed\", \"detail\": \"passed\", \"oracles\": []}",
+    expected: "failed",
+  )
+}
+
+data forged_escape_note: String = "review 45642, stated at the boundary that would have been fooled rather than only at the parser. `p\\assed` is not JSON, but the unescaper's unknown-escape arm dropped the backslash and produced exactly the string this reader accepts as a verdict - so a malformed receipt decoded as a pass. The positive control beside it is what makes the claim about the FORGERY rather than about the decoder refusing things generally."
+
+test fn a_verdict_forged_with_an_unknown_escape_is_undecodable() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"p\\assed\"}",
+  )
+    && decodes_as(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}",
+      expected: "passed",
+    )
+}
+
+data verdict_key_agreement_note: String = "validation_verdict_key is the emitter's authority for a verdict's wire key, and validation_receipt_verdict_keys is the reader's list of the keys it accepts. Those are two surfaces over one fact and they can drift: adding a fifth ValidationVerdict variant updates the emitter by exhaustiveness, because the match must gain an arm, but the reader's list is an ordinary data row that nothing forces anyone to extend - so the emitter would write a receipt its own reader refuses, and the failure would surface as an undecodable verdict rather than as a missing case. This pins them to each other by round-tripping every verdict the emitter can produce, which is the same shape as witness_json_text_parse_agrees_with_lexeme_surface_on_exponents: the forked surfaces are the thing under test, not either surface alone."
+
+fn verdict_round_trips(verdict: ValidationVerdict) -> Bool {
+  decodes_as(
+    receipt: validation_receipt_json(verdict: verdict, observations: []),
+    expected: validation_verdict_key(verdict: verdict),
+  )
+}
+
+test fn every_verdict_the_emitter_writes_is_one_the_reader_accepts() -> Bool {
+  verdict_round_trips(verdict: ValidationNotRun)
+    && verdict_round_trips(verdict: ValidationPassed {
+      command: "gunbc run --claim-run",
+      oracle_identity: pinned_identity(),
+    })
+    && verdict_round_trips(verdict: ValidationFailed {
+      command: "gunbc run --claim-run",
+      exit_code: 1,
+      detail: "a witness went red",
+    })
+    && verdict_round_trips(verdict: ValidationRefused {
+      cause: ValidationContractUnspecified,
+    })
+}
+
+test fn foreign_receipt_document_is_undecodable() -> Bool {
+  match validation_receipt_decode(
+    receipt: "{\"schema\": \"something-else/v1\", \"verdict\": \"passed\"}",
+  ) {
+    ValidationReceiptDecoded { verdict_key: _ } => false
+    ValidationReceiptUndecodable { reason: _ } => true
+  }
+}
+
+data moved_oracle_detail_note: String = "The refusal has to be readable by the human who receives it, so the detail names both identities and says why the run was not attempted. A refusal whose text does not distinguish it from a red would push a human toward debugging the subject."
+
+test fn moved_oracle_detail_locates_both_identities() -> Bool {
+  let detail = validation_verdict_detail(verdict: ValidationRefused {
+    cause: ValidationOracleMoved {
+      expected: pinned_identity(),
+      observed: identity_of_source(
+        source: witness_source_weakened_by_the_agent(),
+      ),
+    },
+  })
+  string_contains(s: detail, pattern: "changed after dispatch")
+    && string_contains(s: detail, pattern: pinned_identity() as String)
+    && string_contains(s: detail, pattern: "proves nothing")
+}
+
+data verify_lamp_note: String = "The lamp is the seam where the distinction has to survive, because it is what a human actually looks at. These assert the three verdicts land on three DIFFERENT segment states and that an absent receipt still reads pending — the last one being the property the old hardcoded lamp had for free and that a receipt-reading lamp could easily lose, since the tempting shortcut is to paint Verify from the agent's own completion."
+
+fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
+  WorkflowAttemptEvidence {
+    node_id: "v1-emitter-fixed-point",
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface",
+    modeled_state_present: true,
+    admission_receipt_readable: true,
+    admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: true,
+    provider_events: "{\"type\":\"turn.completed\",\"usage\":\{\}\}\n",
+    provider_events_error: "",
+    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    validation_summary: "gunbc run --claim-run",
+    validation_receipt_readable: receipt != "",
+    validation_receipt: receipt,
+  }
+}
+
+fn verify_lamp_state(receipt: String) -> String {
+  let progress = workflow_attempt_progress(
+    evidence: verify_lamp_evidence(receipt: receipt),
+  )
+  fold(progress.segments, init: "", f: fn(acc, segment) {
+    if acc == "" && workflow_segment_kind_key(kind: segment.kind) == "verify" {
+      workflow_segment_state_key(state: segment.state)
+    } else {
+      acc
+    }
+  })
+}
+
+fn receipt_for(verdict: ValidationVerdict) -> String {
+  validation_receipt_json(
+    verdict: verdict,
+    observations: observe_witness(
+      source_readable: true,
+      source: witness_source_at_dispatch(),
+    ),
+  )
+}
+
+test fn verify_lamp_stays_pending_without_a_receipt() -> Bool {
+  verify_lamp_state(receipt: "") == "pending"
+}
+
+test fn verify_lamp_completes_only_on_a_passed_receipt() -> Bool {
+  verify_lamp_state(receipt: receipt_for(verdict: ValidationPassed {
+    command: "gunbc run --claim-run",
+    oracle_identity: pinned_identity(),
+  })) == "complete"
+}
+
+test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
+  let refused = verify_lamp_state(receipt: receipt_for(
+    verdict: ValidationRefused {
+      cause: ValidationOracleMoved {
+        expected: pinned_identity(),
+        observed: identity_of_source(
+          source: witness_source_weakened_by_the_agent(),
+        ),
+      },
+    },
+  ))
+  let failed = verify_lamp_state(receipt: receipt_for(
+    verdict: ValidationFailed {
+      command: "gunbc run --claim-run",
+      exit_code: 1,
+      detail: "claim returned false",
+    },
+  ))
+  refused == "refused" && failed == "failed" && refused != failed
+}
+
+data not_run_receipt_note: String = "review 45271. The receipt-presence seam used to ask whether the receipt TEXT was empty, which answered the same way for three different worlds — no file, an unreadable file, an empty one — and then ran the validation and overwrote whatever was there. Absent and unreadable have opposite correct actions, so dispatch now writes a not-run receipt and absence stops being a state the seam has to interpret. These assert the two halves that makes true: a not-run receipt is DISTINGUISHABLE from every recorded verdict (so the belt can tell 'never ran' from 'already ran' without consulting the filesystem's error string), and it reads as pending at the lamp rather than as a verdict."
+
+test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
+  let not_run = receipt_for(verdict: ValidationNotRun)
+  let passed = receipt_for(verdict: ValidationPassed {
+    command: "gunbc run --claim-run",
+    oracle_identity: pinned_identity(),
+  })
+  let decoded_key = match validation_receipt_decode(receipt: not_run) {
+    ValidationReceiptDecoded { verdict_key } => verdict_key
+    ValidationReceiptUndecodable { reason: _ } => "undecodable"
+  }
+  decoded_key == "not_run"
+    && validation_verdict_key(verdict: ValidationNotRun) == "not_run"
+    && not_run != passed
+}
+
+test fn not_run_receipt_reads_as_pending_not_as_a_verdict() -> Bool {
+  verify_lamp_state(receipt: receipt_for(verdict: ValidationNotRun)) == "pending"
+}
+
+test fn verify_lamp_refuses_a_foreign_receipt_document() -> Bool {
+  verify_lamp_state(
+    receipt: "{\"schema\": \"something-else/v1\", \"verdict\": \"passed\"}",
+  ) == "refused"
+}
+
+test fn roadmap_validation_oracle_keystone_holds() -> Bool {
+  diff_touching_only_the_subject_verifies_clean()
+    && diff_editing_its_own_witness_refuses_with_oracle_moved()
+    && oracle_identity_separates_the_two_witness_sources()
+    && deleted_witness_answers_oracle_missing_not_red()
+    && readable_source_without_the_declaration_is_also_missing()
+    && duplicated_declaration_answers_oracle_ambiguous()
+    && declaration_scan_ignores_the_name_inside_a_note()
+    && oracle_importing_test_helpers_refuses_as_unpinned_dependency()
+    && oracle_importing_only_subject_modules_still_verifies()
+    && unpinned_dependency_detail_names_the_uncovered_modules()
+    && cargo_test_validation_refuses_as_unpinnable()
+    && unspecified_contract_refuses_rather_than_verifying()
+    && attempt_without_a_recorded_pin_refuses()
+    && refused_and_failed_verdicts_are_distinct_on_the_wire()
+    && refusal_quoting_passed_does_not_decode_as_passed()
+    && truncated_receipt_with_passed_prefix_is_not_passed()
+    && foreign_receipt_document_is_undecodable()
+    && moved_oracle_detail_locates_both_identities()
+    && verify_lamp_stays_pending_without_a_receipt()
+    && verify_lamp_completes_only_on_a_passed_receipt()
+    && verify_lamp_shows_a_refusal_as_refused_not_failed()
+    && not_run_receipt_is_distinct_from_every_recorded_verdict()
+    && not_run_receipt_reads_as_pending_not_as_a_verdict()
+    && verify_lamp_refuses_a_foreign_receipt_document()
+}

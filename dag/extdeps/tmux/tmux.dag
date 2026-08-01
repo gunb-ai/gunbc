@@ -1,6 +1,6 @@
 module extdeps.tmux
 
-import std.types { List, String, NonEmptyStr }
+import std.types { List, String, NonEmptyStr, Int, Bool, RenderedTerminalText }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -8,6 +8,330 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/tmux/tmux/wiki"
+  }
+}
+
+data tmux_client_connect_error_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/tmux/tmux/blob/master/client.c"
+  }
+}
+
+data tmux_session_list_outcome_note: String = "THE ONE CLASSIFIER for tmux list-sessions (`tmux ls`) and any other tmux client command that shares client_connect's stderr vocabulary. Authority: tmux_client_connect_error_authority (upstream client.c client_connect); tmux.Session.List exit contract (`0 => Unit`, `1 => Unit \"No sessions\"`). On exit success the stdout grammar is parsed into TmuxLsEntry rows (`session_name: <windows> windows ...` per line) by parse_tmux_ls_output, which is total and fail-closed: the first malformed non-empty line refuses the whole observation with its 1-based line and raw evidence as TmuxListStdoutRefused — a truncated or corrupted successful response must never widen to an empty or partial session set. On exit failure only three documented no-server spellings classify TmuxNoServer: stderr containing `no server running`, `no sessions`, or the conjunctive ENOENT spelling (`error connecting to ` AND `(No such file or directory)`). `(Connection refused)` is deliberately distinct from ENOENT and classifies TmuxListUnknowable, as do permission errors and every other nonzero exit. TmuxListUnknowable and TmuxListStdoutRefused must never widen to an empty session set."
+
+type TmuxLsEntry {
+  session_name: String
+  windows: Int
+}
+
+type TmuxLsParse
+  = TmuxLsParsed { entries: List<TmuxLsEntry> }
+  | TmuxLsParseRefused {
+      line_number: Int,
+      raw: String,
+      reason: String,
+    }
+
+type TmuxLsParseFold {
+  entries: List<TmuxLsEntry>
+  next_line_number: Int
+  refused: Bool
+  refused_line_number: Int
+  refused_raw: String
+  refused_reason: String
+}
+
+fn tmux_ls_rest_token(parts: List<String>, n: Int) -> String {
+  match parts.skip(n: n).first() {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+fn tmux_ls_rest_tokens_nonempty(parts: List<String>) -> List<String> {
+  parts |> filter(s => s != "")
+}
+
+fn tmux_ls_windows_suffix_ok(parts: List<String>) -> Bool {
+  if count(parts) <= 2 {
+    true
+  } else {
+    starts_with(s: tmux_ls_rest_token(parts: parts, n: 2), prefix: "(")
+  }
+}
+
+fn parse_tmux_ls_windows(rest: String) -> Int? {
+  let parts = tmux_ls_rest_tokens_nonempty(parts: split(s: trim(rest), delimiter: " "))
+  let count_str = tmux_ls_rest_token(parts: parts, n: 0)
+  let windows_token = tmux_ls_rest_token(parts: parts, n: 1)
+  if count_str == "" || windows_token != "windows" || !tmux_ls_windows_suffix_ok(parts: parts) {
+    none
+  } else {
+    match parse_int(count_str) {
+      Present { value: windows } =>
+        if windows > 0 {
+          Present { value: windows }
+        } else {
+          none
+        }
+      Absent => none
+    }
+  }
+}
+
+fn parse_tmux_ls_line(line: String) -> TmuxLsEntry? {
+  let trimmed = trim(line)
+  if trimmed == "" {
+    none
+  } else {
+    let colon_parts = split(s: trimmed, delimiter: ":")
+    let name = match colon_parts.first() {
+      Present { value: s } => trim(s)
+      Absent => ""
+    }
+    if name == "" {
+      none
+    } else {
+      let rest = match colon_parts.skip(n: 1).first() {
+        Present { value: s } => trim(s)
+        Absent => ""
+      }
+      match parse_tmux_ls_windows(rest: rest) {
+        Present { value: windows } =>
+          Present {
+            value: TmuxLsEntry {
+              session_name: name,
+              windows: windows,
+            },
+          }
+        Absent => none
+      }
+    }
+  }
+}
+
+fn parse_tmux_ls_output(output: String) -> TmuxLsParse {
+  let lines = split(s: output, delimiter: "\n")
+  let state = fold(
+    lines,
+    init: TmuxLsParseFold {
+      entries: [],
+      next_line_number: 1,
+      refused: false,
+      refused_line_number: 0,
+      refused_raw: "",
+      refused_reason: "",
+    },
+    f: fn(acc, line) {
+      if acc.refused || trim(line) == "" {
+        TmuxLsParseFold {
+          entries: acc.entries,
+          next_line_number: acc.next_line_number + 1,
+          refused: acc.refused,
+          refused_line_number: acc.refused_line_number,
+          refused_raw: acc.refused_raw,
+          refused_reason: acc.refused_reason,
+        }
+      } else {
+        match parse_tmux_ls_line(line: line) {
+          Present { value: entry } =>
+            TmuxLsParseFold {
+              entries: append(acc.entries, [entry]),
+              next_line_number: acc.next_line_number + 1,
+              refused: false,
+              refused_line_number: 0,
+              refused_raw: "",
+              refused_reason: "",
+            }
+          Absent =>
+            TmuxLsParseFold {
+              entries: acc.entries,
+              next_line_number: acc.next_line_number + 1,
+              refused: true,
+              refused_line_number: acc.next_line_number,
+              refused_raw: line,
+              refused_reason: "expected session_name: <positive_int> windows [(created ...)]",
+            }
+        }
+      }
+    },
+  )
+  if state.refused {
+    TmuxLsParseRefused {
+      line_number: state.refused_line_number,
+      raw: state.refused_raw,
+      reason: state.refused_reason,
+    }
+  } else {
+    TmuxLsParsed { entries: state.entries }
+  }
+}
+
+type TmuxSessionListOutcome
+  = TmuxSessionsListed { entries: List<TmuxLsEntry> }
+  | TmuxNoServer { evidence: String }
+  | TmuxListUnknowable { stderr: String }
+  | TmuxListStdoutRefused {
+      line_number: Int,
+      raw: String,
+      reason: String,
+    }
+
+fn tmux_session_list_stderr_is_no_server(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "no server running")
+    || string_contains(s: stderr, pattern: "no sessions")
+    || (
+      string_contains(s: stderr, pattern: "error connecting to ")
+        && string_contains(s: stderr, pattern: "(No such file or directory)")
+    )
+}
+
+fn classify_tmux_session_list(
+  exit_ok: Bool,
+  stdout: String,
+  stderr: String,
+) -> TmuxSessionListOutcome {
+  if exit_ok {
+    match parse_tmux_ls_output(output: stdout) {
+      TmuxLsParsed { entries } =>
+        TmuxSessionsListed { entries: entries }
+      TmuxLsParseRefused { line_number, raw, reason } =>
+        TmuxListStdoutRefused {
+          line_number: line_number,
+          raw: raw,
+          reason: reason,
+        }
+    }
+  } else if tmux_session_list_stderr_is_no_server(stderr: stderr) {
+    TmuxNoServer { evidence: stderr }
+  } else {
+    TmuxListUnknowable { stderr: stderr }
+  }
+}
+
+type TmuxAttemptPaneEntry {
+  session_name: String
+  dead: Bool
+  exit_code: Int?
+  command: String
+}
+
+type TmuxAttemptPanesParse
+  = AttemptPanesParsed { panes: List<TmuxAttemptPaneEntry> }
+  | AttemptPanesParseRefused {
+      line_number: Int,
+      raw: String,
+      reason: String,
+    }
+
+type TmuxAttemptPanesFold {
+  panes: List<TmuxAttemptPaneEntry>
+  next_line_number: Int
+  refused: Bool
+  refused_line_number: Int
+  refused_raw: String
+  refused_reason: String
+}
+
+data tmux_attempt_pane_parse_note: String = "The attempt observer uses tmux_attempt_panes_format: four tab-delimited fields (session_name, pane_dead, pane_dead_status, pane_current_command). Parsing is total and fail-closed. A live pane must report dead=0; a retained pane must report dead=1 plus an integer exit status. The first malformed non-empty row refuses the whole observation with its 1-based line and raw evidence."
+
+fn tmux_attempt_pane_field(parts: List<String>, n: Int) -> String {
+  match parts.skip(n: n).first() {
+    Present { value } => value
+    Absent => ""
+  }
+}
+
+fn parse_tmux_attempt_pane_line(
+  line: String,
+) -> TmuxAttemptPaneEntry? {
+  let parts = split(s: line, delimiter: "\t")
+  let name = tmux_attempt_pane_field(parts: parts, n: 0)
+  let dead = tmux_attempt_pane_field(parts: parts, n: 1)
+  let status = tmux_attempt_pane_field(parts: parts, n: 2)
+  let command = tmux_attempt_pane_field(parts: parts, n: 3)
+  if count(parts) != 4 || name == "" {
+    none
+  } else if dead == "0" && status == "" {
+    Present { value: TmuxAttemptPaneEntry {
+      session_name: name,
+      dead: false,
+      exit_code: none,
+      command: command,
+    } }
+  } else if dead == "1" {
+    match parse_int(status) {
+      Present { value: code } =>
+        Present { value: TmuxAttemptPaneEntry {
+          session_name: name,
+          dead: true,
+          exit_code: Present { value: code },
+          command: command,
+        } }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn parse_tmux_attempt_panes_output(
+  output: String,
+) -> TmuxAttemptPanesParse {
+  let lines = split(s: output, delimiter: "\n")
+  let state = fold(
+    lines,
+    init: TmuxAttemptPanesFold {
+      panes: [],
+      next_line_number: 1,
+      refused: false,
+      refused_line_number: 0,
+      refused_raw: "",
+      refused_reason: "",
+    },
+    f: fn(acc, line) {
+      if acc.refused || trim(line) == "" {
+        TmuxAttemptPanesFold {
+          panes: acc.panes,
+          next_line_number: acc.next_line_number + 1,
+          refused: acc.refused,
+          refused_line_number: acc.refused_line_number,
+          refused_raw: acc.refused_raw,
+          refused_reason: acc.refused_reason,
+        }
+      } else {
+        match parse_tmux_attempt_pane_line(line: line) {
+          Present { value: pane } =>
+            TmuxAttemptPanesFold {
+              panes: append(acc.panes, [pane]),
+              next_line_number: acc.next_line_number + 1,
+              refused: false,
+              refused_line_number: 0,
+              refused_raw: "",
+              refused_reason: "",
+            }
+          Absent =>
+            TmuxAttemptPanesFold {
+              panes: acc.panes,
+              next_line_number: acc.next_line_number + 1,
+              refused: true,
+              refused_line_number: acc.next_line_number,
+              refused_raw: line,
+              refused_reason: "expected four tab-delimited tmux attempt-pane fields with a valid dead/status pair",
+            }
+        }
+      }
+    },
+  )
+  if state.refused {
+    AttemptPanesParseRefused {
+      line_number: state.refused_line_number,
+      raw: state.refused_raw,
+      reason: state.refused_reason,
+    }
+  } else {
+    AttemptPanesParsed { panes: state.panes }
   }
 }
 
@@ -107,6 +431,49 @@ fn shape_tmux_respawn_pane_argv_for(
       inner_argv,
     ),
   )
+}
+
+data tmux_capture_fidelity_note: String = "WHETHER A CAPTURE CARRIES ESCAPES IS A tmux FACT, and it is a fact about capture-pane specifically rather than about whatever program happened to write into the pane. tmux keeps a RENDERED grid: the pane's contents are the characters currently displayed, with the control sequences that positioned and coloured them already consumed by the renderer. So `capture-pane -p` emits plain text, and `-e` re-serializes escape sequences for the attributes it stored. Cited against tmux's own manual, which documents -e as 'the output includes escape sequences for text and background attributes' — the flag ADDS them back; their absence is the default, not an accident.\\n\\nThe distinction is typed rather than left as a bare flag because the two outputs are different kinds of thing and only one of them is safe to parse. A caller that wants values out of a pane wants CapturePlainText; a caller reproducing a terminal's appearance wants CaptureWithEscapes; and a Bool named include_escapes at the call site would let the wrong one through with no signal. Verified on srv2: a plain capture of a colour-emitting CLI contains zero escape bytes under cat -v.\\n\\nThis module says nothing about which program is being captured. That is the point — the fidelity is tmux's, the format inside the pane belongs to whoever wrote it, and a consumer composes the two."
+
+type TmuxCaptureFidelity
+  = CapturePlainText
+  | CaptureWithEscapes
+
+fn tmux_capture_fidelity_argv(fidelity: TmuxCaptureFidelity) -> List<String> {
+  match fidelity {
+    CapturePlainText => []
+    CaptureWithEscapes => ["-e"]
+  }
+}
+
+fn shape_tmux_capture_pane_argv_for(
+  scope: TmuxServerScope,
+  target: String,
+  fidelity: TmuxCaptureFidelity,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    concat(
+      ["capture-pane", "-p"],
+      concat(tmux_capture_fidelity_argv(fidelity: fidelity), ["-t", target]),
+    ),
+  )
+}
+
+data tmux_capture_rendering_note: String = "THE PRODUCER SIDE OF THE SEAM, without which the brand was a claim nothing could satisfy (review, 2026-07-30). std.types.RenderedTerminalText says a capture surface PRODUCES it and a parser CONSUMES it, and the composition is admissible because the types line up — but the argv shaper above returns argv, so nothing in the tree inhabited the type. A consumer with no producer is a described surface never checked against the surface; the types could not line up because only one side existed.\\n\\nThis is the fn that makes the claim true, and it is a tmux fact rather than a caller's convenience: the fidelity that was REQUESTED determines whether the bytes that came back are rendered text. A plain capture inhabits the brand because tmux's renderer already consumed the control sequences; a -e capture re-serialized them, so it does not, and it says so with a typed arm rather than branding the bytes anyway.\\n\\nThat is the whole construction. A caller cannot reach RenderedTerminalText from an escape-carrying capture at all, so the failure the brand exists to prevent — a one-time code extracted with escape bytes still inside it, pasted, and rejected at the far end with no sign the dashboard mangled it — is unwritable rather than merely discouraged. The captured bytes are taken as a parameter because performing the capture is a transport question this module does not answer."
+
+type TmuxCaptureRendering
+  = TmuxPaneRendered { text: RenderedTerminalText }
+  | TmuxCaptureRetainedEscapes { fidelity: TmuxCaptureFidelity }
+
+fn tmux_captured_pane_rendering(
+  fidelity: TmuxCaptureFidelity,
+  captured: String,
+) -> TmuxCaptureRendering {
+  match fidelity {
+    CapturePlainText => TmuxPaneRendered { text: captured as RenderedTerminalText }
+    CaptureWithEscapes => TmuxCaptureRetainedEscapes { fidelity: CaptureWithEscapes }
+  }
 }
 
 fn shape_tmux_ls_argv_for(scope: TmuxServerScope) -> List<String> {

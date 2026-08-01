@@ -7,9 +7,11 @@ import gunbc.roadmap_serve {
   BeltDispatchHandler, DispatchAssetHandler,
   SandboxPageHandler, SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
+  LandingQueueHandler, LandingPrEvidenceHandler, LandingMergeHandler, LandingReviewArtifactHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
+  roadmap_serve_route_specs,
   roadmap_serve_build_from_specs,
   roadmap_serve_selection_response,
   roadmap_serve_invoke,
@@ -71,6 +73,27 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
+    && selects(method: GET, path: "/landing", want: LandingQueueHandler)
+    && selects(method: GET, path: "/landing/pr/7573", want: LandingPrEvidenceHandler)
+    && selects(method: POST, path: "/landing/merge/7573", want: LandingMergeHandler)
+    && selects(method: GET, path: "/landing/review/45934", want: LandingReviewArtifactHandler)
+}
+
+data landing_route_red_note: String = "The merge route is POST-only and its PR number is bound by the shared PathTemplate matcher. A GET must fold to 405, preventing links or crawlers from actuating a merge."
+
+test fn witness_landing_merge_route_is_post_only_and_binds_number() -> Bool {
+  let selected = serve_select_route(table: live_table_or_empty(), method: POST, path: "/landing/merge/7573")
+  let get_selected = serve_select_route(table: live_table_or_empty(), method: GET, path: "/landing/merge/7573")
+  let post_ok = match selected {
+    SelectedDynamic { handler, params } =>
+      handler == LandingMergeHandler && path_param_value(params: params, name: "number") == "7573"
+    _ => false
+  }
+  let get_refused = match get_selected {
+    MethodNotAllowed { allowed } => count(allowed) == 1 && any(allowed, method => method == POST)
+    _ => false
+  }
+  post_ok && get_refused
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
@@ -148,6 +171,21 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     && string_contains(s: r.body, pattern: "before observation, provider preflight, or worktree creation")
 }
 
+data landing_preview_actuation_red_note: String = "The observe-only instance must refuse at the handler boundary, before the landing runtime can observe admission or call GitHub. Changing the handler to call landing_merge_pr for every posture makes this witness leave the typed 403 disabled arm."
+
+test fn witness_preview_landing_merge_refuses_before_effects() -> Bool {
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/landing/merge/7573",
+    body: "",
+  )
+  r.status == 403
+    && string_contains(s: r.body, pattern: "\"state\": \"disabled\"")
+    && string_contains(s: r.body, pattern: "srv2-preview-codex-feedback-v0")
+    && string_contains(s: r.body, pattern: "before admission observation or GitHub actuation")
+}
+
 test fn witness_instance_route_names_posture_and_paths() -> Bool {
   let r = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
@@ -168,9 +206,12 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     && string_contains(s: r.body, pattern: "\"dispatch_attempt_state_root\": \"/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0/attempt-state\"")
 }
 
+data route_table_drops_nothing_note: String = "THE ROUTE COUNT STOPPED BEING A LITERAL, and what replaces it is the claim the literal was standing in for. Sixteen was read off the live route roster, so adding /provider.json — a correct route this PR needed — reds a witness that has nothing to say about which routes exist. That is the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464, and this was a third instance of it (review, 2026-07-30, found by the full floor rather than by any targeted run).\\n\\nThe replacement is strictly stronger, not weaker. What this witness is actually for is that the live table BUILDS — the refusing arm below is the other half — and the interesting failure is a build that silently drops a route rather than refusing. serve_page_response_note in this module names exactly that hazard: the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy. A literal count cannot tell a dropped route from a roster that legitimately grew; comparing against the roster can, and it never needs editing again.\\n\\nThe non-emptiness conjunct stays because equality between two empty lists would hold vacuously."
+
 test fn witness_live_table_builds_ready_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => count(t.routes) == 16
+    RoadmapServeTable { table: t } =>
+      count(t.routes) > 0 && count(t.routes) == count(roadmap_serve_route_specs())
     RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
   }
 }

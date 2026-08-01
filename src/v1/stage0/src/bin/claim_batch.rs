@@ -320,6 +320,24 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             println!("FAIL {} (runtime error: {})", function, message);
             *any_failed = true;
         }
+        // Named as a kill, not a duration: the row stopped AT the budget, so elapsed is a
+        // ceiling. The clock is named because a cpu-budget kill and a wall-budget kill have
+        // different remedies.
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => {
+            println!(
+                "FAIL {} (killed at its {} budget: {}ms elapsed > {}ms budget; elapsed is a \
+                 ceiling, not a completed duration)",
+                function,
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            );
+            *any_failed = true;
+        }
     }
 }
 
@@ -749,6 +767,27 @@ fn run() -> Result<ExitCode, ExitCode> {
             ms(st.assembly_rewire_func_env),
             ms(st.assembly_emit_info),
             ms(st.reconcile_assembly),
+        );
+        // The two lines above are INCLUSIVE-universe rows: they sum every resolve this
+        // thread ran, which is a strictly larger set than `[resolve-summary]`'s
+        // witness-entry resolves. The partition below reports against the span total that
+        // actually contains them, and refuses rather than quoting a share off the mismatch.
+        let partition = v1_compiler::cli_run::exclusive_cost_partition();
+        eprintln!(
+            "[cost-partition] {}",
+            v1_compiler::cli_run::render_exclusive_cost_partition_json(
+                &partition,
+                &[
+                    (
+                        "witness_entry_resolve_wall_nanos",
+                        timings.resolve_ms.saturating_mul(1_000_000),
+                    ),
+                    (
+                        "witness_eval_wall_nanos",
+                        timings.witness_ms.saturating_mul(1_000_000),
+                    ),
+                ],
+            )
         );
     }
 

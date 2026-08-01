@@ -130,6 +130,8 @@ test fn wire_stale_base_fails_verdict_parse_path() -> Bool {
         MergeAdmitted => false
         MergeDeniedStaleRoster => false
         MergeDeniedNotSuccess => false
+        MergeDeniedWrongAttempt => false
+        MergeDeniedSubjectMismatch => false
       }
     Absent => false
   }
@@ -145,6 +147,8 @@ test fn fresh_verdict_is_merge_admitted() -> Bool {
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
 }
 
@@ -155,6 +159,8 @@ test fn red_verdict_is_merge_denied_not_success() -> Bool {
     current_roster_hash: current_gate_roster_hash,
   ) {
     MergeDeniedNotSuccess => true
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
     MergeAdmitted => false
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false

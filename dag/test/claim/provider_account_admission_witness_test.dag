@@ -1,0 +1,240 @@
+module test.claim.provider_account_admission_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
+import gunbc.provider_account {
+  CodexAccountSelection,
+  CodexDefaultAccount,
+  CodexLabelledAccount,
+  ProviderAccountLabel,
+  SessionConcurrency,
+  SingleSession,
+  ManySessions,
+  SessionConcurrencyDecode,
+  ConcurrencyDecoded,
+  ConcurrencyRefused,
+  session_concurrency_of_count,
+  session_concurrency_total,
+  CredentialSharingDiscipline,
+  SharingDisciplineUnknown,
+  ExclusiveBinding,
+  ConcurrentBindingObservedUpTo,
+  ConcurrentBindingSafe,
+  codex_sharing_discipline,
+  codex_current_sharing_discipline,
+  AdmittedAccountBinding,
+  AccountBindingAdmission,
+  BindingAdmitted,
+  BindingRefusedUnknownDiscipline,
+  BindingRefusedExclusiveOverbound,
+  BindingRefusedBeyondObservedEvidence,
+  admit_account_binding,
+  EvidencedSharingDiscipline,
+  EvidencedExclusive,
+  EvidencedObservedUpTo,
+  EvidencedConcurrentSafe,
+  admitted_single_session_binding,
+  codex_roadmap_account_evidence,
+  codex_roadmap_account_selection,
+}
+import extdeps.llm.codex_auth {
+  CodexPersistenceUnobserved,
+  CodexPersistenceObservedLoginOnly,
+  CodexPersistsOnRefresh,
+  codex_observed_refresh_persistence,
+  codex_observed_concurrent_sessions_per_root,
+}
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardExistingProviderState,
+  srv1_lab_dashboard_instance,
+  srv2_lab_dashboard_instance,
+  srv1_live_dashboard_instance,
+}
+
+data witness_purpose_note: String = "THE ADMISSION USED TO HAVE NO CONSUMER, so every claim its note made about unwritability was unfalsifiable. admit_account_binding returned a value nothing received while instance construction wrote DashboardExistingProviderState directly, which meant the wall and the traffic were in different places. These claims exist to make both halves checkable: that the admission actually decides, and that a provider state cannot exist without one."
+
+data concurrency_carrier_note: String = "THE TWO VALUES THE OLD Int GUARD ADMITTED. concurrent_sessions was a bare Int and ExclusiveBinding refused only when it exceeded one, so zero and negative sailed through into BindingAdmitted — a successfully admitted binding of a deployment that cannot run. ConcurrentBindingSafe did not look at the number at all.\\n\\nThese are the discriminating inputs: both refuse at the decoder, and neither can reach an admission because the admission no longer accepts an Int. A model that kept the Int and added a check would still admit a hand-passed zero; a model that made the count a shape has nowhere to put one."
+
+test fn zero_and_negative_session_counts_refuse() -> Bool {
+  let zero = match session_concurrency_of_count(raw: 0) {
+    ConcurrencyDecoded { value: _ } => false
+    ConcurrencyRefused { raw, reason: _ } => raw == 0
+  }
+  let negative = match session_concurrency_of_count(raw: 0 - 3) {
+    ConcurrencyDecoded { value: _ } => false
+    ConcurrencyRefused { raw, reason: _ } => raw == (0 - 3)
+  }
+  zero && negative
+}
+
+test fn one_decodes_to_the_single_session_constructor() -> Bool {
+  match session_concurrency_of_count(raw: 1) {
+    ConcurrencyRefused { raw: _, reason: _ } => false
+    ConcurrencyDecoded { value } =>
+      match value {
+        ManySessions { total: _ } => false
+        SingleSession => session_concurrency_total(concurrency: value) == 1
+      }
+  }
+}
+
+test fn many_decodes_and_keeps_its_total() -> Bool {
+  match session_concurrency_of_count(raw: 17) {
+    ConcurrencyRefused { raw: _, reason: _ } => false
+    ConcurrencyDecoded { value } =>
+      match value {
+        SingleSession => false
+        ManySessions { total } =>
+          total == 17 && session_concurrency_total(concurrency: value) == 17
+      }
+  }
+}
+
+data observation_does_not_promote_note: String = "THE PROMOTION THIS CLAIM EXISTS TO PREVENT. CodexPersistenceObservedLoginOnly used to map to ConcurrentBindingSafe, which admits any session count whatsoever, on the strength of seventeen sessions observed on one host for three days. The observation's own note in extdeps.llm.codex_auth says in the same paragraph that it establishes neither that a refresh exchange happens at all nor how simultaneous cold starts behave.\\n\\nSo the discriminating pair is: a binding AT the observed ceiling is admitted, and a binding ONE ABOVE it is refused with the ceiling named. Under the old mapping both were admitted and the second was the unearned one. The third conjunct pins that ConcurrentBindingSafe is not reachable from any codex persistence value, which is what keeps the proven-safe arm honest until the two-host experiment discharges it."
+
+fn admission_for(count: Int) -> AccountBindingAdmission {
+  match session_concurrency_of_count(raw: count) {
+    ConcurrencyRefused { raw: _, reason: _ } =>
+      BindingRefusedUnknownDiscipline {
+        selection: CodexDefaultAccount,
+        concurrency: SingleSession,
+      }
+    ConcurrencyDecoded { value } =>
+      admit_account_binding(
+        selection: codex_roadmap_account_selection(),
+        concurrency: value,
+        discipline: codex_current_sharing_discipline(),
+      )
+  }
+}
+
+test fn binding_within_observed_ceiling_is_admitted() -> Bool {
+  match admission_for(count: codex_observed_concurrent_sessions_per_root) {
+    BindingAdmitted { admitted } =>
+      session_concurrency_total(concurrency: admitted.concurrency) == codex_observed_concurrent_sessions_per_root
+    _ => false
+  }
+}
+
+test fn binding_beyond_observed_ceiling_refuses() -> Bool {
+  match admission_for(count: codex_observed_concurrent_sessions_per_root + 1) {
+    BindingRefusedBeyondObservedEvidence { selection: _, concurrency, ceiling } =>
+      session_concurrency_total(concurrency: concurrency) == codex_observed_concurrent_sessions_per_root + 1
+        && session_concurrency_total(concurrency: ceiling) == codex_observed_concurrent_sessions_per_root
+    _ => false
+  }
+}
+
+test fn observed_login_only_does_not_reach_the_unbounded_arm() -> Bool {
+  match codex_sharing_discipline(persistence: CodexPersistenceObservedLoginOnly) {
+    ConcurrentBindingSafe => false
+    ConcurrentBindingObservedUpTo { ceiling } =>
+      session_concurrency_total(concurrency: ceiling) == codex_observed_concurrent_sessions_per_root
+    _ => false
+  }
+}
+
+test fn unobserved_credential_admits_nothing_not_even_one() -> Bool {
+  match admit_account_binding(
+    selection: CodexDefaultAccount,
+    concurrency: SingleSession,
+    discipline: codex_sharing_discipline(persistence: CodexPersistenceUnobserved),
+  ) {
+    BindingRefusedUnknownDiscipline { selection: _, concurrency: _ } => true
+    _ => false
+  }
+}
+
+test fn exclusive_credential_admits_one_and_refuses_two() -> Bool {
+  let exclusive = codex_sharing_discipline(persistence: CodexPersistsOnRefresh)
+  let one = match admit_account_binding(
+    selection: CodexDefaultAccount,
+    concurrency: SingleSession,
+    discipline: exclusive,
+  ) {
+    BindingAdmitted { admitted: _ } => true
+    _ => false
+  }
+  let two = match admit_account_binding(
+    selection: CodexDefaultAccount,
+    concurrency: ManySessions { total: 2 },
+    discipline: exclusive,
+  ) {
+    BindingRefusedExclusiveOverbound { selection: _, concurrency: _ } => true
+    _ => false
+  }
+  one && two
+}
+
+data evidence_row_tracks_the_observation_note: String = "codex_roadmap_account_evidence restates the observed ceiling, so it can drift from codex_observed_concurrent_sessions_per_root the moment either moves. This pins them together: a re-measurement that updates the observation without updating the evidence row reds here rather than leaving the fleet bound against a number nobody measured."
+
+test fn fleet_evidence_row_matches_the_observation() -> Bool {
+  match codex_roadmap_account_evidence {
+    EvidencedObservedUpTo { ceiling } =>
+      session_concurrency_total(concurrency: ceiling) == codex_observed_concurrent_sessions_per_root
+    _ => false
+  }
+}
+
+data construction_requires_admission_note: String = "THE CLAIM THAT WOULD NOT COMPILE BEFORE, AND THE ONE THAT WOULD NOT COMPILE AFTER. Every instance's provider state now carries an admitted binding, so reading one back is possible at all — under the previous shape there was no field to read. And the wall works in the other direction too: a DashboardExistingProviderState written without a binding is a type error, which is the construction property stated as a compile fact rather than as a note.\\n\\nAll three live instances are checked rather than one, because the bypass was in the SHARED constructor and a claim against a single instance would pass while a second declaration wrote the field by hand."
+
+fn instance_binding_is_single_session(instance: HostDashboardInstance) -> Bool {
+  match instance.provider_state {
+    DashboardExistingProviderState { root: _, executable: _, binding } =>
+      session_concurrency_total(concurrency: binding.concurrency) == 1
+  }
+}
+
+fn instance_binding_names_the_roadmap_account(instance: HostDashboardInstance) -> Bool {
+  match instance.provider_state {
+    DashboardExistingProviderState { root: _, executable: _, binding } =>
+      match binding.selection {
+        CodexDefaultAccount => false
+        CodexLabelledAccount { label } => (label as String) == "gunbc-roadmap"
+      }
+  }
+}
+
+test fn every_instance_carries_an_admitted_binding() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let srv2 = srv2_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  instance_binding_is_single_session(instance: lab)
+    && instance_binding_is_single_session(instance: srv2)
+    && instance_binding_is_single_session(instance: live)
+    && instance_binding_names_the_roadmap_account(instance: lab)
+    && instance_binding_names_the_roadmap_account(instance: srv2)
+    && instance_binding_names_the_roadmap_account(instance: live)
+}
+
+test fn single_session_path_is_total_over_evidenced_disciplines() -> Bool {
+  let exclusive = admitted_single_session_binding(
+    selection: CodexDefaultAccount,
+    evidence: EvidencedExclusive,
+  )
+  let observed = admitted_single_session_binding(
+    selection: CodexDefaultAccount,
+    evidence: EvidencedObservedUpTo { ceiling: ManySessions { total: 17 } },
+  )
+  let safe = admitted_single_session_binding(
+    selection: CodexDefaultAccount,
+    evidence: EvidencedConcurrentSafe,
+  )
+  session_concurrency_total(concurrency: exclusive.concurrency) == 1
+    && session_concurrency_total(concurrency: observed.concurrency) == 1
+    && session_concurrency_total(concurrency: safe.concurrency) == 1
+}
+
+test fn provider_account_admission_keystone_holds() -> Bool {
+  zero_and_negative_session_counts_refuse()
+    && one_decodes_to_the_single_session_constructor()
+    && many_decodes_and_keeps_its_total()
+    && binding_within_observed_ceiling_is_admitted()
+    && binding_beyond_observed_ceiling_refuses()
+    && observed_login_only_does_not_reach_the_unbounded_arm()
+    && unobserved_credential_admits_nothing_not_even_one()
+    && exclusive_credential_admits_one_and_refuses_two()
+    && fleet_evidence_row_matches_the_observation()
+    && every_instance_carries_an_admitted_binding()
+    && single_session_path_is_total_over_evidenced_disciplines()
+}

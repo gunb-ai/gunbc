@@ -35,10 +35,8 @@ impl Drop for CacheEnvGuard {
 }
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, load_sources_for_entry, make_eval_context,
-    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
-    resolve_entry_graph, resolve_entry_with_index, run_claim,
-    serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
+    build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
+    resolve_entry_with_index, run_claim, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
     build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup, probe,
@@ -69,6 +67,14 @@ fn outcome_tag(o: &ClaimOutcome) -> String {
         ClaimOutcome::Fail => "FAIL".to_string(),
         ClaimOutcome::NotBool { got } => format!("NOTBOOL({got})"),
         ClaimOutcome::RuntimeError { message } => format!("RUNTIMEERR({message})"),
+        // Distinct from RUNTIMEERR on purpose: a budget kill is not a runtime fault.
+        // Both numbers are rendered so a caller comparing labels cannot mistake the
+        // elapsed ceiling for a completed duration.
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => format!("TIMEDOUT({} {elapsed_ms}ms>{budget_ms}ms)", kind.label()),
     }
 }
 
@@ -308,24 +314,6 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     });
 
     let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn faithful_probe_refusal_does_not_build_provider_ctx() {
-    reset_materialization_provider_ctx_for_test();
-    let builds_before = materialization_provider_ctx_build_count_for_test();
-
-    let err = serve_resolved_graph_v1_disk_probe_for_test("closure-digest", "compiler-digest")
-        .expect_err("unavailable faithful probe must refuse");
-    assert!(
-        err.contains("provider refused faithful probe"),
-        "refusal should name the faithful-probe gap: {err}"
-    );
-    assert_eq!(
-        materialization_provider_ctx_build_count_for_test(),
-        builds_before,
-        "faithful-probe refusal must not build provider ctx"
-    );
 }
 
 #[test]

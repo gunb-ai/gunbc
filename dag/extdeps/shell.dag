@@ -1,6 +1,6 @@
 module extdeps.shell
 
-import std.types { FilePath, NonEmptyStr, String }
+import std.types { FilePath, NonEmptyStr, Secret, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -99,6 +99,28 @@ service shell.Test {
       1 => Unit "Path is missing or not a regular file"
     }
   }
+
+  operation IsDirectory {
+    input { path: FilePath }
+    output { is_directory: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-d", "{path}"] }
+    exit {
+      0 => Unit "Path is a directory"
+      1 => Unit "Path is missing or not a directory"
+    }
+  }
+
+  operation IsWritable {
+    input { path: FilePath }
+    output { writable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-w", "{path}"] }
+    exit {
+      0 => Unit "Path is writable by the effective principal"
+      1 => Unit "Path is missing or not writable by the effective principal"
+    }
+  }
 }
 
 service shell.Mktemp {
@@ -189,6 +211,23 @@ service shell.Copy {
     exit {
       0 => Unit
       nonzero => String "cp -r failed"
+    }
+  }
+}
+
+service shell.GCloud {
+  operation AuthPrintAccessToken {
+    input {}
+    output {
+      access_token: Secret from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["gcloud", "auth", "print-access-token"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to get access token"
     }
   }
 }

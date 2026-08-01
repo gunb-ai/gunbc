@@ -30,6 +30,8 @@ test fn enforcement_denies_stale_base_verdict() -> Bool {
     MergeAdmitted => false
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
 }
 
@@ -43,6 +45,8 @@ test fn enforcement_denies_stale_roster_verdict() -> Bool {
     MergeAdmitted => false
     MergeDeniedStaleBase => false
     MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
 }
 
@@ -56,6 +60,8 @@ test fn enforcement_admits_fresh_verdict() -> Bool {
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
 }
 
@@ -73,6 +79,8 @@ test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
     current_roster_hash: scenario_roster_r0,
   ) {
     MergeDeniedNotSuccess => true
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
     MergeAdmitted => false
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false
@@ -93,6 +101,8 @@ test fn enforcement_denies_failure_fresh_receipt() -> Bool {
     current_roster_hash: scenario_roster_r0,
   ) {
     MergeDeniedNotSuccess => true
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
     MergeAdmitted => false
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false
@@ -109,6 +119,8 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
   let stale = match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
@@ -119,6 +131,8 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
     MergeAdmitted => false
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
   fresh && stale
 }

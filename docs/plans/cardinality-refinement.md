@@ -2,34 +2,33 @@
 
 **Status:** scoping (Feature-1 from the byte-grounding thread). **DESIGN.md + carriers are authority** (§6 no parallel ledger); each item dissolves into a wired parser/checker change + a green witness when it lands.
 
-**Verified against the live tree 2026-06-22.** Line numbers are receipts; re-check before acting.
+**Verified against the live tree 2026-07-31.** Symbols, not line positions, are receipts; re-check the cited declarations before acting.
 
 ## 0. Thesis — cardinality is ONE axis, and it is the *decidable* refinement fragment
 
 "Is it empty", "does it have N", "did `Int64` overflow" are the same question — a **cardinality constraint** — answered today by scattered manual `if list_length(..) == 0` / `count` / bound checks. Model cardinality as a refinement **axis** and two things fall out:
 
-1. **Decidability (why this fragment, not general refinement).** Arbitrary value predicates (`admits: fn(B) -> Bool`, `refinement.dag:34`) are undecidable, so they can only be checked at a runtime constructor boundary. **Cardinality** predicates — `length == N`, `≥ 1`, `magnitude < 2^width` — are linear arithmetic over counts: **decidable**, hence checkable *statically* and fold-propagated. Scoping refinement to cardinality is what keeps it inside the §4 bounded/decidable substrate; general refinement would break it.
+1. **Decidability (why this fragment, not general refinement).** Arbitrary value predicates (`v2.std.refinement` `Validation.admits: fn(B) -> Bool`) are undecidable, so they can only be checked at a runtime constructor boundary. **Cardinality** predicates — `length == N`, `≥ 1`, `magnitude < 2^width` — are linear arithmetic over counts: **decidable**, hence checkable *statically* and fold-propagated. Scoping refinement to cardinality is what keeps it inside the §4 bounded/decidable substrate; general refinement would break it.
 2. **Fold-propagation (the payoff).** A catamorphism that carries the cardinality means folding a `List<Bit>` yields its length, adding two bounded `Int64` yields the combined bound (and **overflow is a typed `Rejected`, not a silent wrap**). "When we fold, it's handled automatically" — the empty/count/width checks stop being hand-written.
 
 ## 1. What is ALREADY built (this is wiring, not greenfield)
 
-- **Value-level refinement substrate — `v2.std.refinement`:** `Validation<B> { reason, admits: fn(B)->Bool }`, `Refined<B> { base }`, and `refine<B>(base, by, at) -> Outcome<Refined<B>>` (`:74`) which checks `admits(base)` and returns `Accepted{Refined}` / `Rejected` — **fail-closed, already.** Plus hoisted int refinement factories and iteration-ordering refinements.
-- **Its own documented gaps:** `🟡 feature:refinement-opaque-carrier / T-25-tail` (`:65`) — bare `Refined { base }` can still bypass `refine`; construction is **not compiler-enforced** yet.
-- **The phantom-width gap — `std.machine_constraints`:** `type MachineWidth<bits>` (`:47`) is a phantom; its TRACKED PARAMETER GAP (`:34-46`) names the exact trigger: *"substrate grammar for bounded phantom parameters tying `bits` to `Nat`, or a non-phantom `MachineWidth` indexed by an explicit `Nat` carrier."* No reflection of `N` to a value.
-- **The structural carriers exist, unchecked — `std.bit`:** `Byte { bits: List<Bit> }` (`bit.dag:25`), header concedes *"cardinality is not enforced … no lowered field refinement, type-alias `where` is skipped in the handwritten parser."*
-- **A waiting consumer — `std.measure`:** `Refined<Measure<…>, predicate>` is explicitly **deferred** (`measure.dag:8,245`), waiting on exactly this.
+- **Value-level refinement substrate — `v2.std.refinement`:** `Validation`, `Refined`, and `refine` check `Validation.admits` and return `Accepted{Refined}` / `Rejected` — **fail-closed, already.** Plus hoisted int refinement factories and iteration-ordering refinements.
+- **The carrier has not consumed the existing construction wall:** `v2.std.refinement` `Refined` exposes its `base` field and is not marked `sole_constructor`. The compiler already refuses cross-module construction of `sole_constructor` records through `v1.compiler.infer` `type_has_sole_constructor` / `SoleConstructorViolation`; per DESIGN §4b, its completeness for generic refinement carriers, every construction form, and compiler-module exemptions is **unverified**, not absent.
+- **The phantom-width gap — `std.machine_constraints` `MachineWidth`:** the declaration has a type parameter but no value carrier. No reflection of `N` to a value exists.
+- **The structural carrier exists, unchecked — `std.bit` `Byte`:** its `bits: List<Bit>` field carries no cardinality refinement.
 
 ## 2. The gap, decomposed (each piece → a real surface)
 
-- [ ] **P1 — surface `where` syntax, desugaring to `refine`/`Validation`.** Parser: extend the type-RHS path (`parse_type_rhs_after_eq`, named in `machine_constraints.dag:109`) and the record-field path to accept `where <cardinality-pred>`; lex the `where` keyword. Normalize: at the `^dag_surface_type_alias_rhs` hook (`03_normalize.dag:90`) lower `where P` into a `Validation` + a **refined-construction obligation** on the type. MVP = alias/field-level `where`; the predicate is from the closed cardinality vocabulary (P3), not an arbitrary expression.
-- [ ] **P2 — compiler-enforced construction (closes T-25-tail).** Checker: at a construction site of a refined type, require the obligation discharged — bare `Byte { bits: … }` outside the sanctioned `refine`/smart-constructor is a located `Rejected`, never silent. This is what turns "documented intent" into "illegal-state-unwritable."
-- [ ] **P3 — the closed cardinality predicate vocabulary (the decidable fragment).** A small closed set grounded in `Validation.admits`: `Length<N>` (`== N`), `NonEmpty` (`≥ 1`), `Bounded<Lo,Hi>`, `Width<N>` (the `MachineWidth` bound). All are linear-arithmetic over `list_length` (`types.dag:233`) / magnitude — decidable. `Byte = { bits: List<Bit> } where Length<8>`; `Int64`'s magnitude is `Bounded<0, 2^64>`. **No arbitrary predicate enters static checking.**
+- [ ] **P1 — surface `where` syntax, desugaring to `refine`/`Validation`.** Extend `v2.extdeps.languages.dag` `dag_grammar_type_alias_rhs_expr` and the record-field grammar to accept `where <cardinality-pred>`. Register the emitted surface form through `v2.std.compilers.sugar` and lower it through `v2.compiler.normalize` `normalize_sugar_key_optional` into a `Validation` + a **refined-construction obligation**. MVP = alias/field-level `where`; the predicate is from the closed cardinality vocabulary (P3), not an arbitrary expression.
+- [ ] **P2 — audit and consume the existing construction wall (closes T-25-tail).** First run discriminating positive/negative probes for `sole_constructor` on generic `Refined<B>`, every record-construction form, and the compiler-module exemptions named by DESIGN §4b. If that audit is complete, mark the canonical refinement carrier and route sanctioned construction through `refine`/its smart constructor; if a probe escapes, extend the existing wall at that measured gap rather than minting a parallel checker. The required outcome is that bare refined construction outside the sanctioned factory produces a located `SoleConstructorViolation`, never silent acceptance.
+- [ ] **P3 — the closed cardinality predicate vocabulary (the decidable fragment).** A small closed set grounded in `Validation.admits`: `Length<N>` (`== N`), `NonEmpty` (`≥ 1`), `Bounded<Lo,Hi>`, `Width<N>` (the `MachineWidth` bound). All are linear-arithmetic over `std.types` `list_length` / magnitude — decidable. `Byte = { bits: List<Bit> } where Length<8>`; `Int64`'s magnitude is `Bounded<0, 2^64>`. **No arbitrary predicate enters static checking.**
 - [ ] **P4 — fold-propagation (the novel, high-value piece).** Extend the catamorphism (`fold_node` / the reduce) so a cardinality fact is COMPUTED through a fold: `Cons/Empty` over a list yields its length; combining two `Bounded` magnitudes yields the combined bound, and a bound exceeding the `Width` is a typed overflow `Rejected`. Connect to the existing cost-through-folds algebra (`induction.dag` PolyCost/exponents) — cardinality is the same shape (a count tracked through a catamorphism) as the cost lens already computes.
-- [ ] **P5 (stretch) — type-level-Nat reflection.** Reflect `MachineWidth<N>`'s `N` to a value (the phantom→value bridge named in `machine_constraints.dag:43-46`), so `bits_per_byte` dissolves into `width(Byte)` and `Int64`'s bound derives from its type rather than a literal.
+- [ ] **P5 (stretch) — type-level-Nat reflection.** Add the value bridge absent from `std.machine_constraints` `MachineWidth`, so `bits_per_byte` dissolves into `width(Byte)` and `Int64`'s bound derives from its type rather than a literal.
 
 ## 3. Where it plugs into the pipeline
 
-`tokenize` (lex `where`) → `parse` (`parse_type_rhs_after_eq`: parse the cardinality pred, attach to the type-decl `Node`) → `normalize` (`dag_surface_type_alias_rhs`: desugar to `Validation` + the construction obligation) → `infer` (`04_infer`: discharge the obligation at construction sites — the decidable cardinality check — and fold-propagate cardinality facts) → `emit` (refinements erase, or ground to a target assert; they are compile-time).
+`tokenize` (lex `where`) → `parse` (`v2.extdeps.languages.dag` `dag_grammar_type_alias_rhs_expr`: attach the cardinality predicate to an emitted surface node) → `normalize` (`v2.compiler.normalize` `normalize_sugar_key_optional`: desugar through the sugar registry to `Validation` + the construction obligation) → `infer` (discharge the obligation at construction sites and fold-propagate cardinality facts) → `emit` (refinements erase, or ground to a target assert; they are compile-time).
 
 ## 4. The decidability boundary (the one rule that keeps this §4-legal)
 
@@ -47,14 +46,14 @@ Two tiers, and the split is the whole discipline:
 
 ## 6. What one feature unblocks (the ROI)
 
-Byte=8bits; the scattered empty/count/length checks → cardinality facts; `Int64` overflow → a bound through the fold; `Measure<Q,S>` inhabitance (the deferred `Refined<Measure>`); typed `|>` coercion (the Measure-inhabitance gap blocked it last week); `NonEmptyStr`/`NonEmptyDiagnostics` → `NonEmpty`. One axis, many groundings.
+Byte=8bits; the scattered empty/count/length checks → cardinality facts; `Int64` overflow → a bound through the fold; typed `|>` coercion; `NonEmptyStr`/`NonEmptyDiagnostics` → `NonEmpty`. One axis, many groundings.
 
 ## 7. Risks / hard parts
 
 - **Decidability discipline** (§4) — the failure mode is P3/P4 quietly admitting a non-cardinality predicate; gate it to the closed vocabulary.
 - **Fold-propagation soundness** — the cardinality a fold computes must be *provably* the real one (a fail-closed witness: a fold that miscounts goes RED).
-- **The parser is handwritten** (`bit.dag` header) — `where` lexing/parsing touches the seed parser (load-bearing; sequence behind the §0 lock-down, not during it).
-- **P2 is broad** — construction-enforcement touches every construction site of a refined type.
+- **The parser/normalizer path is load-bearing** — `where` must enter through the modeled grammar and sugar registry, sequenced behind the §0 lock-down.
+- **P2 completeness is unverified** — audit the existing `sole_constructor` wall across generic carriers, every construction form, and compiler-module exemptions before declaring the attainable ceiling or extending enforcement.
 
 ## Dissolution trigger (DESIGN §6)
 

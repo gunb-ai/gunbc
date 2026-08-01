@@ -1,7 +1,7 @@
 module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
-import std.types { CommitSha, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
+import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
@@ -18,6 +18,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/pulls/pulls"
+  }
+}
+
+data github_cli_pull_merge_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cli.github.com/manual/gh_pr_merge"
   }
 }
 
@@ -48,11 +55,123 @@ type PullRequest {
   draft: Bool
 }
 
+data pull_timing_observation_provenance_note: String = "One-time GitHub REST pull on 2026-08-01 under this module's existing GET-pull authority. Each row is the PullRequest.created_at and PullRequest.merged_at pair returned by github.Pulls.Get, normalized once from the wire Timestamp strings to Unix epoch milliseconds so arithmetic consumers do not pretend Timestamp is subtractable. The source URL remains on every row and fetched_on makes staleness inspectable. PullRequest stays the one wire-response authority; PullTimingObservation is its cited, immutable arithmetic projection, not a second endpoint or response model."
+
+type PullTimingObservation {
+  pull_number: Int
+  opened_at: EpochMs
+  merged_at: EpochMs
+  source_url: NonEmptyStr
+  fetched_on: NonEmptyStr
+}
+
+fn pull_timing_observation(
+  pull_number: Int,
+  opened_at: EpochMs,
+  merged_at: EpochMs,
+  source_url: NonEmptyStr,
+) -> PullTimingObservation {
+  PullTimingObservation {
+    pull_number: pull_number,
+    opened_at: opened_at,
+    merged_at: merged_at,
+    source_url: source_url,
+    fetched_on: "2026-08-01",
+  }
+}
+
+data gunbc_pr_7393_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7393,
+  opened_at: 1785284539000,
+  merged_at: 1785298702000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7393",
+)
+
+data gunbc_pr_7405_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7405,
+  opened_at: 1785294084000,
+  merged_at: 1785357921000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7405",
+)
+
+data gunbc_pr_7429_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7429,
+  opened_at: 1785356295000,
+  merged_at: 1785358865000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7429",
+)
+
+data gunbc_pr_7431_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7431,
+  opened_at: 1785358812000,
+  merged_at: 1785397720000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7431",
+)
+
+data gunbc_pr_7441_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7441,
+  opened_at: 1785362512000,
+  merged_at: 1785370233000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7441",
+)
+
+data gunbc_pr_7542_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7542,
+  opened_at: 1785552700000,
+  merged_at: 1785557096000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7542",
+)
+
 type IssueComment {
   id: Int
   html_url: NonEmptyStr
   body: String
   created_at: Timestamp
+}
+
+data github_cli_exact_head_merge_note: String = "GitHub CLI documents --match-head-commit as the commit SHA the pull-request head must match to allow merge and --squash as the repository's squash strategy. The operation exposes termination as data because a nonzero result is a domain refusal the landing workflow must render and receipt, not an interpreter crash. It deliberately carries no --admin and no --auto: landing workflow v1 performs the one operator-clicked merge already admitted by the dashboard summary; merge-queue enqueue remains a later realization."
+
+service github.CliPulls {
+  operation ListOpenJson {
+    input { repo: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "gh", "pr", "list",
+        "--repo", "{repo}",
+        "--state", "open",
+        "--limit", "1000",
+        "--json", "number,title,url,headRefName,headRefOid,isDraft,state",
+      ]
+    }
+  }
+
+  operation SquashMergeExactHead {
+    input {
+      repo: NonEmptyStr
+      pull_number: Int
+      expected_head: CommitSha
+    }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "gh", "pr", "merge", "{pull_number}",
+        "--repo", "{repo}",
+        "--squash",
+        "--match-head-commit", "{expected_head}",
+      ]
+    }
+  }
 }
 
 service github.Pulls {

@@ -426,9 +426,21 @@ data lens_contract_realization_vocabulary_containment: LensContract = {
 
 data lens_contract_schedule_lens: LensContract = {
   entry: lens_registry_v0_schedule_lens,
-  mode: AuditOnly,
-  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  mode: Blocking,
+  claimed_scope: ScopeRoster {
+    roots: [
+      "dag/std/realization_schedule.dag",
+      "src/v2/lens/schedule_lens.dag",
+      "src/v2/workflow/ci_floor_plan.dag"
+    ]
+  },
+  consumer_witness: BoundConsumerWitness {
+    witness: ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/walk_plan_schedule_lens_test.dag",
+      function: "gunbc_ci_walk_plan_schedule_lens_holds",
+      kind: CorpusWitnessKind
+    }
+  },
   exemptions: [],
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
 }

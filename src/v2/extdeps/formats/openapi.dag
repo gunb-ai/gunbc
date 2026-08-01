@@ -1,7 +1,7 @@
 module v2.extdeps.formats.openapi
 
 import v2.extdeps.coordination { ExchangePattern, RequestReply }
-import v2.extdeps.formats.json { JsonDocument, JsonValue }
+import v2.extdeps.formats.json { JsonDocument, JsonSchemaCarrierValue }
 import v2.extdeps.formats.json_schema { JsonSchema }
 import v2.extdeps.formats.yaml { YamlDocument }
 import v2.std.optional {
@@ -89,9 +89,9 @@ type OpenApiSchemaOasMemberKey
 
 type OpenApiSchema {
   core: JsonSchema,
-  openapi_schema_oas_members: Map<OpenApiSchemaOasMemberKey, JsonValue>,
-  openapi_schema_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
-  openapi_schema_deferred_keyword_members: Map<String, JsonValue>,
+  openapi_schema_oas_members: Map<OpenApiSchemaOasMemberKey, JsonSchemaCarrierValue>,
+  openapi_schema_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
+  openapi_schema_deferred_keyword_members: Map<String, JsonSchemaCarrierValue>,
 }
 
 type OpenApiAdmittedHttpMethod
@@ -130,8 +130,8 @@ type OpenApiLinkTarget
 type OpenApiLinkObject {
   target: OpenApiLinkTarget,
   description: Optional<String>,
-  link_deferred_members: Map<OpenApiLinkDeferredKey, JsonValue>,
-  link_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  link_deferred_members: Map<OpenApiLinkDeferredKey, JsonSchemaCarrierValue>,
+  link_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiLinkOrReference
@@ -142,7 +142,7 @@ type OpenApiContact {
   name: Optional<String>,
   url: Optional<String>,
   email: Optional<String>,
-  contact_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  contact_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiLicenseUrlOrIdentifierSlot
@@ -153,7 +153,7 @@ type OpenApiLicenseUrlOrIdentifierSlot
 type OpenApiLicense {
   name: String,
   url_or_identifier: OpenApiLicenseUrlOrIdentifierSlot,
-  license_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  license_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiInfo {
@@ -164,13 +164,13 @@ type OpenApiInfo {
   contact: Optional<OpenApiContact>,
   license: Optional<OpenApiLicense>,
   version: String,
-  info_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  info_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiMediaType {
   schema_shape: Optional<OpenApiSchema>,
-  media_type_deferred_members: Map<OpenApiMediaTypeDeferredKey, JsonValue>,
-  media_type_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  media_type_deferred_members: Map<OpenApiMediaTypeDeferredKey, JsonSchemaCarrierValue>,
+  media_type_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiHeaderContentSingle {
@@ -187,8 +187,8 @@ type OpenApiHeaderObject {
   required: Optional<Bool>,
   deprecated: Optional<Bool>,
   payload: OpenApiHeaderPayloadSlot,
-  header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonValue>,
-  header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonSchemaCarrierValue>,
+  header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiHeaderOrReference
@@ -200,7 +200,7 @@ type OpenApiResponse {
   content: Optional<Map<String, OpenApiMediaType>>,
   headers: Optional<Map<String, OpenApiHeaderOrReference>>,
   links: Optional<Map<String, OpenApiLinkOrReference>>,
-  extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiResponseOrReference
@@ -250,20 +250,20 @@ type OpenApiResponses {
   primary_response: OpenApiResponsesPrimaryEntry,
   default_response: Optional<OpenApiResponseOrReference>,
   additional_by_status: Map<OpenApiResponseKeyNonDefault, OpenApiResponseOrReference>,
-  responses_object_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  responses_object_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiOperation {
   operation_id: Optional<String>,
   responses: OpenApiResponses,
-  operation_deferred_members: Map<OpenApiOperationDeferredKey, JsonValue>,
-  operation_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  operation_deferred_members: Map<OpenApiOperationDeferredKey, JsonSchemaCarrierValue>,
+  operation_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiPathItem {
   routes: Map<OpenApiAdmittedHttpMethod, OpenApiOperation>,
-  path_deferred_members: Map<OpenApiPathItemDeferredKey, JsonValue>,
-  path_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  path_deferred_members: Map<OpenApiPathItemDeferredKey, JsonSchemaCarrierValue>,
+  path_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiPathItemOrReference
@@ -276,19 +276,19 @@ type OpenApiPathTemplateKey {
 
 type OpenApiPaths {
   routes: Map<OpenApiPathTemplateKey, OpenApiPathItem>,
-  paths_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  paths_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiComponents {
   schemas: Optional<Map<OpenApiComponentsMapKey, OpenApiSchema>>,
   path_items: Optional<Map<OpenApiComponentsMapKey, OpenApiPathItemOrReference>>,
-  components_deferred_members: Map<OpenApiComponentsDeferredKey, JsonValue>,
-  components_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  components_deferred_members: Map<OpenApiComponentsDeferredKey, JsonSchemaCarrierValue>,
+  components_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiWebhooks {
   routes: Map<String, OpenApiPathItemOrReference>,
-  webhooks_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  webhooks_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiDocumentRoot
@@ -318,8 +318,8 @@ type OpenApiDocument {
   json_schema_dialect: Optional<String>,
   info: OpenApiInfo,
   root: OpenApiDocumentRoot,
-  root_deferred_members: Map<OpenApiOpenapiObjectDeferredKey, JsonValue>,
-  root_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  root_deferred_members: Map<OpenApiOpenapiObjectDeferredKey, JsonSchemaCarrierValue>,
+  root_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonSchemaCarrierValue>,
 }
 
 type OpenApiOpenapi31MajorMinorFixedWitness {}

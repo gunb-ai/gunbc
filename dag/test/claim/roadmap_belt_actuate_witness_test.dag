@@ -9,7 +9,19 @@ import gunbc.roadmap_model {
   Sized,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified,
+  gunbc_claim_execution_contract,
+  cargo_test_execution_contract,
+}
+import std.types { NonEmptyStr, FilePath }
+import gunbc.roadmap_validation_oracle { ValidationOracleRef }
+import gunbc.roadmap_workflow_progress {
+  WorkflowAttemptEvidence,
+  WorkflowAttemptProgress,
+  workflow_attempt_progress,
+}
+import gunbc.worker_lifecycle { WorkerProcessExited, WorkerProcessRunning }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
@@ -35,6 +47,14 @@ import gunbc.roadmap_belt_actuate {
   BeltObserve, Observed, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
+  belt_oracle_refs_for_contract,
+  belt_verify_attempt_for_instance,
+  belt_workflow_attempt_presentation_json,
+  BeltVerifyOutcome,
+  VerifyDeferred,
+  VerifyRecorded,
+  VerifyWriteFailed,
+  VerifyEvidenceUnreadable,
   belt_dispatch_node_for_instance,
   belt_stop_node_for_instance,
   BeltStopResult, StopDisabled,
@@ -55,6 +75,10 @@ import gunbc.roadmap_belt_actuate {
   belt_claude_preflight_decision,
   BeltCodexPreflight, CodexPreflightOk, CodexPreflightRefused,
   belt_codex_preflight_decision_observed_for_home,
+  BeltFootprintObservation,
+  BeltFootprintAdmission, FootprintAdmitted, FootprintRefused,
+  belt_footprint_admission_decision,
+  belt_dispatch_footprint_roots,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -256,12 +280,41 @@ test fn witness_observe_empty_on_no_sessions() -> Bool {
   )) == 0
 }
 
+test fn witness_observe_empty_on_no_server_enoent() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "error connecting to /tmp/tmux-1000/srv1-green (No such file or directory)",
+  )) == 0
+}
+
+test fn witness_observe_refuses_connection_refused() -> Bool {
+  let stderr = "error connecting to /tmp/tmux-1000/srv1-green (Connection refused)"
+  match belt_observe_from_result(success: false, stdout: "", stderr: stderr) {
+    ObserveRefused { reason } => string_contains(s: reason, pattern: stderr)
+    Observed { live: _ } => false
+  }
+}
+
 test fn witness_observe_refuses_permission_error() -> Bool {
   is_observe_refused(o: belt_observe_from_result(
     success: false,
     stdout: "",
     stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
   ))
+}
+
+test fn witness_observe_refuses_malformed_stdout() -> Bool {
+  match belt_observe_from_result(
+    success: true,
+    stdout: "gunbc-dispatch-a: malformed\n",
+    stderr: "",
+  ) {
+    ObserveRefused { reason } =>
+      string_contains(s: reason, pattern: "stdout parse refused")
+        && string_contains(s: reason, pattern: "malformed")
+    Observed { live: _ } => false
+  }
 }
 
 test fn witness_observe_refuses_empty_stderr_failure() -> Bool {
@@ -663,6 +716,115 @@ test fn codex_provider_v0_preflight_keystone_holds() -> Bool {
     && witness_fresh_spawn_wire_names_selected_provider()
 }
 
+data oracle_refs_execution_note: String = "This witness exists because its subject SHIPPED BROKEN and a whole-tree compile with 0 blocking errors said otherwise. belt_oracle_refs_for_contract called filter_map, a primitive std.primitives declares a contract for and the seed implements nothing for, so the call type-checked and died as `not yet implemented` the first time a real dispatch reached it — a 500, found on the lab. The lane's other witnesses covered the pure oracle carrier thoroughly and never drove THIS function, which is the whole lesson: a projection that only the effectful path calls needs a witness even when it is itself pure, because purity is what makes it cheap to witness, not what makes it covered. The assertions deliberately RUN the fold and read its output rather than checking a type: a version calling any unregistered primitive fails here at execution, which is the only place that class of defect is observable."
+
+test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
+  let claim_contract = gunbc_claim_execution_contract(
+    entry: "dag/test/claim/probe_witness_test.dag" as FilePath,
+    function: "probe_holds" as NonEmptyStr,
+  )
+  let claim_refs = belt_oracle_refs_for_contract(contract: claim_contract)
+  let cargo_refs = belt_oracle_refs_for_contract(
+    contract: cargo_test_execution_contract(filter: "roadmap_" as NonEmptyStr),
+  )
+  let unspecified_refs = belt_oracle_refs_for_contract(
+    contract: ExecutionContractUnspecified,
+  )
+  count(claim_refs) == 1
+    && count(cargo_refs) == 0
+    && count(unspecified_refs) == 0
+    && match claim_refs.first() {
+      Absent => false
+      Present { value: oracle } =>
+        (oracle.entry as String) == "dag/test/claim/probe_witness_test.dag"
+          && (oracle.function as String) == "probe_holds"
+    }
+}
+
+data unreadable_receipt_refuses_note: String = "review 45271, the arm itself rather than its model. The finding was that an unreadable receipt was collapsed into an absent one and the belt then RAN the validation and overwrote the evidence. This drives the real fn against an instance whose attempt-state paths do not exist, so the receipt read genuinely fails, and asserts the belt answers EvidenceUnreadable — refusing without actuating — rather than treating the failed read as 'no verdict yet'. The provider is a completed turn, which is precisely the state that previously reached the run-and-overwrite path; a version that still collapses read failure into absence reaches the validation instead and this goes red."
+
+fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
+  workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: node_id,
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/{node_id}-afeedfacefeedface",
+    modeled_state_present: true,
+    admission_receipt_readable: true,
+    admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: true,
+    provider_events: "{\"type\":\"turn.completed\",\"usage\":\{\}\}\n",
+    provider_events_error: "",
+    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    validation_summary: "gunbc run --claim-run",
+    validation_receipt_readable: false,
+    validation_receipt: "",
+  })
+}
+
+data attempt_wire_carries_decided_activity_note: String = "The A2 single-projection-authority receipt at the wire: each attempt object on /workflow.json carries the DECIDED activity view beside the progress members, so the client paints without composing. The fixture is a completed agent turn with process exited and four pending obligations — the falsifier's own shape — and the assertions pin the decided fields (arm, the consequence-first summary composed by gunbc.roadmap_presentation, the reconcile-derived remaining count, the evidence rows) landing as JSON, plus the progress members surviving beside them. A client that had to rebuild any of these from segments would have nothing to rebuild them FROM being asserted here — the decided strings are the contract."
+
+test fn attempt_wire_carries_decided_activity() -> Bool {
+  let j = serialize_json(v: belt_workflow_attempt_presentation_json(
+    progress: completed_attempt_progress(node_id: "belt-wire-activity-node")))
+  string_contains(s: j, pattern: "\"activity\": {")
+    && string_contains(s: j, pattern: "\"arm\": \"active\"")
+    && string_contains(s: j, pattern: "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining")
+    && string_contains(s: j, pattern: "\"remaining_obligation_count\": 4")
+    && string_contains(s: j, pattern: "\"attention\": \"routine\"")
+    && string_contains(s: j, pattern: "\"label\": \"session container\"")
+    && string_contains(s: j, pattern: "\"value\": \"present\"")
+    && string_contains(s: j, pattern: "\"label\": \"worker process\"")
+    && string_contains(s: j, pattern: "\"value\": \"process exited\"")
+    && string_contains(s: j, pattern: "\"node_id\": \"belt-wire-activity-node\"")
+    && string_contains(s: j, pattern: "\"segments\": [")
+}
+
+test fn unreadable_validation_receipt_refuses_instead_of_rerunning() -> Bool {
+  match belt_verify_attempt_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
+  ) {
+    VerifyEvidenceUnreadable { node_id, detail } =>
+      node_id == "belt-verify-probe-node"
+        && string_contains(s: detail, pattern: "could not be read")
+        && string_contains(s: detail, pattern: "overwrite")
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    VerifyDeferred { node_id: _, reason: _ } => false
+    VerifyWriteFailed { node_id: _, detail: _ } => false
+  }
+}
+
+test fn agent_incomplete_attempt_defers_verification() -> Bool {
+  match belt_verify_attempt_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    progress: workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+      node_id: "belt-verify-running-node",
+      attempt_key: "feedfacefeedface",
+      branch: "dispatch/belt-verify-running-node-afeedfacefeedface",
+      modeled_state_present: true,
+      admission_receipt_readable: true,
+      admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
+      spawn_failure_present: false,
+      spawn_failure: "",
+      provider_events_readable: true,
+      provider_events: "",
+      provider_events_error: "",
+      process: WorkerProcessRunning { command: "codex" },
+      validation_summary: "gunbc run --claim-run",
+      validation_receipt_readable: false,
+      validation_receipt: "",
+    }),
+  ) {
+    VerifyDeferred { node_id: _, reason } =>
+      string_contains(s: reason, pattern: "agent obligation is not satisfied")
+    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    VerifyWriteFailed { node_id: _, detail: _ } => false
+  }
+}
+
 test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
   witness_dispatch_result_ok_spawned_and_live()
     && witness_dispatch_result_refusals_not_ok()
@@ -675,6 +837,9 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && witness_exemplar_roster_reconciles_variant_set()
     && witness_exemplar_roster_missing_variant_reds()
     && codex_provider_v0_preflight_keystone_holds()
+    && oracle_refs_projection_runs_and_selects_pinnable_scopes()
+    && unreadable_validation_receipt_refuses_instead_of_rerunning()
+    && agent_incomplete_attempt_defers_verification()
 }
 
 data attempt_grain_home_note: String = "The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host commands; a pure row parked here is enrolled with zero executing consumers, which is exactly what the Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION the row needs, never of the module it happens to name."
@@ -703,4 +868,80 @@ test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
           && instance_id == (preview.instance_id as String)
       _ => false
     }
+}
+
+data footprint_admission_witness_note: String = "Every arm of belt_footprint_admission_decision is exercised on SYNTHETIC observations, the same discipline belt_claude_preflight_decision and belt_observe_from_result already follow: the decision is a pure fn over facts, so its arms are witnessable without a host, and the live half (belt_footprint_observe) only threads real probe results into it. The arms are not interchangeable and the tests say why — absent, unwritable, and unsearchable name three different remedies (converge the member, fix ownership drift, fix the mode), which is the whole point of not collapsing them into one `unusable` Bool. The short-circuit witness is the load-bearing one for operator experience: with two bad roots the FIRST is reported rather than the last, so the refusal names the member a human should look at first rather than whichever happened to sort last."
+
+fn footprint_obs(
+  member: String,
+  present: Bool,
+  writable: Bool,
+  searchable: Bool,
+) -> BeltFootprintObservation {
+  BeltFootprintObservation {
+    member: member,
+    path: join(["/opt/gunbc/", member], ""),
+    present: present,
+    writable: writable,
+    searchable: searchable,
+  }
+}
+
+fn footprint_refusal_step(admission: BeltFootprintAdmission) -> String {
+  match admission {
+    FootprintAdmitted => "admitted"
+    FootprintRefused { step: st, detail: _ } => st
+  }
+}
+
+test fn witness_footprint_all_roots_usable_admits() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "dispatch-worktrees", present: true, writable: true, searchable: true),
+    footprint_obs(member: "attempt-state", present: true, writable: true, searchable: true),
+  ])
+  footprint_refusal_step(admission: verdict) == "admitted"
+}
+
+test fn witness_footprint_absent_root_refuses() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "dispatch-worktrees", present: true, writable: true, searchable: true),
+    footprint_obs(member: "attempt-state", present: false, writable: false, searchable: false),
+  ])
+  footprint_refusal_step(admission: verdict) == "footprint-root-absent"
+}
+
+test fn witness_footprint_unwritable_root_refuses() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "attempt-state", present: true, writable: false, searchable: true),
+  ])
+  footprint_refusal_step(admission: verdict) == "footprint-root-unwritable"
+}
+
+test fn witness_footprint_unsearchable_root_refuses() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "attempt-state", present: true, writable: true, searchable: false),
+  ])
+  footprint_refusal_step(admission: verdict) == "footprint-root-unsearchable"
+}
+
+test fn witness_footprint_refusal_names_the_first_bad_root() -> Bool {
+  let verdict = belt_footprint_admission_decision(observations: [
+    footprint_obs(member: "dispatch-worktrees", present: false, writable: false, searchable: false),
+    footprint_obs(member: "attempt-state", present: true, writable: false, searchable: true),
+  ])
+  let step_is_first = footprint_refusal_step(admission: verdict) == "footprint-root-absent"
+  let names_first = match verdict {
+    FootprintRefused { step: _, detail: d } =>
+      string_contains(s: d, pattern: "dispatch-worktrees")
+    FootprintAdmitted => false
+  }
+  step_is_first && names_first
+}
+
+test fn witness_footprint_roots_cover_both_belt_write_targets() -> Bool {
+  let roots = belt_dispatch_footprint_roots(instance: srv2_preview_dashboard_instance())
+  let paths = join(map(roots, r => r.path), "|")
+  let has_worktrees = string_contains(s: paths, pattern: "attempts")
+  let has_attempt_state = string_contains(s: paths, pattern: "attempt-state")
+  has_worktrees && has_attempt_state
 }

@@ -1,0 +1,183 @@
+module test.claim.check_coverage_admission_witness
+
+import gunbc.merge_admission {
+  CoveredGateConclusion,
+  CheckCoverage,
+  CheckCoverageAbsent, CheckCoverageRunning, CheckCoverageStopped,
+  CheckCoverageComplete, CheckCoverageStale,
+  CheckCoverageAdmissionVerdict,
+  CheckCoverageAdmitted,
+  CheckCoverageDeniedAbsent, CheckCoverageDeniedRunning,
+  CheckCoverageDeniedStopped, CheckCoverageDeniedStale,
+  CheckCoverageDeniedHeadMismatch, CheckCoverageDeniedRosterMismatch,
+  CheckCoverageDeniedEmptyRequiredPopulation,
+  CheckCoverageDeniedDuplicateRequiredGate,
+  CheckCoverageDeniedExecutionCardinality,
+  CheckCoverageDeniedGateFailed,
+  classify_check_coverage_admission,
+  check_coverage_admits,
+}
+import extdeps.github.checks { Success, Failure }
+import std.types { CommitSha, ContentHash, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data required_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data prior_head: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data required_roster: ContentHash = "check-coverage-required-roster"
+data prior_roster: ContentHash = "check-coverage-prior-roster"
+data gate_a: ContentHash = "check-coverage-gate-a"
+data gate_b: ContentHash = "check-coverage-gate-b"
+data required_gates: List<ContentHash> = [gate_a, gate_b]
+
+fn passed(gate: ContentHash) -> CoveredGateConclusion {
+  CoveredGateConclusion { gate: gate, conclusion: Success }
+}
+
+fn failed(gate: ContentHash) -> CoveredGateConclusion {
+  CoveredGateConclusion { gate: gate, conclusion: Failure }
+}
+
+fn admits(coverage: CheckCoverage) -> Bool {
+  check_coverage_admits(
+    coverage: coverage,
+    required_head: required_head,
+    required_roster: required_roster,
+    required_gates: required_gates
+  )
+}
+
+test fn complete_exact_head_roster_and_population_admits() -> Bool {
+  admits(coverage: CheckCoverageComplete {
+    head: required_head,
+    roster: required_roster,
+    conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
+  })
+}
+
+test fn absent_coverage_refuses_instead_of_vacuously_passing() -> Bool {
+  !admits(coverage: CheckCoverageAbsent {
+    required_head: required_head,
+    required_roster: required_roster
+  })
+}
+
+test fn running_coverage_refuses() -> Bool {
+  !admits(coverage: CheckCoverageRunning {
+    head: required_head,
+    roster: required_roster,
+    run: "run-123"
+  })
+}
+
+test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
+  match classify_check_coverage_admission(
+    coverage: CheckCoverageStopped {
+      head: required_head,
+      roster: required_roster,
+      completed: [failed(gate: gate_a)],
+      unexecuted: [gate_b],
+      cause: "batch-1 generated-artifact drift stopped dependent witness batches"
+    },
+    required_head: required_head,
+    required_roster: required_roster,
+    required_gates: required_gates
+  ) {
+    CheckCoverageDeniedStopped { head, roster, completed, unexecuted, cause } =>
+      head == required_head
+        && roster == required_roster
+        && length(completed) == 1
+        && completed.first().gate == gate_a
+        && length(unexecuted) == 1
+        && unexecuted.first() == gate_b
+        && cause == "batch-1 generated-artifact drift stopped dependent witness batches"
+    CheckCoverageAdmitted => false
+    CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+    CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+    CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+    CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedEmptyRequiredPopulation => false
+    CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+    CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+    CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+  }
+}
+
+test fn stale_coverage_refuses() -> Bool {
+  !admits(coverage: CheckCoverageStale {
+    observed_head: prior_head,
+    required_head: required_head,
+    observed_roster: prior_roster,
+    required_roster: required_roster
+  })
+}
+
+test fn complete_old_head_refuses() -> Bool {
+  !admits(coverage: CheckCoverageComplete {
+    head: prior_head,
+    roster: required_roster,
+    conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
+  })
+}
+
+test fn complete_old_roster_refuses() -> Bool {
+  !admits(coverage: CheckCoverageComplete {
+    head: required_head,
+    roster: prior_roster,
+    conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
+  })
+}
+
+test fn empty_required_population_refuses() -> Bool {
+  !check_coverage_admits(
+    coverage: CheckCoverageComplete {
+      head: required_head,
+      roster: required_roster,
+      conclusions: []
+    },
+    required_head: required_head,
+    required_roster: required_roster,
+    required_gates: []
+  )
+}
+
+test fn missing_required_gate_refuses() -> Bool {
+  !admits(coverage: CheckCoverageComplete {
+    head: required_head,
+    roster: required_roster,
+    conclusions: [passed(gate: gate_a)]
+  })
+}
+
+test fn duplicate_required_population_refuses() -> Bool {
+  !check_coverage_admits(
+    coverage: CheckCoverageComplete {
+      head: required_head,
+      roster: required_roster,
+      conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
+    },
+    required_head: required_head,
+    required_roster: required_roster,
+    required_gates: [gate_a, gate_a, gate_b]
+  )
+}
+
+test fn duplicate_required_gate_refuses() -> Bool {
+  !admits(coverage: CheckCoverageComplete {
+    head: required_head,
+    roster: required_roster,
+    conclusions: [passed(gate: gate_a), passed(gate: gate_a), passed(gate: gate_b)]
+  })
+}
+
+test fn required_gate_failure_refuses() -> Bool {
+  !admits(coverage: CheckCoverageComplete {
+    head: required_head,
+    roster: required_roster,
+    conclusions: [passed(gate: gate_a), failed(gate: gate_b)]
+  })
+}
+
+data coverage_discrimination_note: String = "The green has exactly two required gates, each executed once and successful on the exact head and roster. Each RED varies one axis: no observation, running, stopped with a named unexecuted gate, stale identities, old head, old roster, empty universe, missing execution, duplicate execution, or failed execution. The stopped witness inspects the refusal payload rather than merely asserting false, so the unexecuted population and remedy-bearing cause cannot be dropped while the test stays green."

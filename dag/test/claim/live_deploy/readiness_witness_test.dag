@@ -9,6 +9,7 @@ import gunbc.live_deploy.readiness {
   reconcile_service_ready_read,
   show_healthz_read_fixture_healthy,
   live_deploy_healthz_get_for_port,
+  service_ready_apply_effect_for_deploy,
   HealthzEffectiveRead,
 }
 import gunbc.live_deploy.intent { live_deploy_health_url_for_port }
@@ -22,7 +23,7 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisCaptured,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_listen_port }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_spec_srv1_green, deployment_plan_listen_port, gunbc_roadmap_unit_name }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,
@@ -67,6 +68,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_ssh_mock_stdout: String = "mock ssh stdin script executed"
+
+test fn witness_green_readiness_names_the_green_unit() -> Bool {
+  let spec = deployment_spec_srv1_green()
+  let effect = service_ready_apply_effect_for_deploy(spec: spec)
+  effect.unit == spec.service.unit_name
+    && effect.unit != gunbc_roadmap_unit_name
+}
 
 test fn witness_healthz_mock_body_groundable() -> Bool {
   healthz_body_groundable(body: "{\"status\":\"ok\"}")
@@ -278,4 +286,3 @@ test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
     && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
-

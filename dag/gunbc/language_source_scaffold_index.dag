@@ -3,7 +3,7 @@ module gunbc.language_source_scaffold_index
 
 data language_source_scaffold_index_note: String = "B2 inventory for hand-authored target-language semantics in language files. Every blob of hand-written target source carries a row here whose disposition is a std.disposition Scaffold naming the construction that subsumes it, or a Terminal stating why it is irreducible. No string-content classifier is involved: the mark is a typed value, not prose to be parsed."
 
-data language_source_scaffold_enforcement_boundary: String = "What is actually enforced, stated precisely because the earlier wording overstated it (review 43129). CONSTRUCTION (real): Disposition has no prose and no absent arm, so a row cannot carry an unmarked or free-text disposition — Terminal-with-reason or Scaffold-with-bind are the only inhabitants, and 'unmarked' is genuinely unwritable. NOT CONSTRUCTION (validated here instead): DeclarationRef.module_path and decl_name are declared NonEmptyStr (String where non_empty) but that refinement is NOT enforced at construction — proven by execution, since the empty-bind control row in the witness typechecks and evaluates. So a Scaffold binding the empty string IS writable today, and language_source_scaffold_row_is_dispositioned is the only thing that catches it. That check is therefore load-bearing, not a second representation; it dissolves the day refinement predicates are construction-enforced, at which point the control row stops typechecking and the check can be deleted."
+data language_source_scaffold_enforcement_boundary: String = "What is actually enforced, stated precisely because the earlier wording overstated it (review 43129). CONSTRUCTION (real): Disposition has no prose and no absent arm, so a row cannot carry an unmarked or free-text disposition — Terminal-with-reason or Scaffold-with-bind are the only inhabitants, and 'unmarked' is genuinely unwritable. CONSTRUCTION (literal sites only, PR #7438): DeclarationRef.module_path and decl_name are NonEmptyStr (String where non_empty) and the v1 typechecker enforces non_empty at string-literal construction sites — an empty bind is unwritable at compile time. Non-literal string values at those positions emit counted WhereRefinementUnenforced advisory (wall after grounding: decidable whether evidence exists, evidence carrier not yet modeled — dissolve-on feature:refinement-evidence-at-non-literal-positions). language_source_scaffold_row_is_dispositioned still checks bind.decl_name != \"\" && bind.module_path != \"\" for non-literal paths and remains load-bearing until every construction site is covered; the empty-bind hard RED control lives in dag/test/claim/where_refinement_enforcement_witness_test.dag."
 
 type LanguageSourceScaffoldRow {
   carrier_module: String
@@ -327,6 +327,16 @@ data ct_row_ct_unlisted_import_use_witness_test: LanguageSourceScaffoldRow = Lan
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_method_existence_wall_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_method_existence_wall_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_declared_type_conformance_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_declared_type_conformance_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_sole_constructor_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_sole_constructor_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -339,6 +349,16 @@ data ct_row_ct_sole_constructor_fieldless_witness_test: LanguageSourceScaffoldRo
 
 data ct_row_ct_contracts_sidecar_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_contracts_sidecar_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_caret_parse_smoke_native_witness_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_caret_parse_smoke_native_witness_tests",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_call_shape_wall_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_call_shape_wall_witness_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
@@ -392,9 +412,13 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_diagnostics_carrier_grounding_test,
   ct_row_ct_rust_btree_set_ord_eligibility_test,
   ct_row_ct_unlisted_import_use_witness_test,
+  ct_row_ct_method_existence_wall_witness_test,
+  ct_row_ct_declared_type_conformance_witness_test,
   ct_row_ct_sole_constructor_test,
   ct_row_ct_sole_constructor_fieldless_witness_test,
   ct_row_ct_contracts_sidecar_witness_test,
+  ct_row_ct_caret_parse_smoke_native_witness_tests,
+  ct_row_ct_call_shape_wall_witness_test,
   ct_row_ct_profile_self_compile_test,
   ct_row_ct_profile_full_pipeline_test,
   ct_row_ct_profile_reconcile_test,
