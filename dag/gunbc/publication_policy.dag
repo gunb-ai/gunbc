@@ -19,12 +19,16 @@ type PublicationPolicy {
   rules: List<SubtreePublishRule>
 }
 
+type AdmittedPublicationPolicy {
+  policy: PublicationPolicy
+}
+
 type PublicationPolicyConstructionRefusal
   = UnknownTopLevelRoot { prefix: FilePath }
   | ConflictingSubtreeRule { prefix: FilePath }
 
 type PublicationPolicyConstructionOutcome
-  = PublicationPolicyAccepted { policy: PublicationPolicy }
+  = PublicationPolicyAccepted { admitted: AdmittedPublicationPolicy }
   | PublicationPolicyRefused { cause: PublicationPolicyConstructionRefusal }
 
 data publication_policy_default_disposition: PublicationDisposition = WithholdPrivate
@@ -182,14 +186,9 @@ fn admit_publication_policy(policy: PublicationPolicy) -> PublicationPolicyConst
     Absent =>
       match publication_policy_rule_conflicts(rules: policy.rules) {
         Present { value: cause } => PublicationPolicyRefused { cause: cause }
-        Absent => PublicationPolicyAccepted { policy: policy }
+        Absent => PublicationPolicyAccepted {
+          admitted: AdmittedPublicationPolicy { policy: policy },
+        }
       }
-  }
-}
-
-fn publication_disposition_is_public(disposition: PublicationDisposition) -> Bool {
-  match disposition {
-    PublishPublic => true
-    WithholdPrivate => false
   }
 }
