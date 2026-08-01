@@ -54,7 +54,11 @@ fn declared_grant_covers_go(
 fn declaring_container(node: NamespacePosition) -> NamespacePosition {
   NamespacePosition {
     tree: node.tree,
-    path: node.path.take(n: node.path.count() - 1)
+    path: if node.path.count() == 0 {
+      []
+    } else {
+      node.path.take(n: node.path.count() - 1)
+    }
   }
 }
 

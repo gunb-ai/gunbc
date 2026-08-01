@@ -103,6 +103,14 @@ test fn audience_tree_and_publish_grant_red_controls() -> Bool {
     && !publish_admitted_witness(a: publish_to(visibility: private_node(), audience: world_audience()))
 }
 
+test fn publish_audience_refusal_is_located() -> Bool {
+  match publish_to(visibility: private_node(), audience: world_audience()) {
+    PublishAudienceNotGranted { node: node, audience: audience } =>
+      node == private_node_position && audience == world_audience()
+    PublishAdmitted => false
+  }
+}
+
 test fn undeclared_publish_defaults_to_narrowest_audience_only() -> Bool {
   let legacy = NodeVisibility { node: private_node_position, status: LegacyOpen }
   publish_admitted_witness(a: publish_to(visibility: legacy, audience: repo_audience()))
