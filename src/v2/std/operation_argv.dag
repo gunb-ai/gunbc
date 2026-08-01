@@ -1,6 +1,8 @@
 module v2.std.operation_argv
 
 import std.types { String, List, Bool }
+import std.decl_ref { DeclarationRef, NamedField }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import v2.std.algebra { list_map }
 import v2.std.execution_mechanism {
   ExecutionMechanism,
@@ -86,6 +88,17 @@ type ShellTransportMechanismRefusalCause
 data shell_transport_mechanism_classification_note: String = "The legacy spelling gets no sixth Unknown mechanism. A literal executable is the construction fact dispatch_shell actually consumes and classifies through v2.std.execution_mechanism. A bindable or otherwise non-literal argv[0] is refused and located instead; the executable-position construction wall already makes that shape invalid. A known exec wrapper refuses separately because its effective executable depends on the wrapper's unmodeled option grammar. The live-tree census pins the sole planted executable-position fixture and the ten current wrapper rows independently, so either ambiguity class can shrink but any new ambiguous transport-shell site turns the executed witness red."
 
 data shell_transport_mechanism_enrollment_scope_note: String = "ENROLLMENT DENOMINATOR: this classification wall covers operations declared with `transport shell`, because shell_transport_operation_rows derives exactly that population from parsed declarations under dag/ and src/v2/. It does NOT claim every argv carrier is classified. extdeps.exec.command.ArgvCommand, gunbc.host_effect.ThinInvocation, and the bare List<String> accepted by gunbc.typed_argv_exec are outside this census today; an executable reaching execution through any of them is neither classified nor refused by this wall. The concrete live specimen is gunbc.runner_host_deploy.runner_host_installer_command_argv (ArgvCommand beginning with env); a similarly shaped argv in test.claim.roadmap_dispatch_actuator_witness is fixture-only. This gap dissolves consumer by consumer when those competing carriers converge onto BoundOperationInvocation, at which point one realization-mechanism derivation enrolls every invocation rather than one declaration spelling."
+
+data shell_transport_executable_seed_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.operation_argv",
+    decl_name: "ShellTransportOperationRow",
+    field: NamedField { field_name: "executable" }
+  }
+}
+
+data shell_transport_executable_seed_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side census transport. WHAT IS ADDED: no new Rust file and no Rust classification policy — the already seed-retained cli_run census row transports the parsed declaration's literal argv[0] as Option<String>, and v1_interpreter marshals that optional field into ShellTransportOperationRow. WHAT IS NOT IN RUST: the five-way ExecutionMechanism vocabulary, wrapper refusal, and classification all live in .dag and consume that construction evidence. DEFERRED TO: the repository finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.roadmap_authority), with the nearer work sequenced by gunbc.plans.transport_argv_anemia_dissolution.transport_argv_anemia_dissolution_plan. CONCRETE DISSOLUTION: this scaffold deletes when shell_transport_operation_rows is realized as a .dag fold over the parsed operation declarations (rather than a cli_run host census plus v1_interpreter marshal); convergence of the competing invocation carriers onto BoundOperationInvocation then makes the same derived evidence available to every realization consumer. Until then the bound NamedField disposition above is the countable seed-retained row for exactly the executable field added here."
 
 fn shell_transport_operation_mechanism(
   row: ShellTransportOperationRow

@@ -190,35 +190,56 @@ fn operation_mechanism_is(
   )
 }
 
-fn operation_mechanism_row_is_refused(row: ShellTransportOperationRow) -> Bool {
-  match shell_transport_operation_mechanism(row: row) {
-    ShellTransportMechanismClassified { mechanism: _ } => false
-    ShellTransportMechanismRefused { at: _, cause: _ } => true
-  }
+type ExecutionMechanismCensusTally {
+  classified: Int
+  nonliteral: Int
+  nonliteral_outside_fixture: Int
+  wrapper: Int
 }
 
-fn operation_mechanism_row_is_nonliteral_refusal(row: ShellTransportOperationRow) -> Bool {
+data execution_mechanism_empty_tally: ExecutionMechanismCensusTally = ExecutionMechanismCensusTally {
+  classified: 0,
+  nonliteral: 0,
+  nonliteral_outside_fixture: 0,
+  wrapper: 0
+}
+
+fn execution_mechanism_tally_row(
+  acc: ExecutionMechanismCensusTally,
+  row: ShellTransportOperationRow,
+) -> ExecutionMechanismCensusTally {
   match shell_transport_operation_mechanism(row: row) {
-    ShellTransportMechanismClassified { mechanism: _ } => false
-    ShellTransportMechanismRefused { at: _, cause: cause } => match cause {
-      ExecutableNotLiteral => true
-      ExecutionWrapperGrammarUnmodeled { executable: _ } => false
+    ShellTransportMechanismClassified { mechanism: _ } => ExecutionMechanismCensusTally {
+      classified: acc.classified + 1,
+      nonliteral: acc.nonliteral,
+      nonliteral_outside_fixture: acc.nonliteral_outside_fixture,
+      wrapper: acc.wrapper
+    }
+    ShellTransportMechanismRefused { at: at, cause: cause } => match cause {
+      ExecutableNotLiteral => ExecutionMechanismCensusTally {
+        classified: acc.classified,
+        nonliteral: acc.nonliteral + 1,
+        nonliteral_outside_fixture: acc.nonliteral_outside_fixture + operation_argv_flag(
+          b: at.path != operation_argv_fixture_path
+        ),
+        wrapper: acc.wrapper
+      }
+      ExecutionWrapperGrammarUnmodeled { executable: _ } => ExecutionMechanismCensusTally {
+        classified: acc.classified,
+        nonliteral: acc.nonliteral,
+        nonliteral_outside_fixture: acc.nonliteral_outside_fixture,
+        wrapper: acc.wrapper + 1
+      }
     }
   }
 }
 
-fn operation_mechanism_row_is_wrapper_refusal(row: ShellTransportOperationRow) -> Bool {
-  match shell_transport_operation_mechanism(row: row) {
-    ShellTransportMechanismClassified { mechanism: _ } => false
-    ShellTransportMechanismRefused { at: _, cause: cause } => match cause {
-      ExecutableNotLiteral => false
-      ExecutionWrapperGrammarUnmodeled { executable: _ } => true
-    }
-  }
-}
-
-fn operation_mechanism_row_is_fixture(row: ShellTransportOperationRow) -> Bool {
-  row.at.path == operation_argv_fixture_path
+fn execution_mechanism_census_tally() -> ExecutionMechanismCensusTally {
+  fold_list(
+    xs: shell_transport_operation_rows(),
+    empty: execution_mechanism_empty_tally,
+    cons: fn(acc, row) { execution_mechanism_tally_row(acc: acc, row: row) }
+  )
 }
 
 test fn operation_execution_mechanism_RED_direct_exec_is_not_shell() -> Bool {
@@ -267,14 +288,11 @@ test fn operation_execution_mechanism_future_structured_and_foreign_artifact_sta
 }
 
 test fn operation_execution_mechanism_new_ambiguous_site_wall_holds() -> Bool {
-  let refused = shell_transport_operation_rows()
-    |> filter(row => operation_mechanism_row_is_refused(row: row))
-  let nonliteral = refused |> filter(row => operation_mechanism_row_is_nonliteral_refusal(row: row))
-  let wrappers = refused |> filter(row => operation_mechanism_row_is_wrapper_refusal(row: row))
-  length(xs: refused) == 11
-    && length(xs: nonliteral) == 1
-    && length(xs: wrappers) == 10
-    && any(xs: nonliteral, predicate: fn(row) { operation_mechanism_row_is_fixture(row: row) })
+  let t = execution_mechanism_census_tally()
+  (t.nonliteral + t.wrapper) == 11
+    && t.nonliteral == 1
+    && t.nonliteral_outside_fixture == 0
+    && t.wrapper == 10
 }
 
 test fn operation_execution_mechanism_RED_exec_wrapper_cannot_hide_shell() -> Bool {
