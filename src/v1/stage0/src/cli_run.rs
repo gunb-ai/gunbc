@@ -91,9 +91,7 @@ fn is_resolve_typecheck_blocking(d: &Rc<ErrorNode>, gate: ResolveTypecheckGate) 
         return false;
     }
     match gate {
-        ResolveTypecheckGate::Strict => {
-            is_interpreter_blocking_diagnostic(d.diagnostic.clone())
-        }
+        ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
             is_discovery_corpus_blocking_diagnostic(d.diagnostic.clone())
         }
@@ -2543,10 +2541,11 @@ pub fn type_ref_binding_authority_expect_red_covers(d: &Rc<ErrorNode>) -> bool {
 
 /// Gate admission for UnresolvedType under the type-ref refusal arm: incidental debt
 /// or deliberate expect-red. Neither is FloorNotYet — the arm still refuses.
-/// Shared by compile-clean, resolve typecheck gates, and `gunbc run` / serve so debt
-/// sites do not red regen naming hygiene or heal while the arm keeps refusing.
+/// Shared by compile-clean, resolve typecheck gates, `gunbc run` / serve, and
+/// `typecheck_module`'s env-errors early-return so debt sites keep a populated
+/// func_env (arm still emits UnresolvedType; only the abort softens).
 /// Set `GUNBC_TYPE_REF_DEBT_ADMIT=0` to disable admission (raw UnresolvedType census).
-fn type_ref_unresolved_admitted_for_compile_clean(d: &Rc<ErrorNode>) -> bool {
+pub(crate) fn type_ref_unresolved_admitted_for_compile_clean(d: &Rc<ErrorNode>) -> bool {
     match std::env::var_os("GUNBC_TYPE_REF_DEBT_ADMIT") {
         Some(v) if v == "0" || v.eq_ignore_ascii_case("false") || v == "off" => {
             return false;

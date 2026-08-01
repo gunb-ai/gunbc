@@ -1717,9 +1717,9 @@ pub fn resolve_node_bounded(
                                                         n.span.clone().start.clone(),
                                                         n.span.clone().end.clone(),
                                                     );
-                                                    let is_optional = (n.return_cardinality
-                                                        .clone()
-                                                        == Cardinality::CardOptional);
+                                                    let is_optional =
+                                                        (n.return_cardinality.clone()
+                                                            == Cardinality::CardOptional);
                                                     let final_resolved = if is_optional.clone() {
                                                         with_optional_cardinality(
                                                             structurally_resolved.clone(),
