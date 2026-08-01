@@ -320,8 +320,6 @@ fn landing_tracked_population_decode(body: String, repo_name: String) -> Landing
           |> map(pr => tracked_pr_from_info(session: session, pr: pr)))
       let row_issues = flat_map(sessions, session =>
         json_array_or_empty(v: session, key: "pr_info")
-          |> filter(pr => json_string_or_empty(v: pr, key: "state") == "OPEN")
-          |> filter(pr => json_string_or_empty(v: pr, key: "repo") == repo_name)
           |> flat_map(pr => tracked_pr_info_issues(session: session, pr: pr)))
       let issues = concat(session_array_issues, row_issues)
       if count(issues) > 0 {

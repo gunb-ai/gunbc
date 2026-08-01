@@ -49,7 +49,8 @@ import gunbc.landing_workflow_runtime {
 }
 import gunbc.landing_workflow_observe {
   LandingSummaryDecode, LandingSummaryRead, LandingSummaryDecodeRefused,
-  landing_summary_decode,
+  LandingTrackedPopulationDecode, LandingTrackedPopulationRead, LandingTrackedPopulationRefused,
+  landing_summary_decode, landing_tracked_population_decode,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -106,6 +107,18 @@ test fn duplicate_dashboard_bindings_are_ambiguous_not_first_row_wins() -> Bool 
   match landing_duplicate_tracked_pr(rows: [witness_pr(), witness_pr()]) {
     Present { value } => value.pr_number == 42
     Absent => false
+  }
+}
+
+data malformed_filtered_pr_info_fixture: String = "{\"sessions\":[{\"id\":\"valid-session\",\"title\":\"valid title\",\"pr_info\":[{\"url\":\"https://github.com/other/repo/pull/7\",\"number\":7,\"title\":\"malformed authority row\",\"repo\":\"other/repo\",\"headRefName\":\"branch\"}]}]}"
+
+test fn malformed_pr_info_refuses_before_repo_or_state_filtering() -> Bool {
+  match landing_tracked_population_decode(
+    body: malformed_filtered_pr_info_fixture,
+    repo_name: "gunb-ai/gunbc",
+  ) {
+    LandingTrackedPopulationRefused { issues } => count(issues) > 0
+    LandingTrackedPopulationRead { pull_requests: _ } => false
   }
 }
 
