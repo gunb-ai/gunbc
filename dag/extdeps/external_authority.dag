@@ -1,15 +1,118 @@
 module extdeps.external_authority
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import extdeps.uri { Uri, File }
 
 type ExternalAuthority {
   uri: Uri
 }
 
+data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdict on gunbc#7556): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared here as one ExternalModelScope per module: ONE subject, at most one revision, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state — those are the two refusal arms below. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."
+
+data external_model_scope_citations_shape_note: String = "citations is nonempty BY CONSTRUCTION (first_citation a required scalar + further_citations), the gunbc.doc_graph_roots primary_work/additional_works precedent — the operator sketch wrote NonEmptyList<ExternalAuthority>; no such generic carrier exists in std today, and the split-field shape makes the zero-citation scope unwritable rather than checked (DESIGN §5)."
+
+type ExternalSubjectRef {
+  name: NonEmptyStr
+}
+
+type ExternalRevision {
+  label: NonEmptyStr
+}
+
+type ExternalModelScope {
+  subject: ExternalSubjectRef
+  revision: ExternalRevision?
+  first_citation: ExternalAuthority
+  further_citations: List<ExternalAuthority>
+}
+
+fn external_model_scope_citations(scope: ExternalModelScope) -> List<ExternalAuthority> {
+  concat([scope.first_citation], scope.further_citations)
+}
+
+fn external_subject_ref_eq(a: ExternalSubjectRef, b: ExternalSubjectRef) -> Bool {
+  (a.name as String) == (b.name as String)
+}
+
+data fact_authority_override_ref_note: String = "FactAuthorityOverride.fact is a DeclarationRef, not prose (operator verdict on gunbc#7556; the §3 cite-the-symbol rule applied to the override carrier): the overridden fact is named by module + declaration in the containment tree's own key space, so a stale override is decidable by symbol resolution rather than rotting as free text."
+
 type FactAuthorityOverride {
-  fact: NonEmptyStr
+  fact: DeclarationRef
   authority: ExternalAuthority
+}
+
+data modeled_extdeps_module_facts_note: String = "ModeledExtdepsModule is the admission gate's synthetic fact row for one extdeps module (the v2.lens.extdeps_shape_transport_policy lens-unit pattern): the module's declared scope, the per-row subject attribution of every product-/engine-/distribution-specific fact row it carries, and the names of any consumer-coverage/observation-state rows it stores. The gate is a pure fn over these rows; wiring the same verdict at the module-carrier grain is the staged mandatory-tag region named in gunbc.extdeps_scope_frontier."
+
+type ModeledExtdepsModule {
+  module: NonEmptyStr
+  scope: ExternalModelScope
+  product_fact_subjects: List<ExternalSubjectRef>
+  consumer_coverage_rows: List<NonEmptyStr>
+}
+
+type ScopeFinding
+  = ForeignSubjectRow {
+      module: NonEmptyStr
+      declared: ExternalSubjectRef
+      foreign: ExternalSubjectRef
+    }
+  | ConsumerCoverageInUpstream {
+      module: NonEmptyStr
+      coverage_row: NonEmptyStr
+    }
+
+type ScopeAdmission
+  = ScopeAdmitted
+  | ScopeRefused {
+      finding_count: Int
+      findings: List<ScopeFinding>
+    }
+
+fn external_model_scope_foreign_subject_findings(m: ModeledExtdepsModule) -> List<ScopeFinding> {
+  m.product_fact_subjects
+    |> filter(s => !external_subject_ref_eq(a: s, b: m.scope.subject))
+    |> map(s => ForeignSubjectRow { module: m.module, declared: m.scope.subject, foreign: s })
+}
+
+fn external_model_scope_coverage_findings(m: ModeledExtdepsModule) -> List<ScopeFinding> {
+  m.consumer_coverage_rows
+    |> map(r => ConsumerCoverageInUpstream { module: m.module, coverage_row: r })
+}
+
+fn external_model_scope_findings(m: ModeledExtdepsModule) -> List<ScopeFinding> {
+  concat(
+    external_model_scope_foreign_subject_findings(m: m),
+    external_model_scope_coverage_findings(m: m)
+  )
+}
+
+fn external_model_scope_admission_of_findings(findings: List<ScopeFinding>) -> ScopeAdmission {
+  let n = findings |> count
+  if n == 0 {
+    ScopeAdmitted
+  } else {
+    ScopeRefused { finding_count: n, findings: findings }
+  }
+}
+
+fn admit_external_model_scope(m: ModeledExtdepsModule) -> ScopeAdmission {
+  external_model_scope_admission_of_findings(findings: external_model_scope_findings(m: m))
+}
+
+fn admit_external_model_scope_portfolio(mods: List<ModeledExtdepsModule>) -> ScopeAdmission {
+  external_model_scope_admission_of_findings(
+    findings: fold(mods, init: [], f: fn(acc, m) {
+      concat(acc, external_model_scope_findings(m: m))
+    })
+  )
+}
+
+data downstream_support_roster_note: String = "Where the refused rows GO: a support/coverage roster is a downstream (product/workflow layer) fact join over the per-subject upstream modules — DESIGN §3's gunbc.served_surface_browser_support example. It is deliberately NOT gated by admit_external_model_scope: consumer policy and coverage state are exactly what an upstream module may not carry and a downstream module exists to carry."
+
+type DownstreamSupportRoster {
+  module: NonEmptyStr
+  coverage_rows: List<NonEmptyStr>
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
