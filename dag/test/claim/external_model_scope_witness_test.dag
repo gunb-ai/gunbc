@@ -16,11 +16,13 @@ import gunbc.extdeps_scope_frontier {
   legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
   scope_cover_holds, manifest_freeze_holds, carrier_content_declares_scope,
   scope_placement_refused_paths,
-  manifest_line_observation, manifest_remove_only_holds,
+  manifest_line_observation,
   ManifestLineObservation, ManifestUntouched, ManifestIntroduced, ManifestLinesAdded, ManifestDiffUnreadable,
   PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
 }
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
+import tools.extdeps_scope_placement_gate { manifest_remove_only_exit }
+import std.process { ProcessExit, ExitSuccess }
 import extdeps.vendor.microsoft
 import extdeps.vendor.atlassian
 import std.types { String, Bool, Int, List }
@@ -261,12 +263,20 @@ fn synthetic_manifest_add_diff() -> String {
   ], "\n")
 }
 
+fn remove_only_exit_is_success(observation: ManifestLineObservation) -> Bool {
+  match manifest_remove_only_exit(observation: observation) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
 test fn red_manifest_remove_only_refuses_added_row() -> Bool {
-  match manifest_line_observation(diff_text: synthetic_manifest_add_diff()) {
+  let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
+  match observation {
     ManifestLinesAdded { rows: rows } =>
       (rows |> count) == 1
         && strings_contain(xs: rows, s: "dag/extdeps/vendor/reverted_module.dag")
-        && !manifest_remove_only_holds(observation: ManifestLinesAdded { rows: rows })
+        && !remove_only_exit_is_success(observation: observation)
     _ => false
   }
 }
@@ -284,8 +294,9 @@ test fn green_manifest_remove_only_admits_removal_and_unrelated_edits() -> Bool 
     "@@ -1 +1,2 @@",
     "+data extdeps_model_scope: ExternalModelScope = ..."
   ], "\n")
-  match manifest_line_observation(diff_text: removal_only) {
-    ManifestUntouched => manifest_remove_only_holds(observation: ManifestUntouched)
+  let observation = manifest_line_observation(diff_text: removal_only)
+  match observation {
+    ManifestUntouched => remove_only_exit_is_success(observation: observation)
     _ => false
   }
 }
@@ -300,14 +311,40 @@ test fn green_manifest_introduction_admitted_once() -> Bool {
     "+dag/extdeps/a.dag",
     "+dag/extdeps/b.dag"
   ], "\n")
-  match manifest_line_observation(diff_text: intro) {
-    ManifestIntroduced => manifest_remove_only_holds(observation: ManifestIntroduced)
+  let observation = manifest_line_observation(diff_text: intro)
+  match observation {
+    ManifestIntroduced => remove_only_exit_is_success(observation: observation)
     _ => false
   }
 }
 
-test fn red_manifest_unreadable_refuses() -> Bool {
-  !manifest_remove_only_holds(observation: ManifestDiffUnreadable)
+test fn red_manifest_unreadable_refuses_through_parser() -> Bool {
+  let truncated = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "index 1111111..2222222 100644",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv"
+  ], "\n")
+  let observation = manifest_line_observation(diff_text: truncated)
+  match observation {
+    ManifestDiffUnreadable => !remove_only_exit_is_success(observation: observation)
+    _ => false
+  }
+}
+
+test fn red_manifest_deletion_refuses_through_parser() -> Bool {
+  let deletion = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "deleted file mode 100644",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "+++ /dev/null",
+    "@@ -1,2 +0,0 @@",
+    "-dag/extdeps/a.dag",
+    "-dag/extdeps/b.dag"
+  ], "\n")
+  match manifest_line_observation(diff_text: deletion) {
+    ManifestDiffUnreadable => true
+    _ => false
+  }
 }
 
 test fn frontier_rosters_are_disjoint() -> Bool {
