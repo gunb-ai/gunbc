@@ -4,3 +4,21 @@ GUNBC_MEMORY_BUDGET_BYTES=unset
                total        used        free      shared  buff/cache   available
 Mem:     134314573824 37693255680 32645951488   248012800 66362384384 96621318144
 probe_note=serial single-index resolve; adaptive MemoryGovernor not engaged
+=== governor/host envelope (narrow-disjoint) ===
+cgroup_memory_max_bytes=33578549248
+GUNBC_MEMORY_BUDGET_BYTES=unset
+               total        used        free      shared  buff/cache   available
+Mem:     134314573824 39702433792 26941382656   200949760 70010687488 94612140032
+probe_note=serial single-index resolve; adaptive MemoryGovernor not engaged
+=== governor/host envelope (typical-disjoint) ===
+cgroup_memory_max_bytes=33578549248
+GUNBC_MEMORY_BUDGET_BYTES=unset
+               total        used        free      shared  buff/cache   available
+Mem:     134314573824 33875722240 37628321792   200286208 65149304832 100438851584
+probe_note=serial single-index resolve; adaptive MemoryGovernor not engaged
+=== governor/host envelope (broad-disjoint) ===
+cgroup_memory_max_bytes=33578549248
+GUNBC_MEMORY_BUDGET_BYTES=unset
+               total        used        free      shared  buff/cache   available
+Mem:     134314573824 39208701952 30336868352   249753600 67157766144 95105871872
+probe_note=serial single-index resolve; adaptive MemoryGovernor not engaged
