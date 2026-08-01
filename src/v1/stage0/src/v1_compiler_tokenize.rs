@@ -4,8 +4,8 @@
 use self::EscapeProcessResult::*;
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
-pub use crate::std_types::unicode_scalar;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;
 use crate::v1_rt;
@@ -920,7 +920,7 @@ pub fn hex_escape_note() -> String {
 pub fn unicode_escape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "\\u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.types.unicode_scalar authority used by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan.".to_string()
+            "\\u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

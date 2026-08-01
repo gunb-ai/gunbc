@@ -215,11 +215,6 @@ pub type Json = serde_json::Value;
 
 pub type Bytes = Vec<u8>;
 
-pub fn unicode_scalar(code_point: i64) -> bool {
-    (((code_point.clone() >= 0) && (code_point.clone() <= 1114111))
-        && !((code_point.clone() >= 55296) && (code_point.clone() <= 57343)))
-}
-
 pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
