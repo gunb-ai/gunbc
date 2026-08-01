@@ -3,7 +3,7 @@ module gunbc.direct_process_observation
 import std.types { String, Int, NonEmptyStr, Bytes }
 import std.bytes { utf8_encode_bytes }
 
-data direct_process_observation_note: String = "Minimum process observation shape for LocalProcess execution (v2.std.execution_mechanism.ExecutionMechanism.LocalProcess — classification lands in PR #7526; this module is the observation carrier, not the mechanism classifier). Completed versus spawn-refused versus wait-refused. Exited versus signaled versus timed-out versus killed. No precomputed success Bool. No minus-one sentinel for a missing exit code. Streams are retained as Bytes at this boundary; the operation names its decoder. Consumed first by gunbc.repository_remote_head."
+data direct_process_observation_note: String = "Minimum process observation shape for LocalProcess execution (v2.std.execution_mechanism.ExecutionMechanism.LocalProcess — classification lands in PR #7526; this module is the observation carrier, not the mechanism classifier). Completed versus spawn-refused versus wait-refused. Exited versus signaled versus timed-out versus killed. No precomputed success Bool. No minus-one sentinel for a missing exit code. Streams are retained as Bytes at this boundary; the operation names its decoder. Consumed first by gunbc.repository_remote_head. PR #7527 census (dag/extdeps): 148 operations declared exit_success beside an inert exit table; git.Core.LsRemoteHeads is the Lane C exemplar fix (147 remain)."
 
 type ProcessStreamBytes {
   stdout: Bytes

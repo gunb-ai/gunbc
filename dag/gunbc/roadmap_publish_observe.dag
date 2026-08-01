@@ -15,7 +15,7 @@ import gunbc.roadmap_publish {
 
 data observer_role_note: String = "THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES. gunbc.roadmap_publish adjudicates observations a caller already holds, which is what makes every one of its arms reachable from constructed values in a witness. That property is worth keeping, so the reading lives here instead: this module calls the transport, decides what was learned, and hands back an ordinary value. The split is the reason the refusal arms are constructible at all - a function that called the service itself could not build them, because a transport failure there is not a value.\\n\\nWhat this module must never become is a second adjudicator. It reports what it saw and refuses when it could not see; which outcome that implies is roadmap_publish's business."
 
-data remote_branch_observation_note: String = "THE REFUSAL IS BUILT FROM A VALUE, NOT CAUGHT. git.Core.LsRemoteHeads declares success/exit_code/stderr as outputs, so a failed ref advertisement arrives as an ordinary record this function can match on. That is not true of every transport in the corpus - the REST dispatch raises on a non-2xx rather than returning one - and the difference is exactly why the remote-branch half of publication can be observed today and the pull-request half cannot."
+data remote_branch_observation_note: String = "THE REFUSAL IS BUILT FROM A VALUE, NOT CAUGHT. git.Core.LsRemoteHeads declares exit_code/stderr/advertised as outputs (no exit_success projection — PR #7527 census), so a failed ref advertisement arrives as an ordinary record this function can match on. That is not true of every transport in the corpus - the REST dispatch raises on a non-2xx rather than returning one - and the difference is exactly why the remote-branch half of publication can be observed today and the pull-request half cannot."
 
 fn ls_remote_refusal_detail(remote: String, exit_code: Int, stderr: String) -> String {
   concat(
@@ -45,12 +45,11 @@ data transport_shim_split_note: String = "THE READING IS PURE; ONLY THE CALL IS 
 
 fn remote_branch_observation_of(
   remote: NonEmptyStr,
-  success: Bool,
   exit_code: Int,
   stderr: String,
   advertised: List<String>,
 ) -> RemoteBranchObservation {
-  if !success {
+  if exit_code != 0 {
     RemoteBranchesUnreadable {
       detail: ls_remote_refusal_detail(
         remote: remote as String,
@@ -91,7 +90,6 @@ fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
   let result = git.Core.LsRemoteHeads(remote: remote as String)
   remote_branch_observation_of(
     remote: remote,
-    success: result.success,
     exit_code: result.exit_code,
     stderr: result.stderr,
     advertised: result.advertised,

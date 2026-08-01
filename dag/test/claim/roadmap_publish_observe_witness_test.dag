@@ -36,7 +36,6 @@ fn origin() -> NonEmptyStr { "origin" as NonEmptyStr }
 fn read_ok(advertised: List<String>) -> RemoteBranchObservation {
   remote_branch_observation_of(
     remote: origin(),
-    success: true,
     exit_code: 0,
     stderr: "",
     advertised: advertised,
@@ -75,7 +74,6 @@ data transport_refusal_note: String = "The claim that motivates the whole slice.
 test fn a_failed_ref_advertisement_refuses_rather_than_reading_empty() -> Bool {
   let o = remote_branch_observation_of(
     remote: origin(),
-    success: false,
     exit_code: 128,
     stderr: "fatal: repository not found",
     advertised: [],
