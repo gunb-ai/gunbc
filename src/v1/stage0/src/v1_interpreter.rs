@@ -2782,9 +2782,31 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
 thread_local! {
     /// Dynamically scoped witness frames. The .dag carrier owns their contents;
     /// this stack is only the v1 seed realization of the evaluation boundary.
-    /// A frame is pushed immediately before its subject closure and removed on
-    /// both returned/refused paths, so replay bindings cannot become ambient.
+    /// A frame is pushed immediately before its subject closure and removed by
+    /// `WitnessFramePop`'s Drop on every exit path — returned, refused, or
+    /// unwound — so replay bindings cannot become ambient.
     static WITNESS_EVALUATION_FRAMES: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Pops the frame its constructor's caller pushed, on EVERY exit path including an
+/// unwind. The pop used to be an ordinary statement after `apply_closure`, which held
+/// only because no path between the two returned early — a property of the current
+/// body, not of the code, so the block comment's "removed on both returned/refused
+/// paths" was a promise the shape did not keep (review 46767).
+///
+/// The leak is worth closing by construction rather than by care because a leaked
+/// frame is no longer merely a stale binding: `dispatch_service` consults
+/// `current_witness_evaluation_frame()` to decide whether a hermetic op routes to the
+/// real dispatcher, so an escaped frame would silently route *subsequent* ops out of
+/// the mock layer. Drop makes the escape unwritable instead of merely unlikely (§5).
+struct WitnessFramePop;
+
+impl Drop for WitnessFramePop {
+    fn drop(&mut self) {
+        WITNESS_EVALUATION_FRAMES.with(|frames| {
+            let _ = frames.borrow_mut().pop();
+        });
+    }
 }
 
 const WITNESS_EVALUATION_MODULE: &str = "v2.std.witness_evaluation";
@@ -2891,10 +2913,10 @@ fn try_witness_evaluation_dispatch(
                 }));
             };
             WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
-            let evaluated = apply_closure(&subject, &[Value::Bool(true)], env, ctx);
-            WITNESS_EVALUATION_FRAMES.with(|frames| {
-                let _ = frames.borrow_mut().pop();
-            });
+            let evaluated = {
+                let _pop = WitnessFramePop;
+                apply_closure(&subject, &[Value::Bool(true)], env, ctx)
+            };
             Some(Ok(match evaluated {
                 Ok(value) => witness_evaluation_variant(ctx, "WitnessReturned", "value", value),
                 Err(error) => witness_evaluation_variant(
