@@ -77,12 +77,18 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_session_cleanup_action,
   dispatch_session_cleanup_allowed,
   dispatch_session_cleanup_detail,
+  tmux_attempt_panes_argv_for_instance,
+  worker_process_from_attempt_pane,
+}
+import extdeps.tmux {
+  classify_tmux_session_list,
+  TmuxSessionsListed,
+  TmuxNoServer,
+  TmuxListUnknowable,
   TmuxAttemptPaneEntry,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
-  tmux_attempt_panes_argv_for_instance,
-  worker_process_from_attempt_pane,
 }
 import extdeps.llm.cli_lifecycle {
   provider_kind_label,
@@ -1339,35 +1345,25 @@ type BeltObserve
   = Observed { live: List<DispatchLiveSession> }
   | ObserveRefused { reason: String }
 
-data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). So the decision (belt_observe_from_result) gates on exit success: `tmux ls` exit 0 -> parse stdout into the true session set. On FAILURE only tmux's three DOCUMENTED empty spellings count as a genuine zero observation — stderr containing 'no server running', 'no sessions', or the no-server socket ENOENT spelling 'error connecting to ... (No such file or directory)' (grounded in extdeps.tmux tmux.Session.List and tmux_client_connect_error_note) -> Observed []. EVERY OTHER failure (socket permission/transient error, empty-stderr non-zero exit) is an UNKNOWABLE session set -> ObserveRefused (typed, located, carries stderr), never a blind spawn/reap. In particular, 'error connecting to ... (Connection refused)' is not the cited ENOENT fact and keeps refusing. First-tick bootstrap works under either no-server spelling: the empty observation admits the first spawn that creates the instance socket. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
-
-fn tmux_ls_stderr_reports_empty(stderr: String) -> Bool {
-  string_contains(s: stderr, pattern: "no server running")
-    || string_contains(s: stderr, pattern: "no sessions")
-    || (
-      string_contains(s: stderr, pattern: "error connecting to ")
-        && string_contains(s: stderr, pattern: "(No such file or directory)")
-    )
-}
+data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). extdeps.tmux classify_tmux_session_list is the sole authority for tmux ls outcome facts (listed sessions, documented no-server signals, unknowable stderr); this module maps those outcomes to belt policy only: TmuxSessionsListed -> filter dispatch sessions into Observed live rows; TmuxNoServer -> Observed []; TmuxListUnknowable -> ObserveRefused with stderr in the reason, never a blind spawn/reap. First-tick bootstrap works under either no-server spelling admitted by the classifier. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
 
 fn belt_observe_from_result(
   success: Bool,
   stdout: String,
   stderr: String,
 ) -> BeltObserve {
-  if success {
-    Observed { live: dispatch_live_sessions(tmux_ls_output: stdout) }
-  } else {
-    if tmux_ls_stderr_reports_empty(stderr: stderr) {
+  match classify_tmux_session_list(exit_ok: success, stdout: stdout, stderr: stderr) {
+    TmuxSessionsListed { entries: _ } =>
+      Observed { live: dispatch_live_sessions(tmux_ls_output: stdout) }
+    TmuxNoServer { evidence: _ } =>
       Observed { live: [] }
-    } else {
+    TmuxListUnknowable { stderr: e } =>
       ObserveRefused {
         reason: concat(
           "belt_observe: tmux ls exited nonzero with no documented no-server/no-sessions signal — the live session set is unknowable; fail-closed, no blind spawn/reap. stderr: ",
-          stderr,
+          e,
         ),
       }
-    }
   }
 }
 
@@ -1704,14 +1700,28 @@ fn belt_attempt_panes_observe_for_instance(
             ], ""),
           }
       }
-    } else if tmux_ls_stderr_reports_empty(stderr: result.stderr) {
-      BeltAttemptPanesObserved { panes: [] }
     } else {
-      BeltAttemptPanesRefused {
-        reason: join([
-          "tmux attempt-pane observation failed: ",
-          result.stderr,
-        ], ""),
+      match classify_tmux_session_list(
+        exit_ok: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      ) {
+        TmuxNoServer { evidence: _ } =>
+          BeltAttemptPanesObserved { panes: [] }
+        TmuxSessionsListed { entries: _ } =>
+          BeltAttemptPanesRefused {
+            reason: join([
+              "tmux attempt-pane observation failed: ",
+              result.stderr,
+            ], ""),
+          }
+        TmuxListUnknowable { stderr: e } =>
+          BeltAttemptPanesRefused {
+            reason: join([
+              "tmux attempt-pane observation failed: ",
+              e,
+            ], ""),
+          }
       }
     }
   } else {
@@ -1753,14 +1763,28 @@ fn belt_sessions_observe_for_instance(
             ),
           }
       }
-    } else if tmux_ls_stderr_reports_empty(stderr: result.stderr) {
-      Observed { live: [] }
     } else {
-      ObserveRefused {
-        reason: concat(
-          "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
-          result.stderr,
-        ),
+      match classify_tmux_session_list(
+        exit_ok: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      ) {
+        TmuxNoServer { evidence: _ } =>
+          Observed { live: [] }
+        TmuxSessionsListed { entries: _ } =>
+          ObserveRefused {
+            reason: concat(
+              "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
+              result.stderr,
+            ),
+          }
+        TmuxListUnknowable { stderr: e } =>
+          ObserveRefused {
+            reason: concat(
+              "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
+              e,
+            ),
+          }
       }
     }
   } else {
