@@ -90,55 +90,51 @@ Diagnostic only: `cache_hit_ratio = hits / (hits + misses)`.
 # Fixture-scale (fast, no git diff required):
 cargo test -p v1-compiler-tests repeated_typecheck_attribution
 
-# Production-selected set (cap entries on dev hosts):
+# Production-selected set (disjoint windows on dev host):
 GUNBC_CI_DIFF_BASE=<base-sha> measure_repeated_typecheck_attribution \
   --source-root dag --source-root src/v2 \
   --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual \
-  --max-entries 6
+  --entry-offset 117 --max-entries 50
 ```
 
 Emits `[typecheck-attribution-measurement] {json}`.
 
 ---
 
-## F — execution matrix (2026-08-01, branch `78ccb693`, binary `target/slice2-measurement-bin/`)
+## F — execution matrix (2026-08-01, `711341bb`, binary `target/slice2-measurement-bin/`)
 
-**Verdict slot intentionally empty** — numbers below; three-way handback (union justified / attack per-entry assembly / close program) deferred to operator.
-
-### Host envelope / governor
+### Host envelope / governor / retention
 
 | field | value |
 |---|---|
 | cgroup `memory.max` | 33,578,549,248 bytes (~31.3 GiB) |
 | `GUNBC_MEMORY_BUDGET_BYTES` | unset |
 | probe scheduling | serial, one shared `MultiEntryIndex`; adaptive `MemoryGovernor` **not engaged** |
+| M2 schedule-derived retention (#7129) | **not armed** on this instrument path — `index_arm_schedule_retention` runs on the `claim_executor` discovery/floor path only; the probe retains typed state for the process lifetime (pre-M2 pole) |
 | `cgroup_memory_events_high` | 0 on every run |
 
-**Retraction:** uncapped narrow production (`N=286`, `GUNBC_CI_DIFF_BASE=e30621111f37`) was **OOM-killed** at the cgroup ceiling after ~31 min (exit `Killed`, no receipt). Production subjects below use `--max-entries 50` (production-selection order preserved, first 50 of each subject's roster).
+**Retraction (kept):** uncapped narrow (`N=286`, `GUNBC_CI_DIFF_BASE=e30621111f37`) was **OOM-killed** at the cgroup ceiling (~31 min, exit `Killed`, no receipt). Because M2 retention is **not** active here, this is an **instrument-path retention artifact**, not a quotable floor fact — it is nevertheless a retention data point: serial single-index resolve without roster-aware eviction exceeds ~32 GiB before `N=286` completes on this host.
 
-Binary snapshot: `sha256:8af9c72606aba8373c611c9608e4402bd6c7a4308862f80536af2a381a79174e`.
+**Retraction (kept):** the first `narrow-production` / `typical-production` / `broad-capped` cells (shared first-50 prefix) measured **one subject three times** — withdrawn as breadth evidence; superseded by disjoint windows below.
 
-### Matrix handback
+Binary snapshot: `sha256:5b7c4673f4a26a0b168b48dfbb946c27e2b30eae6149b120dcd4262840abeb3f`.
 
-| run | N | cap | diff base | distinct module keys | distinct typecheck computes | repeated typecheck computes | repeated wall / total typecheck wall | decision_ratio | cache_hit_ratio | Σ assembly wall | VmHWM |
-|---|---:|---|---|---:|---:|---:|---|---:|---:|---:|---:|
-| explicit-order-a | 7 | — | — | 398 | 398 | **0** | 0 / 14.0s | **0** | 0.362 | 6.0s | 3.11 GiB |
-| explicit-order-b | 7 | — | — | 398 | 398 | **0** | 0 / 13.3s | **0** | 0.362 | 5.6s | 3.05 GiB |
-| narrow-production | 50 | 50 | `e30621111f37` | 622 | 622 | **0** | 0 / 36.6s | **0** | 0.884 | 38.2s | 8.30 GiB |
-| typical-production | 50 | 50 | `b01cdf4d8914` | 622 | 622 | **0** | 0 / 32.4s | **0** | 0.884 | 33.9s | 8.29 GiB |
-| broad-capped | 50 | 50 | `0d6ffc4db975` | 622 | 622 | **0** | 0 / 34.7s | **0** | 0.884 | 38.3s | 8.27 GiB |
+### Disjoint production handback (50-entry windows, distinct subjects)
 
-Membership at `N=50`: `sum_closure_memberships=5339`, `union_modules=619`, duplication **8.63×** (vs slice-1 full-roster 35.9–38.4× — cap shrinks overlap denominator).
+| run | diff base | offset | N | union modules | hits | misses | refusals | repeated misses | total TC wall | repeated TC wall | decision_ratio | cache_hit_ratio | Σ assembly | VmHWM |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| narrow-disjoint | `e30621111f37` | 0 | 50 | 619 | 4717 | 622 | 0 | **0** | 36.5s | 0 | **0** | 0.884 | 37.6s | 8.88 GiB |
+| typical-disjoint | `b01cdf4d8914` | 117 | 50 | 708 | 4510 | 710 | 0 | **0** | 40.8s | 0 | **0** | 0.864 | 36.4s | 9.12 GiB |
+| broad-disjoint | `0d6ffc4db975` | 235 | 50 | 555 | 2470 | 557 | 0 | **0** | 33.8s | 0 | **0** | 0.816 | 35.1s | 7.73 GiB |
 
-### Structural reads (execution, not verdict)
+Explicit reorder (7-entry slice-1 amortization set): `decision_ratio=0`, identical distinct-compute set (398) both orders — see `receipt-explicit-order-{a,b}.json`.
 
-1. **Reorder invariance holds at execution scale:** explicit A vs B — identical distinct computes (398), identical repeated misses (0), identical membership; only per-entry assembly/typecheck walls reorder.
-2. **Repeated membership does not become repeated typecheck** on any matrix cell: `repeated_typecheck_misses=0` and `decision_ratio=0` throughout, while `cache_hit_ratio` rises to **0.884** at `N=50` (membership duplication 8.6× still present).
-3. **Per-entry assembly is non-trivial** relative to typecheck at production cap: Σ `reconcile_assembly_ns` ≈ 34–38s vs total typecheck ≈ 32–37s for `N=50` — the lane's alternate target if union is not justified by repeated compute.
-4. **Cap artifact:** at `--max-entries 50` the three production subjects selected the same first-50 roster prefix (alphabetical production order), so narrow/typical/broad rows coincide on attribution — breadth contrast requires uncapped runs on a host that survives `N≈300`.
+### Verdict (operator three-way protocol, 2026-08-01)
 
-Full per-row receipts: `docs/plans/receipts/entry-graph-union-slice2/receipt-*.json`. Reproduce: `docs/plans/receipts/entry-graph-union-slice2/run_matrix.sh`.
+**Measured scale:** `N≤50` disjoint production windows + 7-entry explicit fixture; **`>50`-entry regime unmeasured** on this host (uncapped `N=286` OOM).
 
-### Verdict slot
+At every measured cell: **repeated typecheck compute is zero**, order-stable, and the typed cache is already strong (`cache_hit_ratio` 0.82–0.88 on production windows despite 8–14× membership duplication within each window).
 
-*Empty — operator three-way handback pending.*
+**Disposition:** cache hits already eliminate repeated typecheck work — the **union/shared typed-computation program closes or shrinks**. The surviving cost axes are **first-time typecheck**, **per-entry assembly** (Σ assembly ≈ 35–38s vs total typecheck ≈ 34–41s per 50-entry cell — comparable magnitude), and **retention at scale** (instrument-path OOM at `N=286` without M2 eviction; floor-scale behavior unmeasured here).
+
+Full per-row receipts: `docs/plans/receipts/entry-graph-union-slice2/receipt-*.json`. Reproduce disjoint cells: `docs/plans/receipts/entry-graph-union-slice2/run_matrix.sh disjoint`.
