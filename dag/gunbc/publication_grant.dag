@@ -73,10 +73,9 @@ fn public_publication_request(
 fn public_publication_decide(
   request: AccessRequest<PublicPlacementPolicySubject, PublicationAdmissionAction<PublicPlacementSource>, FilePath, PublicationContext<PublicPublicationContext, GunbcPrincipal>, PublicationAudienceGrant<GunbcPrincipal>>,
 ) -> AccessDecision {
-  let evidence_matches_request =
-    request.evidence.value.resource == request.object
+  let evidence_matches_request = (request.evidence.value.resource == request.object
       && request.evidence.value.root == request.action.source.root
-      && request.evidence.value.root == request.context.value.context.root
+      && request.evidence.value.root == request.context.value.context.root)
   if !evidence_matches_request {
     Deny {
       refusal: AccessRefusal {
