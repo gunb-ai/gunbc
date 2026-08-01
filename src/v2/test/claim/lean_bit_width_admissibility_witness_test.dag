@@ -56,7 +56,7 @@ test fn lean_catalog_width_admission_refuses_bits128_not_integer_scalar() -> Boo
     representation: ^lean_repr_fixed_precision_integer
   ).scalar {
     LeanWidthAdmissionRefused { width: refused } => bit_width_count(refused) == 128
-    LeanIntegerScalar { signedness: _, width: _ } => false
+    LeanIntegerScalar { signedness: _, width: _, overflow: _ } => false
     _ => false
   }
 }
