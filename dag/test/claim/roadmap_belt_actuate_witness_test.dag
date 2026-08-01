@@ -304,6 +304,19 @@ test fn witness_observe_refuses_permission_error() -> Bool {
   ))
 }
 
+test fn witness_observe_refuses_malformed_stdout() -> Bool {
+  match belt_observe_from_result(
+    success: true,
+    stdout: "gunbc-dispatch-a: malformed\n",
+    stderr: "",
+  ) {
+    ObserveRefused { reason } =>
+      string_contains(s: reason, pattern: "stdout parse refused")
+        && string_contains(s: reason, pattern: "malformed")
+    Observed { live: _ } => false
+  }
+}
+
 test fn witness_observe_refuses_empty_stderr_failure() -> Bool {
   is_observe_refused(o: belt_observe_from_result(
     success: false,

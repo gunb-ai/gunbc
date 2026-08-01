@@ -9,7 +9,6 @@ import std.primitive_identity {
   RealizationNamesUnknownPrimitive,
   SurfaceJoinsTwoIdentities,
   SurfaceMissingPrimitiveIdentity,
-  decl_ref,
   primitive_d0_definitions,
   primitive_d0_derived_rows_missing_identity_count,
   primitive_d0_derived_surface_authority_count,
@@ -18,8 +17,9 @@ import std.primitive_identity {
   primitive_d0_derived_rows_are_from_authority,
   primitive_d0_host_unspecified_traversal_classified,
   primitive_d0_index_by_registry_algebra_gap_holds,
-  primitive_d0_interpreter_measurement_row_count,
-  primitive_d0_interpreter_rows_are_measurement_only,
+  primitive_d0_interpreter_rows_are_from_authority,
+  primitive_d0_interpreter_census_matches_roster,
+  primitive_d0_interpreter_surface_row_count,
   primitive_d0_map_keys_five_surface_join_holds,
   primitive_d0_open_denominator_receipt_holds,
   primitive_d0_open_surface_authority_count,
@@ -31,7 +31,6 @@ import std.primitive_identity {
   primitive_duplicate_semantic_definition_violation,
   primitive_identity_eq,
   primitive_incompatible_invocation_assignment_violation,
-  primitive_interpreter_dispatch_arm_count,
   primitive_map_keys,
   primitive_map_keys_definition,
   primitive_map_values,
@@ -43,19 +42,29 @@ import std.primitive_identity {
   MeasurementOnly,
   surface_row,
 }
+import gunbc.v1_interpreter_primitive_surface {
+  authored_spelling_count,
+  distinct_arm_identity_count,
+  v1_interpreter_row_count,
+}
 import std.primitives { builtin_registry_surface_names }
 import std.types { Bool, List, String }
 
-data primitive_identity_join_witness_note: String = "D0 first slice (NOT closing contract): join mechanism + five refusal variants typed, three detectors executing on census plus two scaffold detectors on planted RED inputs (primitive_d0_refusal_execution_note); subject universe derived across four surfaces, OPEN at fifth (InterpreterDispatch). primitive_interpreter_dispatch_measurement_rows is interim measurement scaffold with dissolution trigger interpreter-primitive-roster — NOT an authority. Open denominator counted by primitive_d0_open_denominator_receipt_holds and primitive_d0_derived_rows_missing_identity_count."
+data primitive_identity_join_witness_note: String = "D0/D1 slice (NOT closing contract): join mechanism + five refusal variants typed, three detectors executing on census plus two scaffold detectors on planted RED inputs (primitive_d0_refusal_execution_note); subject universe derived across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1: measurement scaffold deleted, primitive_surface_census_derived absorbs interpreter roster. Open denominator counted by primitive_d0_open_denominator_receipt_holds and primitive_d0_derived_rows_missing_identity_count."
 
 test fn w_open_denominator_counted_receipt() -> Bool {
   primitive_d0_open_denominator_receipt_holds()
-    && primitive_d0_derived_surface_authority_count == 4
+    && primitive_d0_derived_surface_authority_count == 5
     && primitive_d0_parallel_roster_surface_authority_count == 2
-    && primitive_d0_open_surface_authority_count == 1
-    && primitive_interpreter_dispatch_arm_count == 158
-    && primitive_d0_interpreter_measurement_row_count() == 4
+    && primitive_d0_open_surface_authority_count == 0
     && primitive_d0_derived_rows_missing_identity_count() > 0
+}
+
+test fn w_interpreter_census_consumes_roster_authority() -> Bool {
+  primitive_d0_interpreter_census_matches_roster()
+    && primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count()
+    && distinct_arm_identity_count() < v1_interpreter_row_count()
+    && authored_spelling_count() < distinct_arm_identity_count()
 }
 
 test fn w_derived_surface_census_population() -> Bool {
@@ -64,8 +73,8 @@ test fn w_derived_surface_census_population() -> Bool {
   derived_rows > registry_rows && derived_rows > 100
 }
 
-test fn w_interpreter_measurement_rows_marked_measurement_only() -> Bool {
-  primitive_d0_interpreter_rows_are_measurement_only()
+test fn w_interpreter_surface_rows_marked_derived_from_authority() -> Bool {
+  primitive_d0_interpreter_rows_are_from_authority()
 }
 
 test fn w_derived_rows_marked_derived_from_authority() -> Bool {
@@ -93,7 +102,7 @@ test fn w_unknown_realization_refuses() -> Bool {
     realization: PrimitiveRealization {
       primitive: primitive_map_keys,
       target: EmitRust,
-      handler: decl_ref(module_path: "std.primitive_identity", decl_name: "missing_handler"),
+      handler: std.primitive_identity.decl_ref(module_path: "std.primitive_identity", decl_name: "missing_handler"),
     },
     definitions: [],
   ) {
@@ -129,7 +138,7 @@ test fn w_red_missing_identity_on_joined_surface() -> Bool {
   let planted = surface_row(
     authority: InterpreterDispatch,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
     primitive: Absent,
     provenance: MeasurementOnly,
   )
@@ -144,14 +153,14 @@ test fn w_red_surface_joins_two_identities() -> Bool {
   let left = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
     primitive: Present { value: primitive_map_keys },
     provenance: MeasurementOnly,
   )
   let right = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
     primitive: Present { value: primitive_map_values },
     provenance: MeasurementOnly,
   )
@@ -169,14 +178,14 @@ test fn w_red_cross_authority_identity_fork() -> Bool {
   let registry_row = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
     primitive: Present { value: primitive_map_keys },
     provenance: MeasurementOnly,
   )
   let contract_row = surface_row(
     authority: PrimitiveContractRow,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "map_keys_contract"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "map_keys_contract"),
     primitive: Present { value: primitive_map_values },
     provenance: MeasurementOnly,
   )
