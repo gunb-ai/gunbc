@@ -53,6 +53,7 @@ type OwnedArtifactKind =
   | DispatchWorktreeRoot
   | AttemptStateRoot
   | SystemdUnit
+  | BeltTimerUnit
   | TailscaleServeMapping
 
 type EnsuredDependencyKind =
@@ -96,6 +97,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     DispatchWorktreeRoot => TeardownActs
     AttemptStateRoot => TeardownActs
     SystemdUnit => TeardownActs
+    BeltTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
   }
 }
