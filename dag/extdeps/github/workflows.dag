@@ -1,0 +1,72 @@
+module extdeps.github.workflows
+
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import std.credentials { EnvVar }
+import std.types { CommitSha, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
+  }
+}
+
+data workflows_api_version: NonEmptyStr = "2026-03-10"
+
+data create_dispatch_version_fidelity_note: String = "Create Workflow Dispatch has two live response contracts across GitHub REST versions. Requests without X-GitHub-Api-Version default to 2022-11-28 and return 204 No Content. Version 2026-03-10 returns 200 with workflow_run_id, run_url, and html_url. This service explicitly pins 2026-03-10 in the transport header, so WorkflowDispatchReceipt is the cited response rather than a fabricated body projected from an unversioned 204. Authority: docs.github.com/en/rest/about-the-rest-api/api-versions and the Create a workflow dispatch event response schema, read 2026-08-01."
+
+type WorkflowDispatchReceipt {
+  workflow_run_id: Int
+  run_url: NonEmptyStr
+  html_url: NonEmptyStr
+}
+
+service github.Workflows {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+
+    retry: { max_attempts: 1, backoff: none, retry_on: [] }
+  }
+
+  operation CreateDispatch {
+    input {
+      owner: String
+      repo: String
+      workflow_id: String
+      ref: String
+      expected_healed_sha: CommitSha
+    }
+    output {
+      workflow_run_id: Int
+      run_url: NonEmptyStr
+      html_url: NonEmptyStr
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/actions/workflows/\{workflow_id\}/dispatches",
+      headers: { "X-GitHub-Api-Version": workflows_api_version },
+      body: {
+        ref: ref,
+        inputs: { expected_healed_sha: expected_healed_sha }
+      }
+    }
+    response {
+      200 => WorkflowDispatchReceipt
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      429 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+data create_dispatch_retry_policy_note: String = "CreateDispatch is intentionally single-attempt. Once the heal push has created a new subject, a dispatch refusal must be visible as HealDispatchRefused and leave revalidation required; silently retrying a permission, rate-limit, or server refusal into apparent success would erase the classification operators need. The owning workflow may be retriggered deliberately after diagnosis, but this operation never assumes that the GITHUB_TOKEN push created a run."
