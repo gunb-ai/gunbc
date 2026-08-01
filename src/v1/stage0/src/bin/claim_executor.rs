@@ -8357,7 +8357,7 @@ mod tests {
                 BatchUnit::UnrunnableSentinel { function } => {
                     out.push((String::new(), function.clone()));
                 }
-                BatchUnit::Discovery { .. } => {}
+                BatchUnit::Discovery { .. } | BatchUnit::ScopedDiscovery { .. } => {}
             }
         }
         out
@@ -8758,6 +8758,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
+            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
@@ -8827,6 +8828,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
+            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
