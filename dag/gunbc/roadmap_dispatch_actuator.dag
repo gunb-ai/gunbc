@@ -83,25 +83,20 @@ import extdeps.llm.cli_lifecycle {
   ProviderInstanceFieldUnobserved,
   ProviderKind,
   ClaudeCliProvider,
-  CodexCliProvider,
-  CursorCliProvider,
 }
 import gunbc.dispatch_selection {
   ExecutionProfile,
   ProfileAutomatic,
-  DispatchExecutionRequest,
+  ProviderSelectionRequest,
   DispatchExecutionReceipt,
-  DispatchExecutionResolved,
-  DispatchExecutionRefused,
-  default_dispatch_execution_request,
-  dispatch_execution_receipt_for_node,
-  dispatch_provider_inventory_for_instance,
-  dispatch_offer_process_fingerprint,
-  resolve_execution_effort,
-  srv1_live_dispatch_inventory,
-  dispatch_inventory_select_offer,
-  ProviderAutomatic,
-  ProviderExact,
+  DispatchSelectionResolved,
+  DispatchSelectionRefused,
+  default_provider_selection_request,
+  provider_selection_request_for_kind,
+  dispatch_selection_for_instance,
+  provider_inventory_for_instance,
+  resolved_process_fingerprint,
+  srv1_live_dashboard_instance,
 }
 import extdeps.llm.cursor_cli {
   cursor_cli_program,
@@ -173,34 +168,38 @@ data dispatch_claude_fingerprint_finding_note: String = "NAMED FINDING (U4 live 
 
 type DispatchCliProvider
   = ClaudeCodeProvider
-  | CodexCliProvider
-  | CursorCliProvider
+  | CodexDispatchProvider
+  | CursorDispatchProvider
 
-data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() remains the srv1-live default projection for legacy call sites; instance-aware dispatch uses dispatch_execution_receipt_for_node. Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
+data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() projects the srv1-live Automatic selection for legacy call sites; instance-aware dispatch uses dispatch_selection_for_instance. Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
 
 fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
   match kind {
     ClaudeCliProvider => ClaudeCodeProvider
-    CodexCliProvider => CodexCliProvider
-    CursorCliProvider => CursorCliProvider
+    extdeps.llm.cli_lifecycle.CodexCliProvider => CodexDispatchProvider
+    extdeps.llm.cli_lifecycle.CursorCliProvider => CursorDispatchProvider
   }
 }
 
 fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> ProviderKind {
   match provider {
     ClaudeCodeProvider => ClaudeCliProvider
-    CodexCliProvider => CodexCliProvider
-    CursorCliProvider => CursorCliProvider
+    CodexDispatchProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
+    CursorDispatchProvider => extdeps.llm.cli_lifecycle.CursorCliProvider
   }
 }
 
 fn dispatch_cli_provider() -> DispatchCliProvider {
-  provider_kind_to_dispatch_cli(
-    kind: dispatch_inventory_select_offer(
-      inventory: srv1_live_dispatch_inventory,
-      preference: ProviderAutomatic,
-    ).kind,
-  )
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      provider_kind_to_dispatch_cli(kind: receipt.provider_kind)
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+      CodexDispatchProvider
+  }
 }
 
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
@@ -222,8 +221,8 @@ data dispatch_codex_exec_spec_note: String = "Codex dispatch is unattended but n
 fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
   match provider {
     ClaudeCodeProvider => "claude"
-    CodexCliProvider => "codex"
-    CursorCliProvider => "cursor"
+    CodexDispatchProvider => "codex"
+    CursorDispatchProvider => "cursor"
   }
 }
 
@@ -324,8 +323,8 @@ data dispatch_provider_instance_note: String = "The configured provider instance
 fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
   match provider {
     ClaudeCodeProvider => claude_cli_program as NonEmptyStr
-    CodexCliProvider => codex_cli_program as NonEmptyStr
-    CursorCliProvider => cursor_cli_program as NonEmptyStr
+    CodexDispatchProvider => codex_cli_program as NonEmptyStr
+    CursorDispatchProvider => cursor_cli_program as NonEmptyStr
   }
 }
 
@@ -371,10 +370,15 @@ fn dispatch_worker_observation() -> WorkerObservation {
 }
 
 fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
-  resolve_execution_effort(
-    profile: ProfileAutomatic,
-    intricacy: i,
-  )
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } => receipt.applied_effort
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+      ReasoningMedium
+  }
 }
 
 fn claude_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
@@ -382,10 +386,18 @@ fn claude_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
 }
 
 fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr {
-  dispatch_offer_process_fingerprint(
-    inventory: srv1_live_dispatch_inventory,
-    kind: dispatch_cli_to_provider_kind(provider: provider),
-  )
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: provider_selection_request_for_kind(
+      kind: dispatch_cli_to_provider_kind(provider: provider),
+    ),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      resolved_process_fingerprint(resolved: receipt.resolved_selection)
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+      dispatch_codex_process_fingerprint
+  }
 }
 
 fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
@@ -1006,13 +1018,13 @@ fn dispatch_provider_inner_argv(
           brief: brief,
         ),
       )
-    CodexCliProvider =>
+    CodexDispatchProvider =>
       codex_spawn_argv(
         effort: effort,
         worktree_path: worktree_path,
         brief: brief,
       )
-    CursorCliProvider => []
+    CursorDispatchProvider => []
   }
 }
 
@@ -1042,14 +1054,14 @@ fn dispatch_provider_inner_argv_for_instance(
           brief: brief,
         ),
       )
-    CodexCliProvider =>
+    CodexDispatchProvider =>
       codex_spawn_argv_for_instance(
         instance: instance,
         effort: effort,
         worktree_path: worktree_path,
         brief: brief,
       )
-    CursorCliProvider => []
+    CursorDispatchProvider => []
   }
 }
 
@@ -1313,12 +1325,9 @@ fn dispatch_spawn_commands_for_provider(
     node: node,
     session_uuid: session_uuid,
     attempt_key: attempt_key,
-    request: DispatchExecutionRequest {
-      profile: ProfileAutomatic,
-      provider: ProviderExact {
-        kind: dispatch_cli_to_provider_kind(provider: provider),
-      },
-    },
+    request: provider_selection_request_for_kind(
+      kind: dispatch_cli_to_provider_kind(provider: provider),
+    ),
   )
 }
 
@@ -1327,39 +1336,36 @@ fn dispatch_spawn_commands_for_instance(
   node: RoadmapNode,
   session_uuid: String,
   attempt_key: String,
-  request: DispatchExecutionRequest,
+  request: ProviderSelectionRequest,
 ) -> DispatchSpawnPlan {
-  let intricacy = match node.sizing {
-    Sized { intricacy, volume: _, repo: _, acceptance: _ } => intricacy
-    Unsized => IntricacyMedium
-  }
-  match dispatch_execution_receipt_for_node(
+  match dispatch_selection_for_instance(
     instance: instance,
     request: request,
-    intricacy: intricacy,
+    node_sizing: node.sizing,
   ) {
-    DispatchExecutionRefused { requested: _, reason } =>
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       DispatchSpawnRefused {
         step: "dispatch-selection" as NonEmptyStr,
         detail: reason as String,
       }
-    DispatchExecutionResolved { requested: _, resolved } => {
-      let provider = provider_kind_to_dispatch_cli(kind: resolved.provider)
-      let effort = resolved.effort
-      if provider == CursorCliProvider {
-        DispatchSpawnRefused {
-          step: "cursor-provider-spawn" as NonEmptyStr,
-          detail: "cursor dispatch spawn is not yet wired on this actuator path",
-        }
-      } else {
-        dispatch_spawn_commands_for_resolved_instance(
-          instance: instance,
-          node: node,
-          session_uuid: session_uuid,
-          attempt_key: attempt_key,
-          provider: provider,
-          effort: effort,
-        )
+    DispatchSelectionResolved { receipt } => {
+      let provider = provider_kind_to_dispatch_cli(kind: receipt.provider_kind)
+      let effort = receipt.applied_effort
+      match provider {
+        CursorDispatchProvider =>
+          DispatchSpawnRefused {
+            step: "cursor-provider-spawn" as NonEmptyStr,
+            detail: "cursor dispatch spawn is not yet wired on this actuator path",
+          }
+        _ =>
+          dispatch_spawn_commands_for_resolved_instance(
+            instance: instance,
+            node: node,
+            session_uuid: session_uuid,
+            attempt_key: attempt_key,
+            provider: provider,
+            effort: effort,
+          )
       }
     }
   }
@@ -1464,7 +1470,7 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
     node: node,
     session_uuid: session_uuid,
     attempt_key: attempt_key,
-    request: default_dispatch_execution_request(),
+    request: default_provider_selection_request(),
   )
 }
 
@@ -1575,10 +1581,14 @@ fn node_repo_supported(node: RoadmapNode) -> Bool {
 
 fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> DispatchRequestGate {
   let brief = filled_dispatch_brief_for_node(node: node)
-  let effort = match node.sizing {
-    Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
-      dispatch_reasoning_effort_for_intricacy(i: intricacy)
-    Unsized => "medium"
+  let effort = match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: default_provider_selection_request(),
+    node_sizing: node.sizing,
+  ) {
+    DispatchSelectionResolved { receipt } => receipt.applied_effort
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+      ReasoningMedium
   }
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),

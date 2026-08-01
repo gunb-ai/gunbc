@@ -74,7 +74,7 @@ import gunbc.roadmap_dispatch_actuator {
   git_for_each_ref_dispatch_argv,
   git_for_each_ref_dispatch_argv_for_instance,
   dispatch_tmux_session_scope,
-  DispatchCliProvider, ClaudeCodeProvider, CodexCliProvider,
+  DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider,
   dispatch_cli_provider, dispatch_provider_label, dispatch_codex_home,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
@@ -123,6 +123,7 @@ import gunbc.worker_lifecycle {
   transcript_evidence_label,
   terminal_outcome_evidence_label,
 }
+import gunbc.dispatch_selection { default_provider_selection_request }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -943,7 +944,7 @@ fn belt_provider_preflight_for_instance(
         ClaudePreflightRefused { step: st, detail: d } =>
           ProviderPreflightRefused { step: st, detail: d }
       }
-    CodexCliProvider =>
+    CodexDispatchProvider =>
       match belt_codex_preflight_for_instance(instance: instance) {
         CodexPreflightOk { auth_method: _ } => ProviderPreflightOk
         CodexPreflightRefused { step: st, detail: d } =>
@@ -1091,7 +1092,7 @@ fn belt_actuate_spawn_for_instance(
     EnvironmentAdmitted { receipts, validation_summary } =>
       match belt_provider_preflight_for_instance(
         instance: instance,
-        provider: dispatch_cli_provider,
+        provider: dispatch_cli_provider(),
       ) {
         ProviderPreflightRefused { step: st, detail: d } =>
           SpawnFailed { node_id: node.node as String, step: st, detail: d }
@@ -1146,7 +1147,7 @@ fn belt_actuate_spawn_exec_modeled(
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
-    provider: dispatch_cli_provider,
+    request: default_provider_selection_request(),
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1298,7 +1299,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
         ),
       }
     EnvironmentAdmitted { receipts, validation_summary } =>
-      match belt_provider_preflight(provider: dispatch_cli_provider) {
+      match belt_provider_preflight(provider: dispatch_cli_provider()) {
         ProviderPreflightRefused { step: st, detail: d } =>
           SpawnFailed { node_id: node.node as String, step: st, detail: d }
         ProviderPreflightOk =>
@@ -3605,7 +3606,7 @@ data belt_dispatch_path_prefix_note: String = "The dispatch route prefix, part o
 data belt_dispatch_path_prefix: String = "/dispatch/"
 
 fn belt_dispatch_provider_label() -> String {
-  dispatch_provider_label(provider: dispatch_cli_provider)
+  dispatch_provider_label(provider: dispatch_cli_provider())
 }
 
 fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {

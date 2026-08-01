@@ -1,0 +1,189 @@
+module test.claim.dispatch_selection_witness
+
+import std.types { Bool }
+import gunbc.roadmap_model {
+  IntricacyHigh,
+  IntricacyLow,
+  VolumeMedium,
+  PrsMerged,
+  Sized,
+  Unsized,
+}
+import extdeps.llm.cli { ReasoningMedium }
+import extdeps.llm.cli_lifecycle {
+  CodexCliProvider,
+  CursorCliProvider,
+}
+import extdeps.llm.cursor_cli { cursor_model_auto }
+import gunbc.roadmap_dashboard_instance {
+  srv1_live_dashboard_instance,
+  srv2_lab_dashboard_instance,
+}
+import gunbc.provider_account { codex_roadmap_account_selection }
+import gunbc.dispatch_selection {
+  CursorLocalLoginRef,
+  ProfileAutomatic,
+  ProfileDeep,
+  ProfileExactOverride,
+  DispatchSelectionResolved,
+  DispatchSelectionRefused,
+  ResolvedCodex,
+  SelectAutomatically,
+  SelectCodex,
+  SelectCursor,
+  default_provider_selection_request,
+  dispatch_selection_for_instance,
+  provider_inventory_for_instance,
+  automatic_codex_behavior_preservation_holds,
+  inventory_includes_provider_kind,
+  dispatch_codex_default_model,
+}
+
+test fn witness_automatic_codex_preserves_medium_effort() -> Bool {
+  automatic_codex_behavior_preservation_holds(
+    instance: srv1_live_dashboard_instance(),
+  )
+}
+
+test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
+  let high = dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: default_provider_selection_request(),
+    node_sizing: Sized {
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
+    },
+  )
+  let low = dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: default_provider_selection_request(),
+    node_sizing: Sized {
+      intricacy: IntricacyLow,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
+    },
+  )
+  match high {
+    DispatchSelectionResolved { receipt: high_receipt } =>
+      match low {
+        DispatchSelectionResolved { receipt: low_receipt } =>
+          high_receipt.applied_effort == ReasoningMedium
+            && low_receipt.applied_effort == ReasoningMedium
+            && high_receipt.applied_effort == low_receipt.applied_effort
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+          false
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}
+
+test fn witness_deep_profile_refuses_without_realization() -> Bool {
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: SelectAutomatically { profile: ProfileDeep },
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionResolved { receipt: _ } => false
+  }
+}
+
+test fn witness_srv1_inventory_includes_codex() -> Bool {
+  inventory_includes_provider_kind(
+    inventory: provider_inventory_for_instance(
+      instance: srv1_live_dashboard_instance(),
+    ),
+    kind: CodexCliProvider,
+  )
+}
+
+test fn witness_srv2_inventory_includes_cursor() -> Bool {
+  inventory_includes_provider_kind(
+    inventory: provider_inventory_for_instance(
+      instance: srv2_lab_dashboard_instance(),
+    ),
+    kind: CursorCliProvider,
+  )
+}
+
+test fn witness_srv2_cursor_selection_resolves() -> Bool {
+  match dispatch_selection_for_instance(
+    instance: srv2_lab_dashboard_instance(),
+    request: SelectCursor {
+      profile: ProfileAutomatic,
+      credential: CursorLocalLoginRef,
+      model: cursor_model_auto,
+      agent_mode: "default-edit",
+    },
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      receipt.provider_kind == CursorCliProvider
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}
+
+test fn witness_receipt_records_requested_and_resolved() -> Bool {
+  let request = SelectAutomatically { profile: ProfileAutomatic }
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: request,
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.requested_selection {
+        SelectAutomatically { profile: ProfileAutomatic } =>
+          match receipt.resolved_selection {
+            ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
+              s.effort == ReasoningMedium
+                && receipt.applied_effort == ReasoningMedium
+                && receipt.provider_kind == CodexCliProvider
+            _ => false
+          }
+        _ => false
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}
+
+test fn witness_wrong_selection_shape_refuses() -> Bool {
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: SelectCursor {
+      profile: ProfileAutomatic,
+      credential: CursorLocalLoginRef,
+      model: cursor_model_auto,
+      agent_mode: "default-edit",
+    },
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionResolved { receipt: _ } => false
+  }
+}
+
+test fn witness_exact_override_requires_explicit_provider_arm() -> Bool {
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: SelectAutomatically { profile: ProfileExactOverride },
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionResolved { receipt: _ } => false
+  }
+}
+
+test fn dispatch_selection_keystone_holds() -> Bool {
+  witness_automatic_codex_preserves_medium_effort()
+    && witness_intricacy_does_not_change_automatic_effort()
+    && witness_deep_profile_refuses_without_realization()
+    && witness_srv1_inventory_includes_codex()
+    && witness_srv2_inventory_includes_cursor()
+    && witness_srv2_cursor_selection_resolves()
+    && witness_receipt_records_requested_and_resolved()
+    && witness_wrong_selection_shape_refuses()
+    && witness_exact_override_requires_explicit_provider_arm()
+}

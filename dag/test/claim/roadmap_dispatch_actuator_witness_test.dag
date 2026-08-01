@@ -5,7 +5,7 @@ import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
-  IntricacyHigh, VolumeMedium,
+  IntricacyHigh, IntricacyLow, VolumeMedium,
   PrsMerged,
   NodeSizing, Sized, Unsized,
   SectionElement, Group, SectionGroup,
@@ -40,6 +40,9 @@ import extdeps.llm.cli {
   CodexExecSpec,
   CodexWorkspaceWrite,
   CodexApprovalNever,
+  ReasoningHigh,
+  ReasoningMedium,
+  reasoning_effort_label,
 }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
@@ -49,7 +52,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_brief_fields,
   filled_dispatch_brief_for_node,
   dispatch_cli_provider,
-  CodexCliProvider,
+  CodexDispatchProvider,
   dispatch_reasoning_effort_for_intricacy,
   claude_effort_for_intricacy,
   claude_spawn_argv,
@@ -81,11 +84,14 @@ import gunbc.roadmap_dispatch_actuator {
   SpawnSession,
   dispatch_current_attempt_events_projection_argv_for_instance,
 }
-import extdeps.llm.cli {
-  ReasoningHigh,
-  ReasoningMedium,
-  reasoning_effort_label,
+import gunbc.dispatch_selection {
+  ProfileAutomatic,
+  ProviderSelectionRequest,
+  SelectCodex,
+  default_provider_selection_request,
+  dispatch_codex_default_model,
 }
+import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.dispatch_pipe_pane_emit {
   PipeEmitted,
   PipeEmitRefused,
@@ -140,11 +146,11 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
     && string_contains(s: brief, pattern: "Brief Title")
 }
 
-test fn witness_claude_effort_high_for_high_intricacy() -> Bool {
-  reasoning_effort_label(effort: claude_effort_for_intricacy(i: IntricacyHigh)) == "high"
+test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
+  reasoning_effort_label(effort: claude_effort_for_intricacy(i: IntricacyHigh)) == "medium"
     && reasoning_effort_label(
       effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyHigh),
-    ) == "high"
+    ) == "medium"
     && reasoning_effort_label(
       effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyLow),
     ) == "medium"
@@ -191,7 +197,7 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
 }
 
 test fn witness_codex_provider_is_selected_explicitly() -> Bool {
-  dispatch_cli_provider == CodexCliProvider
+  dispatch_cli_provider() == CodexDispatchProvider
 }
 
 test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
@@ -236,7 +242,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     node: node,
     session_uuid: "uuid-unused-by-codex",
     attempt_key: "feedfacefeedface",
-    provider: CodexCliProvider,
+    provider: CodexDispatchProvider,
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
@@ -291,7 +297,12 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
     ),
     session_uuid: "00000000-0000-4000-8000-000000000001",
     attempt_key: "feedfacefeedface",
-    provider: CodexCliProvider,
+    request: SelectCodex {
+      profile: ProfileAutomatic,
+      account: codex_roadmap_account_selection(),
+      model: dispatch_codex_default_model,
+      effort: ReasoningMedium,
+    },
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands } =>
