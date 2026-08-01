@@ -109,6 +109,7 @@ data generated_stage0_files: List<String> = [
   "v1_tests_claim_pattern_binder_declaration_node_test.rs",
   "v1_tests_claim_caret_parse_smoke_test.rs",
   "v1_tests_claim_occurrence_identity_debt_receipt_test.rs",
+  "v1_tests_claim_required_expr_newline_continuation_test.rs",
   "wt_a.rs",
   "wt_b.rs",
   "wt_common.rs",
