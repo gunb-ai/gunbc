@@ -1,14 +1,16 @@
 module v2.std.operation_argv
 
 import std.types { String, List, Bool }
-import std.decl_ref { DeclarationRef, NamedField }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import v2.std.algebra { list_map }
 import v2.std.execution_mechanism {
   ExecutionMechanism,
   ExecutionMechanismDerived,
+  ExecutionMechanismRefusedInvocationShape,
   ExecutionMechanismRefusedWrapper,
   SpawnExecutable,
+  SpawnInvocation,
   execution_mechanism_from_evidence,
 }
 
@@ -84,6 +86,7 @@ type ShellTransportMechanismClassification
 type ShellTransportMechanismRefusalCause
   = ExecutableNotLiteral
   | ExecutionWrapperGrammarUnmodeled { executable: String }
+  | ExecutionInvocationShapeUnmodeled { executable: String }
 
 data shell_transport_mechanism_classification_note: String = "The legacy spelling gets no sixth Unknown mechanism. A literal executable is the construction fact dispatch_shell actually consumes and classifies through v2.std.execution_mechanism. A bindable or otherwise non-literal argv[0] is refused and located instead; the executable-position construction wall already makes that shape invalid. A known exec wrapper refuses separately because its effective executable depends on the wrapper's unmodeled option grammar. The live-tree census pins the sole planted executable-position fixture and the ten current wrapper rows independently, so either ambiguity class can shrink but any new ambiguous transport-shell site turns the executed witness red."
 
@@ -94,11 +97,11 @@ data shell_transport_executable_seed_scaffold: Disposition = Scaffold {
   bind: DeclarationRef {
     module_path: "v2.std.operation_argv",
     decl_name: "ShellTransportOperationRow",
-    field: NamedField { field_name: "executable" }
+    field: WholeDeclaration
   }
 }
 
-data shell_transport_executable_seed_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side census transport. WHAT IS ADDED: no new Rust file and no Rust classification policy — the already seed-retained cli_run census row transports the parsed declaration's literal argv[0] as Option<String>, and v1_interpreter marshals that optional field into ShellTransportOperationRow. WHAT IS NOT IN RUST: the five-way ExecutionMechanism vocabulary, wrapper refusal, and classification all live in .dag and consume that construction evidence. DEFERRED TO: the repository finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.roadmap_authority), with the nearer work sequenced by gunbc.plans.transport_argv_anemia_dissolution.transport_argv_anemia_dissolution_plan. CONCRETE DISSOLUTION: this scaffold deletes when shell_transport_operation_rows is realized as a .dag fold over the parsed operation declarations (rather than a cli_run host census plus v1_interpreter marshal); convergence of the competing invocation carriers onto BoundOperationInvocation then makes the same derived evidence available to every realization consumer. Until then the bound NamedField disposition above is the countable seed-retained row for exactly the executable field added here."
+data shell_transport_executable_seed_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side census transport. WHAT IS ADDED: no new Rust file and no Rust classification policy — the already seed-retained cli_run census row transports the parsed declaration's literal argv[0] as Option<String>, and v1_interpreter marshals that optional field into ShellTransportOperationRow. Full argv evidence is derived by the existing .dag-owned shell_materialize_operation_argv consumer rather than copied into another Rust census field. WHAT IS NOT IN RUST: the five-way ExecutionMechanism vocabulary, wrapper refusal, SSH invocation-shape refusal, and classification all live in .dag and consume that construction evidence. DEFERRED TO: the repository finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.roadmap_authority), with the nearer work sequenced by gunbc.plans.transport_argv_anemia_dissolution.transport_argv_anemia_dissolution_plan. CONCRETE DISSOLUTION: this scaffold deletes when shell_transport_operation_rows is realized as a .dag fold over the parsed operation declarations (rather than a cli_run host census plus v1_interpreter marshal); convergence of the competing invocation carriers onto BoundOperationInvocation then makes the same derived evidence available to every realization consumer. Until then the bound WholeDeclaration disposition above is the countable seed-retained row for the census carrier extended here."
 
 fn shell_transport_operation_mechanism(
   row: ShellTransportOperationRow
@@ -106,7 +109,20 @@ fn shell_transport_operation_mechanism(
   match row.executable {
     Present { value: executable } =>
       match execution_mechanism_from_evidence(
-        evidence: SpawnExecutable { executable: executable }
+        evidence: match shell_materialize_operation_argv(
+          row.at.path,
+          row.at.service,
+          row.at.operation,
+          operation_argv_row_bindings(row: row)
+        ) {
+          ArgvMaterialized { argv: argv } => SpawnInvocation {
+            executable: executable,
+            argv: argv
+          }
+          ArgvMaterializationRefused { at: _, cause: _ } => SpawnExecutable {
+            executable: executable
+          }
+        }
       ) {
         ExecutionMechanismDerived { mechanism: mechanism } =>
           ShellTransportMechanismClassified { mechanism: mechanism }
@@ -114,6 +130,11 @@ fn shell_transport_operation_mechanism(
           ShellTransportMechanismRefused {
             at: row.at,
             cause: ExecutionWrapperGrammarUnmodeled { executable: wrapper },
+          }
+        ExecutionMechanismRefusedInvocationShape { executable: executable } =>
+          ShellTransportMechanismRefused {
+            at: row.at,
+            cause: ExecutionInvocationShapeUnmodeled { executable: executable },
           }
       }
     Absent => ShellTransportMechanismRefused {

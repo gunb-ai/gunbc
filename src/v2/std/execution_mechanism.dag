@@ -1,10 +1,13 @@
 module v2.std.execution_mechanism
 
-import std.types { String }
+import std.types { String, List }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 
 data execution_mechanism_authority_note: String = "The mechanism behind the legacy `transport shell` spelling is derived from what the realization DOES, never copied from that spelling and never hand-labelled at each operation. The seed's dispatch_shell calls std::process::Command::new(argv[0]): an ordinary executable is LocalProcess; a local shell interpreter reads a script as LocalShellScript; OpenSSH is RemoteShellCommand because its remote command is reconstructed and interpreted by the far-side shell. RemoteStructuredExecution is deliberately distinct and currently uninhabited by a handler: it requires a future receiver that accepts a structured invocation and calls exec without shell reinterpretation. ForeignShellArtifact is not execution by this runtime at all: shell text is emitted for GitHub Actions run steps, cron, git hooks, or another foreign executor. These five mechanisms are orthogonal to Placement and Materialization in std.realization: where work occurs and whether it is shared do not say how an operation crosses its execution boundary."
 
 data execution_wrapper_refusal_note: String = "A known exec wrapper is not classified from argv[0]. env, sudo, nohup, timeout, nice, setsid, stdbuf, and xargs select the effective executable through their own option grammar; `env bash -s` is a LocalShellScript while `env git status` is a LocalProcess even though both have the same argv[0]. Looking through without modeling that grammar would recreate argv anemia inside the classifier, so wrappers refuse until their invocation shape is grounded. The executed live census pins the current TEN wrapper rows as counted residue — eight env and two sudo. An earlier source scan counted eight total because it missed two multiline env argv declarations; the derived census, not that grep, is the authority."
+
+data openssh_invocation_shape_note: String = "The executable name `ssh` is not enough evidence for RemoteShellCommand: OpenSSH also has local inspection and non-shell modes such as -G, -Q, -V, -N, -O, -s, and -W. The bounded decoder below admits only the invocation grammar exercised by the enrolled corpus: zero or more `-o VALUE` option pairs followed by a non-option destination. Every other leading option and a missing destination refuse as ExecutionMechanismRefusedInvocationShape. This is deliberately a conservative partial decoder, not a nickname for the full OpenSSH CLI grammar; a consumer that needs another mode must ground that mode before the classifier can admit it."
 
 type ExecutionMechanism
   = LocalProcess
@@ -15,12 +18,14 @@ type ExecutionMechanism
 
 type ExecutionMechanismEvidence
   = SpawnExecutable { executable: String }
+  | SpawnInvocation { executable: String, argv: List<String> }
   | SendStructuredInvocationToRemoteReceiver
   | EmitShellTextForForeignExecutor
 
 type ExecutionMechanismDerivation
   = ExecutionMechanismDerived { mechanism: ExecutionMechanism }
   | ExecutionMechanismRefusedWrapper { executable: String }
+  | ExecutionMechanismRefusedInvocationShape { executable: String }
 
 fn executable_is(executable: String, name: String) -> Bool {
   (executable == name) || ends_with(s: executable, suffix: concat("/", name))
@@ -37,11 +42,49 @@ fn executable_is_unmodeled_wrapper(executable: String) -> Bool {
     || executable_is(executable: executable, name: "xargs")
 }
 
-fn spawned_executable_mechanism(executable: String) -> ExecutionMechanismDerivation {
+fn openssh_remote_shell_command_from_arguments(
+  executable: String,
+  arguments: List<String>,
+) -> ExecutionMechanismDerivation {
+  match list_head(xs: arguments) {
+    HeadAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+    HeadFound { value: argument } =>
+      if argument == "-o" {
+        match list_tail(xs: arguments) {
+          TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+          TailFound { tail: option_and_rest } => match list_tail(xs: option_and_rest) {
+            TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+            TailFound { tail: rest } => openssh_remote_shell_command_from_arguments(
+              executable: executable,
+              arguments: rest
+            )
+          }
+        }
+      } else if starts_with(s: argument, prefix: "-") {
+        ExecutionMechanismRefusedInvocationShape { executable: executable }
+      } else {
+        ExecutionMechanismDerived { mechanism: RemoteShellCommand }
+      }
+  }
+}
+
+fn spawned_invocation_mechanism(
+  executable: String,
+  argv: List<String>?,
+) -> ExecutionMechanismDerivation {
   if executable_is_unmodeled_wrapper(executable: executable) {
     ExecutionMechanismRefusedWrapper { executable: executable }
   } else if executable_is(executable: executable, name: "ssh") {
-    ExecutionMechanismDerived { mechanism: RemoteShellCommand }
+    match argv {
+      Absent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+      Present { value: invocation } => match list_tail(xs: invocation) {
+        TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+        TailFound { tail: arguments } => openssh_remote_shell_command_from_arguments(
+          executable: executable,
+          arguments: arguments
+        )
+      }
+    }
   } else if executable_is(executable: executable, name: "sh")
     || executable_is(executable: executable, name: "bash")
     || executable_is(executable: executable, name: "dash")
@@ -58,7 +101,12 @@ fn execution_mechanism_from_evidence(
 ) -> ExecutionMechanismDerivation {
   match evidence {
     SpawnExecutable { executable: executable } =>
-      spawned_executable_mechanism(executable: executable)
+      spawned_invocation_mechanism(executable: executable, argv: none)
+    SpawnInvocation { executable: executable, argv: argv } =>
+      spawned_invocation_mechanism(
+        executable: executable,
+        argv: Present { value: argv }
+      )
     SendStructuredInvocationToRemoteReceiver =>
       ExecutionMechanismDerived { mechanism: RemoteStructuredExecution }
     EmitShellTextForForeignExecutor =>

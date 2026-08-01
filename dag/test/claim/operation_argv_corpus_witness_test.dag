@@ -6,6 +6,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.execution_mechanism {
   ExecutionMechanism,
   ExecutionMechanismDerived,
+  ExecutionMechanismRefusedInvocationShape,
   ExecutionMechanismRefusedWrapper,
   LocalProcess,
   LocalShellScript,
@@ -15,6 +16,7 @@ import v2.std.execution_mechanism {
   SendStructuredInvocationToRemoteReceiver,
   EmitShellTextForForeignExecutor,
   SpawnExecutable,
+  SpawnInvocation,
   execution_mechanism_from_evidence,
 }
 import v2.std.operation_argv {
@@ -34,6 +36,7 @@ import v2.std.operation_argv {
   ShellTransportMechanismClassified,
   ShellTransportMechanismRefused,
   ExecutableNotLiteral,
+  ExecutionInvocationShapeUnmodeled,
   ExecutionWrapperGrammarUnmodeled,
   shell_transport_operation_mechanism,
 }
@@ -195,13 +198,15 @@ type ExecutionMechanismCensusTally {
   nonliteral: Int
   nonliteral_outside_fixture: Int
   wrapper: Int
+  invocation_shape: Int
 }
 
 data execution_mechanism_empty_tally: ExecutionMechanismCensusTally = ExecutionMechanismCensusTally {
   classified: 0,
   nonliteral: 0,
   nonliteral_outside_fixture: 0,
-  wrapper: 0
+  wrapper: 0,
+  invocation_shape: 0
 }
 
 fn execution_mechanism_tally_row(
@@ -213,7 +218,8 @@ fn execution_mechanism_tally_row(
       classified: acc.classified + 1,
       nonliteral: acc.nonliteral,
       nonliteral_outside_fixture: acc.nonliteral_outside_fixture,
-      wrapper: acc.wrapper
+      wrapper: acc.wrapper,
+      invocation_shape: acc.invocation_shape
     }
     ShellTransportMechanismRefused { at: at, cause: cause } => match cause {
       ExecutableNotLiteral => ExecutionMechanismCensusTally {
@@ -222,13 +228,22 @@ fn execution_mechanism_tally_row(
         nonliteral_outside_fixture: acc.nonliteral_outside_fixture + operation_argv_flag(
           b: at.path != operation_argv_fixture_path
         ),
-        wrapper: acc.wrapper
+        wrapper: acc.wrapper,
+        invocation_shape: acc.invocation_shape
       }
       ExecutionWrapperGrammarUnmodeled { executable: _ } => ExecutionMechanismCensusTally {
         classified: acc.classified,
         nonliteral: acc.nonliteral,
         nonliteral_outside_fixture: acc.nonliteral_outside_fixture,
-        wrapper: acc.wrapper + 1
+        wrapper: acc.wrapper + 1,
+        invocation_shape: acc.invocation_shape
+      }
+      ExecutionInvocationShapeUnmodeled { executable: _ } => ExecutionMechanismCensusTally {
+        classified: acc.classified,
+        nonliteral: acc.nonliteral,
+        nonliteral_outside_fixture: acc.nonliteral_outside_fixture,
+        wrapper: acc.wrapper,
+        invocation_shape: acc.invocation_shape + 1
       }
     }
   }
@@ -281,9 +296,11 @@ test fn operation_execution_mechanism_future_structured_and_foreign_artifact_sta
       ExecutionMechanismDerived { mechanism: ForeignShellArtifact } => true
       ExecutionMechanismDerived { mechanism: _ } => false
       ExecutionMechanismRefusedWrapper { executable: _ } => false
+      ExecutionMechanismRefusedInvocationShape { executable: _ } => false
     }
     ExecutionMechanismDerived { mechanism: _ } => false
     ExecutionMechanismRefusedWrapper { executable: _ } => false
+    ExecutionMechanismRefusedInvocationShape { executable: _ } => false
   }
 }
 
@@ -293,12 +310,24 @@ test fn operation_execution_mechanism_new_ambiguous_site_wall_holds() -> Bool {
     && t.nonliteral == 1
     && t.nonliteral_outside_fixture == 0
     && t.wrapper == 10
+    && t.invocation_shape == 0
 }
 
 test fn operation_execution_mechanism_RED_exec_wrapper_cannot_hide_shell() -> Bool {
   match execution_mechanism_from_evidence(evidence: SpawnExecutable { executable: "env" }) {
     ExecutionMechanismRefusedWrapper { executable: executable } => executable == "env"
     ExecutionMechanismDerived { mechanism: _ } => false
+    ExecutionMechanismRefusedInvocationShape { executable: _ } => false
+  }
+}
+
+test fn operation_execution_mechanism_RED_openssh_local_mode_is_not_remote_shell() -> Bool {
+  match execution_mechanism_from_evidence(
+    evidence: SpawnInvocation { executable: "ssh", argv: ["ssh", "-G", "example.test"] }
+  ) {
+    ExecutionMechanismRefusedInvocationShape { executable: executable } => executable == "ssh"
+    ExecutionMechanismDerived { mechanism: _ } => false
+    ExecutionMechanismRefusedWrapper { executable: _ } => false
   }
 }
 
