@@ -7088,6 +7088,203 @@ fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 
+// --- Repeated typecheck attribution probe (entry-graph-union slice 2 / lane ci-cost) ---
+// ONE-SHOT INSTRUMENT: per (entry, typed module content key) records cache disposition,
+// compute wall on miss, and cross-entry first-computer / later-requester counts against
+// ONE shared `MultiEntryIndex`. Dissolves with slice-2 union verdict (same trigger as
+// `cli_run_selected_closure_overlap_probe`).
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedCacheDisposition {
+    Hit,
+    Miss,
+    Refused,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryModuleTypecheckRow {
+    pub entry: String,
+    pub module_key: String,
+    pub module_path: String,
+    pub in_closure: bool,
+    pub cache_disposition: TypedCacheDisposition,
+    pub typecheck_compute_ns: u128,
+    pub first_computing_entry: Option<String>,
+    pub later_requester_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryReconcileTiming {
+    pub entry: String,
+    pub reconcile_assembly_ns: u128,
+    pub typecheck_compute_ns: u128,
+    pub resolve_nanos: u128,
+}
+
+struct ModuleKeyTracker {
+    first_computing_entry: String,
+    requesters_seen: u64,
+}
+
+struct RepeatedTypecheckAttributionRun {
+    key_tracker: HashMap<String, ModuleKeyTracker>,
+    rows: Vec<EntryModuleTypecheckRow>,
+    entry_timings: Vec<EntryReconcileTiming>,
+}
+
+static REPEATED_TYPECHECK_ATTRIBUTION_RUN: Mutex<Option<RepeatedTypecheckAttributionRun>> =
+    Mutex::new(None);
+
+thread_local! {
+    static REPEATED_TYPECHECK_ATTRIBUTION_ENTRY: RefCell<Option<String>> =
+        const { RefCell::new(None) };
+}
+
+pub(crate) const CLI_RUN_REPEATED_TYPECHECK_ATTRIBUTION_SCAFFOLD_MARKER: &str =
+    "cli_run_repeated_typecheck_attribution_probe";
+
+pub fn arm_repeated_typecheck_attribution_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    *guard = Some(RepeatedTypecheckAttributionRun {
+        key_tracker: HashMap::new(),
+        rows: Vec::new(),
+        entry_timings: Vec::new(),
+    });
+}
+
+pub fn set_repeated_typecheck_attribution_entry(entry: &str) {
+    *REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.borrow_mut() = Some(entry.to_string());
+}
+
+pub fn clear_repeated_typecheck_attribution_entry() {
+    *REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.borrow_mut() = None;
+}
+
+pub fn disarm_repeated_typecheck_attribution_probe() -> Option<RepeatedTypecheckAttributionRun> {
+    clear_repeated_typecheck_attribution_entry();
+    REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned")
+        .take()
+}
+
+fn repeated_typecheck_attribution_armed() -> bool {
+    REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .ok()
+        .is_some_and(|g| g.is_some())
+}
+
+fn observe_repeated_typecheck_attribution_module(
+    module_path: &str,
+    module_key: &str,
+    disposition: TypedCacheDisposition,
+    typecheck_compute_ns: u128,
+) {
+    if !repeated_typecheck_attribution_armed() {
+        return;
+    }
+    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.borrow().clone() else {
+        return;
+    };
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    let (first_computing_entry, later_requester_count) =
+        match run.key_tracker.get(module_key) {
+            Some(tracker) => (
+                Some(tracker.first_computing_entry.clone()),
+                tracker.requesters_seen,
+            ),
+            None if disposition == TypedCacheDisposition::Miss => {
+                run.key_tracker.insert(
+                    module_key.to_string(),
+                    ModuleKeyTracker {
+                        first_computing_entry: entry.clone(),
+                        requesters_seen: 0,
+                    },
+                );
+                (Some(entry.clone()), 0)
+            }
+            None => (None, 0),
+        };
+    run.rows.push(EntryModuleTypecheckRow {
+        entry,
+        module_key: module_key.to_string(),
+        module_path: module_path.to_string(),
+        in_closure: true,
+        cache_disposition: disposition,
+        typecheck_compute_ns,
+        first_computing_entry,
+        later_requester_count,
+    });
+    match disposition {
+        TypedCacheDisposition::Miss => {
+            if let Some(tracker) = run.key_tracker.get_mut(module_key) {
+                tracker.requesters_seen += 1;
+            }
+        }
+        TypedCacheDisposition::Hit => {
+            if let Some(tracker) = run.key_tracker.get_mut(module_key) {
+                tracker.requesters_seen += 1;
+            }
+        }
+        TypedCacheDisposition::Refused => {}
+    }
+}
+
+fn observe_repeated_typecheck_attribution_refused(module_path: &str, cause: &str) {
+    if !repeated_typecheck_attribution_armed() {
+        return;
+    }
+    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.borrow().clone() else {
+        return;
+    };
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    run.rows.push(EntryModuleTypecheckRow {
+        entry,
+        module_key: format!("refused:{cause}"),
+        module_path: module_path.to_string(),
+        in_closure: true,
+        cache_disposition: TypedCacheDisposition::Refused,
+        typecheck_compute_ns: 0,
+        first_computing_entry: None,
+        later_requester_count: 0,
+    });
+}
+
+pub fn note_repeated_typecheck_attribution_entry_timing(
+    entry: &str,
+    stage_nanos: &ResolveStageNanos,
+    resolve_nanos: u128,
+) {
+    if !repeated_typecheck_attribution_armed() {
+        return;
+    }
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    run.entry_timings.push(EntryReconcileTiming {
+        entry: entry.to_string(),
+        reconcile_assembly_ns: stage_nanos.reconcile_assembly,
+        typecheck_compute_ns: stage_nanos.typecheck_compute,
+        resolve_nanos,
+    });
+}
+
 fn shared_caches_read<'a>(
     lock: &'a Arc<RwLock<SharedTypecheckCaches>>,
 ) -> Result<std::sync::RwLockReadGuard<'a, SharedTypecheckCaches>, String> {
