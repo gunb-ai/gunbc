@@ -1,6 +1,12 @@
 module gunbc.ci_layer_roots
 
-import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind }
+import std.realization_schedule {
+  ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind,
+  ScopedWitnessBatch, ScopedWitnessBatchId, ScopedWitnessBatchResourceProfile,
+  RunnableBatchClamp, FreshProcess, SelectionApplied,
+  scoped_witness_batch, runnable_resource_profile, runnable_memory_substantial,
+}
+import std.execution_mode { Hermetic }
 import gunbc.cli_invoke {
   source_roots_shell_flags,
   SourceRootBare,
@@ -780,43 +786,47 @@ fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
-type ParserTransportWitnessBatchDissolutionTrigger
-  = V2ParserOwnsParserWitnesses
-  | ScheduleWitnessEntryCarriesSourceRoots
+type V1ClaimScopedWitnessDissolutionTrigger
+  = V2ParserOwnsV1Claims {}
 
-data parser_transport_witness_batch_dissolution_triggers: List<ParserTransportWitnessBatchDissolutionTrigger> = [
-  V2ParserOwnsParserWitnesses,
-  ScheduleWitnessEntryCarriesSourceRoots,
+data v1_claim_scoped_witness_dissolve_on: List<V1ClaimScopedWitnessDissolutionTrigger> = [
+  V2ParserOwnsV1Claims {},
 ]
 
-data parser_transport_witness_batch_note: String = "The scoped parser-transport witness roster. These claims execute the real v1 parser and therefore require dag plus src/v1 as their resolution scope, while ordinary witness discovery is intentionally confined to witness_layer_roots (dag plus src/v2). Widening witness_layer_roots would force every unrelated witness to co-resolve the dying seed tree, so v2.workflow.ci_floor_plan consumes this roster in its own Hermetic explicit-entry batch. The initial rows are live main-tree inhabitants rather than machinery for an in-flight PR: v1.tests.claim.pattern_binder_declaration_node_test pattern_binder_declaration_node_parser_transport_enrollment and v1.tests.claim.caret_parse_smoke_test caret_parse_smoke_parser_transport_enrollment name their scheduled consumer; their predecessor offline-recipe rows dissolved when this admitted source-root batch landed. The batch grants execution scope only: a new parser-reaching file also needs governed placement under src/v1/tests/claim with its emitted Rust registered in gunbc.stage0_emit_model generated_stage0_files, plus one parser_transport row per test fn; none of those steps changes the ordinary discovery roots. The typed dissolution alternatives are parser_transport_witness_batch_dissolution_triggers: when the v2 parser owns these claims, they move under ordinary discovery; when ScheduleWitnessEntry carries its own source-root scope, this batch becomes the derived projection of per-entry scopes rather than a special constructor."
-
-fn parser_transport(entry: String, f: String) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind }
-}
-
-data parser_transport_witness_entries: List<ScheduleWitnessEntry> = [
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_pattern_parser_materializes_dedicated_declaration_nodes"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_shorthand_wrapper_and_declaration_roles_remain_distinct"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_let_initializer_retains_lexical_reference_category"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_parse_error_preserves_authored_token_ordinal_space"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_accepts_valid_occurrence_transport"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_missing_occurrence_identity"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_duplicate_occurrence_identity"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_wrong_occurrence_role"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_index_terminal_mismatch"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_ancestor_path_mismatch"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_duplicate_declaration_rows"),
-  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_duplicate_reference_rows"),
-  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_caret_tokenizes_as_sh_caret"),
-  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_caret_paren_tokenizes_as_caret_then_lparen"),
-  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_caret_ident_produces_literal"),
-  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_caret_paren_produces_discriminant_call"),
-  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_expr_caret_paren_full_pipeline"),
-  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_expr_caret_var_arg_produces_discriminant_call"),
-  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_module_let_caret_paren"),
+data v1_claim_scoped_witness_entries: List<ScheduleWitnessEntry> = [
+  ScheduleWitnessEntry {
+    entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag",
+    function: "",
+    kind: CorpusWitnessKind,
+  },
+  ScheduleWitnessEntry {
+    entry: "src/v1/tests/claim/caret_parse_smoke_test.dag",
+    function: "",
+    kind: CorpusWitnessKind,
+  },
 ]
+
+data v1_claim_scoped_witness_batch_note: String = "This is one INSTANCE of std.realization_schedule ScopedWitnessBatch, not a parser branch in the floor mechanism. The two file-grain rows expand through ScheduleWitnessEntry's empty-function authority, so adding or renaming a test fn changes no roster. Their dag plus src/v1 source-root envelope admits the v1 compiler closure without widening witness_layer_roots for unrelated witnesses. The profile declares a substantial whole-tree resolve, Hermetic effects, a batch-owned 180-second clamp, and FreshProcess isolation. The 180-second clamp is the smallest whole-minute value covering the measured 96-second arm64 wall at gunbc.ci_spec gunbc_ci_compile_clean_clamp_note's documented 1.8x fleet spread: 96 x 1.8 = 172.8 seconds, rounded upward to the family grain. per_unit_ms is zero because the measured twenty functions evaluated in 75ms total; this catches closure growth and deliberately does not price row-count growth until a file brings a distinct closure. Exact-head run 30713632253 proves SharedWalkProcess cannot satisfy this instance: ordinary discovery completed at 7.113GB RSS, then the floor vanished while materializing this second root closure before a batch-start line. The kernel cause is unclassified, but additive same-process residency is established. v1_claim_scoped_witness_dissolve_on fires when the v2 parser owns these claims."
+
+data v1_claim_scoped_witness_batch: ScopedWitnessBatch = scoped_witness_batch(
+  batch_id: "v1-claim-scoped-witnesses" as ScopedWitnessBatchId,
+  source_roots: ["dag", "src/v1"],
+  entries: v1_claim_scoped_witness_entries,
+  scan_dirs: [],
+  node_frontier_selection: SelectionApplied,
+  resource_profile: ScopedWitnessBatchResourceProfile {
+    runnable: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic,
+    ),
+    clamp: RunnableBatchClamp { overhead_seconds: 180, per_unit_ms: 0 },
+    process_isolation: FreshProcess,
+  },
+)
+
+data scoped_witness_batches: List<ScopedWitnessBatch> = [v1_claim_scoped_witness_batch]
 
 data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Landed into hermetic discovery by filename convention on first authoring (run 30178544618 @ b2411f0, batch 3) and re-homed to BinWitnessWet; then D6-rehomed to FalsifierRehomedBinWet (run 30220304152: ~85–90s/row vs bin_witness_wet_per_row_wall_budget_seconds=60, batch-4 FLOOR-BATCH-OVER-BUDGET)."
 

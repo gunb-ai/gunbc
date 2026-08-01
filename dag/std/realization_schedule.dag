@@ -1,6 +1,6 @@
 module std.realization_schedule
 
-import std.types { ContentHash, Bool, String, List, Int }
+import std.types { ContentHash, CommitSha, NonEmptyStr, Bool, String, List, Int }
 import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
 import std.nat { Nat }
 import std.measure {
@@ -89,6 +89,192 @@ type RunnableResourceProfile {
   execution_mode: ExecutionMode
 }
 
+type RunnableBatchClamp {
+  overhead_seconds: Int
+  per_unit_ms: Int
+}
+
+type ScopedWitnessProcessIsolation
+  = SharedWalkProcess
+  | FreshProcess
+
+type ScopedWitnessBatchId = NonEmptyStr where brand("ScopedWitnessBatchId")
+
+type ScopedWitnessBatchResourceProfile {
+  runnable: RunnableResourceProfile
+  clamp: RunnableBatchClamp
+  process_isolation: ScopedWitnessProcessIsolation
+}
+
+type ScopedWitnessBatch {
+  batch_id: ScopedWitnessBatchId
+  source_roots: List<String>
+  entries: List<ScheduleWitnessEntry>
+  scan_dirs: List<String>
+  node_frontier_selection: NodeFrontierSelection
+  execution_mode: ExecutionMode
+  resource_profile: ScopedWitnessBatchResourceProfile
+}
+
+fn scoped_witness_batch(
+  batch_id: ScopedWitnessBatchId,
+  source_roots: List<String>,
+  entries: List<ScheduleWitnessEntry>,
+  scan_dirs: List<String>,
+  node_frontier_selection: NodeFrontierSelection,
+  resource_profile: ScopedWitnessBatchResourceProfile,
+) -> ScopedWitnessBatch {
+  ScopedWitnessBatch {
+    batch_id: batch_id,
+    source_roots: source_roots,
+    entries: entries,
+    scan_dirs: scan_dirs,
+    node_frontier_selection: node_frontier_selection,
+    execution_mode: resource_profile.runnable.execution_mode,
+    resource_profile: resource_profile,
+  }
+}
+
+type ScopedWitnessExecutionOutcome
+  = ScopedWitnessExecuted { ok: Bool }
+  | ScopedWitnessSelectionRefused { detail: String }
+  | ScopedWitnessSchedulingRefused { detail: String }
+  | ScopedWitnessBudgetKilled { detail: String }
+
+type ScopedWitnessExecutionResult {
+  head_sha: CommitSha
+  batch_id: ScopedWitnessBatchId
+  source_roots_digest: ContentHash
+  entry: String
+  function: String
+  witness_kind: WitnessKind
+  outcome: ScopedWitnessExecutionOutcome
+}
+
+type ScopedWitnessExecutionReceiptDecode
+  = ScopedWitnessExecutionReceiptDecoded { rows: List<ScopedWitnessExecutionResult> }
+  | ScopedWitnessExecutionReceiptRefused { detail: String }
+
+data scoped_witness_execution_receipt_path: String = "target/scoped-witness-execution-receipt.tsv"
+
+data scoped_witness_execution_receipt_header: String = "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail"
+
+fn scoped_witness_kind_label(kind: WitnessKind) -> String {
+  match kind {
+    CorpusWitnessKind => "corpus"
+    ExecutionWitnessKind => "execution"
+  }
+}
+
+fn scoped_witness_kind_from_label(label: String) -> WitnessKind? {
+  if label == "corpus" {
+    Present { value: CorpusWitnessKind }
+  } else if label == "execution" {
+    Present { value: ExecutionWitnessKind }
+  } else {
+    none
+  }
+}
+
+fn scoped_witness_execution_outcome_label(outcome: ScopedWitnessExecutionOutcome) -> String {
+  match outcome {
+    ScopedWitnessExecuted { ok: _ } => "executed"
+    ScopedWitnessSelectionRefused { detail: _ } => "selection-refused"
+    ScopedWitnessSchedulingRefused { detail: _ } => "scheduling-refused"
+    ScopedWitnessBudgetKilled { detail: _ } => "budget-killed"
+  }
+}
+
+fn scoped_witness_execution_outcome_detail(outcome: ScopedWitnessExecutionOutcome) -> String {
+  match outcome {
+    ScopedWitnessExecuted { ok: ok } => if ok { "true" } else { "false" }
+    ScopedWitnessSelectionRefused { detail: detail } => detail
+    ScopedWitnessSchedulingRefused { detail: detail } => detail
+    ScopedWitnessBudgetKilled { detail: detail } => detail
+  }
+}
+
+fn scoped_witness_execution_outcome_from_wire(label: String, detail: String) -> ScopedWitnessExecutionOutcome? {
+  if label == "executed" && detail == "true" {
+    Present { value: ScopedWitnessExecuted { ok: true } }
+  } else if label == "executed" && detail == "false" {
+    Present { value: ScopedWitnessExecuted { ok: false } }
+  } else if label == "selection-refused" && detail != "" {
+    Present { value: ScopedWitnessSelectionRefused { detail: detail } }
+  } else if label == "scheduling-refused" && detail != "" {
+    Present { value: ScopedWitnessSchedulingRefused { detail: detail } }
+  } else if label == "budget-killed" && detail != "" {
+    Present { value: ScopedWitnessBudgetKilled { detail: detail } }
+  } else {
+    none
+  }
+}
+
+fn scoped_witness_exact_head_text_holds(head: String) -> Bool {
+  head.length() == 40 && all(chars(s: head), cp =>
+    (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+  )
+}
+
+data scoped_witness_exact_head_grounding_note: String = "Scoped witness execution results bind every row to the explicit lowercase 40-hex head supplied by the runner. std.types CommitSha is presently an unvalidated String alias, so scoped_witness_exact_head_text_holds is the located construction wall for this receipt family. Dissolve-on: CommitSha gains one validating constructor shared by every Git-head consumer; this decoder then calls that authority and deletes its local syntax check."
+
+fn scoped_witness_execution_result_from_columns(columns: List<String>) -> ScopedWitnessExecutionResult? {
+  if length(columns) != 8 {
+    none
+  } else if !scoped_witness_exact_head_text_holds(head: columns.first()) {
+    none
+  } else if columns.skip(n: 1).first() == "" {
+    none
+  } else if columns.skip(n: 2).first() == "" {
+    none
+  } else if columns.skip(n: 3).first() == "" {
+    none
+  } else if columns.skip(n: 4).first() == "" {
+    none
+  } else {
+    match scoped_witness_kind_from_label(label: columns.skip(n: 5).first()) {
+      Absent => none
+      Present { value: kind } =>
+        match scoped_witness_execution_outcome_from_wire(
+          label: columns.skip(n: 6).first(),
+          detail: columns.skip(n: 7).first(),
+        ) {
+          Absent => none
+          Present { value: outcome } => Present {
+            value: ScopedWitnessExecutionResult {
+              head_sha: columns.first(),
+              batch_id: columns.skip(n: 1).first() as ScopedWitnessBatchId,
+              source_roots_digest: columns.skip(n: 2).first() as ContentHash,
+              entry: columns.skip(n: 3).first(),
+              function: columns.skip(n: 4).first(),
+              witness_kind: kind,
+              outcome: outcome,
+            }
+          }
+        }
+    }
+  }
+}
+
+fn decode_scoped_witness_execution_receipt(text: String) -> ScopedWitnessExecutionReceiptDecode {
+  let lines = split(s: text, delimiter: "\n")
+  if length(lines) < 2 || lines.first() != scoped_witness_execution_receipt_header {
+    ScopedWitnessExecutionReceiptRefused { detail: "schema header absent or receipt has no rows" }
+  } else {
+    let parsed = fold(lines.skip(n: 1), init: ScopedWitnessExecutionReceiptDecoded { rows: [] }, f: fn(state, line) {
+      match state {
+        ScopedWitnessExecutionReceiptRefused { detail: detail } => ScopedWitnessExecutionReceiptRefused { detail: detail }
+        ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
+          match scoped_witness_execution_result_from_columns(columns: split(s: line, delimiter: "\t")) {
+            Absent => ScopedWitnessExecutionReceiptRefused { detail: "malformed scoped witness execution result row" }
+            Present { value: row } => ScopedWitnessExecutionReceiptDecoded { rows: concat(rows, [row]) }
+          }
+      }
+    })
+    parsed
+  }
+}
+
 fn runnable_memory_negligible() -> RunnableMemoryClass {
   RunnableMemoryNegligible
 }
@@ -155,6 +341,7 @@ fn runnable_profile(r: Runnable) -> RunnableResourceProfile {
   match r {
     RunnableSingleClaim { entry: _, function: _, profile: p } => p
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
+    RunnableScopedWitnessBatch { batch: batch } => batch.resource_profile.runnable
     RunnableKernelWorkload { fused_op_count: _ } => runnable_resource_profile_negligible()
   }
 }
@@ -162,6 +349,7 @@ fn runnable_profile(r: Runnable) -> RunnableResourceProfile {
 fn runnable_forbids_corpus_co_residence(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+    RunnableScopedWitnessBatch { batch: batch } => runnable_excludes_corpus_co_residence(profile: batch.resource_profile.runnable)
     RunnableSingleClaim { entry: _, function: _, profile: p } => runnable_excludes_corpus_co_residence(profile: p)
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -203,6 +391,7 @@ type Runnable
       discovery_scope_dirs: List<String>
       profile: RunnableResourceProfile
     }
+  | RunnableScopedWitnessBatch { batch: ScopedWitnessBatch }
   | RunnableKernelWorkload { fused_op_count: Int }
 
 type OnSuccessRunnableDisposition
@@ -218,6 +407,8 @@ data on_success_runnable_disposition_note: String = "The single modeled admissio
 fn on_success_runnable_disposition(runnable: Runnable) -> OnSuccessRunnableDisposition {
   match runnable {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
+      OnSuccessDiscoveryRefused
+    RunnableScopedWitnessBatch { batch: _ } =>
       OnSuccessDiscoveryRefused
     RunnableKernelWorkload { fused_op_count: _ } =>
       OnSuccessKernelRefused
@@ -287,6 +478,8 @@ fn runnable_selection_applied(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
       node_frontier_selection_applied(sel: sel)
+    RunnableScopedWitnessBatch { batch: batch } =>
+      node_frontier_selection_applied(sel: batch.node_frontier_selection)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -306,6 +499,7 @@ fn runnable_step_label(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
+    RunnableScopedWitnessBatch { batch: _ } => "__scoped_witness_batch__"
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -354,6 +548,7 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
       RunnableSingleClaim { entry: re, function: rf, profile: rp } =>
         (le == re) && (lf == rf) && runnable_resource_profile_eq(left: lp, right: rp)
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableScopedWitnessBatch { batch: _ } => false
       RunnableKernelWorkload { fused_op_count: _ } => false
     }
     RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, node_frontier_selection: lskip, exclude_substrings: lex2, discovery_scope_dirs: lsc, profile: lp } => match right {
@@ -366,11 +561,19 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
           && string_list_eq(left: lex2, right: rex2)
           && string_list_eq(left: lsc, right: rsc)
           && runnable_resource_profile_eq(left: lp, right: rp)
+      RunnableScopedWitnessBatch { batch: _ } => false
+      RunnableKernelWorkload { fused_op_count: _ } => false
+    }
+    RunnableScopedWitnessBatch { batch: lb } => match right {
+      RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableScopedWitnessBatch { batch: rb } => lb == rb
       RunnableKernelWorkload { fused_op_count: _ } => false
     }
     RunnableKernelWorkload { fused_op_count: lleft } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableScopedWitnessBatch { batch: _ } => false
       RunnableKernelWorkload { fused_op_count: rcount } => lleft == rcount
     }
   }
