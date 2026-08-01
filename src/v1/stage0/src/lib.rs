@@ -74,6 +74,7 @@ pub mod std_node;
 pub mod std_occurrence_identity;
 pub mod std_pareto;
 pub mod std_realization_schedule;
+pub mod std_roster_frontier;
 pub mod std_serialization;
 pub mod std_syntax;
 pub mod std_termination;

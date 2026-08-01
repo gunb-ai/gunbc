@@ -46,6 +46,28 @@ Minimization holds only if each fact lives in exactly one place. The recurring v
 - **§3 standing rule — cite the symbol, not the position (operator ruling, 2026-07-30): citations are symbolic / namespace-driven wherever a symbol exists.** A `file:line` pointer is a *second, positional naming scheme* for something the containment tree already names — the §3 nicknaming violation applied to prose, and it decays in a way the nickname does not: any edit *above* the cited line silently invalidates it, so the citation rots without anyone touching it or the thing it names. Measured cost that produced the ruling: three citation defects landed in one carrier (`extdeps.pin`) inside two days — two fabricated symbols (`review 44920`) and one stale line (`review 45088`) — and the stale line was then copied into `gunbc.design_document` as a row's supporting evidence, so a name-level grep passed while the located claim was false in the canonical design authority. **The rule:** name the module and symbol (`extdeps.pin` `admit_pin_integrity`, `v1_interpreter.rs` `observe_tool_identity`); add a position only where no symbol exists to name — a generated artifact, a data row, a line inside a blob — and where a position *is* carried, it is a convenience beside the symbol, never the citation itself. **Why this is stronger than diligence:** grep-verifying a symbol is exactly the `Node`-tree read the namespace authority already performs, so a stale *name* is decidable and lens-enforceable (`feature:cited-symbol-resolution`); a *line* is not reachable from that tree at all — a `.rs` offset is outside it — so the only mechanism that ever closes the positional half is to stop writing positions. The rule is therefore the cheap construction move and the lens is the residue, not the other way round (§5 construction-before-validation). `feature:cited-source-location-checked` retires when the corpus carries no positional citation that a symbol could have carried.
 - **§3 convergence thread — fnv1a64 dual surface:** `v1.compiler.dag_collect_support.dag_node_surface_fingerprint_rec` calls the raw v1 intrinsics `atom_identity_hash`/`hash_combine` (fnv1a64 primitives registered in `04_method.dag` builtins); `std.content_hash` is the modeled surface over the same underlying authority. **LANDED (v2 carrier):** `v2.std.node.Hash = std.types.ContentHash`; `content_hash`/`combine_hash`/`symbol_identity_digest` route through `std.content_hash`; `v2.std.materialize` keys on `ContentHash` (same identity as `RealizationPlan.target`). Remaining: ground `v1.compiler.dag_collect_support` fingerprint calls through `std.content_hash` when v1-stage v2 adoption clears.
 
+### External upstream decomposition
+
+“One concept, one authority” unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape.
+
+Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority. Multiple source citations from the same upstream subject may ground that module. A generic hub may define or re-export agnostic shapes, but it may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state.
+
+Observations produced by this repository are receipts in the observing product/workflow layer, not facts owned by the observed upstream. Missing observations are coverage obligations downstream, never `Unobserved` properties authored inside an upstream module.
+
+Example:
+
+```
+extdeps.whatwg.html_navigation        shared standard
+extdeps.browser.chromium              Chromium implementation
+extdeps.browser.google_chrome         Chrome distribution
+extdeps.browser.webkit               WebKit implementation
+extdeps.browser.apple_safari          Safari distribution
+extdeps.automation.playwright         automation dependency
+gunbc.served_surface_browser_support  support policy and evidence join
+```
+
+A Chrome change must not require editing Safari’s module. Adding Opera must not widen a generic browser-product enum.
+
 ## 4. The closed, grounded substrate (what makes §2–§3 decidable)
 
 You can unify and decompose *mechanically* only in a closed, grounded system — so the substrate is built for it. A program is a dependency graph over two primitives (`Node` + `Edge`) and a closed vocabulary (6 connectives + 6 behaviors — `Value`, `Transform`, `Branch`, `Loop`, `Bind`, `Match`, per `v2.std.node.Behavior`; an earlier revision said 5, corrected against the live coproduct 2026-07-31 because the closed vocabulary is the denominator the decidability argument divides by); surface syntax is sugar that adds no power. Execution is **bounded and forward** (cyclic relations via acyclic encodings, never cyclic values; recursion is sugar over `Loop`), so decidability and termination *fall out* rather than being separately proved. **Grounding is intersubjective** — point at a shared framework, not an internal taxonomy — and in a closed system **a heuristic is never necessary**: the richer source always exists or can be written. This is *why* the structure is acyclic — a DAG in the substrate, serial reasoning in this document (recursively, per the preamble): intersubjective agreement holds only **across time** (§1), which demands claims that stay stable under it, so each is written syllogistically — a consequence-chain you can re-interrogate and that never wavers (algebra), never a cycle that could quietly redefine itself.

@@ -95,6 +95,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "the wet lane un-darkens and admits live-filesystem integration rows under its own budget — falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — at which point this file's fns enroll there as declared execution rows and this exclusion deletes. Same trigger as the four wet_integration_offline_note rows; this row joins that class rather than minting a second one. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/artifact_store_fs_witness_test.dag --functions <csv> (store roots under /tmp must pre-exist; Filesystem.Write does not create parents)."
   },
   WitnessExclusionRow {
+    pattern: "external_model_scope_live_cover_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row at enrollment (the d4bef96 floor red is the receipt): every test fn in this file performs genuinely live host effects — a Filesystem.List directory walk of dag/extdeps and a git.Core.DiffNameStatus diff from the pinned legacy_manifest_freeze_sha to HEAD — and hermetic discovery REFUSES them (no published mock operation for either), so there is no hermetic dual to discover. The discriminating pure logic is NOT excluded: scope_cover_holds / manifest_freeze_holds / carrier_content_declares_scope RED controls and all roster/manifest accounting stay discovery-enrolled in external_model_scope_witness_test.dag per-PR; only the live observations run here.",
+    dissolve_on: "TWO triggers, either deletes this row: (a) the wet lane un-darkens and admits live integration rows under its own budget (the wet_integration_offline_note trigger) — this file's fns enroll there as declared execution rows; or (b) the ExternalModelScope requirement is promoted to its v2.lens.mandatory_tag region (gunbc.extdeps_scope_frontier legacy_manifest_shape_note dissolve-on) — the storage-grain cover deletes outright, file and row together. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/external_model_scope_live_cover_witness_test.dag --functions frontier_cover_of_live_extdeps_tree_holds,red_cover_walker_refuses_missing_root,manifest_rows_all_predate_freeze_sha"
+  },
+  WitnessExclusionRow {
     pattern: "emit_source_store_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
