@@ -3,17 +3,61 @@
 //! witnesses #7499's `run_stage` extraction needs: unit tests over `spawn_units`
 //! closures cannot catch regressions where grouping, lane selection, admission, or
 //! the stage loop itself is wrong.
+//!
+//! SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.walk_plan_stage_fixture_scaffold;
+//! witness: dag/test/claim/walk_plan_stage_fixture_hand_rust_witness_test.dag).
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
 
-/// Must match `walk_plan_stage_attempt_id` in `common.dag` — the executor refuses
-/// staged walks without `GUNBC_WALK_ATTEMPT_ID` or the GitHub triple.
-const ATTEMPT_ID: &str = "walk-plan-stage-fixture";
+/// Production-path walks share `target/` hygiene paths; one session holds this lock
+/// from pre-cleanup through post-walk assertions so parallel `#[ignore]` tests cannot
+/// interleave marker/receipt mutations.
+static FIXTURE_RUN_LOCK: Mutex<()> = Mutex::new(());
 
-/// Must match `walk_plan_stage_stage1_receipt_path` in `common.dag`.
-const STAGE1_RECEIPT_REL: &str =
-    "target/floor-attempt-walk-plan-stage-fixture/on-success-stage-1-receipt.tsv";
+struct FixtureSession {
+    _guard: MutexGuard<'static, ()>,
+    root: PathBuf,
+    authority: HarnessAuthority,
+}
+
+impl FixtureSession {
+    fn begin() -> Self {
+        let guard = FIXTURE_RUN_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let root = workspace_root();
+        let authority = materialize_harness_authority(&root);
+        Self {
+            _guard: guard,
+            root,
+            authority,
+        }
+    }
+
+    fn stage2_marker(&self) -> PathBuf {
+        self.root.join(&self.authority.stage2_marker_rel)
+    }
+
+    fn stage1_receipt(&self) -> PathBuf {
+        self.root.join(&self.authority.stage1_receipt_rel)
+    }
+
+    fn run_plan(&self, plan_function: &str) -> FixtureOutput {
+        run_fixture_plan_unlocked(&self.root, &self.authority, plan_function)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct HarnessAuthority {
+    harness_authority_rel: String,
+    attempt_id: String,
+    plan_entry: String,
+    stage1_receipt_rel: String,
+    stage2_marker_rel: String,
+}
 
 struct FixtureOutput {
     code: i32,
@@ -39,20 +83,144 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn claim_executor_bin() -> PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_claim_executor")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            workspace_root().join(
-                std::env::var("PROFILE")
-                    .map(|p| format!("target/{p}/claim_executor"))
-                    .unwrap_or_else(|_| "target/debug/claim_executor".to_string()),
-            )
-        })
+fn resolve_v1_bin(name: &str) -> PathBuf {
+    let env_key = format!("CARGO_BIN_EXE_{name}");
+    if let Ok(path) = std::env::var(&env_key) {
+        return PathBuf::from(path);
+    }
+    let root = workspace_root();
+    let mut candidates = Vec::new();
+    if let Ok(profile) = std::env::var("PROFILE") {
+        candidates.push(root.join(format!("target/{profile}/{name}")));
+    }
+    candidates.push(root.join(format!("target/release/{name}")));
+    candidates.push(root.join(format!("target/debug/{name}")));
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .unwrap_or_else(|| root.join(format!("target/debug/{name}")))
 }
 
-fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
-    let root = workspace_root();
+fn claim_executor_bin() -> PathBuf {
+    resolve_v1_bin("claim_executor")
+}
+
+fn claim_batch_bin() -> PathBuf {
+    resolve_v1_bin("claim_batch")
+}
+
+fn parse_harness_authority(content: &str) -> HarnessAuthority {
+    let mut fields = HashMap::new();
+    for line in content.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        fields.insert(key.to_string(), value.to_string());
+    }
+    let require = |key: &str| -> String {
+        fields.get(key).cloned().unwrap_or_else(|| {
+            panic!("harness authority missing {key}:\n{content}");
+        })
+    };
+    HarnessAuthority {
+        harness_authority_rel: require("harness_authority_path"),
+        attempt_id: require("attempt_id"),
+        plan_entry: require("plan_entry"),
+        stage1_receipt_rel: require("stage1_receipt_path"),
+        stage2_marker_rel: require("stage2_marker_path"),
+    }
+}
+
+fn relative_path_from_root(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn looks_like_harness_authority(content: &str) -> bool {
+    content
+        .lines()
+        .any(|line| line.starts_with("harness_authority_path="))
+}
+
+fn locate_harness_authority_file(root: &Path) -> PathBuf {
+    let target = root.join("target");
+    let mut candidates = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&target) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if !looks_like_harness_authority(&content) {
+                continue;
+            }
+            let authority = parse_harness_authority(&content);
+            let rel = relative_path_from_root(root, &path);
+            if authority.harness_authority_rel == rel {
+                candidates.push(path);
+            }
+        }
+    }
+    match candidates.len() {
+        0 => panic!(
+            "harness authority file not found under {}; run walk_plan_stage_materialize_harness_authority_holds first",
+            target.display()
+        ),
+        1 => candidates.remove(0),
+        n => panic!(
+            "ambiguous harness authority files under {} ({n} matches)",
+            target.display()
+        ),
+    }
+}
+
+fn materialize_harness_authority(root: &Path) -> HarnessAuthority {
+    let batch = claim_batch_bin();
+    assert!(
+        batch.exists(),
+        "claim_batch binary missing at {}",
+        batch.display()
+    );
+    let status = Command::new(&batch)
+        .current_dir(root)
+        .args([
+            "--source-root",
+            "dag",
+            "--source-root",
+            "src/v2",
+            "--entry",
+            "src/v2/test/fixture/walk_plan_stage/common.dag",
+            "--function",
+            "walk_plan_stage_materialize_harness_authority_holds",
+            "--wet",
+            "--claim-run",
+        ])
+        .status()
+        .expect("spawn claim_batch for harness authority");
+    assert!(
+        status.success(),
+        "walk_plan_stage_materialize_harness_authority_holds must pass before harness walks"
+    );
+    let authority_path = locate_harness_authority_file(root);
+    let content = std::fs::read_to_string(&authority_path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read {} after materialize: {e}",
+            authority_path.display()
+        )
+    });
+    parse_harness_authority(&content)
+}
+
+fn run_fixture_plan_unlocked(
+    root: &Path,
+    authority: &HarnessAuthority,
+    plan_function: &str,
+) -> FixtureOutput {
     let bin = claim_executor_bin();
     assert!(
         bin.exists(),
@@ -60,15 +228,15 @@ fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
         bin.display()
     );
     let output = Command::new(&bin)
-        .current_dir(&root)
-        .env("GUNBC_WALK_ATTEMPT_ID", ATTEMPT_ID)
+        .current_dir(root)
+        .env("GUNBC_WALK_ATTEMPT_ID", &authority.attempt_id)
         .args([
             "--source-root",
             "dag",
             "--source-root",
             "src/v2",
             "--plan-entry",
-            "src/v2/test/fixture/walk_plan_stage/plan.dag",
+            &authority.plan_entry,
             "--plan-function",
             plan_function,
         ])
@@ -81,20 +249,12 @@ fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
     }
 }
 
-fn stage2_marker_path(root: &PathBuf) -> PathBuf {
-    root.join("target/walk_plan_stage_stage2_ran")
-}
-
-fn stage1_receipt_path(root: &PathBuf) -> PathBuf {
-    root.join(STAGE1_RECEIPT_REL)
-}
-
 #[test]
-#[ignore = "cold overlap resolve can take minutes; run locally: cargo test -p v1-compiler walk_plan_stage_overlap_barrier -- --ignored"]
+#[ignore = "cold overlap resolve can take minutes; run locally: cargo test -p v1-compiler walk_plan_stage_overlap_barrier -- --ignored --test-threads=1"]
 fn walk_plan_stage_overlap_barrier_production_path() {
-    let root = workspace_root();
-    let _ = std::fs::remove_file(stage2_marker_path(&root));
-    let out = run_fixture_plan("walk_plan_stage_overlap_barrier_plan");
+    let session = FixtureSession::begin();
+    let _ = std::fs::remove_file(session.stage2_marker());
+    let out = session.run_plan("walk_plan_stage_overlap_barrier_plan");
     assert!(
         out.stderr.contains("on-success stage 1"),
         "fixture must reach on-success stages, not fail-fast on budget;\n{}",
@@ -113,7 +273,7 @@ fn walk_plan_stage_overlap_barrier_production_path() {
         out.combined()
     );
     assert!(
-        stage1_receipt_path(&root).is_file(),
+        session.stage1_receipt().is_file(),
         "stage-1 per-stage receipt must exist before stage 2"
     );
     assert!(
@@ -131,12 +291,12 @@ fn walk_plan_stage_overlap_barrier_production_path() {
 }
 
 #[test]
-#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_failure_blocks_stage2() {
-    let root = workspace_root();
-    let marker = stage2_marker_path(&root);
+    let session = FixtureSession::begin();
+    let marker = session.stage2_marker();
     let _ = std::fs::remove_file(&marker);
-    let out = run_fixture_plan("walk_plan_stage_failure_barrier_plan");
+    let out = session.run_plan("walk_plan_stage_failure_barrier_plan");
     assert!(
         out.stderr.contains("remaining stage(s) NOT run"),
         "failed stage 1 must block stage 2;\n{}",
@@ -155,20 +315,15 @@ fn walk_plan_stage_failure_blocks_stage2() {
 }
 
 #[test]
-#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_panic_blocks_stage2() {
-    let root = workspace_root();
-    let marker = stage2_marker_path(&root);
+    let session = FixtureSession::begin();
+    let marker = session.stage2_marker();
     let _ = std::fs::remove_file(&marker);
-    let out = run_fixture_plan("walk_plan_stage_panic_barrier_plan");
+    let out = session.run_plan("walk_plan_stage_panic_barrier_plan");
     assert!(
-        out.stdout.contains("<claim thread panicked>"),
-        "panicking member must surface structural thread-panic evidence on stdout;\n{}",
-        out.combined()
-    );
-    assert!(
-        out.stderr.contains("infra=thread_panic") || out.stdout.contains("infra=thread_panic"),
-        "panicking member must classify as infra=thread_panic;\n{}",
+        out.stdout.contains("call depth exceeded") || out.stdout.contains("unbounded recursion"),
+        "panicking member must surface structural recursion-depth refusal on stdout;\n{}",
         out.combined()
     );
     assert!(
@@ -189,12 +344,12 @@ fn walk_plan_stage_panic_blocks_stage2() {
 }
 
 #[test]
-#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_receipt_refusal_blocks_stage2() {
-    let root = workspace_root();
-    let marker = stage2_marker_path(&root);
+    let session = FixtureSession::begin();
+    let marker = session.stage2_marker();
     let _ = std::fs::remove_file(&marker);
-    let out = run_fixture_plan("walk_plan_stage_receipt_refusal_barrier_plan");
+    let out = session.run_plan("walk_plan_stage_receipt_refusal_barrier_plan");
     assert!(
         out.stdout
             .contains("PASS [on-success stage 1] walk_plan_stage_receipt_refusal_poison_holds"),

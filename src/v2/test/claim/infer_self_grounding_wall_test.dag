@@ -1,0 +1,196 @@
+module v2.test.claim.infer_self_grounding_wall
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wall_subject_note: String = "Discriminating witnesses for the v2 self-grounding wall. The defect these pin was measured by execution on main at a589c5f0179: v2's infer routed nine of the closed vocabulary's twelve node kinds through solve_constraints with the singleton candidate set [root] under a predicate reducing to root == root, and stamped the result canonical. Because a grounding's structural evidence IS the node's resolved type, every such node was typed as ITSELF. Two arms are asserted in both directions: the construction authority refuses self-evidence (and still accepts a real derived type), and canonical_grounding_for_node — the reader 06_translate's coerce_grounded_node funnels through — now refuses the Conj/Disj groundings it previously handed back with evidence == source."
+
+fn wall_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wall_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wall_disj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wall_value_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wall_malformed_bool_with_payload() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } },
+    children: [
+      Edge {
+        label: Named { name: ^wall_malformed_bool_payload_field },
+        target: wall_value_node()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wall_malformed_int_with_extra_payload() -> Node {
+  let literal = dag_int_literal_fixture_one()
+  Node {
+    kind: literal.kind,
+    children: list_snoc_item(
+      xs: literal.children,
+      item: Edge {
+        label: Named { name: ^wall_malformed_int_payload_field },
+        target: wall_value_node()
+      }
+    ),
+    occurrence_id: literal.occurrence_id
+  }
+}
+
+fn wall_derived_type_node() -> Node {
+  wall_atom(s: ^wall_derived_type_marker)
+}
+
+fn wall_self_grounding(node: Node) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: node
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn wall_derived_grounding(node: Node) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: wall_derived_type_node()
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn wall_grounding_for_node_refused(root: Node) -> Bool {
+  match infer(tree: root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match canonical_grounding_for_node(tree: tree, node: root) {
+        Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+fn wall_resolved_type_refused(root: Node) -> Bool {
+  match infer(tree: root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match inferred_facts_witness_for_node(tree: tree, node: root) {
+        Violates { diagnostic: _ } => false
+        Holds { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: d } => d.reason == ^infer_grounding_not_derived
+            Holds { value: _ } => false
+          }
+      }
+  }
+}
+
+fn wall_infer_counts_frontier(root: Node) -> Bool {
+  match infer(tree: root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        Some { diagnostics: nds } => nds.head.reason == ^infer_grounding_not_derived
+        None => false
+      }
+  }
+}
+
+test fn wall_construction_authority_refuses_self_evidence() -> Bool {
+  match canonical_grounding_from_derived_type(
+    node: wall_conj_node(),
+    derived_type: wall_conj_node()
+  ) {
+    Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn wall_construction_authority_accepts_derived_type() -> Bool {
+  match canonical_grounding_from_derived_type(
+    node: wall_conj_node(),
+    derived_type: wall_derived_type_node()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: g, diagnostics: _ } =>
+      (g.node == wall_conj_node())
+        && (g.witness.structural.evidence == wall_derived_type_node())
+  }
+}
+
+data wall_hand_built_residue_note: String = "The stated residue: a CanonicalGrounding written field-by-field, bypassing the construction authority, is still admitted. This is asserted rather than left implicit so the wall's edge is documented by a test and not by optimism — see canonical_grounding_admission_scope_note for why the 'evidence != node' read-path proxy was withdrawn (it false-positives on v2_evaluator's bool fixture, which uses one atom as both evaluand and primitive_type). Closing this residue needs CanonicalGrounding to stop being structurally constructible, not a wider predicate."
+
+test fn wall_hand_built_self_grounding_is_the_stated_residue() -> Bool {
+  canonical_grounding_admits_infer_facts(grounding: wall_self_grounding(node: wall_conj_node()))
+}
+
+test fn wall_admission_admits_hand_built_derived_grounding() -> Bool {
+  canonical_grounding_admits_infer_facts(grounding: wall_derived_grounding(node: wall_conj_node()))
+}
+
+test fn wall_conj_grounding_no_longer_returns_source_as_its_own_type() -> Bool {
+  wall_grounding_for_node_refused(root: wall_conj_node())
+}
+
+test fn wall_disj_grounding_no_longer_returns_source_as_its_own_type() -> Bool {
+  wall_grounding_for_node_refused(root: wall_disj_node())
+}
+
+test fn wall_frontier_node_has_no_resolved_type() -> Bool {
+  wall_resolved_type_refused(root: wall_value_node())
+}
+
+test fn wall_frontier_is_counted_on_the_accepted_path() -> Bool {
+  wall_infer_counts_frontier(root: wall_value_node())
+}
+
+test fn wall_malformed_bool_payload_is_not_grounded_or_discharged() -> Bool {
+  wall_grounding_for_node_refused(root: wall_malformed_bool_with_payload())
+    && wall_infer_counts_frontier(root: wall_malformed_bool_with_payload())
+}
+
+test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool {
+  wall_grounding_for_node_refused(root: wall_malformed_int_with_extra_payload())
+    && wall_infer_counts_frontier(root: wall_malformed_int_with_extra_payload())
+}

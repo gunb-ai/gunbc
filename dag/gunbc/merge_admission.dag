@@ -152,6 +152,231 @@ fn gate_roster_content_hash(roster: List<CommitCheckEnrollment>) -> ContentHash 
 
 data current_gate_roster_hash: ContentHash = gate_roster_content_hash(roster: commit_gate_roster)
 
+type CoveredGateConclusion {
+  gate: ContentHash
+  conclusion: CheckConclusion
+}
+
+type CheckCoverage
+  = CheckCoverageAbsent {
+      required_head: CommitSha,
+      required_roster: ContentHash
+    }
+  | CheckCoverageRunning {
+      head: CommitSha,
+      roster: ContentHash,
+      run: NonEmptyStr
+    }
+  | CheckCoverageStopped {
+      head: CommitSha,
+      roster: ContentHash,
+      completed: List<CoveredGateConclusion>,
+      unexecuted: List<ContentHash>,
+      cause: NonEmptyStr
+    }
+  | CheckCoverageComplete {
+      head: CommitSha,
+      roster: ContentHash,
+      conclusions: List<CoveredGateConclusion>
+    }
+  | CheckCoverageStale {
+      observed_head: CommitSha,
+      required_head: CommitSha,
+      observed_roster: ContentHash,
+      required_roster: ContentHash
+    }
+
+data check_coverage_subject_universe_note: String = "CHECK COVERAGE IS A TOTAL CLASSIFICATION OVER AN EXPLICIT SUBJECT UNIVERSE (operator mandate 2026-08-01). The subject is (required PR head, required gate-roster identity, nonempty required gate population). No check runs is CheckCoverageAbsent, never an empty list that all() can call green. A run still executing is Running. A dependency stop is Stopped and carries both the completed and UNEXECUTED populations plus a cause, so batch-1 drift stopping the witness batches cannot masquerade as a witness verdict. Complete is the only arm admission examines for success. Stale carries both observed and required identities; it is not repaired by relabeling the observation. Adding a coverage state requires a new coproduct arm and turns every exhaustive consumer red until classified — unclassified is structurally unavailable."
+
+data check_coverage_external_consumer_boundary_note: String = "BOUNDARY, NOT AN END-TO-END CLOSURE CLAIM. This module is the repository's admission authority and now makes the correct semantics representable and executable. The live fail-open observed 2026-08-01 was in the external dashboard readout: it reported no failing or pending checks with ok=true when the healed head had NO run. That consumer lives outside this repository and is not changed here. Until it conforms to classify_check_coverage_admission, the operational rule is stricter than its readout: never merge unless an executing run explicitly names the current PR head and reaches every required witness; an auto-heal head with no subsequent run is untested."
+
+type CheckCoverageAdmissionVerdict
+  = CheckCoverageAdmitted
+  | CheckCoverageDeniedAbsent { required_head: CommitSha, required_roster: ContentHash }
+  | CheckCoverageDeniedRunning { head: CommitSha, roster: ContentHash, run: NonEmptyStr }
+  | CheckCoverageDeniedStopped {
+      head: CommitSha,
+      roster: ContentHash,
+      completed: List<CoveredGateConclusion>,
+      unexecuted: List<ContentHash>,
+      cause: NonEmptyStr
+    }
+  | CheckCoverageDeniedStale {
+      observed_head: CommitSha,
+      required_head: CommitSha,
+      observed_roster: ContentHash,
+      required_roster: ContentHash
+    }
+  | CheckCoverageDeniedHeadMismatch { observed: CommitSha, required: CommitSha }
+  | CheckCoverageDeniedRosterMismatch { observed: ContentHash, required: ContentHash }
+  | CheckCoverageDeniedEmptyRequiredPopulation
+  | CheckCoverageDeniedDuplicateRequiredGate { gate: ContentHash }
+  | CheckCoverageDeniedExecutionCardinality { gate: ContentHash, observed_count: Int }
+  | CheckCoverageDeniedGateFailed { gate: ContentHash, conclusion: CheckConclusion }
+
+fn gate_identity_count(gates: List<ContentHash>, gate: ContentHash) -> Int {
+  fold(gates, init: 0, f: fn(acc, row) {
+    if row == gate { acc + 1 } else { acc }
+  })
+}
+
+fn first_duplicate_required_gate(required_gates: List<ContentHash>) -> ContentHash? {
+  fold(required_gates, init: none, f: fn(acc, gate) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if gate_identity_count(gates: required_gates, gate: gate) > 1 {
+          Present { value: gate }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn covered_gate_count(conclusions: List<CoveredGateConclusion>, gate: ContentHash) -> Int {
+  fold(conclusions, init: 0, f: fn(acc, row) {
+    if row.gate == gate { acc + 1 } else { acc }
+  })
+}
+
+fn first_gate_with_wrong_execution_cardinality(
+  required_gates: List<ContentHash>,
+  conclusions: List<CoveredGateConclusion>,
+) -> ContentHash? {
+  fold(required_gates, init: none, f: fn(acc, gate) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if covered_gate_count(conclusions: conclusions, gate: gate) == 1 {
+          none
+        } else {
+          Present { value: gate }
+        }
+    }
+  })
+}
+
+fn first_required_gate_failure(
+  required_gates: List<ContentHash>,
+  conclusions: List<CoveredGateConclusion>,
+) -> CoveredGateConclusion? {
+  fold(required_gates, init: none, f: fn(acc, gate) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        fold(conclusions, init: none, f: fn(found, row) {
+          match found {
+            Present { value: _ } => found
+            Absent =>
+              if row.gate == gate && !check_conclusion_admits_merge_admission_floor(c: row.conclusion) {
+                Present { value: row }
+              } else {
+                none
+              }
+          }
+        })
+    }
+  })
+}
+
+fn classify_check_coverage_admission(
+  coverage: CheckCoverage,
+  required_head: CommitSha,
+  required_roster: ContentHash,
+  required_gates: List<ContentHash>,
+) -> CheckCoverageAdmissionVerdict {
+  match coverage {
+    CheckCoverageAbsent { required_head: absent_head, required_roster: absent_roster } =>
+      CheckCoverageDeniedAbsent {
+        required_head: absent_head,
+        required_roster: absent_roster
+      }
+    CheckCoverageRunning { head, roster, run } =>
+      CheckCoverageDeniedRunning { head: head, roster: roster, run: run }
+    CheckCoverageStopped { head, roster, completed, unexecuted, cause } =>
+      CheckCoverageDeniedStopped {
+        head: head,
+        roster: roster,
+        completed: completed,
+        unexecuted: unexecuted,
+        cause: cause
+      }
+    CheckCoverageStale {
+      observed_head, required_head: stale_required_head,
+      observed_roster, required_roster: stale_required_roster
+    } =>
+      CheckCoverageDeniedStale {
+        observed_head: observed_head,
+        required_head: stale_required_head,
+        observed_roster: observed_roster,
+        required_roster: stale_required_roster
+      }
+    CheckCoverageComplete { head, roster, conclusions } =>
+      if head != required_head {
+        CheckCoverageDeniedHeadMismatch { observed: head, required: required_head }
+      } else if roster != required_roster {
+        CheckCoverageDeniedRosterMismatch { observed: roster, required: required_roster }
+      } else if length(required_gates) == 0 {
+        CheckCoverageDeniedEmptyRequiredPopulation
+      } else {
+        match first_duplicate_required_gate(required_gates: required_gates) {
+          Present { value: gate } =>
+            CheckCoverageDeniedDuplicateRequiredGate { gate: gate }
+          Absent =>
+            match first_gate_with_wrong_execution_cardinality(
+              required_gates: required_gates,
+              conclusions: conclusions
+            ) {
+              Present { value: gate } =>
+                CheckCoverageDeniedExecutionCardinality {
+                  gate: gate,
+                  observed_count: covered_gate_count(conclusions: conclusions, gate: gate)
+                }
+              Absent =>
+                match first_required_gate_failure(
+                  required_gates: required_gates,
+                  conclusions: conclusions
+                ) {
+                  Present { value: failed } =>
+                    CheckCoverageDeniedGateFailed {
+                      gate: failed.gate,
+                      conclusion: failed.conclusion
+                    }
+                  Absent => CheckCoverageAdmitted
+                }
+            }
+        }
+      }
+  }
+}
+
+fn check_coverage_admits(
+  coverage: CheckCoverage,
+  required_head: CommitSha,
+  required_roster: ContentHash,
+  required_gates: List<ContentHash>,
+) -> Bool {
+  match classify_check_coverage_admission(
+    coverage: coverage,
+    required_head: required_head,
+    required_roster: required_roster,
+    required_gates: required_gates
+  ) {
+    CheckCoverageAdmitted => true
+    CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+    CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+    CheckCoverageDeniedStopped { head: _, roster: _, completed: _, unexecuted: _, cause: _ } => false
+    CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+    CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedEmptyRequiredPopulation => false
+    CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+    CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+    CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+  }
+}
+
 fn mint_merge_admission_receipt(
   pr_number: Int?,
   head_sha: CommitSha,

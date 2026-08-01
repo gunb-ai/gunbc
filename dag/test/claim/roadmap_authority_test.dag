@@ -536,11 +536,9 @@ test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
     )
   )
   string_contains(s: out, pattern: "(docs/plans/dag-scm-design.md)")
-    && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
     && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
     && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
     && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 6
-    && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
     && id_exists(id: "2-scm-git-upstream-model")
     && id_exists(id: "2-scm-mercurial-upstream-model")

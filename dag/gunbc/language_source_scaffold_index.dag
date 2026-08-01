@@ -327,6 +327,16 @@ data ct_row_ct_unlisted_import_use_witness_test: LanguageSourceScaffoldRow = Lan
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_method_existence_wall_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_method_existence_wall_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_declared_type_conformance_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_declared_type_conformance_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_sole_constructor_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_sole_constructor_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -402,6 +412,8 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_diagnostics_carrier_grounding_test,
   ct_row_ct_rust_btree_set_ord_eligibility_test,
   ct_row_ct_unlisted_import_use_witness_test,
+  ct_row_ct_method_existence_wall_witness_test,
+  ct_row_ct_declared_type_conformance_witness_test,
   ct_row_ct_sole_constructor_test,
   ct_row_ct_sole_constructor_fieldless_witness_test,
   ct_row_ct_contracts_sidecar_witness_test,

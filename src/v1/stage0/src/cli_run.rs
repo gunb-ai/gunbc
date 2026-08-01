@@ -2224,6 +2224,15 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
+                // A non-blocking variant that is absent from this list is counted by
+                // NEITHER predicate: `..._is_hard` rejects it and this allowlist does
+                // not admit it, so it renders to the terminal while every count the
+                // gate reports reads zero for it. That is a frontier claiming to be
+                // counted while nothing counts it. The three variants below are the
+                // method/conformance walls' non-blocking residue and belong here for
+                // the same reason WhereRefinementUnenforced does.
+                | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
+                | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
         )
 }
 
@@ -3869,6 +3878,15 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
         CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
         CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
+        CompilerDiagnostic::MethodNotFound { .. } => "MethodNotFound",
+        CompilerDiagnostic::MethodExistenceUndecided { .. } => "MethodExistenceUndecided",
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "ReceiverTypeUnestablished",
+        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
+            "FrontierOccurrenceBudgetExceeded"
+        }
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => {
+            "MethodExistenceFrontierAdmitted"
+        }
         CompilerDiagnostic::MissingField { .. } => "MissingField",
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
@@ -3895,6 +3913,11 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
         CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),
         CompilerDiagnostic::FieldNotFound { field, .. } => field.clone(),
+        CompilerDiagnostic::MethodNotFound { method, .. } => method.clone(),
+        CompilerDiagnostic::MethodExistenceUndecided { method, .. } => method.clone(),
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { method, .. } => method.clone(),
+        CompilerDiagnostic::ReceiverTypeUnestablished { method, .. } => method.clone(),
+        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
