@@ -2750,6 +2750,35 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     }
 }
 
+// HAND-RUST GATE explicit deferral (review 46616): bounded growth in the existing
+// seed interpreter, not a new Rust authority. The evaluation-boundary POLICY is
+// modeled — `v2.std.witness_evaluation` owns `WitnessEvaluation`/`WitnessEvaluationFrame`
+// and `extdeps.transports.rest` `rest_exchange_resolution` owns the lookup, equality,
+// and handler-selection decisions; what lives here is only the dynamic-extent
+// realization of pushing and popping a frame, which no modeled construct can express
+// while the seed is the evaluator.
+//
+// Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS,
+// docs/plans/witness-realization-plan.md) — the same lane
+// `extdeps.realization.emit_on_demand_host` `emit_on_demand_host_seed_deferral_note`
+// defers to; counted against `v1-honest-frontier` and terminating at
+// `v1-interpreter-quarantine` → `v1-interpreter-delete`.
+//
+// Deletion condition, checkable by execution: witnesses emit to native code and the
+// emitted runtime realizes the evaluation frame, at which point this stack, its
+// `WITNESS_EVALUATION_MODULE` dispatch, and `witness_evaluation_diagnostic_value`
+// delete together while `rest_replay_binding_does_not_escape_its_frame` stays green
+// without them. That witness is the regression control for the deletion, not just for
+// the frame — it fails if a binding survives its frame under either realization.
+//
+// Citation note: the two sibling deferrals in this file and in
+// `emit_on_demand_host_seed_deferral_note` name a
+// `dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
+// no longer exists — the brick ledger it belonged to was retired 2026-07-28 by that
+// file's own `v1_exit_model_doc`, which moved per-node acceptance onto the roadmap
+// tickets. This deferral therefore names the live roadmap node instead of copying a
+// dead row forward; repointing the two stale siblings is left to the lane that owns
+// them rather than smuggled into this diff.
 thread_local! {
     /// Dynamically scoped witness frames. The .dag carrier owns their contents;
     /// this stack is only the v1 seed realization of the evaluation boundary.
@@ -7562,6 +7591,32 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
     config_auth_resolved && has_auth_basic
 }
 
+/// HAND-RUST GATE explicit deferral (review 46616), covering this function and the
+/// REST outcome/replay bridge below it through `dispatch_rest`: bounded growth in the
+/// existing seed interpreter, not a new Rust authority and not a second transport
+/// convention. Every DECISION this bridge makes is modeled — the outcome states are
+/// `extdeps.transports.rest` `RestOutcome`, the observation states are
+/// `RestExchangeObservation`, replay identity and its 0/1/many lookup are
+/// `rest_bound_invocation_eq` / `rest_exchange_fixture_lookup`, and the resolution is
+/// selected by calling `rest_exchange_resolution` back into `.dag`. What is seed-side
+/// is the projection of those decisions onto the operation's declared output record,
+/// which requires the interpreter's own `Value`/`Node` representation.
+///
+/// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
+/// `v1-honest-frontier`.
+///
+/// EARLIER, NARROWER deletion condition than the lane's, and the one that should fire
+/// first — stated in the SCOPE paragraph of `rest_outcome_note`: when the `response`
+/// block becomes the single authority for a result and `output` is DERIVED from its 2xx
+/// arm, every operation carries its outcome without declaring one. At that point the
+/// opt-in disappears and `rest_outcome_output_field` deletes outright, because there is
+/// no longer a field to detect; the `if status >= 400` raise below it deletes in the
+/// same motion, since it exists only to serve operations that declared no outcome.
+/// Checkable by execution: `rest_operation_without_outcome_still_refuses` is the witness
+/// that pins the opt-in's existence, so it is the one that must be REPLACED (not merely
+/// kept green) when the seam dissolves — a `Legacy` operation with no outcome field can
+/// no longer exist.
+///
 /// The opt-in migration seam declared by extdeps.transports.rest.RestOutcome.
 ///
 /// An operation asks for transport observations by declaring an output field whose
