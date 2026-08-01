@@ -158,6 +158,7 @@ pub fn type_ref_fail_open_telemetry_disable() -> TypeRefFailOpenTelemetry {
 
 pub fn type_ref_fail_open_telemetry_is_enabled() -> bool {
     TYPE_REF_FAIL_OPEN_ENABLED.with(|e| e.get())
+        || std::env::var_os("GUNBC_TYPE_REF_FAIL_OPEN_TRACE").is_some()
 }
 
 pub fn type_ref_fail_open_record_symbol_index_lookup(
@@ -168,6 +169,12 @@ pub fn type_ref_fail_open_record_symbol_index_lookup(
     if !type_ref_fail_open_telemetry_is_enabled() {
         return;
     }
+    // Loud probe receipt for row-5 discriminator (quiet-hawk-219): one line per
+    // consultation so a single gunbc compile run answers consulted?/hit?/miss?.
+    eprintln!(
+        "[type-ref-fail-open] symbol_index_lookup env={} name={} hit={}",
+        env_module_path, qualified_name, hit
+    );
     TYPE_REF_FAIL_OPEN.with(|t| {
         t.borrow_mut()
             .symbol_index_lookups
@@ -189,6 +196,12 @@ pub fn type_ref_fail_open_record_pool_present_unreachable(
     // Always record when the refusal arm fires — the population census is the
     // mandate's load-bearing output, not an opt-in probe. Telemetry enable only
     // gates the row-5 symbol_index discriminator above.
+    if std::env::var_os("GUNBC_TYPE_REF_FAIL_OPEN_TRACE").is_some() {
+        eprintln!(
+            "[type-ref-fail-open] pool_present_unreachable module={} type={} file={} span={}-{}",
+            module_name, type_name, span_file, span_start, span_end
+        );
+    }
     TYPE_REF_FAIL_OPEN.with(|t| {
         t.borrow_mut()
             .pool_present_unreachable

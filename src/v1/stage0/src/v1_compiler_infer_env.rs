@@ -163,7 +163,25 @@ pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Op
 /// chain surface. Corpus-wide `global_bare` / `symbol_index` hits are NOT
 /// reachability. Used by the use-site (`masked`) resolve arm to refuse
 /// pool-present-but-not-import-reachable type refs (import-strip §14.3).
-pub fn type_ref_import_or_local_reachable(env: Rc<TypeEnv>, name: String) -> bool {
+/// Whether a resolved type name has *binding authority* at this env — the
+/// admission predicate for the type-ref refusal arm (`hit without binding
+/// authority → UnresolvedType`).
+///
+/// INTERIM body: import / local reachability (`str_bindings` ∪
+/// `ancestry_str_bindings`, plus qualified-leaf). Values/fns already bind
+/// namespace-only (#7178); types refuse-unless-imported until N2 extends the
+/// containment walk to type positions and **swaps this body**. The refusal
+/// arm itself stays "no binding authority → refuse"; only *what grants*
+/// authority is pluggable here — do not fuse import-reachability into the
+/// arm's type shape (quiet-hawk-219 direction).
+pub fn type_ref_has_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
+    type_ref_binding_authority_import_local(env, name)
+}
+
+/// Today's (interim) binding-authority grant for type refs: present in the
+/// module's import-or-local string bindings. N2 replaces the call above;
+/// keep this helper named for the census / debt-contract consumer.
+pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -> bool {
     if v1_rt::map_has(&env.str_bindings.clone(), name.clone())
         || v1_rt::map_has(&env.ancestry_str_bindings.clone(), name.clone())
     {

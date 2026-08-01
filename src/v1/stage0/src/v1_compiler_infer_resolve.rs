@@ -12,7 +12,7 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
     is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
-    lookup_type_for, type_ref_import_or_local_reachable,
+    lookup_type_for, type_ref_has_binding_authority,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -1678,27 +1678,28 @@ pub fn resolve_node_bounded(
                                                     authored_name(env.clone(), n.clone());
                                                 // import-strip §14.3 / DESIGN §5: at a
                                                 // USE-SITE type position (masked), a
-                                                // lookup that succeeded only via
-                                                // pool coincidence (global_bare /
-                                                // symbol_index) — i.e. NOT via
-                                                // import/local reachability — must
-                                                // REFUSE like an absent-from-pool
-                                                // miss, never fabricate Product(<anon>).
+                                                // lookup hit without binding
+                                                // authority must REFUSE like an
+                                                // absent-from-pool miss — never
+                                                // fabricate Product(<anon>).
+                                                // Admission = type_ref_has_binding_authority
+                                                // (interim: import/local; N2 swaps
+                                                // the predicate body to containment).
+                                                // Honest asymmetry: values/fns bind
+                                                // namespace-only since #7178; types
+                                                // refuse-unless-imported until N2.
                                                 // Grounding (masked=false) keeps the
                                                 // prior peel: defining-module structure
                                                 // is that module's import responsibility.
                                                 if (masked.clone()
-                                                    && (type_ref_import_or_local_reachable(
+                                                    && (type_ref_has_binding_authority(
                                                         env.clone(),
                                                         type_name.clone(),
                                                     ) == false)
-                                                    && (is_kernel_type(type_name.clone())
-                                                        == false)
-                                                    && (is_kernel_type(
-                                                        qualified_last_segment(
-                                                            type_name.clone(),
-                                                        ),
-                                                    ) == false))
+                                                    && (is_kernel_type(type_name.clone()) == false)
+                                                    && (is_kernel_type(qualified_last_segment(
+                                                        type_name.clone(),
+                                                    )) == false))
                                                 {
                                                     v1_rt::type_ref_fail_open_record_pool_present_unreachable(
                                                         module_name.clone(),
@@ -1721,25 +1722,26 @@ pub fn resolve_node_bounded(
                                                         ]),
                                                     })
                                                 } else {
-                                                let is_optional = (n.return_cardinality.clone()
-                                                    == Cardinality::CardOptional);
-                                                let final_resolved = if is_optional.clone() {
-                                                    with_optional_cardinality(
-                                                        structurally_resolved.clone(),
-                                                    )
-                                                } else {
-                                                    structurally_resolved.clone()
-                                                };
-                                                let unlisted_diags = if ((masked.clone()
-                                                    && (v1_rt::map_is_empty(
-                                                        &env.source_visible_names.clone(),
-                                                    ) == false))
-                                                    && (v1_rt::map_has(
-                                                        &env.source_visible_names.clone(),
-                                                        type_name.clone(),
-                                                    ) == false))
-                                                {
-                                                    Rc::new(vec![make_error_node(
+                                                    let is_optional =
+                                                        (n.return_cardinality.clone()
+                                                            == Cardinality::CardOptional);
+                                                    let final_resolved = if is_optional.clone() {
+                                                        with_optional_cardinality(
+                                                            structurally_resolved.clone(),
+                                                        )
+                                                    } else {
+                                                        structurally_resolved.clone()
+                                                    };
+                                                    let unlisted_diags = if ((masked.clone()
+                                                        && (v1_rt::map_is_empty(
+                                                            &env.source_visible_names.clone(),
+                                                        ) == false))
+                                                        && (v1_rt::map_has(
+                                                            &env.source_visible_names.clone(),
+                                                            type_name.clone(),
+                                                        ) == false))
+                                                    {
+                                                        Rc::new(vec![make_error_node(
                                                         Rc::new(
                                                             CompilerDiagnostic::UnlistedImportUse {
                                                                 name: type_name.clone(),
@@ -1748,13 +1750,13 @@ pub fn resolve_node_bounded(
                                                         ),
                                                         module_name.clone(),
                                                     )])
-                                                } else {
-                                                    Rc::new(vec![])
-                                                };
-                                                Rc::new(NodeResolveResult {
-                                                    resolved: final_resolved.clone(),
-                                                    diagnostics: unlisted_diags.clone(),
-                                                })
+                                                    } else {
+                                                        Rc::new(vec![])
+                                                    };
+                                                    Rc::new(NodeResolveResult {
+                                                        resolved: final_resolved.clone(),
+                                                        diagnostics: unlisted_diags.clone(),
+                                                    })
                                                 }
                                             }
                                             None => {
