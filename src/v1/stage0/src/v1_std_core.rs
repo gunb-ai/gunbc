@@ -640,8 +640,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
 }
 
 pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
-    ((((((reason.clone() == "predicate deferred at compile time".to_string())
-        || (reason.clone() == "predicate not enforced at compile time".to_string()))
+    (((((reason.clone() == "predicate deferred at compile time".to_string())
         || (reason.clone() == "non-literal value at refined position".to_string()))
         || (reason.clone() == "predicate argument is not an int literal".to_string()))
         || (reason.clone() == "int predicate not implemented".to_string()))

@@ -3,18 +3,13 @@
 
 use self::ExportKind::*;
 use self::InterfaceContract::*;
-use crate::std_content_hash::ContentHash::*;
-pub use crate::std_content_hash::{
-    as_content_hash_structural, content_hash_atom, content_hash_combine_structural,
-    content_hash_tagged, content_hash_tagged_structural,
-};
-pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_content_hash::{content_hash_atom, content_hash_combine, content_hash_tagged};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_disposition::ConstructionMechanism::SingleAuthority;
 use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
-pub use crate::std_types::{List, NonEmptyStr};
+pub use crate::std_types::{ContentHash, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -22,13 +17,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub type InterfaceHash = Rc<Fnv1a64Structural>;
+pub type InterfaceHash = NonEmptyStr;
 
-pub type ModuleKey = Rc<Fnv1a64Structural>;
+pub type ModuleKey = NonEmptyStr;
 
-pub type SignatureFingerprint = Rc<Fnv1a64Structural>;
+pub type SignatureFingerprint = NonEmptyStr;
 
-pub type TypedModuleKey = Rc<Fnv1a64Structural>;
+pub type TypedModuleKey = NonEmptyStr;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -88,7 +83,7 @@ pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
     CACHED.with(|c: &Rc<Disposition>| c.clone())
 }
 
-pub fn signature_contract(signature: Rc<Fnv1a64Structural>) -> Rc<InterfaceContract> {
+pub fn signature_contract(signature: ContentHash) -> Rc<InterfaceContract> {
     Rc::new(InterfaceContract::SignatureContract {
         signature: signature.clone(),
     })
@@ -107,11 +102,11 @@ pub fn export_kind_tag(kind: ExportKind) -> String {
     }
 }
 
-pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural> {
+pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> NonEmptyStr {
     match (*entry.contract.clone()).clone() {
-        InterfaceContract::ContractAbsent => content_hash_tagged_structural(
+        InterfaceContract::ContractAbsent => content_hash_tagged(
             "export".to_string(),
-            content_hash_combine_structural(
+            content_hash_combine(
                 content_hash_atom(entry.name.clone()),
                 content_hash_atom(export_kind_tag(entry.kind.clone())),
             ),
@@ -119,10 +114,10 @@ pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural>
         InterfaceContract::SignatureContract {
             signature: signature,
             ..
-        } => content_hash_tagged_structural(
+        } => content_hash_tagged(
             "export".to_string(),
-            content_hash_combine_structural(
-                content_hash_combine_structural(
+            content_hash_combine(
+                content_hash_combine(
                     content_hash_atom(entry.name.clone()),
                     content_hash_atom(export_kind_tag(entry.kind.clone())),
                 ),
@@ -132,25 +127,25 @@ pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural>
     }
 }
 
-pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> Rc<Fnv1a64Structural> {
+pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> ContentHash {
     exports.clone().iter().cloned().fold(
         content_hash_atom("interface-summary-v0".to_string()),
-        |acc: Rc<Fnv1a64Structural>, entry: Rc<ExportEntry>| {
-            content_hash_combine_structural(acc, export_entry_fingerprint(entry.clone()))
+        |acc: NonEmptyStr, entry: Rc<ExportEntry>| {
+            content_hash_combine(acc, export_entry_fingerprint(entry.clone()))
         },
     )
 }
 
 pub fn module_key(
-    source_hash: Rc<Fnv1a64Structural>,
-    direct_import_interface_hashes: Rc<Vec<Rc<Fnv1a64Structural>>>,
-) -> Rc<Fnv1a64Structural> {
+    source_hash: NonEmptyStr,
+    direct_import_interface_hashes: Rc<Vec<ContentHash>>,
+) -> ContentHash {
     direct_import_interface_hashes.clone().iter().cloned().fold(
-        content_hash_tagged_structural("module-key-source".to_string(), source_hash.clone()),
-        |acc: Rc<Fnv1a64Structural>, import_hash: Rc<Fnv1a64Structural>| {
-            content_hash_tagged_structural(
+        content_hash_tagged("module-key-source".to_string(), source_hash.clone()),
+        |acc: NonEmptyStr, import_hash: ContentHash| {
+            content_hash_tagged(
                 "module-key-import".to_string(),
-                content_hash_combine_structural(acc, import_hash.clone()),
+                content_hash_combine(acc, import_hash.clone()),
             )
         },
     )
@@ -166,22 +161,10 @@ pub fn typed_module_key_note() -> NonEmptyStr {
     CACHED.with(|c: &NonEmptyStr| c.clone())
 }
 
-pub fn typed_module_key_v1_seed_bridge_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Seed-retained hand-Rust bridge (review 45298): src/v1/stage0/src/cli_run.rs typed_module_content_key is the v1 host realization of std.interface_summary.module_key and typed_module_key — the only adaptation is wrapping reconcile-path digest strings via std.content_hash.structural_content_hash before the .dag authority runs, because the v1 store boundary still carries interface hashes as digest strings. DELETE SCAFFOLD — this is not a new digest concept; it is the string→Fnv1a64Structural coercion the authority already requires. CENSUS SHRINK — one call site (typed_module_content_key); no parallel key authority. EXPLICIT DEFERRAL — dissolves when cross-entry typed-module memo routes through emitted typed_module_key end-to-end without cli_run string wrapping; ROADMAP row 'Make native materialization the shared execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and gunbc.v1_deletion_plan ^witness_realization_kernel; aligns with docs/plans/cross-entry-typed-module-memo-sketch.md Half B.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn typed_module_key(
-    interface_key: Rc<Fnv1a64Structural>,
-    compiler_identity: Rc<Fnv1a64Structural>,
-) -> Rc<Fnv1a64Structural> {
-    content_hash_tagged_structural(
+pub fn typed_module_key(interface_key: ContentHash, compiler_identity: NonEmptyStr) -> ContentHash {
+    content_hash_tagged(
         "typed-module-compiler".to_string(),
-        content_hash_combine_structural(interface_key.clone(), compiler_identity.clone()),
+        content_hash_combine(interface_key.clone(), compiler_identity.clone()),
     )
 }
 

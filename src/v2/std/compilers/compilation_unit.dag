@@ -32,7 +32,6 @@ import v2.std.node {
 
 type ModuleId = NonEmptyStr where brand("ModuleId")
 type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")
-type CompilationUnitArtifactId = NonEmptyStr where brand("CompilationUnitArtifactId")
 
 type PartitionProvenance
   = HandExplicit
@@ -60,7 +59,6 @@ type CompilationUnit {
   members: List<ModuleId>
   interface: List<Node>
   deps: List<CompilationUnitId>
-  artifact: CompilationUnitArtifactId
 }
 
 type PartitionInterfaceClosureResult
@@ -92,7 +90,7 @@ type PartitionInterfaceClosureState {
   stable: Bool
 }
 
-data compilation_unit_home_note: String = "Shared home for the agnostic unit of separate compilation and linkage (crate / translation-unit / package / assembly are target nicknames). partition_fold is the sole producer of interface + deps; members and artifact identity are inputs via the assignment map. interface carries declaration CONTENT as Node carriers (not name lists), including the transitive by-value type-definition closure needed to render cross-unit boundaries (Rust crate visibility, C header struct layout). Default: home supplies the full referenced-declaration set; each target R3 projects what it needs from that superset. R4 validity is an interface only — each target realization supplies validate_partition_r4."
+data compilation_unit_home_note: String = "Shared home for the agnostic unit of separate compilation and linkage (crate / translation-unit / package / assembly are target nicknames). partition_fold is the sole producer of interface + deps; members and unit identity are the only inputs, both via the assignment map Map<ModuleId, CompilationUnitId>. The unit carries NO artifact identity: an emitted-artifact name is a REALIZATION spelling, derived by each target from the agnostic unit id plus its own target context (C: c_translation_unit_basename), never a second field on the shared carrier. An `artifact: CompilationUnitArtifactId` field previously sat here, always populated by rebranding `id` — a derived field that claimed independent information while carrying none, so `CompilationUnit { id: \"unit-a\", artifact: \"unit-b\" }` was writable and made one unit claim two target identities (review 2026-08-01). Removing the field makes that specimen unwritable rather than merely refused; the retained evidence is the compile-refusal witness over the removed field, not a runtime falsifier (§4b dissolution-on-climb keeps the evidence, deletes the machinery). interface carries declaration CONTENT as Node carriers (not name lists), including the transitive by-value type-definition closure needed to render cross-unit boundaries (Rust crate visibility, C header struct layout). Default: home supplies the full referenced-declaration set; each target R3 projects what it needs from that superset. R4 validity is an interface only — each target realization supplies validate_partition_r4."
 
 data partition_interface_derivation_note: String = "interface derivation (partition_fold): (1) collect exported declaration Nodes from member modules referenced across the partition boundary; (2) close transitively under by-value type references using ModuleTypeDefinitionRow { identity, definition } rows (definition may be Conj-bodied or Atom-rooted; identity is authoritative, not inferred from shape); (3) canonicalize as a set (dedupe by content_hash, sort by hash). Closure budget = member export+type-def row count + 1; PartitionInterfaceTruncated if budget exhausts without fixpoint. Default: home supplies full referenced-declaration set + by-value type defs; each target R3 may project a subset."
 
@@ -144,10 +142,6 @@ fn partition_provenance_eq(left: PartitionProvenance, right: PartitionProvenance
   }
 }
 
-
-fn compilation_unit_artifact_id(unit_id: CompilationUnitId) -> CompilationUnitArtifactId {
-  unit_id as CompilationUnitArtifactId
-}
 
 fn module_unit_id_outcome(
   assignment: Map<ModuleId, CompilationUnitId>,
@@ -834,7 +828,6 @@ fn compilation_unit_from_partition_fold(
               members: members
               interface: iface_nodes
               deps: deps
-              artifact: compilation_unit_artifact_id(unit_id: unit_id)
             }
           }
       }
@@ -876,7 +869,6 @@ fn compilation_unit_from_partition(
         members: []
         interface: []
         deps: []
-        artifact: compilation_unit_artifact_id(unit_id: unit_id)
       }
   }
 }

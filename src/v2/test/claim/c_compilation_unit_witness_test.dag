@@ -24,7 +24,6 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
-  compilation_unit_artifact_id,
   partition_fold_outcome,
   partition_fold_outcome_with_closure_fuel,
   partition_interface_contains_node,
@@ -298,7 +297,7 @@ fn witness_partition_fold_two_units() -> List<CompilationUnit> {
 test fn witness_r3_header_source_object_paths() -> Bool {
   c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
     && c_unit_source_path(unit_id: witness_unit_one) == "cu-one.c"
-    && c_unit_object_path(artifact: compilation_unit_artifact_id(unit_id: witness_unit_one)) == "cu-one.o"
+    && c_unit_object_path(unit_id: witness_unit_one) == "cu-one.o"
 }
 
 test fn witness_r3_include_directive_per_dep() -> Bool {

@@ -9,8 +9,6 @@ use self::Runnable::*;
 use self::RunnableMemoryClass::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
-pub use crate::std_content_hash::ContentHash;
-use crate::std_content_hash::ContentHash::*;
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
@@ -21,7 +19,7 @@ pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
 use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, List};
+pub use crate::std_types::{Bool, ContentHash, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -431,7 +429,7 @@ pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizationPlan<S> {
-    pub target: Rc<ContentHash>,
+    pub target: ContentHash,
     pub objective: Rc<RealizationObjective>,
     pub schedule: Schedule,
     pub total: Rc<CostAccount<S>>,
