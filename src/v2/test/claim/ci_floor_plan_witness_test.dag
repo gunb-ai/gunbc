@@ -12,9 +12,17 @@ import v2.workflow.ci_floor_plan {
   gunbc_falsifier_plan,
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
+  bin_witness_corpus_runnable_for,
   parser_transport_witness_corpus_runnable_for,
   parser_transport_witness_batch_enrolled,
   parser_transport_witness_source_roots,
+  parser_transport_stop_before_dependents_masked_lanes,
+  ParserTransportMasksExecutionCorpus,
+  ParserTransportMasksBinWitnessCorpus,
+  ParserTransportMasksEmitHostTail,
+  resource_exclusion_stop_policy_conflation_dissolve_on,
+  StopWalkConsultsDependencyKind,
+  StopWalkConsultsDependencyReachability,
   corpus_witness_entries, execution_witness_entries,
   floor_corpus_exclusion_resource_edges,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
@@ -333,6 +341,18 @@ test fn witness_parser_transport_batch_is_isolated_from_other_corpora() -> Bool 
   })
 }
 
+test fn witness_parser_transport_masking_and_conflation_triggers_are_scoped() -> Bool {
+  parser_transport_stop_before_dependents_masked_lanes == [
+    ParserTransportMasksExecutionCorpus,
+    ParserTransportMasksBinWitnessCorpus,
+    ParserTransportMasksEmitHostTail,
+  ]
+    && resource_exclusion_stop_policy_conflation_dissolve_on == [
+      StopWalkConsultsDependencyKind,
+      StopWalkConsultsDependencyReachability,
+    ]
+}
+
 fn parser_transport_batch_index(batches: List<List<Runnable>>) -> Int {
   if length(xs: batches) == 0 {
     0 - 1
@@ -349,9 +369,28 @@ fn parser_transport_batch_index(batches: List<List<Runnable>>) -> Int {
   }
 }
 
+fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int {
+  if length(xs: batches) == 0 {
+    0 - 1
+  } else {
+    let present = fold(batches.first(), init: false, f: fn(found, r) {
+      found || r == target
+    })
+    if present {
+      0
+    } else {
+      let rest = runnable_batch_index(batches: skip(xs: batches, n: 1), target: target)
+      if rest < 0 { rest } else { rest + 1 }
+    }
+  }
+}
+
 test fn witness_parser_transport_clamp_position_precedes_emit_host() -> Bool {
   let batches = gunbc_ci_floor_ordinary_batches()
-  (parser_transport_batch_index(batches: batches) == 3)
+  (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1)
+    && (parser_transport_batch_index(batches: batches) == 3)
+    && (runnable_batch_index(batches: batches, target: execution_corpus_runnable_for(spec: gunbc_ci_spec)) == 4)
+    && (runnable_batch_index(batches: batches, target: bin_witness_corpus_runnable_for()) == 4)
     && (batch_index_of(batches: batches, target: "emit_host_gate_passes") == 5)
     && (length(xs: gunbc_ci_floor_batch_clamp_params) == 6)
 }
