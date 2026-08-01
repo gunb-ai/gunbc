@@ -41,6 +41,7 @@ import extdeps.container.oci.digest {
   oci_content_digest_from_validated_sha256,
   oci_sha256_content_digest,
   parse_oci_content_digest_wire,
+  render_oci_content_digest_wire,
 }
 import extdeps.container.oci.media_types { media_type_oci_image_layer_v1_tar_gzip }
 
@@ -233,6 +234,15 @@ test fn oci_content_digest_accepts_other_algorithm_wire() -> Bool {
         OciSha256Digest(_) => false
         OciSha512Digest(_) => false
       }
+    Absent => false
+  }
+}
+
+data oci_other_digest_roundtrip_witness_note: String = "Operator review (2026-07-31) found that oci_content_digest_accepts_other_algorithm_wire above reads ONLY body.algorithm — it never reads body.encoded and never calls render_oci_content_digest_wire, so the entire encoded-carrier and render half of the OciOtherDigest path had no executing consumer. Two real defects hid in exactly that gap and shipped green: OciOtherDigestEncoded was declared as a NESTED refinement (NonEmptyStr where oci_other_digest_encoded), which is a carrier composition the emitter cannot lower, so the generated Rust carried panic!(\"unsupported cast from String to NonEmptyStr\") on the parse side and panic!(\"unsupported cast from NonEmptyStr to String\") on the render side. The first broke the build; the SECOND WAS MASKED BY THE FIRST and would have panicked at runtime whenever an accepted non-SHA OCI digest was rendered — a compiling build would still have paniced. The carrier is now a SINGLE refinement (String where oci_other_digest_encoded), which is not a weakening: oci_other_digest_encoded already establishes non-emptiness AND the OCI encoded grammar, so the NonEmptyStr layer was a second representation of a fact the predicate independently proves (DESIGN section 2 — one concept, one authority). This witness is the durable control for that whole path: wire String -> algorithm validation -> encoded validation -> refined carrier construction -> OciOtherDigestBody -> projection -> wire rendering. It reds on either panic reappearing and on any projection that fails to round-trip. dissolve-on: never — permanent regression alarm for the OciOtherDigest carrier and its emission."
+
+test fn oci_other_digest_wire_roundtrips() -> Bool {
+  match parse_oci_content_digest_wire(raw: "sha384:abc") {
+    Present { value: digest } => render_oci_content_digest_wire(d: digest) == "sha384:abc"
     Absent => false
   }
 }
