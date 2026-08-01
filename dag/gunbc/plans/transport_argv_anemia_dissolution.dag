@@ -69,7 +69,7 @@ fn taad_target() -> List<MarkdownBlock> {
 
 fn taad_lanes() -> List<MarkdownBlock> {
   [
-    h2(text: "Two lanes"),
+    h2(text: "Three lanes"),
     h3(text: "Lane A — HTTP transport dissolution (curl argv -> transport rest)"),
     ol(items: [
       li(text: "Extend the rest model with the 4 items above (3 axes + modeled success)."),
@@ -84,7 +84,7 @@ fn taad_lanes() -> List<MarkdownBlock> {
       li(text: "This is the broader §2 argv anemia and rides the shell -> intent lane (the intent IS the .dag graph; emit vs realization). Model just-in-time per real consumer, never a big-bang sweep."),
     ]),
     h3(text: "Lane C — the outcome half: direct-process observation, decoded through the operation"),
-    p(text: "Lane C is the widened root made concrete, and it is FIRST in wall-clock because it has a live consumer waiting: Publication needs an exact remote head, and the only thing standing between it and one is a raw argv plus four untyped process fields. The exemplar is `git ls-remote --heads`, chosen because it exercises every missing seam without a general rewrite."),
+    p(text: "Lane C is the widened root made concrete, and it is first by READINESS rather than by priority — see the sequencing section, which states both criteria together so neither reads as a flat global ordering. What makes it ready is a live consumer waiting: Publication needs an exact remote head, and the only thing standing between it and one is a raw argv plus four untyped process fields. The exemplar is `git ls-remote --heads`, chosen because it exercises every missing seam without a general rewrite."),
     ol(items: [
       li(text: "E1 — the minimum process observation shape, consumed immediately rather than landed as an unused framework: completed versus spawn/wait refusal, exited versus signaled versus timed-out, streams retained faithfully, an explicit strict decoder, no global success projection."),
       li(text: "E2 — a repository-BOUND remote-head operation. It consumes the worker's admitted repository binding (worktree, remote, forge identity, credential binding), not a free `origin` string, so one repository's forge observation cannot be cross-paired with another's worktree."),
@@ -141,11 +141,30 @@ fn taad_sequence() -> List<MarkdownBlock> {
   [
     h2(text: "Sequencing, census, non-goals"),
     ul(items: [
-      li(text: "Lane A FIRST: it kills a live fail-open class by construction and is bounded (~13 HTTP ops). Lane B is larger and paced by the shell -> intent lane."),
+      li(text: "ORDERING, ON TWO DIFFERENT CRITERIA — stated together because an earlier revision of this plan asserted `Lane A FIRST` here while the Lane C section asserted Lane C was `FIRST in wall-clock`, which are incompatible as flat global priorities and would have scheduled the wrong lane for anyone reading only one of them (caught in review of the widening PR, 2026-08-01). The reconciliation is that FIRST was doing two jobs. Lane A is first by PRIORITY: it closes a live fail-open class by construction and is bounded at ~13 HTTP ops, so it is the one whose delay costs safety. Lane C is first by READINESS: it has a consumer blocked right now — Publication needs an exact remote head and is holding a raw argv plus four untyped process fields in the meantime — and its exemplar is narrow enough to land without a general rewrite. Neither dominates the other, and in fact both are in flight concurrently on separate work items; what the two criteria jointly decide is only that LANE B IS LAST, because it is the largest and is paced by the shell -> intent lane rather than by anything in this plan."),
+      li(text: "A note on why that contradiction survived a full authoring pass, since the same shape will recur: the widening added Lane C as a new section and updated the dissolution trigger to name three lanes, but left the lanes heading reading `Two lanes` and left this sequencing list untouched. The plan carried its lane count in three places and only two were edited. That is the parallel-representation defect this plan is itself about, appearing in the plan's own prose — the count is derivable from the lane sections and should not have been transcribed beside them at all. Recorded rather than merely fixed, because the fix below is still a transcription and will drift again."),
       li(text: "Census (the backlog): 37 files use transport shell; 262 argv lines total. Lane A = the HTTP subset (redfish 10 + http.client 3 + other HTTP shell-transports); Lane B = the remainder. A lens over argv arrays containing a known tool name is the coverage tracker and the anti-regression guard (a new curl op without modeled success reds)."),
       li(text: "Non-goal: minting a parallel option vocabulary. Extend transport rest (§3). Non-goal: rewriting every argv at once (Lane B is JIT per consumer)."),
       li(text: "Convergence: the redfish and http-client transport notes dissolve WITH this plan — Lane A is their shared, already-declared dissolution. The interim --fail-with-body flags are the fenced-out debt Lane A removes."),
     ]),
+  ]
+}
+
+fn taad_outcome_source_census() -> List<MarkdownBlock> {
+  [
+    h2(text: "The declaration contradicts itself, and it does so 148 times"),
+    p(text: "The rows above describe the anemia as a cross-layer loss: an operation declares typed outcomes, a caller downstream re-derives them from strings. A census of the transport output sources found a sharper form, and it is worth stating separately because it needs no second module to go wrong. THE CONTRADICTION IS INSIDE ONE DECLARATION."),
+    p(text: "An operation declares an exit table keyed on the exit CODE — git.Core.HeadCommit declares `0 => Unit` and `128 => String \"Not a git repository\"`. Six lines above it, the same declaration's output block says `success: Bool from \"exit_success\"`. So the operation states that its outcome is a function of the exit code, and in the same breath discards the exit code and keeps a Bool derived from it. There is no downstream module involved and no drift over time: the authority and the realization are adjacent lines of one declaration, disagreeing on landing."),
+    h3(text: "Measured, with the populations separated"),
+    ul(items: [
+      li(text: "Within dag/extdeps: 164 exit tables declared, 148 operations sourcing `success: Bool from \"exit_success\"`, 51 preserving `from \"exit_code\"`. The lossy form outnumbers the faithful one roughly three to one."),
+      li(text: "Corpus-wide (dag plus src/v2): 184 exit tables, 151 exit_success, 54 exit_code. The extdeps figure is the one the earlier rows quote; both are correct for their own scope and neither supersedes the other."),
+      li(text: "The stderr half is 89 `from \"stderr\"` sources, against the 31 sites measured as INTERPRETING stderr. The gap is the point: most sites that receive stderr do not yet classify on it, so the 31 is the live defect count and the 89 is the exposure that lets it grow."),
+    ]),
+    p(text: "Why this reframes the sequencing rather than merely adding a number. The plan already rules out activating the 164 exit tables as written, because they map codes to English sentences and realizing them wholesale relocates the prose one layer down. That still holds. But it left the impression that the tables are inert and the work is elsewhere, and this census says otherwise: the tables are inert BECAUSE the output block next to them threw away the key they are indexed by. Realizing an exit table is not only a matter of replacing its strings with typed causes; it first requires that the operation stop discarding the exit code, which is a change to 148 output blocks and not to the tables at all."),
+    p(text: "That also settles which of exit_success and exit_code is the scaffold. They are not two options. exit_success is DERIVED from exit_code by a comparison to zero, so a declaration carrying both carries one fact twice, and a declaration carrying only exit_success has destroyed the one its own table needs. The faithful source is the integer; success is a projection and belongs wherever the projection is wanted, which is the renderer."),
+    p(text: "STATED AS A BOUND RATHER THAN IMPLIED: this is a census, not a repair. No output block is changed by this row, the 148 remain, and nothing here has been proven by executing a migration. What it establishes is that the shell half of the outcome work has a denominator and a first mechanical step that is independent of the typed-cause modeling — which is what Lane C needed in order to be sized at all."),
+    p(text: "The HTTP half is the same defect and the plan already names it: an implementation added `http_success: Bool` sourced from a magic key, and it was rejected for collapsing RFC 9110's five status classes into two and baking the boundary into the interpreter. That rejection generalizes here. The five-class classifier now lives in extdeps.transports.rest as http_status_class, beside the RFC that defines it; the shell side has no equivalent yet, and this census is what says how large its consumer set is."),
   ]
 }
 
@@ -156,7 +175,8 @@ fn transport_argv_anemia_dissolution_body() -> List<MarkdownBlock> {
   concat(taad_target(),
   concat(taad_lanes(),
   concat(taad_mechanism_taxonomy(),
-  concat(taad_growth_walls(), taad_sequence())))))))
+  concat(taad_outcome_source_census(),
+  concat(taad_growth_walls(), taad_sequence()))))))))
 }
 
 data transport_argv_anemia_dissolution_plan: Plan = Plan {
