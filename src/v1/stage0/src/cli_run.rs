@@ -34854,16 +34854,52 @@ mod peel_alias_fixpoint_termination {
             });
             let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
                 n.clone(),
-                env,
+                env.clone(),
                 "peel_fixpoint_probe".to_string(),
             );
-            let _ = tx.send((out.name.clone(), out == n));
+            let termination_probe = (out.resolved.name.clone(), out.resolved == n);
+            let refusal_count = out
+                .diagnostics
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::UnresolvedType { .. }
+                    )
+                })
+                .count();
+
+            // Positive control for the legitimate quiet probe-miss half: a
+            // non-alias kernel leaf has nothing to peel and no refusal to
+            // report. Keeping this at zero prevents the typed carrier change
+            // from turning ordinary speculative misses into false reds.
+            let plain_int = crate::v1_std_core::leaf_node_with_span(
+                "Int".to_string(),
+                crate::v1_std_core::kernel_span("Int".to_string()),
+            );
+            let quiet = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                plain_int,
+                env.clone(),
+                "peel_quiet_probe".to_string(),
+            );
+            let quiet_diagnostic_count = quiet.diagnostics.len();
+
+            let _ = tx.send((termination_probe, quiet_diagnostic_count, refusal_count));
         });
-        let (name, is_fixpoint) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
-            "peel_alias_once_for_field_access did not terminate within 30s — the \
+        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count) =
+            rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+                "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
-        );
+            );
         assert_eq!(name, "PeelFixpointProbe");
+        assert_eq!(
+            quiet_diagnostic_count, 0,
+            "a legitimate fixed-point probe miss must stay quiet"
+        );
+        assert_eq!(
+            refusal_count, 2,
+            "a resolver refusal during speculative peel must remain typed and countable"
+        );
         // Termination IS the property under test (the pre-guard control run for
         // this fixture is recorded in the PR body; the strip-tree integration
         // RED — whole-tree completion + bounded peel iterations on the #6640
