@@ -18,6 +18,7 @@ import extdeps.browser.error_presentation {
 type NoHttpResponseKind
   = NameResolutionRefused
   | TailnetUnreachable
+  | Srv1HostDown
   | ConnectionRefused
   | ConnectionReset
   | ResponseTimedOut
@@ -72,6 +73,14 @@ type AudienceObservable
   | BodyOwned { surface: BodyOwnedSurface }
   | AudienceObservableUnobserved { browser: BrowserProduct, reason: NonEmptyStr }
 
+type BrowserFailureInterpretation
+  = BrowserNetworkErrorInterpretation
+  | BrowserHttpErrorInterpretation {
+      body_class: BrowserHttpErrorBodyClass,
+      read: BrowserHttpErrorPresentationRead,
+    }
+  | BrowserRetainsLoadedDocumentInterpretation
+
 fn audience_observable_from_http_error_read(
   read: BrowserHttpErrorPresentationRead,
   body_class: BrowserHttpErrorBodyClass,
@@ -90,22 +99,45 @@ fn audience_observable_from_http_error_read(
   }
 }
 
+fn browser_failure_interpretation(
+  wire: ServedSurfaceWireObservable,
+  browser: BrowserPresentationProfile,
+) -> BrowserFailureInterpretation {
+  match wire {
+    NoHttpResponse { failure: _ } => BrowserNetworkErrorInterpretation
+    TlsHandshakeRefused => BrowserNetworkErrorInterpretation
+    ProxyGeneratedBodyless502 => BrowserHttpErrorInterpretation {
+      body_class: EmptyHttpErrorBody,
+      read: browser_http_error_presentation(profile: browser, body_class: EmptyHttpErrorBody),
+    }
+    GunbcTyped500Response { body: _ } => BrowserHttpErrorInterpretation {
+      body_class: NonEmptyHttpErrorBody,
+      read: browser_http_error_presentation(profile: browser, body_class: NonEmptyHttpErrorBody),
+    }
+    LoadedDocumentPollingRefused { failure: _ } =>
+      BrowserRetainsLoadedDocumentInterpretation
+  }
+}
+
+fn audience_observable_from_browser_interpretation(
+  interpretation: BrowserFailureInterpretation,
+) -> AudienceObservable {
+  match interpretation {
+    BrowserNetworkErrorInterpretation => BrowserOwned
+    BrowserHttpErrorInterpretation { body_class, read } =>
+      audience_observable_from_http_error_read(read: read, body_class: body_class)
+    BrowserRetainsLoadedDocumentInterpretation =>
+      BodyOwned { surface: GunbcClientPollingRefusalSurface }
+  }
+}
+
 fn audience_observable(
   state: ServedSurfaceFailureState,
   browser: BrowserPresentationProfile,
 ) -> AudienceObservable {
-  match served_surface_wire_observable(state: state) {
-    NoHttpResponse { failure: _ } => BrowserOwned
-    TlsHandshakeRefused => BrowserOwned
-    ProxyGeneratedBodyless502 => audience_observable_from_http_error_read(
-      read: browser_http_error_presentation(profile: browser, body_class: EmptyHttpErrorBody),
-      body_class: EmptyHttpErrorBody)
-    GunbcTyped500Response { body: _ } => audience_observable_from_http_error_read(
-      read: browser_http_error_presentation(profile: browser, body_class: NonEmptyHttpErrorBody),
-      body_class: NonEmptyHttpErrorBody)
-    LoadedDocumentPollingRefused { failure: _ } =>
-      BodyOwned { surface: GunbcClientPollingRefusalSurface }
-  }
+  let wire = served_surface_wire_observable(state: state)
+  audience_observable_from_browser_interpretation(
+    interpretation: browser_failure_interpretation(wire: wire, browser: browser))
 }
 
 type BrowserOwnedConstructionMover
@@ -120,6 +152,48 @@ type AudienceObservableFixCeiling
   | ProxyResponseConstructionRequired
   | BodyPresentationChangeAvailable { surface: BodyOwnedSurface }
   | BrowserObservationRequired { browser: BrowserProduct, reason: NonEmptyStr }
+
+type OwnedSurfaceGuaranteeKind
+  = DashboardProcessRestartContinuity
+  | CandidateStartupContinuity
+  | PlannedDeployContinuity
+  | DynamicObserverUnavailableContinuity
+  | TypedBackendRefusalContinuity
+
+type RequiredFailureDomain
+  = Srv1HostFailureDomain
+  | TailscaledFailureDomain
+  | TailnetDnsTlsFailureDomain
+
+type ServedSurfaceContinuityBoundary
+  = OwnedSurfaceGuarantee { guarantees: List<OwnedSurfaceGuaranteeKind> }
+  | RequiresAnotherFailureDomain { domain: RequiredFailureDomain }
+
+fn served_surface_continuity_boundary(
+  state: ServedSurfaceFailureState,
+) -> ServedSurfaceContinuityBoundary {
+  match state {
+    DnsTailnetFailure { failure } => match failure {
+      Srv1HostDown => RequiresAnotherFailureDomain { domain: Srv1HostFailureDomain }
+      _ => RequiresAnotherFailureDomain { domain: TailnetDnsTlsFailureDomain }
+    }
+    TlsCertificateFailure => RequiresAnotherFailureDomain { domain: TailnetDnsTlsFailureDomain }
+    TailscaleServeProxyFailure { failure: _ } =>
+      RequiresAnotherFailureDomain { domain: TailscaledFailureDomain }
+    GunbcServeProcessFailure { absence: _ } => OwnedSurfaceGuarantee {
+      guarantees: [DashboardProcessRestartContinuity],
+    }
+    GunbcServeCompileWindow => OwnedSurfaceGuarantee {
+      guarantees: [CandidateStartupContinuity, PlannedDeployContinuity],
+    }
+    GunbcServeApplication500 { body: _ } => OwnedSurfaceGuarantee {
+      guarantees: [TypedBackendRefusalContinuity],
+    }
+    ServedSurfaceClientPollingFailure { failure: _ } => OwnedSurfaceGuarantee {
+      guarantees: [DynamicObserverUnavailableContinuity],
+    }
+  }
+}
 
 fn browser_owned_mover(state: ServedSurfaceFailureState) -> BrowserOwnedConstructionMover {
   match state {
@@ -149,22 +223,29 @@ fn audience_observable_fix_ceiling(
 type ServedSurfaceAudienceObservableRow {
   failure: ServedSurfaceFailureState
   wire: ServedSurfaceWireObservable
+  browser_interpretation: BrowserFailureInterpretation
   browser: BrowserProduct
   observable: AudienceObservable
   fix_ceiling: AudienceObservableFixCeiling
+  continuity_boundary: ServedSurfaceContinuityBoundary
 }
 
 fn served_surface_audience_observable_row(
   failure: ServedSurfaceFailureState,
   browser: BrowserPresentationProfile,
 ) -> ServedSurfaceAudienceObservableRow {
-  let observable = audience_observable(state: failure, browser: browser)
+  let wire = served_surface_wire_observable(state: failure)
+  let interpretation = browser_failure_interpretation(wire: wire, browser: browser)
+  let observable = audience_observable_from_browser_interpretation(
+    interpretation: interpretation)
   ServedSurfaceAudienceObservableRow {
     failure: failure,
-    wire: served_surface_wire_observable(state: failure),
+    wire: wire,
+    browser_interpretation: interpretation,
     browser: browser_presentation_product(profile: browser),
     observable: observable,
     fix_ceiling: audience_observable_fix_ceiling(state: failure, observable: observable),
+    continuity_boundary: served_surface_continuity_boundary(state: failure),
   }
 }
 
@@ -190,3 +271,5 @@ fn served_surface_audience_observable_map(
 }
 
 data observable_fix_ceiling_note: String = "THE FIX CEILING IS DATA. BrowserOwned cannot be styled by the application because no application document controls those pixels; the only reachable move is construction at the failing hop. Process-absence and compile-window browser-owned cells name BlueGreenServeFlipLane as their mover, consuming the active blue/green lane rather than duplicating it. ProxyFabricated can move only by changing proxy response construction. BodyOwned is the only arm where the typed error body or persistent client refusal surface is available to application presentation. Unobserved blocks a fix claim on a browser observation first."
+
+data audience_observable_three_fact_note: String = "EVERY MATRIX CELL RETAINS THREE FACTS. wire is the network or proxy response, browser_interpretation is the ordinary user-agent upstream's interpretation of that response, and observable is the user-visible surface derived from both. None is a synonym for another. Browser product labels select observed capability rows only; the interaction derivation has no Chrome/Firefox/Safari product branch. continuity_boundary states where this process can honestly promise continuity: owned dashboard/process/deploy/observer/backend refusals stay inside the responder domain, while srv1, tailscaled, and tailnet/DNS/TLS loss require another failure domain and therefore carry no local continuity claim."

@@ -1,6 +1,6 @@
 module extdeps.browser.error_presentation
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, Int, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -73,11 +73,62 @@ type BrowserHttpErrorPresentationPair {
   nonempty_body: BrowserHttpErrorPresentation
 }
 
+type BrowserHttpHeader {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+type BrowserResponseBodyBytes
+  = EmptyResponseBodyBytes
+  | Utf8ResponseBodyBytes { body: NonEmptyStr, byte_count: Int }
+
+type BrowserHttpStatusReceipt
+  = NoHttpResponseStatus
+  | HttpResponseStatus { status: Int }
+
+type BrowserNavigationResult
+  = NavigationRejected { error: NonEmptyStr }
+  | NavigationReturnedResponse { status: Int }
+
+type BrowserDomOwnership
+  = BrowserErrorDocumentOwned
+  | HttpResponseDocumentOwned
+
+type BrowserScreenshotReceipt {
+  repository_path: NonEmptyStr
+  sha256: NonEmptyStr
+  byte_count: Int
+}
+
+type BrowserRecoveryBehavior
+  = RecoveryVisibleAfterExplicitReload
+  | RecoveryNotExecuted { reason: NonEmptyStr }
+
+type BrowserReloadRequirement
+  = ExplicitReloadRequired
+  | ReloadNotRequired
+  | ReloadRequirementUnobserved
+
+type BrowserPresentationSpecimenReceipt {
+  requested_url: NonEmptyStr
+  browser_build: BrowserRelease
+  http_status: BrowserHttpStatusReceipt
+  response_headers: List<BrowserHttpHeader>
+  response_body_bytes: BrowserResponseBodyBytes
+  navigation_result: BrowserNavigationResult
+  final_url: NonEmptyStr
+  dom_ownership: BrowserDomOwnership
+  screenshot: BrowserScreenshotReceipt
+  recovery_behavior: BrowserRecoveryBehavior
+  reload_requirement: BrowserReloadRequirement
+}
+
 type BrowserPresentationExecutionReceipt {
   observed_on: NonEmptyStr
   harness: NonEmptyStr
-  empty_response_evidence: NonEmptyStr
-  nonempty_response_evidence: NonEmptyStr
+  connection_refused: BrowserPresentationSpecimenReceipt
+  empty_response: BrowserPresentationSpecimenReceipt
+  nonempty_response: BrowserPresentationSpecimenReceipt
 }
 
 type BrowserPresentationProfile
@@ -91,7 +142,7 @@ type BrowserPresentationProfile
       reason: NonEmptyStr,
     }
 
-data browser_error_presentation_evidence_note: String = "THESE ARE BUILD-GRAIN OBSERVATIONS, NOT BROWSER PROMISES. Chrome, Firefox, and Safari own network-error UI whose wording and replacement policy can move between releases; the exact release is therefore mandatory on the only constructor that may carry a presentation answer. BrowserPresentationUnobserved has no presentation fields at all: nobody looking cannot be rounded toward either replacement or rendering. A future observation upgrades one whole discriminating pair from the same run — empty 502 versus non-empty 502 — so two separately authored facts cannot accidentally cite different builds. The vendor rows cite the real upstream error-page implementations; fetch_error_semantics_authority separately grounds the script-fetch fact that network errors reject while HTTP error responses remain responses."
+data browser_error_presentation_evidence_note: String = "THESE ARE BUILD-GRAIN OBSERVATIONS, NOT BROWSER PROMISES. Chrome, Firefox, and Safari own network-error UI whose wording and replacement policy can move between releases; the exact release is therefore mandatory on the only constructor that may carry a presentation answer. BrowserPresentationUnobserved has no presentation fields at all: nobody looking cannot be rounded toward either replacement or rendering. A future observation upgrades one complete discriminator run — connection refusal, empty 502, and non-empty 502 — so separately authored facts cannot accidentally cite different builds. Each specimen retains the requested URL, browser build, HTTP status availability, response headers and bytes, navigation result, DOM owner, screenshot receipt, recovery behavior, and reload requirement. The vendor rows cite the real upstream error-page implementations; fetch_error_semantics_authority separately grounds the script-fetch fact that network errors reject while HTTP error responses remain responses."
 
 data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPresentationObserved {
   browser_build: BrowserRelease {
@@ -104,9 +155,81 @@ data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPrese
   },
   receipt: BrowserPresentationExecutionReceipt {
     observed_on: "2026-08-01" as NonEmptyStr,
-    harness: "Playwright 1.62.1 Chromium, headless Linux arm64; one local HTTP server answered Content-Length 0 status 502 and text/plain status 502 carrying GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
-    empty_response_evidence: "page.goto refused with net::ERR_HTTP_RESPONSE_CODE_FAILURE and page.url committed chrome-error://chromewebdata/" as NonEmptyStr,
-    nonempty_response_evidence: "page.goto returned status 502 at the requested HTTP URL and page.content contained GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
+    harness: "Playwright 1.62.1 Chromium, headless Linux arm64; local ports exercised connection refusal, bodyless status 502, and sentinel-bearing status 502, then each route became status 200 and the harness explicitly reloaded to observe recovery" as NonEmptyStr,
+    connection_refused: BrowserPresentationSpecimenReceipt {
+      requested_url: "http://127.0.0.1:43822/refused" as NonEmptyStr,
+      browser_build: BrowserRelease {
+        product: GoogleChrome,
+        exact_version: "151.0.7922.34" as NonEmptyStr,
+      },
+      http_status: NoHttpResponseStatus,
+      response_headers: [],
+      response_body_bytes: EmptyResponseBodyBytes,
+      navigation_result: NavigationRejected {
+        error: "net::ERR_CONNECTION_REFUSED" as NonEmptyStr,
+      },
+      final_url: "chrome-error://chromewebdata/" as NonEmptyStr,
+      dom_ownership: BrowserErrorDocumentOwned,
+      screenshot: BrowserScreenshotReceipt {
+        repository_path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as NonEmptyStr,
+        sha256: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as NonEmptyStr,
+        byte_count: 19520,
+      },
+      recovery_behavior: RecoveryVisibleAfterExplicitReload,
+      reload_requirement: ExplicitReloadRequired,
+    },
+    empty_response: BrowserPresentationSpecimenReceipt {
+      requested_url: "http://127.0.0.1:43821/empty" as NonEmptyStr,
+      browser_build: BrowserRelease {
+        product: GoogleChrome,
+        exact_version: "151.0.7922.34" as NonEmptyStr,
+      },
+      http_status: HttpResponseStatus { status: 502 },
+      response_headers: [
+        BrowserHttpHeader { name: "content-length" as NonEmptyStr, value: "0" as NonEmptyStr },
+        BrowserHttpHeader { name: "x-gunbc-specimen" as NonEmptyStr, value: "empty-502" as NonEmptyStr },
+      ],
+      response_body_bytes: EmptyResponseBodyBytes,
+      navigation_result: NavigationRejected {
+        error: "net::ERR_HTTP_RESPONSE_CODE_FAILURE" as NonEmptyStr,
+      },
+      final_url: "chrome-error://chromewebdata/" as NonEmptyStr,
+      dom_ownership: BrowserErrorDocumentOwned,
+      screenshot: BrowserScreenshotReceipt {
+        repository_path: "dag/test/fixtures/browser/chromium_151_empty_502.png" as NonEmptyStr,
+        sha256: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as NonEmptyStr,
+        byte_count: 14089,
+      },
+      recovery_behavior: RecoveryVisibleAfterExplicitReload,
+      reload_requirement: ExplicitReloadRequired,
+    },
+    nonempty_response: BrowserPresentationSpecimenReceipt {
+      requested_url: "http://127.0.0.1:43821/body" as NonEmptyStr,
+      browser_build: BrowserRelease {
+        product: GoogleChrome,
+        exact_version: "151.0.7922.34" as NonEmptyStr,
+      },
+      http_status: HttpResponseStatus { status: 502 },
+      response_headers: [
+        BrowserHttpHeader { name: "content-length" as NonEmptyStr, value: "26" as NonEmptyStr },
+        BrowserHttpHeader { name: "content-type" as NonEmptyStr, value: "text/plain; charset=utf-8" as NonEmptyStr },
+        BrowserHttpHeader { name: "x-gunbc-specimen" as NonEmptyStr, value: "bodied-502" as NonEmptyStr },
+      ],
+      response_body_bytes: Utf8ResponseBodyBytes {
+        body: "GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
+        byte_count: 26,
+      },
+      navigation_result: NavigationReturnedResponse { status: 502 },
+      final_url: "http://127.0.0.1:43821/body" as NonEmptyStr,
+      dom_ownership: HttpResponseDocumentOwned,
+      screenshot: BrowserScreenshotReceipt {
+        repository_path: "dag/test/fixtures/browser/chromium_151_bodied_502.png" as NonEmptyStr,
+        sha256: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as NonEmptyStr,
+        byte_count: 6337,
+      },
+      recovery_behavior: RecoveryVisibleAfterExplicitReload,
+      reload_requirement: ExplicitReloadRequired,
+    },
   },
 }
 

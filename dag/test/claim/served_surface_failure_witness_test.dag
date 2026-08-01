@@ -3,11 +3,20 @@ module test.claim.served_surface_failure_witness
 import std.types { NonEmptyStr }
 import extdeps.browser.error_presentation {
   BrowserRelease,
-  BrowserPresentationExecutionReceipt,
   BrowserHttpErrorPresentationPair,
   BrowserPresentationProfile,
   BrowserPresentationObserved,
   BrowserPresentationUnobserved,
+  EmptyResponseBodyBytes,
+  Utf8ResponseBodyBytes,
+  NoHttpResponseStatus,
+  HttpResponseStatus,
+  NavigationRejected,
+  NavigationReturnedResponse,
+  BrowserErrorDocumentOwned,
+  HttpResponseDocumentOwned,
+  RecoveryVisibleAfterExplicitReload,
+  ExplicitReloadRequired,
   BrowserReplacesHttpErrorResponse,
   BrowserRendersHttpErrorResponse,
   GoogleChrome,
@@ -40,6 +49,8 @@ import gunbc.served_surface_failure {
   ProxyFabricated,
   BodyOwned,
   AudienceObservableUnobserved,
+  BrowserNetworkErrorInterpretation,
+  BrowserHttpErrorInterpretation,
   GunbcTypedErrorBody,
   GunbcClientPollingRefusalSurface,
   AudienceObservableFixCeiling,
@@ -48,9 +59,23 @@ import gunbc.served_surface_failure {
   BodyPresentationChangeAvailable,
   BrowserObservationRequired,
   BlueGreenServeFlipLane,
+  Srv1HostDown,
+  OwnedSurfaceGuarantee,
+  RequiresAnotherFailureDomain,
+  DashboardProcessRestartContinuity,
+  CandidateStartupContinuity,
+  PlannedDeployContinuity,
+  DynamicObserverUnavailableContinuity,
+  TypedBackendRefusalContinuity,
+  Srv1HostFailureDomain,
+  TailscaledFailureDomain,
+  TailnetDnsTlsFailureDomain,
   served_surface_wire_observable,
+  browser_failure_interpretation,
   audience_observable,
   audience_observable_fix_ceiling,
+  served_surface_continuity_boundary,
+  served_surface_audience_observable_row,
   served_surface_audience_observable_map,
 }
 
@@ -58,29 +83,29 @@ fn observed_chrome_fixture(
   empty_replaced: Bool,
   body_replaced: Bool,
 ) -> BrowserPresentationProfile {
-  BrowserPresentationObserved {
-    browser_build: BrowserRelease {
-      product: GoogleChrome,
-      exact_version: "fixture-1" as NonEmptyStr,
-    },
-    http_error: BrowserHttpErrorPresentationPair {
-      empty_body: if empty_replaced {
-        BrowserReplacesHttpErrorResponse
-      } else {
-        BrowserRendersHttpErrorResponse
-      },
-      nonempty_body: if body_replaced {
-        BrowserReplacesHttpErrorResponse
-      } else {
-        BrowserRendersHttpErrorResponse
-      },
-    },
-    receipt: BrowserPresentationExecutionReceipt {
-      observed_on: "test-local" as NonEmptyStr,
-      harness: "test-local discriminating profile" as NonEmptyStr,
-      empty_response_evidence: "fixture" as NonEmptyStr,
-      nonempty_response_evidence: "fixture" as NonEmptyStr,
-    },
+  match google_chrome_error_presentation {
+    BrowserPresentationObserved { browser_build: _, http_error: _, receipt } =>
+      BrowserPresentationObserved {
+        browser_build: BrowserRelease {
+          product: GoogleChrome,
+          exact_version: "fixture-1" as NonEmptyStr,
+        },
+        http_error: BrowserHttpErrorPresentationPair {
+          empty_body: if empty_replaced {
+            BrowserReplacesHttpErrorResponse
+          } else {
+            BrowserRendersHttpErrorResponse
+          },
+          nonempty_body: if body_replaced {
+            BrowserReplacesHttpErrorResponse
+          } else {
+            BrowserRendersHttpErrorResponse
+          },
+        },
+        receipt: receipt,
+      }
+    BrowserPresentationUnobserved { product, reason } =>
+      BrowserPresentationUnobserved { product: product, reason: reason }
   }
 }
 
@@ -192,4 +217,89 @@ test fn witness_unobserved_browser_never_fabricates_presentation() -> Bool {
       }
     _ => false
   }
+}
+
+test fn witness_execution_receipt_retains_full_specimens() -> Bool {
+  match google_chrome_error_presentation {
+    BrowserPresentationObserved { browser_build: _, http_error: _, receipt } =>
+      receipt.connection_refused.requested_url == "http://127.0.0.1:43822/refused"
+        && receipt.connection_refused.browser_build.exact_version == "151.0.7922.34"
+        && receipt.connection_refused.http_status == NoHttpResponseStatus
+        && count(receipt.connection_refused.response_headers) == 0
+        && receipt.connection_refused.response_body_bytes == EmptyResponseBodyBytes
+        && receipt.connection_refused.navigation_result == NavigationRejected {
+          error: "net::ERR_CONNECTION_REFUSED" as NonEmptyStr,
+        }
+        && receipt.connection_refused.dom_ownership == BrowserErrorDocumentOwned
+        && receipt.connection_refused.screenshot.sha256 ==
+          "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3"
+        && receipt.connection_refused.recovery_behavior == RecoveryVisibleAfterExplicitReload
+        && receipt.connection_refused.reload_requirement == ExplicitReloadRequired
+        && receipt.empty_response.requested_url == "http://127.0.0.1:43821/empty"
+        && receipt.empty_response.browser_build.exact_version == "151.0.7922.34"
+        && receipt.empty_response.http_status == HttpResponseStatus { status: 502 }
+        && count(receipt.empty_response.response_headers) == 2
+        && receipt.empty_response.response_body_bytes == EmptyResponseBodyBytes
+        && receipt.empty_response.navigation_result == NavigationRejected {
+          error: "net::ERR_HTTP_RESPONSE_CODE_FAILURE" as NonEmptyStr,
+        }
+        && receipt.empty_response.dom_ownership == BrowserErrorDocumentOwned
+        && receipt.empty_response.screenshot.sha256 ==
+          "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6"
+        && receipt.empty_response.recovery_behavior == RecoveryVisibleAfterExplicitReload
+        && receipt.empty_response.reload_requirement == ExplicitReloadRequired
+        && receipt.nonempty_response.requested_url == "http://127.0.0.1:43821/body"
+        && receipt.nonempty_response.browser_build.exact_version == "151.0.7922.34"
+        && receipt.nonempty_response.http_status == HttpResponseStatus { status: 502 }
+        && count(receipt.nonempty_response.response_headers) == 3
+        && receipt.nonempty_response.response_body_bytes == Utf8ResponseBodyBytes {
+          body: "GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
+          byte_count: 26,
+        }
+        && receipt.nonempty_response.navigation_result == NavigationReturnedResponse { status: 502 }
+        && receipt.nonempty_response.dom_ownership == HttpResponseDocumentOwned
+        && receipt.nonempty_response.screenshot.sha256 ==
+          "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71"
+        && receipt.nonempty_response.recovery_behavior == RecoveryVisibleAfterExplicitReload
+        && receipt.nonempty_response.reload_requirement == ExplicitReloadRequired
+    BrowserPresentationUnobserved { product: _, reason: _ } => false
+  }
+}
+
+test fn witness_matrix_retains_wire_interpretation_and_surface() -> Bool {
+  let row = served_surface_audience_observable_row(
+    failure: GunbcServeCompileWindow,
+    browser: google_chrome_error_presentation)
+  row.wire == ProxyGeneratedBodyless502
+    && match row.browser_interpretation {
+      BrowserHttpErrorInterpretation { body_class: _, read: _ } => true
+      _ => false
+    }
+    && row.observable == BrowserOwned
+}
+
+test fn witness_continuity_boundary_stops_at_failed_domains() -> Bool {
+  served_surface_continuity_boundary(
+    state: DnsTailnetFailure { failure: Srv1HostDown },
+  ) == RequiresAnotherFailureDomain { domain: Srv1HostFailureDomain }
+    && served_surface_continuity_boundary(
+      state: TailscaleServeProxyFailure { failure: ConnectionRefused },
+    ) == RequiresAnotherFailureDomain { domain: TailscaledFailureDomain }
+    && served_surface_continuity_boundary(
+      state: TlsCertificateFailure,
+    ) == RequiresAnotherFailureDomain { domain: TailnetDnsTlsFailureDomain }
+    && served_surface_continuity_boundary(
+      state: GunbcServeProcessFailure { absence: GunbcServeCrashed },
+    ) == OwnedSurfaceGuarantee { guarantees: [DashboardProcessRestartContinuity] }
+    && served_surface_continuity_boundary(
+      state: GunbcServeCompileWindow,
+    ) == OwnedSurfaceGuarantee {
+      guarantees: [CandidateStartupContinuity, PlannedDeployContinuity],
+    }
+    && served_surface_continuity_boundary(
+      state: GunbcServeApplication500 { body: "typed" as NonEmptyStr },
+    ) == OwnedSurfaceGuarantee { guarantees: [TypedBackendRefusalContinuity] }
+    && served_surface_continuity_boundary(
+      state: ServedSurfaceClientPollingFailure { failure: ClientPollNetworkFailure },
+    ) == OwnedSurfaceGuarantee { guarantees: [DynamicObserverUnavailableContinuity] }
 }
