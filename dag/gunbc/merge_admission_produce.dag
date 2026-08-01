@@ -342,7 +342,7 @@ fn ci_repo_root_shell() -> String {
   git_toplevel_shell_subexpr_with_fallback()
 }
 
-data merge_admission_v1_tool_source_roots: List<String> = ["dag"]
+data merge_admission_v1_tool_source_roots: List<String> = witness_layer_roots
 
 data merge_admission_gate_entry_path: String = "dag/tools/merge_admission_gate.dag"
 
