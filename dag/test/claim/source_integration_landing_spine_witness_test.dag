@@ -785,7 +785,9 @@ test fn witness_p0_closed_zero_is_closure_qualified() -> Bool {
       disposition: _,
     } =>
       closed_space.subject.ready_evidence.policy == "p0-exact-guarantee-policy"
-        && closed_space.closure.multiplicity.receipt == "multiplicity-receipt"
+        && closed_space.closure.multiplicity.receipt == content_hash_of_value(
+          value: "multiplicity-receipt",
+        )
     _ => false
   }
 }

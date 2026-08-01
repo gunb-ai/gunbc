@@ -1271,11 +1271,11 @@ fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
 
 fn belt_uuid_hex32(node_id: String, probed_at: String) -> String {
   concat(
-    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)) as String,
+    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)).digest as String,
     content_hash_combine_structural(
       left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)),
       right: content_hash_atom(value: belt_session_uuid_salt),
-    ) as String,
+    ).digest as String,
   )
 }
 
