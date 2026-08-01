@@ -64,7 +64,36 @@ data nfr_reason_verification_producer_absent: String = "NOT terminal-state absor
 
 data nfr_dissolve_verification_producer_absent: String = "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending."
 
+data nfr_reason_dispatch_selection_routing: String = "provider-selection routing residue (match on ProviderSelectionRequest, ProviderOffer, or ResolvedProviderSelection with off-shape wildcard refusal or false arms) landed with Slice A dispatch_selection.dag; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_dispatch_selection_routing: String = "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::automatic_codex_behavior_preservation_holds" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_codex_offer" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_provider_offer" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::selection_requests_match" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
     reason: nfr_reason_provider_terminal_absorb,
