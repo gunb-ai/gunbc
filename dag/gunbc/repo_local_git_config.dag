@@ -1,5 +1,6 @@
 module gunbc.repo_local_git_config
 
+import std.types { FilePath }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -120,13 +121,10 @@ fn repo_local_git_config_converged(observed: List<RepoLocalGitConfigBinding>) ->
 
 fn observe_binding_via_core(desired: RepoLocalGitConfigBinding) -> RepoLocalGitConfigBinding? {
   let result = git.Core.ConfigLocalGet(key: desired.key)
-  if result.success
-    && binding_read_back_matches(binding: desired, observed_value: result.value) {
-    Present {
-      value: observed_binding(key: desired.key, value: trim(s: result.value))
-    }
+  if result.success && binding_read_back_matches(binding: desired, observed_value: result.value) {
+    Present { value: observed_binding(key: desired.key, value: trim(s: result.value)) }
   } else {
-    Absent
+    none
   }
 }
 
@@ -182,10 +180,7 @@ fn apply_repo_local_git_config_plan(
   )
 }
 
-fn repo_local_git_config_converge_actuate() -> Reconciliation<
-  List<RepoLocalGitConfigBinding>,
-  RepoLocalGitConfigConvergedEvidence,
-> {
+fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
   let desired = desired_repo_local_git_config_bindings()
   let observed_before = observe_repo_local_git_config_bindings()
   let plan = repo_local_git_config_reconcile(desired: desired, observed: observed_before)
