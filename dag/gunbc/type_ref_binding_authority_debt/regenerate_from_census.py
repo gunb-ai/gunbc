@@ -241,7 +241,7 @@ def main() -> None:
                     file,
                     start,
                     end,
-                    "incidental_outside_unbound_vocab_subset_by_construction",
+                    "incidental_outside_unbound_vocab_subset_by_subset_rule",
                 )
             )
             continue

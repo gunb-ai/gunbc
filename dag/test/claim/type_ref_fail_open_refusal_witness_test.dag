@@ -14,7 +14,10 @@ import gunbc.type_ref_binding_authority_debt {
   type_ref_roster_regenerator_choice,
   type_ref_roster_pure_regen_dissolve_trigger,
   type_ref_roster_host_effect_classify_procedure_note,
-  type_ref_roster_host_effect_classify_optional_trigger
+  type_ref_roster_host_effect_classify_optional_trigger,
+  type_ref_debt_freeze_early_receipt,
+  type_ref_debt_provisional_combined_counts_note,
+  type_ref_debt_site_disposition_note
 }
 import std.types { String, Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -90,4 +93,21 @@ test fn host_effect_classify_is_procedure_not_scaffold() -> Bool {
     && string_contains(s: type_ref_roster_host_effect_classify_procedure_note, pattern: "No dissolve-on")
     && string_contains(s: type_ref_roster_host_effect_classify_optional_trigger, pattern: "OPTIONAL only")
     && string_contains(s: type_ref_roster_host_effect_classify_optional_trigger, pattern: "Peel re-census does not fire this")
+}
+
+test fn freeze_early_receipt_names_revealed_229_retired_0() -> Bool {
+  string_contains(s: type_ref_debt_freeze_early_receipt, pattern: "229 pre-existing sites")
+    && string_contains(s: type_ref_debt_freeze_early_receipt, pattern: "retired_delta = 0")
+}
+
+test fn provisional_combined_counts_record_2998_beside_2155() -> Bool {
+  string_contains(s: type_ref_debt_provisional_combined_counts_note, pattern: "2155 (PROVISIONAL)")
+    && string_contains(s: type_ref_debt_provisional_combined_counts_note, pattern: "2998")
+    && string_contains(s: type_ref_debt_provisional_combined_counts_note, pattern: "dup_extra = 843")
+}
+
+test fn incidental_outside_subset_is_by_subset_rule_not_construction() -> Bool {
+  string_contains(s: type_ref_debt_site_disposition_note, pattern: "incidental BY SUBSET RULE")
+    && string_contains(s: type_ref_debt_site_disposition_note, pattern: "almost certainly")
+    && (string_contains(s: type_ref_debt_site_disposition_note, pattern: "BY CONSTRUCTION") == false)
 }

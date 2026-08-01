@@ -5,17 +5,25 @@ scratch_sha: d8a5a37c283b0677ce05310ca23e6d2c8bd109f6
 admit: GUNBC_TYPE_REF_DEBT_ADMIT=0
 baseline_pin: 89dbea7d896b3ae95195117374a8c0c9454f341e (arm-only unique UnresolvedType ≈1926)
 
-combined unique UnresolvedType sites: 2155
+PROVISIONAL identity-grain unique UnresolvedType sites: 2155
+  (labeled provisional everywhere until post-merge pin — do not quote as final)
+raw SITE lines: 2998
+dup_extra: 843 (peel re-resolves amplify fire multiplicity; roster keys identity grain)
 baseline unique: 1926
 REVEALED_DELTA (unique identity TYPE×file×span): 229
 retired_delta: 0
-raw SITE lines combined: 2998 (dup_extra 843 — peel re-resolves amplify fire count; identity grain is 2155)
 revealed raw fire count: 821
 
+FREEZE-EARLY RECEIPT: a roster frozen before the peel fix would have refused
+229 pre-existing sites as new, each landing on an author who added nothing;
+measured revealed 229, retired 0.
+
 Classification of the 229 revealed (same discriminator; additive):
-  incidental_by_construction (outside unbound-vocab subset): 228
-  incidental_via_exec (vocab hit, no control depends on unbound): 1
-    (Time @ dag/std/realization_schedule.dag — same prose shape as before)
+  incidental BY SUBSET RULE (outside unbound/refusal-vocab subset): 228
+    rule: a deliberate expect-red control must assert something about the
+    refusal, so it would almost certainly carry that vocabulary
+  incidental via exec (vocab hit, no control depends on unbound): 1
+    (Time @ dag/std/realization_schedule.dag — prose "unresolved type name")
   deliberate expect-red: 0
   unclassified: 0
 
