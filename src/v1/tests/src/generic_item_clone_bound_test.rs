@@ -1,8 +1,9 @@
-//! E0277: generic struct and enum items that #[derive] Clone/Debug/serde must emit
-//! `N: Clone` on the item's generic parameter list when N appears in field or variant
-//! payload types (bare generic fields, FreeMonoid<N>, nested applied types).
+//! Offline positive controls for item-level generic Clone bound emission (local dev only).
 //!
-//! Negative control: a generic param unused in field types must NOT receive a spurious bound.
+//! CI does not RUN this crate's tests — `commit_gate_rust_suite_removed_disposition`
+//! (2026-07-11); the build job only cargo-checks `v1-compiler-tests`. Per-PR executing
+//! evidence is (a) stage0 `cargo check` compiling generated carriers, and (b) the enrolled
+//! floor witness `dag/test/claim/generic_item_clone_bound_witness_test.dag`.
 
 use crate::helpers::compile_dag_named;
 use v1_compiler::v1_compiler_artifact::RenderTarget;

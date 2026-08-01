@@ -37,7 +37,7 @@ pub enum CostBasis {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CostAccount<S> {
+pub struct CostAccount<S: Clone> {
     pub time: Rc<Measure<(), S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
@@ -397,7 +397,7 @@ pub enum NoWalkFinalization {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WalkPlan<F> {
+pub struct WalkPlan<F: Clone> {
     pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
     pub finalization: F,
     pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
@@ -428,7 +428,7 @@ pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RealizationPlan<S> {
+pub struct RealizationPlan<S: Clone> {
     pub target: ContentHash,
     pub objective: Rc<RealizationObjective>,
     pub schedule: Schedule,

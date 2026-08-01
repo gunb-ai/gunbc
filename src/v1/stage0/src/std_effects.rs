@@ -22,7 +22,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum EffectShape<K> {
+pub enum EffectShape<K: Clone> {
     ReadEffect,
     UpsertEffect { key_source: K },
     DeleteEffect { key_source: K },
@@ -42,7 +42,7 @@ pub fn execute_effect_note() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum CreateCause<K> {
+pub enum CreateCause<K: Clone> {
     PostAlways,
     CreateIfAbsent { key_source: K },
     KeylessFallback { method: HttpMethod },

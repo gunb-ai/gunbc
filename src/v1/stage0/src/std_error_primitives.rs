@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum Result<Ok, Err> {
+pub enum Result<Ok: Clone, Err: Clone> {
     Ok { value: Ok },
     Err { value: Err },
 }

@@ -68,7 +68,7 @@ pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> String {
 pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Item-level Clone bound: a generic type parameter needs N: Clone on the struct or enum declaration when it appears in any field or variant-payload type expression and the item emits #[derive] attributes that require Clone on type parameters. Unused phantom-only parameters are not field types and therefore receive no bound.".to_string()
+            "Item-level Clone bound rule: for each generic type parameter P on a struct or enum item, emit P: Clone on the item declaration iff P appears anywhere in any resolved field or variant-payload type expression (v1_type_expr_mentions_param_name over v1.compiler.infer_types resolved_type nodes). Phantom-only params not mentioned in field types receive no bound. Does not bound every param unconditionally. Not wired from target_derive_supplemental_generic_bound_contract (that model remains unwired; item rule is structural mention, not per-derive contract lookup).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

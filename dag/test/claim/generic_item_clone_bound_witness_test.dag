@@ -1,0 +1,46 @@
+module test.claim.generic_item_clone_bound_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data generic_item_clone_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit item-level Clone bounds. compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles the inline fixture and asserts emitted Rust spellings. Per-PR rustc evidence is the build job cargo-checking the whole stage0 crate (generated std modules compile only when bounds are correct). src/v1/tests generic_item_clone_bound_test is an offline positive control — v1-compiler-tests is compile-only in CI (commit_gate_rust_suite_removed_disposition). Rule: generic param P gets P: Clone on the item declaration when P appears anywhere in a resolved field or variant-payload type expression; unused phantom-only params stay bare."
+
+fn w_containment_path_emits_clone_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.fixture\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n",
+    "src/generic_item_witness_fixture.rs",
+    ["struct ContainmentPath<N: Clone>"],
+    []
+  )
+}
+
+fn w_unused_param_no_spurious_clone_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.holder\n\ntype Holder<N> {\n  tag: Int\n}\n",
+    "src/generic_item_witness_holder.rs",
+    ["struct Holder<N>"],
+    ["struct Holder<N: Clone>"]
+  )
+}
+
+fn w_enum_payload_emits_clone_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.enum_fixture\nimport std.algebra { FreeMonoid }\n\ntype BindingOccurrence<N> {\n  containment: ContainmentPath<N>\n}\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype OccurrenceBindingResult<N>\n  = OccurrenceBound { binding: OccurrenceBinding<N> }\n  | OccurrenceUnbound { occurrence: BindingOccurrence<N> }\n\ntype OccurrenceBinding<N> {\n  occurrence: BindingOccurrence<N>\n  candidate: BindingCandidate<N>\n}\n\ntype BindingCandidate<N> {\n  containment: ContainmentPath<N>\n}\n",
+    "src/generic_item_witness_enum_fixture.rs",
+    ["enum OccurrenceBindingResult<N: Clone>"],
+    []
+  )
+}
+
+test fn containment_path_clone_bound_positive() -> Bool {
+  w_containment_path_emits_clone_bound()
+}
+
+test fn unused_generic_param_negative_control() -> Bool {
+  w_unused_param_no_spurious_clone_bound()
+}
+
+test fn enum_payload_clone_bound_positive() -> Bool {
+  w_enum_payload_emits_clone_bound()
+}
