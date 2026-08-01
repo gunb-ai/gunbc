@@ -35,6 +35,8 @@ type GitCommitRequest {
   allow_empty: Bool
 }
 
+data git_commit_allow_empty_dispatch_note: String = "GitCommitRequest.allow_empty selects RecordEmptyCommit vs RecordCommit at transport bind — two operations, because shell argv templates cannot branch on Bool."
+
 service git.PublicationTransport {
   operation PushRefUpdate {
     input {
@@ -56,7 +58,6 @@ service git.PublicationTransport {
   operation RecordCommit {
     input {
       message: NonEmptyStr
-      allow_empty: Bool = false
     }
     output {
       sha: CommitSha from "stdout"
@@ -64,6 +65,22 @@ service git.PublicationTransport {
       stderr: String from "stderr"
     }
     transport shell { argv: ["git", "commit", "-m", "{message}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Commit failed"
+    }
+  }
+
+  operation RecordEmptyCommit {
+    input {
+      message: NonEmptyStr
+    }
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "commit", "--allow-empty", "-m", "{message}"] }
     exit {
       0 => Unit
       nonzero => String "Commit failed"

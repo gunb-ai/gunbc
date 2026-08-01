@@ -2,7 +2,7 @@ module tools.publication_publisher
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.git.hooks { PrePushStdinRow }
-import gunbc.public_projection { PublicProjectionPlan }
+import gunbc.public_projection { PublicProjectionPlan, PublicationSubject }
 import gunbc.publication_admission_delta {
   ChangeLocalAdmissionRequest,
   ChangeLocalAdmissionOutcome,
@@ -10,11 +10,14 @@ import gunbc.publication_admission_delta {
   ChangeLocalRefused,
   CandidateDigestInconsistent,
   WholeProjectionAuditRequired,
+  ProjectionDeltaClass,
+  NewlyPublic,
   admit_change_local_projection,
 }
 import gunbc.publication_decision {
   PublicationDecisionReceipt,
   PublicationAuthorityId,
+  publication_decision_binds_content,
 }
 
 data publication_publisher_note: String = "Slice-1 sole modeled publisher (model + shadow only). Ordinary ModeledSessionId values are OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session may consume a change-locally admitted PublicProjectionPlan derived from PublicationPolicy — never a pathname census or placement-gate roster. Ordinary sessions do NOT yet lose live public-write capability in this slice; credentials and push machinery are unchanged."
@@ -95,6 +98,61 @@ fn change_local_admission_detail(outcome: ChangeLocalAdmissionOutcome) -> String
   }
 }
 
+fn receipt_covers_subject(
+  receipts: List<PublicationDecisionReceipt>,
+  subject: PublicationSubject,
+) -> Bool {
+  fold(receipts, init: false, f: fn(found, receipt) {
+    found || publication_decision_binds_content(
+      receipt: receipt,
+      subject_identity: subject.subject_identity,
+      content_identity: subject.content_identity,
+    )
+  })
+}
+
+fn newly_public_subject_missing_receipt(
+  delta: List<ProjectionDeltaClass>,
+  decisions: List<PublicationDecisionReceipt>,
+) -> PublicationSubject? {
+  fold(delta, init: none, f: fn(acc, item) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match item {
+          NewlyPublic { subject: subject } =>
+            if receipt_covers_subject(receipts: decisions, subject: subject) {
+              none
+            } else {
+              Present { value: subject }
+            }
+          _ => none
+        }
+    }
+  })
+}
+
+fn pushed_refs_match_candidate(
+  pushed_refs: List<PrePushStdinRow>,
+  candidate: PublicProjectionPlan,
+) -> Bool {
+  fold(pushed_refs, init: true, f: fn(ok, push) {
+    ok && push.local_sha == candidate.source_revision
+  })
+}
+
+fn unauthorized_push_detail(
+  pushed_refs: List<PrePushStdinRow>,
+  candidate: PublicProjectionPlan,
+) -> String {
+  join([
+    "public write refused: pushed ref head does not match candidate source_revision; push_count=",
+    to_string(count(pushed_refs)),
+    "; candidate=",
+    candidate.source_revision as String,
+  ], "")
+}
+
 fn admit_public_write(
   session: ModeledSessionId,
   current: PublicProjectionPlan?,
@@ -117,17 +175,57 @@ fn admit_public_write(
         candidate: candidate,
       })
       match admission {
-        ChangeLocalAdmitted { delta: _, candidate: plan } =>
-          PublicWriteAdmitted {
-            authority: PublicationAuthority {
-              publisher_session: publisher,
-              authority_id: sole_publication_authority_id,
-              projection: AdmittedPublicProjection {
-                plan: plan,
-                admission: admission,
-                decisions: decisions,
-              },
-            },
+        ChangeLocalAdmitted { delta: delta, candidate: plan } =>
+          match newly_public_subject_missing_receipt(delta: delta, decisions: decisions) {
+            Present { value: subject } =>
+              PublicWriteRefused {
+                session: publisher,
+                cause: DecisionReceiptMissing {
+                  session: publisher,
+                  subject_identity: subject.subject_identity as String,
+                },
+              }
+            Absent =>
+              if pushed_refs_match_candidate(pushed_refs: pushed_refs, candidate: plan) {
+                PublicWriteAdmitted {
+                  authority: PublicationAuthority {
+                    publisher_session: publisher,
+                    authority_id: sole_publication_authority_id,
+                    projection: AdmittedPublicProjection {
+                      plan: plan,
+                      admission: admission,
+                      decisions: decisions,
+                    },
+                  },
+                }
+              } else {
+                match pushed_refs.first() {
+                  Present { value: push } =>
+                    PublicWriteRefused {
+                      session: publisher,
+                      cause: UnauthorizedPublicPush {
+                        session: publisher,
+                        push: push,
+                        detail: unauthorized_push_detail(
+                          pushed_refs: pushed_refs,
+                          candidate: plan,
+                        ),
+                      },
+                    }
+                  Absent =>
+                    PublicWriteAdmitted {
+                      authority: PublicationAuthority {
+                        publisher_session: publisher,
+                        authority_id: sole_publication_authority_id,
+                        projection: AdmittedPublicProjection {
+                          plan: plan,
+                          admission: admission,
+                          decisions: decisions,
+                        },
+                      },
+                    }
+                }
+              }
           }
         ChangeLocalRefused { cause: cause } =>
           PublicWriteRefused {

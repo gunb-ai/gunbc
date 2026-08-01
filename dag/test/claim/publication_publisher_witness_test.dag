@@ -46,6 +46,8 @@ import tools.publication_publisher {
   OrdinarySession,
   NotTheSolePublisher,
   ProjectionNotAdmitted,
+  DecisionReceiptMissing,
+  UnauthorizedPublicPush,
   PublicWriteAdmitted,
   PublicWriteRefused,
   sole_modeled_publisher_session,
@@ -85,6 +87,16 @@ fn public_docs_policy() -> PublicationPolicy {
       prefix: "docs/plans" as FilePath,
       disposition: PublishPublic,
     }],
+  }
+}
+
+fn synthetic_decision_receipt(subject: PublicationSubject) -> PublicationDecisionReceipt {
+  PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: UniversalPublicationAudience,
+    policy_version: synthetic_policy_version,
+    authority: sole_publication_authority_id,
   }
 }
 
@@ -296,13 +308,39 @@ test fn ordinary_session_reds_before_projection_check() -> Bool {
 
 test fn sole_publisher_admits_change_local_projection() -> Bool {
   let policy = public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/y.md" as FilePath,
+    identity: "subject-y",
+  )
   let candidate = derive_public_projection_plan(
     policy: policy,
     source_revision: synthetic_head,
-    authored_subjects: [synthetic_subject(
-      path: "docs/plans/y.md" as FilePath,
-      identity: "subject-y",
-    )],
+    authored_subjects: [subject],
+  )
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [synthetic_decision_receipt(subject: subject)],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteAdmitted { authority: authority } =>
+      authority.authority_id == sole_publication_authority_id
+        && authority.projection.plan.source_revision == synthetic_head
+    PublicWriteRefused { session: _, cause: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_newly_public_without_receipt() -> Bool {
+  let policy = public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/no-receipt.md" as FilePath,
+    identity: "subject-no-receipt",
+  )
+  let candidate = derive_public_projection_plan(
+    policy: policy,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
   )
   match admit_public_write(
     session: sole_modeled_publisher_session,
@@ -311,10 +349,46 @@ test fn sole_publisher_admits_change_local_projection() -> Bool {
     decisions: [],
     pushed_refs: [synthetic_push()],
   ) {
-    PublicWriteAdmitted { authority: authority } =>
-      authority.authority_id == sole_publication_authority_id
-        && authority.projection.plan.source_revision == synthetic_head
-    PublicWriteRefused { session: _, cause: _ } => false
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptMissing { session: _, subject_identity: id } =>
+          id == (subject.subject_identity as String)
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
+  let policy = public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/mismatch.md" as FilePath,
+    identity: "subject-mismatch",
+  )
+  let candidate = derive_public_projection_plan(
+    policy: policy,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let bad_push = PrePushStdinRow {
+    local_ref: "refs/heads/session/synthetic-ordinary-session",
+    local_sha: "wrong-head" as CommitSha,
+    remote_ref: "refs/heads/session/synthetic-ordinary-session",
+    remote_sha: zero_sha,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [synthetic_decision_receipt(subject: subject)],
+    pushed_refs: [bad_push],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        UnauthorizedPublicPush { session: _, push: _, detail: _ } => true
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
   }
 }
 

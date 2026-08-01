@@ -26,7 +26,7 @@ Origin: priority-assessment directive section 8 — publication safety outranks 
 
 **Receipt:** exceptional decisions use `PublicationDecisionReceipt { subject_identity, content_identity, audience, policy_version, authority }`. Changed sensitive content requires a fresh receipt.
 
-**Admission grain:** change-local only — newly public / newly withheld / audience widenings / private-to-public references / policy changes / digest mismatch. Whole-projection audit is a separate centrally-owned main-health job.
+**Admission grain:** change-local only — newly public / newly withheld / policy changes are classified in slice 1 (`NewlyPublic`, `NewlyWithheld`, `PolicyChanged`). Audience widenings and private-to-public references defer until audience/reference carriers land. Digest mismatch refuses at admission (`CandidateDigestInconsistent`), not as a delta class. Whole-projection audit is a separate centrally-owned main-health job.
 
 ## Deferred to live slice
 
