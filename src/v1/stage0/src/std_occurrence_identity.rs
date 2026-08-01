@@ -3,7 +3,9 @@
 
 use self::NodeOccurrenceIdentity::*;
 use self::OccurrenceCategory::*;
+use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
+use self::OccurrenceTransportValidation::*;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, SourceSpan};
@@ -95,6 +97,15 @@ pub enum OccurrenceCategory {
     MethodOccurrence,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceRole {
+    DeclarationRole,
+    ReferenceRole,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceProjection {
     pub occurrence: OccurrenceId,
@@ -164,38 +175,23 @@ pub enum OccurrenceTransportRefusal {
         occurrence: OccurrenceId,
         diagnostic_span: Rc<SourceSpan>,
     },
+    DuplicateSuppliedCandidateIdentity {
+        occurrence: OccurrenceId,
+        diagnostic_span: Rc<SourceSpan>,
+    },
     InconsistentOccurrenceContainment {
         occurrence: OccurrenceId,
         diagnostic_span: Rc<SourceSpan>,
     },
-    WrongOccurrenceCategory {
+    WrongOccurrenceRole {
         occurrence: OccurrenceId,
-        expected: OccurrenceCategory,
-        observed: OccurrenceCategory,
+        expected: OccurrenceRole,
+        observed: OccurrenceRole,
         diagnostic_span: Rc<SourceSpan>,
     },
-}
-impl OccurrenceTransportRefusal {
-    pub fn diagnostic_span(&self) -> Rc<SourceSpan> {
-        match self {
-            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-                diagnostic_span: __val,
-                ..
-            } => __val.clone(),
-            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                diagnostic_span: __val,
-                ..
-            } => __val.clone(),
-            OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
-                diagnostic_span: __val,
-                ..
-            } => __val.clone(),
-            OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                diagnostic_span: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
+    UnknownOccurrenceIdentity {
+        occurrence: OccurrenceId,
+    },
 }
 
 pub fn occurrence_identity_constructor_spelling_note() -> String {
@@ -474,14 +470,14 @@ pub fn declaration_occurrence_refusal(
                     &references_by_id,
                     declaration.occurrence.clone().value.clone(),
                 ) {
-                    Some(reference) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                    Some(reference) => {
+                        Some(Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
                             occurrence: declaration.occurrence.clone(),
-                            expected: declaration.category.clone(),
-                            observed: reference.category.clone(),
+                            expected: OccurrenceRole::DeclarationRole,
+                            observed: OccurrenceRole::ReferenceRole,
                             diagnostic_span: declaration.diagnostic_span.clone(),
-                        },
-                    )),
+                        }))
+                    }
                     None => None,
                 }
             } else {
@@ -516,14 +512,14 @@ pub fn reference_occurrence_refusal(
                     &declarations_by_id,
                     reference.occurrence.clone().value.clone(),
                 ) {
-                    Some(declaration) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                    Some(declaration) => {
+                        Some(Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
                             occurrence: reference.occurrence.clone(),
-                            expected: reference.category.clone(),
-                            observed: declaration.category.clone(),
+                            expected: OccurrenceRole::ReferenceRole,
+                            observed: OccurrenceRole::DeclarationRole,
                             diagnostic_span: reference.diagnostic_span.clone(),
-                        },
-                    )),
+                        }))
+                    }
                     None => None,
                 }
             } else {
@@ -538,20 +534,55 @@ pub fn reference_occurrence_refusal(
     }
 }
 
-pub fn occurrence_transport_refusal(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ValidatedOccurrenceTransport {
+    pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    pub declarations_by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
+    pub references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
+    pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceTransportValidation {
+    OccurrenceTransportValidated {
+        transport: Rc<ValidatedOccurrenceTransport>,
+    },
+    OccurrenceTransportRefused {
+        refusal: Rc<OccurrenceTransportRefusal>,
+    },
+}
+
+pub fn occurrence_transport_validation_authority_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Canonical transport validity boundary: occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id, declarations_by_id, and references_by_id are the exact lookup authorities. Resolvers consume the validated carrier and never rescan OccurrenceIndex.entries or either role population per supplied identity. The declaration/reference lists remain as the authored transport order, not as lookup paths.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn occurrence_transport_validate(
     transport: Rc<OccurrenceTransport>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
+) -> Rc<OccurrenceTransportValidation> {
     {
         let index_build = occurrence_transport_index_build(transport.index.clone());
         match index_build.refusal.clone() {
-            Some(refusal) => Some(refusal.clone()),
+            Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+                refusal: refusal.clone(),
+            }),
             None => {
                 let role_index_build = occurrence_transport_role_index_build(
                     transport.declarations.clone(),
                     transport.references.clone(),
                 );
                 match role_index_build.refusal.clone() {
-                    Some(refusal) => Some(refusal.clone()),
+                    Some(refusal) => {
+                        Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+                            refusal: refusal.clone(),
+                        })
+                    }
                     None => {
                         let declaration_refusal =
                             transport.declarations.clone().iter().cloned().fold(
@@ -568,25 +599,57 @@ pub fn occurrence_transport_refusal(
                                 },
                             );
                         match declaration_refusal.clone() {
-                            Some(refusal) => Some(refusal.clone()),
-                            None => transport.references.clone().iter().cloned().fold(
-                                None,
-                                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal
-                                    .clone()
-                                {
-                                    Some(_) => refusal.clone(),
-                                    None => reference_occurrence_refusal(
-                                        index_build.entries_by_id.clone(),
-                                        role_index_build.declarations_by_id.clone(),
-                                        reference.clone(),
-                                    ),
-                                },
-                            ),
+                            Some(refusal) => {
+                                Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+                                    refusal: refusal.clone(),
+                                })
+                            }
+                            None => {
+                                let reference_refusal =
+                                    transport.references.clone().iter().cloned().fold(
+                                        None,
+                                        |refusal: _, reference: Rc<ReferenceOccurrence>| {
+                                            match refusal.clone() {
+                                                Some(_) => refusal.clone(),
+                                                None => reference_occurrence_refusal(
+                                                    index_build.entries_by_id.clone(),
+                                                    role_index_build.declarations_by_id.clone(),
+                                                    reference.clone(),
+                                                ),
+                                            }
+                                        },
+                                    );
+                                match reference_refusal.clone() {
+    Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
+    refusal: refusal.clone(),
+}),
+    None => Rc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
+    transport: Rc::new(ValidatedOccurrenceTransport {
+    entries_by_id: index_build.entries_by_id.clone(),
+    declarations_by_id: role_index_build.declarations_by_id.clone(),
+    references_by_id: role_index_build.references_by_id.clone(),
+    declarations: transport.declarations.clone(),
+    references: transport.references.clone(),
+}),
+}),
+}
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+pub fn occurrence_transport_refusal(
+    transport: Rc<OccurrenceTransport>,
+) -> Option<Rc<OccurrenceTransportRefusal>> {
+    match (*occurrence_transport_validate(transport.clone())).clone() {
+        OccurrenceTransportValidation::OccurrenceTransportRefused {
+            refusal: refusal, ..
+        } => Some(refusal.clone()),
+        OccurrenceTransportValidation::OccurrenceTransportValidated { transport: _, .. } => None,
     }
 }
 
@@ -604,3 +667,7 @@ pub struct NamespaceSegmentOccurrence;
 pub struct FieldOccurrence;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MethodOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclarationRole;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceRole;
