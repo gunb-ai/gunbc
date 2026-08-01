@@ -6,6 +6,7 @@ import gunbc.roadmap_document {
   project_roadmap_to_markdown,
 }
 import std.types { ContentHash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
@@ -377,6 +378,7 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 }
 
 type SeedGrowthJustification {
+  hand_authored_declarations: List<DeclarationRef>
   reason: String
   owning_dissolution_lane: RoadmapNodeId
   trigger: String
@@ -385,6 +387,23 @@ type SeedGrowthJustification {
 
 fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification {
   SeedGrowthJustification {
+    hand_authored_declarations: [
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "handle_run_with_options",
+        field: WholeDeclaration
+      },
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "capture_scoped_run_stderr",
+        field: WholeDeclaration
+      },
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "replay_scoped_run_stderr",
+        field: WholeDeclaration
+      }
+    ],
     reason: "Showing progress while a command runs has to reach the point where the old runner starts a program. It needs to know which piece of code was chosen, hold back error output until it can be shown in the right order, and report exactly one ending — and the rules for all of that live in the substrate, not in Rust.",
     owning_dissolution_lane: nid(s: "v1-hand-queue-drain"),
     trigger: "Move this reach-through into a described operation, then hollow out the corresponding part of the command-line tool so generated code does the work; the hand-written bridge is deleted at that point.",
