@@ -367,7 +367,7 @@ fn deployment_spec_srv1_green() -> DeploymentSpec {
   )
 }
 
-data blue_green_spec_partition_note: String = "Slot footprint and public route are two effects with one required edge between them: candidate footprint -> healthz digest readiness -> route replay. The old DeploymentSpec roster fused them, so LiveDeployApply replayed Tailscale before the post-mutation readiness gate and recreated the 502 window on the candidate port. These projections do not mint new operations; they partition the existing modeled members. Teardown uses the slot projection too, because replaying `off` from the old spec after the flip addresses the SAME root endpoint and would remove the newly installed route."
+data blue_green_spec_partition_note: String = "Slot convergence, public routing, and retirement are three effects with required edges: candidate slot -> healthz digest readiness -> route replay -> old runtime retirement. The old DeploymentSpec roster fused them, so LiveDeployApply replayed Tailscale before the post-mutation readiness gate and recreated the 502 window on the candidate port. The first projections do not mint new operations; they partition the existing modeled members. Retirement is deliberately narrower than full slot retract: it stops the old serve unit and belt timer, while preserving the reusable tree and binary plus dispatch worktrees and published attempt evidence. Full retract remains the ownership boundary that refuses non-empty roots. Using full retract for retirement stopped the old runtime before its empty-directory refusal, leaving a half-deleted slot that the next cutover could not restart. Route teardown is excluded because replaying `off` from the old spec after the flip addresses the SAME root endpoint and would remove the newly installed route."
 
 fn deployment_slot_spec(spec: DeploymentSpec) -> DeploymentSpec {
   DeploymentSpec {
@@ -375,6 +375,18 @@ fn deployment_slot_spec(spec: DeploymentSpec) -> DeploymentSpec {
     steps: filter(spec.steps, s => match s {
       ArtifactStep { step: art } => art.kind != TailscaleServeMapping
       Dependency { step: _ } => true
+    }),
+    service: spec.service,
+    names: spec.names,
+  }
+}
+
+fn deployment_retiring_slot_spec(spec: DeploymentSpec) -> DeploymentSpec {
+  DeploymentSpec {
+    target: spec.target,
+    steps: filter(spec.steps, s => match s {
+      ArtifactStep { step: art } => art.kind == SystemdUnit || art.kind == BeltTimerUnit
+      Dependency { step: _ } => false
     }),
     service: spec.service,
     names: spec.names,

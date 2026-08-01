@@ -11,6 +11,7 @@ import gunbc.live_deploy.spec {
   deployment_spec_srv1,
   deployment_spec_srv1_green,
   deployment_slot_spec,
+  deployment_retiring_slot_spec,
   deployment_route_spec,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
@@ -26,7 +27,12 @@ import gunbc.live_deploy.spec {
   Dependency,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
+  GunbcSourceTree,
   ServeBinary,
+  DispatchWorktreeRoot,
+  AttemptStateRoot,
+  SystemdUnit,
+  BeltTimerUnit,
   TailscaleServeMapping,
   TeardownDisposition,
   TeardownActs,
@@ -115,6 +121,17 @@ test fn witness_slot_and_route_specs_make_preflip_mapping_mutation_unwritable() 
   spec_artifact_kind_count(spec: slot, kind: TailscaleServeMapping) == 0
     && spec_artifact_kind_count(spec: route, kind: TailscaleServeMapping) == 1
     && count(route.steps) == 1
+}
+
+test fn witness_retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state() -> Bool {
+  let retiring = deployment_retiring_slot_spec(spec: deployment_spec_srv1_green())
+  spec_artifact_kind_count(spec: retiring, kind: SystemdUnit) == 1
+    && spec_artifact_kind_count(spec: retiring, kind: BeltTimerUnit) == 1
+    && spec_artifact_kind_count(spec: retiring, kind: GunbcSourceTree) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: ServeBinary) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: DispatchWorktreeRoot) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: AttemptStateRoot) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: TailscaleServeMapping) == 0
 }
 
 test fn witness_spec_targets_srv1() -> Bool {

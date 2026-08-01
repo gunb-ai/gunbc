@@ -6,6 +6,7 @@ import gunbc.live_deploy.spec {
   deployment_spec_srv1,
   deployment_spec_srv1_green,
   deployment_slot_spec,
+  deployment_retiring_slot_spec,
   deployment_route_spec,
   deployment_plan_listen_port,
 }
@@ -145,7 +146,7 @@ fn live_deploy_blue_green_cutover_with_selection(
           flip
         } else {
           let teardown = live_deploy_retract_via_transport(
-            spec: deployment_slot_spec(spec: active),
+            spec: deployment_retiring_slot_spec(spec: active),
             transport: transport,
             access: access,
           )
