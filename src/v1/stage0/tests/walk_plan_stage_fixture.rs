@@ -3,8 +3,13 @@
 //! witnesses #7499's `run_stage` extraction needs: unit tests over `spawn_units`
 //! closures cannot catch regressions where grouping, lane selection, admission, or
 //! the stage loop itself is wrong.
+//!
+//! SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.walk_plan_stage_fixture_scaffold;
+//! witness: dag/test/claim/walk_plan_stage_fixture_hand_rust_witness_test.dag).
 
-use std::path::PathBuf;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
@@ -12,13 +17,17 @@ use std::sync::Mutex;
 /// parallel `cargo test` threads cannot interleave cleanup with overlap markers.
 static FIXTURE_RUN_LOCK: Mutex<()> = Mutex::new(());
 
-/// Must match `walk_plan_stage_attempt_id` in `common.dag` — the executor refuses
-/// staged walks without `GUNBC_WALK_ATTEMPT_ID` or the GitHub triple.
-const ATTEMPT_ID: &str = "walk-plan-stage-fixture";
+thread_local! {
+    static LAST_HARNESS_AUTHORITY: RefCell<Option<HarnessAuthority>> = const { RefCell::new(None) };
+}
 
-/// Must match `walk_plan_stage_stage1_receipt_path` in `common.dag`.
-const STAGE1_RECEIPT_REL: &str =
-    "target/floor-attempt-walk-plan-stage-fixture/on-success-stage-1-receipt.tsv";
+#[derive(Clone, Debug)]
+struct HarnessAuthority {
+    attempt_id: String,
+    plan_entry: String,
+    stage1_receipt_rel: String,
+    stage2_marker_rel: String,
+}
 
 struct FixtureOutput {
     code: i32,
@@ -56,11 +65,91 @@ fn claim_executor_bin() -> PathBuf {
         })
 }
 
+fn claim_batch_bin() -> PathBuf {
+    std::env::var_os("CARGO_BIN_EXE_claim_batch")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            workspace_root().join(
+                std::env::var("PROFILE")
+                    .map(|p| format!("target/{p}/claim_batch"))
+                    .unwrap_or_else(|_| "target/debug/claim_batch".to_string()),
+            )
+        })
+}
+
+fn parse_harness_authority(content: &str) -> HarnessAuthority {
+    let mut fields = HashMap::new();
+    for line in content.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        fields.insert(key.to_string(), value.to_string());
+    }
+    let require = |key: &str| -> String {
+        fields.get(key).cloned().unwrap_or_else(|| {
+            panic!("harness authority missing {key}:\n{content}");
+        })
+    };
+    HarnessAuthority {
+        attempt_id: require("attempt_id"),
+        plan_entry: require("plan_entry"),
+        stage1_receipt_rel: require("stage1_receipt_path"),
+        stage2_marker_rel: require("stage2_marker_path"),
+    }
+}
+
+fn materialize_harness_authority(root: &Path) -> HarnessAuthority {
+    let batch = claim_batch_bin();
+    assert!(
+        batch.exists(),
+        "claim_batch binary missing at {}",
+        batch.display()
+    );
+    let status = Command::new(&batch)
+        .current_dir(root)
+        .args([
+            "--source-root",
+            "dag",
+            "--source-root",
+            "src/v2",
+            "--entry",
+            "src/v2/test/fixture/walk_plan_stage/common.dag",
+            "--function",
+            "walk_plan_stage_materialize_harness_authority_holds",
+            "--wet",
+            "--claim-run",
+        ])
+        .status()
+        .expect("spawn claim_batch for harness authority");
+    assert!(
+        status.success(),
+        "walk_plan_stage_materialize_harness_authority_holds must pass before harness walks"
+    );
+    let authority_path = root.join("target/walk_plan_stage_harness_authority.txt");
+    let content = std::fs::read_to_string(&authority_path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read {} after materialize: {e}",
+            authority_path.display()
+        )
+    });
+    parse_harness_authority(&content)
+}
+
+fn last_harness_authority() -> HarnessAuthority {
+    LAST_HARNESS_AUTHORITY.with(|cell| {
+        cell.borrow()
+            .clone()
+            .expect("run_fixture_plan must run before reading harness authority")
+    })
+}
+
 fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
     let _guard = FIXTURE_RUN_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let root = workspace_root();
+    let authority = materialize_harness_authority(&root);
+    LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = Some(authority.clone()));
     let bin = claim_executor_bin();
     assert!(
         bin.exists(),
@@ -69,14 +158,14 @@ fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
     );
     let output = Command::new(&bin)
         .current_dir(&root)
-        .env("GUNBC_WALK_ATTEMPT_ID", ATTEMPT_ID)
+        .env("GUNBC_WALK_ATTEMPT_ID", &authority.attempt_id)
         .args([
             "--source-root",
             "dag",
             "--source-root",
             "src/v2",
             "--plan-entry",
-            "src/v2/test/fixture/walk_plan_stage/plan.dag",
+            &authority.plan_entry,
             "--plan-function",
             plan_function,
         ])
@@ -90,15 +179,15 @@ fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
 }
 
 fn stage2_marker_path(root: &PathBuf) -> PathBuf {
-    root.join("target/walk_plan_stage_stage2_ran")
+    root.join(&last_harness_authority().stage2_marker_rel)
 }
 
 fn stage1_receipt_path(root: &PathBuf) -> PathBuf {
-    root.join(STAGE1_RECEIPT_REL)
+    root.join(&last_harness_authority().stage1_receipt_rel)
 }
 
 #[test]
-#[ignore = "cold overlap resolve can take minutes; run locally: cargo test -p v1-compiler walk_plan_stage_overlap_barrier -- --ignored"]
+#[ignore = "cold overlap resolve can take minutes; run locally: cargo test -p v1-compiler walk_plan_stage_overlap_barrier -- --ignored --test-threads=1"]
 fn walk_plan_stage_overlap_barrier_production_path() {
     let root = workspace_root();
     let _ = std::fs::remove_file(stage2_marker_path(&root));
@@ -139,7 +228,7 @@ fn walk_plan_stage_overlap_barrier_production_path() {
 }
 
 #[test]
-#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_failure_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
@@ -163,7 +252,7 @@ fn walk_plan_stage_failure_blocks_stage2() {
 }
 
 #[test]
-#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_panic_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);
@@ -192,7 +281,7 @@ fn walk_plan_stage_panic_blocks_stage2() {
 }
 
 #[test]
-#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag"]
+#[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_receipt_refusal_blocks_stage2() {
     let root = workspace_root();
     let marker = stage2_marker_path(&root);

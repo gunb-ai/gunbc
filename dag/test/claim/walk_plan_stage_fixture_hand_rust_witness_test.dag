@@ -1,0 +1,41 @@
+module test.claim.walk_plan_stage_fixture_hand_rust_witness
+
+import gunbc.walk_plan_stage_fixture_scaffold {
+  walk_plan_stage_fixture_hand_rust_scaffold,
+  walk_plan_stage_fixture_hand_rust_dissolve_trigger,
+  walk_plan_stage_fixture_hand_rust_loc_delta_net,
+  walk_plan_stage_fixture_hand_rust_paths,
+  walk_plan_stage_fixture_hand_rust_receipt_plan_anchor,
+  walk_plan_stage_fixture_hand_rust_receipt_witness_entry,
+  walk_plan_stage_fixture_hand_rust_roadmap_lane_anchor
+}
+import v2.test.fixture.walk_plan_stage.common {
+  walk_plan_stage_attempt_id,
+  walk_plan_stage_overlap_barrier_recipe,
+  walk_plan_stage_stage1_receipt_path
+}
+import std.disposition { Scaffold, SingleAuthority }
+import std.types { Bool }
+
+test fn walk_plan_stage_fixture_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match walk_plan_stage_fixture_hand_rust_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn walk_plan_stage_fixture_hand_rust_receipt_is_checkable() -> Bool {
+  !(walk_plan_stage_fixture_hand_rust_dissolve_trigger == "")
+    && !(walk_plan_stage_fixture_hand_rust_receipt_plan_anchor == "")
+    && !(walk_plan_stage_fixture_hand_rust_roadmap_lane_anchor == "")
+    && walk_plan_stage_fixture_hand_rust_receipt_witness_entry == "dag/test/claim/walk_plan_stage_fixture_hand_rust_witness_test.dag"
+    && walk_plan_stage_fixture_hand_rust_loc_delta_net == length(xs: walk_plan_stage_fixture_hand_rust_paths)
+}
+
+test fn walk_plan_stage_fixture_recipes_carry_common_attempt_id() -> Bool {
+  string_contains(s: walk_plan_stage_overlap_barrier_recipe, pattern: walk_plan_stage_attempt_id)
+    && string_contains(
+      s: walk_plan_stage_overlap_barrier_recipe,
+      pattern: walk_plan_stage_stage1_receipt_path
+    )
+}
