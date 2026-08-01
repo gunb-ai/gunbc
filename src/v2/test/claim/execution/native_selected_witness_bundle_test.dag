@@ -4,7 +4,11 @@ import std.content_hash { content_hash_atom }
 import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.algebra { Cons, Empty }
 import std.types { Bool, ContentHash, Int, NonEmptyStr, String }
-import std.verification { nanosecond_duration }
+import std.verification {
+  NanosecondDuration,
+  nanosecond_duration,
+  nanosecond_duration_count,
+}
 import std.selected_witness_bundle {
   InterpreterFrontier,
   NativeBundleAdmitted,
@@ -395,7 +399,7 @@ fn selected_logic_equivalence_rows(
 type SelectedBundleNativeObservation {
   cold: EmitHostRunReceipt
   warm: EmitHostRunReceipt
-  warm_wall_nanos: Int
+  warm_wall: NanosecondDuration
 }
 
 fn observe_selected_bundle_native(
@@ -422,7 +426,7 @@ fn observe_selected_bundle_native(
             value: SelectedBundleNativeObservation {
               cold: cold
               warm: warm
-              warm_wall_nanos: finish - start
+              warm_wall: nanosecond_duration(count: finish - start)
             },
             diagnostics: None
           }
@@ -464,7 +468,7 @@ fn selected_logic_receipt(
   plan: SelectedWitnessPlan,
   observation: SelectedBundleNativeObservation,
   interpreted: SelectedLogicVerdicts,
-  interpreted_wall_nanos: Int,
+  interpreted_wall: NanosecondDuration,
   native_stdout: ByteString
 ) -> NativeWitnessBundleExecutionReceipt {
   let bundle = native_witness_bundle_from_plan(plan: plan)
@@ -473,8 +477,8 @@ fn selected_logic_receipt(
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: observation.warm.compile_skipped
-    native_wall_nanos: nanosecond_duration(count: observation.warm_wall_nanos)
-    interpreted_wall_nanos: nanosecond_duration(count: interpreted_wall_nanos)
+    native_wall_nanos: observation.warm_wall
+    interpreted_wall_nanos: interpreted_wall
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,
@@ -636,7 +640,9 @@ fn selected_logic_execution_holds(
                     plan: plan,
                     observation: observation,
                     interpreted: interpreted,
-                    interpreted_wall_nanos: interpreter_finish - interpreter_start,
+                    interpreted_wall: nanosecond_duration(
+                      count: interpreter_finish - interpreter_start
+                    ),
                     native_stdout: warm_stdout
                   )
                   let expected_stdout = selected_logic_expected_stdout(primary: primary)
@@ -653,8 +659,8 @@ fn selected_logic_execution_holds(
                     && observation.warm.compile_skipped
                     && cold_stdout == expected_stdout
                     && warm_stdout == expected_stdout
-                    && observation.warm_wall_nanos > 0
-                    && interpreter_finish - interpreter_start > 0
+                    && nanosecond_duration_count(d: observation.warm_wall) > 0
+                    && nanosecond_duration_count(d: receipt.interpreted_wall_nanos) > 0
                     && expected_interpreted
                     && (match selected_logic_execution_admit(
                       plan: plan,
@@ -715,7 +721,9 @@ test fn native_selected_witness_bundle_discriminating_red_holds() -> Bool {
                     plan: plan,
                     observation: observation,
                     interpreted: interpreted,
-                    interpreted_wall_nanos: interpreter_finish - interpreter_start,
+                    interpreted_wall: nanosecond_duration(
+                      count: interpreter_finish - interpreter_start
+                    ),
                     native_stdout: warm_stdout
                   )
                   let expected_stdout = selected_logic_expected_stdout(primary: false)

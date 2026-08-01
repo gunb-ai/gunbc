@@ -2468,7 +2468,7 @@ fn rust_logic_family_target_model_staging() -> TargetModel {
   }
 }
 
-data rust_selected_bundle_direct_call_note: String = "Selected-entry native bundle runtime (native-selected-witness-bundle first slice): the bundle main is derived from the same ordered logic-family member roster as the argv dispatcher, but emits every result expression as a direct call in ONE process. There is no run-time member selection and no one-binary-per-function path; the fixed-width receipt is one five-byte value per ordered selected member."
+data rust_selected_bundle_direct_call_note: String = "SCAFFOLD / bounded host-runtime wrapper (native-selected-witness-bundle first slice): the bundle main is derived from the same ordered logic-family member roster as the argv dispatcher, but emits every result expression as a direct call in ONE process. The only medium-as-string residue introduced here is the one fn-main wrapper plus fixed-width stdout framing; member bodies remain products of the canonical TargetModel emission path, so this is not a second semantic Rust emitter. There is no run-time member selection and no one-binary-per-function path. feature:rust-target-host-entrypoint-grammar. dissolve-on: the Rust TargetModel grammar-row inverse represents host entrypoints, ordered direct-call statements, and byte-framed stdout; then rust_selected_bundle_direct_call, rust_selected_bundle_direct_calls, and rust_selected_bundle_main_suffix delete and this runtime row consumes that structure."
 
 fn rust_selected_bundle_direct_call(member: RustEmitHostFamilyMember) -> String {
   concat(
