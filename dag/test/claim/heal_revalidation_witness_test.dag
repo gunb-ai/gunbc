@@ -12,7 +12,8 @@ import gunbc.heal_revalidation {
   HealDispatchPending, HealDispatchAccepted, HealDispatchRefused,
   HealRevalidationNotRequired, HealRevalidationRequired, HealRevalidationCoverageObserved,
   PriorRunStillCurrent, SupersededByHealedHead,
-  OrdinaryWorkflowDispatch, HealWorkflowDispatchHeadMatched, HealWorkflowDispatchHeadMismatch,
+  OrdinaryWorkflowDispatch, HealWorkflowDispatchSubjectMatched,
+  HealWorkflowDispatchCheckoutMismatch, HealWorkflowDispatchRunSubjectMismatch,
   HealRevalidationAdmittedNoChange, HealRevalidationAdmittedExactCoverage,
   HealRevalidationDeniedRequired, HealRevalidationDeniedCoverage,
   heal_revalidation_initial,
@@ -143,32 +144,50 @@ test fn only_exact_healed_head_complete_coverage_admits() -> Bool {
 test fn manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidation() -> Bool {
   match classify_workflow_dispatch_preflight(
     expected_healed_head: none,
-    checkout_head: healed_head
+    checkout_head: healed_head,
+    run_subject_head: healed_head
   ) {
-    OrdinaryWorkflowDispatch { checkout_head } => checkout_head == healed_head
-    HealWorkflowDispatchHeadMatched { expected_head: _ } => false
-    HealWorkflowDispatchHeadMismatch { expected_head: _, checkout_head: _ } => false
+    OrdinaryWorkflowDispatch { checkout_head, run_subject_head } =>
+      checkout_head == healed_head && run_subject_head == healed_head
+    HealWorkflowDispatchSubjectMatched { expected_head: _ } => false
+    HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchRunSubjectMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
   }
 }
 
-test fn expected_sha_preflight_matches_or_refuses_exactly() -> Bool {
+test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool {
   let matched = classify_workflow_dispatch_preflight(
     expected_healed_head: Present { value: healed_head },
-    checkout_head: healed_head
+    checkout_head: healed_head,
+    run_subject_head: healed_head
   )
-  let mismatch = classify_workflow_dispatch_preflight(
+  let checkout_mismatch = classify_workflow_dispatch_preflight(
     expected_healed_head: Present { value: healed_head },
-    checkout_head: other_head
+    checkout_head: other_head,
+    run_subject_head: healed_head
+  )
+  let run_subject_mismatch = classify_workflow_dispatch_preflight(
+    expected_healed_head: Present { value: healed_head },
+    checkout_head: healed_head,
+    run_subject_head: other_head
   )
   match matched {
-    HealWorkflowDispatchHeadMatched { expected_head } => expected_head == healed_head
-    OrdinaryWorkflowDispatch { checkout_head: _ } => false
-    HealWorkflowDispatchHeadMismatch { expected_head: _, checkout_head: _ } => false
-  } && match mismatch {
-    HealWorkflowDispatchHeadMismatch { expected_head, checkout_head } =>
-      expected_head == healed_head && checkout_head == other_head
-    OrdinaryWorkflowDispatch { checkout_head: _ } => false
-    HealWorkflowDispatchHeadMatched { expected_head: _ } => false
+    HealWorkflowDispatchSubjectMatched { expected_head } => expected_head == healed_head
+    OrdinaryWorkflowDispatch { checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchRunSubjectMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+  } && match checkout_mismatch {
+    HealWorkflowDispatchCheckoutMismatch { expected_head, checkout_head, run_subject_head } =>
+      expected_head == healed_head && checkout_head == other_head && run_subject_head == healed_head
+    OrdinaryWorkflowDispatch { checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchSubjectMatched { expected_head: _ } => false
+    HealWorkflowDispatchRunSubjectMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+  } && match run_subject_mismatch {
+    HealWorkflowDispatchRunSubjectMismatch { expected_head, checkout_head, run_subject_head } =>
+      expected_head == healed_head && checkout_head == healed_head && run_subject_head == other_head
+    OrdinaryWorkflowDispatch { checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchSubjectMatched { expected_head: _ } => false
+    HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
   }
 }
 
