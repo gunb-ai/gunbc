@@ -15,6 +15,7 @@ data actions_environment_note: String = "GitHub Actions default environment vari
 
 type ActionsShaObservation
   = ActionsShaObserved { sha: CommitSha }
-  | ActionsShaAbsent { detail: String }
+  | ActionsShaMissing { detail: String }
+  | ActionsShaEmpty { detail: String }
 
 data github_sha_variable_name: String = "GITHUB_SHA"

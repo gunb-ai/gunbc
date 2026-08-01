@@ -8,7 +8,7 @@ import gunbc.live_rust_observation {
   LiveManifestReadRefused,
   LiveManifestParseRefused,
   LiveRevisionMismatch,
-  LiveExpectationAbsent,
+  LiveExpectationEmpty,
   LiveTrackedPopulationEmpty,
   LivePriorPopulationEmpty,
   LiveCargoTargetsEmpty,
@@ -92,7 +92,7 @@ test fn control_2_absent_expectation_refuses_rather_than_passes() -> Bool {
     request: request_for(revision: ""),
     observation: populated_observation(revision: test_revision)
   ) {
-    LiveObservationRefused { cause: LiveExpectationAbsent { detail: detail } } => !(detail == "")
+    LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } } => !(detail == "")
     _ => false
   }
 }
