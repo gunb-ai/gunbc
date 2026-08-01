@@ -54,6 +54,10 @@ type LiveRustObservationOutcome
   = LiveObservationAdmitted { receipt: LiveRustObservationReceipt }
   | LiveObservationRefused { cause: LiveObservationRefusalCause }
 
+type LiveRustObservationExpectation
+  = LiveExpectationAdmitted { request: LiveRustObservationRequest }
+  | LiveExpectationRefused { cause: LiveObservationRefusalCause }
+
 fn admit_live_rust_observation(
   request: LiveRustObservationRequest,
   observation: RustSourceHostObservation
@@ -118,32 +122,41 @@ fn current_actions_sha_observation() -> ActionsShaObservation {
   }
 }
 
+fn live_rust_observation_expectation(
+  actions: ActionsShaObservation
+) -> LiveRustObservationExpectation {
+  match actions {
+    ActionsShaMissing { detail: detail } =>
+      LiveExpectationRefused { cause: LiveExpectationMissing { detail: detail } }
+    ActionsShaEmpty { detail: detail } =>
+      LiveExpectationRefused { cause: LiveExpectationEmpty { detail: detail } }
+    ActionsShaObserved { sha: expected } =>
+      LiveExpectationAdmitted {
+        request: LiveRustObservationRequest { expected_repository_revision: expected }
+      }
+  }
+}
+
 fn admit_current_actions_rust_observation(
   actions: ActionsShaObservation,
   observation: RustSourceHostObservation
 ) -> LiveRustObservationOutcome {
-  match actions {
-    ActionsShaMissing { detail: detail } =>
-      LiveObservationRefused { cause: LiveExpectationMissing { detail: detail } }
-    ActionsShaEmpty { detail: detail } =>
-      LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } }
-    ActionsShaObserved { sha: expected } =>
+  match live_rust_observation_expectation(actions: actions) {
+    LiveExpectationRefused { cause: cause } => LiveObservationRefused { cause: cause }
+    LiveExpectationAdmitted { request: request } =>
       admit_live_rust_observation(
-        request: LiveRustObservationRequest { expected_repository_revision: expected },
+        request: request,
         observation: observation
       )
   }
 }
 
 fn live_rust_observation_wet() -> LiveRustObservationOutcome {
-  match current_actions_sha_observation() {
-    ActionsShaMissing { detail: detail } =>
-      LiveObservationRefused { cause: LiveExpectationMissing { detail: detail } }
-    ActionsShaEmpty { detail: detail } =>
-      LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } }
-    ActionsShaObserved { sha: expected } =>
+  match live_rust_observation_expectation(actions: current_actions_sha_observation()) {
+    LiveExpectationRefused { cause: cause } => LiveObservationRefused { cause: cause }
+    LiveExpectationAdmitted { request: request } =>
       admit_live_rust_observation(
-        request: LiveRustObservationRequest { expected_repository_revision: expected },
+        request: request,
         observation: current_stage0_rust_source_observation()
       )
   }
