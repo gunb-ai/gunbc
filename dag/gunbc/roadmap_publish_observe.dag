@@ -15,6 +15,9 @@ import gunbc.roadmap_publish {
   RemoteBranchReadFailure,
   RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
   PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
+  PullRequestReadFailure,
+  PullRequestCredentialUnavailable, PullRequestStatusRefused,
+  PullRequestTransportRefused, PullRequestBodyUndecodable,
   PublicationOutcome,
   PublicationSubject,
   publication_subject_remote,
@@ -22,6 +25,9 @@ import gunbc.roadmap_publish {
 }
 import extdeps.github.github { Repository, github_https_clone_url }
 import extdeps.github.pulls { PullRequestState, Open }
+import extdeps.transports.rest {
+  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
 
 data observer_role_note: String = "THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES. gunbc.roadmap_publish adjudicates observations a caller already holds, which is what makes every one of its arms reachable from constructed values in a witness. That property is worth keeping, so the reading lives here instead: this module calls the transport, decides what was learned, and hands back an ordinary value. The split is the reason the refusal arms are constructible at all - a function that called the service itself could not build them, because a transport failure there is not a value.\\n\\nWhat this module must never become is a second adjudicator. It reports what it saw and refuses when it could not see; which outcome that implies is roadmap_publish's business."
 
@@ -155,12 +161,10 @@ fn observe_pull_requests(
   match credential {
     CredentialSourceAbsent { reason } =>
       PullRequestsUnreadable {
-        detail: join([
-          "the pull requests of ",
-          repo.full_name,
-          " were not read because no usable credential was available: ",
-          reason,
-        ], ""),
+        cause: PullRequestCredentialUnavailable {
+          repository: repo.full_name,
+          reason: reason,
+        },
       }
     CredentialSourceConfigured { source } => {
       let result = github.Pulls.List(
@@ -169,10 +173,37 @@ fn observe_pull_requests(
         repo: repo.name,
         state: Open,
       )
-      PullRequestsRead { pulls: result.pulls }
+      match result.outcome {
+        RestOk => PullRequestsRead { pulls: result.pulls }
+        RestStatusRefused { status, body } =>
+          PullRequestsUnreadable {
+            cause: PullRequestStatusRefused {
+              repository: repo.full_name,
+              status: status,
+              body: body,
+            },
+          }
+        RestTransportRefused { cause } =>
+          PullRequestsUnreadable {
+            cause: PullRequestTransportRefused {
+              repository: repo.full_name,
+              cause: cause,
+            },
+          }
+        RestBodyUndecodable { status, cause } =>
+          PullRequestsUnreadable {
+            cause: PullRequestBodyUndecodable {
+              repository: repo.full_name,
+              status: status,
+              cause: cause,
+            },
+          }
+      }
     }
   }
 }
+
+data pulls_read_is_only_the_ok_arm_note: String = "result.pulls IS READ ONLY UNDER RestOk, AND THAT IS A CORRECTNESS CONSTRAINT RATHER THAN TIDINESS. The realization projects an observation into the declared output record, and on any non-success outcome the ordinary body-derived fields are deliberately left uninhabited - RestOutcome is the only branch carrying a fact, so it is the only branch a caller may consume. Reading result.pulls outside the RestOk arm would therefore read the absence and report it as an empty list of open pull requests, which is the fabricated-plausible-output failure at its most damaging here: an empty list is a perfectly ordinary answer that means the branch is not published, so a 401 would be indistinguishable from a genuine not-yet-published state and the belt would write a receipt saying so.\\n\\nTHE PREVIOUS CUT DID NOT HAVE THIS CHOICE TO GET WRONG, because dispatch_rest raised on every status at or above 400 and control never returned. That is why `PullRequestsRead { pulls: result.pulls }` was unconditional and still correct: the only way to reach it was a 2xx. Making the outcome data is what makes the unconditional read newly WRONG, so the match is not an addition beside the old line - it is what the old line becomes."
 
 data repository_bound_observation_note: String = "BOTH READS NAME THE SAME REPOSITORY BY CONSTRUCTION, WHICH IS THE WHOLE REASON THIS FUNCTION EXISTS RATHER THAN TWO CALLS AT A CALL SITE. The remote is projected from the same Repository that supplies owner and name to the pull-request read, so there is no arrangement of arguments in which the ref advertisement and the pull request list describe different repositories.\\n\\nThe alternative that this deliberately forecloses is reading refs from the local alias `origin` while reading pull requests from an owner/name pair. Those two reads are only COINCIDENTALLY about one repository: `origin` is a fact about one checkout's configuration, and a checkout whose origin points elsewhere would produce a publication judgment that looks entirely ordinary and is about the wrong subject. Nothing in either result would reveal it. See repository_remote_url_note in extdeps.github.github for the projection and its citation.\\n\\nIT TAKES THE SUBJECT, NOT FOUR LOOSE FIELDS. The four arguments this function used to take are exactly four of PublicationSubject's six, so a caller could observe against one repository and one head while writing a receipt whose subject named others - and both values would look entirely ordinary. Taking the subject makes the observation and the receipt provably about the same question, because there is only one value.\\n\\nThis function calls the transport and adjudicates in one breath, which the observer note above otherwise warns against - so the boundary is stated: it performs no judgment of its own. It reads, and hands both observations to adjudicate_publication unchanged. Every arm of the result is decided there, over values, and remains reachable in a hermetic witness through that function directly."
 

@@ -7,6 +7,7 @@ import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.transports.rest { RestOutcome }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.github.pulls_contracts {
   pull_request_state_wire_contract,
@@ -143,6 +144,7 @@ service github.Pulls {
     }
     output {
       pulls: List<PullRequest>
+      outcome: RestOutcome
     }
     readonly
     transport rest {

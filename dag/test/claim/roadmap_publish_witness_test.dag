@@ -1,6 +1,6 @@
 module test.claim.roadmap_publish_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List }
+import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List, HttpStatus }
 import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open }
 import extdeps.github.github { GitHubUser, UserType, User }
 import gunbc.roadmap_publish {
@@ -8,6 +8,9 @@ import gunbc.roadmap_publish {
   PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure, RefAdvertisementRefused,
+  PullRequestReadFailure,
+  PullRequestCredentialUnavailable, PullRequestStatusRefused,
+  PullRequestTransportRefused, PullRequestBodyUndecodable,
   PublicationOutcome,
   PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous,
   RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged,
@@ -331,11 +334,19 @@ data refusal_is_not_absence_note: String = "AN UNREADABLE OBSERVATION MUST NOT R
 
 test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool {
   match adjudicate_with(
-    pulls: PullRequestsUnreadable { detail: "401 from the forge" },
+    pulls: PullRequestsUnreadable {
+      cause: PullRequestStatusRefused {
+        repository: "gunb-ai/gunbc",
+        status: 401 as HttpStatus,
+        body: "Bad credentials",
+      },
+    },
     remotes: RemoteBranchesRead { branches: [] },
   ) {
     PublicationObservationRefused { detail } =>
-      string_contains(s: detail, pattern: "401 from the forge")
+      string_contains(s: detail, pattern: "401")
+        && string_contains(s: detail, pattern: "Bad credentials")
+        && string_contains(s: detail, pattern: "gunb-ai/gunbc")
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
@@ -375,7 +386,12 @@ test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
     },
   )
   let refused = adjudicate_with(
-    pulls: PullRequestsUnreadable { detail: "no token" },
+    pulls: PullRequestsUnreadable {
+      cause: PullRequestCredentialUnavailable {
+        repository: "gunb-ai/gunbc",
+        reason: "GITHUB_TOKEN is not set in the belt's environment",
+      },
+    },
     remotes: RemoteBranchesRead { branches: [] },
   )
   publication_offers_the_expected_head(outcome: bound)

@@ -1,6 +1,6 @@
 module gunbc.roadmap_publish
 
-import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, HttpStatus }
 import extdeps.github.pulls {
   PullRequest,
   PullRequestState, Open,
@@ -41,9 +41,50 @@ type RemoteBranch {
   head_sha: CommitSha
 }
 
+data pull_request_read_failure_note: String = "FOUR CAUSES, FOUR REMEDIES, PREVIOUSLY ONE STRING - the same repair remote_branch_read_failure_note describes, applied to the peer observation that did not get it. PullRequestsUnreadable carried `detail: String`, and the four failures that reach it are not four phrasings of one event. No usable credential is a LOCAL decision taken before any request exists, and the remedy is to supply one. A status refusal means the request WAS transported and a remote authority answered - the remedy depends entirely on which status, and the body is usually the only place the remote says why. A transport refusal means no status exists at all, so the remedy is an environment or reachability fix and nothing about the repository has been learned. An undecodable body means a status arrived and the payload beneath it could not be read, which is a decoder or contract fault, not an access one.\\n\\nA caller handed a sentence can only re-derive which of the four it holds by matching on the prose. That is the classifier-by-substring move, and it is exactly what a 401 needs to avoid: the single most decidable failure in this whole path would arrive as the least tractable kind of value.\\n\\nWHY THIS TYPE APPEARS NOW AND NOT EARLIER: until the REST realization carried a non-2xx response back as data, three of these four arms were unreachable through the real transport, because dispatch_rest raised. Producing a typed carrier for states no producer could construct would have been vocabulary without execution. The opt-in outcome field on github.Pulls.List is what makes all four reachable, so the type lands with its producer rather than ahead of it.\\n\\nTHE OPERATION IS NAMED, NOT THE URL. render_pull_request_read_failure labels github.Pulls.List through its OperationRef for the same reason the ls-remote renderer names its operation rather than its argv: the path and query are one realization of that operation and will change when the invocation is derived, while the operation identity will not."
+
+type PullRequestReadFailure
+  = PullRequestCredentialUnavailable { repository: String, reason: String }
+  | PullRequestStatusRefused { repository: String, status: HttpStatus, body: String }
+  | PullRequestTransportRefused { repository: String, cause: NonEmptyStr }
+  | PullRequestBodyUndecodable { repository: String, status: HttpStatus, cause: NonEmptyStr }
+
+data pulls_list_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/github/pulls.dag",
+  service: "github.Pulls",
+  operation: "List",
+}
+
+fn render_pull_request_read_failure(cause: PullRequestReadFailure) -> String {
+  let at = operation_ref_label(at: pulls_list_operation)
+  match cause {
+    PullRequestCredentialUnavailable { repository, reason } =>
+      join([
+        at, " against ", repository,
+        " was not attempted because no usable credential was available: ", reason,
+      ], "")
+    PullRequestStatusRefused { repository, status, body } =>
+      join([
+        at, " against ", repository,
+        " was answered with status ", to_string(status as Int), ": ", body,
+      ], "")
+    PullRequestTransportRefused { repository, cause: detail } =>
+      join([
+        at, " against ", repository,
+        " never reached a response, so no status exists: ", detail as String,
+      ], "")
+    PullRequestBodyUndecodable { repository, status, cause: detail } =>
+      join([
+        at, " against ", repository,
+        " was answered with status ", to_string(status as Int),
+        " and a body that could not be decoded: ", detail as String,
+      ], "")
+  }
+}
+
 type PullRequestObservation
   = PullRequestsRead { pulls: List<PullRequest> }
-  | PullRequestsUnreadable { detail: String }
+  | PullRequestsUnreadable { cause: PullRequestReadFailure }
 
 data remote_branch_read_failure_note: String = "THREE CAUSES, THREE REMEDIES, PREVIOUSLY ONE STRING. RemoteBranchesUnreadable carried `detail: String` and three genuinely different failures were flattened into it at the point of construction: the ref advertisement was REFUSED by the transport, an advertised LINE did not parse, or an advertised ref PROJECTED to an empty branch name. Those are not three phrasings of one event. The first is an environment fact and says nothing about the repository; the second means the remote spoke a format this parser does not accept; the third means a ref exists whose name survives advertisement but not projection. A caller handed a sentence can only re-derive which of the three it holds by matching on the prose, which is the classifier-by-substring move the transport-anemia plan exists to remove.\\n\\nTHE ARGV WENT WITH IT, and that is the sharper half. Each of those three sentences was built by concatenating the literal `git ls-remote --heads` onto the remote name, so the command SPELLING was load-bearing in a domain refusal three times over. A domain layer reaches for a command spelling exactly when it has no stable operation identity to name; the operation is git.Core.LsRemoteHeads and naming it is both stabler and truer, since the spelling is one realization of it and will change when the invocation is derived rather than hand-written.\\n\\nSO THE CAUSE IS TYPED AND THE PROSE MOVES TO A RENDERER. render_remote_branch_read_failure is the only function here that produces a sentence, and it names the operation rather than the argv. What it renders is recoverable from the fields, which is what makes the rendering a projection rather than the authority.\\n\\nWHAT THIS DOES NOT FIX, stated so the seam is visible: RefAdvertisementRefused still carries exit_code and stderr as an Int and a String, because the typed process observation that would replace them does not exist yet — it is the substrate half of this same plan (Lane C) and is in flight separately. This arm is therefore honest about WHICH failure occurred while still anemic about what the process did. The other two arms have no such dependency: they are decided by this module's own decoding, downstream of the process, and are fully typed here."
 
@@ -237,9 +278,12 @@ fn adjudicate_publication(
   expected_head: CommitSha,
 ) -> PublicationOutcome {
   match pulls {
-    PullRequestsUnreadable { detail } =>
+    PullRequestsUnreadable { cause } =>
       PublicationObservationRefused {
-        detail: join(["the open pull requests could not be read: ", detail], ""),
+        detail: join([
+          "the open pull requests could not be read: ",
+          render_pull_request_read_failure(cause: cause),
+        ], ""),
       }
     PullRequestsRead { pulls: listed } => {
       let matches = pull_requests_for_target(
