@@ -526,14 +526,20 @@ fn resolved_graph_parts_semantic_digest(
   union_digest: ContentHash,
   union_bytes: ByteSize
 ) -> ContentHash {
-  artifact_content_digest(
-    artifact: ResolvedGraphArtifact {
-      request_key: content_hash_atom(value: "semantic-digest-placeholder"),
-      resolved_graph: ArtifactPart { digest: graph_digest, bytes: graph_bytes },
-      source_indices: ArtifactPart { digest: indices_digest, bytes: indices_bytes },
-      compile_clean_diagnostic_union: ArtifactPart { digest: union_digest, bytes: union_bytes }
-    }
-  )
+  carried_outputs_digest(outputs: [
+    positioned_part(
+      id: output_resolved_graph,
+      part: ArtifactPart { digest: graph_digest, bytes: graph_bytes }
+    ),
+    positioned_part(
+      id: output_source_indices,
+      part: ArtifactPart { digest: indices_digest, bytes: indices_bytes }
+    ),
+    positioned_part(
+      id: output_compile_clean_diagnostic_union,
+      part: ArtifactPart { digest: union_digest, bytes: union_bytes }
+    )
+  ])
 }
 
 fn serve_resolved_graph_stored_disk_probe(
