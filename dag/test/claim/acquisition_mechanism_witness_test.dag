@@ -1,0 +1,171 @@
+module test.claim.acquisition_mechanism_witness
+
+import gunbc.econ.acquisition {
+  AcquisitionCostForecast,
+  AcquisitionForecastDerived,
+  AcquisitionForecastRefused,
+  AcquisitionScenario,
+  AcquisitionScenarioDeclared,
+  AcquisitionScenarioUnknown,
+  AcquisitionStageStep,
+  ConversionRate,
+  ConversionRateExceedsUnity,
+  EmptyFunnel,
+  ScenarioUnknown,
+  ZeroConversionCohort,
+  ZeroConversionNumerator,
+  ZeroEntryUnitCost,
+  acquisition_forecast_cost_floor_micros,
+  derive_acquisition_cost_forecast,
+}
+import std.currency { Usd }
+import std.measure { MoneyOnce, money_amount_micro }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data two_usd_per_click: MoneyOnce = MoneyOnce {
+  amount: money_amount_micro(count: 2000000),
+  currency: Usd,
+}
+
+data click_to_customer_scenario: AcquisitionScenario = AcquisitionScenario {
+  entry_stage_label: "click",
+  entry_unit_cost: two_usd_per_click,
+  steps: [
+    AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { converted: 1, cohort: 10 } },
+    AcquisitionStageStep { stage_label: "customer", assumed_rate: ConversionRate { converted: 1, cohort: 4 } },
+  ],
+}
+
+test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: click_to_customer_scenario }) {
+    AcquisitionForecastDerived { forecast: f } =>
+      (f.composed_rate.converted == 1)
+        && (f.composed_rate.cohort == 40)
+        && (f.cost_per_outcome_micros_numerator == 80000000)
+        && (f.cost_per_outcome_divisor == 1)
+        && (acquisition_forecast_cost_floor_micros(forecast: f) == 80000000)
+        && ((f.entry_stage_label as String) == "click")
+        && ((f.outcome_stage_label as String) == "customer")
+    AcquisitionForecastRefused { cause: _ } => false
+  }
+}
+
+data indivisible_scenario: AcquisitionScenario = AcquisitionScenario {
+  entry_stage_label: "click",
+  entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 1000000), currency: Usd },
+  steps: [
+    AcquisitionStageStep { stage_label: "signup", assumed_rate: ConversionRate { converted: 3, cohort: 7 } },
+  ],
+}
+
+test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: indivisible_scenario }) {
+    AcquisitionForecastDerived { forecast: f } =>
+      (f.cost_per_outcome_micros_numerator == 7000000)
+        && (f.cost_per_outcome_divisor == 3)
+        && (acquisition_forecast_cost_floor_micros(forecast: f) == 2333333)
+        && ((acquisition_forecast_cost_floor_micros(forecast: f) * f.cost_per_outcome_divisor) != f.cost_per_outcome_micros_numerator)
+    AcquisitionForecastRefused { cause: _ } => false
+  }
+}
+
+test fn w_red_unknown_scenario_refuses() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioUnknown) {
+    AcquisitionForecastRefused { cause: ScenarioUnknown } => true
+    _ => false
+  }
+}
+
+test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+    scenario: AcquisitionScenario {
+      entry_stage_label: "click",
+      entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+      steps: click_to_customer_scenario.steps,
+    },
+  }) {
+    AcquisitionForecastRefused { cause: ZeroEntryUnitCost } => true
+    _ => false
+  }
+}
+
+test fn w_red_empty_funnel_refuses() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+    scenario: AcquisitionScenario {
+      entry_stage_label: "click",
+      entry_unit_cost: two_usd_per_click,
+      steps: [],
+    },
+  }) {
+    AcquisitionForecastRefused { cause: EmptyFunnel } => true
+    _ => false
+  }
+}
+
+test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+    scenario: AcquisitionScenario {
+      entry_stage_label: "click",
+      entry_unit_cost: two_usd_per_click,
+      steps: [
+        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { converted: 1, cohort: 10 } },
+        AcquisitionStageStep { stage_label: "customer", assumed_rate: ConversionRate { converted: 0, cohort: 4 } },
+      ],
+    },
+  }) {
+    AcquisitionForecastRefused { cause: ZeroConversionNumerator { stage_label: l } } =>
+      (l as String) == "customer"
+    _ => false
+  }
+}
+
+test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+    scenario: AcquisitionScenario {
+      entry_stage_label: "click",
+      entry_unit_cost: two_usd_per_click,
+      steps: [
+        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { converted: 1, cohort: 0 } },
+      ],
+    },
+  }) {
+    AcquisitionForecastRefused { cause: ZeroConversionCohort { stage_label: l } } =>
+      (l as String) == "lead"
+    _ => false
+  }
+}
+
+test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+    scenario: AcquisitionScenario {
+      entry_stage_label: "click",
+      entry_unit_cost: two_usd_per_click,
+      steps: [
+        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { converted: 5, cohort: 4 } },
+      ],
+    },
+  }) {
+    AcquisitionForecastRefused { cause: ConversionRateExceedsUnity { stage_label: l } } =>
+      (l as String) == "lead"
+    _ => false
+  }
+}
+
+test fn w_red_first_invalid_stage_wins() -> Bool {
+  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+    scenario: AcquisitionScenario {
+      entry_stage_label: "click",
+      entry_unit_cost: two_usd_per_click,
+      steps: [
+        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { converted: 0, cohort: 10 } },
+        AcquisitionStageStep { stage_label: "customer", assumed_rate: ConversionRate { converted: 0, cohort: 4 } },
+      ],
+    },
+  }) {
+    AcquisitionForecastRefused { cause: ZeroConversionNumerator { stage_label: l } } =>
+      (l as String) == "lead"
+    _ => false
+  }
+}

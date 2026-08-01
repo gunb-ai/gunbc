@@ -1,0 +1,144 @@
+module gunbc.econ.acquisition
+
+import std.currency { CurrencyCode }
+import std.measure { MoneyOnce, money_once_micros }
+import std.nat { Nat }
+import std.types { List, NonEmptyStr, list_length }
+
+data acquisition_mechanism_note: String = "Generic acquisition funnel mechanism, sibling to gunbc.econ.scm_serving_model: stages are PARAMETERS (declared labels on scenario rows, never baked into the mechanism), conversion rates are exact Nat fractions (never floats), and every underivable input refuses with a typed, located cause. This module is mechanism only -- instantiations with actual assumptions carry their own citations and live elsewhere. Vendor stage vocabularies to instantiate stage labels against are cited in extdeps.crm (Salesforce opportunity stages, HubSpot lifecycle stages); channel pricing interfaces for entry unit costs are cited in extdeps.advertising."
+
+type ConversionRate {
+  converted: Nat
+  cohort: Nat
+}
+
+data conversion_rate_note: String = "converted of cohort as an exact fraction -- 1 of 40 stays 1 over 40, never 0.025. Composition multiplies numerators and cohorts; nothing in the mechanism divides until a consumer explicitly asks for the floor projection, so the exact fraction is the authority and the floor is a declared lossy view."
+
+type AcquisitionStageStep {
+  stage_label: NonEmptyStr
+  assumed_rate: ConversionRate
+}
+
+type AcquisitionScenario {
+  entry_stage_label: NonEmptyStr
+  entry_unit_cost: MoneyOnce
+  steps: List<AcquisitionStageStep>
+}
+
+type AcquisitionScenarioInput
+  = AcquisitionScenarioDeclared { scenario: AcquisitionScenario }
+  | AcquisitionScenarioUnknown
+
+type AcquisitionRefusalCause
+  = ScenarioUnknown
+  | ZeroEntryUnitCost
+  | EmptyFunnel
+  | ZeroConversionNumerator { stage_label: NonEmptyStr }
+  | ZeroConversionCohort { stage_label: NonEmptyStr }
+  | ConversionRateExceedsUnity { stage_label: NonEmptyStr }
+
+type AcquisitionCostForecast {
+  entry_stage_label: NonEmptyStr
+  outcome_stage_label: NonEmptyStr
+  composed_rate: ConversionRate
+  cost_per_outcome_micros_numerator: Nat
+  cost_per_outcome_divisor: Nat
+  currency: CurrencyCode
+}
+
+data acquisition_forecast_distinctness_note: String = "AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be passed where an actual is required -- the distinction is structural, not a naming convention. cost_per_outcome is carried as an exact micros fraction (numerator over divisor, the divisor never zero by construction because a zero numerator refuses before composition); acquisition_forecast_cost_floor_micros below is the explicit lossy projection."
+
+type AcquisitionForecastResult
+  = AcquisitionForecastDerived { forecast: AcquisitionCostForecast }
+  | AcquisitionForecastRefused { cause: AcquisitionRefusalCause }
+
+type AcquisitionFoldAcc {
+  refusal: AcquisitionRefusalCause?
+  converted_product: Nat
+  cohort_product: Nat
+  outcome_label: NonEmptyStr
+}
+
+data acquisition_refusal_first_wins_note: String = "The step fold refuses on the FIRST invalid step in declared order and carries that cause unchanged past later steps -- one typed cause per refusal, never a widened or merged answer. Rate validity is per-step: a zero cohort is an ill-formed fraction, a zero numerator makes the funnel's outcome unreachable (cost per outcome would divide by zero), and converted greater than cohort asserts more conversions than attempts. Each names the stage it refused at."
+
+fn acquisition_step_apply(a: AcquisitionFoldAcc, step: AcquisitionStageStep) -> AcquisitionFoldAcc {
+  match a.refusal {
+    Present { value: _ } => a
+    Absent =>
+      if step.assumed_rate.cohort == 0 {
+        AcquisitionFoldAcc {
+          refusal: Present { value: ZeroConversionCohort { stage_label: step.stage_label } },
+          converted_product: a.converted_product,
+          cohort_product: a.cohort_product,
+          outcome_label: a.outcome_label,
+        }
+      } else {
+        if step.assumed_rate.converted == 0 {
+          AcquisitionFoldAcc {
+            refusal: Present { value: ZeroConversionNumerator { stage_label: step.stage_label } },
+            converted_product: a.converted_product,
+            cohort_product: a.cohort_product,
+            outcome_label: a.outcome_label,
+          }
+        } else {
+          if step.assumed_rate.converted > step.assumed_rate.cohort {
+            AcquisitionFoldAcc {
+              refusal: Present { value: ConversionRateExceedsUnity { stage_label: step.stage_label } },
+              converted_product: a.converted_product,
+              cohort_product: a.cohort_product,
+              outcome_label: a.outcome_label,
+            }
+          } else {
+            AcquisitionFoldAcc {
+              refusal: none,
+              converted_product: a.converted_product * step.assumed_rate.converted,
+              cohort_product: a.cohort_product * step.assumed_rate.cohort,
+              outcome_label: step.stage_label,
+            }
+          }
+        }
+      }
+  }
+}
+
+fn derive_acquisition_cost_forecast(input: AcquisitionScenarioInput) -> AcquisitionForecastResult {
+  match input {
+    AcquisitionScenarioUnknown => AcquisitionForecastRefused { cause: ScenarioUnknown }
+    AcquisitionScenarioDeclared { scenario: s } =>
+      if money_once_micros(q: s.entry_unit_cost) == 0 {
+        AcquisitionForecastRefused { cause: ZeroEntryUnitCost }
+      } else {
+        if list_length(items: s.steps) == 0 {
+          AcquisitionForecastRefused { cause: EmptyFunnel }
+        } else {
+          let acc = fold(s.steps, init: AcquisitionFoldAcc {
+            refusal: none,
+            converted_product: 1,
+            cohort_product: 1,
+            outcome_label: s.entry_stage_label,
+          }, f: fn(a, step) { acquisition_step_apply(a: a, step: step) })
+          match acc.refusal {
+            Present { value: c } => AcquisitionForecastRefused { cause: c }
+            Absent =>
+              AcquisitionForecastDerived {
+                forecast: AcquisitionCostForecast {
+                  entry_stage_label: s.entry_stage_label,
+                  outcome_stage_label: acc.outcome_label,
+                  composed_rate: ConversionRate {
+                    converted: acc.converted_product,
+                    cohort: acc.cohort_product,
+                  },
+                  cost_per_outcome_micros_numerator: money_once_micros(q: s.entry_unit_cost) * acc.cohort_product,
+                  cost_per_outcome_divisor: acc.converted_product,
+                  currency: s.entry_unit_cost.currency,
+                },
+              }
+          }
+        }
+      }
+  }
+}
+
+fn acquisition_forecast_cost_floor_micros(forecast: AcquisitionCostForecast) -> Nat {
+  forecast.cost_per_outcome_micros_numerator / forecast.cost_per_outcome_divisor
+}
