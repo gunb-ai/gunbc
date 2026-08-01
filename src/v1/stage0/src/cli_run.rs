@@ -29056,11 +29056,6 @@ pub fn inert_carrier_declared_count_live() -> i64 {
 mod inert_carrier_tests {
     use super::*;
 
-    #[test]
-    fn debug_current_inert_carrier_names() {
-        eprintln!("current inert carriers: {:?}", inert_carrier_names_live());
-    }
-
     fn inert_names_of(files: &[(&str, &str)]) -> Vec<String> {
         let owned: Vec<(String, String)> = files
             .iter()
