@@ -18,6 +18,10 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_current_branch })
   } else if case.operation_key == "git.Core.RemoteBranches" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_remote_branches })
+  } else if case.operation_key == "git.Inspect.MergeBase" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_merge_base })
+  } else if case.operation_key == "git.Inspect.ListTreePathsAtRevision" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_list_tree_paths_at_revision })
   } else if case.operation_key == "git.Core.LsFiles" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_ls_files })
   } else if case.operation_key == "git.Core.Diff" {

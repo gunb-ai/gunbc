@@ -106,6 +106,7 @@ pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     v1_emit_enum_derives, v1_emit_enum_supplemental_impls, v1_emit_struct_from_capability_table,
     v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
+    v1_generic_params_needing_clone_bound_for_struct_item,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -11712,6 +11713,36 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
     }
 }
 
+pub fn emit_item_type_params_for_struct(
+    params: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let generic_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
+            }
+            __result
+        });
+        let clone_param_names = v1_generic_params_needing_clone_bound_for_struct_item(
+            generic_param_names.clone(),
+            field_type_exprs.clone(),
+            source_indices.clone(),
+        );
+        if ((clone_param_names.clone().len() as i64) > 0) {
+            v1_emit_type_params_with_clone_bounds(
+                params.clone(),
+                clone_param_names.clone(),
+                source_indices.clone(),
+            )
+        } else {
+            emit_type_params(params.clone(), source_indices.clone())
+        }
+    }
+}
+
 pub fn emit_type_def_from_connective(
     item: Rc<Node>,
     recursive_types: Rc<BTreeSet<String>>,
@@ -11724,11 +11755,37 @@ pub fn emit_type_def_from_connective(
     imports: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
-        let type_params = emit_type_params(item.params.clone(), env.source_indices.clone());
         let item_text = authored_name(env.clone(), item.clone());
         let is_product = is_product_type(item.clone());
         if is_product.clone() {
             {
+                let has_fn_fields = type_has_fn_fields(item_text.clone(), emit_info.clone());
+                let capability_surface = v1_emit_struct_from_capability_table(
+                    env.module_path.clone(),
+                    item_text.clone(),
+                    item.children.clone(),
+                    shared_types.clone(),
+                    has_fn_fields.clone(),
+                    env.source_indices.clone(),
+                );
+                let field_type_exprs = Rc::new({
+                    let mut __result = Vec::new();
+                    for c in item.children.clone().iter().cloned() {
+                        __result.push(resolved_type(c.clone()));
+                    }
+                    __result
+                });
+                let type_params = if ((capability_surface.impl_bodies.clone() == "".to_string())
+                    && !has_fn_fields.clone())
+                {
+                    emit_item_type_params_for_struct(
+                        item.params.clone(),
+                        field_type_exprs.clone(),
+                        env.source_indices.clone(),
+                    )
+                } else {
+                    emit_type_params(item.params.clone(), env.source_indices.clone())
+                };
                 let generic_param_names = Rc::new({
                     let mut __result = Vec::new();
                     for p in item.params.clone().iter().cloned() {
@@ -11750,6 +11807,8 @@ pub fn emit_type_def_from_connective(
         } else {
             if is_host_optional_carrier_alias(item_text.clone()) {
                 {
+                    let type_params =
+                        emit_type_params(item.params.clone(), env.source_indices.clone());
                     let elem_csv = Rc::new({
                         let mut __result = Vec::new();
                         for p in item.params.clone().iter().cloned() {
@@ -11784,6 +11843,8 @@ pub fn emit_type_def_from_connective(
             } else {
                 if is_host_freemonoid_vec_alias(item_text.clone()) {
                     {
+                        let type_params =
+                            emit_type_params(item.params.clone(), env.source_indices.clone());
                         let elem_csv = Rc::new({
                             let mut __result = Vec::new();
                             for p in item.params.clone().iter().cloned() {
@@ -11817,25 +11878,29 @@ pub fn emit_type_def_from_connective(
                     }
                 } else {
                     if is_host_diagnostics_carrier_alias(item_text.clone()) {
-                        v1_rt::concat(
+                        {
+                            let type_params =
+                                emit_type_params(item.params.clone(), env.source_indices.clone());
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                rust_visibility_prefix(),
-                                                "type ".to_string(),
+                                                v1_rt::concat(
+                                                    rust_visibility_prefix(),
+                                                    "type ".to_string(),
+                                                ),
+                                                item_text.clone(),
                                             ),
-                                            item_text.clone(),
+                                            type_params.clone(),
                                         ),
-                                        type_params.clone(),
+                                        " = ".to_string(),
                                     ),
-                                    " = ".to_string(),
+                                    render_rust_diagnostics_carrier_applied(shared_types.clone()),
                                 ),
-                                render_rust_diagnostics_carrier_applied(shared_types.clone()),
-                            ),
-                            ";".to_string(),
-                        )
+                                ";".to_string(),
+                            )
+                        }
                     } else {
                         {
                             let all_unit_variants = {
@@ -11892,6 +11957,8 @@ pub fn emit_type_def_from_connective(
                                     )
                                 }
                             };
+                            let type_params =
+                                emit_type_params(item.params.clone(), env.source_indices.clone());
                             let generic_param_names = Rc::new({
                                 let mut __result = Vec::new();
                                 for p in item.params.clone().iter().cloned() {
