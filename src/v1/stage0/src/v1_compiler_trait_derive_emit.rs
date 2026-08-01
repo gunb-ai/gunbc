@@ -74,6 +74,24 @@ pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn trait_derive_emit_item_clone_bound_contract_fork_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "MODEL-REALIZATION FORK (counted): the same item-level Clone-bound rule is also modeled at v2.std.compilers.target_model target_derive_supplemental_generic_bound_contract (trait_derive_supplemental_generic_bound_contract_test.dag). That carrier has no consumer in v1 emit today; this structural rule in trait_derive_emit is the operative authority until dissolution.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_item_clone_bound_contract_fork_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: v2 Rust emitter consumes target_derive_supplemental_generic_bound_contract for item-level generic bounds; then delete this structural implementation — do not accumulate beside the contract.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructCapabilityEmit {
     pub derive_attr: String,
