@@ -280,6 +280,14 @@ Found while modeling swap as an axis, and it is the same shape as Finding 2 in d
 - **P-D (srv3 de-fork):** srv3 actuator toolchain ensure calls generic `host_toolchain_ensure`.
 - **P-E (STEP 2 — operator-gated):** remove CI fallback; `ci_spec_witness_test` golden updated; discriminating RED proves refuse.
 
+## 7b. Step-1 placement receipt
+
+Endpoint-owner observation and the live srv1/srv2/srv3 read-only receipt (including the
+measured refutation of the "`--show-stats` manufactures a server" premise) are recorded in
+[build-cache placement step-1 receipt](build-cache-placement-receipt.md). Open question 1
+below is answered there in one direction only by evidence: the CI cache is runner-owned on
+every host observed, so no host currently satisfies any unit scope.
+
 ## 8. Open questions (operator)
 
 1. **Systemd scope:** user service (`systemd --user`, runner uid) vs system service for sccache daemon on srv1/srv2?
