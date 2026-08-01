@@ -10,7 +10,9 @@ import gunbc.compile_diagnostic_census {
 }
 import gunbc.type_ref_binding_authority_debt {
   type_ref_binding_authority_debt_dissolve_trigger,
-  type_ref_census_sha
+  type_ref_census_sha,
+  type_ref_roster_regenerator_choice,
+  type_ref_roster_regenerator_offline_dissolve_trigger
 }
 import std.types { String, Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -66,4 +68,14 @@ test fn debt_dissolve_trigger_names_n2() -> Bool {
 
 test fn census_sha_is_pinned_on_carrier() -> Bool {
   string_contains(s: type_ref_census_sha, pattern: "89dbea7d896b3ae95195117374a8c0c9454f341e")
+}
+
+test fn regenerator_declared_offline_authoring_tool() -> Bool {
+  string_contains(s: type_ref_roster_regenerator_choice, pattern: "CHOICE (b)")
+    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "OFFLINE AUTHORING TOOL")
+    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "NEVER invoked from CI")
+}
+
+test fn regenerator_offline_dissolve_names_dag_fold() -> Bool {
+  string_contains(s: type_ref_roster_regenerator_offline_dissolve_trigger, pattern: ".dag fold")
 }

@@ -1,12 +1,27 @@
 #!/usr/bin/env python3
-"""Regenerate provisional debt / expect-red / unclassified carriers from a pinned census.
+"""OFFLINE AUTHORING TOOL — not a merge-floor step (choice b, quiet-hawk-219).
 
-Census input: SITE\\tUnresolvedType\\tTYPE\\tfile\\tstart\\tend lines (or full histogram out).
-Requires --census-sha (the tree the histogram was evaluated against).
+Regenerate provisional debt / expect-red / unclassified TSV carriers from a
+pinned census. NEVER invoked from CI, claim_executor, compile-clean, or any
+enrolled floor consumer. The checked artifacts are the OUTPUT rows
+(provisional_debt_roster.tsv, expect_red_controls.tsv, unclassified_sites.tsv,
+provisional_debt_by_type.tsv, census_sha.txt) plus type_ref_census_sha in
+authority.dag.
 
-Classification (quiet-hawk-219):
+Authority: gunbc.type_ref_binding_authority_debt
+  type_ref_roster_regenerator_choice
+  type_ref_roster_regenerator_offline_dissolve_trigger
+
+Dissolve-on: next debt-contract regeneration touch models this as a .dag fold
+and deletes this file.
+
+Census input: SITE\\tUnresolvedType\\tTYPE\\tfile\\tstart\\tend lines (or full
+histogram out). Requires --census-sha (the tree the histogram was evaluated
+against).
+
+Classification:
   subset = files with unbound/refusal assertion vocabulary (word-bounded)
-           OR §14 RED probe fixtures (row3/4/5)
+           OR section-14 RED probe fixtures (row3/4/5)
   outside subset → incidental BY CONSTRUCTION
   inside subset → execution discriminator: does the control fail if the ref binds?
     yes → deliberate expect-red

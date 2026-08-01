@@ -18,11 +18,24 @@ data type_ref_binding_authority_debt_charter_note: String = "N1 (import-strip se
 
 data type_ref_debt_freeze_sequencing_note: String = "FREEZE STATE = ProvisionalUnfrozen until witty-badger-200's peel_alias_once_for_field_access diagnostics-drop fix lands AND a census re-run closes the universe at a new type_ref_census_sha. Rationale (quiet-hawk-219): the hard UnresolvedType census is a LOWER BOUND while peel suppresses sites; freezing new-sites-refuse against a short denominator would red PRs whose authors added nothing when peel reveals pre-existing sites. Revealed sites are additive to classification. PR-ready flip waits on Frozen. Meanwhile: arm, deliberate-vs-incidental classification, and debt machinery proceed."
 
-data type_ref_debt_site_disposition_note: String = "Per-site disposition discriminator is DELIBERATE vs INCIDENTAL — NOT path prefix. Subset = files containing unbound/refusal assertion vocabulary (word-bounded) OR section-14 RED probe fixtures. Outside the subset = incidental BY CONSTRUCTION. Inside the subset = execution discriminator only: DOES THE TEST/CONTROL FAIL IF THE REFERENCE BINDS? Yes → expect-red (not debt). No → incidental. Undecidable → unclassified_sites.tsv (third bucket kept alive; empty only when measured empty, never by construction). regenerate_from_census.py is the carrier for that procedure."
+data type_ref_debt_site_disposition_note: String = "Per-site disposition discriminator is DELIBERATE vs INCIDENTAL — NOT path prefix. Subset = files containing unbound/refusal assertion vocabulary (word-bounded) OR section-14 RED probe fixtures. Outside the subset = incidental BY CONSTRUCTION. Inside the subset = execution discriminator only: DOES THE TEST/CONTROL FAIL IF THE REFERENCE BINDS? Yes → expect-red (not debt). No → incidental. Undecidable → unclassified_sites.tsv (third bucket kept alive; empty only when measured empty, never by construction)."
 
 data type_ref_debt_roster_keying_note: String = "Rows keyed TYPE x site (file, span_start, span_end), not site alone. Ranking in provisional_debt_by_type.tsv makes N2 grant dissolution a checkable event ('this grant dissolved these N rows of type T') and ranks which single grounding buys the most. Every TSV carries census_sha as the first header field. Gate loader matches the flat TYPE\\tfile\\tstart\\tend identity."
 
-data type_ref_binding_authority_debt_dissolve_trigger: String = "dissolve-on: (1) witty-badger-200 peel fix + re-census → update type_ref_census_sha, flip type_ref_debt_roster_freeze_state to Frozen and arm new-sites-refuse; (2) N2 containment binding authority for type positions swaps type_ref_has_binding_authority body → type-keyed roster shrinks by typed disposition to empty → delete carriers + this scaffold. Partial type-keyed shrinks are legitimate monotone progress. No import additions."
+data type_ref_roster_regenerator_choice: String = "CHOICE (b) — quiet-hawk-219 decision surface, swift-fox-347: regenerate_from_census.py is an OFFLINE AUTHORING TOOL, not a merge-floor step and not an undeclared load-bearing python. Why not (a) .dag fold now: the deliberate/incidental discriminator is host-effect execution (compile fixture as-is vs bind-patched scratch, then compare UnresolvedType counts) — not a small pure fold over already-typed census rows. Checked artifacts on the floor are the OUTPUT rows only: provisional_debt_roster.tsv, expect_red_controls.tsv, unclassified_sites.tsv, provisional_debt_by_type.tsv, census_sha.txt / type_ref_census_sha, all SHA-pinned. NEVER invoked from CI, claim_executor, compile-clean, or any enrolled floor consumer. Dissolve-on: the next touch of this debt-contract machinery that needs regeneration models the roster regeneration as a .dag fold (choice a) and deletes the .py; until then (b) holds for the freeze timeline."
+
+data type_ref_roster_regenerator_offline_dissolve_trigger: String = "dissolve-on: regenerate_from_census.py — DELETE WHEN debt-contract machinery is next touched for regeneration (peel re-census freeze, or N2 type-keyed dissolve plumbing) AND regeneration is modeled as a .dag fold over pinned census diagnostics + execution evidence; the .py must not survive that touch as a silent second authority."
+
+data type_ref_roster_regenerator_offline_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.type_ref_binding_authority_debt",
+    decl_name: "type_ref_roster_regenerator_offline_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data type_ref_binding_authority_debt_dissolve_trigger: String = "dissolve-on: (1) witty-badger-200 peel fix + re-census → update type_ref_census_sha, flip type_ref_debt_roster_freeze_state to Frozen and arm new-sites-refuse; (2) N2 containment binding authority for type positions swaps type_ref_has_binding_authority body → type-keyed roster shrinks by typed disposition to empty → delete carriers + this scaffold. Partial type-keyed shrinks are legitimate monotone progress. No import additions. The offline regenerator .py dissolves on its own trigger (type_ref_roster_regenerator_offline_dissolve_trigger), not deferred past that touch."
 
 data type_ref_binding_authority_debt_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
