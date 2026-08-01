@@ -17,7 +17,7 @@ import gunbc.design.theme {
 import gunbc.site.moodboard { moodboard_rules, moodboard_css }
 import gunbc.design.theme_transition { unthemed_color_decls, untokened_length_decls }
 import gunbc.design.scale { scale_root_css }
-import gunbc.site.mark { render_mark }
+import gunbc.site.markup { txt, el_class }
 import gunbc.design.interaction {
   Approach, Reveal, Dispatch, BehaviorRow, InteractiveElement,
   ElementId, DispatchBtnElement, element_id_eq, element_id_key,
@@ -132,19 +132,21 @@ test fn witness_archetype_verbs_match_declared_elements() -> Bool {
       all(e.verbs, w => archetype_admits_verb(a: dashboard_archetype, v: w)))
 }
 
-fn header_children_contain_mark(h: Fragment) -> Bool {
+data header_wordmark_witness_note: String = "Replaced witness_header_carries_shared_mark at A1 (presentation recon, operator-signed 2026-08-01): the header's brand element is the TEXT wordmark, not the site mark — the mark that stood here was gunbc.site.mark candidate A, an unselected brand experiment whose aria-label said gunb.ai on a gunbc tool surface (rationale on gunbc.roadmap_page.roadmap_wordmark_note). The structural claim is the same shape as before: the header Fragment contains the exact wordmark node, on both page instantiations."
+
+fn header_children_contain_wordmark(h: Fragment) -> Bool {
   match h {
     Element { tag, attributes: _, children } =>
       tag == "header"
-        && fold(children, init: false, f: (acc, c) => acc || c == render_mark(depth: 1))
+        && fold(children, init: false, f: (acc, c) => acc || c == el_class("span", "wordmark", [ txt("gunbc") ]))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
   }
 }
 
-test fn witness_header_carries_shared_mark() -> Bool {
-  header_children_contain_mark(h: roadmap_header(title: "gunbc — roadmap"))
-    && header_children_contain_mark(h: roadmap_header(title: "gunbc — daily workspace"))
+test fn witness_header_carries_wordmark() -> Bool {
+  header_children_contain_wordmark(h: roadmap_header(page: "roadmap"))
+    && header_children_contain_wordmark(h: roadmap_header(page: "daily workspace"))
 }
 
 fn theme_with_role_material(t: Theme, target: ThemeRole, m: Material) -> Theme {

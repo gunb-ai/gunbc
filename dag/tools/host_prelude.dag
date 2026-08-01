@@ -4,6 +4,7 @@ import extdeps.shell
 import gunbc.retained_shell_script { retained_foreign }
 import extdeps.cargo_build
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.cli_services
 import gunbc.cli_invoke { source_root_transport_argv }
@@ -11,7 +12,7 @@ import gunbc.output_policy { OutcomeIsData }
 import gunbc.ci_release_bins { release_bin_is_enrolled }
 import std.logic { Bool }
 
-data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14); toolchain_provision_shell_exec is the only surviving consumer of this module's shell path."
+data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Inspect.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14); toolchain_provision_shell_exec is the only surviving consumer of this module's shell path."
 
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: retained_foreign(body: script, reason: "host_prelude toolchain-provision shell exec"))
@@ -147,7 +148,7 @@ fn run_witness_bin_ready_program(root: String, invoke: WitnessBin, args: List<St
 }
 
 fn run_witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: List<String>) -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   match witness_bin_program_readiness(root: root.path, prereqs: prereqs, invoke: invoke) {
     WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
     WitnessBinReady { path: _ } =>
@@ -169,7 +170,7 @@ type ClaimRun {
 }
 
 fn gunbc_claims_readiness() -> WitnessBinReadiness {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   witness_bin_ensure_built_typed(
     root: root.path,
     bin: witness_bin(var_name: "CLAIM_BATCH", bin_name: "claim_batch")
@@ -209,7 +210,7 @@ type ClaimBatchArgvAcc {
 }
 
 fn run_gunbc_claims_ready(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: root.path,
     bin_path: witness_bin_release_path(root: root.path, bin_name: "claim_batch"),

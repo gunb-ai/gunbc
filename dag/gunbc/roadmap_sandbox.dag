@@ -230,7 +230,7 @@ fn sandbox_page() -> Fragment {
         el("title", [ txt("gunbc — sandbox") ]),
       ]),
       el("body", [
-        roadmap_header(title: "gunbc — sandbox"),
+        roadmap_header(page: "sandbox"),
         el_class("div", "auditioner-bar", concat(
           [ el_attrs("button", [
               attr(name: "class", value: swatch_toggle_class ),

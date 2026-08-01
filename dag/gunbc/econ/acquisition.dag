@@ -1,0 +1,143 @@
+module gunbc.econ.acquisition
+
+import std.algebra { FieldOfFractions }
+import std.measure { MoneyOnce, money_once_micros }
+import std.nat { Nat }
+import std.types { List, NonEmptyStr, list_length }
+
+data acquisition_mechanism_note: String = "Generic acquisition funnel mechanism, sibling to gunbc.econ.scm_serving_model: stages are PARAMETERS (declared labels on scenario rows, never baked into the mechanism), conversion rates are exact Nat fractions (never floats), and every underivable input refuses with a typed, located cause. This module is mechanism only -- instantiations with actual assumptions carry their own citations and live elsewhere. Vendor stage vocabularies to instantiate stage labels against are cited in extdeps.crm (Salesforce opportunity stages, HubSpot lifecycle stages); channel pricing interfaces for entry unit costs are cited in extdeps.advertising."
+
+type ConversionRate = FieldOfFractions<Nat>
+
+data conversion_rate_note: String = "A conversion rate is an exact fraction and CONSUMES the std.algebra FieldOfFractions carrier at Nat (non-negative fractions): num is the converted count, denom is the cohort count -- 1 of 40 stays 1/40, never 0.025. Composition multiplies num and denom; nothing in the mechanism divides until a consumer explicitly asks for the floor projection, so the exact fraction is the authority and the floor is a declared lossy view. Fixed-scale dimensionless carriers (Percent, BasisPoint) do not absorb this concept -- projecting onto any fixed scale loses the exactness (1 of 3 has no exact basis-point image). The at-most-unity semantics (num at most denom) is a conversion-rate FACT enforced by typed refusal at composition, not a property of the generic fraction carrier. An earlier revision of this note claimed no std exact-rational carrier existed on main and minted a local pair; refuted against the tree by review 45963 (std.algebra FieldOfFractions carries the grounded num/denom body and std.rational.Rational builds on it), so the local pair was dissolved into the authority."
+
+type AcquisitionStageStep {
+  stage_label: NonEmptyStr
+  assumed_rate: ConversionRate
+}
+
+type AcquisitionScenario {
+  entry_stage_label: NonEmptyStr
+  entry_unit_cost: MoneyOnce
+  steps: List<AcquisitionStageStep>
+}
+
+type AcquisitionScenarioInput
+  = AcquisitionScenarioDeclared { scenario: AcquisitionScenario }
+  | AcquisitionScenarioUnknown
+
+type AcquisitionRefusalCause
+  = ScenarioUnknown
+  | ZeroEntryUnitCost
+  | EmptyFunnel
+  | ZeroConversionNumerator { stage_label: NonEmptyStr }
+  | ZeroConversionCohort { stage_label: NonEmptyStr }
+  | ConversionRateExceedsUnity { stage_label: NonEmptyStr }
+
+type AcquisitionCostForecast {
+  entry_stage_label: NonEmptyStr
+  outcome_stage_label: NonEmptyStr
+  composed_rate: ConversionRate
+  entry_unit_cost: MoneyOnce
+}
+
+data acquisition_forecast_distinctness_note: String = "AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be passed where an actual is required -- the distinction is structural, not a naming convention. Money stays on the std.measure MoneyOnce carrier (currency and micro denomination live there, never as bare scalars beside it), and the cost per outcome is DERIVED, never stored: the exact value is entry_unit_cost scaled by denom over num on the ConversionRate fraction. Every forecast the derivation PRODUCES carries a nonzero num (a zero numerator refuses before composition), but the record itself remains publicly constructible with num zero, so the floor projection below does not trust its caller: it is total by typed refusal, returning none on a zero num rather than dividing."
+
+type AcquisitionForecastResult
+  = AcquisitionForecastDerived { forecast: AcquisitionCostForecast }
+  | AcquisitionForecastRefused { cause: AcquisitionRefusalCause }
+
+type AcquisitionFoldAcc {
+  refusal: AcquisitionRefusalCause?
+  converted_product: Nat
+  cohort_product: Nat
+  outcome_label: NonEmptyStr
+}
+
+data acquisition_refusal_first_wins_note: String = "The step fold refuses on the FIRST invalid step in declared order and carries that cause unchanged past later steps -- one typed cause per refusal, never a widened or merged answer. Rate validity is per-step: a zero cohort is an ill-formed fraction, a zero numerator makes the funnel's outcome unreachable (cost per outcome would divide by zero), and converted greater than cohort asserts more conversions than attempts. Each names the stage it refused at."
+
+fn acquisition_step_apply(a: AcquisitionFoldAcc, step: AcquisitionStageStep) -> AcquisitionFoldAcc {
+  match a.refusal {
+    Present { value: _ } => a
+    Absent =>
+      if step.assumed_rate.denom == 0 {
+        AcquisitionFoldAcc {
+          refusal: Present { value: ZeroConversionCohort { stage_label: step.stage_label } },
+          converted_product: a.converted_product,
+          cohort_product: a.cohort_product,
+          outcome_label: a.outcome_label,
+        }
+      } else {
+        if step.assumed_rate.num == 0 {
+          AcquisitionFoldAcc {
+            refusal: Present { value: ZeroConversionNumerator { stage_label: step.stage_label } },
+            converted_product: a.converted_product,
+            cohort_product: a.cohort_product,
+            outcome_label: a.outcome_label,
+          }
+        } else {
+          if step.assumed_rate.num > step.assumed_rate.denom {
+            AcquisitionFoldAcc {
+              refusal: Present { value: ConversionRateExceedsUnity { stage_label: step.stage_label } },
+              converted_product: a.converted_product,
+              cohort_product: a.cohort_product,
+              outcome_label: a.outcome_label,
+            }
+          } else {
+            AcquisitionFoldAcc {
+              refusal: none,
+              converted_product: a.converted_product * step.assumed_rate.num,
+              cohort_product: a.cohort_product * step.assumed_rate.denom,
+              outcome_label: step.stage_label,
+            }
+          }
+        }
+      }
+  }
+}
+
+fn derive_acquisition_cost_forecast(input: AcquisitionScenarioInput) -> AcquisitionForecastResult {
+  match input {
+    AcquisitionScenarioUnknown => AcquisitionForecastRefused { cause: ScenarioUnknown }
+    AcquisitionScenarioDeclared { scenario: s } =>
+      if money_once_micros(q: s.entry_unit_cost) == 0 {
+        AcquisitionForecastRefused { cause: ZeroEntryUnitCost }
+      } else {
+        if list_length(items: s.steps) == 0 {
+          AcquisitionForecastRefused { cause: EmptyFunnel }
+        } else {
+          let acc = fold(s.steps, init: AcquisitionFoldAcc {
+            refusal: none,
+            converted_product: 1,
+            cohort_product: 1,
+            outcome_label: s.entry_stage_label,
+          }, f: fn(a, step) { acquisition_step_apply(a: a, step: step) })
+          match acc.refusal {
+            Present { value: c } => AcquisitionForecastRefused { cause: c }
+            Absent =>
+              AcquisitionForecastDerived {
+                forecast: AcquisitionCostForecast {
+                  entry_stage_label: s.entry_stage_label,
+                  outcome_stage_label: acc.outcome_label,
+                  composed_rate: ConversionRate {
+                    num: acc.converted_product,
+                    denom: acc.cohort_product,
+                  },
+                  entry_unit_cost: s.entry_unit_cost,
+                },
+              }
+          }
+        }
+      }
+  }
+}
+
+fn acquisition_forecast_cost_floor_micros(forecast: AcquisitionCostForecast) -> Nat? {
+  if forecast.composed_rate.num == 0 {
+    none
+  } else {
+    Present {
+      value: (money_once_micros(q: forecast.entry_unit_cost) * forecast.composed_rate.denom) / forecast.composed_rate.num
+    }
+  }
+}

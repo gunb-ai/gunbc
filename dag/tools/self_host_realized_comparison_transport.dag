@@ -1,6 +1,7 @@
 module tools.self_host_realized_comparison_transport
 
 import extdeps.git
+import extdeps.git.inspect
 import tools.host_prelude { WitnessBin, run_witness_bin_program, witness_bin }
 
 data realized_comparison_stable_dir_rel: String = "target/v2-emit-fresh-realize"
@@ -9,7 +10,7 @@ data realized_comparison_committed_src_root_rel: String = "src/v1/stage0/src"
 data realized_comparison_roster_manifest_rel: String = "target/v2-emit-fresh-realize/roster_manifest.txt"
 
 fn realized_comparison_repo_path(rel: String) -> String {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   concat(root.path, concat("/", rel))
 }
 

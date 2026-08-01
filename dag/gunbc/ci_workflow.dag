@@ -434,6 +434,8 @@ data gunbc_ci_prelude_allowance_minutes: Int = 5
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
+data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
+data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
@@ -470,7 +472,13 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     if_condition: Present { value: ci_deploy_push_to_main_if },
     timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
     continue_on_error: none,
-    concurrency: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: srv1_dashboard_deploy_concurrency_group,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none,
+      }
+    },
     permissions: none
   }
 }

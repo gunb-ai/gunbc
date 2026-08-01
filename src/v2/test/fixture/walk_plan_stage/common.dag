@@ -92,10 +92,10 @@ fn walk_plan_stage_failure_red_member_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_panic_member_claim() -> Runnable {
+fn walk_plan_stage_recursion_refusal_member_claim() -> Runnable {
   RunnableSingleClaim {
-    entry: "src/v2/test/fixture/walk_plan_stage/panic_member_test.dag",
-    function: "walk_plan_stage_panic_member_holds",
+    entry: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag",
+    function: "walk_plan_stage_recursion_refusal_member_holds",
     profile: walk_plan_stage_negligible_wet_profile()
   }
 }

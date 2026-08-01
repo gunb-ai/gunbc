@@ -3,6 +3,7 @@ module gunbc.merge_admission_produce
 import std.types { NonEmptyStr, ContentHash, CommitSha, String, Int, List, Bool, GitRef }
 import extdeps.git.object_store { GitObjectId }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_wire_label,
@@ -144,7 +145,7 @@ fn merge_target_tree_hash_show_tree_refusal_cause(stderr: String) -> String {
 }
 
 fn observe_merge_target_tree_hash(ref: GitRef) -> MergeTargetTreeHashObservation {
-  let result = git.Core.ShowTree(ref: ref)
+  let result = git.Inspect.ShowTree(ref: ref)
   if !result.success {
     MergeTargetTreeHashRefused {
       ref: ref as String,
@@ -155,7 +156,7 @@ fn observe_merge_target_tree_hash(ref: GitRef) -> MergeTargetTreeHashObservation
     if hash == "" {
       MergeTargetTreeHashRefused {
         ref: ref as String,
-        cause: "git.Core.ShowTree exited 0 but stdout tree hash was empty",
+        cause: "git.Inspect.ShowTree exited 0 but stdout tree hash was empty",
       }
     } else {
       MergeTargetTreeHashOk { hash: hash as ContentHash }
@@ -165,7 +166,7 @@ fn observe_merge_target_tree_hash(ref: GitRef) -> MergeTargetTreeHashObservation
 
 fn merge_target_tree_hash_refusal_reason(prefix: String, ref: String, cause: String) -> String {
   concat(
-    concat(prefix, ": git.Core.ShowTree refused for ref "),
+    concat(prefix, ": git.Inspect.ShowTree refused for ref "),
     concat(ref, concat(": ", cause))
   )
 }
