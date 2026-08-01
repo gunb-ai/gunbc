@@ -51,6 +51,7 @@ test fn witness_enoent_socket_classifies_empty() -> Bool {
       e == "error connecting to /tmp/tmux-1000/srv1-green (No such file or directory)"
     TmuxSessionsListed { entries: _ } => false
     TmuxListUnknowable { stderr: _ } => false
+    TmuxListStdoutRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
@@ -60,6 +61,7 @@ test fn witness_connection_refused_is_unknowable() -> Bool {
     TmuxListUnknowable { stderr: e } => e == stderr
     TmuxNoServer { evidence: _ } => false
     TmuxSessionsListed { entries: _ } => false
+    TmuxListStdoutRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
@@ -72,6 +74,7 @@ test fn witness_permission_denied_is_unknowable() -> Bool {
     TmuxListUnknowable { stderr: _ } => true
     TmuxNoServer { evidence: _ } => false
     TmuxSessionsListed { entries: _ } => false
+    TmuxListStdoutRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
@@ -86,6 +89,7 @@ test fn witness_exit_ok_parses_sessions() -> Bool {
         && entries.skip(n: 1).first().windows == 2
     TmuxNoServer { evidence: _ } => false
     TmuxListUnknowable { stderr: _ } => false
+    TmuxListStdoutRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 

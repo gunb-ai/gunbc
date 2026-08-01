@@ -1845,6 +1845,14 @@ fn belt_sessions_observe_for_instance(
               e,
             ),
           }
+        TmuxListStdoutRefused { line_number, raw, reason } =>
+          ObserveRefused {
+            reason: belt_ls_stdout_refusal_reason(
+              line_number: line_number,
+              raw: raw,
+              reason: reason,
+            ),
+          }
       }
     }
   } else {
