@@ -419,6 +419,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "observe_stage0_rust_manifest".to_string(),
+            type_variable_node("rust_source_host_observation".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "commit_witness_claim_roster_unresolvable_count".to_string(),
             int_type(),
         );

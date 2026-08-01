@@ -3,7 +3,7 @@ module gunbc.stage0_cargo_manifest
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.text { String }
 
-data stage0_cargo_manifest_authority_note: String = "Cargo [[bin]] targets are NOT hand-listed here. stage0_cargo_toml_repo_path names the manifest file; repo-relative bin paths are supplied only by the host observation boundary (follow-on PR B) with typed ManifestParseRefused — never integer conclusions or manual rows in .dag."
+data stage0_cargo_manifest_authority_note: String = "Cargo [[bin]] targets are NOT hand-listed here. stage0_cargo_toml_repo_path names the manifest file; repo-relative bin paths are carried only inside gunbc.stage0_rust_host_observation rust_source_host_observation with typed RustManifestParseRefused — never integer conclusions, a lossy empty-list projection, or manual rows in .dag."
 
 data stage0_cargo_toml_repo_path: String = "src/v1/stage0/Cargo.toml"
 
@@ -11,6 +11,6 @@ data stage0_package_root: String = "src/v1/stage0/"
 
 data stage0_cargo_bin_paths_observation_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.stage0_rust_host_observation",
-  decl_name: "stage0_cargo_bin_repo_paths_observed",
+  decl_name: "rust_source_host_observation",
   field: WholeDeclaration
 }

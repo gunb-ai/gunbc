@@ -1,0 +1,49 @@
+module gunbc.stage0_rust_host_observation
+
+import gunbc.stage0_cargo_manifest {
+  stage0_cargo_toml_repo_path,
+  stage0_package_root
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import std.types { Int }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data stage0_rust_host_observation_note: String = "Live tracked-Rust host boundary for the stage0 lifecycle carrier. The .dag model owns the complete result space and supplies the manifest and package-root paths from gunbc.stage0_cargo_manifest; the shrinking Rust seed realizes only the Git/filesystem/TOML effects. Success carries the exact HEAD revision, SHA-256 digest of the bytes parsed, current tracked .rs paths from git ls-files, prior tracked .rs paths from HEAD^, and normalized Cargo [[bin]] paths. Git, manifest read, and manifest parse failures are distinct typed refusals; none can become an empty list or RustManifestObserved. The prior tree is the exact parent of repository_revision, so the newly-unclassified ratchet compares one repository transition rather than a caller-selected baseline."
+
+type RustSourceHostObservation
+  = RustManifestObserved {
+      repository_revision: String,
+      manifest_digest: String,
+      tracked_rust_repo_paths: List<String>,
+      prior_tracked_rust_repo_paths: List<String>,
+      cargo_bin_repo_paths: List<String>
+    }
+  | RustManifestReadRefused { detail: String }
+  | RustManifestParseRefused { detail: String }
+  | GitObservationRefused { detail: String }
+
+data rust_source_host_observation: RustSourceHostObservation = observe_stage0_rust_manifest(
+  manifest_repo_path: stage0_cargo_toml_repo_path,
+  package_root: stage0_package_root
+)
+
+data stage0_rust_host_observation_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "observe_stage0_rust_manifest",
+    field: WholeDeclaration
+  }
+}
+
+data stage0_rust_host_observation_hand_rust_loc_delta_net: Int = 392
+
+data stage0_rust_host_observation_hand_rust_paths: List<String> = [
+  "src/v1/stage0/src/cli_run.rs",
+  "src/v1/stage0/src/v1_interpreter.rs",
+  "src/v1/stage0/src/v1_compiler_infer_method.rs"
+]
+
+data stage0_rust_host_observation_hand_rust_dissolve_trigger: String = "🟡 HAND-RUST realization receipt: +392 net Rust lines against origin/main (+297 cli_run host effects and refusal tests, +90 interpreter value projection, +5 generated builtin registry). The model and result space live in this module; Rust may only realize its effects. DISSOLVES WHEN the generic Git/filesystem/TOML RealizationDispatch can produce RustSourceHostObservation directly, or V1FinishLine ZeroHandMaintainedRust retires this seed bridge. Discriminating receipts: stage0_rust_host_observation_tests plus scaffold_host_observation_is_live_and_observed and the three exact typed-refusal witnesses."

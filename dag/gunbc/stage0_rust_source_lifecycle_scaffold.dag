@@ -1,8 +1,15 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
 import gunbc.stage0_cargo_manifest {
-  stage0_cargo_bin_paths_observation_ref,
-  stage0_cargo_toml_repo_path
+  stage0_cargo_bin_paths_observation_ref
+}
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation,
+  rust_source_host_observation
 }
 import gunbc.stage0_emit_model {
   generated_stage0_files,
@@ -16,36 +23,16 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 
-data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument (V1FinishLine ZeroHandMaintainedRust, authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / node v1-zero-hand-maintained-rust). Stage0 seed-surface lifecycle: joins existing .dag authorities (generated_stage0_files, hand_maintained_stage0_filenames, stage0_partition_crate_rows) plus file-grain residue rows. Cargo [[bin]] paths join only after the host observation boundary (gunbc.stage0_rust_host_observation, PR B) — never hand-listed. Full-repo tracked .rs census is RustManifestUnobserved until host observation supplies path evidence with repository_revision and manifest_digest — Unobserved cannot masquerade as zero unclassified. Discovery prefix hints name where the future manifest consumer should look; they do NOT classify children."
+data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument (V1FinishLine ZeroHandMaintainedRust, authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / node v1-zero-hand-maintained-rust). Stage0 seed-surface lifecycle: joins existing .dag authorities (generated_stage0_files, hand_maintained_stage0_filenames, stage0_partition_crate_rows) plus file-grain residue rows. Cargo [[bin]] and full-repo tracked .rs paths now arrive together through gunbc.stage0_rust_host_observation as RustManifestObserved evidence, never hand-listed and never collapsed from a refusal. This scaffold still owns only the interim lifecycle classification and ratchets; V1FinishLine attachment remains its dissolve-on."
 
 data zero_hand_maintained_rust_finish_line_attachment_note: String = "Attach to V1FinishLine ZeroHandMaintainedRust (merged #7393): acceptance requires RustManifestObserved path evidence with derived newly_unclassified=0, stale_lifecycle_rows=0, duplicate_exact_paths=0, and hand-maintained ratchet — not this scaffold's partial joins alone."
-
-data rust_source_host_observation_note: String = "Follow-on PR B: host observation boundary emits RustManifestObserved { repository_revision, manifest_digest, tracked_rust_repo_paths, prior_tracked_rust_repo_paths, cargo_bin_repo_paths } or typed ManifestReadRefused / ManifestParseRefused / GitObservationRefused. Verdict derives unclassified, stale, duplicate, and hand-maintained counts from path evidence — callers must not supply conclusions as integers."
-
-type RustSourceHostObservation
-  = RustManifestUnobserved { awaiting: String }
-  | RustManifestObserved {
-      repository_revision: String,
-      manifest_digest: String,
-      tracked_rust_repo_paths: List<String>,
-      prior_tracked_rust_repo_paths: List<String>,
-      cargo_bin_repo_paths: List<String>
-    }
-  | RustManifestReadRefused { detail: String }
-  | RustManifestParseRefused { detail: String }
-  | GitObservationRefused { detail: String }
-
-data rust_source_host_observation: RustSourceHostObservation = RustManifestUnobserved {
-  awaiting: "gunbc.stage0_rust_host_observation host boundary (PR B) — git ls-files + Cargo.toml parse with typed refusals"
-}
 
 type RustSourceManifestStateVerdict
   = ManifestStateScaffoldOk
   | ManifestStateScaffoldRefused { cause: RustSourceManifestStateRefusal }
 
 type RustSourceManifestStateRefusal
-  = UnobservedTrackedManifest { awaiting: String }
-  | HostManifestReadRefused { detail: String }
+  = HostManifestReadRefused { detail: String }
   | HostManifestParseRefused { detail: String }
   | HostGitObservationRefused { detail: String }
   | DerivedNewlyUnclassified { count: Int }
@@ -226,8 +213,6 @@ fn count_observed_manifest_duplicate_excess(
 
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
-    RustManifestUnobserved { awaiting: awaiting } =>
-      ManifestStateScaffoldRefused { cause: UnobservedTrackedManifest { awaiting: awaiting } }
     RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
     RustManifestParseRefused { detail: detail } =>

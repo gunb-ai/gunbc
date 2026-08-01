@@ -5,12 +5,12 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   DerivedHandMaintainedGrew,
   DerivedNewlyUnclassified,
   DerivedUnclassifiedTracked,
-  GitObservationRefused,
+  HostGitObservationRefused,
+  HostManifestParseRefused,
+  HostManifestReadRefused,
   ManifestStateScaffoldOk,
   ManifestStateScaffoldRefused,
-  RustManifestObserved,
   ObservedCargoPathUntracked,
-  UnobservedTrackedManifest,
   behavioral_oracle_carrier_ref,
   classified_residue_disjoint_holds,
   derived_generated_hand_disjoint_holds,
@@ -27,25 +27,32 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   partition_crate_paths_complete_holds,
   path_occurrence_count,
   residue_row,
-  rust_source_host_observation,
   rust_source_manifest_state_verdict,
   rust_source_manifest_state_verdict_query_scaffold,
   stage0_cargo_bin_manifest_authority_ref,
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds,
   stage0_rust_lifecycle_scaffold_mechanical_checks_holds,
   stage0_rust_source_lifecycle_scaffold_note,
-  RustManifestUnobserved,
   witness_duplicate_tracked_observation,
   witness_honest_minimal_observation_ok,
   witness_hand_maintained_growth_observation,
   witness_observation_covering_lifecycle_plus_extra
 }
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustManifestObserved,
+  stage0_rust_host_observation_hand_rust_loc_delta_net,
+  stage0_rust_host_observation_hand_rust_scaffold,
+  rust_source_host_observation
+}
 import gunbc.stage0_emit_model { generated_stage0_file_count }
-import std.disposition { Scaffold, SingleAuthority }
+import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
 import v2.std.algebra { length }
 import v2.std.text { String }
 
-data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle SCAFFOLD witnesses (PR A): pure .dag joins + evidence-shaped host observation model; zero Rust delta vs merge-base (git diff origin/main...HEAD -- '*.rs' empty). Host observation boundary is PR B."
+data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
 
 test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
   string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "SCAFFOLD")
@@ -71,17 +78,37 @@ test fn scaffold_note_cites_zero_hand_maintained_rust_roadmap_row() -> Bool {
     && string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "v1-zero-hand-maintained-rust")
 }
 
-test fn scaffold_host_observation_defaults_unobserved() -> Bool {
+test fn scaffold_host_observation_is_live_and_observed() -> Bool {
   match rust_source_host_observation {
-    RustManifestUnobserved { awaiting: _ } => true
+    RustManifestObserved {
+      repository_revision: revision,
+      manifest_digest: digest,
+      tracked_rust_repo_paths: tracked,
+      prior_tracked_rust_repo_paths: prior,
+      cargo_bin_repo_paths: cargo
+    } => revision != ""
+      && digest != ""
+      && length(xs: tracked) > 0
+      && length(xs: prior) > 0
+      && length(xs: cargo) > 0
     _ => false
   }
 }
 
-test fn scaffold_host_observation_default_verdict_refuses_unobserved() -> Bool {
+test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
+  stage0_rust_host_observation_hand_rust_loc_delta_net == 392
+    && match stage0_rust_host_observation_hand_rust_scaffold {
+      Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
+        bind.module_path == "v1_compiler.cli_run"
+          && bind.decl_name == "observe_stage0_rust_manifest"
+      _ => false
+    }
+}
+
+test fn scaffold_host_observation_reaches_path_derived_verdict() -> Bool {
   match rust_source_manifest_state_verdict(observation: rust_source_host_observation) {
-    ManifestStateScaffoldRefused { cause: UnobservedTrackedManifest { awaiting: _ } } => true
-    ManifestStateScaffoldOk => false
+    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: count } } => count > 0
+    ManifestStateScaffoldOk => true
     ManifestStateScaffoldRefused { cause: _ } => false
   }
 }
@@ -90,7 +117,7 @@ test fn scaffold_join_mechanical_checks_holds() -> Bool {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
 }
 
-test fn scaffold_mechanical_checks_red_while_host_unobserved() -> Bool {
+test fn scaffold_mechanical_checks_reflect_live_classification() -> Bool {
   !stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
     && !manifest_state_verdict_scaffold_holds()
 }
@@ -125,7 +152,7 @@ test fn scaffold_file_grain_avoids_discovery_prefix_holds() -> Bool {
 
 test fn scaffold_cargo_manifest_ref_points_at_host_observation_boundary() -> Bool {
   stage0_cargo_bin_manifest_authority_ref.module_path == "gunbc.stage0_rust_host_observation"
-    && stage0_cargo_bin_manifest_authority_ref.decl_name == "stage0_cargo_bin_repo_paths_observed"
+    && stage0_cargo_bin_manifest_authority_ref.decl_name == "rust_source_host_observation"
 }
 
 test fn scaffold_authority_refs_populated_holds() -> Bool {
@@ -212,8 +239,26 @@ test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
 
 test fn scaffold_observed_git_refusal_surfaces_typed_cause() -> Bool {
   match rust_source_manifest_state_verdict(observation: GitObservationRefused { detail: "git unavailable" }) {
-    ManifestStateScaffoldRefused { cause: _ } => true
-    ManifestStateScaffoldOk => false
+    ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
+    _ => false
+  }
+}
+
+test fn scaffold_observed_manifest_read_refusal_surfaces_typed_cause() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: RustManifestReadRefused { detail: "manifest unreadable" }
+  ) {
+    ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
+    _ => false
+  }
+}
+
+test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: RustManifestParseRefused { detail: "manifest malformed" }
+  ) {
+    ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
+    _ => false
   }
 }
 
