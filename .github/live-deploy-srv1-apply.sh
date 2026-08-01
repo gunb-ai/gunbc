@@ -63,5 +63,36 @@ sudo -n install -m 0644 "$_gunbc_stage/gunbc-roadmap.service" /etc/systemd/syste
 sudo -n systemctl daemon-reload
 sudo -n systemctl enable gunbc-roadmap.service
 sudo -n systemctl restart gunbc-roadmap.service
+cat > "$_gunbc_stage/gunbc-roadmap-belt.service" <<'GUNBC_BELT_SERVICE_EOF'
+[Unit]
+Description=gunbc roadmap belt tick (one reconcile pass over the ready frontier)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=briansrls
+Group=briansrls
+WorkingDirectory=/opt/gunbc/gunbc
+ExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli
+GUNBC_BELT_SERVICE_EOF
+cat > "$_gunbc_stage/gunbc-roadmap-belt.timer" <<'GUNBC_BELT_TIMER_EOF'
+[Unit]
+Description=gunbc roadmap belt tick cadence
+
+[Timer]
+Unit=gunbc-roadmap-belt.service
+OnBootSec=2min
+OnUnitInactiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+GUNBC_BELT_TIMER_EOF
+sudo -n install -m 0644 "$_gunbc_stage/gunbc-roadmap-belt.service" /etc/systemd/system/gunbc-roadmap-belt.service
+sudo -n install -m 0644 "$_gunbc_stage/gunbc-roadmap-belt.timer" /etc/systemd/system/gunbc-roadmap-belt.timer
+sudo -n systemctl daemon-reload
+sudo -n systemctl enable gunbc-roadmap-belt.timer
+sudo -n systemctl restart gunbc-roadmap-belt.timer
 sudo -n tailscale serve --bg --https=443 8080
 echo live-deploy-receipt host=srv1 fold=apply verdict=converged
