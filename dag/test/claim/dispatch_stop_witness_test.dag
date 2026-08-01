@@ -162,11 +162,15 @@ test fn stop_client_carries_the_chip() -> Bool {
     && string_contains(s: js, pattern: "j.ok === true")
     && string_contains(s: js, pattern: "window.location.reload()")
     && string_contains(s: js, pattern: "action + ' refused'")
-    && string_contains(s: js, pattern: "sess.cleanup_action")
-    && string_contains(s: js, pattern: "sess.cleanup_allowed")
-    && string_contains(s: js, pattern: "sess.process_state")
-    && string_contains(s: js, pattern: "sess.process_detail")
+    && string_contains(s: js, pattern: "dataset.cleanupAction = sact.label")
+    && string_contains(s: js, pattern: "sact.availability !== 'available'")
+    && !string_contains(s: js, pattern: "sess.cleanup_action")
+    && !string_contains(s: js, pattern: "sess.cleanup_allowed")
+    && !string_contains(s: js, pattern: "sess.process_state")
+    && !string_contains(s: js, pattern: "sess.process_detail")
 }
+
+data stop_chip_decided_facts_note: String = "A2 flip (operator blockers 4/5): the chip's action identity and availability come from the wire's DECIDED session action (sact.label onto dataset.cleanupAction, disabled when sact.availability is not 'available') — the client never reads the raw admission fields. The four former positives (sess.cleanup_action/cleanup_allowed/process_state/process_detail) are now discriminating NEGATIVES: any reappearing in the emitted source is the client re-deriving cleanup or process presentation from raw facts, a second authority beside session_facts_view."
 
 test fn stop_chip_is_styled() -> Bool {
   return string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")
