@@ -1,7 +1,8 @@
 module extdeps.external_authority
 
 import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef }
+import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
 
 type ExternalAuthority {
@@ -28,19 +29,6 @@ data external_model_scope_citations_shape_note: String = "citations is nonempty 
 
 fn external_model_scope_citations(scope: ExternalModelScope) -> List<ExternalAuthority> {
   concat([scope.first_citation], scope.further_citations)
-}
-
-fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
-  match a {
-    WholeDeclaration => match b { WholeDeclaration => true  NamedField { field_name: _ } => false }
-    NamedField { field_name: fa } => match b { WholeDeclaration => false  NamedField { field_name: fb } => fa == fb }
-  }
-}
-
-fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
-  a.module_path == b.module_path
-    && a.decl_name == b.decl_name
-    && decl_field_eq(a: a.field, b: b.field)
 }
 
 fn external_subject_ref_eq(a: ExternalSubjectRef, b: ExternalSubjectRef) -> Bool {
