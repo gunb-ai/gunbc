@@ -527,3 +527,19 @@ test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
     && c_unit_header_path(unit_id: hostile_slash) == "a%00002fb.h"
     && c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
 }
+
+test fn probe_cr_literal_backslash() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00005crb"
+}
+
+test fn probe_cr_len() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_cr) as String).length() == 9
+}
+
+test fn probe_nul_literal_backslash() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%00005cu%0000007b0000%00007db"
+}
+
+test fn probe_nul_len() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 9
+}
