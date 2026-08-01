@@ -9,12 +9,13 @@ import gunbc.stage0_rust_host_observation {
   RustManifestParseRefused,
   RustManifestReadRefused,
   RustSourceHostObservation,
-  rust_source_host_observation
+  current_stage0_rust_source_observation
 }
 import gunbc.stage0_emit_model {
   generated_stage0_files,
   is_generated_stage0_file
 }
+import std.types { ContentHash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import gunbc.roadmap_model { RoadmapNodeId }
@@ -222,13 +223,13 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
       ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } }
     RustManifestObserved {
       repository_revision: repository_revision,
-      manifest_digest: manifest_digest,
+      manifest_content_identity: manifest_content_identity,
       tracked_rust_repo_paths: tracked_paths,
       prior_tracked_rust_repo_paths: prior_tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths
     } =>
-      if repository_revision == "" || manifest_digest == "" {
-        ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision or manifest_digest" } }
+      if repository_revision == "" {
+        ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
         let file_grain_paths = file_grain_lifecycle_repo_paths()
         let classified_paths = observed_classified_repo_paths(file_grain_paths: file_grain_paths)
@@ -484,7 +485,7 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> Rust
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: [extra_path]),
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -503,7 +504,7 @@ fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: prior_classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -517,7 +518,7 @@ fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -547,7 +548,7 @@ fn witness_duplicate_tracked_observation() -> RustManifestObserved {
   let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: tracked_with_dup,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -669,7 +670,7 @@ fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
 }
 
 fn manifest_state_verdict_scaffold_holds() -> Bool {
-  match rust_source_manifest_state_verdict(observation: rust_source_host_observation) {
+  match rust_source_manifest_state_verdict(observation: current_stage0_rust_source_observation()) {
     ManifestStateScaffoldOk => true
     ManifestStateScaffoldRefused { cause: _ } => false
   }

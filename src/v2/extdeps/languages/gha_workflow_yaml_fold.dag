@@ -729,6 +729,9 @@ fn gha_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
+data gha_fold_prod_kind_sentinel: String = "\u{0002}"
+data gha_fold_scalar_kind_sentinel: String = "\u{0000}"
+
 fn gha_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -743,8 +746,8 @@ fn gha_fold_lex_rules() -> LexRuleSet {
       gha_fold_lex_rule(token_class: ^gha_token_yaml_flat_run_head, text: "run: "),
       gha_fold_lex_rule(token_class: ^gha_token_yaml_flat_uses_tail, text: "\nuses: "),
       gha_fold_lex_rule(token_class: ^gha_token_yaml_job_trailing_newline, text: "\n"),
-      gha_fold_lex_rule(token_class: ^gha_fold_prod_kind_tag, text: "\u{0002}"),
-      gha_fold_lex_rule(token_class: ^gha_fold_scalar_kind, text: "\u{0000}")
+      gha_fold_lex_rule(token_class: ^gha_fold_prod_kind_tag, text: gha_fold_prod_kind_sentinel),
+      gha_fold_lex_rule(token_class: ^gha_fold_scalar_kind, text: gha_fold_scalar_kind_sentinel)
     ]
   }
 }
