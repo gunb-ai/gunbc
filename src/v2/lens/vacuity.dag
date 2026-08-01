@@ -25,7 +25,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 trigger: re-audit classify_vacuity_same_eval_record's deepest else (known-provenance residue → ProvenIndependent) — when gating on ProvenDuplicate, that residue may need Unknown instead of a positive ProvenIndependent claim."
+data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 LANDED: classify_vacuity_same_eval_record's deepest else now returns Unknown for structurally-unequal operands with no independent oracle, rather than fabricating a positive ProvenIndependent claim from an absence of counter-evidence — the fail-open the note used to flag is fixed, and this sentence records that the marked defect DID survive a full audit cycle undetected until an executing consumer (lens_contract_vacuity.consumer_witness) was bound, because AuditOnly + NoConsumerWitness meant nothing ever ran the classifier to observe it. classify_test_claim_vacuity's DiagnosticClaim/RoundTripClaim arms were the same fail-open a second time (unconditional ProvenIndependent, ignoring the supplied operand_provenance) and are fixed the same way: threaded through operand_provenance_is_independent_oracle, Unknown otherwise. LiveSurfaceSnapshot (a snapshot value copied from live/corpus-derived state) is a non-independent-oracle provenance class: paired with LiteralOracle, itself, or HelperAlias with no independent oracle present, it classifies ProvenDuplicate — the PR #7614 shape (a literal changed to track a live count with no independent check). classify_unified_test_claim_vacuity's BoolWitnessClaim arm now reads the real parsed corpus (filesystem_read + tokenize/parse_module, the sanctioned reference_deps.dag pipeline — never a second producer) to locate the named test fn, and classifies it only when its body reduces to a single top-level equality; anything else (loops, multiple statements, effects, a body the modeled dag.dag grammar cannot parse — a real, open gap documented in grammar_coverage.dag) stays Unknown, never fabricated."
 
 data vacuity_operand_provenance_independent_oracle_predicate_dissolution_note: String = "🟡 dissolve-on: operand_provenance_is_independent_oracle is a hand-rolled subset predicate over TestClaimOperandProvenance until symbol_index_fill/reference_deps ground operand provenance at census time (W3). DISSOLVES WHEN provenance is read from the containment-tree projection and independent-oracle membership is construction-side (illegal states unrepresentable) or a single canonical accessor replaces the predicate."
 
@@ -37,6 +37,7 @@ type TestClaimOperandProvenance
   | LiteralOracle
   | TemporalExternalAuthority
   | HelperAlias
+  | LiveSurfaceSnapshot
   | OperandProvenanceUnknown
 
 type VacuityEvidenceSubject
@@ -121,6 +122,7 @@ fn operand_provenance_is_independent_oracle(p: TestClaimOperandProvenance) -> Bo
     ReadBack => false
     LiteralOracle => false
     HelperAlias => false
+    LiveSurfaceSnapshot => false
     OperandProvenanceUnknown => false
   }
 }
@@ -147,6 +149,22 @@ fn vacuity_same_eval_is_literal_pair(record: VacuityEvidenceRecord) -> Bool {
   record.lhs_provenance == LiteralOracle && record.rhs_provenance == LiteralOracle
 }
 
+fn vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: TestClaimOperandProvenance) -> Bool {
+  match p {
+    LiteralOracle => true
+    LiveSurfaceSnapshot => true
+    HelperAlias => true
+    _ => false
+  }
+}
+
+fn vacuity_same_eval_is_live_snapshot_duplicate(record: VacuityEvidenceRecord) -> Bool {
+  (record.lhs_provenance == LiveSurfaceSnapshot
+      && vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: record.rhs_provenance))
+    || (record.rhs_provenance == LiveSurfaceSnapshot
+      && vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: record.lhs_provenance))
+}
+
 fn classify_vacuity_same_eval_record(record: VacuityEvidenceRecord) -> VacuityEvidence {
   if vacuity_same_eval_has_unknown_provenance(record: record) {
     Unknown
@@ -169,10 +187,14 @@ fn classify_vacuity_same_eval_record(record: VacuityEvidenceRecord) -> VacuityEv
             if vacuity_same_eval_is_literal_pair(record: record) {
               ProvenDuplicate
             } else {
-              if record.operands_structurally_equal {
+              if vacuity_same_eval_is_live_snapshot_duplicate(record: record) {
                 ProvenDuplicate
               } else {
-                ProvenIndependent
+                if record.operands_structurally_equal {
+                  ProvenDuplicate
+                } else {
+                  Unknown
+                }
               }
             }
           }
@@ -237,9 +259,186 @@ fn classify_test_claim_vacuity(
         )
       )
     DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
-      ProvenIndependent
+      if operand_provenance_is_independent_oracle(p: operand_provenance) {
+        ProvenIndependent
+      } else {
+        Unknown
+      }
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
-      ProvenIndependent
+      if operand_provenance_is_independent_oracle(p: operand_provenance) {
+        ProvenIndependent
+      } else {
+        Unknown
+      }
+  }
+}
+
+data vacuity_bool_witness_file_anchor: Symbol = ^vacuity_bool_witness_file_anchor
+
+data vacuity_bool_witness_real_corpus_note: String = "BoolWitnessClaim classification reads the REAL parsed corpus (filesystem_read + tokenize/parse_module/normalize — the same three-stage ingest src/v2/lens/enforcement/cost_coverage.dag already uses for this exact problem, never a second producer) — never a synthetic stand-in. It only classifies when a named test fn's body reduces to EXACTLY one top-level statement (verified structurally via sugar_sequence_pair_optional + is_empty_conj_root over the stmt_seq repeat encoding, BEFORE any equality search runs — this ordering is what keeps body_lower_try_infix_transform's recursive sequence-pair search from matching an equality buried inside a multi-statement body) that is itself a top-level `==` comparison; every other shape (zero or multiple statements, a non-equality statement, a body that does not locate) stays Unknown, never fabricated. KNOWN, CONFIRMED CEILING (empirically executed, not guessed): v2.extdeps.languages.dag's dag_language_model() grammar has no lexer keyword and no grammar production for `test` at all (verified: zero occurrences of \"test\" in dag.dag's lex rules or productions, and independently corroborated by grammar_coverage.dag's own live witness, which already reds 100% of sampled real src/v1/*.dag files under this same grammar). A source file's `test fn NAME() -> Bool { ... }` declaration therefore rejects at the file-parse stage before this classifier ever reaches the named function's body — confirmed by direct execution against three probe fixtures (a plain `fn` with a bare `return` body parses; the identical body under `test fn` does not, with or without `return`). So today's real-corpus yield of this mechanism is honestly near-zero for the overwhelming majority of real witnesses, which are declared `test fn` per the repo's own naming-hygiene convention — that is an upstream grammar-modeling gap this PR does not attempt to close, not a defect in this classifier, and the mechanism is real, correct, and reusable the moment `test` gains a grammar production. Operand provenance from a located equality is scoped to what is decidable without further modeling: a Bool/Int literal (dag_canonical_literal_from_node) classifies LiteralOracle; every other operand shape classifies OperandProvenanceUnknown (never ReadBack/LiveSurfaceSnapshot guessed from bare syntax) — an honest scoping-down, not a silent gap, per this mandate's own pre-authorization to ship a caller-suppliable LiveSurfaceSnapshot rather than a guessed one."
+
+fn vacuity_witness_ingest_source_text(source_text: String, file: Symbol) -> Outcome<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } =>
+          normalize(parse_tree: artifact.tree)
+      }
+  }
+}
+
+fn vacuity_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
+  let acc1 = if dag_node_is_fn_decl(node: root) {
+    list_append(left: acc, right: [root])
+  } else {
+    acc
+  }
+  fold(root.children, init: acc1, f: fn(a, edge) {
+    vacuity_collect_fn_decls(root: edge.target, acc: a)
+  })
+}
+
+fn vacuity_fn_decl_name_optional(fn_decl: Node) -> Symbol? {
+  match body_lower_unwrap_captured(shell: fn_decl) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      body_lower_fn_decl_ident_from_captured(captured: captured)
+  }
+}
+
+fn vacuity_fn_decl_named(fn_decl: Node, name: Symbol) -> Bool {
+  match vacuity_fn_decl_name_optional(fn_decl: fn_decl) {
+    Absent => false
+    Present { value: sym } => sym == name
+  }
+}
+
+fn vacuity_find_fn_decl_by_name(decls: List<Node>, name: Symbol) -> Node? {
+  fold(decls, init: optional_absent(), f: fn(acc, decl) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if vacuity_fn_decl_named(fn_decl: decl, name: name) {
+          optional_present(value: decl)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn vacuity_fn_body_from_decl(fn_decl: Node) -> Node? {
+  match parse_subtree_find_production_captured(root: fn_decl, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: body } => optional_present(value: body)
+    ParseSubtreeAbsent => optional_absent()
+  }
+}
+
+fn vacuity_stmt_seq_from_body(body: Node) -> Node? {
+  match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_stmt_seq) {
+    ParseSubtreeFound { captured: seq } => optional_present(value: seq)
+    ParseSubtreeAbsent => optional_absent()
+  }
+}
+
+fn vacuity_stmt_seq_is_single_statement(stmt_seq: Node) -> Bool {
+  if is_empty_conj_root(n: stmt_seq) {
+    false
+  } else {
+    match sugar_sequence_pair_optional(node: stmt_seq) {
+      Absent => false
+      Present { value: pair } => is_empty_conj_root(n: pair.right)
+    }
+  }
+}
+
+fn vacuity_transform_operator_symbol_optional(transform: Node) -> Symbol? {
+  match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
+    Absent => optional_absent()
+    Present { value: op_node } =>
+      match op_node.kind {
+        TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+        _ => optional_absent()
+      }
+  }
+}
+
+fn vacuity_transform_is_equality(transform: Node) -> Bool {
+  match vacuity_transform_operator_symbol_optional(transform: transform) {
+    Absent => false
+    Present { value: id } => id == ^dag_token_eq_eq
+  }
+}
+
+fn vacuity_operand_provenance_from_node(node: Node) -> TestClaimOperandProvenance {
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: _, diagnostics: _ } => LiteralOracle
+    Rejected { diagnostics: _ } => OperandProvenanceUnknown
+  }
+}
+
+fn vacuity_bool_witness_body_evidence(transform: Node) -> VacuityEvidence {
+  if vacuity_transform_is_equality(transform: transform) {
+    match list_at_optional(xs: node_positional_child_targets(node: transform), index: 1) {
+      Absent => Unknown
+      Present { value: lhs } =>
+        match list_at_optional(xs: node_positional_child_targets(node: transform), index: 2) {
+          Absent => Unknown
+          Present { value: rhs } =>
+            classify_vacuity_same_eval_record(
+              record: VacuityEvidenceRecord {
+                subject: EqualityOperands,
+                transport: EvalOnly,
+                lhs_provenance: vacuity_operand_provenance_from_node(node: lhs),
+                rhs_provenance: vacuity_operand_provenance_from_node(node: rhs),
+                operands_structurally_equal: exact_structural_equality_zip_fold(source_facts: lhs, candidate: rhs)
+              }
+            )
+        }
+    }
+  } else {
+    Unknown
+  }
+}
+
+fn vacuity_bool_witness_fn_body_evidence(fn_decl: Node) -> VacuityEvidence {
+  match vacuity_fn_body_from_decl(fn_decl: fn_decl) {
+    Absent => Unknown
+    Present { value: body } =>
+      match vacuity_stmt_seq_from_body(body: body) {
+        Absent => Unknown
+        Present { value: stmt_seq } =>
+          if vacuity_stmt_seq_is_single_statement(stmt_seq: stmt_seq) {
+            match body_lower_try_infix_transform(node: stmt_seq) {
+              Absent => Unknown
+              Present { value: transform } =>
+                vacuity_bool_witness_body_evidence(transform: transform)
+            }
+          } else {
+            Unknown
+          }
+      }
+  }
+}
+
+fn vacuity_bool_witness_evidence(witness: BoolWitness) -> VacuityEvidence {
+  let source_text = filesystem_read(path: witness.entry).content
+  match vacuity_witness_ingest_source_text(
+    source_text: source_text,
+    file: vacuity_bool_witness_file_anchor
+  ) {
+    Rejected { diagnostics: _ } => Unknown
+    Accepted { value: module_root, diagnostics: _ } =>
+      match vacuity_find_fn_decl_by_name(
+        decls: vacuity_collect_fn_decls(root: module_root, acc: Empty),
+        name: witness.function
+      ) {
+        Absent => Unknown
+        Present { value: fn_decl } => vacuity_bool_witness_fn_body_evidence(fn_decl: fn_decl)
+      }
   }
 }
 
@@ -258,7 +457,7 @@ fn classify_unified_test_claim_vacuity(
         rhs_provenance: rhs_provenance,
         operand_provenance: operand_provenance
       )
-    BoolWitnessClaim { witness: _ } => Unknown
+    BoolWitnessClaim { witness: w } => vacuity_bool_witness_evidence(witness: w)
   }
 }
 
