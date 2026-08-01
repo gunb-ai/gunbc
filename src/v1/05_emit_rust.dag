@@ -6513,10 +6513,13 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-  elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
+  let name_grain_eligible = elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
     || elem_name == "Secret" || elem_name == "Bytes" || rust_opaque_kernel_alias_type_eligible(name: elem_name)
+  (name_grain_eligible && elem_node.children |> count == 0)
     || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
 }
+
+data rust_btree_set_ord_name_grain_note: String = "The name-grain arms admit ONLY CHILDLESS nodes: a scalar/opaque-alias name denotes a childless carrier, and a name roster never examines type arguments, so without this gate any shape wearing an eligible name would be Ord-eligible by name alone (Symbol carrying Float must refuse; the enrolled negative control rust_btree_set_ord_eligibility_requires_nominal_carrier_shape is the discriminating RED). Shape-bearing nominal carriers are judged by rust_nominal_ord_type_eligible, which does examine structure."
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match set_type.children |> first {
@@ -8294,6 +8297,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
     Present { value: pe } => Present { value: qualified_last_segment(name: pe) }
     Absent => none
   }
+  let variant_surface_name = match type_name {
+    Present { value: n } => n
+    Absent => match bare_qualified_name { Present { value: qn } => qn  Absent => "" }
+  }
   match bare_qualified_name {
     Absent =>
       let is_product = is_product_type(n: resolved_type)
@@ -8365,15 +8372,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
+      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
           let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
           let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
 
-          if resolved_type.ident_span != none && rt_name != tn && !rt_is_type_var && rt_name != "Error"
-            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: tn, enum_name: rt_name) {
+          if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
+            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
             bare_parent_enum
@@ -8392,15 +8399,19 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
+      let fn_returns_optional = match emit_info.fn_return_type {
+        Present { value: rt } => rt.return_cardinality == CardOptional
+        Absent => false
+      }
+      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional || fn_returns_optional)
       let rust_tn = if optional_variant {
-        if is_some_like_variant_name(name: tn) { "Some" } else { "None" }
+        if is_some_like_variant_name(name: variant_surface_name) { "Some" } else { "None" }
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
           rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
         }
-      if optional_variant && is_some_like_variant_name(name: tn) && fields |> count == 1 {
+      if optional_variant && is_some_like_variant_name(name: variant_surface_name) && fields |> count == 1 {
         match fields |> first {
           Present { value: f } =>
             let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
