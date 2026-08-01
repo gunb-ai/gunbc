@@ -36,3 +36,6 @@ pub mod std_pareto;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_realization_schedule.rs"]
 pub mod std_realization_schedule;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_trait_derive_shape.rs"]
+pub mod std_trait_derive_shape;

@@ -873,28 +873,12 @@ dependencies = [
  "stacker",
  "unicode-ident",
  "unicode-properties",
- "v1-stage0-extdeps-base",
  "v1-stage0-extdeps-languages",
  "v1-stage0-runtime",
  "v1-stage0-std-core",
  "v1-stage0-std-surface",
  "v1-stage0-v1-artifact",
  "v1-stage0-v1-infer",
-]
-
-[[package]]
-name = "v1-stage0-extdeps-base"
-version = "0.1.0"
-dependencies = [
- "im",
- "serde",
- "serde_json",
- "stacker",
- "unicode-ident",
- "unicode-properties",
- "v1-stage0-runtime",
- "v1-stage0-std-core",
- "v1-stage0-std-surface",
 ]
 
 [[package]]
@@ -907,7 +891,6 @@ dependencies = [
  "stacker",
  "unicode-ident",
  "unicode-properties",
- "v1-stage0-extdeps-base",
  "v1-stage0-runtime",
  "v1-stage0-std-core",
  "v1-stage0-std-surface",
@@ -962,7 +945,6 @@ dependencies = [
  "stacker",
  "unicode-ident",
  "unicode-properties",
- "v1-stage0-extdeps-base",
  "v1-stage0-extdeps-languages",
  "v1-stage0-runtime",
  "v1-stage0-std-core",
@@ -980,7 +962,6 @@ dependencies = [
  "stacker",
  "unicode-ident",
  "unicode-properties",
- "v1-stage0-extdeps-base",
  "v1-stage0-extdeps-languages",
  "v1-stage0-runtime",
  "v1-stage0-std-core",
