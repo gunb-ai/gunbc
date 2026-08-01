@@ -63,6 +63,7 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "dag/gunbc/publication_grant.dag"),
   public_file_publish_grant(path: "dag/tools/publication_placement_gate.dag"),
   public_file_publish_grant(path: "dag/test/claim/publication_placement_gate_test.dag"),
+  public_file_publish_grant(path: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag"),
 ]
 
 data public_publication_grant_roster: PublicPublicationGrantRoster = PublicPublicationGrantRoster {
