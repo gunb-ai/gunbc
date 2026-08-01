@@ -9,7 +9,8 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import gunbc.type_ref_binding_authority_debt {
-  type_ref_binding_authority_debt_dissolve_trigger
+  type_ref_binding_authority_debt_dissolve_trigger,
+  type_ref_census_sha
 }
 import std.types { String, Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -61,4 +62,8 @@ test fn row5_qualified_pool_present_unreachable_matches_row3_shape() -> Bool {
 
 test fn debt_dissolve_trigger_names_n2() -> Bool {
   string_contains(s: type_ref_binding_authority_debt_dissolve_trigger, pattern: "N2 containment")
+}
+
+test fn census_sha_is_pinned_on_carrier() -> Bool {
+  string_contains(s: type_ref_census_sha, pattern: "89dbea7d896b3ae95195117374a8c0c9454f341e")
 }

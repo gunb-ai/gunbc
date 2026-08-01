@@ -531,6 +531,21 @@ namespace-only resolution default ON) changed the substrate underneath it, so
 Class B was re-run against the flipped tree. Two things changed, and the second
 is worse than anything §13 records.
 
+**STALE FILE ROSTER — not today's population (swift-fox-347 / quiet-hawk-219,
+2026-08-01).** The historical Class B *file* list cited across this diagnosis
+(`determinism.dag`, `bmc/types.dag`, the six `node.dag` if-sites, hub restores)
+does **not** reproduce as today's hard-UnresolvedType population under the
+type-ref refusal arm: measured at the N1 census, `dag/extdeps/bmc/types.dag` →
+0 (imports restored — binding authority present), `dag/std/determinism.dag` →
+1, `src/v2/std/node.dag` → 2 (and not the ContentHash if-juxtaposition class —
+`node.dag` imports `ContentHash` again). **Do not pick that file list up as a
+work list.** A stale file list reads as a starting point, which is worse than
+no list. General rule: cite the **mechanism** as the durable name (here:
+pool-present type ref without binding authority → fabricated `Product(<anon>)`
+/ now typed `UnresolvedType`); enumerate the population fresh at a pinned
+census SHA. A file list is to a defect population what a line number is to a
+symbol.
+
 Trigger: #7200 (Dispatch 2, global import deletion) went red on exactly six
 sites in `src/v2/std/node.dag`, all of the shape
 `if branches resolve to incompatible types: Primitive(std.types.ContentHash)

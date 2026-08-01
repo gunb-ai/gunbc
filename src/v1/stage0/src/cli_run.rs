@@ -2524,7 +2524,14 @@ pub fn type_ref_binding_authority_expect_red_covers(d: &Rc<ErrorNode>) -> bool {
 
 /// Gate admission for UnresolvedType under the type-ref refusal arm: incidental debt
 /// or deliberate expect-red. Neither is FloorNotYet — the arm still refuses.
+/// Set `GUNBC_TYPE_REF_DEBT_ADMIT=0` to disable admission (raw UnresolvedType census).
 fn type_ref_unresolved_admitted_for_compile_clean(d: &Rc<ErrorNode>) -> bool {
+    match std::env::var_os("GUNBC_TYPE_REF_DEBT_ADMIT") {
+        Some(v) if v == "0" || v.eq_ignore_ascii_case("false") || v == "off" => {
+            return false;
+        }
+        _ => {}
+    }
     type_ref_binding_authority_debt_covers(d) || type_ref_binding_authority_expect_red_covers(d)
 }
 

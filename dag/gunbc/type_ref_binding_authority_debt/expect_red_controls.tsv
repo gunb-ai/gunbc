@@ -1,11 +1,13 @@
-# PROVISIONAL_UNFROZEN — freeze waits witty-badger-200 peel fix + census re-run
+# census_sha	89dbea7d896b3ae95195117374a8c0c9454f341e
+# PROVISIONAL_UNFROZEN — freeze waits witty-badger-200 peel fix + re-census
 # key grain: TYPE x (file, span_start, span_end)
-# types: 2  sites: 6
+# disposition	deliberate_expect_red
+# types	2	sites	6
 # TYPE	ContentHash	4
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	32	43	section14_red_probe_fixture
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	48	59	section14_red_probe_fixture
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	69	80	section14_red_probe_fixture
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	85	96	section14_red_probe_fixture
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	32	43	exec_expect_red_fails_if_binds
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	48	59	exec_expect_red_fails_if_binds
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	69	80	exec_expect_red_fails_if_binds
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	85	96	exec_expect_red_fails_if_binds
 # TYPE	probe.shared.types.ContentHash	2
-probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	69	99	section14_red_probe_fixture
-probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	104	134	section14_red_probe_fixture
+probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	69	99	exec_expect_red_fails_if_binds
+probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	104	134	exec_expect_red_fails_if_binds

@@ -1,6 +1,8 @@
-# PROVISIONAL_UNFROZEN — freeze waits witty-badger-200 peel fix + census re-run
+# census_sha	89dbea7d896b3ae95195117374a8c0c9454f341e
+# PROVISIONAL_UNFROZEN — freeze waits witty-badger-200 peel fix + re-census
 # key grain: TYPE x (file, span_start, span_end)
-# types: 398  sites: 1921
+# disposition	provisional_incidental_debt
+# types	398	sites	1921
 # TYPE	NonEmptyStr	332
 NonEmptyStr	dag/extdeps/access/aws_iam.dag	332	343
 NonEmptyStr	dag/extdeps/access/aws_iam.dag	385	396
