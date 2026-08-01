@@ -131,7 +131,7 @@ type CTranslationUnitSpelling {
 }
 
 fn c_unit_basename(unit_id: CompilationUnitId) -> String {
-  unit_id
+  unit_id as String
 }
 
 fn c_unit_header_path(unit_id: CompilationUnitId) -> String {
@@ -149,7 +149,7 @@ fn c_unit_source_path(unit_id: CompilationUnitId) -> String {
 }
 
 fn c_unit_object_path(artifact: CompilationUnitArtifactId) -> String {
-  c_path_with_extension(basename: artifact, extension: c_object_extension)
+  c_path_with_extension(basename: artifact as String, extension: c_object_extension)
 }
 
 fn c_include_directive_for_dep(dep_id: CompilationUnitId) -> String {

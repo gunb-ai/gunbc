@@ -149,7 +149,7 @@ test fn sha256_digest_content_hash_refuses_invalid_hex() -> Bool {
   }
 }
 
-test fn digest_to_content_hash_bridge_is_total() -> Bool {
+test fn digest_to_content_hash_bridge_accepts_valid_sha256() -> Bool {
   let row = witness_sha256_row()
   match sha256_digest_content_hash(
     digest: sha256_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),

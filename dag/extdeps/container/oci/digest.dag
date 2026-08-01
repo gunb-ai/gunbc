@@ -41,9 +41,9 @@ fn oci_encoded_digest_syntax_valid(text: String, index: Int) -> Bool {
   }
 }
 
-fn oci_encoded_digest(text: String) -> NonEmptyStr? {
-  if oci_encoded_digest_syntax_valid(text: text, index: 0) {
-    Present { value: text as NonEmptyStr }
+fn oci_encoded_digest(text: String) -> OciOtherDigestEncoded? {
+  if oci_other_digest_encoded(value: text) {
+    Present { value: text as OciOtherDigestEncoded }
   } else {
     none
   }
@@ -202,12 +202,12 @@ fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
         none
       } else {
         match oci_encoded_digest(text: parts.encoded) {
-          Present { value: _ } =>
+          Present { value: encoded } =>
             Present {
               value: OciOtherDigest(
                 OciOtherDigestBody {
                   algorithm: parts.algorithm as OciOtherDigestAlgorithm,
-                  encoded: parts.encoded as OciOtherDigestEncoded,
+                  encoded: encoded,
                 },
               )
             }
