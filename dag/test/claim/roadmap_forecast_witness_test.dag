@@ -18,6 +18,7 @@ import gunbc.roadmap_model {
   IntricacyHigh,
   VolumeSmall,
   VolumeMedium,
+  VolumeLarge,
   Sized,
   Unsized,
   ManualAcceptance,

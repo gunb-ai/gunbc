@@ -406,12 +406,14 @@ fn adjusted_node_duration(
   interval: CycleTimeInterval,
   bound: ForecastBound,
   assumptions: ScheduleForecastAssumptions,
-) -> Int {
-  (interval_bound(interval: interval, bound: bound) * positive_measure_count_value(count: assumptions.review_cycle_count.count)) + millisecond_count(m: assumptions.operator_merge_latency.duration)
+) -> Millisecond {
+  millisecond(
+    count: (interval_bound(interval: interval, bound: bound) * positive_measure_count_value(count: assumptions.review_cycle_count.count)) + millisecond_count(m: assumptions.operator_merge_latency.duration),
+  )
 }
 
 type PathEstimate {
-  duration_ms: Int
+  duration: Millisecond
   path: List<RoadmapNodeId>
 }
 
@@ -420,7 +422,7 @@ type PathEstimateResult
   | PathEstimateUnknown { node: RoadmapNodeId }
 
 fn longer_path(a: PathEstimate, b: PathEstimate) -> PathEstimate {
-  if b.duration_ms > a.duration_ms { b } else { a }
+  if millisecond_count(m: b.duration) > millisecond_count(m: a.duration) { b } else { a }
 }
 
 fn path_to_node(
@@ -461,17 +463,19 @@ fn path_to_node(
     Present { value } => value
     Absent => {
       let parent_best = parent_estimates |> fold(
-        init: PathEstimate { duration_ms: 0, path: [] },
+        init: PathEstimate { duration: millisecond(count: 0), path: [] },
         f: (best, result) => match result {
           PathEstimated { estimate } => longer_path(a: best, b: estimate)
           PathEstimateUnknown { node: _ } => best
         },
       )
       PathEstimated { estimate: PathEstimate {
-        duration_ms: parent_best.duration_ms + adjusted_node_duration(
-          interval: interval,
-          bound: bound,
-          assumptions: assumptions,
+        duration: millisecond(
+          count: millisecond_count(m: parent_best.duration) + millisecond_count(m: adjusted_node_duration(
+            interval: interval,
+            bound: bound,
+            assumptions: assumptions,
+          )),
         ),
         path: concat(parent_best.path, [node.node]),
       } }
@@ -488,8 +492,8 @@ type CriticalPathChoice {
   path: List<RoadmapNodeId>
 }
 
-fn forecast_instant(anchor: ForecastAnchorObservation, duration_ms: Int) -> ForecastInstant {
-  ForecastInstant { epoch_ms: anchor.observed_at + duration_ms }
+fn forecast_instant(anchor: ForecastAnchorObservation, duration: Millisecond) -> ForecastInstant {
+  ForecastInstant { epoch_ms: anchor.observed_at + millisecond_count(m: duration) }
 }
 
 fn build_node_forecast(
@@ -522,9 +526,9 @@ fn build_node_forecast(
             node: node.node,
             calibrated_cycle_time: calibrated,
             landing: ForecastInterval {
-              earliest: forecast_instant(anchor: anchor, duration_ms: early.duration_ms),
-              median: forecast_instant(anchor: anchor, duration_ms: middle.duration_ms),
-              latest: forecast_instant(anchor: anchor, duration_ms: late.duration_ms),
+              earliest: forecast_instant(anchor: anchor, duration: early.duration),
+              median: forecast_instant(anchor: anchor, duration: middle.duration),
+              latest: forecast_instant(anchor: anchor, duration: late.duration),
             },
           },
           median_path: middle.path,
