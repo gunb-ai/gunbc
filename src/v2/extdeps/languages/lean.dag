@@ -195,7 +195,7 @@ type LeanProofCheckSemantics<IRCarrier> {
 
 data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. LeanAdmittedBitWidth is sole_constructor — cross-module forge is refused; honest rung is accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test), not structural impossibility. Catalog fixed widths match admission Accepted before constructing LeanIntegerScalar; refusal stops at LeanWidthAdmissionRefused, not LeanIntegerWidth. Platform word is LeanPlatformWord. Signedness is std.integer.Signedness."
 
-data lean_overflow_semantics_admissibility_note: String = "P3b PR2 cluster-2 receipt (lean end-to-end): overflow axis is std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>; lean_admit_fixed_width_overflow_semantics is the admission boundary. Lean fixed-width catalog integers use modular wrap (OverflowReturns ReturnWrapping). Panic and trap remain distinct inhabitants of LeanOverflowRaiseEffect — not collapsed into one raise arm. OverflowUndefined and OverflowRaises refuse at admission for catalog fixed-width paths. Honest rung: accepted refinement with executing refusal (witness lean_overflow_semantics_witness_test), not structural impossibility."
+data lean_overflow_semantics_admissibility_note: String = "P3b PR2 cluster-2 receipt (lean end-to-end): overflow axis is std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect> on LeanIntegerScalar only — BoolScalar and LeanWidthAdmissionRefused carry no overflow field. lean_admit_fixed_width_overflow_semantics is the admission boundary. Lean fixed-width catalog integers use modular wrap (OverflowReturns ReturnWrapping). Panic and trap remain distinct inhabitants of LeanOverflowRaiseEffect — not collapsed into one raise arm. OverflowUndefined and OverflowRaises refuse at admission for catalog fixed-width paths. Honest rung: accepted refinement with executing refusal (witness lean_overflow_semantics_witness_test), not structural impossibility."
 
 type LeanOverflowRaiseEffect
   = LeanOverflowPanics
@@ -212,7 +212,7 @@ type LeanOverflowSemanticsAdmission
       reason: Symbol
     }
 
-data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9): v1 parse_let and parse_data_after_kw call parse_expr immediately after ExpectEq without skip_newlines, so a binding initializer that continues on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline. CI reproduced on lean_overflow_semantics_witness_test.dag line 32 (typed let, generic annotation, coproduct-variant RHS OverflowReturns) and originally on lean.dag line 215 (typed data, generic annotation, same RHS shape). Multiline data with generic annotation and record constructor RHS is ordinary corpus-wide and not the discriminator; multiline-ness alone is refuted (3390 instances). This site uses single-line initializers until parse_let and parse_data_after_kw skip newlines after = or a continuation-aware initializer parse lands. Dissolve-on: either parser fix plus restore multi-line witnesses, or a typed located refusal at authoring time."
+data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9, msg_4683ea0a): authority src/v1/02_parse.dag parse_let — both arms omit skip_newlines before parse_expr after ExpectEq (typed EatConsumed and untyped EatUnchanged), so any let initializer continued on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline; parse_return is a suspected sibling (same parse_expr-after-keyword shape, not yet executed). skip_newlines is the pervasive idiom in 02_parse.dag; absence here is omission not grammar. CI reproduced on lean_overflow_semantics_witness_test.dag line 32 and lean.dag data decl line 215. Multiline generic record data is ordinary corpus-wide; multiline-ness alone and variant-vs-record RHS are refuted discriminators. Single-line initializers until v1 lane lands the parser fix. Dissolve-on: v1 parse_let and parse_return skip newlines after = / keyword, then restore multi-line witnesses."
 
 data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
 
@@ -272,7 +272,11 @@ type LeanIntegerWidth
   | LeanPlatformWord
 
 type LeanScalar
-  = LeanIntegerScalar { signedness: Signedness, width: LeanIntegerWidth }
+  = LeanIntegerScalar {
+      signedness: Signedness,
+      width: LeanIntegerWidth,
+      overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+    }
   | LeanWidthAdmissionRefused { width: BitWidth }
   | BoolScalar
 
@@ -280,7 +284,6 @@ type LeanPrimitiveFacts {
   surface_spelling: Symbol
   scalar: LeanScalar
   representation: Symbol
-  overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 }
 
 fn lean_primitive_facts_for_catalog_width(
@@ -294,16 +297,15 @@ fn lean_primitive_facts_for_catalog_width(
       surface_spelling: surface_spelling,
       scalar: LeanIntegerScalar {
         signedness: signedness,
-        width: LeanFixedWidth { width: admitted }
+        width: LeanFixedWidth { width: admitted },
+        overflow: lean_catalog_fixed_width_overflow
       },
-      representation: representation,
-      overflow: lean_catalog_fixed_width_overflow
+      representation: representation
     }
     LeanBitWidthRefused { width: refused } => LeanPrimitiveFacts {
       surface_spelling: surface_spelling,
       scalar: LeanWidthAdmissionRefused { width: refused },
-      representation: representation,
-      overflow: OverflowUndefined
+      representation: representation
     }
   }
 }
@@ -383,17 +385,19 @@ fn lean_facts_uint64() -> LeanPrimitiveFacts {
 fn lean_facts_usize() -> LeanPrimitiveFacts {
   LeanPrimitiveFacts {
     surface_spelling: ^lean_surface_spelling_usize,
-    scalar: LeanIntegerScalar { signedness: Unsigned, width: LeanPlatformWord },
-    representation: ^lean_repr_usize_platform_word,
-    overflow: lean_catalog_fixed_width_overflow
+    scalar: LeanIntegerScalar {
+      signedness: Unsigned,
+      width: LeanPlatformWord,
+      overflow: lean_catalog_fixed_width_overflow
+    },
+    representation: ^lean_repr_usize_platform_word
   }
 }
 
 data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_bool,
   scalar: BoolScalar,
-  representation: ^lean_repr_bool_inductive,
-  overflow: OverflowUndefined
+  representation: ^lean_repr_bool_inductive
 }
 
 data lean_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
@@ -519,7 +523,7 @@ fn lean_overflow_semantics_node(
 
 fn lean_scalar_node(scalar: LeanScalar) -> Node {
   match scalar {
-    LeanIntegerScalar { signedness, width } => Node {
+    LeanIntegerScalar { signedness, width, overflow } => Node {
       kind: TypeNode { connective: Conj },
       children: [
         lean_named_edge(
@@ -533,6 +537,10 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
         lean_named_edge(
           name: ^lean_scalar_field_width,
           target: lean_integer_width_node(width: width)
+        ),
+        lean_named_edge(
+          name: ^lean_scalar_field_overflow,
+          target: lean_overflow_semantics_node(semantics: overflow)
         )
       ],
       occurrence_id: SyntheticOccurrence
@@ -558,10 +566,6 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
       lean_named_edge(
         name: ^lean_facts_field_representation,
         target: lean_inhabitant_atom(id: facts.representation)
-      ),
-      lean_named_edge(
-        name: ^lean_facts_field_overflow,
-        target: lean_overflow_semantics_node(semantics: facts.overflow)
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -589,7 +593,8 @@ fn lean_inhabitant_int32_node() -> Node {
 fn lean_fixed_int_spec_facts(
   facts: LeanPrimitiveFacts,
   signedness: Signedness,
-  width: LeanIntegerWidth
+  width: LeanIntegerWidth,
+  overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
@@ -602,7 +607,7 @@ fn lean_fixed_int_spec_facts(
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: facts.overflow) }
+          v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: overflow) }
       } else {
           v2.std.optional.Absent
       }
@@ -640,12 +645,13 @@ fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Sym
 
 fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactBundle {
   match facts.scalar {
-    LeanIntegerScalar { signedness, width } => PrimitiveFactBundle {
+    LeanIntegerScalar { signedness, width, overflow } => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_fixed_int_spec_facts(
         facts: facts,
         signedness: signedness,
-        width: width
+        width: width,
+        overflow: overflow
       )
     }
     BoolScalar => PrimitiveFactBundle {
