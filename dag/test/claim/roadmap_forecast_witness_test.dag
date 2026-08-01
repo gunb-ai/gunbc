@@ -39,7 +39,7 @@ import gunbc.roadmap_forecast {
   ForecastAnchorObservation,
   ReviewCycleCount,
   OperatorMergeLatencyAssumption,
-  unit_worker_demand_assumption,
+  end_to_end_belt_slot_occupancy_assumption,
   ScheduleForecastAssumptions,
   ScheduleForecast,
   ScheduleForecastKnown,
@@ -65,7 +65,7 @@ fn assumptions_with_cap(max_concurrent: Int) -> ScheduleForecastAssumptions {
     worker_concurrency_cap: BeltCapacity { max_concurrent: max_concurrent },
     review_cycle_count: ReviewCycleCount { count: positive_measure_count(predecessor: 0) },
     operator_merge_latency: OperatorMergeLatencyAssumption { duration: millisecond(count: 5) },
-    unit_worker_demand: unit_worker_demand_assumption,
+    belt_slot_occupancy: end_to_end_belt_slot_occupancy_assumption,
   }
 }
 

@@ -49,7 +49,7 @@ import gunbc.roadmap_authority {
 
 data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
 
-data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. ReviewCycleCount states how many normalized historical open-to-merge cycles to budget, and OperatorMergeLatencyAssumption is added once per node. Worker concurrency enters the completion lower bound through ceil(total unit-worker activity duration / cap). The output is explicitly a lower bound, never a resource-leveled expected date. dissolve-on: a separately grounded RCPSP resource-leveling slice can replace lower-bound-only projection with a typed feasible schedule; until then no consumer may read these bounds as promised landing dates."
+data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. ReviewCycleCount states how many normalized historical open-to-merge cycles to budget, and OperatorMergeLatencyAssumption is added once per node. BeltCapacity is session-grain: under EndToEndBeltSlotOccupancyAssumption, each forecast node continuously occupies one belt slot across its modeled PR open-to-merge interval, so TotalWork is slot-time, NOT labor effort, and capacity enters through ceil(total slot-time / cap). The output is explicitly conditional lower-bound projection, never a resource-leveled expected date. dissolve-on: observed dispatch-to-release slot occupancy plus a separately grounded RCPSP resource-leveling slice can replace this declared occupancy assumption and lower-bound-only projection with a typed feasible schedule; until then no consumer may read these bounds as observed labor or promised landing dates."
 
 data remaining_cost_relative_sizing_follow_on_note: String = "FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing: remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished dependency closure, bucketed relative to the historical plus active task population by a separately grounded order-of-magnitude or quantile policy. It must project from this module's TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative portfolio sizing and grounds one population-bucketing policy; then one fold derives the label without creating a second sizing authority."
 
@@ -272,15 +272,15 @@ type ReviewCycleCount { count: PositiveMeasureCount }
 
 type OperatorMergeLatencyAssumption { duration: Millisecond }
 
-type UnitWorkerDemandAssumption {}
+type EndToEndBeltSlotOccupancyAssumption {}
 
-data unit_worker_demand_assumption: UnitWorkerDemandAssumption = UnitWorkerDemandAssumption {}
+data end_to_end_belt_slot_occupancy_assumption: EndToEndBeltSlotOccupancyAssumption = EndToEndBeltSlotOccupancyAssumption {}
 
 type ScheduleForecastAssumptions {
   worker_concurrency_cap: BeltCapacity
   review_cycle_count: ReviewCycleCount
   operator_merge_latency: OperatorMergeLatencyAssumption
-  unit_worker_demand: UnitWorkerDemandAssumption
+  belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption
 }
 
 type ForecastInstant { epoch_ms: EpochMs }
@@ -305,9 +305,14 @@ type DurationEstimateInterval {
 
 type TotalWork { duration: DurationEstimateInterval }
 
+data total_work_semantics_note: String = "TotalWork is the capacity-independent sum of per-node modeled open-to-merge cycle durations after review-cycle and merge-latency assumptions. It is an absolute cycle-time cost, not an observation of labor hours. Only CapacityConstrainedMinimum interprets that sum as belt slot-time, and it structurally carries the occupancy assumption required for that interpretation."
+
 type CriticalPathMinimum { duration: DurationEstimateInterval }
 
-type CapacityConstrainedMinimum { duration: DurationEstimateInterval }
+type CapacityConstrainedMinimum {
+  duration: DurationEstimateInterval
+  under_belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption
+}
 
 type ParallelismHeadroomInterval {
   minimum: FieldOfFractions<Millisecond>
@@ -626,12 +631,16 @@ fn capacity_constrained_minimum(
   total: TotalWork,
   critical: CriticalPathMinimum,
   worker_cap: Int,
+  belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption,
 ) -> CapacityConstrainedMinimum {
-  CapacityConstrainedMinimum { duration: DurationEstimateInterval {
-    minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
-    median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
-    maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
-  } }
+  CapacityConstrainedMinimum {
+    duration: DurationEstimateInterval {
+      minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
+      median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
+      maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
+    },
+    under_belt_slot_occupancy: belt_slot_occupancy,
+  }
 }
 
 fn completion_lower_bound_from_duration(
@@ -727,6 +736,7 @@ fn schedule_forecast(
     total: total,
     critical: critical_minimum,
     worker_cap: assumptions.worker_concurrency_cap.max_concurrent,
+    belt_slot_occupancy: assumptions.belt_slot_occupancy,
   )
   ScheduleForecastKnown { forecast: ScheduleForecast {
     anchor: anchor,
