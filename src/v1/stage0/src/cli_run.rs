@@ -16726,21 +16726,23 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_repeated_typecheck_attribution_probe`):
 // ROADMAP lane `ci-cost`, subject `entry-graph-union-construction` slice 2
-// (gunbc.roadmap_authority id `entry-graph-union-construction` — same row as slice 1;
-// measurement phase before the union verdict).
-// entry-graph-union slice 2 / lane ci-cost. ONE-SHOT INSTRUMENT answering whether
-// repeated module membership (slice 1) translates into repeated typecheck work against
-// ONE shared typed cache. Unblock / DELETE WHEN: slice-2 union verdict is taken.
-// DELETE WHEN dissolved: `RepeatedTypecheckAttributionMeasurement`,
-// `measure_repeated_typecheck_attribution`, `render_repeated_typecheck_attribution_json`,
-// the `repeated_typecheck_attribution_arithmetic` test module, and
-// `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs` — ~600 LOC incl.
-// tests and the bin.
+// (gunbc.roadmap_authority id `entry-graph-union-construction` — same row as slice 1).
+// VERDICT TAKEN 2026-08-01 (`entry-graph-union-slice2-typecheck-attribution.md` §F):
+// repeated typecheck compute is zero at N≤50 — union/shared typed-computation program
+// closes/shrinks. §4b dissolution-on-climb: discriminating controls REMAIN enrolled —
+// `repeated_typecheck_attribution_*` in v1-compiler-tests and
+// `repeated_typecheck_attribution_arithmetic` below are the executing evidence; default
+// resolve flow stays unchanged when the probe is disarmed.
+// DELETE WHEN dissolved (measurement orchestration only — ~400 LOC incl. bin):
+// `RepeatedTypecheckAttributionMeasurement`, `measure_repeated_typecheck_attribution`,
+// `render_repeated_typecheck_attribution_json`, `render_repeated_typecheck_attribution_receipt_json`,
+// and `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs` — on union
+// construction (#7534) merge OR operator archives slice-2 receipts (whichever first).
+// RETAIN until then: flag-gated probe hooks (`arm_*` / `observe_*` / `note_*`) — regression
+// control for decision_ratio=0; delete with the measurement carrier above.
 // Receipt: `rg -c cli_run_repeated_typecheck_attribution_probe src/v1/stage0/src/cli_run.rs`
-// returns 4 while the scaffold stands (this block, the const, and its declaration test)
-// and must return 0 at deletion — the deletion is what the receipt checks, not a fixed hit
-// count. Not a compiler_frontier `.dag` row (seed-Rust, counted here not in the module
-// census), and not enrolled in `gunbc.ci_release_bins` — no `measure_*` probe is.
+// returns 4 while the scaffold stands (this block, the const, and its declaration test).
+// Not a compiler_frontier `.dag` row (seed-Rust) and not enrolled in `gunbc.ci_release_bins`.
 pub fn measure_repeated_typecheck_attribution(
     source_roots: &[String],
     scan_dirs: &[String],
