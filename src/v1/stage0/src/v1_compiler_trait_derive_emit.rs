@@ -77,7 +77,7 @@ pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
 pub fn trait_derive_emit_item_clone_bound_contract_fork_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "MODEL-REALIZATION FORK (counted): the same item-level Clone-bound rule is also modeled at v2.std.compilers.target_model target_derive_supplemental_generic_bound_contract (trait_derive_supplemental_generic_bound_contract_test.dag). That carrier has no consumer in v1 emit today; this structural rule in trait_derive_emit is the operative authority until dissolution.".to_string()
+            "MODEL-REALIZATION FORK (counted): the same item-level Clone-bound rule is also modeled at v2.std.compilers.target_model target_derive_supplemental_generic_bound_contract (trait_derive_supplemental_generic_bound_contract_test.dag). That carrier has no consumer in v1 emit today; it is inhabited with cited upstream impl authorities (v2.extdeps.languages.rust) and consumed by the v2 translate path (v2.compiler.06_translate via target_derive_supplemental_generic_bound_contract_catalog_from_node). This v1 structural rule approximates those cited requirements (bare field or direct container element) pending the v2 emitter; dissolution re-grounds onto upstream impl requirements, not a mechanical lift of the same predicate — the two can disagree at the edges. Until then this structural rule in trait_derive_emit is the operative v1 authority.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
