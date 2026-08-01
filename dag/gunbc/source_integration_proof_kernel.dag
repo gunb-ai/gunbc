@@ -1,0 +1,339 @@
+module gunbc.source_integration_proof_kernel
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.integer { PositiveInt }
+import gunbc.source_integration_landing_spine {
+  LandingProposalContract,
+  LandingProposalOccurrenceId,
+  LandingAcceptedStateHandle,
+  LandingScopeHandle,
+  LandingRequiredClaim,
+  LandingReadyEvidenceReceipt,
+  LandingEquivalenceHandle,
+}
+
+data source_integration_proof_kernel_model_note: NonEmptyStr = "P1 FIRST-SLICE MODEL, not a claim that the proof kernel is complete. It composes with P0 by carrying LandingProposalContract and LandingReadyEvidenceReceipt directly: occurrence identity, reads/relies, modifies/frame, guarantees, authority, and admitted claim evidence are not re-declared here. The new fact is the bounded candidate-generation problem P0 deliberately left absent. Candidate space is constructed from a finite accepted-state seed plus directly authored transformations, witnessed context transports, declared canonicalizations, and finite recovery alternatives. Callers supply those generators and their bounds, never a supposedly exhaustive candidate list; generation closure is therefore an obligation the later public reconciliation fold must establish, not a Boolean callers may assert. Domain facts, procedures, invariants, and closure certificates remain data. Every model-admission failure is a typed, located, counted KernelRefusal. This carrier has no source parser/edit lens (P2), target effect/write transport (P3), primary-outcome projection, arbitrary synthesis, or unbounded search."
+
+type KernelFactKey = NonEmptyStr where brand("KernelFactKey")
+type KernelFactValue = NonEmptyStr where brand("KernelFactValue")
+type KernelProcedureHandle = NonEmptyStr where brand("KernelProcedureHandle")
+type KernelInvariantHandle = NonEmptyStr where brand("KernelInvariantHandle")
+type KernelCanonicalizationHandle = NonEmptyStr where brand("KernelCanonicalizationHandle")
+type KernelRecoveryAlternativeHandle = NonEmptyStr where brand("KernelRecoveryAlternativeHandle")
+type KernelContextTransportReceipt = NonEmptyStr where brand("KernelContextTransportReceipt")
+type KernelCommutingSquareReceipt = NonEmptyStr where brand("KernelCommutingSquareReceipt")
+type KernelCertificateReceipt = NonEmptyStr where brand("KernelCertificateReceipt")
+
+type KernelFact {
+  key: KernelFactKey
+  value: KernelFactValue
+}
+
+type KernelGroundedDelta {
+  key: KernelFactKey
+  before: KernelFactValue
+  after: KernelFactValue
+  scope: LandingScopeHandle
+  grounding_claim: LandingRequiredClaim
+}
+
+type KernelDirectAuthoredTransformation {
+  proposal: LandingProposalContract
+  ready_evidence: LandingReadyEvidenceReceipt
+  delta: List<KernelGroundedDelta>
+}
+
+type KernelContextTransport {
+  occurrence: LandingProposalOccurrenceId
+  authored_parent: LandingAcceptedStateHandle
+  transported_parent: LandingAcceptedStateHandle
+  receipt: KernelContextTransportReceipt
+}
+
+type KernelCommutingSquare {
+  first: LandingProposalOccurrenceId
+  second: LandingProposalOccurrenceId
+  equivalence: LandingEquivalenceHandle
+  receipt: KernelCommutingSquareReceipt
+}
+
+type KernelInvariant {
+  identity: KernelInvariantHandle
+  claims: List<LandingRequiredClaim>
+  procedure: KernelProcedureHandle
+}
+
+type KernelInferenceProcedure {
+  identity: KernelProcedureHandle
+  consumes: List<KernelFactKey>
+  produces: List<KernelFactKey>
+}
+
+type KernelFiniteBounds {
+  proposal_occurrences: PositiveInt
+  facts: PositiveInt
+  transports: PositiveInt
+  canonicalizations: PositiveInt
+  recovery_alternatives: PositiveInt
+  inference_rounds: PositiveInt
+  candidate_classes: PositiveInt
+}
+
+type KernelCandidateGenerationSpec {
+  accepted_parent: LandingAcceptedStateHandle
+  accepted_facts: List<KernelFact>
+  first_transformation: KernelDirectAuthoredTransformation
+  remaining_transformations: List<KernelDirectAuthoredTransformation>
+  transports: List<KernelContextTransport>
+  commuting_squares: List<KernelCommutingSquare>
+  canonicalizations: List<KernelCanonicalizationHandle>
+  recovery_alternatives: List<KernelRecoveryAlternativeHandle>
+  procedures: List<KernelInferenceProcedure>
+  invariants: List<KernelInvariant>
+  equivalence: LandingEquivalenceHandle
+  bounds: KernelFiniteBounds
+}
+
+fn kernel_transformations(
+  spec: KernelCandidateGenerationSpec,
+) -> List<KernelDirectAuthoredTransformation> {
+  append([spec.first_transformation], items: spec.remaining_transformations)
+}
+
+type KernelRefusalKind
+  = KernelProposalBoundExceeded
+  | KernelFactBoundExceeded
+  | KernelTransportBoundExceeded
+  | KernelCanonicalizationBoundExceeded
+  | KernelRecoveryBoundExceeded
+  | KernelEmptyProcedurePopulation
+  | KernelEmptyInvariantPopulation
+  | KernelEvidenceProposalMismatch
+  | KernelDeltaOutsideFrame
+  | KernelDeltaUngrounded
+
+type KernelRefusal {
+  kind: KernelRefusalKind
+  locus: NonEmptyStr
+  occurrences: PositiveInt
+}
+
+fn kernel_refusal(
+  kind: KernelRefusalKind,
+  locus: NonEmptyStr,
+  occurrences: Int,
+) -> List<KernelRefusal> {
+  [KernelRefusal {
+    kind: kind,
+    locus: locus,
+    occurrences: occurrences as PositiveInt,
+  }]
+}
+
+fn kernel_delta_refusals(
+  transformation: KernelDirectAuthoredTransformation,
+) -> List<KernelRefusal> {
+  let outside_frame = transformation.delta
+    |> filter(delta => !(transformation.proposal.modifies_frame
+      |> any(scope => scope == delta.scope)))
+  let ungrounded = transformation.delta
+    |> filter(delta => !(transformation.proposal.ensures_guarantees.remaining
+      |> any(claim => claim == delta.grounding_claim))
+      && transformation.proposal.ensures_guarantees.first != delta.grounding_claim)
+  let evidence_mismatch = if transformation.ready_evidence.proposal == transformation.proposal {
+    []
+  } else {
+    kernel_refusal(
+      kind: KernelEvidenceProposalMismatch,
+      locus: "transformations.ready_evidence.proposal",
+      occurrences: 1,
+    )
+  }
+  concat(
+    evidence_mismatch,
+    concat(
+      if count(outside_frame) > 0 {
+        kernel_refusal(
+          kind: KernelDeltaOutsideFrame,
+          locus: "transformations.delta.scope",
+          occurrences: count(outside_frame),
+        )
+      } else { [] },
+      if count(ungrounded) > 0 {
+        kernel_refusal(
+          kind: KernelDeltaUngrounded,
+          locus: "transformations.delta.grounding_claim",
+          occurrences: count(ungrounded),
+        )
+      } else { [] },
+    ),
+  )
+}
+
+type KernelCandidateGenerationAssessment {
+  spec: KernelCandidateGenerationSpec
+  refusals: List<KernelRefusal>
+}
+
+fn assess_bounded_candidate_generation(
+  spec: KernelCandidateGenerationSpec,
+) -> KernelCandidateGenerationAssessment {
+  let transformations = kernel_transformations(spec: spec)
+  let all_deltas = transformations |> flat_map(transformation => transformation.delta)
+  let limit_refusals = concat(
+    if count(transformations) > spec.bounds.proposal_occurrences {
+      kernel_refusal(
+        kind: KernelProposalBoundExceeded,
+        locus: "bounds.proposal_occurrences",
+        occurrences: count(transformations),
+      )
+    } else { [] },
+    concat(
+      if count(spec.accepted_facts) + count(all_deltas) > spec.bounds.facts {
+        kernel_refusal(
+          kind: KernelFactBoundExceeded,
+          locus: "bounds.facts",
+          occurrences: count(spec.accepted_facts) + count(all_deltas),
+        )
+      } else { [] },
+      concat(
+        if count(spec.transports) > spec.bounds.transports {
+          kernel_refusal(
+            kind: KernelTransportBoundExceeded,
+            locus: "bounds.transports",
+            occurrences: count(spec.transports),
+          )
+        } else { [] },
+        concat(
+          if count(spec.canonicalizations) > spec.bounds.canonicalizations {
+            kernel_refusal(
+              kind: KernelCanonicalizationBoundExceeded,
+              locus: "bounds.canonicalizations",
+              occurrences: count(spec.canonicalizations),
+            )
+          } else { [] },
+          if count(spec.recovery_alternatives) > spec.bounds.recovery_alternatives {
+            kernel_refusal(
+              kind: KernelRecoveryBoundExceeded,
+              locus: "bounds.recovery_alternatives",
+              occurrences: count(spec.recovery_alternatives),
+            )
+          } else { [] },
+        ),
+      ),
+    ),
+  )
+  let population_refusals = concat(
+    if count(spec.procedures) == 0 {
+      kernel_refusal(
+        kind: KernelEmptyProcedurePopulation,
+        locus: "procedures",
+        occurrences: 1,
+      )
+    } else { [] },
+    if count(spec.invariants) == 0 {
+      kernel_refusal(
+        kind: KernelEmptyInvariantPopulation,
+        locus: "invariants",
+        occurrences: 1,
+      )
+    } else { [] },
+  )
+  KernelCandidateGenerationAssessment {
+    spec: spec,
+    refusals: concat(
+      limit_refusals,
+      concat(
+        population_refusals,
+        transformations |> flat_map(transformation =>
+          kernel_delta_refusals(transformation: transformation)
+        ),
+      ),
+    ),
+  }
+}
+
+fn kernel_candidate_generation_admitted(
+  assessment: KernelCandidateGenerationAssessment,
+) -> Bool {
+  count(assessment.refusals) == 0
+}
+
+type KernelClosureCertificateKind
+  = KernelCaptureCompletenessCertificate
+  | KernelAffectedScopeCertificate
+  | KernelRuleClosureCertificate
+  | KernelCandidateGenerationCertificate
+  | KernelAdmissibilityCertificate
+  | KernelEquivalenceQuotientCertificate
+  | KernelMultiplicityCertificate
+
+type KernelClosureCertificate {
+  kind: KernelClosureCertificateKind
+  receipt: KernelCertificateReceipt
+}
+
+type KernelAcceptanceCapability
+  = KernelBoundedCandidateGenerationModeled
+  | KernelOccurrenceDedupExecutes
+  | KernelContextValidityTransportExecutes
+  | KernelCommutingSquareExecutes
+  | KernelBatchPartitionInvariantExecutes
+  | KernelGroundedFrameDeltaExecutes
+  | KernelNWayInvariantExecutes
+  | KernelOrderHonestyExecutes
+  | KernelCaptureCompletenessExecutes
+  | KernelAffectedScopeExecutes
+  | KernelRuleClosureExecutes
+  | KernelCandidateGenerationClosureExecutes
+  | KernelAdmissibilityExecutes
+  | KernelEquivalenceQuotientExecutes
+  | KernelMultiplicityExecutes
+  | KernelInvariantExtensionWithoutKernelEditExecutes
+
+fn kernel_required_acceptance_capabilities() -> List<KernelAcceptanceCapability> {
+  [
+    KernelBoundedCandidateGenerationModeled,
+    KernelOccurrenceDedupExecutes,
+    KernelContextValidityTransportExecutes,
+    KernelCommutingSquareExecutes,
+    KernelBatchPartitionInvariantExecutes,
+    KernelGroundedFrameDeltaExecutes,
+    KernelNWayInvariantExecutes,
+    KernelOrderHonestyExecutes,
+    KernelCaptureCompletenessExecutes,
+    KernelAffectedScopeExecutes,
+    KernelRuleClosureExecutes,
+    KernelCandidateGenerationClosureExecutes,
+    KernelAdmissibilityExecutes,
+    KernelEquivalenceQuotientExecutes,
+    KernelMultiplicityExecutes,
+    KernelInvariantExtensionWithoutKernelEditExecutes,
+  ]
+}
+
+type KernelAcceptanceCheck {
+  capability: KernelAcceptanceCapability
+  witness_holds: Bool
+}
+
+fn kernel_missing_acceptance_capabilities(
+  checks: List<KernelAcceptanceCheck>,
+) -> List<KernelAcceptanceCapability> {
+  kernel_required_acceptance_capabilities()
+    |> filter(required => !(checks |> any(check =>
+      check.capability == required && check.witness_holds
+    )))
+}
+
+fn kernel_closing_frontier_count(
+  checks: List<KernelAcceptanceCheck>,
+) -> Int {
+  count(kernel_missing_acceptance_capabilities(checks: checks))
+}
+
+fn kernel_closing_contract_holds(
+  checks: List<KernelAcceptanceCheck>,
+) -> Bool {
+  kernel_closing_frontier_count(checks: checks) == 0
+}
