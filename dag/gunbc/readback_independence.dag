@@ -114,7 +114,7 @@ data sccache_show_stats_probe: ReadBackProbe = ReadBackProbe {
   label: "sccache --show-stats",
   subject: "sccache daemon is running under the modeled unit",
   effect_on_subject: ProbeMayEstablish {
-    mechanism: "any sccache client invocation auto-starts a server when none is listening, so the probe can create the daemon it reports on (#7213 Finding 2, observed live on srv3 2026-07-25)",
+    mechanism: "`--show-stats` returns a fully-formed table whether or not a server exists, so the probe reports health it has not established (observed live on srv3 2026-07-25: a complete stats table while the modeled unit had been inactive for six hours). CORRECTED 2026-08-01: this row previously said the client invocation auto-starts a server and so creates the daemon it reports on. That mechanism is measured FALSE for sccache 0.15.0 — private-endpoint controls in both the UDS and TCP forms took the listener count 0 -> 0 across --show-stats, while a real compile took it 0 -> 1 (extdeps.cache.sccache sccache_stats_query_does_not_spawn_note). The probe still may-establish in the sense that matters here — it cannot be trusted to have observed an independently existing subject — but the reason is answer-without-subject, not subject-creation",
   },
 }
 
