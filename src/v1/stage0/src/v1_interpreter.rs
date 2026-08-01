@@ -9182,1165 +9182,1261 @@ fn eval_builtin(
     result
 }
 
+/// SINGLE AUTHORITY for the v1 interpreter's free-call primitive surface.
+///
+/// The arm list below is the only place a free-call builtin is named. Both the
+/// dispatch (`v1_builtin_dispatch`) and the machine-readable roster
+/// (`v1_builtin_roster`, surfaced as `v1_builtin_arm_spellings`) are expansions
+/// of THESE tokens, so an arm cannot exist without a roster entry and a roster
+/// entry cannot exist without an arm: the drift DESIGN.md 3 calls a fork is
+/// unwritable here rather than checked afterwards.
+///
+/// Call-site locals are passed in as identifiers (`$name`, `$positional`,
+/// `$ctx`) because macro_rules hygiene would otherwise not resolve them: arm
+/// bodies live in this definition, the values live at the expansion site.
+///
+/// `name` is additionally re-bound here rather than only threaded as `$name`:
+/// two arm bodies use it as an inline format capture (`"{name} requires ..."`),
+/// which no token substitution can reach. Binding it inside THIS definition
+/// gives it the same hygiene context as the arms, so the capture resolves.
+macro_rules! v1_builtin_arms {
+    ($cb:ident, $name:ident, $positional:ident, $ctx:ident) => {{
+        #[allow(unused_variables)]
+        let name = $name;
+        $cb! {
+            $name, $positional, $ctx;
+
+            // The surface reading itself. This arm is inside the arm list, so it
+            // appears in its own answer -- the roster is self-inclusive rather than
+            // describing a surface it stands outside of.
+            //
+            // One row per (form, authored spelling). Alias spellings do not collapse
+            // into a nested list; they share an `arm_identity`, so `contains` as a
+            // free call and `contains` as a method stay two rows while `length`,
+            // `count` and `size` stay one arm under three rows.
+            "interpreter_free_call_arm_rows" => {
+                let mut items: Vec<Value> = Vec::new();
+                for spellings in v1_builtin_arm_spellings() {
+                    // The macro grammar requires at least one literal per arm, so an
+                    // arm's identity is its first authored spelling. Deriving it HERE
+                    // is what keeps the .dag side from ever meeting an empty list it
+                    // would have to give a fabricated default.
+                    let first = match spellings.first() {
+                        Some(f) => *f,
+                        None => {
+                            return Err(InterpError::TypeError {
+                                msg: "interpreter_free_call_arm_rows: an arm with no \
+                                      spellings is unrepresentable in the macro grammar"
+                                    .to_string(),
+                            })
+                        }
+                    };
+                    let arm_identity = format!("free_call:{}", first);
+                    for spelling in spellings.iter() {
+                        items.push(Value::Record {
+                            type_name: $ctx.sym("InterpreterDispatchArmRow"),
+                            fields: Rc::new(sorted_fields(vec![
+                                ($ctx.sym("arm_identity"), Value::Str(arm_identity.clone())),
+                                (
+                                    $ctx.sym("authored_spelling"),
+                                    Value::Str((*spelling).to_string()),
+                                ),
+                            ])),
+                        });
+                    }
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "to_string" => {
+                let v = $positional.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "to_string requires 1 argument".to_string(),
+                })?;
+                Ok(Some(Value::Str(format!("{}", v))))
+            },
+
+            "utf8_decode_bytes" => {
+                let bytes = expect_byte_vec($positional.first().copied(), "utf8_decode_bytes")?;
+                let text =
+                    v1_rt::utf8_decode_bytes(&bytes).map_err(|msg| InterpError::TypeError { msg })?;
+                Ok(Some(Value::Str(text)))
+            },
+
+            "bytes_octets" => {
+                let bytes = expect_byte_vec($positional.first().copied(), "bytes_octets")?;
+                let items: Vec<Value> = bytes.iter().map(|b| Value::Int(*b as i64)).collect();
+                Ok(Some(list_value(items)))
+            },
+
+            "octets_bytes" => {
+                let arg = $positional
+                    .first()
+                    .copied()
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "octets_bytes requires a List<UInt8> argument".to_string(),
+                    })?;
+                let items = free_monoid_to_vec(arg).ok_or_else(|| InterpError::TypeError {
+                    msg: "octets_bytes expects a List<UInt8>".to_string(),
+                })?;
+                let mut out: Vec<Value> = Vec::with_capacity(items.len());
+                for item in &items {
+                    match item {
+                        Value::Int(n) if (0..=255).contains(n) => out.push(Value::Int(*n)),
+                        other => {
+                            return Err(InterpError::TypeError {
+                                msg: format!(
+                                    "octets_bytes expects octets 0..255, got element {}",
+                                    other.type_label()
+                                ),
+                            })
+                        }
+                    }
+                }
+                Ok(Some(list_value(out)))
+            },
+
+            "utf8_encode_bytes" => {
+                let s = expect_str($positional.first().copied(), "utf8_encode_bytes")?;
+                let items: Vec<Value> = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
+                Ok(Some(list_value(items)))
+            },
+
+            "discriminant" => match $positional.first() {
+                Some(Value::Variant { variant_name, .. }) => {
+                    Ok(Some(Value::Str(resolve_sym(*variant_name))))
+                }
+                Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(resolve_sym(*type_name)))),
+                _ => Ok(None),
+            },
+
+            "chars_to_string" => {
+                let cps = match $positional.first().copied() {
+                    Some(v) => free_monoid_to_vec(v).ok_or_else(|| InterpError::TypeError {
+                        msg: "chars_to_string expects a list of code points".to_string(),
+                    })?,
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: "chars_to_string requires a code-point list".to_string(),
+                        })
+                    }
+                };
+                let len = cps.len() as i64;
+                let start = expect_int($positional.get(1).copied(), "chars_to_string start")?
+                    .max(0)
+                    .min(len);
+                let end = expect_int($positional.get(2).copied(), "chars_to_string end")?
+                    .max(0)
+                    .min(len)
+                    .max(start);
+                let s: String = cps[start as usize..end as usize]
+                    .iter()
+                    .filter_map(|v| match v {
+                        Value::Int(cp) => char::from_u32(*cp as u32),
+                        _ => None,
+                    })
+                    .collect();
+                Ok(Some(Value::Str(s)))
+            },
+
+            "get" => match $positional.as_slice() {
+                [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
+                    let items = expect_list(list_val, "get")?;
+                    let idx = expect_int(Some(idx_val), "get")?;
+                    Ok(Some(list_get_at_or_null(&items, idx)))
+                }
+                _ => Ok(None),
+            },
+
+            "parse_int" => {
+                let s = expect_str($positional.first().copied(), "parse_int")?;
+                match s.parse::<i64>() {
+                    Ok(n) => Ok(Some(Value::Int(n))),
+                    Err(_) => Ok(Some(Value::Null)),
+                }
+            },
+
+            "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
+
+            // Scaffold arm — dissolution trigger lives on `v1_rt::trace_mark`'s doc comment
+            // (realization_measurement_loop Phase 0, docs/plans/realization-measurement-loop.md):
+            // delete this arm with the rest of the trace_mark deletion set named there.
+            "trace_mark" => {
+                if let [Value::Str(s)] = $positional.as_slice() {
+                    v1_rt::trace_mark(s.clone());
+                }
+                Ok(Some(Value::Unit))
+            },
+
+            "concat" => {
+                if $positional.len() >= 2 && $positional.iter().all(|v| matches!(v, Value::Str(_))) {
+                    let mut result = String::new();
+                    for v in &$positional {
+                        if let Value::Str(s) = v {
+                            result.push_str(s);
+                        }
+                    }
+                    return Ok(Some(Value::Str(result)));
+                }
+                let record_push = |copied: usize| {
+                    let mut counters = $ctx.mutation_counters.borrow_mut();
+                    counters.list_push_calls += 1;
+                    counters.list_push_items_copied += copied as u64;
+                };
+                match $positional.as_slice() {
+                    [a, b] => match (a, b) {
+                        (l, Value::Str(s)) => match free_monoid_to_vec(l) {
+                            Some(mut result) => {
+                                record_push(result.len());
+                                result.push(Value::Str(s.clone()));
+                                Ok(Some(list_value((result))))
+                            }
+                            None => Ok(None),
+                        },
+                        (Value::Str(s), r) => match free_monoid_to_vec(r) {
+                            Some(result) => {
+                                record_push(result.len());
+                                let mut out = vec![Value::Str(s.clone())];
+                                out.extend(result);
+                                Ok(Some(list_value((out))))
+                            }
+                            None => Ok(None),
+                        },
+                        _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+                            (Some(mut a_items), Some(b_items)) => {
+                                let mut counters = $ctx.mutation_counters.borrow_mut();
+                                counters.list_concat_calls += 1;
+                                counters.list_concat_items_copied +=
+                                    (a_items.len() + b_items.len()) as u64;
+                                drop(counters);
+                                a_items.extend(b_items);
+                                Ok(Some(list_value((a_items))))
+                            }
+                            _ => Ok(None),
+                        },
+                    },
+                    _ => Ok(None),
+                }
+            },
+
+            "count" => match $positional.first() {
+                Some(v) => match free_monoid_to_vec(v) {
+                    Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                    None => Ok(None),
+                },
+                None => Ok(None),
+            },
+
+            "reverse" => match $positional.first() {
+                Some(Value::Str(_)) => Ok(None),
+                Some(v) => match free_monoid_to_vec(v) {
+                    Some(items) => {
+                        let mut r = items;
+                        r.reverse();
+                        Ok(Some(list_value((r))))
+                    }
+                    None => Ok(None),
+                },
+                None => Ok(None),
+            },
+
+            "string_length" => {
+                let s = expect_str($positional.first().copied(), "string_length")?;
+                Ok(Some(Value::Int(s.chars().count() as i64)))
+            },
+
+            "substring" => {
+                let s = expect_str($positional.first().copied(), "substring")?;
+                let start = expect_int($positional.get(1).copied(), "substring start")?;
+                let end = expect_int($positional.get(2).copied(), "substring end")?;
+                Ok(Some(Value::Str(v1_rt::substring(&s, start, end))))
+            },
+
+            "char_at" => {
+                let s = expect_str($positional.first().copied(), "char_at")?;
+                let pos = expect_int($positional.get(1).copied(), "char_at pos")?;
+                Ok(Some(Value::Str(v1_rt::char_at(&s, pos))))
+            },
+
+            "string_contains" => {
+                let s = expect_str($positional.first().copied(), "contains")?;
+                let sub = expect_str($positional.get(1).copied(), "contains sub")?;
+                Ok(Some(Value::Bool(s.contains(&sub))))
+            },
+
+            "starts_with" => {
+                let s = expect_str($positional.first().copied(), "starts_with")?;
+                let prefix = expect_str($positional.get(1).copied(), "starts_with prefix")?;
+                Ok(Some(Value::Bool(s.starts_with(&prefix))))
+            },
+
+            "length" => match $positional.first() {
+                Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
+                Some(v) => match native_len(v) {
+                    Some(n) => Ok(Some(Value::Int(n))),
+                    None => match free_monoid_to_vec(v) {
+                        Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                        None => Ok(None),
+                    },
+                },
+                None => Ok(None),
+            },
+
+            "contains" => match $positional.as_slice() {
+                [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
+                [xs, target, ..] => match free_monoid_to_vec(xs) {
+                    Some(items) => Ok(Some(Value::Bool(items.iter().any(|item| item == *target)))),
+                    None => Ok(None),
+                },
+                _ => Ok(None),
+            },
+
+            "replace" => {
+                let s = expect_str($positional.first().copied(), "replace")?;
+                let from = expect_str($positional.get(1).copied(), "replace from")?;
+                let to = expect_str($positional.get(2).copied(), "replace to")?;
+                Ok(Some(Value::Str(s.replace(&from, &to))))
+            },
+
+            "code_point" => {
+                let s = expect_str($positional.first().copied(), "code_point")?;
+                let cp = s.chars().next().map(|c| c as i64).unwrap_or(0);
+                Ok(Some(Value::Int(cp)))
+            },
+
+            "from_code_point" => {
+                let cp = expect_int($positional.first().copied(), "from_code_point")?;
+                let c = char::from_u32(cp as u32).unwrap_or('\0');
+                Ok(Some(Value::Str(c.to_string())))
+            },
+
+            "is_xid_start" => {
+                let cp = expect_int($positional.first().copied(), "is_xid_start")?;
+                Ok(Some(Value::Bool(v1_rt::is_xid_start(cp))))
+            },
+
+            "is_xid_continue" => {
+                let cp = expect_int($positional.first().copied(), "is_xid_continue")?;
+                Ok(Some(Value::Bool(v1_rt::is_xid_continue(cp))))
+            },
+
+            "is_emoji_ident" => {
+                let cp = expect_int($positional.first().copied(), "is_emoji_ident")?;
+                Ok(Some(Value::Bool(v1_rt::is_emoji_ident(cp))))
+            },
+
+            "list_push" | "append" => match $positional.as_slice() {
+                [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
+                [list_val, item] => match value_to_list_carrier(list_val) {
+                    Some((items, copied)) => {
+                        let mut counters = $ctx.mutation_counters.borrow_mut();
+                        counters.list_push_calls += 1;
+                        counters.list_push_items_copied += copied;
+                        drop(counters);
+                        let mut result = (*items).clone();
+                        result.push_back((*item).clone());
+                        Ok(Some(list_value(result)))
+                    }
+                    None => Ok(None),
+                },
+                _ => Ok(None),
+            },
+
+            "list_concat" => match $positional.as_slice() {
+                [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
+                [a, b] => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
+                    (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
+                        let mut counters = $ctx.mutation_counters.borrow_mut();
+                        counters.list_concat_calls += 1;
+                        counters.list_concat_items_copied += a_copied + b_copied;
+                        drop(counters);
+                        let mut result = (*a_items).clone();
+                        result.append((*b_items).clone());
+                        Ok(Some(list_value(result)))
+                    }
+                    _ => Ok(None),
+                },
+                _ => Ok(None),
+            },
+
+            "empty_map" => Ok(Some(map_value(HamtMap::new()))),
+
+            "empty_set" => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
+
+            "set_insert" => match $positional.as_slice() {
+                [Value::Set(s), Value::Str(k)] => {
+                    let mut counters = $ctx.mutation_counters.borrow_mut();
+                    counters.set_insert_calls += 1;
+                    counters.set_insert_items_copied += s.len() as u64;
+                    drop(counters);
+                    let mut result = s.as_ref().clone();
+                    result.insert(k.clone());
+                    Ok(Some(Value::Set(Rc::new(result))))
+                }
+                _ => Ok(None),
+            },
+
+            "set_union" => match $positional.as_slice() {
+                [Value::Set(a), Value::Set(b)] => {
+                    let mut counters = $ctx.mutation_counters.borrow_mut();
+                    counters.set_union_calls += 1;
+                    counters.set_union_items_copied += (a.len() + b.len()) as u64;
+                    drop(counters);
+                    let mut result = a.as_ref().clone();
+                    result.extend(b.iter().cloned());
+                    Ok(Some(Value::Set(Rc::new(result))))
+                }
+                _ => Ok(None),
+            },
+
+            "set_contains" => match $positional.as_slice() {
+                [Value::Set(s), Value::Str(k)] => Ok(Some(Value::Bool(s.contains(k.as_str())))),
+                _ => Ok(None),
+            },
+
+            "map_insert" => match $positional.as_slice() {
+                [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
+                    Some(ck) => {
+                        let mut counters = $ctx.mutation_counters.borrow_mut();
+                        counters.map_insert_calls += 1;
+                        drop(counters);
+                        Ok(Some(map_value(m.update(ck, (*v).clone()))))
+                    }
+                    None => Err(InterpError::TypeError {
+                        msg: format!(
+                            "map_insert key has no decidable identity (closure/fn/NaN): {}",
+                            k.type_label()
+                        ),
+                    }),
+                },
+                _ => Ok(None),
+            },
+
+            "lookup" => match $positional.as_slice() {
+                [map, key] => {
+                    let raw = raw_map_lookup(map, key, &Env::empty(), $ctx)?;
+                    Ok(Some(map_lookup_as_optional(raw, $ctx)))
+                }
+                _ => Ok(None),
+            },
+
+            "map_keys" => match $positional.first() {
+                Some(Value::Map(m)) => {
+                    let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+                    Ok(Some(list_value((keys))))
+                }
+                _ => Ok(None),
+            },
+
+            "map_values" => match $positional.first() {
+                Some(Value::Map(m)) => {
+                    let vals: Vec<Value> = m.values().cloned().collect();
+                    Ok(Some(list_value((vals))))
+                }
+                _ => Ok(None),
+            },
+
+            "map_contains_key" | "map_has" => match $positional.as_slice() {
+                [Value::Map(m), k] => match CanonKey::new((*k).clone()) {
+                    Some(ck) => Ok(Some(Value::Bool(m.contains_key(&ck)))),
+                    None => Ok(Some(Value::Bool(false))),
+                },
+                _ => Ok(None),
+            },
+
+            "map_is_empty" => match $positional.as_slice() {
+                [Value::Map(m)] => Ok(Some(Value::Bool(m.is_empty()))),
+                _ => Ok(None),
+            },
+
+            "rc_ptr_eq" | "rc_vec_ptr_eq" => match $positional.as_slice() {
+                [a, b] => Ok(Some(Value::Bool(a == b))),
+                _ => Ok(None),
+            },
+
+            "map_merge" => match $positional.as_slice() {
+                [Value::Map(base), Value::Map(overlay)] => {
+                    let mut counters = $ctx.mutation_counters.borrow_mut();
+                    counters.map_merge_calls += 1;
+                    drop(counters);
+                    Ok(Some(map_value((**overlay).clone().union((**base).clone()))))
+                }
+                _ => Ok(None),
+            },
+
+            "str_eq" => match $positional.as_slice() {
+                [Value::Str(a), Value::Str(b)] => Ok(Some(Value::Bool(a == b))),
+                _ => Ok(None),
+            },
+
+            "atom_identity_hash" => match $positional.as_slice() {
+                [Value::Str(s)] => Ok(Some(Value::Str(v1_rt::atom_identity_hash(s.clone())))),
+                _ => Err(InterpError::TypeError {
+                    msg: "atom_identity_hash requires exactly one string argument".to_string(),
+                }),
+            },
+
+            // ObservePeakResidentAtSubject realization seam (witness-realization plan P1):
+            // process peak resident set (VmHWM) in bytes. Fail-closed when the host
+            // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
+            "observed_peak_resident_bytes" => match $positional.as_slice() {
+                [] => {
+                    let bytes = std::fs::read_to_string("/proc/self/status")
+                        .ok()
+                        .and_then(|status| {
+                            status
+                                .lines()
+                                .find(|l| l.starts_with("VmHWM"))
+                                .and_then(|line| line.split_whitespace().nth(1))
+                                .and_then(|kb| kb.parse::<i64>().ok())
+                        })
+                        .map(|kb| kb.saturating_mul(1024));
+                    match bytes {
+                        Some(b) => Ok(Some(Value::Int(b))),
+                        None => Err(InterpError::TypeError {
+                            msg: "observed_peak_resident_bytes: VmHWM unavailable on this host (refusing to fabricate a Measured space fact)"
+                                .to_string(),
+                        }),
+                    }
+                }
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_peak_resident_bytes takes no arguments".to_string(),
+                }),
+            },
+
+            "hash_combine" => match $positional.as_slice() {
+                [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
+                    if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
+                        return Err(InterpError::TypeError {
+                            msg: "hash_combine requires exactly two Hash arguments".to_string(),
+                        });
+                    }
+                    Ok(Some(Value::Str(v1_rt::hash_combine(a.clone(), b.clone()))))
+                }
+                _ => Err(InterpError::TypeError {
+                    msg: "hash_combine requires exactly two Hash arguments".to_string(),
+                }),
+            },
+
+            "filesystem_read" => {
+                let path = expect_str($positional.first().copied(), "filesystem_read")?;
+                Ok(Some(eval_filesystem_read_builtin(path, $ctx)?))
+            },
+
+            "emit_host_run_transport" => Ok(Some(eval_emit_host_run_transport_builtin(
+                $positional.first().copied(),
+                $positional.get(1).copied(),
+                $positional.get(2).copied(),
+                $positional.get(3).copied(),
+                $ctx,
+            )?)),
+
+            "emit_host_run_transport_cached" => Ok(Some(eval_emit_host_run_transport_cached_builtin(
+                $positional.first().copied(),
+                $positional.get(1).copied(),
+                $positional.get(2).copied(),
+                $positional.get(3).copied(),
+                $positional.get(4).copied(),
+                $ctx,
+            )?)),
+
+            "emit_host_native_cache_evict" => Ok(Some(eval_emit_host_native_cache_evict_builtin(
+                $positional.first().copied(),
+                $ctx,
+            )?)),
+
+            "contiguous_loop_elementwise_kernel" => {
+                let op_codes = expect_int_list_flex($positional.first().copied(), $name)?;
+                let a = expect_int_list_flex($positional.get(1).copied(), $name)?;
+                let b = expect_int_list_flex($positional.get(2).copied(), $name)?;
+                let c = expect_int_list_flex($positional.get(3).copied(), $name)?;
+                if a.len() != b.len() || b.len() != c.len() {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "{name} requires equal-length List<Int> buffer arguments, got lengths {}, {}, {}",
+                            a.len(),
+                            b.len(),
+                            c.len()
+                        ),
+                    });
+                }
+                let out = v1_rt::contiguous_loop_elementwise_kernel(&op_codes, &a, &b, &c);
+                Ok(Some(list_value(
+                    out.into_iter().map(Value::Int).collect::<Vec<_>>(),
+                )))
+            },
+
+            "contiguous_loop_elementwise_float_kernel" => {
+                let op_codes = expect_int_list_flex($positional.first().copied(), $name)?;
+                let fma_policy = expect_fma_contraction_policy_wire($positional.get(1).copied(), $name)?;
+                let a = expect_float_list_flex($positional.get(2).copied(), $name)?;
+                let b = expect_float_list_flex($positional.get(3).copied(), $name)?;
+                let c = expect_float_list_flex($positional.get(4).copied(), $name)?;
+                if a.len() != b.len() || b.len() != c.len() {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "{name} requires equal-length List<Float> buffer arguments, got lengths {}, {}, {}",
+                            a.len(),
+                            b.len(),
+                            c.len()
+                        ),
+                    });
+                }
+                let out =
+                    v1_rt::contiguous_loop_elementwise_float_kernel(&op_codes, fma_policy, &a, &b, &c);
+                Ok(Some(list_value(
+                    out.into_iter().map(Value::Float).collect::<Vec<_>>(),
+                )))
+            },
+
+            "layer_import_facts" => {
+                let std_roots = expect_str_list($positional.first().copied(), "layer_import_facts")?;
+                let extdeps_roots = expect_str_list($positional.get(1).copied(), "layer_import_facts")?;
+                let facts = crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    let layer = Value::Variant {
+                        type_name: $ctx.sym("LayerPrefix"),
+                        variant_name: $ctx.sym(f.layer),
+                        fields: Rc::new(vec![]),
+                    };
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("LayerImportFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("import_module"), Value::Str(f.import_module)),
+                            ($ctx.sym("layer"), layer),
+                            ($ctx.sym("path"), Value::Str(f.path)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "import_resolution_facts" => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "import_resolution_facts")?;
+                let importer_roots =
+                    expect_str_list($positional.get(1).copied(), "import_resolution_facts")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "import_resolution_facts")?;
+                let facts = crate::cli_run::import_resolution_facts(
+                    &pool_roots,
+                    &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ImportResolutionFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("import_module"), Value::Str(f.import_module)),
+                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "reference_resolution_facts" => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "reference_resolution_facts")?;
+                let importer_roots =
+                    expect_str_list($positional.get(1).copied(), "reference_resolution_facts")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "reference_resolution_facts")?;
+                // Selection tier: Qualified + UniqueBare only (strict = true). AmbiguousBare is
+                // dropped here — same projection `reference_edges_as_import_facts` applies on the
+                // host twin's `selection_adjacency` path in `build_module_graph_facts_live_uncached`.
+                let facts = crate::cli_run::reference_edges_as_import_facts(
+                    &crate::cli_run::reference_resolution_facts(
+                        &pool_roots,
+                        &importer_roots,
+                        &exclude_substrings,
+                    ),
+                    true,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ImportResolutionFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("import_module"), Value::Str(f.import_module)),
+                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "concept_decl_facts" => {
+                let pool_roots = expect_str_list($positional.first().copied(), "concept_decl_facts")?;
+                Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(
+                    $ctx,
+                    &pool_roots,
+                )?))
+            },
+
+            "export_signature_facts" => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "export_signature_facts")?;
+                Ok(Some(
+                    crate::coproduct_reflection::eval_export_signature_facts($ctx, &pool_roots)?,
+                ))
+            },
+
+            "decl_facts" => {
+                let pool_roots = expect_str_list($positional.first().copied(), "decl_facts")?;
+                Ok(Some(crate::coproduct_reflection::eval_decl_facts(
+                    $ctx,
+                    &pool_roots,
+                )?))
+            },
+
+            "module_declaration_facts" => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "module_declaration_facts")?;
+                let facts = crate::cli_run::module_declaration_facts(&pool_roots);
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDeclarationFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module"), Value::Str(f.module)),
+                            ($ctx.sym("path"), Value::Str(f.path)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "fact_cardinality_decl_facts" => {
+                let facts = crate::cli_run::fact_cardinality_decl_facts();
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    let tree = match f.tree.as_str() {
+                        "dag" => "Dag",
+                        "v2" => "V2",
+                        other => panic!("fact_cardinality_decl_facts: unknown tree {other:?}"),
+                    };
+                    let tree_value = Value::Variant {
+                        type_name: $ctx.sym("FactCardinalityTree"),
+                        variant_name: $ctx.sym(tree),
+                        fields: Rc::new(vec![]),
+                    };
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("FactCardinalityDeclFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            (
+                                $ctx.sym("rel_path_decl_key"),
+                                Value::Str(f.rel_path_decl_key),
+                            ),
+                            ($ctx.sym("tree"), tree_value),
+                            ($ctx.sym("content_hash"), Value::Str(f.content_hash)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "languages_consumer_census_data_decl_count" => Ok(Some(Value::Int(
+                crate::cli_run::languages_consumer_census_data_decl_count(),
+            ))),
+
+            "languages_consumer_census_per_language_row_count" => Ok(Some(Value::Int(
+                crate::cli_run::languages_consumer_census_per_language_row_count(),
+            ))),
+
+            "languages_consumer_census_format_row_count" => Ok(Some(Value::Int(
+                crate::cli_run::languages_consumer_census_format_row_count(),
+            ))),
+
+            "languages_consumer_census_external_consumer_count" => {
+                let decl_name = expect_str(
+                    $positional.first().copied(),
+                    "languages_consumer_census_external_consumer_count",
+                )?;
+                Ok(Some(Value::Int(
+                    crate::cli_run::languages_consumer_census_external_consumer_count(decl_name),
+                )))
+            },
+
+            "languages_consumer_census_is_composition_only" => {
+                let decl_name = expect_str(
+                    $positional.first().copied(),
+                    "languages_consumer_census_is_composition_only",
+                )?;
+                Ok(Some(Value::Bool(
+                    crate::cli_run::languages_consumer_census_is_composition_only(decl_name),
+                )))
+            },
+
+            "languages_consumer_census_has_external_consumer" => {
+                let decl_name = expect_str(
+                    $positional.first().copied(),
+                    "languages_consumer_census_has_external_consumer",
+                )?;
+                Ok(Some(Value::Bool(
+                    crate::cli_run::languages_consumer_census_has_external_consumer(decl_name),
+                )))
+            },
+
+            "shell_materialize_operation_argv" => {
+                let path = expect_str(
+                    $positional.first().copied(),
+                    "shell_materialize_operation_argv",
+                )?;
+                let service = expect_str(
+                    $positional.get(1).copied(),
+                    "shell_materialize_operation_argv",
+                )?;
+                let operation = expect_str(
+                    $positional.get(2).copied(),
+                    "shell_materialize_operation_argv",
+                )?;
+                let bindings = $positional
+                    .get(3)
+                    .copied()
+                    .cloned()
+                    .unwrap_or_else(|| list_value(Vec::<Value>::new()));
+                let result = materialize_operation_argv(&path, &service, &operation, &bindings, $ctx);
+                Ok(Some(argv_materialization_value(
+                    result, &path, &service, &operation, $ctx,
+                )))
+            },
+
+            "shell_transport_operation_rows" => {
+                let mut items: Vec<Value> = Vec::new();
+                for row in crate::cli_run::shell_transport_operation_rows() {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ShellTransportOperationRow"),
+                        fields: Rc::new(sorted_fields(vec![
+                            (
+                                $ctx.sym("at"),
+                                operation_ref_value(&row.path, &row.service, &row.operation, $ctx),
+                            ),
+                            (
+                                $ctx.sym("declared_inputs"),
+                                list_value(
+                                    row.declared_inputs
+                                        .into_iter()
+                                        .map(Value::Str)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
+                            (
+                                $ctx.sym("argv_input_refs"),
+                                list_value(
+                                    row.argv_input_refs
+                                        .into_iter()
+                                        .map(Value::Str)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "extdeps_qualified_name_resolves_in_derived_module_set" => {
+                let module = $positional.first().ok_or_else(|| InterpError::TypeError {
+                    msg:
+                        "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
+                            .to_string(),
+                })?;
+                Ok(Some(Value::Bool(
+                    crate::cli_run::qualified_name_resolves_in_derived_module_set(module),
+                )))
+            },
+
+            "transport_script_position_facts_for_path" => {
+                let path = expect_str(
+                    $positional.first().copied(),
+                    "transport_script_position_facts_for_path",
+                )?;
+                let facts = crate::cli_run::transport_script_position_facts_for_path(path);
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    let shape = Value::Variant {
+                        type_name: $ctx.sym("TransportScriptArgShape"),
+                        variant_name: $ctx.sym(f.shape),
+                        fields: Rc::new(vec![]),
+                    };
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("TransportScriptPositionFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("function"), Value::Str(f.function)),
+                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("shape"), shape),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "extdeps_shape_transport_policy_facts_for_qualified_name" => {
+                let qn = $positional.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "extdeps_shape_transport_policy_facts_for_qualified_name requires a QualifiedName"
+                        .to_string(),
+                })?;
+                let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
+                let facts = crate::cli_run::extdeps_shape_transport_policy_module_facts(&module_path);
+                let argv_items: Vec<Value> = facts
+                    .argv_facts
+                    .iter()
+                    .map(|f| Value::Record {
+                        type_name: $ctx.sym("ExtdepsTransportArgvFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("argv_index"), Value::Int(f.argv_index)),
+                            ($ctx.sym("argv_token"), Value::Str(f.argv_token.clone())),
+                            ($ctx.sym("module"), (*qn).clone()),
+                            ($ctx.sym("operation"), Value::Str(f.operation.clone())),
+                            ($ctx.sym("service"), Value::Str(f.service.clone())),
+                            (
+                                $ctx.sym("transport_kind"),
+                                Value::Variant {
+                                    type_name: $ctx.sym("ExtdepsTransportKind"),
+                                    variant_name: $ctx.sym(f.transport_kind),
+                                    fields: Rc::new(vec![]),
+                                },
+                            ),
+                        ])),
+                    })
+                    .collect();
+                let fusion_items: Vec<Value> = facts
+                    .fusion_facts
+                    .iter()
+                    .map(|f| Value::Record {
+                        type_name: $ctx.sym("ExtdepsTransportFusionFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("endpoint_key"), Value::Str(f.endpoint_key.clone())),
+                            ($ctx.sym("module"), (*qn).clone()),
+                            ($ctx.sym("service_a"), Value::Str(f.service_a.clone())),
+                            ($ctx.sym("service_b"), Value::Str(f.service_b.clone())),
+                        ])),
+                    })
+                    .collect();
+                let input_items: Vec<Value> = facts
+                    .input_facts
+                    .iter()
+                    .map(|f| Value::Record {
+                        type_name: $ctx.sym("ExtdepsOperationInputFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module"), (*qn).clone()),
+                            ($ctx.sym("operation"), Value::Str(f.operation.clone())),
+                            ($ctx.sym("param_name"), Value::Str(f.param_name.clone())),
+                            ($ctx.sym("service"), Value::Str(f.service.clone())),
+                        ])),
+                    })
+                    .collect();
+                let embedded_items: Vec<Value> = facts
+                    .embedded_facts
+                    .iter()
+                    .map(|f| Value::Record {
+                        type_name: $ctx.sym("ExtdepsEmbeddedPolicyLiteralFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("data_name"), Value::Str(f.data_name.clone())),
+                            ($ctx.sym("field_name"), Value::Str(f.field_name.clone())),
+                            (
+                                $ctx.sym("literal_value"),
+                                Value::Str(f.literal_value.clone()),
+                            ),
+                            ($ctx.sym("module"), (*qn).clone()),
+                        ])),
+                    })
+                    .collect();
+                let result = Value::Record {
+                    type_name: $ctx.sym("ExtdepsModuleFacts"),
+                    fields: Rc::new(sorted_fields(vec![
+                        ($ctx.sym("argv_facts"), list_value(argv_items)),
+                        ($ctx.sym("embedded_facts"), list_value(embedded_items)),
+                        ($ctx.sym("fusion_facts"), list_value(fusion_items)),
+                        (
+                            $ctx.sym("gist_create_declares_filename_input"),
+                            Value::Bool(facts.gist_create_declares_filename_input),
+                        ),
+                        (
+                            $ctx.sym("gist_create_files_keyed_by_filename"),
+                            Value::Bool(facts.gist_create_files_keyed_by_filename),
+                        ),
+                        ($ctx.sym("input_facts"), list_value(input_items)),
+                        (
+                            $ctx.sym("source_nickname_literal_count"),
+                            Value::Int(facts.source_nickname_literal_count),
+                        ),
+                    ])),
+                };
+                Ok(Some(result))
+            },
+
+            "extdeps_external_authority_facts_for_qualified_name" => {
+                let qn = $positional.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "extdeps_external_authority_facts_for_qualified_name requires a QualifiedName"
+                        .to_string(),
+                })?;
+                let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
+                let facts = crate::cli_run::extdeps_external_authority_module_facts(&module_path);
+                let result = Value::Record {
+                    type_name: $ctx.sym("ExtdepsExternalAuthorityModuleFacts"),
+                    fields: Rc::new(sorted_fields(vec![
+                        ($ctx.sym("anchor_kind"), Value::Str(facts.anchor_kind)),
+                        (
+                            $ctx.sym("scheme_identity"),
+                            Value::Str(facts.scheme_identity),
+                        ),
+                        ($ctx.sym("locator"), Value::Str(facts.locator)),
+                    ])),
+                };
+                Ok(Some(result))
+            },
+
+            "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
+                crate::cli_run::extdeps_external_authority_live_clean_tree_holds(),
+            ))),
+            "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
+                crate::cli_run::extdeps_external_authority_live_roster_module_count(),
+            ))),
+
+            "doc_graph_orphan_count" => {
+                let extra_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(
+                    extra_roots,
+                ))))
+            },
+            "doc_graph_admitted_root_count" => {
+                let extra_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(Value::Int(
+                    crate::cli_run::doc_graph_admitted_root_count(extra_roots),
+                )))
+            },
+            "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
+                crate::cli_run::doc_graph_dangling_link_count(),
+            ))),
+            "doc_graph_doc_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
+
+            "compile_dag_rust_emit_check" => {
+                let source = expect_str($positional.first().copied(), $name)?;
+                let file_path = expect_str($positional.get(1).copied(), $name)?;
+                let includes = expect_str_list($positional.get(2).copied(), $name)?;
+                let excludes = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(Value::Bool(
+                    crate::cli_run::compile_dag_rust_emit_check(
+                        &source, &file_path, &includes, &excludes,
+                    ),
+                )))
+            },
+
+            "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
+                crate::cli_run::witness_layer_roots_compile_clean_check(),
+            ))),
+
+            "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
+                crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
+            ))),
+            "consume_floor_compile_clean_gate_verdict" => Ok(Some(Value::Bool(
+                crate::cli_run::consume_floor_compile_clean_gate_verdict(),
+            ))),
+
+            "witness_compile_clean_cli_floor_verdicts_agree" => Ok(Some(Value::Bool(
+                crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
+            ))),
+
+            "test_migration_debt_module_count" => Ok(Some(Value::Int(
+                crate::cli_run::test_migration_debt_module_count(),
+            ))),
+            "test_migration_debt_total_loc" => Ok(Some(Value::Int(
+                crate::cli_run::test_migration_debt_total_loc(),
+            ))),
+            "test_migration_debt_total_test_fns" => Ok(Some(Value::Int(
+                crate::cli_run::test_migration_debt_total_test_fns(),
+            ))),
+            "test_migration_debt_module_names" => {
+                let names = crate::cli_run::test_migration_debt_module_names();
+                let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            "test_migration_debt_known_covered_module_is_not_debt" => Ok(Some(Value::Bool(
+                crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
+            ))),
+            "test_migration_delete_guard_holds" => Ok(Some(Value::Bool(
+                crate::cli_run::test_migration_delete_guard_holds(),
+            ))),
+            "test_migration_delete_guard_uncovered_deletes" => {
+                let paths = crate::cli_run::test_migration_delete_guard_uncovered_deletes();
+                let items: Vec<Value> = paths.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+
+            "inert_carrier_names_live" => {
+                let names = crate::cli_run::inert_carrier_names_live();
+                let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            "inert_carrier_declared_count" => Ok(Some(Value::Int(
+                crate::cli_run::inert_carrier_declared_count_live(),
+            ))),
+
+            "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
+                crate::cli_run::inert_lens_unreached_module_count(),
+            ))),
+            "inert_lens_top_level_module_count" => Ok(Some(Value::Int(
+                crate::cli_run::inert_lens_top_level_module_count(),
+            ))),
+
+            "non_fold_residue_count" => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
+            "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
+                crate::cli_run::non_fold_residue_unrostered_count(),
+            ))),
+            "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
+                crate::cli_run::non_fold_residue_stale_roster_count(),
+            ))),
+            "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
+                crate::cli_run::non_fold_residue_coproduct_universe_count(),
+            ))),
+
+            "commit_witness_claim_roster_unresolvable_count" => Ok(Some(Value::Int(
+                crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
+            ))),
+            "commit_witness_claim_pair_resolvable" => {
+                let entry = expect_str(
+                    $positional.first().copied(),
+                    "commit_witness_claim_pair_resolvable entry",
+                )?;
+                let function = expect_str(
+                    $positional.get(1).copied(),
+                    "commit_witness_claim_pair_resolvable function",
+                )?;
+                Ok(Some(Value::Bool(
+                    crate::cli_run::commit_witness_claim_pair_resolvable(&entry, &function),
+                )))
+            },
+            "non_fold_residue_wildcard_red_fixture_holds" => Ok(Some(Value::Bool(
+                crate::cli_run::non_fold_residue_wildcard_red_fixture_holds(),
+            ))),
+            "non_fold_residue_total_fold_green_fixture_holds" => Ok(Some(Value::Bool(
+                crate::cli_run::non_fold_residue_total_fold_green_fixture_holds(),
+            ))),
+            "non_fold_residue_roster_red_fixture_holds" => Ok(Some(Value::Bool(
+                crate::cli_run::non_fold_residue_roster_red_fixture_holds(),
+            ))),
+            "non_fold_residue_synthetic_unrostered_red_holds" => Ok(Some(Value::Bool(
+                crate::cli_run::non_fold_residue_synthetic_unrostered_red_holds(),
+            ))),
+
+            "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
+                crate::cli_run::complexity_linearity_syntactic_finding_count(),
+            ))),
+            "complexity_linearity_wildcard_facts" => {
+                let facts = crate::cli_run::complexity_linearity_wildcard_facts();
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ComplexityLinearityWildcardFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            (
+                                $ctx.sym("closed_coproduct_wildcard"),
+                                Value::Bool(f.closed_coproduct_wildcard),
+                            ),
+                            ($ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
+                            ($ctx.sym("rostered"), Value::Bool(f.rostered)),
+                            ($ctx.sym("site"), Value::Str(f.site.clone())),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            "fallback_arm_census_facts" => {
+                let facts = crate::cli_run::fallback_arm_census_facts();
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("FallbackArmCensusFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            (
+                                $ctx.sym("closed_coproduct_scrutinee"),
+                                Value::Bool(f.closed_coproduct_scrutinee),
+                            ),
+                            ($ctx.sym("class"), Value::Str(f.class.clone())),
+                            ($ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
+                            ($ctx.sym("owning_lane"), Value::Str(f.owning_lane.clone())),
+                            ($ctx.sym("rel_path"), Value::Str(f.rel_path.clone())),
+                            ($ctx.sym("site"), Value::Str(f.site.clone())),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+            "fallback_arm_census_class_count" => {
+                let class = expect_str(
+                    $positional.first().copied(),
+                    "fallback_arm_census_class_count",
+                )?;
+                Ok(Some(Value::Int(
+                    crate::cli_run::fallback_arm_census_class_count(&class),
+                )))
+            },
+            "fallback_arm_census_total" => Ok(Some(Value::Int(
+                crate::cli_run::fallback_arm_census_total(),
+            ))),
+            "fallback_arm_census_reconciliation_holds" => Ok(Some(Value::Bool(
+                crate::cli_run::fallback_arm_census_reconciliation_holds(),
+            ))),
+
+            "complexity_linearity_syntactic_site_fired" => {
+                let site = expect_str(
+                    $positional.first().copied(),
+                    "complexity_linearity_syntactic_site_fired",
+                )?;
+                Ok(Some(Value::Bool(
+                    crate::cli_run::complexity_linearity_syntactic_site_fired(&site),
+                )))
+            },
+            "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
+                crate::cli_run::census_corpus_roots_follow_layer_authority(),
+            ))),
+
+        }
+    }};
+}
+
+/// Expansion 1 of `v1_builtin_arms`: the dispatch itself.
+macro_rules! v1_builtin_dispatch {
+    ($n:ident, $p:ident, $c:ident; $($($lit:literal)|+ => $body:expr ,)*) => {
+        match $n {
+            $($($lit)|+ => $body,)*
+            _ => Ok(None),
+        }
+    };
+}
+
+/// Expansion 2 of `v1_builtin_arms`: the roster, derived from the same tokens.
+/// Arm bodies are matched but not emitted, so they are never name-resolved here.
+macro_rules! v1_builtin_roster {
+    ($n:ident, $p:ident, $c:ident; $($($lit:literal)|+ => $body:expr ,)*) => {
+        &[$(&[$($lit),+]),*]
+    };
+}
+
+/// The free-call primitive surface, enumerated. One entry per dispatch arm; the
+/// inner slice holds that arm's spellings, so alias groups stay visible rather
+/// than being flattened into a name set.
+pub fn v1_builtin_arm_spellings() -> &'static [&'static [&'static str]] {
+    // `name` exists only to satisfy the shared `let name = $name;` above; the
+    // roster expansion matches the arm bodies but never emits them, so nothing
+    // else in this scope is read.
+    let name = "";
+    v1_builtin_arms!(v1_builtin_roster, name, positional, ctx)
+}
+
 fn eval_builtin_inner(
     name: &str,
     args: &[(Option<String>, Value)],
     ctx: &InterpContext,
 ) -> InterpResult<Option<Value>> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
-
-    match name {
-        "to_string" => {
-            let v = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "to_string requires 1 argument".to_string(),
-            })?;
-            Ok(Some(Value::Str(format!("{}", v))))
-        }
-
-        "utf8_decode_bytes" => {
-            let bytes = expect_byte_vec(positional.first().copied(), "utf8_decode_bytes")?;
-            let text =
-                v1_rt::utf8_decode_bytes(&bytes).map_err(|msg| InterpError::TypeError { msg })?;
-            Ok(Some(Value::Str(text)))
-        }
-
-        "bytes_octets" => {
-            let bytes = expect_byte_vec(positional.first().copied(), "bytes_octets")?;
-            let items: Vec<Value> = bytes.iter().map(|b| Value::Int(*b as i64)).collect();
-            Ok(Some(list_value(items)))
-        }
-
-        "octets_bytes" => {
-            let arg = positional
-                .first()
-                .copied()
-                .ok_or_else(|| InterpError::TypeError {
-                    msg: "octets_bytes requires a List<UInt8> argument".to_string(),
-                })?;
-            let items = free_monoid_to_vec(arg).ok_or_else(|| InterpError::TypeError {
-                msg: "octets_bytes expects a List<UInt8>".to_string(),
-            })?;
-            let mut out: Vec<Value> = Vec::with_capacity(items.len());
-            for item in &items {
-                match item {
-                    Value::Int(n) if (0..=255).contains(n) => out.push(Value::Int(*n)),
-                    other => {
-                        return Err(InterpError::TypeError {
-                            msg: format!(
-                                "octets_bytes expects octets 0..255, got element {}",
-                                other.type_label()
-                            ),
-                        })
-                    }
-                }
-            }
-            Ok(Some(list_value(out)))
-        }
-
-        "utf8_encode_bytes" => {
-            let s = expect_str(positional.first().copied(), "utf8_encode_bytes")?;
-            let items: Vec<Value> = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
-            Ok(Some(list_value(items)))
-        }
-
-        "discriminant" => match positional.first() {
-            Some(Value::Variant { variant_name, .. }) => {
-                Ok(Some(Value::Str(resolve_sym(*variant_name))))
-            }
-            Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(resolve_sym(*type_name)))),
-            _ => Ok(None),
-        },
-
-        "chars_to_string" => {
-            let cps = match positional.first().copied() {
-                Some(v) => free_monoid_to_vec(v).ok_or_else(|| InterpError::TypeError {
-                    msg: "chars_to_string expects a list of code points".to_string(),
-                })?,
-                None => {
-                    return Err(InterpError::TypeError {
-                        msg: "chars_to_string requires a code-point list".to_string(),
-                    })
-                }
-            };
-            let len = cps.len() as i64;
-            let start = expect_int(positional.get(1).copied(), "chars_to_string start")?
-                .max(0)
-                .min(len);
-            let end = expect_int(positional.get(2).copied(), "chars_to_string end")?
-                .max(0)
-                .min(len)
-                .max(start);
-            let s: String = cps[start as usize..end as usize]
-                .iter()
-                .filter_map(|v| match v {
-                    Value::Int(cp) => char::from_u32(*cp as u32),
-                    _ => None,
-                })
-                .collect();
-            Ok(Some(Value::Str(s)))
-        }
-
-        "get" => match positional.as_slice() {
-            [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
-                let items = expect_list(list_val, "get")?;
-                let idx = expect_int(Some(idx_val), "get")?;
-                Ok(Some(list_get_at_or_null(&items, idx)))
-            }
-            _ => Ok(None),
-        },
-
-        "parse_int" => {
-            let s = expect_str(positional.first().copied(), "parse_int")?;
-            match s.parse::<i64>() {
-                Ok(n) => Ok(Some(Value::Int(n))),
-                Err(_) => Ok(Some(Value::Null)),
-            }
-        }
-
-        "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
-
-        // Scaffold arm — dissolution trigger lives on `v1_rt::trace_mark`'s doc comment
-        // (realization_measurement_loop Phase 0, docs/plans/realization-measurement-loop.md):
-        // delete this arm with the rest of the trace_mark deletion set named there.
-        "trace_mark" => {
-            if let [Value::Str(s)] = positional.as_slice() {
-                v1_rt::trace_mark(s.clone());
-            }
-            Ok(Some(Value::Unit))
-        }
-
-        "concat" => {
-            if positional.len() >= 2 && positional.iter().all(|v| matches!(v, Value::Str(_))) {
-                let mut result = String::new();
-                for v in &positional {
-                    if let Value::Str(s) = v {
-                        result.push_str(s);
-                    }
-                }
-                return Ok(Some(Value::Str(result)));
-            }
-            let record_push = |copied: usize| {
-                let mut counters = ctx.mutation_counters.borrow_mut();
-                counters.list_push_calls += 1;
-                counters.list_push_items_copied += copied as u64;
-            };
-            match positional.as_slice() {
-                [a, b] => match (a, b) {
-                    (l, Value::Str(s)) => match free_monoid_to_vec(l) {
-                        Some(mut result) => {
-                            record_push(result.len());
-                            result.push(Value::Str(s.clone()));
-                            Ok(Some(list_value((result))))
-                        }
-                        None => Ok(None),
-                    },
-                    (Value::Str(s), r) => match free_monoid_to_vec(r) {
-                        Some(result) => {
-                            record_push(result.len());
-                            let mut out = vec![Value::Str(s.clone())];
-                            out.extend(result);
-                            Ok(Some(list_value((out))))
-                        }
-                        None => Ok(None),
-                    },
-                    _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
-                        (Some(mut a_items), Some(b_items)) => {
-                            let mut counters = ctx.mutation_counters.borrow_mut();
-                            counters.list_concat_calls += 1;
-                            counters.list_concat_items_copied +=
-                                (a_items.len() + b_items.len()) as u64;
-                            drop(counters);
-                            a_items.extend(b_items);
-                            Ok(Some(list_value((a_items))))
-                        }
-                        _ => Ok(None),
-                    },
-                },
-                _ => Ok(None),
-            }
-        }
-
-        "count" => match positional.first() {
-            Some(v) => match free_monoid_to_vec(v) {
-                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
-                None => Ok(None),
-            },
-            None => Ok(None),
-        },
-
-        "reverse" => match positional.first() {
-            Some(Value::Str(_)) => Ok(None),
-            Some(v) => match free_monoid_to_vec(v) {
-                Some(items) => {
-                    let mut r = items;
-                    r.reverse();
-                    Ok(Some(list_value((r))))
-                }
-                None => Ok(None),
-            },
-            None => Ok(None),
-        },
-
-        "string_length" => {
-            let s = expect_str(positional.first().copied(), "string_length")?;
-            Ok(Some(Value::Int(s.chars().count() as i64)))
-        }
-
-        "substring" => {
-            let s = expect_str(positional.first().copied(), "substring")?;
-            let start = expect_int(positional.get(1).copied(), "substring start")?;
-            let end = expect_int(positional.get(2).copied(), "substring end")?;
-            Ok(Some(Value::Str(v1_rt::substring(&s, start, end))))
-        }
-
-        "char_at" => {
-            let s = expect_str(positional.first().copied(), "char_at")?;
-            let pos = expect_int(positional.get(1).copied(), "char_at pos")?;
-            Ok(Some(Value::Str(v1_rt::char_at(&s, pos))))
-        }
-
-        "string_contains" => {
-            let s = expect_str(positional.first().copied(), "contains")?;
-            let sub = expect_str(positional.get(1).copied(), "contains sub")?;
-            Ok(Some(Value::Bool(s.contains(&sub))))
-        }
-
-        "starts_with" => {
-            let s = expect_str(positional.first().copied(), "starts_with")?;
-            let prefix = expect_str(positional.get(1).copied(), "starts_with prefix")?;
-            Ok(Some(Value::Bool(s.starts_with(&prefix))))
-        }
-
-        "length" => match positional.first() {
-            Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
-            Some(v) => match native_len(v) {
-                Some(n) => Ok(Some(Value::Int(n))),
-                None => match free_monoid_to_vec(v) {
-                    Some(items) => Ok(Some(Value::Int(items.len() as i64))),
-                    None => Ok(None),
-                },
-            },
-            None => Ok(None),
-        },
-
-        "contains" => match positional.as_slice() {
-            [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
-            [xs, target, ..] => match free_monoid_to_vec(xs) {
-                Some(items) => Ok(Some(Value::Bool(items.iter().any(|item| item == *target)))),
-                None => Ok(None),
-            },
-            _ => Ok(None),
-        },
-
-        "replace" => {
-            let s = expect_str(positional.first().copied(), "replace")?;
-            let from = expect_str(positional.get(1).copied(), "replace from")?;
-            let to = expect_str(positional.get(2).copied(), "replace to")?;
-            Ok(Some(Value::Str(s.replace(&from, &to))))
-        }
-
-        "code_point" => {
-            let s = expect_str(positional.first().copied(), "code_point")?;
-            let cp = s.chars().next().map(|c| c as i64).unwrap_or(0);
-            Ok(Some(Value::Int(cp)))
-        }
-
-        "from_code_point" => {
-            let cp = expect_int(positional.first().copied(), "from_code_point")?;
-            let c = char::from_u32(cp as u32).unwrap_or('\0');
-            Ok(Some(Value::Str(c.to_string())))
-        }
-
-        "is_xid_start" => {
-            let cp = expect_int(positional.first().copied(), "is_xid_start")?;
-            Ok(Some(Value::Bool(v1_rt::is_xid_start(cp))))
-        }
-
-        "is_xid_continue" => {
-            let cp = expect_int(positional.first().copied(), "is_xid_continue")?;
-            Ok(Some(Value::Bool(v1_rt::is_xid_continue(cp))))
-        }
-
-        "is_emoji_ident" => {
-            let cp = expect_int(positional.first().copied(), "is_emoji_ident")?;
-            Ok(Some(Value::Bool(v1_rt::is_emoji_ident(cp))))
-        }
-
-        "list_push" | "append" => match positional.as_slice() {
-            [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
-            [list_val, item] => match value_to_list_carrier(list_val) {
-                Some((items, copied)) => {
-                    let mut counters = ctx.mutation_counters.borrow_mut();
-                    counters.list_push_calls += 1;
-                    counters.list_push_items_copied += copied;
-                    drop(counters);
-                    let mut result = (*items).clone();
-                    result.push_back((*item).clone());
-                    Ok(Some(list_value(result)))
-                }
-                None => Ok(None),
-            },
-            _ => Ok(None),
-        },
-
-        "list_concat" => match positional.as_slice() {
-            [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
-            [a, b] => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
-                (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
-                    let mut counters = ctx.mutation_counters.borrow_mut();
-                    counters.list_concat_calls += 1;
-                    counters.list_concat_items_copied += a_copied + b_copied;
-                    drop(counters);
-                    let mut result = (*a_items).clone();
-                    result.append((*b_items).clone());
-                    Ok(Some(list_value(result)))
-                }
-                _ => Ok(None),
-            },
-            _ => Ok(None),
-        },
-
-        "empty_map" => Ok(Some(map_value(HamtMap::new()))),
-
-        "empty_set" => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
-
-        "set_insert" => match positional.as_slice() {
-            [Value::Set(s), Value::Str(k)] => {
-                let mut counters = ctx.mutation_counters.borrow_mut();
-                counters.set_insert_calls += 1;
-                counters.set_insert_items_copied += s.len() as u64;
-                drop(counters);
-                let mut result = s.as_ref().clone();
-                result.insert(k.clone());
-                Ok(Some(Value::Set(Rc::new(result))))
-            }
-            _ => Ok(None),
-        },
-
-        "set_union" => match positional.as_slice() {
-            [Value::Set(a), Value::Set(b)] => {
-                let mut counters = ctx.mutation_counters.borrow_mut();
-                counters.set_union_calls += 1;
-                counters.set_union_items_copied += (a.len() + b.len()) as u64;
-                drop(counters);
-                let mut result = a.as_ref().clone();
-                result.extend(b.iter().cloned());
-                Ok(Some(Value::Set(Rc::new(result))))
-            }
-            _ => Ok(None),
-        },
-
-        "set_contains" => match positional.as_slice() {
-            [Value::Set(s), Value::Str(k)] => Ok(Some(Value::Bool(s.contains(k.as_str())))),
-            _ => Ok(None),
-        },
-
-        "map_insert" => match positional.as_slice() {
-            [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
-                Some(ck) => {
-                    let mut counters = ctx.mutation_counters.borrow_mut();
-                    counters.map_insert_calls += 1;
-                    drop(counters);
-                    Ok(Some(map_value(m.update(ck, (*v).clone()))))
-                }
-                None => Err(InterpError::TypeError {
-                    msg: format!(
-                        "map_insert key has no decidable identity (closure/fn/NaN): {}",
-                        k.type_label()
-                    ),
-                }),
-            },
-            _ => Ok(None),
-        },
-
-        "lookup" => match positional.as_slice() {
-            [map, key] => {
-                let raw = raw_map_lookup(map, key, &Env::empty(), ctx)?;
-                Ok(Some(map_lookup_as_optional(raw, ctx)))
-            }
-            _ => Ok(None),
-        },
-
-        "map_keys" => match positional.first() {
-            Some(Value::Map(m)) => {
-                let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
-                Ok(Some(list_value((keys))))
-            }
-            _ => Ok(None),
-        },
-
-        "map_values" => match positional.first() {
-            Some(Value::Map(m)) => {
-                let vals: Vec<Value> = m.values().cloned().collect();
-                Ok(Some(list_value((vals))))
-            }
-            _ => Ok(None),
-        },
-
-        "map_contains_key" | "map_has" => match positional.as_slice() {
-            [Value::Map(m), k] => match CanonKey::new((*k).clone()) {
-                Some(ck) => Ok(Some(Value::Bool(m.contains_key(&ck)))),
-                None => Ok(Some(Value::Bool(false))),
-            },
-            _ => Ok(None),
-        },
-
-        "map_is_empty" => match positional.as_slice() {
-            [Value::Map(m)] => Ok(Some(Value::Bool(m.is_empty()))),
-            _ => Ok(None),
-        },
-
-        "rc_ptr_eq" | "rc_vec_ptr_eq" => match positional.as_slice() {
-            [a, b] => Ok(Some(Value::Bool(a == b))),
-            _ => Ok(None),
-        },
-
-        "map_merge" => match positional.as_slice() {
-            [Value::Map(base), Value::Map(overlay)] => {
-                let mut counters = ctx.mutation_counters.borrow_mut();
-                counters.map_merge_calls += 1;
-                drop(counters);
-                Ok(Some(map_value((**overlay).clone().union((**base).clone()))))
-            }
-            _ => Ok(None),
-        },
-
-        "str_eq" => match positional.as_slice() {
-            [Value::Str(a), Value::Str(b)] => Ok(Some(Value::Bool(a == b))),
-            _ => Ok(None),
-        },
-
-        "atom_identity_hash" => match positional.as_slice() {
-            [Value::Str(s)] => Ok(Some(Value::Str(v1_rt::atom_identity_hash(s.clone())))),
-            _ => Err(InterpError::TypeError {
-                msg: "atom_identity_hash requires exactly one string argument".to_string(),
-            }),
-        },
-
-        // ObservePeakResidentAtSubject realization seam (witness-realization plan P1):
-        // process peak resident set (VmHWM) in bytes. Fail-closed when the host
-        // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
-        "observed_peak_resident_bytes" => match positional.as_slice() {
-            [] => {
-                let bytes = std::fs::read_to_string("/proc/self/status")
-                    .ok()
-                    .and_then(|status| {
-                        status
-                            .lines()
-                            .find(|l| l.starts_with("VmHWM"))
-                            .and_then(|line| line.split_whitespace().nth(1))
-                            .and_then(|kb| kb.parse::<i64>().ok())
-                    })
-                    .map(|kb| kb.saturating_mul(1024));
-                match bytes {
-                    Some(b) => Ok(Some(Value::Int(b))),
-                    None => Err(InterpError::TypeError {
-                        msg: "observed_peak_resident_bytes: VmHWM unavailable on this host (refusing to fabricate a Measured space fact)"
-                            .to_string(),
-                    }),
-                }
-            }
-            _ => Err(InterpError::TypeError {
-                msg: "observed_peak_resident_bytes takes no arguments".to_string(),
-            }),
-        },
-
-        "hash_combine" => match positional.as_slice() {
-            [Value::Str(a), Value::Str(b)] if positional.len() == 2 => {
-                if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
-                    return Err(InterpError::TypeError {
-                        msg: "hash_combine requires exactly two Hash arguments".to_string(),
-                    });
-                }
-                Ok(Some(Value::Str(v1_rt::hash_combine(a.clone(), b.clone()))))
-            }
-            _ => Err(InterpError::TypeError {
-                msg: "hash_combine requires exactly two Hash arguments".to_string(),
-            }),
-        },
-
-        "filesystem_read" => {
-            let path = expect_str(positional.first().copied(), "filesystem_read")?;
-            Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
-        }
-
-        "emit_host_run_transport" => Ok(Some(eval_emit_host_run_transport_builtin(
-            positional.first().copied(),
-            positional.get(1).copied(),
-            positional.get(2).copied(),
-            positional.get(3).copied(),
-            ctx,
-        )?)),
-
-        "emit_host_run_transport_cached" => Ok(Some(eval_emit_host_run_transport_cached_builtin(
-            positional.first().copied(),
-            positional.get(1).copied(),
-            positional.get(2).copied(),
-            positional.get(3).copied(),
-            positional.get(4).copied(),
-            ctx,
-        )?)),
-
-        "emit_host_native_cache_evict" => Ok(Some(eval_emit_host_native_cache_evict_builtin(
-            positional.first().copied(),
-            ctx,
-        )?)),
-
-        "contiguous_loop_elementwise_kernel" => {
-            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
-            let a = expect_int_list_flex(positional.get(1).copied(), name)?;
-            let b = expect_int_list_flex(positional.get(2).copied(), name)?;
-            let c = expect_int_list_flex(positional.get(3).copied(), name)?;
-            if a.len() != b.len() || b.len() != c.len() {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "{name} requires equal-length List<Int> buffer arguments, got lengths {}, {}, {}",
-                        a.len(),
-                        b.len(),
-                        c.len()
-                    ),
-                });
-            }
-            let out = v1_rt::contiguous_loop_elementwise_kernel(&op_codes, &a, &b, &c);
-            Ok(Some(list_value(
-                out.into_iter().map(Value::Int).collect::<Vec<_>>(),
-            )))
-        }
-
-        "contiguous_loop_elementwise_float_kernel" => {
-            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
-            let fma_policy = expect_fma_contraction_policy_wire(positional.get(1).copied(), name)?;
-            let a = expect_float_list_flex(positional.get(2).copied(), name)?;
-            let b = expect_float_list_flex(positional.get(3).copied(), name)?;
-            let c = expect_float_list_flex(positional.get(4).copied(), name)?;
-            if a.len() != b.len() || b.len() != c.len() {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "{name} requires equal-length List<Float> buffer arguments, got lengths {}, {}, {}",
-                        a.len(),
-                        b.len(),
-                        c.len()
-                    ),
-                });
-            }
-            let out =
-                v1_rt::contiguous_loop_elementwise_float_kernel(&op_codes, fma_policy, &a, &b, &c);
-            Ok(Some(list_value(
-                out.into_iter().map(Value::Float).collect::<Vec<_>>(),
-            )))
-        }
-
-        "layer_import_facts" => {
-            let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
-            let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
-            let facts = crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                let layer = Value::Variant {
-                    type_name: ctx.sym("LayerPrefix"),
-                    variant_name: ctx.sym(f.layer),
-                    fields: Rc::new(vec![]),
-                };
-                items.push(Value::Record {
-                    type_name: ctx.sym("LayerImportFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("import_module"), Value::Str(f.import_module)),
-                        (ctx.sym("layer"), layer),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "import_resolution_facts" => {
-            let pool_roots =
-                expect_str_list(positional.first().copied(), "import_resolution_facts")?;
-            let importer_roots =
-                expect_str_list(positional.get(1).copied(), "import_resolution_facts")?;
-            let exclude_substrings =
-                expect_str_list(positional.get(2).copied(), "import_resolution_facts")?;
-            let facts = crate::cli_run::import_resolution_facts(
-                &pool_roots,
-                &importer_roots,
-                &exclude_substrings,
-            );
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                items.push(Value::Record {
-                    type_name: ctx.sym("ImportResolutionFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("import_module"), Value::Str(f.import_module)),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                        (ctx.sym("target_declared"), Value::Bool(f.target_declared)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "reference_resolution_facts" => {
-            let pool_roots =
-                expect_str_list(positional.first().copied(), "reference_resolution_facts")?;
-            let importer_roots =
-                expect_str_list(positional.get(1).copied(), "reference_resolution_facts")?;
-            let exclude_substrings =
-                expect_str_list(positional.get(2).copied(), "reference_resolution_facts")?;
-            // Selection tier: Qualified + UniqueBare only (strict = true). AmbiguousBare is
-            // dropped here — same projection `reference_edges_as_import_facts` applies on the
-            // host twin's `selection_adjacency` path in `build_module_graph_facts_live_uncached`.
-            let facts = crate::cli_run::reference_edges_as_import_facts(
-                &crate::cli_run::reference_resolution_facts(
-                    &pool_roots,
-                    &importer_roots,
-                    &exclude_substrings,
-                ),
-                true,
-            );
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                items.push(Value::Record {
-                    type_name: ctx.sym("ImportResolutionFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("import_module"), Value::Str(f.import_module)),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                        (ctx.sym("target_declared"), Value::Bool(f.target_declared)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "concept_decl_facts" => {
-            let pool_roots = expect_str_list(positional.first().copied(), "concept_decl_facts")?;
-            Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(
-                ctx,
-                &pool_roots,
-            )?))
-        }
-
-        "export_signature_facts" => {
-            let pool_roots =
-                expect_str_list(positional.first().copied(), "export_signature_facts")?;
-            Ok(Some(
-                crate::coproduct_reflection::eval_export_signature_facts(ctx, &pool_roots)?,
-            ))
-        }
-
-        "decl_facts" => {
-            let pool_roots = expect_str_list(positional.first().copied(), "decl_facts")?;
-            Ok(Some(crate::coproduct_reflection::eval_decl_facts(
-                ctx,
-                &pool_roots,
-            )?))
-        }
-
-        "module_declaration_facts" => {
-            let pool_roots =
-                expect_str_list(positional.first().copied(), "module_declaration_facts")?;
-            let facts = crate::cli_run::module_declaration_facts(&pool_roots);
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                items.push(Value::Record {
-                    type_name: ctx.sym("ModuleDeclarationFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("module"), Value::Str(f.module)),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "fact_cardinality_decl_facts" => {
-            let facts = crate::cli_run::fact_cardinality_decl_facts();
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                let tree = match f.tree.as_str() {
-                    "dag" => "Dag",
-                    "v2" => "V2",
-                    other => panic!("fact_cardinality_decl_facts: unknown tree {other:?}"),
-                };
-                let tree_value = Value::Variant {
-                    type_name: ctx.sym("FactCardinalityTree"),
-                    variant_name: ctx.sym(tree),
-                    fields: Rc::new(vec![]),
-                };
-                items.push(Value::Record {
-                    type_name: ctx.sym("FactCardinalityDeclFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (
-                            ctx.sym("rel_path_decl_key"),
-                            Value::Str(f.rel_path_decl_key),
-                        ),
-                        (ctx.sym("tree"), tree_value),
-                        (ctx.sym("content_hash"), Value::Str(f.content_hash)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "languages_consumer_census_data_decl_count" => Ok(Some(Value::Int(
-            crate::cli_run::languages_consumer_census_data_decl_count(),
-        ))),
-
-        "languages_consumer_census_per_language_row_count" => Ok(Some(Value::Int(
-            crate::cli_run::languages_consumer_census_per_language_row_count(),
-        ))),
-
-        "languages_consumer_census_format_row_count" => Ok(Some(Value::Int(
-            crate::cli_run::languages_consumer_census_format_row_count(),
-        ))),
-
-        "languages_consumer_census_external_consumer_count" => {
-            let decl_name = expect_str(
-                positional.first().copied(),
-                "languages_consumer_census_external_consumer_count",
-            )?;
-            Ok(Some(Value::Int(
-                crate::cli_run::languages_consumer_census_external_consumer_count(decl_name),
-            )))
-        }
-
-        "languages_consumer_census_is_composition_only" => {
-            let decl_name = expect_str(
-                positional.first().copied(),
-                "languages_consumer_census_is_composition_only",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::cli_run::languages_consumer_census_is_composition_only(decl_name),
-            )))
-        }
-
-        "languages_consumer_census_has_external_consumer" => {
-            let decl_name = expect_str(
-                positional.first().copied(),
-                "languages_consumer_census_has_external_consumer",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::cli_run::languages_consumer_census_has_external_consumer(decl_name),
-            )))
-        }
-
-        "shell_materialize_operation_argv" => {
-            let path = expect_str(
-                positional.first().copied(),
-                "shell_materialize_operation_argv",
-            )?;
-            let service = expect_str(
-                positional.get(1).copied(),
-                "shell_materialize_operation_argv",
-            )?;
-            let operation = expect_str(
-                positional.get(2).copied(),
-                "shell_materialize_operation_argv",
-            )?;
-            let bindings = positional
-                .get(3)
-                .copied()
-                .cloned()
-                .unwrap_or_else(|| list_value(Vec::<Value>::new()));
-            let result = materialize_operation_argv(&path, &service, &operation, &bindings, ctx);
-            Ok(Some(argv_materialization_value(
-                result, &path, &service, &operation, ctx,
-            )))
-        }
-
-        "shell_transport_operation_rows" => {
-            let mut items: Vec<Value> = Vec::new();
-            for row in crate::cli_run::shell_transport_operation_rows() {
-                items.push(Value::Record {
-                    type_name: ctx.sym("ShellTransportOperationRow"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (
-                            ctx.sym("at"),
-                            operation_ref_value(&row.path, &row.service, &row.operation, ctx),
-                        ),
-                        (
-                            ctx.sym("declared_inputs"),
-                            list_value(
-                                row.declared_inputs
-                                    .into_iter()
-                                    .map(Value::Str)
-                                    .collect::<Vec<_>>(),
-                            ),
-                        ),
-                        (
-                            ctx.sym("argv_input_refs"),
-                            list_value(
-                                row.argv_input_refs
-                                    .into_iter()
-                                    .map(Value::Str)
-                                    .collect::<Vec<_>>(),
-                            ),
-                        ),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "extdeps_qualified_name_resolves_in_derived_module_set" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg:
-                    "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
-                        .to_string(),
-            })?;
-            Ok(Some(Value::Bool(
-                crate::cli_run::qualified_name_resolves_in_derived_module_set(module),
-            )))
-        }
-
-        "transport_script_position_facts_for_path" => {
-            let path = expect_str(
-                positional.first().copied(),
-                "transport_script_position_facts_for_path",
-            )?;
-            let facts = crate::cli_run::transport_script_position_facts_for_path(path);
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                let shape = Value::Variant {
-                    type_name: ctx.sym("TransportScriptArgShape"),
-                    variant_name: ctx.sym(f.shape),
-                    fields: Rc::new(vec![]),
-                };
-                items.push(Value::Record {
-                    type_name: ctx.sym("TransportScriptPositionFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("function"), Value::Str(f.function)),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                        (ctx.sym("shape"), shape),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "extdeps_shape_transport_policy_facts_for_qualified_name" => {
-            let qn = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_shape_transport_policy_facts_for_qualified_name requires a QualifiedName"
-                    .to_string(),
-            })?;
-            let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
-            let facts = crate::cli_run::extdeps_shape_transport_policy_module_facts(&module_path);
-            let argv_items: Vec<Value> = facts
-                .argv_facts
-                .iter()
-                .map(|f| Value::Record {
-                    type_name: ctx.sym("ExtdepsTransportArgvFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("argv_index"), Value::Int(f.argv_index)),
-                        (ctx.sym("argv_token"), Value::Str(f.argv_token.clone())),
-                        (ctx.sym("module"), (*qn).clone()),
-                        (ctx.sym("operation"), Value::Str(f.operation.clone())),
-                        (ctx.sym("service"), Value::Str(f.service.clone())),
-                        (
-                            ctx.sym("transport_kind"),
-                            Value::Variant {
-                                type_name: ctx.sym("ExtdepsTransportKind"),
-                                variant_name: ctx.sym(f.transport_kind),
-                                fields: Rc::new(vec![]),
-                            },
-                        ),
-                    ])),
-                })
-                .collect();
-            let fusion_items: Vec<Value> = facts
-                .fusion_facts
-                .iter()
-                .map(|f| Value::Record {
-                    type_name: ctx.sym("ExtdepsTransportFusionFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("endpoint_key"), Value::Str(f.endpoint_key.clone())),
-                        (ctx.sym("module"), (*qn).clone()),
-                        (ctx.sym("service_a"), Value::Str(f.service_a.clone())),
-                        (ctx.sym("service_b"), Value::Str(f.service_b.clone())),
-                    ])),
-                })
-                .collect();
-            let input_items: Vec<Value> = facts
-                .input_facts
-                .iter()
-                .map(|f| Value::Record {
-                    type_name: ctx.sym("ExtdepsOperationInputFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("module"), (*qn).clone()),
-                        (ctx.sym("operation"), Value::Str(f.operation.clone())),
-                        (ctx.sym("param_name"), Value::Str(f.param_name.clone())),
-                        (ctx.sym("service"), Value::Str(f.service.clone())),
-                    ])),
-                })
-                .collect();
-            let embedded_items: Vec<Value> = facts
-                .embedded_facts
-                .iter()
-                .map(|f| Value::Record {
-                    type_name: ctx.sym("ExtdepsEmbeddedPolicyLiteralFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("data_name"), Value::Str(f.data_name.clone())),
-                        (ctx.sym("field_name"), Value::Str(f.field_name.clone())),
-                        (
-                            ctx.sym("literal_value"),
-                            Value::Str(f.literal_value.clone()),
-                        ),
-                        (ctx.sym("module"), (*qn).clone()),
-                    ])),
-                })
-                .collect();
-            let result = Value::Record {
-                type_name: ctx.sym("ExtdepsModuleFacts"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("argv_facts"), list_value(argv_items)),
-                    (ctx.sym("embedded_facts"), list_value(embedded_items)),
-                    (ctx.sym("fusion_facts"), list_value(fusion_items)),
-                    (
-                        ctx.sym("gist_create_declares_filename_input"),
-                        Value::Bool(facts.gist_create_declares_filename_input),
-                    ),
-                    (
-                        ctx.sym("gist_create_files_keyed_by_filename"),
-                        Value::Bool(facts.gist_create_files_keyed_by_filename),
-                    ),
-                    (ctx.sym("input_facts"), list_value(input_items)),
-                    (
-                        ctx.sym("source_nickname_literal_count"),
-                        Value::Int(facts.source_nickname_literal_count),
-                    ),
-                ])),
-            };
-            Ok(Some(result))
-        }
-
-        "extdeps_external_authority_facts_for_qualified_name" => {
-            let qn = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_facts_for_qualified_name requires a QualifiedName"
-                    .to_string(),
-            })?;
-            let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
-            let facts = crate::cli_run::extdeps_external_authority_module_facts(&module_path);
-            let result = Value::Record {
-                type_name: ctx.sym("ExtdepsExternalAuthorityModuleFacts"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("anchor_kind"), Value::Str(facts.anchor_kind)),
-                    (
-                        ctx.sym("scheme_identity"),
-                        Value::Str(facts.scheme_identity),
-                    ),
-                    (ctx.sym("locator"), Value::Str(facts.locator)),
-                ])),
-            };
-            Ok(Some(result))
-        }
-
-        "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::extdeps_external_authority_live_clean_tree_holds(),
-        ))),
-        "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
-            crate::cli_run::extdeps_external_authority_live_roster_module_count(),
-        ))),
-
-        "doc_graph_orphan_count" => {
-            let extra_roots = expect_str_list(positional.first().copied(), name)?;
-            Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(
-                extra_roots,
-            ))))
-        }
-        "doc_graph_admitted_root_count" => {
-            let extra_roots = expect_str_list(positional.first().copied(), name)?;
-            Ok(Some(Value::Int(
-                crate::cli_run::doc_graph_admitted_root_count(extra_roots),
-            )))
-        }
-        "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
-            crate::cli_run::doc_graph_dangling_link_count(),
-        ))),
-        "doc_graph_doc_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
-
-        "compile_dag_rust_emit_check" => {
-            let source = expect_str(positional.first().copied(), name)?;
-            let file_path = expect_str(positional.get(1).copied(), name)?;
-            let includes = expect_str_list(positional.get(2).copied(), name)?;
-            let excludes = expect_str_list(positional.get(3).copied(), name)?;
-            Ok(Some(Value::Bool(
-                crate::cli_run::compile_dag_rust_emit_check(
-                    &source, &file_path, &includes, &excludes,
-                ),
-            )))
-        }
-
-        "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
-            crate::cli_run::witness_layer_roots_compile_clean_check(),
-        ))),
-
-        "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
-            crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
-        ))),
-        "consume_floor_compile_clean_gate_verdict" => Ok(Some(Value::Bool(
-            crate::cli_run::consume_floor_compile_clean_gate_verdict(),
-        ))),
-
-        "witness_compile_clean_cli_floor_verdicts_agree" => Ok(Some(Value::Bool(
-            crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
-        ))),
-
-        "test_migration_debt_module_count" => Ok(Some(Value::Int(
-            crate::cli_run::test_migration_debt_module_count(),
-        ))),
-        "test_migration_debt_total_loc" => Ok(Some(Value::Int(
-            crate::cli_run::test_migration_debt_total_loc(),
-        ))),
-        "test_migration_debt_total_test_fns" => Ok(Some(Value::Int(
-            crate::cli_run::test_migration_debt_total_test_fns(),
-        ))),
-        "test_migration_debt_module_names" => {
-            let names = crate::cli_run::test_migration_debt_module_names();
-            let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
-            Ok(Some(list_value(items)))
-        }
-        "test_migration_debt_known_covered_module_is_not_debt" => Ok(Some(Value::Bool(
-            crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
-        ))),
-        "test_migration_delete_guard_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::test_migration_delete_guard_holds(),
-        ))),
-        "test_migration_delete_guard_uncovered_deletes" => {
-            let paths = crate::cli_run::test_migration_delete_guard_uncovered_deletes();
-            let items: Vec<Value> = paths.into_iter().map(Value::Str).collect();
-            Ok(Some(list_value(items)))
-        }
-
-        "inert_carrier_names_live" => {
-            let names = crate::cli_run::inert_carrier_names_live();
-            let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
-            Ok(Some(list_value(items)))
-        }
-        "inert_carrier_declared_count" => Ok(Some(Value::Int(
-            crate::cli_run::inert_carrier_declared_count_live(),
-        ))),
-
-        "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
-            crate::cli_run::inert_lens_unreached_module_count(),
-        ))),
-        "inert_lens_top_level_module_count" => Ok(Some(Value::Int(
-            crate::cli_run::inert_lens_top_level_module_count(),
-        ))),
-
-        "non_fold_residue_count" => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
-        "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
-            crate::cli_run::non_fold_residue_unrostered_count(),
-        ))),
-        "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
-            crate::cli_run::non_fold_residue_stale_roster_count(),
-        ))),
-        "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
-            crate::cli_run::non_fold_residue_coproduct_universe_count(),
-        ))),
-
-        "commit_witness_claim_roster_unresolvable_count" => Ok(Some(Value::Int(
-            crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
-        ))),
-        "commit_witness_claim_pair_resolvable" => {
-            let entry = expect_str(
-                positional.first().copied(),
-                "commit_witness_claim_pair_resolvable entry",
-            )?;
-            let function = expect_str(
-                positional.get(1).copied(),
-                "commit_witness_claim_pair_resolvable function",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::cli_run::commit_witness_claim_pair_resolvable(&entry, &function),
-            )))
-        }
-        "non_fold_residue_wildcard_red_fixture_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::non_fold_residue_wildcard_red_fixture_holds(),
-        ))),
-        "non_fold_residue_total_fold_green_fixture_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::non_fold_residue_total_fold_green_fixture_holds(),
-        ))),
-        "non_fold_residue_roster_red_fixture_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::non_fold_residue_roster_red_fixture_holds(),
-        ))),
-        "non_fold_residue_synthetic_unrostered_red_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::non_fold_residue_synthetic_unrostered_red_holds(),
-        ))),
-
-        "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
-            crate::cli_run::complexity_linearity_syntactic_finding_count(),
-        ))),
-        "complexity_linearity_wildcard_facts" => {
-            let facts = crate::cli_run::complexity_linearity_wildcard_facts();
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                items.push(Value::Record {
-                    type_name: ctx.sym("ComplexityLinearityWildcardFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (
-                            ctx.sym("closed_coproduct_wildcard"),
-                            Value::Bool(f.closed_coproduct_wildcard),
-                        ),
-                        (ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
-                        (ctx.sym("rostered"), Value::Bool(f.rostered)),
-                        (ctx.sym("site"), Value::Str(f.site.clone())),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "fallback_arm_census_facts" => {
-            let facts = crate::cli_run::fallback_arm_census_facts();
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                items.push(Value::Record {
-                    type_name: ctx.sym("FallbackArmCensusFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (
-                            ctx.sym("closed_coproduct_scrutinee"),
-                            Value::Bool(f.closed_coproduct_scrutinee),
-                        ),
-                        (ctx.sym("class"), Value::Str(f.class.clone())),
-                        (ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
-                        (ctx.sym("owning_lane"), Value::Str(f.owning_lane.clone())),
-                        (ctx.sym("rel_path"), Value::Str(f.rel_path.clone())),
-                        (ctx.sym("site"), Value::Str(f.site.clone())),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-        "fallback_arm_census_class_count" => {
-            let class = expect_str(
-                positional.first().copied(),
-                "fallback_arm_census_class_count",
-            )?;
-            Ok(Some(Value::Int(
-                crate::cli_run::fallback_arm_census_class_count(&class),
-            )))
-        }
-        "fallback_arm_census_total" => Ok(Some(Value::Int(
-            crate::cli_run::fallback_arm_census_total(),
-        ))),
-        "fallback_arm_census_reconciliation_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::fallback_arm_census_reconciliation_holds(),
-        ))),
-
-        "complexity_linearity_syntactic_site_fired" => {
-            let site = expect_str(
-                positional.first().copied(),
-                "complexity_linearity_syntactic_site_fired",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::cli_run::complexity_linearity_syntactic_site_fired(&site),
-            )))
-        }
-        "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
-            crate::cli_run::census_corpus_roots_follow_layer_authority(),
-        ))),
-
-        _ => Ok(None),
-    }
+    v1_builtin_arms!(v1_builtin_dispatch, name, positional, ctx)
 }
 
 fn apply_closure(

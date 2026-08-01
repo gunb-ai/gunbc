@@ -1,0 +1,114 @@
+module test.claim.v1_interpreter_primitive_surface_witness_test
+
+import gunbc.v1_interpreter_primitive_surface {
+  FreeCall,
+  InterpreterPrimitiveArmId,
+  InterpreterPrimitiveDispatchArm,
+  ShapeNotDerivableFromDispatch,
+  form_has_no_shadowed_spelling,
+  shadowed_spellings,
+  v1_interpreter_cross_form_spellings,
+  v1_interpreter_declared_arm_count,
+  v1_interpreter_derived_arm_count,
+  v1_interpreter_free_call_arms,
+  v1_interpreter_method_call_arms,
+  v1_interpreter_primitive_arms,
+}
+
+-- The free-call rows are DERIVED from the interpreter's own arm list, so these
+-- witnesses execute against the live dispatch rather than against a transcript.
+
+test fn derived_free_call_surface_is_populated() -> Bool {
+  v1_interpreter_derived_arm_count() > 100
+}
+
+-- The reading arm is itself inside the arm list it reports, so the roster
+-- describes a surface it belongs to rather than one it stands outside of. A
+-- transcribed list that forgot to name itself would red here.
+test fn derived_surface_includes_its_own_reading_arm() -> Bool {
+  v1_interpreter_free_call_arms()
+    |> any(r => r.authored_spelling == "interpreter_free_call_arm_rows")
+}
+
+-- Alias spellings share ONE arm identity, which is the fact a flattened name set
+-- destroys: sharing an arm is why they cannot disagree about behaviour.
+test fn alias_spellings_share_one_arm_identity() -> Bool {
+  let rows = v1_interpreter_free_call_arms()
+  let a = rows |> filter(r => r.authored_spelling == "map_contains_key") |> map(r => r.arm.identity)
+  let b = rows |> filter(r => r.authored_spelling == "map_has") |> map(r => r.arm.identity)
+  count(a) == 1 && count(b) == 1 && (a |> all(x => b |> any(y => y == x)))
+}
+
+-- A spelling reached by more than one ARM within a form is unreachable code: the
+-- earlier arm always wins. Aliases are not this, because aliases share an arm.
+test fn free_call_form_has_no_shadowed_spelling() -> Bool {
+  form_has_no_shadowed_spelling(rows: v1_interpreter_free_call_arms())
+}
+
+test fn method_call_form_has_no_shadowed_spelling() -> Bool {
+  form_has_no_shadowed_spelling(rows: v1_interpreter_method_call_arms())
+}
+
+-- RED CONTROL for the two witnesses above. Without it, a detector that always
+-- answered "clean" would pass them both and establish nothing.
+test fn shadow_detector_catches_a_planted_duplicate() -> Bool {
+  let planted = [
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "planted:alpha" },
+      form: FreeCall,
+      authored_spelling: "alpha",
+      realization_module: "planted",
+      dispatch_symbol: "planted_dispatch",
+      accepted_shape: ShapeNotDerivableFromDispatch,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "planted:beta" },
+      form: FreeCall,
+      authored_spelling: "alpha",
+      realization_module: "planted",
+      dispatch_symbol: "planted_dispatch",
+      accepted_shape: ShapeNotDerivableFromDispatch,
+    },
+  ]
+  !form_has_no_shadowed_spelling(rows: planted)
+    && (shadowed_spellings(rows: planted) |> any(s => s == "alpha"))
+}
+
+-- POSITIVE CONTROL: two spellings under ONE arm identity is a legitimate alias
+-- and must NOT be reported as shadowed, or the detector would be refusing the
+-- language rather than the defect.
+test fn shadow_detector_admits_a_real_alias_pair() -> Bool {
+  let alias = [
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "planted:shared" },
+      form: FreeCall,
+      authored_spelling: "alpha",
+      realization_module: "planted",
+      dispatch_symbol: "planted_dispatch",
+      accepted_shape: ShapeNotDerivableFromDispatch,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "planted:shared" },
+      form: FreeCall,
+      authored_spelling: "beta",
+      realization_module: "planted",
+      dispatch_symbol: "planted_dispatch",
+      accepted_shape: ShapeNotDerivableFromDispatch,
+    },
+  ]
+  form_has_no_shadowed_spelling(rows: alias)
+}
+
+-- The live cross-form finding: `lookup` has two independent implementations, one
+-- in the eval_method_call short-circuit and one algebra arm the short-circuit
+-- shadows. Recorded so it stays visible to whoever reconciles primitive identity.
+test fn lookup_is_dispatched_under_more_than_one_form() -> Bool {
+  v1_interpreter_cross_form_spellings() |> any(s => s == "lookup")
+}
+
+-- Derived and declared populations partition the surface: nothing counted twice,
+-- nothing falling between them.
+test fn derived_and_declared_partition_the_surface() -> Bool {
+  count(v1_interpreter_primitive_arms())
+    == v1_interpreter_derived_arm_count() + v1_interpreter_declared_arm_count()
+}

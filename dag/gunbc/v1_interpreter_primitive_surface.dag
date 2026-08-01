@@ -1,0 +1,183 @@
+module gunbc.v1_interpreter_primitive_surface
+
+data v1_interpreter_primitive_surface_authority_note: String = "THE V1 INTERPRETER'S PRIMITIVE DISPATCH SURFACE, MADE ENUMERABLE. Before this carrier the surface had no roster anywhere: its only authority was string match arms inside the hand-maintained seed src/v1/stage0/src/v1_interpreter.rs, so 'which primitives does the interpreter provide' was a question no consumer could ask. That is why it was the fifth surface the primitive-identity census could not read, and why v1 deletion could not be sequenced honestly: you cannot show that nothing still needs a capability you cannot enumerate.\n\nTHE SURFACE IS SIX DISPATCH FUNCTIONS, NOT ONE. Measured against the tree rather than assumed: eval_builtin_inner, eval_algebra_method_inner, eval_call (a native fold intercept that fires BEFORE the free-call dispatch, which is why fold_list never reaches the builtin registry), try_v2_std_collection_map_primitive_grounding, try_parse_table_memo_dispatch, and a lookup short-circuit inside eval_method_call. A census that reads only eval_builtin_inner sees about two thirds of the arms.\n\nSERVICE OPERATIONS ARE NOT ARMS, and that is a finding rather than an omission. eval_service_call resolves Service.Op against ctx.service_ops, which is built from the DECLARED .dag corpus, so that population is already enumerable as data and is deliberately outside this roster's denominator. The interpreter contributes exactly one service-name dispatch of its own -- the Filesystem.Read hermetic checkout carve-out -- plus transport realizations, which dispatch on transport and HTTP method values rather than on primitive names. Only the carve-out is a row here.\n\nHOW EACH FORM IS KNOWN, WHICH IS THE FRONTIER. FreeCall rows from eval_builtin_inner are DERIVED: that arm list is now a single macro authority in v1_interpreter.rs from which both the dispatch and this roster expand, so an arm without a roster row and a roster row without an arm are both unwritable rather than reconciled afterwards (DESIGN 5, construction over validation). No live-tree scan of Rust source is involved and none is wanted: a regex interpreting hand-written match arms would leave the denominator in Rust while adding a second thing that can be wrong.\n\nTHE REMAINING ROWS ARE DECLARED BY HAND and can therefore go stale. That is counted (v1_interpreter_declared_arm_count) rather than hidden, and the dissolution trigger is specific, not aspirational: apply the v1_builtin_arms macro shape to eval_algebra_method_inner (uniform literal arms today, so it is the same mechanical transformation), then to the three small dispatches, then delete each declared block as its projection lands. The Filesystem.Read carve-out is the one row that stays declared until the hermetic carve-out itself dissolves. Absence from a declared block is NOT evidence that an arm does not exist.\n\nROWS CARRY THE ARM'S OWN FACTS ONLY. There is deliberately no primitive-identity field, not even an optional one: an arm that joins to no known primitive must remain representable, because that population is exactly what a primitive-identity join needs to discover. A roster whose shape forbade recording an unjoined arm would be complete by construction and useless as a denominator. This carrier answers WHICH ARMS EXIST; which primitive each one realizes belongs to the join.\n\nONE ROW PER (FORM, SPELLING); ALIASES SHARE AN ARM IDENTITY. length, count and size are one arm under three rows, so they cannot disagree by construction. A spelling appearing under two different arm identities in the SAME form is unreachable code, because the earlier arm always wins. A spelling appearing under two different FORMS is two genuine implementations: lookup is the live specimen, dispatched both by the eval_method_call short-circuit and by an algebra arm the short-circuit shadows."
+
+data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
+
+type InterpreterDispatchForm
+  = FreeCall
+  | MethodCall
+  | ServiceDispatch
+  | NativeSpecial
+
+type InterpreterPrimitiveArmId {
+  identity: NonEmptyStr
+}
+
+-- What shape of call an arm accepts. Modelled as a coproduct rather than an Int
+-- because it is NOT derivable from the dispatch today: arm bodies reach for
+-- positional.first(), positional.as_slice() patterns, and byte-vector coercions,
+-- so any arity written here would be a hand transcription that rots silently the
+-- first time a body changes. A typed absence is countable; a fabricated number is
+-- not. Trigger that makes it derivable: the R1 step where the macro arm list
+-- carries an explicit parameter spec beside each body, at which point arity
+-- expands from the same tokens as the spelling and this variant gains real ones.
+type ArmAcceptedShape
+  = ShapeNotDerivableFromDispatch
+
+type InterpreterPrimitiveDispatchArm {
+  arm: InterpreterPrimitiveArmId
+  form: InterpreterDispatchForm
+  authored_spelling: NonEmptyStr
+  realization_module: NonEmptyStr
+  dispatch_symbol: NonEmptyStr
+  accepted_shape: ArmAcceptedShape
+}
+
+type ArmEnumeration = DerivedFromDispatch | DeclaredHere
+
+-- DERIVED. Projected from the interpreter's own arm list; no spelling is
+-- transcribed, so this projection cannot disagree with the dispatch it describes.
+fn v1_interpreter_free_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  interpreter_free_call_arm_rows()
+    |> map(r => InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: r.arm_identity },
+      form: FreeCall,
+      authored_spelling: r.authored_spelling,
+      realization_module: "v1_interpreter", dispatch_symbol: "eval_builtin_inner", accepted_shape: ShapeNotDerivableFromDispatch,
+    })
+}
+
+-- DECLARED. Trigger: the v1_builtin_arms macro shape applied to
+-- eval_algebra_method_inner, after which these rows project like the free-call
+-- ones and this function deletes.
+fn v1_interpreter_method_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  [
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:lookup" }, form: MethodCall, authored_spelling: "lookup", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:map" }, form: MethodCall, authored_spelling: "map", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:filter" }, form: MethodCall, authored_spelling: "filter", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:fold" }, form: MethodCall, authored_spelling: "fold", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:flat_map" }, form: MethodCall, authored_spelling: "flat_map", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:any" }, form: MethodCall, authored_spelling: "any", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:all" }, form: MethodCall, authored_spelling: "all", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:sort_by" }, form: MethodCall, authored_spelling: "sort_by", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:list_push" }, form: MethodCall, authored_spelling: "list_push", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:concat" }, form: MethodCall, authored_spelling: "concat", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:concat" }, form: MethodCall, authored_spelling: "append", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:concat" }, form: MethodCall, authored_spelling: "push", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:length" }, form: MethodCall, authored_spelling: "length", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:length" }, form: MethodCall, authored_spelling: "count", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:length" }, form: MethodCall, authored_spelling: "size", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:is_empty" }, form: MethodCall, authored_spelling: "is_empty", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:first" }, form: MethodCall, authored_spelling: "first", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:last" }, form: MethodCall, authored_spelling: "last", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:reverse" }, form: MethodCall, authored_spelling: "reverse", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:skip" }, form: MethodCall, authored_spelling: "skip", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:take" }, form: MethodCall, authored_spelling: "take", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:enumerate" }, form: MethodCall, authored_spelling: "enumerate", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:contains" }, form: MethodCall, authored_spelling: "contains", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:contains" }, form: MethodCall, authored_spelling: "has", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:join" }, form: MethodCall, authored_spelling: "join", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:chars" }, form: MethodCall, authored_spelling: "chars", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:map_get" }, form: MethodCall, authored_spelling: "map_get", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:get" }, form: MethodCall, authored_spelling: "get", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:map_keys" }, form: MethodCall, authored_spelling: "map_keys", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:map_values" }, form: MethodCall, authored_spelling: "map_values", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:map_contains_key" }, form: MethodCall, authored_spelling: "map_contains_key", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:map_contains_key" }, form: MethodCall, authored_spelling: "map_has", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:map_is_empty" }, form: MethodCall, authored_spelling: "map_is_empty", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:insert" }, form: MethodCall, authored_spelling: "insert", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:insert" }, form: MethodCall, authored_spelling: "map_insert", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:merge" }, form: MethodCall, authored_spelling: "merge", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:keys" }, form: MethodCall, authored_spelling: "keys", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:values" }, form: MethodCall, authored_spelling: "values", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:replace" }, form: MethodCall, authored_spelling: "replace", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:split" }, form: MethodCall, authored_spelling: "split", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:trim" }, form: MethodCall, authored_spelling: "trim", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:starts_with" }, form: MethodCall, authored_spelling: "starts_with", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:ends_with" }, form: MethodCall, authored_spelling: "ends_with", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:substring" }, form: MethodCall, authored_spelling: "substring", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:char_at" }, form: MethodCall, authored_spelling: "char_at", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call:index_by" }, form: MethodCall, authored_spelling: "index_by", realization_module: "v1_interpreter", dispatch_symbol: "eval_algebra_method_inner", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "method_call_short_circuit:lookup" }, form: MethodCall, authored_spelling: "lookup", realization_module: "v1_interpreter", dispatch_symbol: "eval_method_call", accepted_shape: ShapeNotDerivableFromDispatch },
+  ]
+}
+
+-- DECLARED. Same trigger, applied to the three small dispatches.
+fn v1_interpreter_native_special_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  [
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "native_intercept:fold_list" }, form: NativeSpecial, authored_spelling: "fold_list", realization_module: "v1_interpreter", dispatch_symbol: "eval_call", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "native_intercept:fold_list_right" }, form: NativeSpecial, authored_spelling: "fold_list_right", realization_module: "v1_interpreter", dispatch_symbol: "eval_call", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "map_grounding:empty_map_primitive_delegate" }, form: NativeSpecial, authored_spelling: "empty_map_primitive_delegate", realization_module: "v1_interpreter", dispatch_symbol: "try_v2_std_collection_map_primitive_grounding", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "map_grounding:empty_map_primitive_delegate" }, form: NativeSpecial, authored_spelling: "empty_map", realization_module: "v1_interpreter", dispatch_symbol: "try_v2_std_collection_map_primitive_grounding", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "map_grounding:map_insert" }, form: NativeSpecial, authored_spelling: "map_insert", realization_module: "v1_interpreter", dispatch_symbol: "try_v2_std_collection_map_primitive_grounding", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "parse_table_memo:parse_table_lookup" }, form: NativeSpecial, authored_spelling: "parse_table_lookup", realization_module: "v1_interpreter", dispatch_symbol: "try_parse_table_memo_dispatch", accepted_shape: ShapeNotDerivableFromDispatch },
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "parse_table_memo:parse_table_insert" }, form: NativeSpecial, authored_spelling: "parse_table_insert", realization_module: "v1_interpreter", dispatch_symbol: "try_parse_table_memo_dispatch", accepted_shape: ShapeNotDerivableFromDispatch },
+  ]
+}
+
+-- DECLARED, and the only service-name dispatch the interpreter owns. Every other
+-- Service.Op resolves against declared .dag rows, so it is enumerable there and is
+-- deliberately not duplicated into this roster.
+fn v1_interpreter_service_dispatch_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  [
+    InterpreterPrimitiveDispatchArm { arm: InterpreterPrimitiveArmId { identity: "service_dispatch:Filesystem.Read" }, form: ServiceDispatch, authored_spelling: "Filesystem.Read", realization_module: "v1_interpreter", dispatch_symbol: "eval_service_call", accepted_shape: ShapeNotDerivableFromDispatch },
+  ]
+}
+
+fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  list_concat(
+    v1_interpreter_method_call_arms(),
+    list_concat(v1_interpreter_native_special_arms(), v1_interpreter_service_dispatch_arms()))
+}
+
+fn v1_interpreter_primitive_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  list_concat(v1_interpreter_free_call_arms(), v1_interpreter_declared_arms())
+}
+
+fn form_arm_enumeration(form: InterpreterDispatchForm) -> ArmEnumeration {
+  match form {
+    FreeCall => DerivedFromDispatch
+    MethodCall => DeclaredHere
+    NativeSpecial => DeclaredHere
+    ServiceDispatch => DeclaredHere
+  }
+}
+
+fn v1_interpreter_derived_arm_count() -> Int { count(v1_interpreter_free_call_arms()) }
+
+fn v1_interpreter_declared_arm_count() -> Int { count(v1_interpreter_declared_arms()) }
+
+fn spelling_arm_identities(rows: List<InterpreterPrimitiveDispatchArm>, spelling: String) -> List<String> {
+  rows |> filter(r => r.authored_spelling == spelling) |> map(r => r.arm.identity)
+}
+
+-- A spelling reached by more than one ARM inside one form is unreachable code:
+-- the earlier arm always wins. Aliases are NOT this, because aliases share an arm
+-- identity. This is the check that can fail.
+fn form_has_no_shadowed_spelling(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  rows |> all(r =>
+    count(
+      spelling_arm_identities(rows: rows, spelling: r.authored_spelling)
+        |> filter(id => id != r.arm.identity)) == 0)
+}
+
+fn shadowed_spellings(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+  rows
+    |> filter(r =>
+      count(
+        spelling_arm_identities(rows: rows, spelling: r.authored_spelling)
+          |> filter(id => id != r.arm.identity)) > 0)
+    |> map(r => r.authored_spelling)
+}
+
+-- Spellings implemented under more than one FORM. Not a defect: two genuine
+-- implementations of one name, which a primitive-identity join has to reconcile
+-- rather than assume away.
+fn v1_interpreter_cross_form_spellings() -> List<String> {
+  let rows = v1_interpreter_primitive_arms()
+  rows
+    |> filter(r =>
+      count(rows |> filter(o => o.authored_spelling == r.authored_spelling && o.form != r.form)) > 0)
+    |> map(r => r.authored_spelling)
+}
