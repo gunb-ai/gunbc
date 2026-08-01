@@ -74,6 +74,7 @@ test fn witness_all_known_committed() -> Bool {
     && !path_is_ignored(path: ".github/workflows/ci.yml")
     && !path_is_ignored(path: ".github/workflows/falsifier.yml")
     && !path_is_ignored(path: ".gitignore")
+    && !path_is_ignored(path: ".gitattributes")
     && !path_is_ignored(path: "ROADMAP.md")
     && !path_is_ignored(path: "DESIGN.md")
     && !path_is_ignored(path: ".githooks/pre-push")
@@ -97,10 +98,11 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (13 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (14 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
+    && registry_contains(a: GitattributesArtifact)
     && registry_contains(a: RoadmapArtifact)
     && registry_contains(a: DesignArtifact)
     && registry_contains(a: GithooksPrePushArtifact)
@@ -147,6 +149,7 @@ fn consumer_is(a: GeneratedArtifact, expected: RepoConsumer) -> Bool {
 
 test fn witness_commit_policy_reasons() -> Bool {
   consumer_is(a: GitignoreArtifact, expected: GitProtocol)
+    && consumer_is(a: GitattributesArtifact, expected: GitProtocol)
     && consumer_is(a: GithooksPrePushArtifact, expected: GitProtocol)
     && consumer_is(a: GithooksPreCommitArtifact, expected: GitProtocol)
     && consumer_is(a: CiYamlArtifact, expected: GithubActionsWorkflow)
@@ -196,6 +199,7 @@ test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
 
 test fn witness_extra_validation_wired() -> Bool {
   artifact_extra_valid(a: GitignoreArtifact)
+    && artifact_extra_valid(a: GitattributesArtifact)
     && artifact_extra_valid(a: RoadmapArtifact)
     && artifact_extra_valid(a: DesignArtifact)
     && artifact_extra_valid(a: CiYamlArtifact)
