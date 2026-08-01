@@ -180,13 +180,7 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
     census: census_of(source: call_shape_green_source),
     expectation: ExpectZeroDiagnostics,
   )
-  match receipt.observed {
-    AcceptedClean => true
-    RefusedTyped { diagnostic_class: _, count: _ } => false
-    AcceptedCounted { diagnostic_class: _, count: _ } => false
-    ExecutionDiverged { description: _ } => false
-    ProbeNotRunnable { cause: _ } => false
-  }
+  observation_is_clean(o: receipt.observed)
 }
 
 test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
