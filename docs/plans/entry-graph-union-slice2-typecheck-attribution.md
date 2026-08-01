@@ -1,6 +1,12 @@
 # Receipt — entry-graph-union slice 2: repeated-typecheck attribution
 
-**Status:** verdict taken 2026-08-01 (§F; PR #7533). **DESIGN.md + slice 1 remain the authority** — this is a dated receipt scaffold, not a floor fact ledger. Measurement orchestration + `measure_repeated_typecheck_attribution` bin dissolve on union construction (#7534) merge or operator archive; probe hooks and enrolled `v1-compiler-tests` controls remain per DESIGN §4b.
+**Status:** operator verdict taken 2026-08-01 (§F; PR #7533). **Bounded to N≤50** disjoint production windows + 7-entry explicit fixture; `>50` unmeasured. **DESIGN.md + slice 1 remain the authority** — this is a dated receipt scaffold, not a floor fact ledger.
+
+**Disposition (operator adjudication 2026-08-01):** Close `entry-graph-union-construction` as a **no-go** for its measured shared-typecheck hypothesis. Do not begin union construction. The priced benefit of a union/shared typed-computation graph is **absent** at N≤50 — repeated typecheck compute is zero because the existing typed cache already enforces once-per-content-key. A future assembly-specific investigation is a **new hypothesis** with a new denominator; it does not continue this lane.
+
+**Dissolution (measurement orchestration):** intrinsic to this lane — **not** tied to #7534 (exact-tree materialization consumer, unrelated). Sequence: candidate receipts accepted → merge → reproduce one representative 50-entry cell + reorder control on merged `main` → archive provenance receipt → **DELETE** one-shot measurement orchestration (final commit on this lane or named tiny follow-up immediately after merged-SHA receipt; never smuggled into another PR's rebase).
+
+**Post-verdict retention boundary (§G):** retain the **law**, not the instrument — see below.
 
 **ROADMAP:** `gunbc.roadmap_authority` id `entry-graph-union-construction` (lane `ci-cost`, slice 2 of the same row as slice 1).
 
@@ -58,7 +64,7 @@ The operator question slice 2 answers: **how often does a repeated module member
 decision_ratio = repeated_typecheck_compute_ns / total_typecheck_compute_ns
 ```
 
-**NOT** closure duplication. Low → cache already eliminates repeated work (union program shrinks). High → repeated membership becomes repeated typecheck (union/shared-compute program justified).
+**NOT** closure duplication. This ratio was the slice-2 **hypothesis test** only (now adjudicated at N≤50). Low → cache already eliminates repeated work. High → repeated membership becomes repeated typecheck. Verdict: low at every measured cell — union construction **not justified** by this hypothesis.
 
 Diagnostic only: `cache_hit_ratio = hits / (hits + misses)`.
 
@@ -132,32 +138,60 @@ Binary snapshot: `sha256:5b7c4673f4a26a0b168b48dfbb946c27e2b30eae6149b120dcd4262
 
 Explicit reorder (7-entry slice-1 amortization set): `decision_ratio=0`, identical distinct-compute set (398) both orders — see `receipt-explicit-order-{a,b}.json`.
 
-### Verdict (operator three-way protocol, 2026-08-01)
+### Verdict (operator adjudication, 2026-08-01)
 
-**Measured scale:** `N≤50` disjoint production windows + 7-entry explicit fixture; **`>50`-entry regime unmeasured** on this host (uncapped `N=286` OOM).
+**Measured scale (explicit bound):** **N≤50** — three disjoint 50-entry production windows + 7-entry explicit reorder fixture. **`>50`-entry regime unmeasured.** No larger-host confirmation run (a bigger host would only extend the pre-M2 retain-everything pole; it measures retention capacity, not repeated typechecking).
 
-At every measured cell: **repeated typecheck compute is zero**, order-stable, and the typed cache is already strong (`cache_hit_ratio` 0.82–0.88 on production windows despite 8–14× membership duplication within each window).
+At every measured cell at N≤50: **repeated typecheck compute is zero**, order-stable, and the typed cache is already strong (`cache_hit_ratio` 0.82–0.88 on production windows despite 8–14× membership duplication within each window).
 
-**Disposition:** cache hits already eliminate repeated typecheck work — the **union/shared typed-computation program closes or shrinks**. The surviving cost axes are **first-time typecheck**, **per-entry assembly** (Σ assembly ≈ 35–38s vs total typecheck ≈ 34–41s per 50-entry cell — comparable magnitude), and **retention at scale** (instrument-path OOM at `N=286` without M2 eviction; floor-scale behavior unmeasured here).
+**Disposition:** Close `entry-graph-union-construction` as a **no-go for union construction** on the shared-typecheck hypothesis. The existing typed cache already enforces the structural law (once per content key; later requesters hit). **Do not begin union construction.** Redirect to a separate **per-entry assembly decomposition** lane (new hypothesis, new denominator) — Σ assembly ≈ 35–38s vs total typecheck ≈ 34–41s per 50-entry cell is the surviving cost signal, not a presupposed union-graph fix.
 
 Full per-row receipts: `docs/plans/receipts/entry-graph-union-slice2/receipt-*.json`.
 
-Reproduce disjoint cells (§E; one invocation per cell — no shell orchestration):
+Reproduce disjoint cells (§E; three complete invocations — no shell orchestration):
 
 ```sh
-COMMON=(--source-root dag --source-root src/v2
-  --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual
-  --scan-dir src/v2/test/claim/emit --max-entries 50)
-
 GUNBC_CI_DIFF_BASE=e30621111f37 measure_repeated_typecheck_attribution \
-  "${COMMON[@]}" --entry-offset 0 \
+  --source-root dag --source-root src/v2 \
+  --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual \
+  --scan-dir src/v2/test/claim/emit \
+  --entry-offset 0 --max-entries 50 \
   --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-narrow-disjoint.json
 
 GUNBC_CI_DIFF_BASE=b01cdf4d8914 measure_repeated_typecheck_attribution \
-  "${COMMON[@]}" --entry-offset 117 \
+  --source-root dag --source-root src/v2 \
+  --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual \
+  --scan-dir src/v2/test/claim/emit \
+  --entry-offset 117 --max-entries 50 \
   --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-typical-disjoint.json
 
 GUNBC_CI_DIFF_BASE=0d6ffc4db975 measure_repeated_typecheck_attribution \
-  "${COMMON[@]}" --entry-offset 235 \
+  --source-root dag --source-root src/v2 \
+  --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual \
+  --scan-dir src/v2/test/claim/emit \
+  --entry-offset 235 --max-entries 50 \
   --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json
 ```
+
+---
+
+## G — post-verdict retention boundary
+
+**Retain (structural law — enrolled regression controls):**
+
+Within one shared typed-cache authority:
+
+1. One typed module **content key** computes at most once per process.
+2. Later requesters observe **cache hits**, not recomputation.
+3. Entry resolve **order does not change** the distinct-computation set.
+
+Witnesses: `repeated_typecheck_attribution_records_shared_prefix_hits`, `repeated_typecheck_attribution_reorder_preserves_distinct_computes`, `repeated_typecheck_attribution_partial_probe_hit_single_row_per_module` (`v1-compiler-tests`); sibling `typecheck_compute_count` oracles in the same file.
+
+**Delete after merged-SHA provenance receipt** (one representative 50-entry cell + reorder control rerun on `main`, then archive):
+
+- `measure_repeated_typecheck_attribution` bin and orchestration (`measure_*`, production-selection roster path)
+- JSON receipt renderers (`render_repeated_typecheck_attribution_*`)
+- `RepeatedTypecheckAttributionMeasurement` carrier and flag-gated probe plumbing (`arm_*` / `observe_*` / `note_*` in reconcile)
+- `repeated_typecheck_attribution_arithmetic` (ratio aggregation — historical instrument math, not the structural law)
+
+`decision_ratio=0` was the slice-2 hypothesis outcome, not a permanent structural invariant to defend via production CLI forever.

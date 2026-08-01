@@ -16740,18 +16740,19 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
 // ROADMAP lane `ci-cost`, subject `entry-graph-union-construction` slice 2
 // (gunbc.roadmap_authority id `entry-graph-union-construction` — same row as slice 1).
 // VERDICT TAKEN 2026-08-01 (`entry-graph-union-slice2-typecheck-attribution.md` §F):
-// repeated typecheck compute is zero at N≤50 — union/shared typed-computation program
-// closes/shrinks. §4b dissolution-on-climb: discriminating controls REMAIN enrolled —
-// `repeated_typecheck_attribution_*` in v1-compiler-tests and
-// `repeated_typecheck_attribution_arithmetic` below are the executing evidence; default
-// resolve flow stays unchanged when the probe is disarmed.
-// DELETE WHEN dissolved (measurement orchestration only — ~400 LOC incl. bin):
+// at N≤50 repeated typecheck compute is zero — union construction NO-GO on this hypothesis.
+// §4b + §G: law tests stay enrolled until deletion; measurement orchestration deletes after
+// merged-SHA provenance receipt (NOT tied to #7534 — unrelated exact-tree consumer).
+// DELETE WHEN dissolved (measurement orchestration — ~400 LOC incl. bin + probe plumbing):
 // `RepeatedTypecheckAttributionMeasurement`, `measure_repeated_typecheck_attribution`,
 // `render_repeated_typecheck_attribution_json`, `render_repeated_typecheck_attribution_receipt_json`,
-// and `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs` — on union
-// construction (#7534) merge OR operator archives slice-2 receipts (whichever first).
-// RETAIN until then: flag-gated probe hooks (`arm_*` / `observe_*` / `note_*`) — regression
-// control for decision_ratio=0; delete with the measurement carrier above.
+// `repeated_typecheck_attribution_arithmetic`, flag-gated `arm_*`/`observe_*`/`note_*` hooks,
+// and `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs`.
+// Trigger (intrinsic): candidate receipts accepted → merge → one representative 50-entry
+// cell + reorder control on merged main → archive receipt → delete (this lane's final commit
+// or named follow-up immediately after; never smuggled into another PR's rebase).
+// RETAIN through deletion: `repeated_typecheck_attribution_*` law tests in v1-compiler-tests
+// (once-per-content-key, later-requester hits, order-invariant distinct computes).
 // Receipt: `rg -c cli_run_repeated_typecheck_attribution_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test).
 // Not a compiler_frontier `.dag` row (seed-Rust) and not enrolled in `gunbc.ci_release_bins`.
