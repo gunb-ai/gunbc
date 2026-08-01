@@ -11,7 +11,7 @@ import gunbc.design.scale {
   space_0, space_1, space_2, space_3, space_4, space_6, space_8, space_12, space_16, space_20, space_24,
   text_10, text_11, text_12, text_13, text_14, text_15, text_18,
   font_sans, font_mono,
-  radius_3, radius_5, radius_999, border_1, border_2, measure_page, height_mark, height_bar, height_control, width_status, width_brick_state,
+  radius_3, radius_999, border_1, border_2, measure_page, height_control, width_status,
 }
 import gunbc.design.theme {
   Theme, day_theme, night_theme, theme_root_css, role_decl,
@@ -349,9 +349,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_12)),
     ] },
-    StaticRule { selector: ClassSelector { name: "mark" }, decls: [
-      decl(prop: Height, value: scale_var(t: height_mark)),
-      decl(prop: Display, value: "block"),
+    StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: FontSize, value: scale_var(t: text_15)),
+      decl(prop: LetterSpacing, value: "0.02em"),
+      role_decl(prop: Color, r: TextRole),
     ] },
     StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_18)),
@@ -374,8 +376,8 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: MarginLeft, value: "auto"),
       decl(prop: MarginRight, value: "auto"),
     ] },
-    StaticRule { selector: ClassSelector { name: "roadmap-section" }, decls: [
-      decl(prop: MarginBottom, value: scale_var(t: space_24)),
+    StaticRule { selector: RawSelector { text: ".daily-workspace > * + *, .roadmap > * + *" }, decls: [
+      decl(prop: MarginTop, value: scale_var(t: space_20)),
     ] },
     StaticRule { selector: RawSelector { text: "details.section-fold > summary" }, decls: [
       decl(prop: Cursor, value: "pointer"),
@@ -433,7 +435,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: BorderStyle, value: "dashed"),
     ] },
-    StaticRule { selector: RawSelector { text: ".node-superseded > .title" }, decls: [
+    StaticRule { selector: RawSelector { text: ".node-superseded .title" }, decls: [
       decl(prop: TextDecoration, value: "line-through"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
@@ -519,12 +521,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".frontier-done h2" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "three-gate-progress" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_12)),
-      decl(prop: MarginBottom, value: scale_var(t: space_24)),
-    ] },
     StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
@@ -533,75 +529,80 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
       decl(prop: PaddingLeft, value: scale_var(t: space_6)),
-      decl(prop: MarginBottom, value: scale_var(t: space_12)),
     ] },
-    StaticRule { selector: RawSelector { text: ".three-gate-progress h2" }, decls: [
-      decl(prop: Margin, value: scale_triple(a: space_0, b: space_0, c: space_4)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "gate-row" }, decls: [
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
-      role_decl(prop: Background, r: SurfaceRole),
-    ] },
-    StaticRule { selector: ClassSelector { name: "gate-head" }, decls: [
+    StaticRule { selector: ClassSelector { name: "program-progress" }, decls: [
       decl(prop: Display, value: "flex"),
-      decl(prop: JustifyContent, value: "space-between"),
       decl(prop: AlignItems, value: "baseline"),
-      decl(prop: MarginBottom, value: scale_var(t: space_6)),
+      decl(prop: Gap, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "gate-name" }, decls: [
+    StaticRule { selector: ClassSelector { name: "program-progress-name" }, decls: [
       decl(prop: FontWeight, value: "500"),
       decl(prop: FontSize, value: scale_var(t: text_14)),
     ] },
-    StaticRule { selector: ClassSelector { name: "gate-count" }, decls: [
+    StaticRule { selector: ClassSelector { name: "program-progress-count" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
-    StaticRule { selector: ClassSelector { name: "gate-bar" }, decls: [
-      decl(prop: Height, value: scale_var(t: height_bar)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_5)),
-      decl(prop: Background, value: "var(--border)"),
-      decl(prop: Overflow, value: "hidden"),
+    StaticRule { selector: ClassSelector { name: "finish-line-counts" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
       decl(prop: MarginBottom, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "bar-fill" }, decls: [
-      decl(prop: Height, value: "100%"),
-      role_decl(prop: Background, r: FigureRole),
-    ] },
-    StaticRule { selector: RawSelector { text: "ul.bricks" }, decls: [
-      decl(prop: ListStyle, value: "none"),
+    StaticRule { selector: ClassSelector { name: "finish-lines" }, decls: [
       decl(prop: PaddingLeft, value: scale_var(t: space_0)),
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_3)),
+      decl(prop: Gap, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: RawSelector { text: "li.brick" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_0)),
-      role_decl(prop: Color, r: TextRole),
-      decl(prop: Display, value: "flex"),
+    StaticRule { selector: ClassSelector { name: "finish-line" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "auto auto 1fr"),
+      decl(prop: Gap, value: scale_pair(a: space_2, b: space_8)),
       decl(prop: AlignItems, value: "baseline"),
     ] },
-    StaticRule { selector: ClassSelector { name: "brick-state" }, decls: [
+    StaticRule { selector: ClassSelector { name: "finish-line-state" }, decls: [
       decl(prop: Display, value: "inline-block"),
-      decl(prop: Flex, value: "0 0 auto"),
-      decl(prop: Width, value: scale_var(t: width_brick_state)),
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: TextTransform, value: "uppercase"),
-      decl(prop: LetterSpacing, value: "0.03em"),
-      decl(prop: MarginRight, value: scale_var(t: space_8)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: TextAlign, value: "center"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: RawSelector { text: ".brick-inflight .brick-state" }, decls: [
+    StaticRule { selector: RawSelector { text: ".finish-line-accepted .finish-line-state" }, decls: [
+      role_decl(prop: BorderColor, r: FigureRole),
       role_decl(prop: Color, r: TextRole),
-      decl(prop: FontWeight, value: "600"),
     ] },
-    StaticRule { selector: RawSelector { text: ".brick-gated .brick-state" }, decls: [
+    StaticRule { selector: ClassSelector { name: "finish-line-name" }, decls: [
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line-node" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line-claim" }, decls: [
+      decl(prop: GridColumn, value: "1 / -1"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "dependencies" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "item-facts" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
     ] },
     StaticRule { selector: ClassSelector { name: "dispatch-btn" }, decls: dispatch_btn_base_decls() },
     StaticRule { selector: ClassSelector { name: sound_toggle_class }, decls: [
