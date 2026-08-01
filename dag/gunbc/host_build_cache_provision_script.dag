@@ -5,6 +5,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 import extdeps.cache.sccache {
   sccache_misconfigured_log_fragments,
   sccache_installed_binary_path,
@@ -54,7 +55,59 @@ fn build_cache_systemd_user_unit_body() -> String {
 
 data build_cache_path_authority_note: String = "The PATH-shadow JUDGEMENT lives in the model — gunbc.host_build_cache_provision.DaemonPathShadowed / RefusalPathShadowed and the verdict fold that refuses it, proven by design_witness_path_shadow_refuses_fail_closed against a synthetic DaemonPathShadowed observation. Its LIVE OBSERVATION is STAGED, deliberately NOT emitted as hand-shell here: this file is an A5 `decompose` scaffold that the census pledges may SHRINK but must not GROW (dissolve-on #5828), and a `command -v sccache` observation folded into the bodies still GROWS the emitted shell surface — a census regression even though the model verdict it feeds is correct (review 42343 caught this; the earlier 'folded in, count six' defense counted *_body builders, not the shell surface). The observation lands when ProvisionBuildCache realizes as typed host-effect argv (this module's own dissolve-on): the resolve becomes a typed op (shell.Which.Check) and the comparison a typed predicate over captured values (the deploy-preflight `whoami` precedent: a negated StrEq, never a minted StrNeq). Until then the model carries the state and its refusal; only the live producer is deferred."
 
+data build_cache_placement_observe_doc: String = "PLACEMENT IS OBSERVED, NOT ASSUMED. A responsive server proves nothing about where it runs: the srv1 incident had a perfectly responsive server answering --show-stats from dead slot srv1-10's cgroup while every compile on the host inherited that slot's 16G cap. So a stats-ok observation is NOT a success exit — it is followed by reading the server's own cgroup out of /proc and comparing it to the managed slice. Unreadable placement REFUSES (exit 1) rather than assuming unit-owned: an unobservable placement is ignorance, not evidence of correctness. AMBIGUITY REFUSES RATHER THAN GUESSING: the sccache binary is ALSO the client, so under RUSTC_WRAPPER an in-flight compile leaves several processes named 'sccache'. Taking an arbitrary one would read a transient client's cgroup and produce a FALSE refusal. So the arm requires EXACTLY ONE candidate and refuses (counted, with the observed count) otherwise. This observation runs at provisioning/converge time, when no compile should be in flight, so exactly-one is the expected state and >1 is genuine ambiguity. A port-listener probe (SCCACHE_SERVER_PORT, cited in extdeps) would be strictly more precise and is the intended successor; it is NOT used here because `ss` is absent in the container this was verified in, and an unexecutable probe is worse than an imprecise verified one."
+
+fn build_cache_observe_placement_body() -> String {
+  concat(
+    concat(
+      "sccache_pids=\"$(pgrep -x sccache 2>/dev/null || true)\"\n",
+      concat(
+        "sccache_count=\"$(printf '%s' \"$sccache_pids\" | grep -c . || true)\"\n",
+        concat(
+          "if [ \"$sccache_count\" -gt 1 ]; then\n",
+          concat(
+            "  printf '%s\\n' \"BuildCacheProvisionReceipt: placement=unknown detail=ambiguous-multiple-sccache-processes count=$sccache_count\"\n",
+            concat(
+              "  printf '%s\\n' \"REFUSED: the sccache binary is also the client, so a compile in flight yields several processes named sccache; refusing rather than reading an arbitrary one's cgroup\"\n  exit 1\n",
+              "fi\nserver_pid=\"$(printf '%s' \"$sccache_pids\" | head -1)\"\n",
+            )
+          )
+        )
+      )
+    ),
+    concat(
+      "if [ -z \"$server_pid\" ]; then\n",
+      concat(
+        "  printf '%s\\n' \"BuildCacheProvisionReceipt: placement=unknown detail=no-sccache-server-process\"\n  exit 1\n",
+        concat(
+          "fi\n",
+          concat(
+            "server_cgroup=\"$(cat /proc/$server_pid/cgroup 2>/dev/null | head -1 || true)\"\n",
+            concat(
+              "if [ -z \"$server_cgroup\" ]; then\n",
+              concat(
+                "  printf '%s\\n' \"BuildCacheProvisionReceipt: placement=unknown detail=cgroup-unreadable\"\n  exit 1\n",
+                concat(
+                  "fi\n",
+                  concat(
+                    concat("if printf '%s' \"$server_cgroup\" | grep -Fq \"", (gunbc_managed_compile_pool_slice as String), "\"; then\n"),
+                    concat(
+                      concat("  printf '%s\\n' \"BuildCacheProvisionReceipt: placement=unit_owned slice=", (gunbc_managed_compile_pool_slice as String), "\"\n  exit 0\n"),
+                      "else\n  printf '%s\\n' \"BuildCacheProvisionReceipt: placement=lazy_spawned cgroup=$server_cgroup\"\n  printf '%s\\n' \"REFUSED: sccache server is responsive but not unit-owned; cache-miss compiles execute as its children, so this cgroup's caps bound every compile on the host\"\n  exit 1\nfi\n",
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
 fn build_cache_observe_stats_body() -> String {
+<<<<<<< HEAD
   join([
     "stats_out=\"\"",
     "stats_rc=0",
@@ -81,6 +134,26 @@ fn build_cache_fragment_words() -> String {
   join(
     map(sccache_misconfigured_log_fragments, f => build_cache_fragment_word(fragment: f)),
     " ",
+=======
+  concat(
+    "stats_rc=0\n",
+    concat(
+      "stats_out=\"$(sccache --show-stats 2>&1)\" || stats_rc=$?\n",
+      concat(
+        "if [ \"$stats_rc\" -eq 0 ]; then\n",
+        concat(
+          "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"\n",
+          concat(
+            "  printf '%s\\n' \"$stats_out\"\n",
+            concat(
+              build_cache_observe_placement_body(),
+              "fi\n",
+            )
+          )
+        )
+      )
+    )
+>>>>>>> origin/session/wise-crab-547
   )
 }
 
@@ -122,6 +195,7 @@ fn build_cache_ensure_daemon_body(arch_token: NonEmptyStr, digest: Digest) -> St
   ], "\n")
 }
 
+<<<<<<< HEAD
 data build_cache_user_service_linger_note: String = "A `systemd --user` manager is torn down when the user's last session ends, so on a headless runner host an enabled user unit stops the moment the provisioning ssh connection closes — the daemon would be observed healthy by the read-back in the same connection and be gone before the first CI job. enable-linger keeps the manager running without a login, which is what makes the user-scope handler viable at all. It does NOT settle open question 1 of the srvN build-cache design (user service vs system service for the shared daemon) — that handler choice is still operator-open; this only makes the handler already selected in tree behave as modeled."
 
 fn build_cache_read_back_body(binary: String) -> String {
@@ -137,6 +211,31 @@ fn build_cache_read_back_body(binary: String) -> String {
     "fi",
     "",
   ], "\n")
+=======
+fn build_cache_read_back_body() -> String {
+  concat(
+    "if stats_out=\"$(sccache --show-stats 2>&1)\"; then\n",
+    concat(
+      "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"\n",
+      concat(
+        "  printf '%s\\n' \"$stats_out\"\n",
+        concat(
+          build_cache_observe_placement_body(),
+          concat(
+            "else\n",
+            concat(
+              "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"\n",
+              concat(
+                "  printf '%s\\n' \"$stats_out\"\n",
+                "  exit 1\nfi\n",
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+>>>>>>> origin/session/wise-crab-547
 }
 
 fn build_cache_provision_script_body(arch_token: NonEmptyStr, digest: Digest) -> String {
@@ -165,6 +264,7 @@ fn build_cache_fragment_words_are_shell_safe() -> Bool {
   )
 }
 
+<<<<<<< HEAD
 fn build_cache_install_is_cited_not_package_manager() -> Bool {
   let body = build_cache_provision_script_body(
     arch_token: "aarch64" as NonEmptyStr,
@@ -216,4 +316,31 @@ fn build_cache_provision_shell_script(arch_token: NonEmptyStr, digest: Digest) -
   shell_exec_via_bash(
     body: build_cache_provision_script_body(arch_token: arch_token, digest: digest),
   )
+=======
+fn build_cache_provision_placement_fails_closed() -> Bool {
+  string_contains(s: build_cache_observe_placement_body(), pattern: "placement=lazy_spawned")
+    && string_contains(s: build_cache_observe_placement_body(), pattern: "placement=unknown detail=cgroup-unreadable")
+    && string_contains(s: build_cache_observe_placement_body(), pattern: "placement=unknown detail=no-sccache-server-process")
+    && string_contains(s: build_cache_observe_placement_body(), pattern: "placement=unknown detail=ambiguous-multiple-sccache-processes")
+    && string_contains(s: build_cache_observe_placement_body(), pattern: "/proc/$server_pid/cgroup")
+}
+
+data build_cache_read_back_placement_doc: String = "READ-BACK IS GATED ON PLACEMENT TOO, NOT ONLY ON STATS. The ensure path is exactly where a freshly (re)started daemon can come up in the WRONG cgroup — a lazily auto-spawned server is how the srv1 incident began. If read-back greened on --show-stats alone it would certify precisely the state this module exists to refuse, and because host_effect_realize reconciles on the shell EXIT CODE, that green would propagate as ProvisionConverged. So read-back runs the same placement probe as observe: stats-ok is a precondition, unit-owned placement is the success criterion."
+
+fn build_cache_provision_stats_ok_is_not_success_alone() -> Bool {
+  string_contains(s: build_cache_observe_stats_body(), pattern: "observe=ok")
+    && string_contains(s: build_cache_observe_stats_body(), pattern: "placement=lazy_spawned")
+    && string_contains(s: build_cache_read_back_body(), pattern: "read_back=ok")
+    && string_contains(s: build_cache_read_back_body(), pattern: "placement=lazy_spawned")
+}
+
+fn build_cache_provision_read_back_requires_placement() -> Bool {
+  string_contains(s: build_cache_read_back_body(), pattern: "placement=unit_owned")
+    && string_contains(s: build_cache_read_back_body(), pattern: "placement=unknown detail=ambiguous-multiple-sccache-processes")
+    && string_contains(s: build_cache_read_back_body(), pattern: "/proc/$server_pid/cgroup")
+}
+
+fn build_cache_provision_shell_script() -> String {
+  shell_exec_via_bash(body: build_cache_provision_script_body())
+>>>>>>> origin/session/wise-crab-547
 }
