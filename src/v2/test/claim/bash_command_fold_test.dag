@@ -33,6 +33,11 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_true_wrong_target_model_witness,
   bash_fold_cmd_var_x_emitted,
   bash_fold_cmd_wc_minus_c_emitted,
+  bash_fold_stmt_kind_sentinel,
+  bash_fold_word_lit_sentinel,
+  bash_fold_word_var_sentinel,
+  bash_fold_word_concat_sentinel,
+  bash_fold_word_cmdsubst_sentinel,
   bash_fold_env_prefixed_wrong_target_model_witness,
   bash_fold_exit_42_emitted,
   bash_fold_exit_wrong_target_model_witness,
@@ -66,6 +71,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data bash_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_stmt and of the grammar rows/segment spellings. Each fold test compares bash_emit (row-emit) against its golden only (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
+
 data bash_fold_and_then_golden: String = "'true' && 'false'"
 data bash_fold_assign_foo_golden: String = "FOO='bar'"
 data bash_fold_assign_home_golden: String = "X=\"$HOME\""
@@ -203,10 +209,15 @@ test fn bash_fold_command_single_lit_true_holds() -> Bool {
 }
 
 test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_command_stmt(node: bash_fold_cmd_echo_hi_emitted),
-    golden: bash_fold_cmd_echo_hi_golden
-  )
+  bash_fold_stmt_kind_sentinel == from_code_point(cp: 2)
+    && bash_fold_word_lit_sentinel == from_code_point(cp: 0)
+    && bash_fold_word_var_sentinel == from_code_point(cp: 1)
+    && bash_fold_word_concat_sentinel == from_code_point(cp: 3)
+    && bash_fold_word_cmdsubst_sentinel == from_code_point(cp: 4)
+    && bash_emit_matches_golden(
+      stmt: bash_fold_command_stmt(node: bash_fold_cmd_echo_hi_emitted),
+      golden: bash_fold_cmd_echo_hi_golden
+    )
 }
 
 test fn bash_fold_command_var_ref_x_holds() -> Bool {
@@ -764,4 +775,3 @@ test fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
     Violates { diagnostic: _ } => true
   }
 }
-

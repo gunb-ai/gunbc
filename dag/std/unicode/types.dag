@@ -1,6 +1,17 @@
 module std.unicode.types
 
-import std.types { Int }
+import std.types { Char, Int }
+
+data unicode_scalar_max_code_point: Int = 1114111
+data unicode_surrogate_first_code_point: Int = 55296
+data unicode_surrogate_last_code_point: Int = 57343
+data unicode_scalar_authority_note: String = "Unicode Standard 17.0 Core Specification section 3.9, definition D76 (https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-3/#G7404): scalar values are U+0000..U+D7FF and U+E000..U+10FFFF inclusive. Therefore U+10FFFF is the maximum and the surrogate code points U+D800..U+DFFF are excluded."
+
+fn unicode_scalar(code_point: Int) -> Bool {
+  code_point >= 0
+    && code_point <= unicode_scalar_max_code_point
+    && !(code_point >= unicode_surrogate_first_code_point && code_point <= unicode_surrogate_last_code_point)
+}
 
 type CharClass = Whitespace | Digit | IdentStart | IdentContinue
 
@@ -25,22 +36,22 @@ fn char_in_class(c: Char, class: CharClass) -> Bool =
   match class {
 
     Whitespace =>
-      code_point(c) == 9 || code_point(c) == 10 || code_point(c) == 12
-      || code_point(c) == 13 || code_point(c) == 32
-    Digit => code_point(c) >= 48 && code_point(c) <= 57
+      unicode_char_code_point(c: c) == 9 || unicode_char_code_point(c: c) == 10 || unicode_char_code_point(c: c) == 12
+      || unicode_char_code_point(c: c) == 13 || unicode_char_code_point(c: c) == 32
+    Digit => unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
     IdentStart =>
-      code_point(c) >= 65 && code_point(c) <= 90
-      || code_point(c) >= 97 && code_point(c) <= 122
-      || code_point(c) == 95
+      unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
+      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
+      || unicode_char_code_point(c: c) == 95
 
     IdentContinue =>
-      code_point(c) >= 48 && code_point(c) <= 57
-      || code_point(c) >= 65 && code_point(c) <= 90
-      || code_point(c) >= 97 && code_point(c) <= 122
-      || code_point(c) == 95
+      unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
+      || unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
+      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
+      || unicode_char_code_point(c: c) == 95
   }
 
-fn code_point(c: Char) -> Int = c + 0
+fn unicode_char_code_point(c: Char) -> Int = c + 0
 
 fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
   cp >= block.start && cp <= block.end_inclusive
