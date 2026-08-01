@@ -16220,6 +16220,36 @@ impl SelectedEntryClosureOverlap {
     }
 }
 
+/// Membership overlap for an explicit selected-entry list (slice-1's both-closure walk).
+fn closure_overlap_membership_for_entries(
+    index: &MultiEntryIndex,
+    selected_entries: &[String],
+) -> Result<(usize, usize, Vec<(String, usize)>), String> {
+    let mut sum_closure_memberships: usize = 0;
+    let mut fanout: HashMap<String, usize> = HashMap::new();
+    for entry in selected_entries {
+        let mut members: HashSet<String> = HashSet::new();
+        for source in load_sources_for_entry_with_pool(index, entry)? {
+            let Some(name) = extract_module_path(&source.content) else {
+                return Err(format!(
+                    "closure overlap: source '{}' in entry '{}' closure declares no module \
+                     header (fail-closed)",
+                    source.path, entry
+                ));
+            };
+            members.insert(name);
+        }
+        sum_closure_memberships += members.len();
+        for m in members {
+            *fanout.entry(m).or_insert(0) += 1;
+        }
+    }
+    let union_modules = fanout.len();
+    let mut fanout_by_module: Vec<(String, usize)> = fanout.into_iter().collect();
+    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    Ok((sum_closure_memberships, union_modules, fanout_by_module))
+}
+
 pub fn measure_selected_entry_closure_overlap(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -16283,8 +16313,6 @@ pub fn measure_selected_entry_closure_overlap(
     }
 
     let mut closure_sizes: Vec<(String, usize)> = Vec::new();
-    let mut sum_closure_memberships: usize = 0;
-    let mut fanout: HashMap<String, usize> = HashMap::new();
     let mut sum_closure_bytes: u128 = 0;
     let mut union_bytes_by_module: HashMap<String, u128> = HashMap::new();
     for entry in &selected_entries {
@@ -16294,7 +16322,8 @@ pub fn measure_selected_entry_closure_overlap(
         for source in load_sources_for_entry_with_pool(&index, entry)? {
             let Some(name) = extract_module_path(&source.content) else {
                 return Err(format!(
-                    "closure overlap: source '{}' in entry '{}' closure declares no module                      header (fail-closed)",
+                    "closure overlap: source '{}' in entry '{}' closure declares no module \
+                     header (fail-closed)",
                     source.path, entry
                 ));
             };
@@ -16305,16 +16334,10 @@ pub fn measure_selected_entry_closure_overlap(
             union_bytes_by_module.insert(name, bytes);
         }
         closure_sizes.push((entry.clone(), members.len()));
-        sum_closure_memberships += members.len();
-        for m in members {
-            *fanout.entry(m).or_insert(0) += 1;
-        }
     }
+    let (sum_closure_memberships, union_modules, fanout_by_module) =
+        closure_overlap_membership_for_entries(&index, &selected_entries)?;
     let union_bytes: u128 = union_bytes_by_module.values().sum();
-    let union_modules = fanout.len();
-    let mut fanout_by_module: Vec<(String, usize)> =
-        fanout.into_iter().map(|(k, v)| (k, v)).collect();
-    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     closure_sizes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
     let head_sha = std::process::Command::new("git")
@@ -16475,6 +16498,9 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_repeated_typecheck_attribution_probe`):
+// ROADMAP lane `ci-cost`, subject `entry-graph-union-construction` slice 2
+// (gunbc.roadmap_authority id `entry-graph-union-construction` — same row as slice 1;
+// measurement phase before the union verdict).
 // entry-graph-union slice 2 / lane ci-cost. ONE-SHOT INSTRUMENT answering whether
 // repeated module membership (slice 1) translates into repeated typecheck work against
 // ONE shared typed cache. Unblock / DELETE WHEN: slice-2 union verdict is taken.
@@ -16503,21 +16529,35 @@ pub fn measure_repeated_typecheck_attribution(
         discovery_scope_dirs,
     )?;
 
+    let production_selected = overlap.selected_entries.clone();
     let mut selected_entries = if explicit_entries.is_empty() {
-        overlap.selected_entries.clone()
+        production_selected.clone()
     } else {
         explicit_entries.to_vec()
     };
+    let pre_cap_len = selected_entries.len();
     if let Some(cap) = max_entries {
         selected_entries.truncate(cap);
     }
-    let max_entries_applied = max_entries.filter(|cap| *cap < overlap.selected_entries.len());
+    let max_entries_applied = max_entries.filter(|cap| *cap < pre_cap_len);
 
     if selected_entries.is_empty() {
         return Err(
             "repeated typecheck attribution: zero entries to measure (fail-closed)".to_string(),
         );
     }
+
+    let (sum_closure_memberships, union_modules, fanout_by_module) =
+        if selected_entries == production_selected {
+            (
+                overlap.sum_closure_memberships,
+                overlap.union_modules,
+                overlap.fanout_by_module.clone(),
+            )
+        } else {
+            let membership_index = process_shared_index(source_roots);
+            closure_overlap_membership_for_entries(&membership_index, &selected_entries)?
+        };
 
     let index = build_multi_entry_index(source_roots);
     arm_repeated_typecheck_attribution_probe();

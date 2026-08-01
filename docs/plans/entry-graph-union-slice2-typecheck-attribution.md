@@ -2,6 +2,8 @@
 
 **Status:** measurement instrument landed 2026-08-01 (PR #7533). **DESIGN.md + slice 1 remain the authority** — this is a dated receipt scaffold, not a floor fact ledger. Dissolves with `cli_run_repeated_typecheck_attribution_probe` when the slice-2 union verdict is taken.
 
+**ROADMAP:** `gunbc.roadmap_authority` id `entry-graph-union-construction` (lane `ci-cost`, slice 2 of the same row as slice 1).
+
 **Lane:** `ci-cost` · **Subject:** `entry-graph-union-slice2-typecheck-attribution` · **Deliverable:** measurement only. No union implementation.
 
 **Predecessor:** [entry-graph-union slice 1](entry-graph-union-slice1-measurement.md) (#7483).
