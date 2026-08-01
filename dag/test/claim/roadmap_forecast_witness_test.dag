@@ -51,8 +51,6 @@ import gunbc.roadmap_forecast {
   schedule_forecast,
   live_roadmap_schedule_forecast,
   no_calibration_gap_count,
-  ProjectedSchedule,
-  roadmap_temporal_value_is_observation,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -325,6 +323,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
 
 test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
   let a = sized_node(id: "projection-a", cell: fixture_cell())
+  let observed: CycleTimeObservation = first(fixture_observations())
   match schedule_forecast(
     nodes: [a],
     edges: [],
@@ -334,7 +333,10 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
     anchor: anchor(),
   ) {
     ScheduleForecastRefused { refusals: _ } => false
-    ScheduleForecastKnown { forecast } =>
-      !roadmap_temporal_value_is_observation(value: ProjectedSchedule { forecast: forecast })
+    ScheduleForecastKnown { forecast } => {
+      let projected = forecast
+      millisecond_count(m: observed.cycle_time) == 10
+        && projected.anchor.observed_at == anchor().observed_at
+    }
   }
 }

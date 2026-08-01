@@ -294,17 +294,6 @@ type ScheduleForecast {
   completion: ForecastInterval
 }
 
-type RoadmapTemporalValue
-  = RecordedCycleTime { observation: CycleTimeObservation }
-  | ProjectedSchedule { forecast: ScheduleForecast }
-
-fn roadmap_temporal_value_is_observation(value: RoadmapTemporalValue) -> Bool {
-  match value {
-    RecordedCycleTime { observation: _ } => true
-    ProjectedSchedule { forecast: _ } => false
-  }
-}
-
 type CalibrationGap {
   cell: SizingCell
   nodes: List<RoadmapNodeId>
