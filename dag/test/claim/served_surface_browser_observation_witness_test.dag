@@ -31,9 +31,6 @@ import gunbc.served_surface_browser_observation {
   NavigationReturnedHttpResponse,
   ChromiumInternalPresentedDocument,
   NetworkResponsePresentedDocument,
-  ConnectionRefusedExactCoverage,
-  EmptyBody502ExactCoverage,
-  SentinelBody502ExactCoverage,
   ExplicitReload,
   HealthyResponseDocumentObserved,
   PlaywrightDefaultChromiumLaunch,
@@ -42,6 +39,9 @@ import gunbc.served_surface_browser_observation {
   LinuxKernelRelease,
   playwright_chromium_151_linux_arm64_headless_navigation_run,
   local_http_url,
+  connection_refused_presentation,
+  empty_body_502_presentation,
+  sentinel_body_502_presentation,
 }
 
 test fn witness_run_owns_one_execution_identity() -> Bool {
@@ -65,13 +65,13 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
 
 test fn witness_connection_refusal_is_exact_specimen() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
-  observation.exact_coverage == ConnectionRefusedExactCoverage
-    && match observation.stimulus {
-      TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == LocalSyntheticHarness
-      _ => false
-    }
-    && observation.navigation == ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
-    && observation.document == ChromiumInternalPresentedDocument {
+  let presentation = connection_refused_presentation(specimen: observation)
+  match presentation.stimulus {
+    TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == LocalSyntheticHarness
+    _ => false
+  }
+    && presentation.navigation == ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
+    && presentation.document == ChromiumInternalPresentedDocument {
       document: ChromiumWebDataErrorDocument,
       final_url: ChromiumWebDataErrorUrl,
     }
@@ -79,20 +79,20 @@ test fn witness_connection_refusal_is_exact_specimen() -> Bool {
 
 test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.empty_502
-  observation.exact_coverage == EmptyBody502ExactCoverage
-    && match observation.stimulus {
-      HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
-        origin == LocalSyntheticHarness
-          && status == 502
-          && configured_headers == [
-            ContentLengthHeader { bytes: byte_size(0) },
-            Empty502SpecimenHeader,
-          ]
-          && body == EmptyNavigationResponseBody
-      _ => false
-    }
-    && observation.navigation == ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
-    && observation.document == ChromiumInternalPresentedDocument {
+  let presentation = empty_body_502_presentation(specimen: observation)
+  match presentation.stimulus {
+    HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
+      origin == LocalSyntheticHarness
+        && status == 502
+        && configured_headers == [
+          ContentLengthHeader { bytes: byte_size(0) },
+          Empty502SpecimenHeader,
+        ]
+        && body == EmptyNavigationResponseBody
+    _ => false
+  }
+    && presentation.navigation == ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
+    && presentation.document == ChromiumInternalPresentedDocument {
       document: ChromiumWebDataErrorDocument,
       final_url: ChromiumWebDataErrorUrl,
     }
@@ -100,24 +100,24 @@ test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
 
 test fn witness_bodied_502_retains_network_document() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.sentinel_502
-  observation.exact_coverage == SentinelBody502ExactCoverage
-    && match observation.stimulus {
-      HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
-        origin == LocalSyntheticHarness
-          && status == 502
-          && configured_headers == [
-            ContentLengthHeader { bytes: byte_size(26) },
-            TextPlainUtf8ContentTypeHeader,
-            Sentinel502SpecimenHeader,
-          ]
-          && body == Utf8NavigationResponseBody {
-            text: "GUNBC_TYPED_ERROR_SENTINEL",
-            bytes: byte_size(26),
-          }
-      _ => false
-    }
-    && observation.navigation == NavigationReturnedHttpResponse { status: 502 }
-    && observation.document == NetworkResponsePresentedDocument {
+  let presentation = sentinel_body_502_presentation(specimen: observation)
+  match presentation.stimulus {
+    HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
+      origin == LocalSyntheticHarness
+        && status == 502
+        && configured_headers == [
+          ContentLengthHeader { bytes: byte_size(26) },
+          TextPlainUtf8ContentTypeHeader,
+          Sentinel502SpecimenHeader,
+        ]
+        && body == Utf8NavigationResponseBody {
+          text: "GUNBC_TYPED_ERROR_SENTINEL",
+          bytes: byte_size(26),
+        }
+    _ => false
+  }
+    && presentation.navigation == NavigationReturnedHttpResponse { status: 502 }
+    && presentation.document == NetworkResponsePresentedDocument {
       final_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
     }
 }
