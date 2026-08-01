@@ -95,6 +95,8 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag"),
   public_file_publish_grant(path: "dag/gunbc/v1_interpreter_primitive_surface.dag"),
   public_file_publish_grant(path: "dag/test/claim/v1_interpreter_primitive_surface_witness_test.dag"),
+  public_file_publish_grant(path: "dag/extdeps/languages/lean/overflow.dag"),
+  public_file_publish_grant(path: "src/v2/test/claim/lean_overflow_semantics_witness_test.dag"),
 ]
 
 data post_cutover_race_repair_note: String = "Repair row block (2026-08-01): these eleven paths (eight CI-heal/workflow paths, three source-integration proof-kernel paths from PR 7563) merged to main from branches cut BEFORE the placement gate landed (#7560), so main itself carried post-cutover Added paths with no publication decision and the gate refused every subsequent PR merge ref. Each is public CI/heal/workflow machinery; Publish World is the deliberate decision for all eleven. The race class dissolves when the placement gate becomes a required branch-protection check: a merge ref must then stamp its own added files before merging, so main can never re-enter this state."
