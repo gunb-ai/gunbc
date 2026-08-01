@@ -1,0 +1,22 @@
+module tc_probe
+
+import std.types { String, Bool, List }
+
+type Row {
+  path: String
+  other: String
+}
+
+fn with_trailing_comma(
+  rows: List<Row>,
+  path: String,
+) -> List<Row> {
+  filter(rows, r => r.path == path)
+}
+
+fn without_trailing_comma(
+  rows: List<Row>,
+  path: String
+) -> List<Row> {
+  filter(rows, r => r.path == path)
+}
