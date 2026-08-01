@@ -22,7 +22,7 @@ import extdeps.git { AdvertisedRef }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_scope_note: String = "Every arm of the remote-branch observation is claimed here with no remote and no credentials, which is possible only because the deciding function takes the four values the transport returns rather than calling it. What is NOT claimed, stated so the bound is visible: nothing here runs git.Core.LsRemoteHeads. A change that broke the transport while leaving remote_branch_observation_of intact would keep these green - the shim that calls it has no branches of its own, which is what makes that residue small enough to state rather than large enough to hide in."
+data witness_scope_note: String = "Every arm of the remote-branch observation is claimed here with no remote and no credentials, which is possible only because the deciding function takes the three values the transport returns rather than calling it. What is NOT claimed, stated so the bound is visible: nothing here runs git.Core.LsRemoteHeads. A change that broke the transport while leaving remote_branch_observation_of intact would keep these green - the shim that calls it has no branches of its own, which is what makes that residue small enough to state rather than large enough to hide in."
 
 data fixture_sha_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -38,7 +38,6 @@ fn origin() -> NonEmptyStr { "origin" as NonEmptyStr }
 fn read_ok(advertised: List<String>) -> RemoteBranchObservation {
   remote_branch_observation_of(
     remote: origin(),
-    success: true,
     exit_code: 0,
     stderr: "",
     advertised: advertised,
@@ -77,7 +76,6 @@ data transport_refusal_note: String = "The claim that motivates the whole slice.
 test fn a_failed_ref_advertisement_refuses_rather_than_reading_empty() -> Bool {
   let o = remote_branch_observation_of(
     remote: origin(),
-    success: false,
     exit_code: 128,
     stderr: "fatal: repository not found",
     advertised: [],
