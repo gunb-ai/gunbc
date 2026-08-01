@@ -6,7 +6,12 @@ import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
-import gunbc.roadmap_publish { PublicationSubjectUnobserved }
+import gunbc.roadmap_publish {
+  PublicationSubject,
+  PublicationSubjectObserved,
+}
+import extdeps.github.github { Repository }
+import std.types { CommitSha }
 import gunbc.roadmap_workflow_stage {
   workflow_segment_kind_key,
   workflow_segment_state_key,
@@ -665,8 +670,21 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: receipt != "",
     validation_receipt: receipt,
-    publication_subject: PublicationSubjectUnobserved {
-      reason: "publication is not the subject of these claims and this fixture establishes no head",
+    publication_subject: PublicationSubjectObserved {
+      subject: PublicationSubject {
+        node_id: "pub-fixture-node",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/pub-fixture-node-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
     },
     publication_receipt_readable: false,
     publication_receipt: "",

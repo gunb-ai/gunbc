@@ -1,7 +1,7 @@
 module gunbc.roadmap_publish_observe
 
-import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, Secret }
-import std.credentials { CredentialSource, EnvVar }
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
+import std.credentials { CredentialSource }
 import extdeps.git
 import extdeps.git {
   AdvertisedRef,

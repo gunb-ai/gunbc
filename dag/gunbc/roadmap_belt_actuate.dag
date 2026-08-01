@@ -3215,3 +3215,119 @@ fn belt_publish_attempts() -> List<BeltPublishOutcome> {
     instance: srv1_live_dashboard_instance(),
   )
 }
+
+data belt_publish_node_note: String = "THE PRODUCER NEEDS A LIVE TRIGGER, AND belt_tick IS NOT ONE. belt_tick is the belt's actuation pass and nothing calls it - not the serve routes, not a timer, not the CLI. That is a pre-existing gap it shares with the verification pass, which is wired into the same tick and is equally undriven; this lane did not create it and does not close it.\\n\\nWhat it does mean is that wiring publication into belt_tick alone would leave the receipt unproduced in production, which is the exact defect the recut exists to fix, one layer further out. So publication also gets a per-node entry the serve table can reach, mirroring belt_dispatch_node_for_instance: an operator presses it, the receipt is written, and the next read of the row paints from it.\\n\\nIT RESOLVES THE ATTEMPT ITSELF rather than taking one, because the caller is a route holding only a node id. The current attempt pointer is the same authority the workflow projection reads, so both are answering about the same attempt by construction rather than by the caller passing a matching key.\\n\\nOBSERVE-ONLY INSTANCES REFUSE, like dispatch. Publication performs a network read and a filesystem write against an instance's own attempt state, so an instance declared observe-only must not perform either - and the refusal names the posture rather than reporting an absence."
+
+fn belt_publish_node_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> BeltPublishOutcome {
+  match instance.actuation {
+    DashboardObserveOnly =>
+      PublishDeferred {
+        node_id: node_id,
+        reason: join([
+          "dashboard instance ",
+          instance.instance_id as String,
+          " is observe-only, so publication was neither observed nor recorded",
+        ], ""),
+      }
+    DashboardActuating => {
+      let key_read = Filesystem.Read(
+        path: dispatch_current_attempt_key_path_for_instance(
+          instance: instance,
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        ),
+      )
+      if !key_read.success || trim(key_read.content) == "" {
+        PublishDeferred {
+          node_id: node_id,
+          reason: "this node has no current attempt, so there is no branch or head for publication to be about",
+        }
+      } else {
+        belt_publish_attempt_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: trim(key_read.content),
+          credential: belt_publication_credential(),
+        )
+      }
+    }
+  }
+}
+
+data belt_publish_outcome_wire_note: String = "THE WIRE CARRIES THE OUTCOME KEY THE RECEIPT RECORDED, not a rendering of it. A caller that pressed publish wants to know which judgment was reached, and re-deriving that from a sentence is the prose-parsing move the receipt format itself was rewritten to remove. The detail is beside it for a human, never instead of it.\\n\\nTHE STATUS CODES SPLIT ON WHO HAS TO ACT. A recorded judgment and an already-recorded one are both 200, because the belt did what was asked and the row is now accurate either way. A deferral is 409 - the request was well formed and the attempt is not in a state where publication means anything yet. Unreadable evidence and a failed write are 500, because they are the belt's own problem and nothing about the request would change them."
+
+fn belt_publish_outcome_key(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => "recorded"
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => "already-recorded"
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => "evidence-unreadable"
+    PublishWriteFailed { node_id: _, detail: _ } => "write-failed"
+    PublishDeferred { node_id: _, reason: _ } => "deferred"
+  }
+}
+
+fn belt_publish_outcome_node_id(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id, head_sha: _, outcome_key: _ } => node_id
+    PublishAlreadyRecorded { node_id, head_sha: _ } => node_id
+    PublishEvidenceUnreadable { node_id, detail: _ } => node_id
+    PublishWriteFailed { node_id, detail: _ } => node_id
+    PublishDeferred { node_id, reason: _ } => node_id
+  }
+}
+
+fn belt_publish_outcome_head_sha(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha, outcome_key: _ } => head_sha
+    PublishAlreadyRecorded { node_id: _, head_sha } => head_sha
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => ""
+    PublishWriteFailed { node_id: _, detail: _ } => ""
+    PublishDeferred { node_id: _, reason: _ } => ""
+  }
+}
+
+fn belt_publish_outcome_publication_key(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key } => outcome_key
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => ""
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => ""
+    PublishWriteFailed { node_id: _, detail: _ } => ""
+    PublishDeferred { node_id: _, reason: _ } => ""
+  }
+}
+
+fn belt_publish_outcome_detail(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => ""
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => ""
+    PublishEvidenceUnreadable { node_id: _, detail } => detail
+    PublishWriteFailed { node_id: _, detail } => detail
+    PublishDeferred { node_id: _, reason } => reason
+  }
+}
+
+fn belt_publish_outcome_http_status(o: BeltPublishOutcome) -> Int {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => 200
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => 200
+    PublishDeferred { node_id: _, reason: _ } => 409
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => 500
+    PublishWriteFailed { node_id: _, detail: _ } => 500
+  }
+}
+
+fn belt_publish_outcome_json_value(o: BeltPublishOutcome) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-belt-publish/v1")),
+    json_kv(key: "outcome", value: json_string(s: belt_publish_outcome_key(o: o))),
+    json_kv(key: "node_id", value: json_string(s: belt_publish_outcome_node_id(o: o))),
+    json_kv(key: "head_sha", value: json_string(s: belt_publish_outcome_head_sha(o: o))),
+    json_kv(
+      key: "publication",
+      value: json_string(s: belt_publish_outcome_publication_key(o: o)),
+    ),
+    json_kv(key: "detail", value: json_string(s: belt_publish_outcome_detail(o: o))),
+  ])
+}

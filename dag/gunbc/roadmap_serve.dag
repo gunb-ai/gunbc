@@ -64,6 +64,10 @@ import gunbc.roadmap_belt_actuate {
   belt_workflow_attempts_http_status,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
+  BeltPublishOutcome,
+  belt_publish_node_for_instance,
+  belt_publish_outcome_http_status,
+  belt_publish_outcome_json_value,
 }
 import gunbc.roadmap_dashboard_instance_apply { dashboard_provider_readiness_json }
 import gunbc.roadmap_dashboard_instance {
@@ -108,6 +112,7 @@ type RoadmapServeHandler
   | AttemptsJsonHandler
   | WorkflowJsonHandler
   | BeltStopHandler
+  | BeltPublishHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -138,6 +143,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
   ]
@@ -250,6 +256,29 @@ fn serve_dispatch_handler_response_for_instance(
   }
 }
 
+data serve_publish_note: String = "POST /publish/NODE_ID is the publication producer's live trigger, and it exists because belt_tick has none. Publication is wired into that actuation pass beside verification and nothing drives it, so without this route the receipt would never be written in production and the row's lamp could never move off pending - the same never-runs defect one layer out from the one this lane fixed.\\n\\nIT IS A POST BECAUSE IT WRITES. The workflow route reads and paints; this one observes two remote surfaces and persists a judgment, and putting that on the read path would make the browser poll the thing that queries GitHub - the split serve_workflow_note already draws for verification.\\n\\nTHE STATUS COMES FROM THE OUTCOME, not from whether the handler ran. A deferral is 409 and a belt-side failure is 500, so a caller can tell `the attempt is not ready` from `the belt could not do its job` without reading prose."
+
+fn serve_publish_handler_response_for_instance(
+  instance: HostDashboardInstance,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  if node_id == "" {
+    serve_text_response(
+      status: 400,
+      content_type: text_plain_utf8,
+      body: "publish requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+    )
+  } else {
+    let outcome = belt_publish_node_for_instance(instance: instance, node_id: node_id)
+    serve_text_response(
+      status: belt_publish_outcome_http_status(o: outcome),
+      content_type: application_json_utf8,
+      body: serialize_json(v: belt_publish_outcome_json_value(o: outcome)),
+    )
+  }
+}
+
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
     instance: srv1_live_dashboard_instance(),
@@ -355,6 +384,7 @@ fn roadmap_serve_invoke_for_instance(
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
+    BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
   }
 }
 

@@ -83,8 +83,21 @@ fn fixture_evidence(
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: false,
     validation_receipt: "",
-    publication_subject: PublicationSubjectUnobserved {
-      reason: "this fixture establishes no head; publication is not the subject of these claims",
+    publication_subject: PublicationSubjectObserved {
+      subject: PublicationSubject {
+        node_id: "node-1",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
     },
     publication_receipt_readable: false,
     publication_receipt: "",
@@ -384,8 +397,21 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     validation_summary: "",
     validation_receipt_readable: false,
     validation_receipt: "",
-    publication_subject: PublicationSubjectUnobserved {
-      reason: "this fixture establishes no head; publication is not the subject of these claims",
+    publication_subject: PublicationSubjectObserved {
+      subject: PublicationSubject {
+        node_id: "node-1",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
     },
     publication_receipt_readable: false,
     publication_receipt: "",

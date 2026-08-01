@@ -7,6 +7,7 @@ import gunbc.roadmap_serve {
   BeltDispatchHandler, DispatchAssetHandler,
   SandboxPageHandler, SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
+  BeltPublishHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -72,6 +73,7 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
+    && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
