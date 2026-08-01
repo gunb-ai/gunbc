@@ -7803,8 +7803,8 @@ fn dispatch_rest(
             let mapped = if response_format == "Text" {
                 map_response_to_value(&body, None, op_node, ctx)?
             } else {
-                let json: serde_json::Value = serde_json::from_str(&body)
-                    .unwrap_or_else(|_| serde_json::Value::String(body));
+                let json: serde_json::Value =
+                    serde_json::from_str(&body).unwrap_or_else(|_| serde_json::Value::String(body));
                 map_response_to_value_json(&json, op_node, ctx)?
             };
             match outcome_field.as_deref() {

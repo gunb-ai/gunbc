@@ -443,6 +443,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_bin_wet_dissolve
   },
   WitnessExclusionRow {
+    pattern: "rest_outcome_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_bin_wet_reason,
+    dissolve_on: excl_bin_wet_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "test/claim/bootstrap_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
@@ -822,6 +828,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_executor_verify_build_artifacts_red_control_holds"),
   bin_wet(entry: "dag/test/claim/v1_dag_parse_witness_test.dag", f: "v1_dag_parse_witnesses"),
   bin_wet(entry: "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag", f: "auth_declared_but_unwired_witness_keystone_holds"),
+  bin_wet(entry: "src/v2/test/claim/rest_outcome_witness_test.dag", f: "rest_outcome_dispatch_witness_holds"),
   bin_wet(entry: "src/v2/test/claim/bootstrap_test.dag", f: "bootstrap_witness_keystone_holds"),
   bin_wet(entry: "src/v2/test/claim/infer_semantics_witness_test.dag", f: "infer_semantics_witness_keystone_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_partition_boundary_matches_compile_clean_source_roots"),

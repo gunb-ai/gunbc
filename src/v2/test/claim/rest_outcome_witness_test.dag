@@ -1,0 +1,7 @@
+module v2.test.claim.rest_outcome_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn rest_outcome_dispatch_witness_holds() -> Bool {
+  run_rest_outcome_witness()
+}
