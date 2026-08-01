@@ -146,6 +146,10 @@ fn landing_blocker_location(
   }
 }
 
+fn landing_blocker_singleton(blocker: LandingBlocker) -> List<LandingBlocker> {
+  [blocker]
+}
+
 fn landing_approval_requirement_blockers(
   pr: LandingPullRequestProjection,
   criteria: DashboardMergeCriteriaSnapshot,
@@ -156,18 +160,18 @@ fn landing_approval_requirement_blockers(
     requirement: DashboardApprovalsRequirement,
   )
   let approval = if criteria.approval_count == 0 && criteria.stale_provider_count == 0 {
-    [AwaitingFirstReview { at: at, required: criteria.required_approval_count } as LandingBlocker]
+    landing_blocker_singleton(blocker: AwaitingFirstReview { at: at, required: criteria.required_approval_count })
   } else {
-    [AwaitingApprovals {
+    landing_blocker_singleton(blocker: AwaitingApprovals {
       at: at,
       actual: criteria.approval_count,
       required: criteria.required_approval_count,
-    } as LandingBlocker]
+    })
   }
   append(
     approval,
-    items: map(criteria.stale_providers, provider =>
-      StaleApprovalReReviewPending { at: at, provider: provider } as LandingBlocker),
+    items: flat_map(criteria.stale_providers, provider =>
+      landing_blocker_singleton(blocker: StaleApprovalReReviewPending { at: at, provider: provider })),
   )
 }
 
@@ -181,10 +185,10 @@ fn landing_request_changes_blockers(
     requirement: DashboardRequestChangesRequirement,
   )
   if count(criteria.request_change_providers) == 0 {
-    [RequestChangesUnattributed { at: at, count: criteria.request_changes_count } as LandingBlocker]
+    landing_blocker_singleton(blocker: RequestChangesUnattributed { at: at, count: criteria.request_changes_count })
   } else {
-    map(criteria.request_change_providers, provider =>
-      RequestChangesBy { at: at, provider: provider } as LandingBlocker)
+    flat_map(criteria.request_change_providers, provider =>
+      landing_blocker_singleton(blocker: RequestChangesBy { at: at, provider: provider }))
   }
 }
 
@@ -207,24 +211,24 @@ fn landing_failed_requirement_blockers(
       DashboardRequestChangesRequirement =>
         landing_request_changes_blockers(pr: pr, criteria: criteria)
       DashboardActiveReviewsRequirement =>
-        [ActiveReviewOnCurrentHead { at: at, count: criteria.active_review_count } as LandingBlocker]
+        landing_blocker_singleton(blocker: ActiveReviewOnCurrentHead { at: at, count: criteria.active_review_count })
       DashboardOpenRequirement =>
-        [PullRequestNotOpen { at: at, lifecycle: criteria.lifecycle } as LandingBlocker]
-      DashboardDraftRequirement => [DraftPullRequest { at: at } as LandingBlocker]
+        landing_blocker_singleton(blocker: PullRequestNotOpen { at: at, lifecycle: criteria.lifecycle })
+      DashboardDraftRequirement => landing_blocker_singleton(blocker: DraftPullRequest { at: at })
       DashboardMergeableRequirement =>
         if criteria.mergeable == "CONFLICTING" || criteria.mergeable == "DIRTY" {
-          [MergeConflict { at: at, mergeable: criteria.mergeable } as LandingBlocker]
+          landing_blocker_singleton(blocker: MergeConflict { at: at, mergeable: criteria.mergeable })
         } else {
-          [MergeabilityUnknown { at: at, mergeable: criteria.mergeable } as LandingBlocker]
+          landing_blocker_singleton(blocker: MergeabilityUnknown { at: at, mergeable: criteria.mergeable })
         }
       DashboardChecksRequirement =>
         if criteria.checks_state == "pending" || criteria.checks_state == "queued" || criteria.checks_state == "in_progress" {
-          [ChecksPending { at: at, detail: requirement.actual } as LandingBlocker]
+          landing_blocker_singleton(blocker: ChecksPending { at: at, detail: requirement.actual })
         } else {
-          [ChecksFailing { at: at, state: criteria.checks_state, detail: requirement.actual } as LandingBlocker]
+          landing_blocker_singleton(blocker: ChecksFailing { at: at, state: criteria.checks_state, detail: requirement.actual })
         }
       DashboardUnclassifiedRequirement { key: _ } =>
-        [RequirementBlockedUnclassified { at: at, actual: requirement.actual } as LandingBlocker]
+        landing_blocker_singleton(blocker: RequirementBlockedUnclassified { at: at, actual: requirement.actual })
     }
   }
 }
