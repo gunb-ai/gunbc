@@ -1,0 +1,168 @@
+module test.claim.build_cache_placement_observation
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data placement_observation_witness_doc: String = "The step-1 controls for the endpoint-owner observer, at the MODEL grain. Every fixture below is synthetic; the live counterparts were captured read-only against srv1, srv2 and srv3 on 2026-08-01 and are recorded in docs/plans/build-cache-placement-receipt.md. The controls that can only be executed against a real host — that --show-stats does not manufacture a server, that a compile does, and that two consecutive observations do not perturb the subject — are live receipts rather than witnesses here, because a hermetic fixture cannot falsify them."
+
+fn srv1_ci_instance_fixture() -> BuildCacheInstance {
+  ci_cache_instance(host: "srv1")
+}
+
+fn owner_fixture() -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    pid: 3975946,
+    start_time: "79870020" as NonEmptyStr,
+  }
+}
+
+fn observed_in_slot(slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle) -> BuildCacheEndpointObservation {
+  EndpointOwnerObserved {
+    instance: srv1_ci_instance_fixture(),
+    owner: owner_fixture(),
+    executable: "/usr/local/bin/sccache" as NonEmptyStr,
+    principal: "ghrunner" as NonEmptyStr,
+    cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as NonEmptyStr,
+    unit: "actions-runner@srv1-10.service" as NonEmptyStr,
+    owning_runner_slot: Present { value: slot },
+    runner_slot_lifecycle: Present { value: lifecycle },
+    memory_limits: none,
+    memory_events: none,
+  }
+}
+
+fn observed_owned_by_unit(unit: NonEmptyStr) -> BuildCacheEndpointObservation {
+  EndpointOwnerObserved {
+    instance: srv1_ci_instance_fixture(),
+    owner: owner_fixture(),
+    executable: "/usr/local/bin/sccache" as NonEmptyStr,
+    principal: "ghrunner" as NonEmptyStr,
+    cgroup: "/system.slice/some.service" as NonEmptyStr,
+    unit: unit,
+    owning_runner_slot: none,
+    runner_slot_lifecycle: none,
+    memory_limits: none,
+    memory_events: none,
+  }
+}
+
+test fn witness_retired_slot_owner_is_runner_owned_and_retired() -> Bool {
+  match placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)) {
+    ServerRunnerOwned { slot: s, lifecycle: lc } =>
+      match lc {
+        RetiredRunnerSlot => s.slot_index == 10
+        DesiredRunnerSlot => false
+      }
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}
+
+test fn witness_active_slot_owner_also_refuses() -> Bool {
+  match placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)) {
+    ServerRunnerOwned { slot: _, lifecycle: lc } =>
+      match lc {
+        DesiredRunnerSlot => true
+        RetiredRunnerSlot => false
+      }
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}
+
+test fn witness_both_runner_lifecycles_refuse_at_the_verdict() -> Bool {
+  refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)))
+    && refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)))
+}
+
+fn refuses(placement: BuildCacheServerPlacement) -> Bool {
+  match placement_verdict(catalog_id: sccache_local_id, stats_line: "stats", placement: placement) {
+    ProvisionRefused { cause: _, reason: _ } => true
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+test fn witness_managed_unit_owner_converges_only_on_the_intended_unit() -> Bool {
+  let intended = srv1_ci_instance_fixture().intended_unit
+  let good = match placement_of_endpoint_observation(observed: observed_owned_by_unit(unit: intended)) {
+    ServerManagedUnitOwned { unit: _ } => true
+    ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+  let wrong = match placement_of_endpoint_observation(observed: observed_owned_by_unit(unit: "some-other.service" as NonEmptyStr)) {
+    ServerUnsupervised { cgroup: _ } => true
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+  good && wrong
+}
+
+test fn witness_absent_endpoint_is_absent_not_unknown() -> Bool {
+  match placement_of_endpoint_observation(observed: EndpointAbsent { instance: srv1_ci_instance_fixture() }) {
+    ServerPlacementAbsent => true
+    ServerPlacementUnknown { detail: _ } => false
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+  }
+}
+
+test fn witness_ambiguous_ownership_refuses() -> Bool {
+  let p = placement_of_endpoint_observation(
+    observed: EndpointOwnershipAmbiguous { instance: srv1_ci_instance_fixture(), candidate_count: 2 },
+  )
+  match p {
+    ServerPlacementUnknown { detail: _ } => refuses(placement: p)
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+  }
+}
+
+data unreachable_is_not_absent_doc: String = "THE srv4 CONTROL, and the one most likely to be got wrong by a sweep that reports per-host health. A host that could not be reached has NOT been observed to have no server; recording it as EndpointAbsent would be the absorbing fallback (DESIGN section 5) — ignorance rendered as an answer. srv4 was genuinely unreachable when the 2026-08-01 receipt was taken (ssh to 192.168.1.196 returned 'Permission denied (publickey)' from the srv2 jump host), so it is carried as EndpointObservationUnavailable { ReachRefused }, which derives ServerPlacementUnknown and REFUSES — distinct from ServerPlacementAbsent, which is a positive finding that the endpoint has no listener."
+
+test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
+  let p = placement_of_endpoint_observation(
+    observed: EndpointObservationUnavailable {
+      instance: srv1_ci_instance_fixture(),
+      reason: ReachRefused { detail: "ssh 192.168.1.196: Permission denied (publickey)" as NonEmptyStr },
+    },
+  )
+  match p {
+    ServerPlacementUnknown { detail: _ } => refuses(placement: p)
+    ServerPlacementAbsent => false
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+  }
+}
+
+data client_false_positive_doc: String = "THE CLIENT FALSE-POSITIVE CONTROL, expressed as a construction property rather than a fixture count. A name-based probe would have to take 'how many processes are called sccache' as an input; this model has no such input anywhere — BuildCacheEndpointObservation is indexed by the ENDPOINT, and its ambiguity arm counts candidate ENDPOINT OWNERS, not same-named processes. So the srv1 reality at receipt time (four ghrunner sccache processes: one endpoint owner plus three transient clients under live slots 01/04/05) classifies from the owner alone and the three clients cannot perturb it. A probe that refused on 'multiple sccache processes' would have produced a FALSE refusal on all three hosts simultaneously."
+
+test fn witness_placement_is_indexed_by_owner_not_by_process_count() -> Bool {
+  let a = placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
+  let b = placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
+  match a {
+    ServerRunnerOwned { slot: sa, lifecycle: _ } =>
+      match b {
+        ServerRunnerOwned { slot: sb, lifecycle: _ } => sa.slot_index == sb.slot_index
+        ServerManagedUnitOwned { unit: _ } => false
+        ServerUnsupervised { cgroup: _ } => false
+        ServerPlacementAbsent => false
+        ServerPlacementUnknown { detail: _ } => false
+      }
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}

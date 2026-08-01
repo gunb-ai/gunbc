@@ -6,7 +6,9 @@ import std.measure { ByteSize }
 import std.cache_identity { CacheInterfaceId }
 import std.disposition { Disposition, SingleAuthority }
 import product.placement_supply { HostIdentity }
-import extdeps.cache.sccache { SccacheServerEndpoint }
+import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, sccache_local_id }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 
 data build_cache_instance_scope_disposition: Disposition = SingleAuthority
 
@@ -172,3 +174,47 @@ fn unavailable_reason_detail(reason: EndpointObservationUnavailableReason) -> No
       concat("the endpoint path could not be read, so listener ownership is unresolved: ", d as String) as NonEmptyStr
   }
 }
+
+data build_cache_desired_instances_note: String = "THE DESIRED DEPLOYED INSTANCES, one row per (host, consumer class). These state INTENT and are deliberately not a description of the live hosts: the whole point of the observer is that intent and observation are different things and their difference is refusable. As of the 2026-08-01 receipt NO host satisfies intended_unit for its CI instance — on srv1, srv2 and srv3 alike the CI endpoint is owned by a runner-slot process, never by a managed unit — so every row below currently refuses, which is the correct and intended reading rather than a defect in the rows. intended_capacity is left Absent for CI on purpose: the live 10 GiB is sccache's built-in default rather than a chosen number, and choosing it is explicitly a later increment, so declaring one here would fabricate a decision nobody has made. The session instances carry the 50G the ctrl unit actually sets."
+
+fn ci_cache_instance(host: HostIdentity) -> BuildCacheInstance {
+  BuildCacheInstance {
+    identity: BuildCacheInstanceId {
+      host: host,
+      consumer_class: ContinuousIntegrationCompiles,
+      instance_name: "sccache-ci" as NonEmptyStr,
+    },
+    implementation: sccache_local_id,
+    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache-ci/server.sock" as NonEmptyStr },
+    intended_unit: "gunbc-build-cache-ci.service" as NonEmptyStr,
+    intended_principal: "ghrunner" as NonEmptyStr,
+    intended_storage: "/var/lib/ctrl/sccache-ci" as NonEmptyStr,
+    intended_capacity: none,
+    intended_compile_pool: gunbc_managed_compile_pool_slice,
+  }
+}
+
+fn session_cache_instance(host: HostIdentity) -> BuildCacheInstance {
+  BuildCacheInstance {
+    identity: BuildCacheInstanceId {
+      host: host,
+      consumer_class: InteractiveSessionCompiles,
+      instance_name: "sccache-session" as NonEmptyStr,
+    },
+    implementation: sccache_local_id,
+    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache/server.sock" as NonEmptyStr },
+    intended_unit: "gunbc-build-cache-session.service" as NonEmptyStr,
+    intended_principal: "briansrls" as NonEmptyStr,
+    intended_storage: "/var/lib/ctrl/sccache" as NonEmptyStr,
+    intended_capacity: none,
+    intended_compile_pool: gunbc_managed_compile_pool_slice,
+  }
+}
+
+data build_cache_desired_instances: List<BuildCacheInstance> = [
+  ci_cache_instance(host: operator_host_srv1),
+  session_cache_instance(host: operator_host_srv1),
+  ci_cache_instance(host: operator_host_srv2),
+  session_cache_instance(host: operator_host_srv2),
+  ci_cache_instance(host: operator_host_srv3),
+]

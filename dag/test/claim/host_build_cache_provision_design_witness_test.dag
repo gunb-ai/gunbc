@@ -28,7 +28,7 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
     catalog_id: gha_actions_cache_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=1",
-      placement: ServerUnitOwned { slice_unit: managed_compile_pool_slice_fixture },
+      placement: ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
     ProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
@@ -78,7 +78,7 @@ test fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerUnitOwned { slice_unit: managed_compile_pool_slice_fixture },
+      placement: ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
     ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
@@ -103,7 +103,7 @@ fn witness_widen_sketch_fabricates_converged_on_lazy_spawned() -> Bool {
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+      placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
     },
   ) {
     ProvisionConverged { catalog_id: _, stats_line: _ } => true
@@ -118,12 +118,12 @@ test fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool {
         catalog_id: sccache_local_id,
         observed: DaemonStatsOk {
           stats_line: "compile_requests=42",
-          placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+          placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
         },
       ),
       observed: DaemonStatsOk {
         stats_line: "compile_requests=42",
-        placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+        placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
       },
     )
     && build_cache_provision_gate_accepts(
@@ -131,12 +131,12 @@ test fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool {
         catalog_id: sccache_local_id,
         observed: DaemonStatsOk {
           stats_line: "compile_requests=42",
-          placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+          placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
         },
       ),
       observed: DaemonStatsOk {
         stats_line: "compile_requests=42",
-        placement: ServerLazySpawned { observed_cgroup: srv1_stranded_server_cgroup_fixture },
+        placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
       },
     )
 }

@@ -213,10 +213,13 @@ type SccacheServerSpawn
   = ClientAutoSpawned
   | UnitStarted
 
+data sccache_stats_query_does_not_spawn_note: String = "MEASURED CORRECTION, 2026-08-01: `--show-stats` does NOT auto-start a server, and the widely-repeated claim that 'any sccache invocation auto-starts a server, so --show-stats manufactures the evidence it reports' is FALSE for sccache 0.15.0. Two controls on srv2, each with a PRIVATE cache dir AND a private endpoint so the falsifier could not touch production: with SCCACHE_SERVER_UDS the socket did not exist before or after the call; with a private SCCACHE_SERVER_PORT the listener count was 0 before and 0 after. In both the call returned rc=0 and printed a fully-formed table of ZEROES. A third control isolated what DOES spawn: one real compile (`sccache /usr/bin/gcc -c t.c`) through the same private port took the listener count 0 -> 1, and the new server inherited the INVOKING process's cgroup (observed: the caller's own session scope). THE DEFECT IS REAL BUT DIFFERENTLY SHAPED, and the difference changes the remedy's justification rather than the remedy: --show-stats answers plausibly WITHOUT a server existing at all, so a read-back that converges on it greens over a host with no durable daemon — a fabricated plausible output (DESIGN section 5), which is exactly what srv3 exhibited on 2026-07-25 (a full stats table while the unit had been inactive six hours). The observation there was right; the inference drawn from it — that the call had created a server — was wrong. Consequence for the observer: stats is supplemental data gathered AFTER ownership is independently established, never the thing that establishes it; and the auto-spawn wall belongs on the COMPILE path, which is where a client actually creates a server in its own cgroup."
+
 type SccacheServerProcessFacts {
   spawn: SccacheServerSpawn
   idle_timeout_zero_disables_shutdown: Bool
   compiles_execute_as_server_children: Bool
+  stats_query_spawns_server: Bool
   default_endpoint: SccacheServerEndpoint
   evidence: List<CacheEvidence>
 }
@@ -225,13 +228,21 @@ data sccache_server_process_facts: SccacheServerProcessFacts = {
   spawn: ClientAutoSpawned
   idle_timeout_zero_disables_shutdown: true
   compiles_execute_as_server_children: true
+  stats_query_spawns_server: false
   default_endpoint: SccacheServerTcpPort { port: sccache_server_default_tcp_port }
   evidence: [
     {
       field: "spawn"
-      evidence: VendorCitation {
-        source: "sccache client starts a server process if one is not already running"
-        url: "https://github.com/mozilla/sccache/blob/v0.15.0/README.md"
+      evidence: RunnerObserved {
+        receipt: "Private-endpoint control on srv2 (2026-08-01, sccache 0.15.0): with a private SCCACHE_DIR and a private SCCACHE_SERVER_PORT=48223, listeners on that port went 0 -> 1 across a single real compile `sccache /usr/bin/gcc -c t.c -o t.o`, and resolving the new listener's inode through /proc/*/fd showed the server had inherited the INVOKING shell's cgroup (/user.slice/user-1000.slice/session-9219.scope) rather than any managed unit. This is the birth mechanism behind runner-owned servers, reproduced deliberately instead of inferred from the runner hosts."
+        observed_at: "2026-08-01"
+      }
+    },
+    {
+      field: "stats_query_spawns_server"
+      evidence: RunnerObserved {
+        receipt: "Two private-endpoint controls on srv2 (2026-08-01, sccache 0.15.0). UDS form: SCCACHE_SERVER_UDS pointed at a fresh temp path; the socket did not exist before the call and did not exist after it; /proc/net/unix LISTEN entries for that path were 0 before and 0 after. TCP form: private SCCACHE_SERVER_PORT=48221; /proc/net/tcp listeners on that port were 0 before and 0 after. Both invocations returned rc=0 and printed a complete stats table reading all zeroes. So `--show-stats` reports plausibly with NO server in existence — it does not manufacture one. Refutes the prior in-tree claim that any sccache invocation auto-starts a server."
+        observed_at: "2026-08-01"
       }
     },
     {
