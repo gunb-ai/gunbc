@@ -1,0 +1,42 @@
+module test.claim.emitter_optional_payload_cast_witness_test
+
+data emitter_optional_payload_cast_witness_note: String = "Emission-level evidence for the v1 Rust emitter defect that blocks gunbc#7480 finding 3. A cast reaching an optional-variant payload -- `Present { value: <expr> as T }` -- is not lowered through the optional path: the emitter skips it and renders `Optional::T { value: .. }`, which is not a Rust constructor and fails to compile with E0433 (use of undeclared type `Optional`). The correct lowering is `Some(..)`. THREE poles, each holding one variable constant, establish the trigger by execution. (1) refined_return_without_cast: declares `-> Carrier?` over a where-refined carrier and passes a BARE payload -- lowers to `Some(..)` correctly, so a refined return type alone is harmless. (2) optional_payload_cast_deficit: declares an ordinary `-> String?` and casts INSIDE the payload -- still broken, so the cast alone is sufficient and the refined return is irrelevant. (3) hoisted_cast: moves the cast out to a `let` and passes the bound name -- STILL BROKEN. Pole 3 is the load-bearing one: it refutes the obvious workaround. Hoisting does not help, so NO respelling both constructs the carrier and lowers correctly, and the emitter repair is REQUIRED rather than optional -- a validating constructor cannot return its own carrier through an optional. An earlier draft of this file asserted the hoist WAS a working scaffold spelling; that claim was false and was refuted by executing it, before it reached any consumer. POLARITY: poles 2 and 3 are KNOWN-RED RECEIPTS, not conventional RED controls -- they assert the deficit is PRESENT, so they PASS while the emitter is broken and RED when it is repaired, which is the signal to rewrite all three poles. Recording the deficit as a typed, counted, executing fact rather than an unmarked silence is the DESIGN section 4b obligation (no untracked stall; the reported rung must equal the rung executed evidence establishes). NOTE the emitter arm is itself a section 5 fail-open: an unlowerable construct should be a located refusal at emit time, never invalid code fabricated into the output and discovered later by rustc. dissolve-on: feature:emitter-optional-payload-cast."
+
+fn w_refined_return_no_cast_lowers_to_some() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_refret\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> Carrier? {\n  if ok(v: text) {\n    Present { value: text }\n  } else {\n    none\n  }\n}\n",
+    "src/optc_refret.rs",
+    ["Some("],
+    ["Optional::"]
+  )
+}
+
+fn w_plain_return_with_cast_still_emits_optional_path() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_castplain\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> String? {\n  if ok(v: text) {\n    Present { value: text as Carrier }\n  } else {\n    none\n  }\n}\n",
+    "src/optc_castplain.rs",
+    ["Optional::"],
+    []
+  )
+}
+
+fn w_hoisted_cast_still_broken() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_hoist\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> Carrier? {\n  if ok(v: text) {\n    let c = text as Carrier\n    Present { value: c }\n  } else {\n    none\n  }\n}\n",
+    "src/optc_hoist.rs",
+    ["Optional::"],
+    []
+  )
+}
+
+test fn refined_return_without_cast_lowers_to_some() -> Bool {
+  w_refined_return_no_cast_lowers_to_some()
+}
+
+test fn optional_payload_cast_deficit_remains_observable() -> Bool {
+  w_plain_return_with_cast_still_emits_optional_path()
+}
+
+test fn hoisted_cast_does_not_avoid_the_deficit() -> Bool {
+  w_hoisted_cast_still_broken()
+}
