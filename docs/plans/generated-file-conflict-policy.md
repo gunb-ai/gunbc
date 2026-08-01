@@ -100,6 +100,20 @@ Acceptance: a witness reproducing `218dea6`'s exact shape (merge with unmerged e
 and separately the staged-marker-text variant) refuses typed/located; positive control
 (clean tree) admits; RED controls live.
 
+**Acceptance wall (operator second-pass review, 2026-08-01):** admission consumes a
+*complete staged-index observation*, never a caller-selected list — the observation
+population must equal the exact staged index population, with independent refusals for
+missing observations, extra observations, duplicates, index/blob identity mismatch, blob
+content not matching the indexed object, and unavailable decode/classification. The
+text/non-text classification is *observed*, never caller-selected (a caller labeling a
+text blob non-text to skip marker inspection is the writable bypass this wall closes).
+Fixture exemption must be bound to the same staged path/blob via a classification receipt
+derived from the tracked artifact/module-storage authority — a freely constructed
+`Artifact` value is not a provenance receipt, and RED controls must cover a source path
+paired with test provenance, a provenance path mismatching the staged path, and a
+fabricated artifact whose path happens to match. The two writer bindings (heal arm,
+dashboard daemon) are countable work carriers, not prose in an admission note.
+
 ## Lane 2 — path/integration-policy join, `.gitattributes` + Git config projections
 
 `GitattributesArtifact` joins the registry with the meaning: *"the committed byte
@@ -140,6 +154,22 @@ The commit writer consumes the regeneration receipt as a precondition — otherw
 can write a merge commit containing the provisional "ours" bytes and the drift gate
 merely detects the bad transition after it exists.
 
+**Acceptance wall (operator second-pass review, 2026-08-01):** repo-local config
+converges *before the first Git consumer in each clone* — in the CI heal job that means
+before the first `git merge`, since an actuator that runs after its consumer governs
+nothing in an ephemeral checkout; the executable acceptance is fresh clone → observe
+config absent → converge → real conflicting merge over a generated artifact → provisional
+generated-artifact resolution → regenerate → byte equality, not merely a temp-repo
+config write/read-back. Deferred clone populations (session worktrees, developer clones)
+are a *named, countable rollout carrier* — population, converged count, missing count,
+dissolve-on every clone-creation path invoking converge — never a documented one-time
+command. Application/read-back failure is a typed refusal distinguishing absence, wrong
+value, and read failure, not a Bool plus first-failure string. And the derived stage0
+paths must actually feed the merge-attribute population (a single derivation
+`deterministic_generated_projection_paths` = committed registry paths ∪ derived stage0
+paths, duplicate-path refusal before emission) — riding lane 3 stacked on this lane or an
+explicit follow-up PR, never an unnamed postscript.
+
 **Documentation correction rides in the same change:** the `.gitattributes` row of
 `gunbc.plans.invert_hand_maintained` `invert_hand_maintained_body` (projected into
 `docs/plans/invert-hand-maintained.md`) says `.gitattributes` must NOT be inverted (sound
@@ -177,6 +207,18 @@ handwritten roster would propagate the existing dual representation into another
 generated file. Resolution guidance for emitted `.rs` meanwhile stays: take either side,
 rerun `regen_stage0`, verify divergence 0 — never hand-pick hunks.
 
+**Acceptance wall (operator second-pass review, 2026-08-01):** an Unavailable/Refused
+source supply cannot project to an ordinary empty list or a syntactically valid generated
+artifact — the refusal is *preserved through the chain* (source supply → emission-plan
+outcome → artifact-generation outcome → writer), the authored non-host body returns
+Unavailable rather than a neutral empty value, and a refused plan is structurally
+incapable of producing bytes `main_wet` can write (a `Refused => []` arm anywhere,
+including test helpers, is the absorbing fallback this lane exists to remove). Canonical
+*output* paths are unique with located collision refusal — the output path is the key at
+this boundary, and module-path uniqueness does not imply it (flattening can merge
+distinct modules onto one basename). The derived paths feed the merge-attribute
+population (with lane 2's wall above).
+
 ## Lane 4 — keyed rosters get set/map construction semantics
 
 For path-keyed grant/roster carriers (`PublicFilePublishGrant` key = `path`): the
@@ -188,12 +230,33 @@ invalid duplicate-key population, so the construction/admission wall is the fix.
 (Consistent with the recorded publication-grant re-land bar: set-semantics + subtree
 grain + server-side.)
 
+**Acceptance wall (operator second-pass review, 2026-08-01):** generic kernel machinery
+plus fixture tests do *not* satisfy the lane — the wall is satisfied only when a live
+path-keyed roster consumes keyed construction end-to-end: a typed Built|Refused outcome
+at the carrier, its consumer accepting only Built, per-PR admission executing it, and the
+exact #7565/#7580 overlap shape witnessed against that carrier. Production integrations
+consume the canonical build verdict directly — a frontier check that collapses the
+located duplicate evidence (key, first, duplicate) into a Bool discards the refusal this
+lane exists to type. *Sequencing note recorded by the coordinator:* the incident carrier
+itself (`public_file_publish_grants`) was deleted from main by operator ruling (#7591)
+with its re-land frozen pending design review, so this wall binds the first live
+path-keyed roster carrier — and binds the re-landed publication roster the moment it
+returns; until a live carrier exists, the exact incident row-sets are held as fixtures
+and the lane stays open rather than being satisfied by kernel tests.
+
 ## Landing order and rejection bars
 
 Order: **1** commit-writer admissibility (incl. the `218dea6` reproduction) → **2** the
 policy join + generated `.gitattributes` + reconciled/read-back Git config → **3** stage0
 membership derivation, then emitted-Rust merge-policy extension → **4** keyed-roster
 set/map construction semantics.
+
+Corrected merge sequence (operator second-pass review, 2026-08-01): this charter merges
+first, carrying the acceptance walls above; then lane 1 (observation completeness +
+bound provenance fixed) first among implementations; then lane 2 (converge before the
+first Git consumer); then lane 3 stacked on lane 2, preserving refusal through generation
+and feeding the derived merge-policy rows; then lane 4, integrating `commit_workflow.dag`
+semantically after lane 1.
 
 Hard-reject bar for all lane PRs:
 
