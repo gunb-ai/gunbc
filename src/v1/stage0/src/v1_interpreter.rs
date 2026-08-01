@@ -789,6 +789,11 @@ pub enum InterpError {
         status: i64,
         operation: String,
     },
+    /// Transport-layer failure before a status-bearing response arrived (connection
+    /// refused, DNS, timeout). Models extdeps.transports.rest HttpTransportRefused.
+    HttpTransportRefused {
+        cause: String,
+    },
 }
 
 impl fmt::Display for InterpError {
@@ -875,6 +880,9 @@ impl fmt::Display for InterpError {
                 f,
                 "HTTP {status} is undeclared for operation {operation} — the response table has no matching arm"
             ),
+            InterpError::HttpTransportRefused { cause } => {
+                write!(f, "HTTP transport refused: {cause}")
+            }
         }
     }
 }
@@ -7742,8 +7750,8 @@ fn dispatch_rest(
                 &response_arms,
             )
         }
-        Err(e) => Err(InterpError::TypeError {
-            msg: format!("HTTP request failed: {}", e),
+        Err(e) => Err(InterpError::HttpTransportRefused {
+            cause: format!("{e}"),
         }),
     }
 }

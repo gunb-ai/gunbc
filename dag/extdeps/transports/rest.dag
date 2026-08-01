@@ -64,6 +64,8 @@ fn rest_response_arm_is_success(pattern: RestResponseStatusPattern) -> Bool {
   }
 }
 
+data rest_response_table_modeled_surface_dissolution_note: String = "HttpStatusClass, RestResponseStatusPattern, RestResponseTableRow, rest_response_pattern_matches, and rest_response_arm_is_success are the modeled surface beside the RFC citation. Today parse lowers response arms to stringly response_<k> properties on the operation node and the v1 seed interpreter re-implements the same predicates in Rust (rest_status_key_matches, rest_arm_is_success). Dissolves when parse/interp/emit consume the modeled types directly — the seed predicates must stay aligned with these fns until then; land with the shared REST realization row when the seed shrinks."
+
 type HttpTransportRefused {
   cause: String
 }
@@ -73,7 +75,7 @@ type HttpResponded {
   body: String
 }
 
-data rest_transport_observation_note: String = "Total observation at the REST transport seam (operator directive): every dispatch ends in HttpResponded { status, body } when bytes arrived, or HttpTransportRefused { cause } when the transport itself failed (connection refused, DNS, timeout). Status classification is http_status_class; body decoding is the operation's declared response table. Success arms map into the operation output; error arms refuse with the decoded body type carried on InterpError::RestResponseRefused — the caller surface is unchanged."
+data rest_transport_observation_note: String = "Total observation at the REST transport seam: a status-bearing response (Ok or ureq Error::Status) is HttpResponded { status, body } realized through the operation's declared response table (http_status_class, rest_response_pattern_matches). Success arms map into the operation output; declared error arms refuse via InterpError::RestResponseRefused; undeclared statuses refuse via RestUndeclaredStatus. Transport-layer failures (connection refused, DNS, timeout) refuse via InterpError::HttpTransportRefused — the modeled HttpTransportRefused { cause } carrier."
 
 type TlsPosture
   = VerifyPeer
