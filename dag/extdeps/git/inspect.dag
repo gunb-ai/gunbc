@@ -1,0 +1,45 @@
+module extdeps.git.inspect
+
+import std.types { Bool, CommitSha, GitRef, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs"
+  }
+}
+
+data git_inspect_service_note: String = "Read-only revision and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. This is a MOVE of the existing HeadCommit and ShowTree operations, including their argv, result fields, and exit meanings; no second git observation surface remains in extdeps.git."
+
+service git.Inspect {
+  operation HeadCommit {
+    input {}
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation ShowTree {
+    input { ref: GitRef }
+    output {
+      tree: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "show", "-s", "--format=%T", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+}

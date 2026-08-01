@@ -3,6 +3,7 @@ module tools.merge_admission_stamp
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, GitRef }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.shell
 import gunbc.retained_shell_script { retained_foreign }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -60,7 +61,7 @@ fn floor_exit_code_from_env() -> Int {
 }
 
 func main() -> ProcessExit {
-  let head = git.Core.HeadCommit()
+  let head = git.Inspect.HeadCommit()
   if !head.success {
     return exit_failure(reason: "merge_admission_stamp: git rev-parse HEAD failed")
   }

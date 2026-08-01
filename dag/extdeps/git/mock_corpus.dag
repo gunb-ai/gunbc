@@ -79,9 +79,9 @@ data git_core_mock_case_show: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
-data git_core_mock_case_show_tree: PublishedMockCase = PublishedMockCase {
-  operation_key: "git.Core.ShowTree",
-  service: "git.Core",
+data git_inspect_mock_case_show_tree: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Inspect.ShowTree",
+  service: "git.Inspect",
   operation: "ShowTree",
   case_id: 0
 }
@@ -127,7 +127,7 @@ data git_published_mock_corpus: List<PublishedMockCase> = [
   git_core_mock_case_rev_list,
   git_core_mock_case_rev_list_before,
   git_core_mock_case_show,
-  git_core_mock_case_show_tree,
+  git_inspect_mock_case_show_tree,
   git_core_mock_case_fetch_no_tags,
   git_core_mock_case_fetch_prune,
   git_core_mock_case_head_commit_short
