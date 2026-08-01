@@ -32,6 +32,7 @@ test fn witness_the_generated_unit_reproduces_the_captured_environment() -> Bool
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_IDLE_TIMEOUT=0")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_START_SERVER=1")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_NO_DAEMON=1")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log")
 }
 
@@ -152,4 +153,14 @@ test fn witness_a_stale_read_cannot_license_the_ensure() -> Bool {
     currency: ObservationCurrencyUnknown { detail: "boot id unreadable" as NonEmptyStr },
   )
   ensure_yields_unit(admission: a) == false
+}
+
+data foreground_supervision_doc: String = "The render must produce a unit systemd can actually supervise, and the failure mode is silent: --start-server daemonizes and returns 0, so under Type=simple the unit is marked dead the instant it starts while sccache survives only through its own per-invocation auto-start. Proven live on srv3 2026-07-25. An earlier draft of this render emitted exactly that form and would have generated a no-op unit; it was caught by gunbc.host_build_cache_provision_script's existing construction check, which refuses a body containing --start-server. This witness pins the corrected form here too, so the render cannot regress independently of that check."
+
+test fn witness_the_rendered_unit_is_foreground_supervised() -> Bool {
+  let u = ci_unit()
+  (unit_mentions_prefix(lines: u, prefix: "ExecStart=/usr/local/bin/sccache --start-server") == false)
+    && unit_declares_line(lines: u, needle: "Type=simple")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_NO_DAEMON=1")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_IDLE_TIMEOUT=0")
 }
