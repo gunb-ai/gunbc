@@ -493,15 +493,29 @@ data ci_heal_repo_local_git_config_function: String = "converge"
 
 data ci_heal_repo_local_git_config_note: String = "After artifact regen, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) on the checkout via the modeled repo_local_git_config actuator — same entry developers run per clone. Idempotent: already-converged checkouts are a no-op."
 
+data ci_heal_repo_local_git_config_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_heal_repo_local_git_config_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data ci_heal_repo_local_git_config_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold"
+
 fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    gunbc_run_shell(
-      source_roots: witness_layer_roots,
-      entry: ci_heal_repo_local_git_config_entry,
-      function: ci_heal_repo_local_git_config_function,
-      rooted: true,
-      claim_run: false
+    concat("# ", concat(ci_heal_repo_local_git_config_shell_emit_dissolution_trigger, "\n")),
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      gunbc_run_shell(
+        source_roots: witness_layer_roots,
+        entry: ci_heal_repo_local_git_config_entry,
+        function: ci_heal_repo_local_git_config_function,
+        rooted: true,
+        claim_run: false
+      )
     )
   )
 }
