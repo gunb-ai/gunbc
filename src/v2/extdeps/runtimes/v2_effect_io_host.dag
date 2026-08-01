@@ -208,7 +208,6 @@ fn effect_io_host_dispatch_write(
         Holds { value: payload } =>
           match effect_io_host_write_admissible(
             env: write_envelope,
-            backend: backend,
             locator: locator
           ) {
             Deny { refusal: refusal } =>

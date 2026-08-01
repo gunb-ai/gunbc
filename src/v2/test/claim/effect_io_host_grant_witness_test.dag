@@ -60,7 +60,6 @@ test fn effect_io_host_hermetic_write_outside_grant_holds() -> Bool {
   is_refused(
     a: effect_io_host_write_admissible(
       env: effect_io_host_envelope(mode: Hermetic, backend: HttpResourceBackend),
-      backend: HttpResourceBackend,
       locator: sample_locator
     )
   )
@@ -70,7 +69,6 @@ test fn effect_io_host_wet_write_admitted_holds() -> Bool {
   is_admitted(
     a: effect_io_host_write_admissible(
       env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
-      backend: HttpResourceBackend,
       locator: sample_locator
     )
   )
@@ -79,7 +77,6 @@ test fn effect_io_host_wet_write_admitted_holds() -> Bool {
 test fn effect_io_host_hermetic_refusal_is_located() -> Bool {
   match effect_io_host_write_admissible(
     env: effect_io_host_envelope(mode: Hermetic, backend: HttpResourceBackend),
-    backend: HttpResourceBackend,
     locator: sample_locator
   ) {
     Deny { refusal: refusal } =>
@@ -94,7 +91,6 @@ test fn effect_io_host_write_refuses_backend_mismatch_holds() -> Bool {
   is_refused(
     a: effect_io_host_write_admissible(
       env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
-      backend: HttpResourceBackend,
       locator: mismatched_backend_locator
     )
   )
