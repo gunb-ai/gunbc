@@ -24,7 +24,7 @@ fn fully_verified_ready(host: HostIdentity, unit: NonEmptyStr) -> BuildCacheInst
   BuildCacheInstanceReady {
     instance: ready_instance_fixture(host: host),
     owner: owner_fixture(),
-    placement: ServerManagedUnitOwned { unit: unit },
+    managed_unit: unit,
     endpoint_verified: true,
     executable_verified: true,
     principal_verified: true,
@@ -163,7 +163,7 @@ test fn witness_partially_verified_instance_refuses() -> Bool {
   let partial = BuildCacheInstanceReady {
     instance: ready_instance_fixture(host: d.host_label as HostIdentity),
     owner: owner_fixture(),
-    placement: ServerManagedUnitOwned { unit: intended },
+    managed_unit: intended,
     endpoint_verified: true,
     executable_verified: true,
     principal_verified: true,
