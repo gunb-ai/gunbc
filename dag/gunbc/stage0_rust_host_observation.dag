@@ -125,41 +125,41 @@ fn observe_stage0_rust_sources(
   package_root: String,
   base_ref: String
 ) -> RustSourceHostObservation {
-  let head = git.Core.HeadCommit(expect: OutcomeIsData)
+  let head = git.Inspect.HeadCommit(expect: OutcomeIsData)
   if !head.success || (head.sha as String) == "" {
-    GitObservationRefused { detail: "git.Core.HeadCommit refused or returned an empty revision" }
+    GitObservationRefused { detail: "git.Inspect.HeadCommit refused or returned an empty revision" }
   } else {
     let revision = head.sha as String
-    let baseline = git.Core.MergeBase(
+    let baseline = git.Inspect.MergeBase(
       left: revision as GitRef,
       right: base_ref as GitRef,
       expect: OutcomeIsData
     )
     if !baseline.success || (baseline.sha as String) == "" {
       GitObservationRefused {
-        detail: git_refusal_detail(operation: "git.Core.MergeBase", stderr: baseline.stderr)
+        detail: git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr)
       }
     } else {
-      let current_tree = git.Core.ListTreePathsAtRevision(
+      let current_tree = git.Inspect.ListTreePathsAtRevision(
         ref: revision as GitRef,
         expect: OutcomeIsData
       )
       if !current_tree.success {
         GitObservationRefused {
           detail: git_refusal_detail(
-            operation: "git.Core.ListTreePathsAtRevision(HEAD)",
+            operation: "git.Inspect.ListTreePathsAtRevision(HEAD)",
             stderr: current_tree.stderr
           )
         }
       } else {
-        let prior_tree = git.Core.ListTreePathsAtRevision(
+        let prior_tree = git.Inspect.ListTreePathsAtRevision(
           ref: baseline.sha as GitRef,
           expect: OutcomeIsData
         )
         if !prior_tree.success {
           GitObservationRefused {
             detail: git_refusal_detail(
-              operation: "git.Core.ListTreePathsAtRevision(merge-base)",
+              operation: "git.Inspect.ListTreePathsAtRevision(merge-base)",
               stderr: prior_tree.stderr
             )
           }

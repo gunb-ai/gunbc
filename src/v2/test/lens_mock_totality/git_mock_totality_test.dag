@@ -9,15 +9,19 @@ type MaterializedGitMock {
 
 data git_red_omit_keys: List<String> = ["git.Core.DiffNameOnlyMerge"]
 
-data git_phase3b_red_omit_keys: List<String> = ["git.Core.ShowTree"]
+data git_phase3b_red_omit_keys: List<String> = ["git.Inspect.ShowTree"]
 
 fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock> {
-  if case.operation_key == "git.Core.Toplevel" {
+  if case.operation_key == "git.Inspect.Toplevel" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_toplevel })
   } else if case.operation_key == "git.Core.CurrentBranch" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_current_branch })
   } else if case.operation_key == "git.Core.RemoteBranches" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_remote_branches })
+  } else if case.operation_key == "git.Inspect.MergeBase" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_merge_base })
+  } else if case.operation_key == "git.Inspect.ListTreePathsAtRevision" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_list_tree_paths_at_revision })
   } else if case.operation_key == "git.Core.LsFiles" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_ls_files })
   } else if case.operation_key == "git.Core.Diff" {
@@ -36,7 +40,7 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_rev_list_before })
   } else if case.operation_key == "git.Core.Show" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_show })
-  } else if case.operation_key == "git.Core.ShowTree" {
+  } else if case.operation_key == "git.Inspect.ShowTree" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_show_tree })
   } else if case.operation_key == "git.Core.FetchNoTags" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_fetch_no_tags })
