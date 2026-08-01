@@ -41,7 +41,7 @@ import gunbc.repo_identity {
 import extdeps.git { GitRemoteRefParts, git_remote_ref }
 import gunbc.ci_workflow { ci_selection_control_script }
 import gunbc.ci_yaml_emit { expected_ci_yml }
-import gunbc.merge_admission_produce {
+import gunbc.merge_admission_subject {
   merge_admission_merge_base_ref,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
