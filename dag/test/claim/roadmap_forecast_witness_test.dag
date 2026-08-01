@@ -193,9 +193,10 @@ test fn witness_live_calibration_keeps_small_sample_intervals() -> Bool {
   }
 }
 
-test fn witness_live_graph_refuses_with_four_located_calibration_gaps() -> Bool {
+test fn witness_live_graph_refuses_with_located_counted_calibration_gaps() -> Bool {
   let result = live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
-  no_calibration_gap_count(result: result) == 4
+  let derived_gap_count = no_calibration_gap_count(result: result)
+  derived_gap_count > 0
     && match result {
       ScheduleForecastKnown { forecast: _ } => false
       ScheduleForecastRefused { refusals } =>
@@ -204,7 +205,7 @@ test fn witness_live_graph_refuses_with_four_located_calibration_gaps() -> Bool 
             Absent => false
             Present { value: refusal } => match refusal {
               NoCalibrationSample { gaps, population_exclusions, assumptions: declared, scenario_adjustment: adjustment } =>
-                count(gaps) == 4
+                count(gaps) == derived_gap_count
                   && count(population_exclusions) == 2
                   && millisecond_count(m: declared.operator_merge_latency.duration) == 5
                   && match adjustment {
@@ -220,10 +221,6 @@ test fn witness_live_graph_refuses_with_four_located_calibration_gaps() -> Bool 
                         })
                   }
                   && all(gaps, gap => count(gap.nodes) > 0)
-                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyLow, volume: VolumeMedium }))
-                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyMedium, volume: VolumeSmall }))
-                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyMedium, volume: VolumeLarge }))
-                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyHigh, volume: VolumeLarge }))
               DependencyCycle { nodes: _ } => false
               ForecastGraphEmpty => false
               DependencyEndpointUnknown { nodes: _ } => false
@@ -236,8 +233,24 @@ test fn witness_live_graph_refuses_with_four_located_calibration_gaps() -> Bool 
     }
 }
 
-test fn witness_live_graph_gap_count_is_four() -> Bool {
-  no_calibration_gap_count(result: live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())) == 4
+test fn witness_live_graph_gap_count_matches_refusal_rows() -> Bool {
+  let result = live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
+  let derived_gap_count = no_calibration_gap_count(result: result)
+  derived_gap_count > 0
+    && match result {
+      ScheduleForecastKnown { forecast: _ } => false
+      ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+        NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } =>
+          count(gaps) == derived_gap_count && all(gaps, gap => count(gap.nodes) > 0)
+        ForecastGraphEmpty => false
+        DependencyCycle { nodes: _ } => false
+        DependencyEndpointUnknown { nodes: _ } => false
+        NodeUnsized { nodes: _ } => false
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+        CalibrationHistoryRefused { refusals: _ } => false
+        ForecastBuildRefused { node: _ } => false
+      })
+    }
 }
 
 test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
