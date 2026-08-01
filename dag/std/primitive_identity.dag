@@ -713,16 +713,26 @@ fn primitive_d0_fold_list_registry_gap_holds() -> Bool {
     )
 }
 
-fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
+fn primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveSurfaceAuthority) -> Bool {
   let rows = primitive_d0_surface_census()
-    |> filter(fn(row) { (row.authored_symbol as String) == "map_keys" })
-  count(rows) == 5
+    |> filter(fn(row) {
+      row.authority == authority && (row.authored_symbol as String) == "map_keys"
+    })
+  count(rows) >= 1
     && rows |> all(fn(row) {
       match primitive_surface_row_identity_violation(row: row, expected: primitive_map_keys) {
         Absent => true
         Present { value: _ } => false
       }
     })
+}
+
+fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
+  primitive_d0_authority_map_keys_rows_coherent(authority: BuiltinRegistry)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveContractRow)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: AlgebraTemplate)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: EmitHandler)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: InterpreterDispatch)
 }
 
 fn primitive_d0_interpreter_rows_are_from_authority() -> Bool {
