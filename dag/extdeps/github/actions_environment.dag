@@ -1,7 +1,8 @@
 module extdeps.github.actions_environment
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { CommitSha, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -19,3 +20,15 @@ type ActionsShaObservation
   | ActionsShaEmpty { detail: String }
 
 data github_sha_variable_name: String = "GITHUB_SHA"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.actions_environment",
+      decl_name: "github_sha_variable_name",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.actions_environment.extdeps_external_authority_anchor,
+  further_citations: []
+}
