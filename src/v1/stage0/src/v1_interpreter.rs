@@ -11710,8 +11710,8 @@ mod shell_completion_trace_tests {
     fn shell_effect_begin_mirror_formats_started_subject() {
         let line = render_shell_effect_begin_line_mirror("shell.Exec.Run", true);
         assert_eq!(line, "🔄 started shell.Exec.Run");
-        let unicode = render_shell_effect_begin_line_mirror("git.Core.HeadCommit", false);
-        assert_eq!(unicode, "◐ started git.Core.HeadCommit");
+        let unicode = render_shell_effect_begin_line_mirror("git.Inspect.HeadCommit", false);
+        assert_eq!(unicode, "◐ started git.Inspect.HeadCommit");
     }
 
     #[test]
@@ -11780,9 +11780,9 @@ mod shell_completion_trace_tests {
         )));
         let collapsed = shell_argv_collapsed(&av(&["git", "rev-parse", "--show-toplevel"]));
         let line =
-            render_shell_effect_failed_line_mirror("git.Core.Toplevel", &collapsed, 1, 0, false);
+            render_shell_effect_failed_line_mirror("git.Inspect.Toplevel", &collapsed, 1, 0, false);
         assert!(line.contains("failed: $ git rev-parse --show-toplevel (exit=1)"));
-        assert!(line.starts_with("✗ git.Core.Toplevel failed:"));
+        assert!(line.starts_with("✗ git.Inspect.Toplevel failed:"));
         assert_eq!(shell_completion_stderr_content(b""), None);
     }
 
