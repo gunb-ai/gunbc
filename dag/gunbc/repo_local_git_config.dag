@@ -1,0 +1,102 @@
+module gunbc.repo_local_git_config
+
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberUpsert,
+  membership_reconcile,
+  membership_upsert_count,
+  membership_teardown_count,
+  membership_refusal_count,
+}
+import gunbc.ownership { Ownership, Ensured }
+import extdeps.git {
+  shape_git_config_argv,
+  shape_git_config_get_argv,
+  shape_git_config_local_argv
+}
+
+data repo_local_git_config_authority_note: String = "Repository-local Git configuration desired state for gunbc integration-policy projections (generated-file conflict policy charter, lane 2). The merge-driver definition for merge=generated-artifact and core.hooksPath are modeled facts reconciled against observed read-back — a documented manual git config command with no read-back is declared-but-unrealized configuration and does not satisfy the lane. merge.generated-artifact.driver=true is a transport convenience (take-ours during merge), not the safety boundary; commit-writer admission plus regeneration receipts remain authoritative. Bindings are Ensured: reconcile upserts drift, never tears down a binding absent from desired."
+
+type RepoLocalGitConfigBinding {
+  key: String
+  value: String
+}
+
+data generated_artifact_merge_driver_key: String = "merge.generated-artifact.driver"
+data generated_artifact_merge_driver_value: String = "true"
+data core_hooks_path_key: String = "core.hooksPath"
+data core_hooks_path_value: String = ".githooks"
+
+fn desired_repo_local_git_config_bindings() -> List<RepoLocalGitConfigBinding> {
+  [
+    RepoLocalGitConfigBinding {
+      key: generated_artifact_merge_driver_key,
+      value: generated_artifact_merge_driver_value
+    },
+    RepoLocalGitConfigBinding {
+      key: core_hooks_path_key,
+      value: core_hooks_path_value
+    }
+  ]
+}
+
+fn binding_key(b: RepoLocalGitConfigBinding) -> String { b.key }
+fn binding_key_eq(a: String, b: String) -> Bool { a == b }
+fn binding_value_eq(a: RepoLocalGitConfigBinding, b: RepoLocalGitConfigBinding) -> Bool {
+  a.value == b.value
+}
+fn binding_ownership(_: RepoLocalGitConfigBinding) -> Ownership? {
+  Present { value: Ensured }
+}
+
+fn repo_local_git_config_reconcile(
+  desired: List<RepoLocalGitConfigBinding>,
+  observed: List<RepoLocalGitConfigBinding>,
+) -> MembershipPlan<RepoLocalGitConfigBinding> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: binding_key,
+    key_eq: binding_key_eq,
+    value_eq: binding_value_eq,
+    ownership_of: binding_ownership,
+  )
+}
+
+fn reconcile_install_argv(binding: RepoLocalGitConfigBinding) -> List<String> {
+  shape_git_config_local_argv(key: binding.key, value: binding.value)
+}
+
+fn reconcile_read_back_argv(binding: RepoLocalGitConfigBinding) -> List<String> {
+  shape_git_config_get_argv(key: binding.key)
+}
+
+fn binding_read_back_matches(binding: RepoLocalGitConfigBinding, observed_value: String) -> Bool {
+  trim(s: observed_value) == binding.value
+}
+
+fn all_desired_bindings_read_back(observed: List<RepoLocalGitConfigBinding>) -> Bool {
+  all(desired_repo_local_git_config_bindings(), desired =>
+    any(observed, o => o.key == desired.key && binding_read_back_matches(binding: desired, observed_value: o.value))
+  )
+}
+
+fn observed_binding(key: String, value: String) -> RepoLocalGitConfigBinding {
+  RepoLocalGitConfigBinding { key: key, value: value }
+}
+
+fn repo_local_git_config_converged(observed: List<RepoLocalGitConfigBinding>) -> Bool {
+  membership_upsert_count(plan: repo_local_git_config_reconcile(
+    desired: desired_repo_local_git_config_bindings(),
+    observed: observed,
+  )) == 0
+    && membership_teardown_count(plan: repo_local_git_config_reconcile(
+      desired: desired_repo_local_git_config_bindings(),
+      observed: observed,
+    )) == 0
+    && membership_refusal_count(plan: repo_local_git_config_reconcile(
+      desired: desired_repo_local_git_config_bindings(),
+      observed: observed,
+    )) == 0
+    && all_desired_bindings_read_back(observed: observed)
+}
