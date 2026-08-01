@@ -80,6 +80,7 @@ import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec
 import std.realization_schedule {
   Runnable, RunnableSingleClaim,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
+  runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
   ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
@@ -301,21 +302,23 @@ test fn witness_kind_wins_over_path() -> Bool {
 }
 
 fn parser_transport_batch_shape_holds(r: Runnable) -> Bool {
-  match r {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: exclusions, discovery_scope_dirs: scope, profile: p } =>
-      roots == ["dag", "src/v1"]
-        && roots == parser_transport_witness_source_roots
-        && length(xs: dirs) == 0
-        && length(xs: entries) == length(xs: parser_transport_witness_entries)
-        && length(xs: entries) == 20
-        && length(xs: exclusions) == 0
-        && length(xs: scope) == 0
-        && match mode { SelectionApplied => true  _ => false }
-        && execution_mode_eq(left: p.execution_mode, right: Hermetic)
-        && p.heavy_whole_tree_resolve
-        && (p.spawns_host_compiler == false)
-    _ => false
-  }
+  runnable_eq(
+    left: r,
+    right: RunnableDiscoveryBatch {
+      source_roots: ["dag", "src/v1"],
+      scan_dirs: [],
+      explicit_entries: parser_transport_witness_entries,
+      node_frontier_selection: SelectionApplied,
+      exclude_substrings: [],
+      discovery_scope_dirs: [],
+      profile: runnable_resource_profile(
+        heavy_whole_tree_resolve: true,
+        spawns_host_compiler: false,
+        memory: runnable_memory_substantial(),
+        execution_mode: Hermetic
+      )
+    }
+  ) && length(xs: parser_transport_witness_entries) == 20
 }
 
 fn parser_transport_roster_has_entry(entry: String) -> Bool {
