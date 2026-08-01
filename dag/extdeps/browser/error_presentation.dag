@@ -7,7 +7,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/renderer/net/net_error_helper_core.h"
+    locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c/chrome/renderer/net/net_error_helper_core.h"
   }
 }
 
