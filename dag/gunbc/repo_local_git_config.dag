@@ -14,8 +14,6 @@ import gunbc.ownership { Ownership, Ensured }
 import extdeps.git {
   shape_git_config_local_argv,
   shape_git_config_local_get_argv,
-  shape_git_config_local_in_repo_argv,
-  shape_git_config_local_get_in_repo_argv,
 }
 import std.realization_reconcile {
   Reconciliation,
@@ -119,8 +117,11 @@ fn repo_local_git_config_converged(observed: List<RepoLocalGitConfigBinding>) ->
     && all_desired_bindings_read_back(observed: observed)
 }
 
-fn observe_binding_via_core(desired: RepoLocalGitConfigBinding) -> RepoLocalGitConfigBinding? {
-  let result = git.Core.ConfigLocalGet(key: desired.key)
+fn observe_binding_at_repo(
+  repo: FilePath,
+  desired: RepoLocalGitConfigBinding,
+) -> RepoLocalGitConfigBinding? {
+  let result = git.Core.ConfigLocalGetInRepo(repo: repo, key: desired.key)
   if result.success && binding_read_back_matches(binding: desired, observed_value: result.value) {
     Present { value: observed_binding(key: desired.key, value: trim(s: result.value)) }
   } else {
@@ -128,12 +129,12 @@ fn observe_binding_via_core(desired: RepoLocalGitConfigBinding) -> RepoLocalGitC
   }
 }
 
-fn observe_repo_local_git_config_bindings() -> List<RepoLocalGitConfigBinding> {
+fn observe_repo_local_git_config_bindings_at_repo(repo: FilePath) -> List<RepoLocalGitConfigBinding> {
   fold(
     desired_repo_local_git_config_bindings(),
     init: [],
     f: fn(acc, desired) {
-      match observe_binding_via_core(desired: desired) {
+      match observe_binding_at_repo(repo: repo, desired: desired) {
         Present { value: binding } => append(acc, items: [binding])
         Absent => acc
       }
@@ -141,7 +142,8 @@ fn observe_repo_local_git_config_bindings() -> List<RepoLocalGitConfigBinding> {
   )
 }
 
-fn apply_repo_local_git_config_action(
+fn apply_repo_local_git_config_action_at_repo(
+  repo: FilePath,
   acc: RepoLocalGitConfigApplyReceipt,
   action: MemberAction<RepoLocalGitConfigBinding>,
 ) -> RepoLocalGitConfigApplyReceipt {
@@ -150,7 +152,7 @@ fn apply_repo_local_git_config_action(
   } else {
     match action {
       MemberUpsert { member: binding } => {
-        let result = git.Core.ConfigLocalSet(key: binding.key, value: binding.value)
+        let result = git.Core.ConfigLocalSetInRepo(repo: repo, key: binding.key, value: binding.value)
         if result.success {
           acc
         } else {
@@ -168,21 +170,24 @@ fn apply_repo_local_git_config_action(
   }
 }
 
-fn apply_repo_local_git_config_plan(
+fn apply_repo_local_git_config_plan_at_repo(
+  repo: FilePath,
   plan: MembershipPlan<RepoLocalGitConfigBinding>,
 ) -> RepoLocalGitConfigApplyReceipt {
   fold(
     plan.actions,
     init: RepoLocalGitConfigApplyReceipt { all_success: true, first_failure: "" },
     f: fn(acc, action) {
-      apply_repo_local_git_config_action(acc: acc, action: action)
+      apply_repo_local_git_config_action_at_repo(repo: repo, acc: acc, action: action)
     },
   )
 }
 
-fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
+fn repo_local_git_config_converge_actuate_at(
+  repo: FilePath,
+) -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
   let desired = desired_repo_local_git_config_bindings()
-  let observed_before = observe_repo_local_git_config_bindings()
+  let observed_before = observe_repo_local_git_config_bindings_at_repo(repo: repo)
   let plan = repo_local_git_config_reconcile(desired: desired, observed: observed_before)
   let refusals = membership_refusal_count(plan: plan)
   if refusals > 0 {
@@ -193,14 +198,14 @@ fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitC
   } else {
     let upserts = membership_upsert_count(plan: plan)
     let applied = if upserts > 0 {
-      apply_repo_local_git_config_plan(plan: plan)
+      apply_repo_local_git_config_plan_at_repo(repo: repo, plan: plan)
     } else {
       RepoLocalGitConfigApplyReceipt { all_success: true, first_failure: "" }
     }
     if !applied.all_success {
       NotConverged { reason: applied.first_failure, applied: desired }
     } else {
-      let observed_after = observe_repo_local_git_config_bindings()
+      let observed_after = observe_repo_local_git_config_bindings_at_repo(repo: repo)
       if repo_local_git_config_converged(observed: observed_after) {
         Converged {
           evidence: RepoLocalGitConfigConvergedEvidence {
@@ -219,16 +224,7 @@ fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitC
   }
 }
 
-fn repo_local_git_config_install_argv_in_repo(
-  repo: FilePath,
-  binding: RepoLocalGitConfigBinding,
-) -> List<String> {
-  shape_git_config_local_in_repo_argv(repo: repo, key: binding.key, value: binding.value)
-}
-
-fn repo_local_git_config_read_back_argv_in_repo(
-  repo: FilePath,
-  binding: RepoLocalGitConfigBinding,
-) -> List<String> {
-  shape_git_config_local_get_in_repo_argv(repo: repo, key: binding.key)
+fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
+  let root = git.Inspect.Toplevel()
+  repo_local_git_config_converge_actuate_at(repo: root.path)
 }
