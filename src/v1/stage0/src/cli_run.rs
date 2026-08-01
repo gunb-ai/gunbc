@@ -31971,7 +31971,7 @@ pub struct ShellTransportOperationCensusRow {
 
 fn literal_transport_executable(transport: &Rc<crate::v1_std_core::Node>) -> Option<String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
-    let first = transport.children.first()?;
+    let first = transport.children.get(0)?;
     match first.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Some(value.clone()),
