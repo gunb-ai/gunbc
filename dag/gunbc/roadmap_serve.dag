@@ -69,6 +69,7 @@ import gunbc.roadmap_dashboard_instance_apply { dashboard_provider_readiness_jso
 import gunbc.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,
+  DashboardObserveOnly, DashboardActuating,
   srv1_live_dashboard_instance,
   srv1_green_dashboard_instance,
   srv1_lab_dashboard_instance,
@@ -83,7 +84,8 @@ import gunbc.landing_workflow_runtime {
   landing_queue_observe, landing_queue_json, landing_queue_http_status,
   landing_pr_detail_json, landing_pr_detail_http_status,
   landing_review_artifact_observe, landing_review_artifact_http_status, landing_review_artifact_body,
-  landing_merge_pr, landing_merge_result_json, landing_merge_result_http_status,
+  landing_merge_pr, landing_merge_disabled,
+  landing_merge_result_json, landing_merge_result_http_status,
 }
 import gunbc.landing_workflow_page { landing_queue_page }
 
@@ -409,7 +411,10 @@ fn roadmap_serve_invoke_for_instance(
       match parse_int(s: number) {
         Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "landing merge requires an integer pull-request number\n")
         Present { value: pr_number } => {
-          let result = landing_merge_pr(pr_number: pr_number)
+          let result = match instance.actuation {
+            DashboardObserveOnly => landing_merge_disabled(instance_id: instance.instance_id)
+            DashboardActuating => landing_merge_pr(pr_number: pr_number)
+          }
           serve_text_response(
             status: landing_merge_result_http_status(r: result),
             content_type: application_json_utf8,

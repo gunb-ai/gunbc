@@ -326,6 +326,7 @@ fn landing_queue_projection(
 
 type LandingMergeActionRefusal
   = LandingMergeNotAdmitted { repo: NonEmptyStr, pr_number: Int }
+  | LandingMergeDisabled { instance_id: NonEmptyStr, reason: String }
   | LandingMergeHeadMoved { admitted: CommitSha, observed: CommitSha }
   | LandingMergeActuationFailed { detail: String }
 

@@ -171,6 +171,21 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     && string_contains(s: r.body, pattern: "before observation, provider preflight, or worktree creation")
 }
 
+data landing_preview_actuation_red_note: String = "The observe-only instance must refuse at the handler boundary, before the landing runtime can observe admission or call GitHub. Changing the handler to call landing_merge_pr for every posture makes this witness leave the typed 403 disabled arm."
+
+test fn witness_preview_landing_merge_refuses_before_effects() -> Bool {
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/landing/merge/7573",
+    body: "",
+  )
+  r.status == 403
+    && string_contains(s: r.body, pattern: "\"state\": \"disabled\"")
+    && string_contains(s: r.body, pattern: "srv2-preview-codex-feedback-v0")
+    && string_contains(s: r.body, pattern: "before admission observation or GitHub actuation")
+}
+
 test fn witness_instance_route_names_posture_and_paths() -> Bool {
   let r = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
