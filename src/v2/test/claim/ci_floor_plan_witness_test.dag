@@ -68,7 +68,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries,
   falsifier_self_host_wet_known_red_batch_enrolled
 }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -330,6 +330,29 @@ test fn witness_parser_transport_batch_is_isolated_from_other_corpora() -> Bool 
     })
     ok && (parser_count == 0 || length(xs: batch) == 1)
   })
+}
+
+fn parser_transport_batch_index(batches: List<List<Runnable>>) -> Int {
+  if length(xs: batches) == 0 {
+    0 - 1
+  } else {
+    let present = fold(batches.first(), init: false, f: fn(found, r) {
+      found || parser_transport_batch_shape_holds(r: r)
+    })
+    if present {
+      0
+    } else {
+      let rest = parser_transport_batch_index(batches: skip(xs: batches, n: 1))
+      if rest < 0 { rest } else { rest + 1 }
+    }
+  }
+}
+
+test fn witness_parser_transport_clamp_position_precedes_emit_host() -> Bool {
+  let batches = gunbc_ci_floor_ordinary_batches()
+  (parser_transport_batch_index(batches: batches) == 4)
+    && (batch_index_of(batches: batches, target: "emit_host_gate_passes") == 5)
+    && (length(xs: gunbc_ci_floor_batch_clamp_params) == 6)
 }
 
 test fn witness_optin_roster_drives_corpus_presence() -> Bool {
