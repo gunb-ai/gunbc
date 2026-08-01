@@ -63,11 +63,11 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries,
   falsifier_self_host_wet_known_red_batch_enrolled
 }
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch, RunnableScopedWitnessBatch,
   RunnableOwnsBatchClamp, runnable_batch_clamp_source,
-  FreshProcess,
+  SequentialChildProcess,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
@@ -201,10 +201,11 @@ fn witness_cheap_gates_precede_compile_root() -> Bool {
 }
 
 fn witness_cheap_gate_membership_declared() -> Bool {
-  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 3)
+  (length(xs: gunbc_ci_cheap_floor_gate_membership) == 4)
     && gate_in_cheap_floor_membership(g: CheapClaimPoolGate)
     && gate_in_cheap_floor_membership(g: ExtdepsExternalAuthorityGate)
     && gate_in_cheap_floor_membership(g: GeneratedArtifactDriftGate)
+    && gate_in_cheap_floor_membership(g: ExtdepsScopePlacementGate)
     && !gate_in_cheap_floor_membership(g: DagCompileCleanGate)
 }
 
@@ -317,7 +318,7 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
     && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
     && (v1_claim_scoped_witness_batch.scan_dirs == [])
     && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
-    && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == FreshProcess)
+    && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SequentialChildProcess)
     && match runnable_batch_clamp_source(r: target) {
       RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 180) && (millisecond_count(m: clamp.per_unit) == 0)
       _ => false

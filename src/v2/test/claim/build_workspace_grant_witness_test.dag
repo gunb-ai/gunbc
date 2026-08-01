@@ -2,12 +2,13 @@ module v2.test.claim.build_workspace_grant_witness
 
 import std.types { Bool, String, List }
 import std.effect_grant {
-  Read, Write, verb_eq,
+  Read, Write,
   NamespaceTree, FilesystemPathTree, UriTree,
   NamespacePosition, position_under,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
+  admit_effect,
   Envelope,
 }
+import std.access { AccessDecision, Permit, Deny }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import v2.compiler.build_workspace_grant { build_workspace_grant_envelope }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -65,17 +66,17 @@ data network_target: NamespacePosition = NamespacePosition {
   path: ["https://crates.io", "api", "download"]
 }
 
-fn is_admitted(a: EffectAdmission) -> Bool {
+fn is_admitted(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => true
-    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+    Permit => true
+    Deny { refusal: refusal } => false
   }
 }
 
-fn is_refused(a: EffectAdmission) -> Bool {
+fn is_refused(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => false
-    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+    Permit => false
+    Deny { refusal: refusal } => true
   }
 }
 
@@ -108,10 +109,11 @@ test fn build_workspace_grant_refuses_network_by_construction() -> Bool {
 
 test fn build_workspace_grant_refusal_is_located() -> Bool {
   match admit_effect(env: build_env, verb: Write, target: repo_tree_target) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
-      verb_eq(a: v, b: Write)
-        && position_under(target: repo_tree_target, root: t)
-        && position_under(target: t, root: repo_tree_target)
-    Admitted { via_root: r } => false
+    Deny { refusal: refusal } =>
+      refusal.location.profile == "EffectRequest"
+        && refusal.location.subject == "build"
+        && refusal.location.action == "write"
+        && refusal.location.object == "repo/src/main.rs"
+    Permit => false
   }
 }
