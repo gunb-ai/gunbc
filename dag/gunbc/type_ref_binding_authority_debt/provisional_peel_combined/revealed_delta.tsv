@@ -1,7 +1,13 @@
-# PROVISIONAL revealed delta (combined peel+arm vs arm-only pin)
+# PROVISIONAL revealed delta (combined peel+arm vs arm-only pin) — NOT a freeze pin
 # baseline_census_sha	89dbea7d896b3ae95195117374a8c0c9454f341e
 # scratch_sha	d8a5a37c283b0677ce05310ca23e6d2c8bd109f6
 # recipe	df4c428366e + cherry-pick b7dfcef3465
+# provisional_identity_unique	2155
+# raw_SITE_lines	2998
+# dup_extra	843
+# revealed_delta_unique	229
+# retired_delta	0
+# classification	228 incidental BY SUBSET RULE; 1 incidental via exec; 0 deliberate; 0 unclassified
 type	file	start	end
 Nano	dag/gunbc/fleet_intent.dag	5805	5809
 extdeps.access.posix.FileMode	dag/extdeps/access/posix.dag	537	545
