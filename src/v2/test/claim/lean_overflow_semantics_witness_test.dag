@@ -5,8 +5,8 @@ import v2.extdeps.languages.lean {
   lean_admit_fixed_width_overflow_semantics,
   lean_catalog_fixed_width_overflow,
   lean_facts_int32,
-  lean_overflow_raise_effect_tag,
   lean_overflow_semantics_arm_tag,
+  lean_overflow_semantics_node,
   LeanIntegerScalar,
   LeanAdmittedOverflowSemantics,
   LeanOverflowAccepted,
@@ -25,10 +25,11 @@ import std.integer {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.node { content_hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data lean_overflow_semantics_witness_note: String = "P3b cluster-2 receipt (lean end-to-end): std.integer.IntegerOverflowSemantics<E> keeps return, raise, and undefined as separate arms; LeanOverflowPanics and LeanOverflowTraps are distinct E inhabitants. Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: OverflowUndefined and OverflowRaises refuse at lean_admit_fixed_width_overflow_semantics; catalog int32 carries ReturnWrapping, not raises or undefined. Typed let initializers stay single-line per lean_overflow_parse_continuation_note."
+data lean_overflow_semantics_witness_note: String = "P3b cluster-2 receipt (lean end-to-end): std.integer.IntegerOverflowSemantics<E> keeps return, raise, and undefined as separate arms. Panic and trap are distinct E inhabitants; the downstream consumer that acts on the distinction today is lean_overflow_semantics_node (ModelCoreFactAxisOverflowDisposition spec projection) — substituting Panics for Traps changes content_hash of the emitted node. lean_admit_fixed_width_overflow_semantics does NOT yet distinguish them (OverflowRaises { effect: _ } refuses both with the same reason). Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: undefined/raises refuse at admission; catalog int32 carries ReturnWrapping. Typed let initializers stay single-line per lean_overflow_parse_continuation_note."
 
 test fn overflow_semantics_three_arms_distinguishable() -> Bool {
   let returns: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
@@ -37,10 +38,19 @@ test fn overflow_semantics_three_arms_distinguishable() -> Bool {
   lean_overflow_semantics_arm_tag(semantics: returns) == ^lean_overflow_arm_returns && lean_overflow_semantics_arm_tag(semantics: raises) == ^lean_overflow_arm_raises && lean_overflow_semantics_arm_tag(semantics: undefined) == ^lean_overflow_arm_undefined && lean_overflow_semantics_arm_tag(semantics: returns) != lean_overflow_semantics_arm_tag(semantics: raises) && lean_overflow_semantics_arm_tag(semantics: raises) != lean_overflow_semantics_arm_tag(semantics: undefined)
 }
 
-test fn lean_panic_and_trap_remain_distinct_effects() -> Bool {
-  let panic_effect = LeanOverflowPanics
-  let trap_effect = LeanOverflowTraps
-  lean_overflow_raise_effect_tag(effect: panic_effect) == ^lean_overflow_effect_panics && lean_overflow_raise_effect_tag(effect: trap_effect) == ^lean_overflow_effect_traps && lean_overflow_raise_effect_tag(effect: panic_effect) != lean_overflow_raise_effect_tag(effect: trap_effect)
+test fn lean_panic_and_trap_project_different_overflow_semantics_nodes() -> Bool {
+  let raises_panic: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowPanics }
+  let raises_trap: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowTraps }
+  content_hash(n: lean_overflow_semantics_node(semantics: raises_panic)) != content_hash(n: lean_overflow_semantics_node(semantics: raises_trap))
+}
+
+test fn lean_admit_refuses_trap_same_reason_as_panic_for_fixed_width_catalog() -> Bool {
+  let raises_trap: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowTraps }
+  match lean_admit_fixed_width_overflow_semantics(semantics: raises_trap) {
+    LeanOverflowRefused { observed: _, reason: reason } =>
+      reason == ^lean_overflow_refuse_raises_not_fixed_width_catalog
+    LeanOverflowAccepted { semantics: _ } => false
+  }
 }
 
 test fn lean_admit_accepts_catalog_wrapping_returns() -> Bool {
