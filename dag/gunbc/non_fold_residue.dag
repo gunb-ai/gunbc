@@ -70,11 +70,6 @@ data nfr_dissolve_dispatch_selection_routing: String = "total matches over the c
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::automatic_codex_behavior_preservation_holds" },
-    reason: nfr_reason_dispatch_selection_routing,
-    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
     reason: nfr_reason_dispatch_selection_routing,
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
