@@ -186,3 +186,38 @@ test fn typescript_precedence_groups_unrecognized_operator_as_child() -> Bool {
     right: ts_binop(left: ts_ident(name: "b"), op: "??", right: ts_ident(name: "c")))
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = 'a' + (b ?? c);"
 }
+
+data receiver_grouping_witness_note: String = "The receiver arm of the precedence family, added on a live silent defect (2026-08-01): ts_member over a `||` binop serialized as `a || [].forEach(cb)` — valid JavaScript that never runs the callback when `a` is truthy, discovered as an empty obligation ledger with zero console errors. The discriminating pair: an operator receiver GROUPS (member, index, and call each asserted); an atom receiver (call result, plain member chain) stays bare, so the fix cannot hide behind blanket parentheses. The RED is the exact live shape: the ungrouped spelling must not be what the printer emits."
+
+test fn typescript_receiver_binop_groups_under_member() -> Bool {
+  let e = ts_call(
+    callee: ts_member(
+      object: ts_binop(
+        left: ts_member(object: ts_ident(name: "attempt"), property: "segments"),
+        op: "||",
+        right: ts_array(elements: [])),
+      property: "forEach"),
+    args: [ts_ident(name: "cb")])
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = (attempt.segments || []).forEach(cb);"
+}
+
+test fn typescript_receiver_cond_groups_under_index() -> Bool {
+  let e = ts_index(
+    object: ts_cond(
+      test: ts_ident(name: "p"),
+      consequent: ts_ident(name: "xs"),
+      alternate: ts_ident(name: "ys")),
+    index: ts_lit_num(text: "0"))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = (p ? xs : ys)[0];"
+}
+
+test fn typescript_receiver_atom_stays_bare() -> Bool {
+  let e = ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: ".row")]),
+      property: "forEach"),
+    args: [ts_ident(name: "cb")])
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = document.querySelectorAll('.row').forEach(cb);"
+}
