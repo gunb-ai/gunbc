@@ -11,6 +11,7 @@ import extdeps.cron.schedule_model { render_cron_schedule }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, ActionRef,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule, MergeGroup,
+  DispatchInput, DispatchInputType, InputString, InputBoolean, InputChoice, InputEnvironment,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
   ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
@@ -88,10 +89,57 @@ fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> YamlKeyValu
   kv(key: "push", value: yaml_mapping(entries: entries))
 }
 
+fn dispatch_input_type_label(t: DispatchInputType) -> String {
+  match t {
+    InputString => "string"
+    InputBoolean => "boolean"
+    InputChoice => "choice"
+    InputEnvironment => "environment"
+  }
+}
+
+fn dispatch_input_optional_string(key: String, value: String?) -> List<YamlKeyValue> {
+  match value {
+    Present { value: s } => [kv(key: key, value: yaml_string(s: s))]
+    Absent => []
+  }
+}
+
+fn dispatch_input_yaml(input: DispatchInput) -> YamlKeyValue {
+  kv(
+    key: input.name,
+    value: yaml_mapping(entries: concat(
+      dispatch_input_optional_string(key: "description", value: input.description),
+      concat(
+        [kv(key: "required", value: yaml_bool(b: input.required))],
+        concat(
+          dispatch_input_optional_string(key: "default", value: input.default),
+          [kv(key: "type", value: yaml_string(s: dispatch_input_type_label(t: input.type)))]
+        )
+      )
+    ))
+  )
+}
+
+fn workflow_dispatch_yaml(inputs: List<DispatchInput>) -> YamlValue {
+  if length(inputs) == 0 {
+    YamlNull
+  } else {
+    yaml_mapping(entries: [
+      kv(
+        key: "inputs",
+        value: yaml_mapping(entries: map(inputs, input => dispatch_input_yaml(input: input)))
+      )
+    ])
+  }
+}
+
+data workflow_dispatch_input_projection_note: String = "WorkflowDispatch.inputs was modeled in extdeps.github.actions but this serializer discarded the entire list and emitted workflow_dispatch: null. That specification-without-execution gap is now closed: every modeled input is projected into the workflow syntax, while the empty list deliberately retains the compact null form. The CI heal revalidation input is the first production consumer and its witness reads the projected YamlValue rather than trusting generated text."
+
 fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
   match trigger {
-    WorkflowDispatch { inputs: _ } =>
-      kv(key: "workflow_dispatch", value: YamlNull)
+    WorkflowDispatch { inputs: inputs } =>
+      kv(key: "workflow_dispatch", value: workflow_dispatch_yaml(inputs: inputs))
     Push { branches: bs, paths: ps } =>
       push_trigger_yaml(branches: bs, paths: ps)
     PullRequest { branches: bs, types: ts } =>
