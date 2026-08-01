@@ -744,9 +744,22 @@ where-refinement alias `type Tight = String where non_empty` is **still silent**
 with `std` fully available — while a *different* shape, a cast to `std`'s refined brand
 (`fn tighten(s: String) -> NonEmptyStr { s as NonEmptyStr }`), fires `WhereRefinementUnenforced` as
 a counted advisory on the same harness. So the closure was not the discriminator between the
-failure and the success: **the probe SHAPE was.** The locally-declared `where`-alias does not
-exercise the judgment at all (its predicate resolves nowhere in either closure); the cast to a
-declared refined type does. The corrected rule, and the one the baseline stage should carry:
+failure and the success: **the probe SHAPE was.** A **2×2 pins the actual axis**, and it is not the
+one two successive explanations guessed. Crossing declaration site (locally-declared alias vs
+`std`'s brand — structurally identical, `type NonEmptyStr = String where non_empty` and
+`type Tight = String where non_empty`, same predicate) against cast subject (a literal vs an
+unknown parameter): local+parameter **fires**, local+literal **silent**, std+parameter **fires**,
+std+literal **silent**. Declaration site is irrelevant — a user-declared refinement alias is judged
+exactly as `std`'s brand is — and the diagnostic names the real axis itself: *"where-refinement
+unenforced: predicate `non_empty` on `Product(Tight)` — **non-literal value at refined
+position**"*. So the original probe's silence is **correct behaviour**, not a gap: it cast the
+literal `"x"`, and a literal at a refined position is deliberately exempt. It is a **dead probe** —
+it looked like it exercised the judgment (it casts, at a `fn` boundary) while the judgment
+deliberately exempts its exact form — and **no seventh census row is filed**, because filing one
+would have been a below-floor claim against behaviour that was already right. This also retires
+the intermediate guess that the alias "never exercises the judgment because its predicate resolves
+nowhere": the predicate resolves fine, as local+parameter firing proves. The corrected rule, and
+the one the baseline stage should carry:
 **a synthetic-probe negative is only as good as the probe's ability to reach the judgment**, and
 that can fail two independent ways — a closure too narrow for the judgment's machinery, *or* a
 shape that never triggers it. Corpus prevalence is the cheap cross-check for both: the whole-tree
