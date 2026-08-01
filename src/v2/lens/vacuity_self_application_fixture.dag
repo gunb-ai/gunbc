@@ -3,5 +3,5 @@ module v2.lens.vacuity_self_application_fixture
 data vacuity_self_application_fixture_note: String = "Vacuity-owned self-application fixture (mandate item 7 + the consumer-witness roster, item 5). vacuity_test.dag's own test fn declarations cannot serve this role directly: v2.extdeps.languages.dag's dag_language_model() grammar has no lexer keyword or grammar production for `test` at all (confirmed by direct execution, see vacuity_bool_witness_real_corpus_note in v2.lens.vacuity), so every real `test fn` in the corpus rejects at the file-parse stage before a body is ever reached. This file uses an ordinary `fn` — the one declaration shape the modeled grammar accepts today — so the BoolWitnessClaim real-corpus classifier has at least one genuine, parseable, vacuity-owned target to walk: a body that reduces to exactly one top-level `1 == 1` statement, which classify_vacuity_same_eval_record classifies ProvenDuplicate via the literal-pair rule (both sides LiteralOracle). This is a real fn reached by filesystem_read + tokenize/parse_module/normalize against the file on disk, not a synthetic in-memory Node."
 
 fn vacuity_self_application_probe() -> Bool {
-  1 == 1
+  return 1 == 1
 }
