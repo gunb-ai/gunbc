@@ -1,5 +1,12 @@
 module extdeps.git.ls_remote_advertisement
 
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-remote"
+  }
+}
+
 import std.types { String, Int, List, NonEmptyStr, Bytes }
 import extdeps.git { advertised_ref_branch_name }
 import extdeps.git.object_store {
