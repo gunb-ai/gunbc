@@ -482,7 +482,7 @@ fn gunbc_ci_heal_regen_invoke() -> String {
 data ci_heal_repo_local_git_config_entry: String = "dag/gunbc/repo_local_git_config.dag"
 data ci_heal_repo_local_git_config_function: String = "converge"
 
-data ci_heal_repo_local_git_config_note: String = "After artifact regen and heal push, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) on the checkout via the modeled repo_local_git_config actuator — same entry developers run per clone. Ordering is AFTER commit-push: converge sets core.hooksPath, which would make git push invoke the generated pre-push hook (cargo fmt) in an environment where cargo is not on PATH during the hook — a heal push refusal, not a formatting finding. Idempotent: already-converged checkouts are a no-op."
+data ci_heal_repo_local_git_config_note: String = "Immediately after the release gunbc binary is unpacked, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact rows govern the remedy merge rather than dying as unresolved conflicts. Ordering is after unpack (converge is gunbc run) and before ci_heal_binary_source_skew_guard_step (that step's git merge is the first merge on this checkout). Heal push uses git -c core.hooksPath= so the post-converge hooksPath binding does not invoke pre-push during the unattended push (cargo is absent from the hook PATH on heal runners — a push refusal, not a formatting finding). Idempotent: already-converged checkouts are a no-op."
 
 data ci_heal_repo_local_git_config_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -574,7 +574,7 @@ fn ci_heal_shell_lines() -> List<String> {
         "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
         "  git commit -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
         "  HEALED_HEAD=$(git rev-parse HEAD)",
-        "  git push origin HEAD:${{ github.head_ref || github.ref_name }}",
+        "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
         "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\"",
         "  ROOT=$(git rev-parse --show-toplevel)"
       ]
