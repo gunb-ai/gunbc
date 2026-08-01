@@ -14,7 +14,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data posix_effective_principal_read_op_note: String = "Typed argv transport for access.PosixEffectivePrincipal.Read — program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828 slice)."
+data posix_effective_principal_read_op_note: String = "Typed argv transport for access.PosixEffectivePrincipal.Read — program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828 slice). Hermetic realization refuses this external identity observation; its mock response is a failed read and cannot become principal evidence."
 
 fn posix_effective_principal_read_argv() -> List<String> {
   ["whoami"]
@@ -50,7 +50,7 @@ service access.PosixEffectivePrincipal {
       nonzero => String "whoami failed"
     }
     mock_response {
-      0 => { exit_code: 0, success: true, stdout: "ghrunner", stderr: "" } "hermetic access.PosixEffectivePrincipal.Read"
+      0 => { exit_code: 1, success: false, stdout: "", stderr: "hermetic effective-principal observation unavailable" } "hermetic access.PosixEffectivePrincipal.Read refuses external identity observation"
     }
   }
 }

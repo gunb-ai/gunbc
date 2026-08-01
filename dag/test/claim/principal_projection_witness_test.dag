@@ -11,6 +11,9 @@ import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalObserved, EffectivePosixPrincipalObservationRefused,
   effective_posix_principal_observation, effective_posix_principal_name,
 }
+import extdeps.access.posix_effective_principal_read_op {
+  effective_posix_principal_read,
+}
 import gunbc.principal_projection {
   OidcPrincipal, PosixPrincipal,
   OidcProjection, PosixProjection,
@@ -92,4 +95,14 @@ test fn posix_principal_observation_refuses_failed_or_empty_reads() -> Bool {
       reason == "successful effective-principal read returned no name"
   }
   )
+}
+
+test fn hermetic_posix_read_cannot_become_principal_evidence() -> Bool {
+  match effective_posix_principal_observation(
+    outcome: effective_posix_principal_read(read: EffectivePosixPrincipalRead {}),
+  ) {
+    EffectivePosixPrincipalObserved { observation: _ } => false
+    EffectivePosixPrincipalObservationRefused { read: _, reason: reason } =>
+      reason == "hermetic effective-principal observation unavailable"
+  }
 }
