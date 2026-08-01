@@ -106,7 +106,6 @@ pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     v1_emit_enum_derives, v1_emit_enum_supplemental_impls, v1_emit_struct_from_capability_table,
     v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
-    v1_generic_params_needing_clone_bound_for_enum_item,
     v1_generic_params_needing_clone_bound_for_struct_item,
 };
 use crate::v1_rt;
@@ -11714,20 +11713,6 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
     }
 }
 
-pub fn enum_variant_field_type_exprs(variants: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
-    variants.clone().iter().cloned().fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<Node>>>, variant: Rc<Node>| {
-            variant.children.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<Vec<Rc<Node>>>, field: Rc<Node>| {
-                    v1_rt::concat(inner, Rc::new(vec![resolved_type(field.clone())]))
-                },
-            )
-        },
-    )
-}
-
 pub fn emit_item_type_params_for_struct(
     params: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -11742,36 +11727,6 @@ pub fn emit_item_type_params_for_struct(
             __result
         });
         let clone_param_names = v1_generic_params_needing_clone_bound_for_struct_item(
-            generic_param_names.clone(),
-            field_type_exprs.clone(),
-            source_indices.clone(),
-        );
-        if ((clone_param_names.clone().len() as i64) > 0) {
-            v1_emit_type_params_with_clone_bounds(
-                params.clone(),
-                clone_param_names.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            emit_type_params(params.clone(), source_indices.clone())
-        }
-    }
-}
-
-pub fn emit_item_type_params_for_enum(
-    params: Rc<Vec<Rc<Node>>>,
-    field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    {
-        let generic_param_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
-                __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
-            }
-            __result
-        });
-        let clone_param_names = v1_generic_params_needing_clone_bound_for_enum_item(
             generic_param_names.clone(),
             field_type_exprs.clone(),
             source_indices.clone(),
@@ -12002,8 +11957,6 @@ pub fn emit_type_def_from_connective(
                                     )
                                 }
                             };
-                            let field_type_exprs =
-                                enum_variant_field_type_exprs(item.children.clone());
                             let type_params =
                                 emit_type_params(item.params.clone(), env.source_indices.clone());
                             let generic_param_names = Rc::new({

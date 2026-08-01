@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data generic_item_clone_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit item-level Clone bounds. compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles the inline fixture and asserts emitted Rust spellings. Per-PR rustc evidence is the build job cargo-checking the whole stage0 crate (generated std modules compile only when bounds are correct). src/v1/tests generic_item_clone_bound_test is an offline positive control — v1-compiler-tests is compile-only in CI (commit_gate_rust_suite_removed_disposition). Rule: struct items bound P when P is a bare field type or container/FreeMonoid element; enum items keep bare params; unused phantom-only params stay bare."
+data generic_item_clone_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit item-level Clone bounds. compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles inline fixtures and asserts emitted Rust spellings. Per-PR rustc evidence is the build job cargo-checking the whole stage0 crate (generated std modules compile only when bounds are correct). Rule: struct items bound P when P is a bare field type or container/FreeMonoid element; enum items keep bare params; unused phantom-only params stay bare."
 
 fn w_containment_path_emits_clone_bound() -> Bool {
   compile_dag_rust_emit_check(
