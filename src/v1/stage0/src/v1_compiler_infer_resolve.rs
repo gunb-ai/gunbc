@@ -12,7 +12,7 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
     is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
-    lookup_type_for,
+    lookup_type_for, type_ref_import_or_local_reachable,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -1674,6 +1674,53 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     resolved.clone()
                                                 };
+                                                let type_name =
+                                                    authored_name(env.clone(), n.clone());
+                                                // import-strip §14.3 / DESIGN §5: at a
+                                                // USE-SITE type position (masked), a
+                                                // lookup that succeeded only via
+                                                // pool coincidence (global_bare /
+                                                // symbol_index) — i.e. NOT via
+                                                // import/local reachability — must
+                                                // REFUSE like an absent-from-pool
+                                                // miss, never fabricate Product(<anon>).
+                                                // Grounding (masked=false) keeps the
+                                                // prior peel: defining-module structure
+                                                // is that module's import responsibility.
+                                                if (masked.clone()
+                                                    && (type_ref_import_or_local_reachable(
+                                                        env.clone(),
+                                                        type_name.clone(),
+                                                    ) == false)
+                                                    && (is_kernel_type(type_name.clone())
+                                                        == false)
+                                                    && (is_kernel_type(
+                                                        qualified_last_segment(
+                                                            type_name.clone(),
+                                                        ),
+                                                    ) == false))
+                                                {
+                                                    v1_rt::type_ref_fail_open_record_pool_present_unreachable(
+                                                        module_name.clone(),
+                                                        type_name.clone(),
+                                                        n.span.clone().file.clone(),
+                                                        n.span.clone().start.clone(),
+                                                        n.span.clone().end.clone(),
+                                                    );
+                                                    Rc::new(NodeResolveResult {
+                                                        resolved: n.clone(),
+                                                        diagnostics: Rc::new(vec![
+                                                            make_error_node(
+                                                                bare_name_miss_diagnostic(
+                                                                    env.clone(),
+                                                                    type_name.clone(),
+                                                                    n.span.clone(),
+                                                                ),
+                                                                module_name.clone(),
+                                                            ),
+                                                        ]),
+                                                    })
+                                                } else {
                                                 let is_optional = (n.return_cardinality.clone()
                                                     == Cardinality::CardOptional);
                                                 let final_resolved = if is_optional.clone() {
@@ -1689,16 +1736,13 @@ pub fn resolve_node_bounded(
                                                     ) == false))
                                                     && (v1_rt::map_has(
                                                         &env.source_visible_names.clone(),
-                                                        authored_name(env.clone(), n.clone()),
+                                                        type_name.clone(),
                                                     ) == false))
                                                 {
                                                     Rc::new(vec![make_error_node(
                                                         Rc::new(
                                                             CompilerDiagnostic::UnlistedImportUse {
-                                                                name: authored_name(
-                                                                    env.clone(),
-                                                                    n.clone(),
-                                                                ),
+                                                                name: type_name.clone(),
                                                                 span: n.span.clone(),
                                                             },
                                                         ),
@@ -1711,6 +1755,7 @@ pub fn resolve_node_bounded(
                                                     resolved: final_resolved.clone(),
                                                     diagnostics: unlisted_diags.clone(),
                                                 })
+                                                }
                                             }
                                             None => {
                                                 let n_is_error = if (n.inferred.clone() != None) {

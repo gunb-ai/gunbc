@@ -157,6 +157,29 @@ pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Op
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
 }
 
+/// Import/local reachability for a TYPE reference spelling (bare or qualified).
+/// A name is reachable iff it (or, for a dotted spelling, its leaf) sits in
+/// this module's own `str_bindings` or `ancestry_str_bindings` — the import
+/// chain surface. Corpus-wide `global_bare` / `symbol_index` hits are NOT
+/// reachability. Used by the use-site (`masked`) resolve arm to refuse
+/// pool-present-but-not-import-reachable type refs (import-strip §14.3).
+pub fn type_ref_import_or_local_reachable(env: Rc<TypeEnv>, name: String) -> bool {
+    if v1_rt::map_has(&env.str_bindings.clone(), name.clone())
+        || v1_rt::map_has(&env.ancestry_str_bindings.clone(), name.clone())
+    {
+        return true;
+    }
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+        if v1_rt::map_has(&env.str_bindings.clone(), leaf.clone())
+            || v1_rt::map_has(&env.ancestry_str_bindings.clone(), leaf.clone())
+        {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn global_bare_candidates_contain(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
     resolved: Rc<Node>,
@@ -835,14 +858,25 @@ pub fn lookup_qualified_module_projection(
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::contains(name.clone(), ".".to_string()) {
         false => None,
-        true => match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-            Some(resolved) => Some(Rc::new(TypeBinding {
-                name: name.clone(),
-                resolved: resolved.clone(),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            })),
-            None => None,
-        },
+        true => {
+            let hit = symbol_index_lookup(env.symbol_index.clone(), name.clone());
+            // Row-5 discriminator (quiet-hawk-219): record whether
+            // symbol_index_lookup was consulted on the qualified path and
+            // whether it hit. enable via type_ref_fail_open_telemetry_enable.
+            v1_rt::type_ref_fail_open_record_symbol_index_lookup(
+                env.module_path.clone(),
+                name.clone(),
+                hit.clone().is_some(),
+            );
+            match hit {
+                Some(resolved) => Some(Rc::new(TypeBinding {
+                    name: name.clone(),
+                    resolved: resolved.clone(),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                })),
+                None => None,
+            }
+        }
     }
 }
 
