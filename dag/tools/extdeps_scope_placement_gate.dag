@@ -1,0 +1,95 @@
+module tools.extdeps_scope_placement_gate
+
+import std.types { GitRef, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io
+import extdeps.git {
+  DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
+  GitDiffNameStatusComplete, GitDiffNameStatusTruncated,
+  TwoDot, git_diff_name_status_parse,
+}
+import extdeps.git
+import gunbc.extdeps_scope_frontier {
+  scope_carrier_paths, scope_machinery_exempt_paths,
+  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
+  legacy_manifest_freeze_sha,
+  scope_placement_refused_paths, manifest_freeze_holds,
+  PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
+}
+
+data extdeps_scope_placement_gate_note: String = "Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281; the diff-grain sibling of tools.publication_placement_gate). It diffs gunbc.extdeps_scope_frontier legacy_manifest_freeze_sha to HEAD with git.Core.DiffNameStatus, collects Added/Copied/Renamed paths, and refuses when (a) an added dag/extdeps .dag file is in neither scope_carrier_paths nor scope_machinery_exempt_paths (scope_placement_refused_paths — the frozen manifest is deliberately NOT an admission channel for a new file), or (b) any frozen-manifest row names a post-freeze-added file (manifest_freeze_holds — the smuggling channel). Diff failure and parse truncation are refusals, never skips. Diff-grain keeps the legacy population green by construction: only paths the change itself introduces are judged, so this gate never retroactively reds the 399-row manifest. The wet live-cover witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag) remains the whole-population re-verification. This gate dissolves with the whole storage-grain frontier into the v2.lens.mandatory_tag region promotion (compile-grain, module-name grain)."
+
+fn scope_placement_added_paths() -> PostFreezeObservation {
+  let diff = git.Core.DiffNameStatus(
+    base: legacy_manifest_freeze_sha as GitRef,
+    head: "HEAD" as GitRef,
+    range: TwoDot,
+  )
+  if diff.success {
+    match git_diff_name_status_parse(raw: diff.raw) {
+      GitDiffNameStatusTruncated { pending: _, entries: _ } => PostFreezeParseTruncated
+      GitDiffNameStatusComplete { entries: entries } =>
+        PostFreezeAdded {
+          paths: fold(entries, init: [], f: fn(acc, entry) {
+            match entry.status {
+              DiffAddedStatus => concat(acc, [entry.path])
+              DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
+              DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
+              _ => acc
+            }
+          })
+        }
+    }
+  } else {
+    PostFreezeDiffFailed
+  }
+}
+
+fn scope_placement_gate_verdict(observation: PostFreezeObservation) -> ProcessExit {
+  match observation {
+    PostFreezeDiffFailed => exit_failure(
+      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(freeze..HEAD) failed — refusing, never skipping (DESIGN section 5)"
+    )
+    PostFreezeParseTruncated => exit_failure(
+      reason: "extdeps scope placement gate: diff parse truncated — refusing, never skipping (DESIGN section 5)"
+    )
+    PostFreezeAdded { paths: added } => {
+      let refused = scope_placement_refused_paths(
+        added: added,
+        carriers: scope_carrier_paths,
+        machinery: scope_machinery_exempt_paths,
+      )
+      let manifest = parse_frontier_manifest(
+        content: filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path).content
+      )
+      if (refused |> count) > 0 {
+        exit_failure(
+          reason: concat(
+            "extdeps scope placement gate: added dag/extdeps file(s) enrolled in neither scope_carrier_paths nor scope_machinery_exempt_paths (a new extdeps module must declare extdeps_model_scope: ExternalModelScope and join scope_carrier_paths, or be genuinely citation/mock machinery; the frozen legacy manifest is not a landing state): ",
+            join(refused, ", ")
+          )
+        )
+      } else {
+        if manifest_freeze_holds(manifest: manifest, observation: PostFreezeAdded { paths: added }) {
+          ExitSuccess
+        } else {
+          exit_failure(
+            reason: "extdeps scope placement gate: a frozen-manifest row names a file added after legacy_manifest_freeze_sha — the manifest is remove-only and a new module cannot be smuggled into the legacy population"
+          )
+        }
+      }
+    }
+  }
+}
+
+func run_extdeps_scope_placement_gate_body() -> ProcessExit {
+  scope_placement_gate_verdict(observation: scope_placement_added_paths())
+}
+
+func main() -> ProcessExit {
+  run_extdeps_scope_placement_gate_body()
+}
+
+func run_extdeps_scope_placement_gate() -> ProcessExit {
+  run_extdeps_scope_placement_gate_body()
+}

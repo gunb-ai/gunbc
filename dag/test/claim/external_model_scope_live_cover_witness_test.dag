@@ -1,20 +1,13 @@
 module test.claim.external_model_scope_live_cover_witness
 
 import extdeps.filesystem.filesystem_io
-import extdeps.git {
-  DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
-  GitDiffNameStatusComplete, GitDiffNameStatusTruncated,
-  TwoDot, git_diff_name_status_parse,
-}
-import extdeps.git
+import tools.extdeps_scope_placement_gate { scope_placement_added_paths }
 import gunbc.extdeps_scope_frontier {
   scope_carrier_paths, scope_machinery_exempt_paths,
   legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
-  legacy_manifest_freeze_sha,
   scope_cover_holds, manifest_freeze_holds,
-  PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
 }
-import std.types { String, Bool, Int, List, GitRef }
+import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -68,32 +61,6 @@ test fn frontier_cover_of_live_extdeps_tree_holds() -> Bool {
     && (w.files |> count) > 150
 }
 
-fn post_freeze_added_paths() -> PostFreezeObservation {
-  let diff = git.Core.DiffNameStatus(
-    base: legacy_manifest_freeze_sha as GitRef,
-    head: "HEAD" as GitRef,
-    range: TwoDot,
-  )
-  if diff.success {
-    match git_diff_name_status_parse(raw: diff.raw) {
-      GitDiffNameStatusTruncated { pending: _, entries: _ } => PostFreezeParseTruncated
-      GitDiffNameStatusComplete { entries: entries } =>
-        PostFreezeAdded {
-          paths: fold(entries, init: [], f: fn(acc, entry) {
-            match entry.status {
-              DiffAddedStatus => concat(acc, [entry.path])
-              DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
-              DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
-              _ => acc
-            }
-          })
-        }
-    }
-  } else {
-    PostFreezeDiffFailed
-  }
-}
-
 test fn manifest_rows_all_predate_freeze_sha() -> Bool {
-  manifest_freeze_holds(manifest: read_manifest_rows_live(), observation: post_freeze_added_paths())
+  manifest_freeze_holds(manifest: read_manifest_rows_live(), observation: scope_placement_added_paths())
 }

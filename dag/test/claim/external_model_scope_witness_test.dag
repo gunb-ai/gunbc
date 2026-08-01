@@ -15,6 +15,7 @@ import gunbc.extdeps_scope_frontier {
   scope_carrier_paths, scope_machinery_exempt_paths,
   legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
   scope_cover_holds, manifest_freeze_holds, carrier_content_declares_scope,
+  scope_placement_refused_paths,
   PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
 }
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
@@ -221,6 +222,25 @@ fn roster_path_resolves(path: String) -> Bool {
 test fn roster_paths_resolve_on_disk() -> Bool {
   let union = concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows()))
   all(union, p => roster_path_resolves(path: p))
+}
+
+test fn red_scope_placement_refuses_unrostered_added_extdeps_file() -> Bool {
+  let refused = scope_placement_refused_paths(
+    added: ["dag/extdeps/browser/opera.dag", "dag/gunbc/other.dag", "docs/plans/x.md", "dag/extdeps/notes.tsv"],
+    carriers: scope_carrier_paths,
+    machinery: scope_machinery_exempt_paths,
+  )
+  (refused |> count) == 1
+    && strings_contain(xs: refused, s: "dag/extdeps/browser/opera.dag")
+}
+
+test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool {
+  let refused = scope_placement_refused_paths(
+    added: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag", "src/v2/lens/x.dag"],
+    carriers: scope_carrier_paths,
+    machinery: scope_machinery_exempt_paths,
+  )
+  (refused |> count) == 0
 }
 
 test fn frontier_rosters_are_disjoint() -> Bool {
