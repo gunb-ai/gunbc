@@ -1,0 +1,155 @@
+module test.claim.build_cache_ensure
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ensure_acceptance_doc: String = "THE ACCEPTANCE SET FOR UNIT GENERATION AND THE ENSURE ADMISSION. Two of these are grounded on a live sudo capture of srv1 taken 2026-08-01 rather than on invented fixtures: the rendered unit is asserted against the environment the running CI server actually carries, and the two hosts' real observed states are asserted to reach opposite admissions. The capture also independently confirmed the model: BuildCacheInstance already declared intended_principal ghrunner for CI and briansrls for the session instance, and the live servers run as exactly those users."
+
+fn ci() -> BuildCacheInstance { ci_cache_instance(host: "srv1") }
+fn session() -> BuildCacheInstance { session_cache_instance(host: "srv1") }
+
+fn ci_unit() -> List<String> { render_build_cache_unit(instance: ci()) }
+
+fn current() -> ObservationCurrency {
+  ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr }
+}
+
+fn srv1_stranded_owner() -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    pid: 3975946,
+    start_time: "79870020" as NonEmptyStr,
+  }
+}
+
+data captured_base_doc: String = "Asserted against the live capture, line for line. srv1's running CI server carries SCCACHE_DIR=/var/lib/ctrl/sccache-ci, SCCACHE_ERROR_LOG under the same directory, SCCACHE_IDLE_TIMEOUT=0, SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock and SCCACHE_START_SERVER=1, running as ghrunner. The generated unit must reproduce that environment, because the cutover replaces a server that is currently working -- wrongly parented, but working -- and a unit that changed the cache directory or the socket path would cold-start every consumer on the host rather than re-parenting the one they already use."
+
+test fn witness_the_generated_unit_reproduces_the_captured_environment() -> Bool {
+  let u = ci_unit()
+  unit_declares_line(lines: u, needle: "User=ghrunner")
+    && unit_declares_line(lines: u, needle: "Group=ghrunner")
+    && unit_declares_line(lines: u, needle: "Slice=gunbc-compile-pool.slice")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_DIR=/var/lib/ctrl/sccache-ci")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_IDLE_TIMEOUT=0")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_START_SERVER=1")
+    && unit_declares_line(lines: u, needle: "Environment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log")
+}
+
+data absent_capacity_doc: String = "THE LOAD-BEARING PAIR. CI's intended_capacity is Absent and the live capture confirms why: srv1's running CI server carries NO SCCACHE_CACHE_SIZE at all, so its 10 GiB is sccache's built-in default rather than a decision. Rendering a default here would fabricate a decision nobody made AND freeze it -- once written into a generated unit it is indistinguishable from an intended value, and the tracked gap closes silently. Both halves are asserted: Absent must omit the line, Present must emit it, because a render that omitted it unconditionally would pass the first assertion while silently dropping the session instance's real 50G cap."
+
+test fn witness_an_absent_capacity_omits_the_line_and_a_present_one_emits_it() -> Bool {
+  let ci_lines = ci_unit()
+  let session_lines = render_build_cache_unit(instance: session())
+  (unit_mentions_prefix(lines: ci_lines, prefix: "Environment=SCCACHE_CACHE_SIZE") == false)
+    && unit_mentions_prefix(lines: session_lines, prefix: "Environment=SCCACHE_CACHE_SIZE")
+}
+
+test fn witness_two_instances_on_one_host_render_different_principals() -> Bool {
+  let ci_lines = ci_unit()
+  let session_lines = render_build_cache_unit(instance: session())
+  unit_declares_line(lines: ci_lines, needle: "User=ghrunner")
+    && unit_declares_line(lines: session_lines, needle: "User=briansrls")
+    && (unit_declares_line(lines: session_lines, needle: "User=ghrunner") == false)
+}
+
+data differing_principals_doc: String = "One host, two instances, two uids -- the fact that makes intended_principal a field rather than a host constant. The captured srv1 runs its CI server as ghrunner and its session server as briansrls. This matters beyond tidiness: ctrl-sccache.service's own header records that the UDS is srwxr-xr-x, so only the owning uid can connect() and a cross-uid client fails SILENTLY, falling back to a per-container server. A render that collapsed the principal to one per host would produce a unit that starts cleanly and serves nobody."
+
+test fn witness_the_slice_is_sized_from_the_supplied_authority() -> Bool {
+  let s = render_compile_pool_slice(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    sized: byte_size(17179869184),
+  )
+  unit_declares_line(lines: s, needle: "MemoryMax=17179869184")
+    && unit_declares_line(lines: s, needle: "MemoryHigh=17179869184")
+}
+
+test fn witness_the_runner_dropin_orders_after_the_cache_unit() -> Bool {
+  let d = runner_ordering_dropin_lines(instance: ci())
+  unit_declares_line(lines: d, needle: "Requires=gunbc-build-cache-ci.service")
+    && unit_declares_line(lines: d, needle: "After=gunbc-build-cache-ci.service")
+}
+
+data ensure_admission_doc: String = "The ensure admission over the four states the fleet was actually in on 2026-08-01. srv1: a live server in RETIRED slot srv1-10 holding the endpoint -- refuses, because evicting a live wrong owner strands the in-flight compiles that are its children and is a different operation from ensuring a unit exists. srv4: a stale socket with no listener -- admitted, with the unlink required first. Neither is a constructed example."
+
+fn ensure_for(placement: BuildCacheServerPlacement, path: EndpointPathState) -> EnsureBuildCacheAdmission {
+  admit_ensure_build_cache_instance(
+    desired: ci(),
+    placement: placement,
+    observed_path: path,
+    currency: current(),
+  )
+}
+
+test fn witness_srv1_live_wrong_owner_refuses_rather_than_evicting() -> Bool {
+  let a = ensure_for(
+    placement: ServerRunnerOwned {
+      slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 },
+      lifecycle: RetiredRunnerSlot,
+    },
+    path: EndpointListening { owner: srv1_stranded_owner() },
+  )
+  (ensure_yields_unit(admission: a) == false) && (ensure_is_converged(admission: a) == false)
+}
+
+test fn witness_srv4_stale_socket_is_admitted_with_unlink_first() -> Bool {
+  let a = ensure_for(
+    placement: ServerPlacementAbsent,
+    path: EndpointStaleSocket {
+      detail: "server.sock present, no listener, no fd owner; error log reads Address in use (os error 98)" as NonEmptyStr,
+    },
+  )
+  ensure_yields_unit(admission: a) && ensure_requires_unlink_first(admission: a)
+}
+
+test fn witness_a_clear_path_is_admitted_without_an_unlink() -> Bool {
+  let a = ensure_for(placement: ServerPlacementAbsent, path: EndpointPathAbsent)
+  ensure_yields_unit(admission: a) && (ensure_requires_unlink_first(admission: a) == false)
+}
+
+data idempotence_doc: String = "The reconcile property. If the intended unit already owns the endpoint there is no hunk, and re-rendering plus restarting would tear down a healthy cache and re-cold every compile on the host to reach the state it was already in -- the most expensive possible no-op, firing on every convergence pass. Asserted as BOTH converged AND not-yields-unit, because an arm that reported converged while still emitting a unit would read as idempotent and behave destructively."
+
+test fn witness_an_already_managed_endpoint_is_converged_and_emits_nothing() -> Bool {
+  let a = ensure_for(
+    placement: ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as NonEmptyStr },
+    path: EndpointListening { owner: srv1_stranded_owner() },
+  )
+  ensure_is_converged(admission: a) && (ensure_yields_unit(admission: a) == false)
+}
+
+test fn witness_a_managed_unit_that_is_not_ours_is_not_converged() -> Bool {
+  let a = ensure_for(
+    placement: ServerManagedUnitOwned { unit: "ctrl-sccache.service" as NonEmptyStr },
+    path: EndpointListening { owner: srv1_stranded_owner() },
+  )
+  ensure_is_converged(admission: a) == false
+}
+
+data wrong_managed_unit_doc: String = "ctrl-sccache.service is the real specimen and not a hypothetical: it exists on srv1 and srv2 today, managing the SESSION instance. A convergence check that accepted any managed unit as satisfying the CI instance would report srv1 converged on the strength of a unit serving a different cache directory, a different uid and a different socket."
+
+test fn witness_unknown_placement_refuses_before_reading_the_path() -> Bool {
+  let a = ensure_for(
+    placement: ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as NonEmptyStr },
+    path: EndpointPathAbsent,
+  )
+  (ensure_yields_unit(admission: a) == false) && (ensure_is_converged(admission: a) == false)
+}
+
+data unknown_before_path_doc: String = "The discriminating case for the ordering. The path here is ABSENT -- the one state that would otherwise be admitted immediately -- so this witness fails if placement is consulted after the path rather than before. Unknown means the observer could not classify the owner, and proceeding would mean writing and starting a unit on a host whose current state we failed to read: an absorbing fallback whose widen is a host mutation rather than a rerun."
+
+test fn witness_a_path_conflict_is_never_admitted() -> Bool {
+  let a = ensure_for(
+    placement: ServerPlacementAbsent,
+    path: EndpointPathConflict { detail: "path exists and is a regular file" as NonEmptyStr },
+  )
+  ensure_yields_unit(admission: a) == false
+}
+
+test fn witness_a_stale_read_cannot_license_the_ensure() -> Bool {
+  let a = admit_ensure_build_cache_instance(
+    desired: ci(),
+    placement: ServerPlacementAbsent,
+    observed_path: EndpointStaleSocket { detail: "stale" as NonEmptyStr },
+    currency: ObservationCurrencyUnknown { detail: "boot id unreadable" as NonEmptyStr },
+  )
+  ensure_yields_unit(admission: a) == false
+}

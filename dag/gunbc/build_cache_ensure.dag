@@ -1,0 +1,151 @@
+module gunbc.build_cache_ensure
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.disposition { Disposition, SingleAuthority }
+import gunbc.build_cache_instance {
+  BuildCacheInstance, ProcessIdentity,
+  BuildCacheServerPlacement, ServerManagedUnitOwned, ServerRunnerOwned,
+  ServerUnsupervised, ServerPlacementAbsent, ServerPlacementUnknown,
+}
+import gunbc.build_cache_endpoint_path {
+  EndpointPathState, EndpointPathAbsent, EndpointListening, EndpointStaleSocket,
+  EndpointPathConflict, EndpointPathObservationUnavailable,
+  ObservationCurrency, StaleSocketUnlinkAdmission,
+  StaleSocketUnlinkAdmitted, StaleSocketUnlinkRefused,
+  admit_stale_socket_unlink, unlink_refusal_detail,
+}
+import gunbc.build_cache_unit { render_build_cache_unit }
+
+data build_cache_ensure_scope_disposition: Disposition = SingleAuthority
+
+data ensure_effect_grain_migration_note: String = "WHY THE EFFECT GRAIN IS WRONG TODAY, AND WHY THIS PR DOES NOT YET FIX IT. gunbc.host_effect's ProvisionBuildCache carries a CacheInterfaceId, which names sccache's cache SEMANTICS and its pinned binary. It does not name a running daemon, and srv1 and srv2 each run TWO servers from that one catalog row — a CI server as ghrunner over /var/lib/ctrl/sccache-ci, and a session server as briansrls over /var/lib/ctrl/sccache with a 50G cap. So `provision the sccache_local catalog on this host` names NEITHER of them: it cannot say which of the two to converge, and it cannot express that one is correctly placed while the other is not. That is gunbc.build_cache_instance's grain note restated as an effect-layer defect, and the end state is an effect carrying the BuildCacheInstance so the desired unit, principal, storage, capacity, endpoint and compile pool travel WITH the request instead of being guessed by a realizer.\n\nTHE SWAP IS NOT IN THIS PR AND THE REASON IS NOT TIMIDITY. ProvisionBuildCache is not a model-only stub: it has a live realization path — realize_provision_build_cache, the six emitted *_body builders in gunbc.host_build_cache_provision_script, an architecture and pinned-sha256 derivation over the cited sccache release, consumers in host_toolchain_ensure and fleet_converge_cli, and a WET execution witness that runs a real bash body against a real fake-sccache on disk. Swapping the arm means reworking all of that in one motion.\n\nMore decisively, that work lands inside a DEFERRED census row: host_build_cache_provision_script is A5 in the shell-to-dag residual census, `deferred by operator 2026-07-22 — real debt, NOT done; un-defer trigger is the operator`, and pledged to SHRINK but never grow. Rewriting its builders to carry an instance is exactly the un-deferral that row reserves to the operator. Landing it unasked would be deciding someone else's sequencing.\n\nSO THIS MODULE IS THE ADD-REPLACEMENT HALF of DESIGN's add-replacement then migrate then delete-at-arc-close pattern, and nothing more. The admission and the render exist and are proven; the effect arm is untouched; ProvisionBuildCache remains the only constructible build-cache effect. MIGRATION TRIGGER: operator un-defers census row A5, at which point the arm becomes EnsureBuildCacheInstance { desired: BuildCacheInstance }, realize_provision_build_cache consumes this admission, the emitted bodies are replaced by render_build_cache_unit rather than edited, and ProvisionBuildCache is deleted rather than deprecated — for the reason runner_enable_command was, that an effect arm left constructible is a path left open.\n\nAn earlier revision of this note said the replacement had already happened. It had not, and the sentence would have shipped a false present-tense claim about the tree into the exact carrier that exists to keep the grain honest."
+
+type EndpointPreflight
+  = EndpointClearForBind
+  | EndpointClearedByUnlink { stale_detail: NonEmptyStr }
+
+type EnsureRefusal
+  = EnsureEndpointOccupied { owner: ProcessIdentity }
+  | EnsureEndpointPathConflict { detail: NonEmptyStr }
+  | EnsureEndpointUnobservable { detail: NonEmptyStr }
+  | EnsureUnlinkRefused { detail: NonEmptyStr }
+  | EnsurePlacementUnknown { detail: NonEmptyStr }
+
+data ensure_is_a_reconcile_not_an_install_note: String = "ENSURE MUST BE IDEMPOTENT, WHICH IS WHY EnsureAlreadyConverged IS ITS OWN ARM RATHER THAN A SUCCESSFUL RE-INSTALL. The membership-diff spine's reading applies unchanged here: desired versus observed, and Unchanged is the ABSENCE of a hunk, not a cheap version of Added. If a correctly-placed managed unit already owns the endpoint, writing the unit again and restarting it would tear down a healthy cache and re-cold every compile on the host to reach a state it was already in — the most expensive possible no-op, and one that would fire on every convergence pass.\n\nDeciding it needs the OWNER, not the path. A listening endpoint tells you something holds it; only placement tells you whether that something is the unit we intend. So this admission takes both, and the placement authority is consulted FIRST: already-converged short-circuits before any path reasoning, because when the answer is 'nothing to do' the path state is irrelevant and reading it could only produce a spurious refusal."
+
+type EnsureBuildCacheAdmission
+  = EnsureAlreadyConverged { desired: BuildCacheInstance, unit: NonEmptyStr }
+  | EnsureBuildCacheAdmitted {
+      desired: BuildCacheInstance
+      preflight: EndpointPreflight
+      unit_lines: List<String>
+    }
+  | EnsureBuildCacheRefused { instance: BuildCacheInstance, reason: EnsureRefusal }
+
+fn placement_already_converged(
+  instance: BuildCacheInstance,
+  placement: BuildCacheServerPlacement,
+) -> Bool {
+  match placement {
+    ServerManagedUnitOwned { unit: u } => (u as String) == (instance.intended_unit as String)
+    ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}
+
+fn admit_ensure_build_cache_instance(
+  desired: BuildCacheInstance,
+  placement: BuildCacheServerPlacement,
+  observed_path: EndpointPathState,
+  currency: ObservationCurrency,
+) -> EnsureBuildCacheAdmission {
+  match placement_already_converged(instance: desired, placement: placement) {
+    true => EnsureAlreadyConverged { desired: desired, unit: desired.intended_unit }
+    false =>
+      match placement {
+        ServerPlacementUnknown { detail: d } =>
+          EnsureBuildCacheRefused {
+            instance: desired,
+            reason: EnsurePlacementUnknown { detail: d },
+          }
+        ServerManagedUnitOwned { unit: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+        ServerRunnerOwned { slot: _, lifecycle: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+        ServerUnsupervised { cgroup: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+        ServerPlacementAbsent => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+      }
+  }
+}
+
+data placement_unknown_refuses_before_the_path_note: String = "ServerPlacementUnknown REFUSES RATHER THAN FALLING THROUGH TO THE PATH. The other four non-converged placements are all POSITIVE readings — a runner owns it, something unsupervised owns it, nothing owns it, or a managed unit that is not ours owns it — and in each of those the path state is the right next question, because we know we must act and only need to know whether the endpoint is clear. Unknown is not a reading at all: the observer could not classify the owner's cgroup. Proceeding on it would mean deciding to write and restart a unit on a host whose current state we failed to read, which is the absorbing fallback in its most expensive form — the widen here is not a rerun, it is a host mutation.\n\nThe distinction is worth the extra arm precisely because Unknown and Absent are easy to conflate: both mean 'we found no managed owner', but Absent means we LOOKED and there is none, while Unknown means the looking failed."
+
+fn ensure_from_path(
+  desired: BuildCacheInstance,
+  observed_path: EndpointPathState,
+  currency: ObservationCurrency,
+) -> EnsureBuildCacheAdmission {
+  match observed_path {
+    EndpointPathAbsent =>
+      EnsureBuildCacheAdmitted {
+        desired: desired,
+        preflight: EndpointClearForBind,
+        unit_lines: render_build_cache_unit(instance: desired),
+      }
+    EndpointListening { owner: o } =>
+      EnsureBuildCacheRefused { instance: desired, reason: EnsureEndpointOccupied { owner: o } }
+    EndpointPathConflict { detail: d } =>
+      EnsureBuildCacheRefused { instance: desired, reason: EnsureEndpointPathConflict { detail: d } }
+    EndpointPathObservationUnavailable { reason: _ } =>
+      EnsureBuildCacheRefused {
+        instance: desired,
+        reason: EnsureEndpointUnobservable {
+          detail: "the endpoint path could not be read, so whether a bind would succeed is unknown; refusing rather than writing and starting a unit into an unread state" as NonEmptyStr,
+        },
+      }
+    EndpointStaleSocket { detail: _ } =>
+      match admit_stale_socket_unlink(instance: desired, observed: observed_path, currency: currency) {
+        StaleSocketUnlinkRefused { instance: _, reason: r } =>
+          EnsureBuildCacheRefused {
+            instance: desired,
+            reason: EnsureUnlinkRefused { detail: unlink_refusal_detail(reason: r) },
+          }
+        StaleSocketUnlinkAdmitted { instance: _, stale_detail: sd, observed_at_boot: _ } =>
+          EnsureBuildCacheAdmitted {
+            desired: desired,
+            preflight: EndpointClearedByUnlink { stale_detail: sd },
+            unit_lines: render_build_cache_unit(instance: desired),
+          }
+      }
+  }
+}
+
+data occupied_endpoint_refuses_note: String = "AN OCCUPIED ENDPOINT REFUSES EVEN THOUGH WE KNOW THE OWNER IS WRONG, and that is deliberate rather than timid. Reaching this arm means placement already said the owner is not our intended unit — a runner-owned server, an unsupervised one, or another unit's — so it is tempting to treat 'wrong owner holding the socket' as licence to take it. It is not, for the same reason the unlink admission refuses a listener: the holder is a LIVE process with in-flight compiles as its children, and severing or replacing its socket strands those compiles and leaves a server running that nothing can reach.\n\nEvicting a live wrong owner is a genuinely different operation from ensuring a unit exists — it requires draining the runners whose compiles are that server's children, and it can fail halfway. Folding it into ensure would make an idempotent converge step conditionally destructive. It gets its own admission when the quiesce path is modeled; until then this refusal is the honest boundary and it names the owner so the operator can see exactly which process is in the way."
+
+fn ensure_yields_unit(admission: EnsureBuildCacheAdmission) -> Bool {
+  match admission {
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => true
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+fn ensure_is_converged(admission: EnsureBuildCacheAdmission) -> Bool {
+  match admission {
+    EnsureAlreadyConverged { desired: _, unit: _ } => true
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+fn ensure_requires_unlink_first(admission: EnsureBuildCacheAdmission) -> Bool {
+  match admission {
+    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_lines: _ } =>
+      match p {
+        EndpointClearedByUnlink { stale_detail: _ } => true
+        EndpointClearForBind => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
