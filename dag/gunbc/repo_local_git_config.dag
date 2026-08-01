@@ -2,7 +2,6 @@ module gunbc.repo_local_git_config
 
 import gunbc.membership_reconcile {
   MembershipPlan,
-  MemberUpsert,
   membership_reconcile,
   membership_upsert_count,
   membership_teardown_count,
@@ -10,7 +9,6 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Ownership, Ensured }
 import extdeps.git {
-  shape_git_config_argv,
   shape_git_config_get_argv,
   shape_git_config_local_argv
 }

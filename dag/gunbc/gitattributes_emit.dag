@@ -50,7 +50,7 @@ fn join_lines(lines: List<String>) -> String {
 }
 
 fn expected_gitattributes() -> String {
-  join_lines(lines: gitattributes_body_lines())
+  concat(join_lines(lines: gitattributes_body_lines()), "\n")
 }
 
 fn gitattributes_drifted(committed: String) -> Bool {
