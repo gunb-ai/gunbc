@@ -5721,11 +5721,14 @@ mod tests {
             .lock()
             .unwrap_or_else(|p| p.into_inner());
         let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
         let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         match prior_trace {
             Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
             None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
         }
+        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
         match run {
             Ok(()) => {}
             Err(payload) => std::panic::resume_unwind(payload),
@@ -7019,7 +7022,6 @@ mod tests {
     #[test]
     fn materialization_receipt_totals_absorb_on_ctx_drop() {
         with_process_eval_recompute_test_lock(|| {
-            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
             let root = workspace_root();
             let roots = vec![
                 root.join("src/v2").to_string_lossy().into_owned(),
@@ -7097,12 +7099,12 @@ mod tests {
     // Discriminating control (DESIGN §5): post-floor pure demand must appear in the
     // on-success materialization receipt and NOT in the ordinary-floor receipt, which
     // is harvested before stages run. PROCESS_EVAL_RECOMPUTE_TEST_LOCK serializes every
-    // trace-enabled ctx Drop and restores GUNBC_RECOMPUTE_TRACE afterward so sibling
-    // tests cannot pollute the process accumulator between fixture drains (review 45737).
+    // trace-enabled ctx Drop and restores the trace env/cache afterward so sibling
+    // tests cannot pollute the process accumulator or latch tracing off before
+    // this region runs (review 45737, review 45756).
     #[test]
     fn on_success_materialization_receipt_separates_from_ordinary_floor() {
         with_process_eval_recompute_test_lock(|| {
-            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
             let root = workspace_root();
             std::env::set_current_dir(&root).expect("chdir to workspace root for receipt paths");
             let roots = vec![
@@ -7205,7 +7207,6 @@ mod tests {
     #[test]
     fn eval_call_memo_serves_verified_hits_with_identical_values() {
         with_process_eval_recompute_test_lock(|| {
-            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
             let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
             let root = workspace_root();
             let roots = vec![

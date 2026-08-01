@@ -982,9 +982,38 @@ struct EvalRecomputeEntry {
 
 const EVAL_RECOMPUTE_SITE_CAP: usize = 4;
 
+static EVAL_RECOMPUTE_TRACE_CACHED: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(2);
+
+fn eval_recompute_trace_read_env() -> bool {
+    std::env::var("GUNBC_RECOMPUTE_TRACE").is_ok_and(|v| v != "0")
+}
+
+fn eval_recompute_trace_refresh_cache() {
+    EVAL_RECOMPUTE_TRACE_CACHED.store(
+        u8::from(eval_recompute_trace_read_env()),
+        std::sync::atomic::Ordering::SeqCst,
+    );
+}
+
 pub fn eval_recompute_trace_enabled() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("GUNBC_RECOMPUTE_TRACE").is_ok_and(|v| v != "0"))
+    match EVAL_RECOMPUTE_TRACE_CACHED.load(std::sync::atomic::Ordering::SeqCst) {
+        1 => true,
+        0 => false,
+        _ => {
+            eval_recompute_trace_refresh_cache();
+            eval_recompute_trace_enabled()
+        }
+    }
+}
+
+/// Test harness only: re-read `GUNBC_RECOMPUTE_TRACE` into the process-wide
+/// cache. Needed because the production cache is initialized once per process;
+/// claim_executor's parallel tests set the env var after siblings may have
+/// latched tracing off (review 45756).
+#[doc(hidden)]
+pub fn refresh_eval_recompute_trace_enabled_cache_for_tests() {
+    eval_recompute_trace_refresh_cache();
 }
 
 // The eval-frame memo: the ladder's single-site discharge provider, realized
