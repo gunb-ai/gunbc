@@ -5735,6 +5735,19 @@ mod tests {
         }
     }
 
+    fn with_workspace_root_current_dir<F: FnOnce()>(root: &std::path::Path, f: F) {
+        let prior_cwd = std::env::current_dir().ok();
+        std::env::set_current_dir(root).expect("chdir to workspace root for receipt paths");
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        if let Some(cwd) = prior_cwd {
+            let _ = std::env::set_current_dir(cwd);
+        }
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
     fn finalization_record(resolve_counts: &[u64]) -> BatchRecord {
         BatchRecord {
             batch_index: 0,
@@ -7098,101 +7111,100 @@ mod tests {
 
     // Discriminating control (DESIGN §5): post-floor pure demand must appear in the
     // on-success materialization receipt and NOT in the ordinary-floor receipt, which
-    // is harvested before stages run. PROCESS_EVAL_RECOMPUTE_TEST_LOCK serializes every
-    // trace-enabled ctx Drop and restores the trace env/cache afterward so sibling
-    // tests cannot pollute the process accumulator or latch tracing off before
-    // this region runs (review 45737, review 45756).
+    // is harvested before stages run. Population separation is asserted within ONE
+    // staged walk (ordinary receipt is written before on_success_stages in the same
+    // run_walk — no cross-run keyed_calls equality that parallel siblings could
+    // perturb, review 45766). PROCESS_EVAL_RECOMPUTE_TEST_LOCK serializes the
+    // trace-enabled receipt tests and restores trace env/cache afterward (review
+    // 45737, review 45756).
     #[test]
     fn on_success_materialization_receipt_separates_from_ordinary_floor() {
         with_process_eval_recompute_test_lock(|| {
             let root = workspace_root();
-            std::env::set_current_dir(&root).expect("chdir to workspace root for receipt paths");
-            let roots = vec![
-                root.join("src/v2").to_string_lossy().into_owned(),
-                root.join("dag").to_string_lossy().into_owned(),
-            ];
-            const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
-            let success_receipt = root
-                .join("target")
-                .join(format!("floor-attempt-{TEST_ATTEMPT_ID}"))
-                .join("floor-on-success-materialization-receipt.txt");
-            let ordinary_receipt = root.join("target/floor-materialization-receipt.txt");
-            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            with_workspace_root_current_dir(&root, || {
+                let roots = vec![
+                    root.join("src/v2").to_string_lossy().into_owned(),
+                    root.join("dag").to_string_lossy().into_owned(),
+                ];
+                const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
+                let success_receipt = root
+                    .join("target")
+                    .join(format!("floor-attempt-{TEST_ATTEMPT_ID}"))
+                    .join("floor-on-success-materialization-receipt.txt");
+                let ordinary_receipt = root.join("target/floor-materialization-receipt.txt");
+                let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
 
-            let run_fixture = |on_success_stages: &[Vec<Runnable>]| {
-                let _ = std::fs::remove_file(&success_receipt);
-                let _ = std::fs::remove_file(&ordinary_receipt);
-                let outcome = run_walk_materialization_fixture(&roots, on_success_stages);
+                let run_fixture = |on_success_stages: &[Vec<Runnable>]| {
+                    let _ = std::fs::remove_file(&success_receipt);
+                    let _ = std::fs::remove_file(&ordinary_receipt);
+                    let outcome = run_walk_materialization_fixture(&roots, on_success_stages);
+                    assert!(
+                        !outcome.any_failed,
+                        "walk must pass: {:?}",
+                        outcome.failure_details
+                    );
+                    outcome
+                };
+
+                // RED: no on-success stages => no success-stage materialization receipt.
+                run_fixture(&[]);
                 assert!(
-                    !outcome.any_failed,
-                    "walk must pass: {:?}",
-                    outcome.failure_details
+                    !success_receipt.exists(),
+                    "empty on_success_stages must not write a success materialization receipt"
                 );
-                outcome
-            };
 
-            // RED: no on-success stages => no success-stage materialization receipt.
-            run_fixture(&[]);
-            assert!(
-                !success_receipt.exists(),
-                "empty on_success_stages must not write a success materialization receipt"
-            );
-            let ordinary_keyed_only = parse_materialization_receipt_field(
-                &std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt"),
-                "keyed_calls=",
-            )
-            .expect("keyed_calls");
+                // GREEN: one walk — ordinary receipt harvested before stages; success
+                // receipt harvested after stage_memo drops in the same run_walk.
+                let stage_entry = root
+                    .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                    .to_string_lossy()
+                    .into_owned();
+                let success_stage = vec![vec![Runnable::SingleClaim {
+                    entry: stage_entry,
+                    function: "single_pure_demand_is_accepted_recompute".to_string(),
+                    profile: ParsedRunnableProfile {
+                        provenance: ParsedProfileProvenance::Declared,
+                        heavy_whole_tree_resolve: false,
+                        spawns_host_compiler: false,
+                        memory: ParsedMemoryClass::Negligible,
+                        execution_mode: ExecutionMode::Hermetic,
+                    },
+                }]];
+                run_fixture(&success_stage);
 
-            // GREEN: on-success stage runs pure demand after the ordinary receipt harvest.
-            let stage_entry = root
-                .join("dag/test/claim/materialization_ladder_witness_test.dag")
-                .to_string_lossy()
-                .into_owned();
-            let success_stage = vec![vec![Runnable::SingleClaim {
-                entry: stage_entry,
-                function: "single_pure_demand_is_accepted_recompute".to_string(),
-                profile: ParsedRunnableProfile {
-                    provenance: ParsedProfileProvenance::Declared,
-                    heavy_whole_tree_resolve: false,
-                    spawns_host_compiler: false,
-                    memory: ParsedMemoryClass::Negligible,
-                    execution_mode: ExecutionMode::Hermetic,
-                },
-            }]];
-            run_fixture(&success_stage);
+                let ordinary_body =
+                    std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt");
+                let ordinary_keyed =
+                    parse_materialization_receipt_field(&ordinary_body, "keyed_calls=")
+                        .expect("keyed_calls");
+                let success_body = std::fs::read_to_string(&success_receipt)
+                    .expect("on-success materialization receipt");
+                let success_keyed =
+                    parse_materialization_receipt_field(&success_body, "keyed_calls=").unwrap();
 
-            let ordinary_keyed_with_stages = parse_materialization_receipt_field(
-                &std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt"),
-                "keyed_calls=",
-            )
-            .expect("keyed_calls");
-            let success_body = std::fs::read_to_string(&success_receipt)
-                .expect("on-success materialization receipt");
-            let success_keyed =
-                parse_materialization_receipt_field(&success_body, "keyed_calls=").unwrap();
-
-            assert!(
-                success_body.starts_with(&format!(
-                    "attempt_id={TEST_ATTEMPT_ID}\nplan_site=test::on_success_materialization_fixture\n"
-                )),
-                "success receipt must carry attempt and plan identity in the payload"
-            );
-            assert!(
-                success_keyed > 0,
-                "on-success stage pure demand must be counted in the success receipt"
-            );
-            assert_eq!(
-                ordinary_keyed_with_stages, ordinary_keyed_only,
-                "stage materialization must not leak into the ordinary-floor receipt \
-                 (ordinary with stages={ordinary_keyed_with_stages}, ordinary only={ordinary_keyed_only}, success={success_keyed})"
-            );
-            assert!(
-                parse_materialization_receipt_field(&success_body, "memo_hits=").is_some()
-                    && parse_materialization_receipt_field(&success_body, "memo_misses=").is_some()
-                    && parse_materialization_receipt_field(&success_body, "duplicated_keys=")
-                        .is_some(),
-                "success receipt must carry the same field set as the ordinary receipt"
-            );
+                assert!(
+                    success_body.starts_with(&format!(
+                        "attempt_id={TEST_ATTEMPT_ID}\nplan_site=test::on_success_materialization_fixture\n"
+                    )),
+                    "success receipt must carry attempt and plan identity in the payload"
+                );
+                assert!(
+                    ordinary_keyed > 0,
+                    "ordinary-floor walk must record pure demand in the ordinary receipt"
+                );
+                assert!(
+                    success_keyed > 0,
+                    "on-success stage pure demand must be counted in the success receipt"
+                );
+                assert!(
+                    parse_materialization_receipt_field(&success_body, "memo_hits=").is_some()
+                        && parse_materialization_receipt_field(&success_body, "memo_misses=")
+                            .is_some()
+                        && parse_materialization_receipt_field(&success_body, "duplicated_keys=")
+                            .is_some(),
+                    "success receipt must carry the same field set as the ordinary receipt"
+                );
+            });
         });
     }
 
