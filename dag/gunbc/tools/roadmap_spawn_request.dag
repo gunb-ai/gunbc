@@ -1,8 +1,9 @@
 module gunbc.tools.roadmap_spawn_request
 
+import extdeps.git.inspect
 
 func roadmap_next_spawnable() -> String {
-  let sha_result = git.Core.HeadCommit()
+  let sha_result = git.Inspect.HeadCommit()
   if sha_result.success {
     roadmap_spawn_request_json(doc: roadmap_authority(), merged: authored_merged_prs(), anchor_commit: sha_result.sha)
   } else {

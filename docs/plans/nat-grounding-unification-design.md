@@ -1,8 +1,8 @@
 # `nat` grounding-unification: one `Nat` authority across the two std trees
 
-Status: **census complete (execution, 2026-08-01)** · decision-input for the operator grounding-cluster lane · linked from [dag-v2-defork-audit.md](dag-v2-defork-audit.md) grounding cluster · supersedes the audit's stale **"LIVE — 4 entries"** co-occurrence figure for `nat` (see §2).
+Status: **census complete (execution, 2026-08-01)** · **DESIGN READY** · decision-input for the operator grounding-cluster lane · linked from [dag-v2-defork-audit.md](dag-v2-defork-audit.md) grounding cluster · supersedes the audit's stale **"LIVE — 4 entries"** co-occurrence figure for `nat` (see §2).
 
-Executes the per-concept authority design the de-fork audit requires before any repoint: *"the grounded dag authority for each has to be designed before any fan-out can repoint to it."* This is that design for **`nat`**, sequenced **after** `algebra`'s `FreeMonoid` shadow-removal (#6341) and **with** `integer`/`float` (numeric tower `Int = GroupCompletion<Nat>`). Escalated (smart-ant-466); audit marks **BLOCKED + LAST** among grounding-cluster repoints.
+Executes the per-concept authority design the de-fork audit requires before any repoint: *"the grounded dag authority for each has to be designed before any fan-out can repoint to it."* This is that design for **`nat`**, sequenced **with** `integer`/`float` (numeric tower `Int = GroupCompletion<Nat>`). **IMPLEMENTATION LARGE/ATOMIC** · **SEQUENCED WITH integer+float repoint** (not last).
 
 Reasoned serially per the DESIGN preamble: §1 fixes the problem, each later section is a consequence.
 
@@ -13,7 +13,9 @@ Two files define `nat` on the two std trees:
 - `dag/std/nat.dag` — module `std.nat`, **4 decls**, **61 live importers** in `dag/` (see §4.0).
 - `src/v2/std/nat.dag` — module `v2.std.nat`, **12 decls**, **37 live importers** in `src/v2/` (see §4.0).
 
-They share **one unqualified type name** (`Nat`) and **one shared fn name** (`nat_compare`). The shared `Nat` body **diverges**: dag = thin alias `Nat = CommutativeSemiring<Magnitude>`; v2 = coproduct `Nat = Zero | Succ { prev: Nat }`. The shared `nat_compare` body also **diverges** (semiring order via `<`/`>` vs coproduct order via `==` and `<`).
+The fork is **representational, not nominal**: `std.nat.Nat` is an algebraic alias `Nat = CommutativeSemiring<Magnitude>` with **no constructors**; `v2.std.nat.Nat` is a Peano coproduct `Zero | Succ { prev: Nat }` with `nat_cata` as the canonical fold. Exactly **one homonym** exists across the two modules besides the type name: **`nat_compare`** — and it already produces live namespace §13 ambiguity in mixed closures (semiring `<`/`>` vs coproduct `==`/`<`).
+
+They share **one unqualified type name** (`Nat`) and **one shared fn name** (`nat_compare`). The shared `Nat` body **diverges**; the shared `nat_compare` body also **diverges**.
 
 When a single import closure pulls in both trees, `Nat` binds ambiguously. Today this is the **benign record-with-record shadow** (not the coproduct-variant-drop that broke `verification` under A1): dag's `Nat` is a record alias, not a competing coproduct variant set. It still violates §3 single authority and will fire the flag-ANY type-name-collision wall once the five-basename grounding de-fork completes ([resolver-type-name-collision-wall.md](resolver-type-name-collision-wall.md) §4).
 
@@ -28,6 +30,8 @@ Method: BFS import closure from every `*_test.dag` floor entry under `dag/test/`
 | floor `*_test.dag` entries scanned | 351 | **946** |
 | closures with **both** `std.nat` + `v2.std.nat` | **4** | **138** |
 | all `src/v2/**/*.dag` closures with both | (not reported) | **157** |
+
+**What 138 means:** the number counts floor witness **import closures** where both nat authorities are **reachable** — a **risk and closure-population measure** for the LIVE fail-open pair, **not** 138 migration tasks or a work estimate. Adding tests or widening floor coverage can grow this count legitimately; **do not** pin it as a never-grow ratchet. Gate the unsafe facts (§7.6) instead.
 
 The growth is closure expansion (more floor entries, wider CI/gunbc surfaces importing `std.nat` from v2 workflow modules while the v2 compiler tree still pulls `v2.std.nat` through `integer`/`datetime`/lens chains) — the same latent→LIVE risk the audit warns about for `{effects, float, integer}`.
 
@@ -160,10 +164,26 @@ This is **not** "delete v2 copy and repoint" alone: the dag-side alias must be *
 
 ## 7. Sequencing, walls, and gates
 
-**Prerequisites (do not skip):**
+**Prerequisites — discharged (2026-08-01):**
 
-- `algebra` `FreeMonoid` shadow removed (#6341) — same pattern, same wall family.
-- Keystone generic inference for recursive coproducts (`generic_alias_coproduct_instantiation_test.dag`) — Nat `Succ` tail is the same fixpoint class as `FreeMonoid` `Cons`.
+- `algebra` `FreeMonoid` shadow removed (#6341 merged).
+- Keystone generic inference for recursive coproducts (`generic_alias_coproduct_instantiation_test.dag`) — Nat `Succ` tail is the same fixpoint class as `FreeMonoid` `Cons`; **green**.
+
+**Lane sequencing (operational — do not start the unification wave from this census PR):**
+
+1. **#7511** (P3b PR1 signedness / admission boundary) — merged.
+2. **Bounded P3b PR2 overflow** on `std.integer` — lands next (operational reason: both PR2 and the nat wave touch `std.integer`; one writer through the numeric authority at a time).
+3. **Atomic nat + integer + float wave** — one push, sequenced together (not nat-alone, not last in the grounding cluster).
+
+**Atomic wave — file ownership (single push, §5 auto-committer hazard):**
+
+| step | files / scope |
+| --- | --- |
+| 1 | `dag/std/nat.dag` ← coproduct + Peano ops + `nat_semiring` (category A); delete semiring alias + magnitude-backed compare/max/min (categories B/D) |
+| 2 | `src/v2/std/nat.dag` ← delete moved decls; thin reimport from `std.nat`; retain category C law roster only |
+| 3 | `dag/std/integer.dag` + `src/v2/std/integer.dag` ← `GroupCompletion<Nat>` cites unified `std.nat.Nat` |
+| 4 | `src/v2/std/float.dag` ← repoint nat op imports |
+| 5 | Importer repoints — all `std.nat` / `v2.std.nat` import sites for moved symbols in the **same** push (61 + 37 live modules; co-occurrence class must reach zero atomically) |
 
 **Hard sequencing (audit + resolver wall):**
 
@@ -176,7 +196,18 @@ This is **not** "delete v2 copy and repoint" alone: the dag-side alias must be *
 | --- | --- |
 | **Law roster node-binding** | `nat_declared_algebra_law_obligations` uses `Symbol` — stays v2-side (category C) like algebra encoding fns. |
 | **Qualified `v2.std.nat.Nat` in integer** | `v2.std.integer.Int` body cites `GroupCompletion<v2.std.nat.Nat>` | Must become `GroupCompletion<Nat>` under `std.nat` after repoint. |
-| **Co-occurrence surface** | 138 floor entries — any partial collapse must be **atomic** (§5 auto-committer hazard). |
+| **Co-occurrence surface** | 138 floor closures today — partial collapse is forbidden; the wave is **atomic** (§5 auto-committer hazard). |
+
+### 7.6 Census-phase gates (unsafe facts — **not** a co-occurrence count ratchet)
+
+Until the fork dissolves, enroll or refuse on these facts (adding floor tests may grow the closure count legitimately):
+
+| gate | refusal target |
+| --- | --- |
+| **No new unqualified `nat_compare`** | In any closure where both `std.nat` and `v2.std.nat` are reachable, a new bare `nat_compare` call is ambiguous (two divergent implementations) — must qualify by containment path or refuse. |
+| **No silent Nat authority pick** | A mixed closure must not compile by silently choosing one `Nat` body over the other; namespace §13 unique-on-chain applies — ambiguous bare `Nat` must refuse or qualify until single authority. |
+| **No new cross-tree bypass imports** | No new direct `import std.nat` inside `src/v2/` beyond the five census-documented modules without an explicit design row — bypasses the planned `v2.std.nat` thin-reimport authority. |
+| **Mixed closure must refuse until dissolved** | Closures with both authorities remain a counted risk surface; implementation lands only when the atomic wave zeros the class — not via partial alias deletes. |
 
 **Explicitly NOT this lane's first PR:** full `integer`/`float` tower, `GroupCompletion<M>` pair construction (#7197), hollow-alias wall — tracked separately.
 
@@ -186,9 +217,9 @@ When implementation lands:
 
 - **Discriminating witness:** closure importing both trees resolves `Nat` to coproduct (`Zero`/`Succ` constructible); red control = restore v2 duplicate `Nat` alias and assert shadow / wall fires.
 - **Numeric tower:** `cross_representation_equality_test` + nat add/mul laws green on unified authority.
-- **Co-occurrence:** sample of the 138 entries typecheck with single `Nat`.
+- **Co-occurrence:** sample of mixed closures typecheck with single `Nat`; co-occurrence class **zero** (not merely a lower count).
 - **Byte-identical emit fixpoint** if `dag/std/nat.dag` body changes trigger seed regen (verify — may be avoidable if only v2 duplicate deletes first).
 
 ## 9. Dissolution
 
-Delete this doc when `Nat`/`Zero`/`Succ` + Peano ops live only in `std.nat`, `v2.std.nat` imports rather than redefining them, the 138-entry co-occurrence class is gone, and `integer`'s `GroupCompletion<Nat>` cites the unified type. Full defork-audit row for `nat` can then read **DONE**.
+Delete this doc when `Nat`/`Zero`/`Succ` + Peano ops live only in `std.nat`, `v2.std.nat` imports rather than redefining them, the mixed-closure co-occurrence class is gone, and `integer`'s `GroupCompletion<Nat>` cites the unified type. Full defork-audit row for `nat` can then read **DONE**.

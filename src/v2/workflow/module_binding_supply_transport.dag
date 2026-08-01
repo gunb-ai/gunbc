@@ -1,6 +1,7 @@
 module v2.workflow.module_binding_supply_transport
 
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
@@ -86,7 +87,7 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
 }
 
 func run_module_binding_supply_gate() -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
   match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
     WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
