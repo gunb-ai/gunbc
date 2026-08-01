@@ -3,6 +3,17 @@ module v2.test.claim.ci_floor_plan_witness
 import std.realization {
   RunnableDiscoveryBatch,
 }
+import gunbc.cli_invoke {
+  PlanFunction,
+  CiFloorPlan,
+  CiRegenFloorPlan,
+  CiPlanArtifactPlan,
+  FalsifierPlan,
+  FalsifierNativeCacheColdPlan,
+  plan_function_name
+}
+import gunbc.ci_yaml_emit { expected_ci_yml }
+import gunbc.falsifier_workflow { expected_falsifier_yml }
 import v2.workflow.ci_floor_plan {
   gunbc_falsifier_ordinary_batches,
   gunbc_ci_floor_ordinary_batches,
@@ -706,8 +717,49 @@ test fn falsifier_plan_carries_no_finalization() -> Bool {
   plan_carries_no_finalization(plan: gunbc_falsifier_plan())
 }
 
-data falsifier_native_cache_cold_plan_row_note: String = "The FIFTH plan function, absent from this roster until 2026-08-01 — and its absence is the point. walk_plan_uniformity_note names these rows as the enforcement for the WalkPlan shape precisely because the typechecker does not check a declared return type against a body, so a plan function missing from THIS roster has no enforcement at all. gunbc_falsifier_native_cache_cold_plan was missed by the #7470 rename, kept returning a bare List<List<Runnable>>, and the executor's strict parser refused it on all 8 falsifier runs that reached the native-cache cold control step. Nothing here could red on that, because the roster counted four. This row closes the enforcement gap at the same grain as its siblings; the construction half (the falsifier_native_cache_cold_plan_function naming constant) is what stops the next rename from recreating it."
+data falsifier_native_cache_cold_plan_row_note: String = "The FIFTH plan function, absent from this roster until 2026-08-01 — and its absence is the point. walk_plan_uniformity_note names these rows as the enforcement for the WalkPlan shape precisely because the typechecker does not check a declared return type against a body, so a plan function missing from THIS roster has no enforcement at all. gunbc_falsifier_native_cache_cold_plan was missed by the #7470 rename, kept returning a bare List<List<Runnable>>, and the executor's strict parser refused it on all 8 falsifier runs that reached the native-cache cold control step. Nothing here could red on that, because the roster counted four."
 
 test fn falsifier_native_cache_cold_plan_carries_no_finalization() -> Bool {
   plan_carries_no_finalization(plan: gunbc_falsifier_native_cache_cold_plan())
+}
+
+data plan_roster_exhaustiveness_note: String = "THE ROW THAT MAKES THE PRECEDING FIVE A CLOSED SET RATHER THAN A LIST SOMEONE REMEMBERED TO EXTEND. Each sibling row above proves ONE plan carries its declared finalization; none of them, alone or together, proves that those are ALL the production plan targets. That missing quantifier is the actual #7470 defect: its completeness argument was a hand-maintained count of four, and a fifth target existed that no row mentioned, so every individual row stayed green while the roster was wrong.\\n\\nWHY THIS IS NOT ANOTHER HAND LIST. plan_variant_is_walk_plan_shaped matches over gunbc.cli_invoke PlanFunction, the coproduct that is now the ONLY way to name a plan target at claim_executor_run_plan_shell. A sixth production target cannot be authored without adding a variant, and adding a variant makes this match non-exhaustive — so this file fails to COMPILE until the new target is given a shape proof. The guarantee is therefore structural: not 'someone counted five' but 'the set of targets and the set of proofs are the same set, by construction'.\\n\\nTHE BOUND, stated because a closed roster is easy to over-read. This proves every DECLARED target's plan value carries the finalization its family declares. It does not prove the argv token resolves to that function — the variant-to-value pairing in the match below is hand-authored, since resolving a name to a declaration needs the containment SymbolIndex the namespace lane is building. So a variant mapped to the wrong plan value would still pass. Dissolve-on is the same as the coproduct's: a typed DeclarationRef over a resolved plan symbol, at which point the pairing is derived and this bound deletes."
+
+fn plan_variant_is_walk_plan_shaped(p: PlanFunction) -> Bool {
+  match p {
+    CiFloorPlan => plan_declares_authority_count(p: gunbc_ci_floor_plan())
+    CiRegenFloorPlan => plan_carries_no_finalization(plan: gunbc_ci_regen_floor_plan())
+    CiPlanArtifactPlan => plan_carries_no_finalization(plan: gunbc_ci_plan_artifact_plan())
+    FalsifierPlan => plan_carries_no_finalization(plan: gunbc_falsifier_plan())
+    FalsifierNativeCacheColdPlan => plan_carries_no_finalization(plan: gunbc_falsifier_native_cache_cold_plan())
+  }
+}
+
+fn every_plan_target_shaped(targets: List<PlanFunction>) -> Bool {
+  fold(targets, init: true, f: (acc, p) => acc && plan_variant_is_walk_plan_shaped(p: p))
+}
+
+test fn every_production_plan_target_is_walk_plan_shaped() -> Bool {
+  every_plan_target_shaped(targets: [
+    CiFloorPlan,
+    CiRegenFloorPlan,
+    CiPlanArtifactPlan,
+    FalsifierPlan,
+    FalsifierNativeCacheColdPlan
+  ])
+}
+
+data plan_roster_control_placement_note: String = "THERE IS DELIBERATELY NO RUNTIME RED CONTROL FOR THE EXHAUSTIVENESS ITSELF, and writing one would have been a lie worth naming. The obvious candidate — fold a deliberately-short target list and assert it refuses — is a tautology: every variant in this roster IS correctly shaped, so a short list returns true and the assertion would pass for the wrong reason, reporting coverage while discriminating nothing. The exhaustiveness guarantee is COMPILE-TIME: adding a sixth PlanFunction variant makes plan_variant_is_walk_plan_shaped non-exhaustive and this file stops compiling. Its control is therefore a compile failure, not a Bool, and the honest thing is to say so rather than ship a green row that cannot go red.\\n\\nWhat DOES carry runtime teeth is per-variant and already enrolled: forked_declared_count_is_refused_by_the_same_predicate forks the floor's declared count and requires the same predicate to refuse, and the three no-finalization rows carry the substitution control floor_finalization_witness_note describes. no_emitted_plan_target_retains_the_batches_shape below is the regression control for THIS incident specifically — it goes red if the pre-repair literal ever returns to either emitted artifact, and it stays enrolled permanently rather than retiring now that the wall has landed (§4b: dissolution deletes the obsoleted production machinery, never the evidence)."
+
+test fn every_emitted_plan_target_names_its_variant() -> Bool {
+  string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiFloorPlan)))
+    && string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiRegenFloorPlan)))
+    && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: FalsifierPlan)))
+    && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiPlanArtifactPlan)))
+    && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: FalsifierNativeCacheColdPlan)))
+}
+
+test fn no_emitted_plan_target_retains_the_batches_shape() -> Bool {
+  !string_contains(s: expected_ci_yml(), pattern: "--plan-function gunbc_falsifier_native_cache_cold_batches")
+    && !string_contains(s: expected_falsifier_yml(), pattern: "--plan-function gunbc_falsifier_native_cache_cold_batches")
 }

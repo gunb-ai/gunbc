@@ -16,6 +16,10 @@ import gunbc.ci_layer_roots {
 }
 import gunbc.cli_invoke {
   claim_executor_run_plan_shell,
+  PlanFunction,
+  CiFloorPlan,
+  CiPlanArtifactPlan,
+  plan_function_name,
   claim_executor_verify_artifacts_shell,
   gunbc_run_shell
 }
@@ -361,12 +365,13 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 }
 
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
-data floor_plan_function: String = "gunbc_ci_floor_plan"
-data plan_artifact_plan_function: String = "gunbc_ci_plan_artifact_plan"
-data regen_floor_plan_function: String = "gunbc_ci_regen_floor_plan"
+data plan_function_string_projection_note: String = "These two are the NAME PROJECTION of gunbc.cli_invoke PlanFunction, not a second authority. The coproduct is where the roster is closed; these exist because the floor's own policy predicates (v2.workflow.ci_floor_plan gunbc_ci_floor_plan_uses_batch_stop_policy, gunbc_floor_arm_time_budget_refusal_applies) compare a plan identity as a String, and the claim_executor side receives it as an argv token. Deriving them through plan_function_name keeps one authority (§3): a rename edits the coproduct's match arm and both the argv and these comparisons follow, where three independent literals were exactly the fork that let the falsifier's fifth target drift. They delete when those predicates take a PlanFunction instead of a String."
+
+data floor_plan_function: String = plan_function_name(p: CiFloorPlan)
+data plan_artifact_plan_function: String = plan_function_name(p: CiPlanArtifactPlan)
 
 
-fn scheduler_invoke_with(spec: CiSpec, plan_function: String) -> String {
+fn scheduler_invoke_with(spec: CiSpec, plan_function: PlanFunction) -> String {
   claim_executor_run_plan_shell(
     source_roots: witness_layer_roots,
     plan_entry: floor_plan_entry,
@@ -377,7 +382,7 @@ fn scheduler_invoke_with(spec: CiSpec, plan_function: String) -> String {
 }
 
 fn scheduler_invoke(spec: CiSpec) -> String {
-  scheduler_invoke_with(spec: spec, plan_function: floor_plan_function)
+  scheduler_invoke_with(spec: spec, plan_function: CiFloorPlan)
 }
 
 fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
@@ -428,7 +433,7 @@ fn gunbc_ci_regen_floor_only_script(spec: CiSpec) -> String {
         concat(git_fetch_script(policy: spec.diff_policy), "\n"),
         concat(
           concat(ci_regen_floor_skip_shortcut_script(), "\n"),
-          concat(scheduler_invoke_with(spec: spec, plan_function: regen_floor_plan_function), "\n")
+          concat(scheduler_invoke_with(spec: spec, plan_function: CiRegenFloorPlan), "\n")
         )
       )
     )

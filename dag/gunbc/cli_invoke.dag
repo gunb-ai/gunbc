@@ -53,15 +53,34 @@ fn claim_executor_notice_title_normalized(notice_title: String?) -> String? {
   }
 }
 
+type PlanFunction
+  = CiFloorPlan
+  | CiRegenFloorPlan
+  | CiPlanArtifactPlan
+  | FalsifierPlan
+  | FalsifierNativeCacheColdPlan
+
+data plan_function_closed_roster_note: String = "THE CLOSED ROSTER OF PRODUCTION ClaimExecutor PLAN TARGETS, and it is a coproduct rather than a String parameter because a String is what let a plan target escape a migration that claimed to cover all of them. plan_function was an unconstrained String crossing the modeled boundary, so plan identity was carried by an argv token nothing could check: gunbc.falsifier_workflow passed the literal \"gunbc_falsifier_native_cache_cold_batches\", derived from no authority, and the 2026-07-30 WalkPlan rename — whose completeness argument was a hand-maintained count of four — could not reach it. The executor then correctly refused the stale shape on every falsifier run that armed that step.\n\nWHAT THE TYPE BUYS, stated as the guarantee rather than the intent: an inline string literal at a plan_function argument is now a TYPE ERROR, so the class that produced this incident is unwritable rather than validated (§5 construction-over-validation). The roster is closed by the coproduct, so a new production plan target cannot be authored without adding a variant, and every exhaustive match over PlanFunction — plan_function_name here, plan_variant_is_walk_plan_shaped in v2.test.claim.ci_floor_plan_witness — fails to compile until that variant is handled. That is what makes the completeness argument structural instead of a census someone has to recount correctly.\n\nWHAT IT DOES NOT BUY, named rather than implied: the variant-to-plan-function-value pairing in the witness is still hand-authored, because resolving an argv token to a declaration needs the containment SymbolIndex the namespace lane is building — the type closes WHICH targets exist, not that each names a function whose declared return is WalkPlan<F>. Dissolve-on: a typed declaration reference (std.decl_ref.DeclarationRef over a resolved plan symbol) replaces the name projection, at which point plan_function_name and the witness's hand pairing both delete."
+
+fn plan_function_name(p: PlanFunction) -> String {
+  match p {
+    CiFloorPlan => "gunbc_ci_floor_plan"
+    CiRegenFloorPlan => "gunbc_ci_regen_floor_plan"
+    CiPlanArtifactPlan => "gunbc_ci_plan_artifact_plan"
+    FalsifierPlan => "gunbc_falsifier_plan"
+    FalsifierNativeCacheColdPlan => "gunbc_falsifier_native_cache_cold_plan"
+  }
+}
+
 fn claim_executor_run_plan_transport_argv(
   source_roots: List<String>,
   plan_entry: String,
-  plan_function: String,
+  plan_function: PlanFunction,
   notice_title: String?
 ) -> List<String> {
   let base = concat(
     source_root_transport_argv(roots: source_roots),
-    ["--plan-entry", plan_entry, "--plan-function", plan_function]
+    ["--plan-entry", plan_entry, "--plan-function", plan_function_name(p: plan_function)]
   )
   match claim_executor_notice_title_normalized(notice_title: notice_title) {
     Present { value: title } => concat(base, ["--notice-title", title])
@@ -101,7 +120,7 @@ fn claim_executor_notice_title_shell_suffix(notice_title: String?) -> String {
 fn claim_executor_run_plan_shell(
   source_roots: List<String>,
   plan_entry: String,
-  plan_function: String,
+  plan_function: PlanFunction,
   notice_title: String?,
   rooted: Bool
 ) -> String {
@@ -115,7 +134,7 @@ fn claim_executor_run_plan_shell(
   concat(
     concat(claim_executor_bin_shell(), flags),
     concat(
-      concat(concat(" --plan-entry ", plan_entry), concat(" --plan-function ", plan_function)),
+      concat(concat(" --plan-entry ", plan_entry), concat(" --plan-function ", plan_function_name(p: plan_function))),
       notice
     )
   )
