@@ -2233,7 +2233,6 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
                 // the same reason WhereRefinementUnenforced does.
                 | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
-                | crate::v1_std_core::CompilerDiagnostic::DeclaredTypeConformanceUnjudged { .. }
         )
 }
 
@@ -3882,9 +3881,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodNotFound { .. } => "MethodNotFound",
         CompilerDiagnostic::MethodExistenceUndecided { .. } => "MethodExistenceUndecided",
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "ReceiverTypeUnestablished",
-        CompilerDiagnostic::DeclaredTypeConformanceUnjudged { .. } => {
-            "DeclaredTypeConformanceUnjudged"
-        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
@@ -3921,7 +3917,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodExistenceUndecided { method, .. } => method.clone(),
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { method, .. } => method.clone(),
         CompilerDiagnostic::ReceiverTypeUnestablished { method, .. } => method.clone(),
-        CompilerDiagnostic::DeclaredTypeConformanceUnjudged { .. } => String::new(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
