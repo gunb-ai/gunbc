@@ -553,6 +553,81 @@ fn approved_probe_matches_v3_header(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingArtifactDisposition {
+    Absent,
+    LegacyV1Upgrade,
+    V3Present,
+    Unrecognized,
+}
+
+/// Classify an on-disk artifact at the subject path before a v3 write. Legacy v1
+/// rows are migration replaceable; complete v3 rows are write-once.
+fn classify_existing_artifact(
+    path: &Path,
+    expected_subject: &str,
+) -> Result<ExistingArtifactDisposition, String> {
+    if !path.exists() {
+        return Ok(ExistingArtifactDisposition::Absent);
+    }
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) => return Err(format!("open existing cache artifact {:?}: {e}", path)),
+    };
+    let file_len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(e) => return Err(format!("metadata for cache artifact {:?}: {e}", path)),
+    };
+    if file_len > resolved_graph_cache_cap_bytes() as usize {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    if file_len < MAGIC.len() + 4 {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    let mut prefix = [0u8; MAGIC.len() + 4];
+    if file.read_exact(&mut prefix).is_err() {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    if &prefix[..MAGIC.len()] != MAGIC {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
+    const LEGACY_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
+    match version {
+        1 => {
+            if file_len < LEGACY_HEADER_LEN {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let mut legacy = vec![0u8; LEGACY_HEADER_LEN - prefix.len()];
+            if file.read_exact(&mut legacy).is_err() {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let subject = std::str::from_utf8(&legacy[0..16])
+                .map_err(|e| format!("legacy cache subject utf8: {e}"))?;
+            if subject == expected_subject {
+                Ok(ExistingArtifactDisposition::LegacyV1Upgrade)
+            } else {
+                Ok(ExistingArtifactDisposition::Unrecognized)
+            }
+        }
+        FORMAT_VERSION => {
+            if file_len < V3_HEADER_LEN {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let mut header_rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
+            if file.read_exact(&mut header_rest).is_err() {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
+            match parse_v3_header(&header_bytes, expected_subject, file_len) {
+                Ok(_) => Ok(ExistingArtifactDisposition::V3Present),
+                Err(_) => Ok(ExistingArtifactDisposition::Unrecognized),
+            }
+        }
+        _ => Ok(ExistingArtifactDisposition::Unrecognized),
+    }
+}
+
 fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     let mut file = match File::open(path) {
         Ok(f) => f,
@@ -901,8 +976,23 @@ pub fn write(
         return Err("stored provider keys must be 16-char hex hashes".to_string());
     }
     let final_path = artifact_path(cache_root, subject_digest);
-    if final_path.exists() {
-        return Ok(CacheWriteOutcome::AlreadyExists);
+    match classify_existing_artifact(&final_path, subject_digest)? {
+        ExistingArtifactDisposition::Absent => {}
+        ExistingArtifactDisposition::LegacyV1Upgrade => {
+            fs::remove_file(&final_path).map_err(|e| {
+                format!(
+                    "failed to remove legacy v1 cache artifact {:?} before v3 migration write: {e}",
+                    final_path
+                )
+            })?;
+        }
+        ExistingArtifactDisposition::V3Present => return Ok(CacheWriteOutcome::AlreadyExists),
+        ExistingArtifactDisposition::Unrecognized => {
+            return Err(format!(
+                "refusing v3 write: unrecognized cache artifact at {:?}",
+                final_path
+            ));
+        }
     }
     if let Some(parent) = final_path.parent() {
         fs::create_dir_all(parent)

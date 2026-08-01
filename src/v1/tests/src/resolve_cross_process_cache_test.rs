@@ -846,6 +846,51 @@ fn provider_disposition_four_arm_matrix() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// review 46678: legacy v1 must not block v3 materialization — cold rebuild replaces
+/// the legacy row and a fresh index gets a verified v3 disk hit.
+#[test]
+fn legacy_v1_cold_rebuild_migrates_to_v3_on_fresh_index() {
+    let dir = temp_dir("legacy-migrate");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let legacy_dir = dir.join("legacy-migrate-cache");
+    fs::create_dir_all(&legacy_dir).expect("legacy cache dir");
+    write_raw_artifact_for_test(
+        &legacy_dir,
+        &subject,
+        &build_legacy_v1_probe_artifact(&subject),
+    )
+    .expect("legacy write");
+
+    with_cache_env(&legacy_dir, || {
+        let index = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&index, &a).expect("legacy cold rebuild must migrate");
+    });
+    match probe(&legacy_dir, &subject) {
+        CacheProbeResult::Hit(hit) => {
+            assert!(
+                hit.parts.is_some(),
+                "cold rebuild must replace legacy v1 with v3 on disk"
+            );
+        }
+        other => panic!("expected v3 probe after migration: {other:?}"),
+    }
+
+    with_cache_env(&legacy_dir, || {
+        let decodes_before = decode_count();
+        let index2 = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&index2, &a).expect("fresh index v3 disk hit");
+        assert_eq!(
+            decode_count(),
+            decodes_before + 1,
+            "fresh index must decode v3 once after legacy migration"
+        );
+    });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// review 46613: provider-approved probe must bind the reopened artifact header before
 /// decode — a replacement file that is internally valid but header-mismatched refuses.
 #[test]
