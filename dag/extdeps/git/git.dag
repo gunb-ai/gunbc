@@ -812,6 +812,19 @@ service git.Core {
       nonzero => String "Config set failed"
     }
   }
+
+  operation InitInRepo {
+    input { repo: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "init", "-q"] }
+    exit {
+      0 => Unit
+      nonzero => String "Init failed"
+    }
+  }
 }
 
 fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
@@ -850,6 +863,10 @@ fn shape_git_fetch_unshallow_argv(
 
 fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
   ["init", "--bare", path as String]
+}
+
+fn shape_git_init_in_repo_argv(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "init", "-q"]
 }
 
 fn shape_git_bare_fetch_argv(

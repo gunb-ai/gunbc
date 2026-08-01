@@ -18,7 +18,10 @@ import gunbc.ci_spec {
   ci_heal_author_commit_artifact_dir,
   ci_heal_author_commit_artifact_name,
   ci_heal_author_commit_regen_command,
-  gunbc_ci_heal_commit_push_script
+  ci_heal_repo_local_git_config_entry,
+  ci_heal_repo_local_git_config_function,
+  gunbc_ci_heal_commit_push_script,
+  gunbc_ci_heal_repo_local_git_config_invoke,
 }
 import gunbc.generated_artifact {
   auto_push_eligible_committed_artifact_paths,
@@ -136,6 +139,19 @@ test fn workflow_dispatch_carries_optional_exact_healed_sha_input() -> Bool {
 test fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
   (ci_heal_generated_artifact_regen_function == "main_wet")
     && (ci_heal_generated_artifact_gate_entry == "dag/tools/generated_artifact_gate.dag")
+}
+
+test fn heal_converges_repo_local_git_config() -> Bool {
+  (ci_heal_repo_local_git_config_function == "converge")
+    && (ci_heal_repo_local_git_config_entry == "dag/gunbc/repo_local_git_config.dag")
+    && string_contains(
+      s: gunbc_ci_heal_repo_local_git_config_invoke(),
+      pattern: "repo_local_git_config.dag"
+    )
+    && string_contains(
+      s: gunbc_ci_heal_repo_local_git_config_invoke(),
+      pattern: "--function converge"
+    )
 }
 
 test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
