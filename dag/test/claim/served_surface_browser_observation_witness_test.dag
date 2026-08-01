@@ -76,6 +76,10 @@ test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
       _ => false
     }
     && navigation_specimen_outcome(specimen: specimen) == ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
+    && navigation_specimen_document(specimen: specimen) == ChromiumInternalPresentedDocument {
+      document: ChromiumWebDataErrorDocument,
+      final_url: ChromiumWebDataErrorUrl,
+    }
 }
 
 test fn witness_bodied_502_retains_network_document() -> Bool {
