@@ -1,20 +1,21 @@
 module gunbc.source_integration_proof_kernel
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, ContentHash, Int, List, NonEmptyStr }
 import std.integer { PositiveInt }
 import gunbc.source_integration_landing_spine {
   LandingProposalContract,
   LandingProposalOccurrenceId,
   LandingAcceptedStateHandle,
+  LandingFactHandle,
   LandingScopeHandle,
   LandingRequiredClaim,
   LandingReadyEvidenceReceipt,
   LandingEquivalenceHandle,
+  LandingClosureCertificateKind,
 }
 
 data source_integration_proof_kernel_model_note: NonEmptyStr = "P1 FIRST-SLICE MODEL, not a claim that the proof kernel is complete. It composes with P0 by carrying LandingProposalContract and LandingReadyEvidenceReceipt directly: occurrence identity, reads/relies, modifies/frame, guarantees, authority, and admitted claim evidence are not re-declared here. The new fact is the bounded candidate-generation problem P0 deliberately left absent. Candidate space is constructed from a finite accepted-state seed plus directly authored transformations, witnessed context transports, declared canonicalizations, and finite recovery alternatives. Callers supply those generators and their bounds, never a supposedly exhaustive candidate list; generation closure is therefore an obligation the later public reconciliation fold must establish, not a Boolean callers may assert. Domain facts, procedures, invariants, and closure certificates remain data. Every model-admission failure is a typed, located, counted KernelRefusal. This carrier has no source parser/edit lens (P2), target effect/write transport (P3), primary-outcome projection, arbitrary synthesis, or unbounded search."
 
-type KernelFactKey = NonEmptyStr where brand("KernelFactKey")
 type KernelFactValue = NonEmptyStr where brand("KernelFactValue")
 type KernelProcedureHandle = NonEmptyStr where brand("KernelProcedureHandle")
 type KernelInvariantHandle = NonEmptyStr where brand("KernelInvariantHandle")
@@ -22,15 +23,14 @@ type KernelCanonicalizationHandle = NonEmptyStr where brand("KernelCanonicalizat
 type KernelRecoveryAlternativeHandle = NonEmptyStr where brand("KernelRecoveryAlternativeHandle")
 type KernelContextTransportReceipt = NonEmptyStr where brand("KernelContextTransportReceipt")
 type KernelCommutingSquareReceipt = NonEmptyStr where brand("KernelCommutingSquareReceipt")
-type KernelCertificateReceipt = NonEmptyStr where brand("KernelCertificateReceipt")
 
 type KernelFact {
-  key: KernelFactKey
+  key: LandingFactHandle
   value: KernelFactValue
 }
 
 type KernelGroundedDelta {
-  key: KernelFactKey
+  key: LandingFactHandle
   before: KernelFactValue
   after: KernelFactValue
   scope: LandingScopeHandle
@@ -65,8 +65,8 @@ type KernelInvariant {
 
 type KernelInferenceProcedure {
   identity: KernelProcedureHandle
-  consumes: List<KernelFactKey>
-  produces: List<KernelFactKey>
+  consumes: List<LandingFactHandle>
+  produces: List<LandingFactHandle>
 }
 
 type KernelFiniteBounds {
@@ -115,7 +115,7 @@ type KernelRefusalKind
 type KernelRefusal {
   kind: KernelRefusalKind
   locus: NonEmptyStr
-  occurrences: PositiveInt
+  occurrences: Int
 }
 
 fn kernel_refusal(
@@ -126,7 +126,7 @@ fn kernel_refusal(
   [KernelRefusal {
     kind: kind,
     locus: locus,
-    occurrences: occurrences as PositiveInt,
+    occurrences: occurrences,
   }]
 }
 
@@ -259,22 +259,14 @@ fn kernel_candidate_generation_admitted(
   count(assessment.refusals) == 0
 }
 
-type KernelClosureCertificateKind
-  = KernelCaptureCompletenessCertificate
-  | KernelAffectedScopeCertificate
-  | KernelRuleClosureCertificate
-  | KernelCandidateGenerationCertificate
-  | KernelAdmissibilityCertificate
-  | KernelEquivalenceQuotientCertificate
-  | KernelMultiplicityCertificate
-
 type KernelClosureCertificate {
-  kind: KernelClosureCertificateKind
-  receipt: KernelCertificateReceipt
+  kind: LandingClosureCertificateKind
+  receipt: ContentHash
 }
 
 type KernelAcceptanceCapability
   = KernelBoundedCandidateGenerationModeled
+  | KernelOnePublicReconciliationFoldExecutes
   | KernelOccurrenceDedupExecutes
   | KernelContextValidityTransportExecutes
   | KernelCommutingSquareExecutes
@@ -294,6 +286,7 @@ type KernelAcceptanceCapability
 fn kernel_required_acceptance_capabilities() -> List<KernelAcceptanceCapability> {
   [
     KernelBoundedCandidateGenerationModeled,
+    KernelOnePublicReconciliationFoldExecutes,
     KernelOccurrenceDedupExecutes,
     KernelContextValidityTransportExecutes,
     KernelCommutingSquareExecutes,

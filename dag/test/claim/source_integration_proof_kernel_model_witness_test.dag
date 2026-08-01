@@ -1,0 +1,204 @@
+module test.claim.source_integration_proof_kernel_model_witness
+
+import std.types { Bool, Int, List }
+import std.claim_evidence { Claim }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.source_integration_landing_spine { LandingGuaranteeProposition }
+import test.claim.source_integration_landing_spine_witness {
+  p0_proposal,
+  p0_ready_evidence,
+  p0_builds_claim,
+}
+import gunbc.source_integration_proof_kernel {
+  KernelFact,
+  KernelGroundedDelta,
+  KernelDirectAuthoredTransformation,
+  KernelInferenceProcedure,
+  KernelInvariant,
+  KernelFiniteBounds,
+  KernelCandidateGenerationSpec,
+  KernelCandidateGenerationAssessment,
+  KernelProposalBoundExceeded,
+  KernelDeltaOutsideFrame,
+  KernelDeltaUngrounded,
+  KernelBoundedCandidateGenerationModeled,
+  KernelAcceptanceCheck,
+  kernel_transformations,
+  assess_bounded_candidate_generation,
+  kernel_candidate_generation_admitted,
+  kernel_required_acceptance_capabilities,
+  kernel_missing_acceptance_capabilities,
+  kernel_closing_frontier_count,
+  kernel_closing_contract_holds,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the model that candidate generation starts from finite declared generators rather than a caller-supplied CandidateSet. They also prove the model's admission boundary is discriminating: exceeding a declared bound and writing an ungrounded/out-of-frame delta produce distinct typed, located, counted refusals. The acceptance-capability frontier is itself closed and derived by set difference, so duplicate check rows cannot erase missing work and a failing check is missing just like an absent one. This suite does not claim the public reconciliation fold exists; the separate quarantined acceptance witness stays red until every required capability has an executing check."
+
+fn p1_transformation() -> KernelDirectAuthoredTransformation {
+  KernelDirectAuthoredTransformation {
+    proposal: p0_proposal(),
+    ready_evidence: p0_ready_evidence(),
+    delta: [KernelGroundedDelta {
+      key: "worker-declaration-name",
+      before: "worker",
+      after: "build_worker",
+      scope: "source-worker",
+      grounding_claim: p0_builds_claim(),
+    }],
+  }
+}
+
+fn p1_bounds(proposals: Int, facts: Int) -> KernelFiniteBounds {
+  KernelFiniteBounds {
+    proposal_occurrences: proposals,
+    facts: facts,
+    transports: 2,
+    canonicalizations: 2,
+    recovery_alternatives: 2,
+    inference_rounds: 4,
+    candidate_classes: 16,
+  }
+}
+
+fn p1_spec_with(
+  remaining: List<KernelDirectAuthoredTransformation>,
+  first_delta: List<KernelGroundedDelta>,
+  proposal_bound: Int,
+  fact_bound: Int,
+) -> KernelCandidateGenerationSpec {
+  let transformation = p1_transformation()
+  KernelCandidateGenerationSpec {
+    accepted_parent: "accepted-state-41",
+    accepted_facts: [KernelFact {
+      key: "worker-declaration-name",
+      value: "worker",
+    }],
+    first_transformation: KernelDirectAuthoredTransformation {
+      proposal: transformation.proposal,
+      ready_evidence: transformation.ready_evidence,
+      delta: first_delta,
+    },
+    remaining_transformations: remaining,
+    transports: [],
+    commuting_squares: [],
+    canonicalizations: [],
+    recovery_alternatives: [],
+    procedures: [KernelInferenceProcedure {
+      identity: "apply-grounded-replacement",
+      consumes: ["worker-declaration-name"],
+      produces: ["worker-declaration-name"],
+    }],
+    invariants: [KernelInvariant {
+      identity: "builds-after-rename",
+      claims: [p0_builds_claim()],
+      procedure: "apply-grounded-replacement",
+    }],
+    equivalence: "p1-exact-bounded-fact-equivalence",
+    bounds: p1_bounds(proposals: proposal_bound, facts: fact_bound),
+  }
+}
+
+fn p1_model_spec() -> KernelCandidateGenerationSpec {
+  p1_spec_with(
+    remaining: [],
+    first_delta: p1_transformation().delta,
+    proposal_bound: 2,
+    fact_bound: 4,
+  )
+}
+
+test fn witness_candidate_generation_is_admitted_from_finite_generators() -> Bool {
+  let spec = p1_model_spec()
+  let assessment = assess_bounded_candidate_generation(spec: spec)
+  kernel_candidate_generation_admitted(assessment: assessment)
+    && count(kernel_transformations(spec: spec)) == 1
+    && count(spec.accepted_facts) == 1
+    && count(spec.procedures) == 1
+    && count(spec.invariants) == 1
+    && spec.bounds.inference_rounds == 4
+    && spec.bounds.candidate_classes == 16
+}
+
+test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() -> Bool {
+  let assessment = assess_bounded_candidate_generation(
+    spec: p1_spec_with(
+      remaining: [p1_transformation()],
+      first_delta: p1_transformation().delta,
+      proposal_bound: 1,
+      fact_bound: 8,
+    ),
+  )
+  !kernel_candidate_generation_admitted(assessment: assessment)
+    && count(assessment.refusals) == 1
+    && assessment.refusals |> any(refusal =>
+      refusal.kind == KernelProposalBoundExceeded
+        && refusal.locus == "bounds.proposal_occurrences"
+        && refusal.occurrences == 2
+    )
+}
+
+test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
+  let ungrounded_claim = Claim {
+    id: "not-an-authored-guarantee",
+    subject: p0_proposal().transformation,
+    target: p0_proposal().target,
+    proposition: LandingGuaranteeProposition {
+      statement: "this claim is absent from the proposal contract",
+    },
+    scope: "source-and-public-behavior",
+    bound: p0_proposal().attempt,
+  }
+  let assessment = assess_bounded_candidate_generation(
+    spec: p1_spec_with(
+      remaining: [],
+      first_delta: [KernelGroundedDelta {
+        key: "unrelated-setting",
+        before: "off",
+        after: "on",
+        scope: "outside-authored-frame",
+        grounding_claim: p0_builds_claim(),
+      }, KernelGroundedDelta {
+        key: "worker-declaration-name",
+        before: "worker",
+        after: "build_worker",
+        scope: "source-worker",
+        grounding_claim: ungrounded_claim,
+      }],
+      proposal_bound: 2,
+      fact_bound: 4,
+    ),
+  )
+  !kernel_candidate_generation_admitted(assessment: assessment)
+    && count(assessment.refusals) == 2
+    && assessment.refusals |> any(refusal =>
+      refusal.kind == KernelDeltaOutsideFrame
+        && refusal.locus == "transformations.delta.scope"
+        && refusal.occurrences == 1
+    )
+    && assessment.refusals |> any(refusal =>
+      refusal.kind == KernelDeltaUngrounded
+        && refusal.locus == "transformations.delta.grounding_claim"
+        && refusal.occurrences == 1
+    )
+}
+
+fn p1_first_slice_acceptance_checks() -> List<KernelAcceptanceCheck> {
+  [KernelAcceptanceCheck {
+    capability: KernelBoundedCandidateGenerationModeled,
+    witness_holds: witness_candidate_generation_is_admitted_from_finite_generators()
+      && witness_candidate_generation_bound_refusal_is_typed_located_counted()
+      && witness_delta_grounding_and_frame_refusals_stay_distinct(),
+  }]
+}
+
+test fn witness_closing_frontier_is_derived_and_duplicate_safe() -> Bool {
+  let checks = p1_first_slice_acceptance_checks()
+  let duplicated = append(checks, items: checks)
+  count(kernel_required_acceptance_capabilities()) == 17
+    && kernel_closing_frontier_count(checks: checks) == 16
+    && kernel_closing_frontier_count(checks: duplicated) == 16
+    && count(kernel_missing_acceptance_capabilities(checks: checks)) == 16
+    && !kernel_closing_contract_holds(checks: checks)
+}
