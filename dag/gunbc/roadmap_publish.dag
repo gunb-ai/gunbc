@@ -1,0 +1,312 @@
+module gunbc.roadmap_publish
+
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
+import extdeps.github.pulls {
+  PullRequest,
+  PullRequestState, Open,
+}
+
+data publish_producer_note: String = "PUBLICATION IS ADJUDICATED AGAINST AN EXACT HEAD, NOT LOOKED UP BY BRANCH (operator ruling, 2026-07-31). An earlier cut of this module answered 'which pull request belongs to this branch', which is a lookup rather than a judgment: it reported whatever head that pull request happened to carry and left the caller to compare. Every downstream obligation — verify, review, audit, acceptance — is about one exact commit, so the question Publication has to answer is whether THIS commit is the one on offer.\\n\\nThe branch is a lookup and publication handle. A completed judgment belongs to a head sha.\\n\\nTHE ARM THAT MOTIVATES THE REWRITE is PublicationHeadDiverged. A pull request exists, its branch matches, and its head is NOT the commit under judgment — the ordinary state after a worker pushes a revision while a review is in flight. Under a branch lookup that reads as a successful publication, and every later receipt binds to a commit nobody assessed. It is the one outcome a lookup cannot express and the one most likely to occur."
+
+data expected_head_vocabulary_note: String = "The subject is EXPECTED HEAD, not 'candidate' (operator ruling, 2026-07-31). The first trip has no candidate entity — the pushed commit sha IS the subject of Publication, Verify, Review and Audit — so carrying the word 'candidate' in this API would invite the abstraction back by vocabulary alone, which is how a rejected thesis returns without anyone deciding to reinstate it."
+
+data belt_observes_note: String = "THE BELT OBSERVES; THIS ADJUDICATES. Nothing here pushes a branch or opens a pull request, and nothing here calls a service. The adjudicator takes observations a caller already holds, so every arm is reachable from constructed values with no network and no token — which is what lets the judgment be witnessed at all.\\n\\nThe observations are COPRODUCTS rather than bare lists because a failed read must not be indistinguishable from an empty one. 'No pull requests exist' and 'I could not find out' have different remedies, and a caller handed an empty list for both would report the branch unpublished when the truth is that nothing was learned. That is the ignorance-as-answer conflation, arriving in the direction that looks like an ordinary negative result.\\n\\nThis also replaces the previous module's honest but awkward position that a refusal arm could not be built because the interpreter raises on transport failure. It could not be built THERE, in a function that called the service itself. Here the caller performs the read and reports what happened, so the refusal is an ordinary value and the arm is reachable."
+
+type RemoteBranch {
+  remote: NonEmptyStr
+  branch: NonEmptyStr
+  head_sha: CommitSha
+}
+
+type PullRequestObservation
+  = PullRequestsRead { pulls: List<PullRequest> }
+  | PullRequestsUnreadable { detail: String }
+
+type RemoteBranchObservation
+  = RemoteBranchesRead { branches: List<RemoteBranch> }
+  | RemoteBranchesUnreadable { detail: String }
+
+data remote_ref_identity_note: String = "A REMOTE REF NAME IS NOT A PUBLICATION (review correction, 2026-07-31). The previous cut observed remote branches as bare strings, so the branch-without-pull-request arm established only that a ref with the right NAME existed — which is exactly the exact-head thesis this module claims to enforce, abandoned on the one path that had no pull request to compare against. A branch left over from an earlier attempt, or one the worker pushed and then rewrote, satisfied it.\\n\\nSo the observation carries ref identity, and the arm splits: at the expected head, or diverged from it. The diverged arm matters most on this path precisely because there is no pull request whose head would otherwise reveal the mismatch."
+
+type PublicationOutcome
+  = PublicationBound {
+      branch: NonEmptyStr,
+      pr_number: Int,
+      pr_head: CommitSha,
+      url: NonEmptyStr,
+      draft: Bool,
+    }
+  | PublicationHeadDiverged {
+      branch: NonEmptyStr,
+      pr_number: Int,
+      pr_head: CommitSha,
+      expected_head: CommitSha,
+      url: NonEmptyStr,
+    }
+  | PublicationBindingAmbiguous {
+      branch: NonEmptyStr,
+      base_ref: NonEmptyStr,
+      pr_numbers: List<Int>,
+    }
+  | RemoteBranchAtExpectedHeadWithoutPullRequest {
+      branch: NonEmptyStr,
+      head_sha: CommitSha,
+    }
+  | RemoteBranchHeadDiverged {
+      branch: NonEmptyStr,
+      remote_head: CommitSha,
+      expected_head: CommitSha,
+    }
+  | RemoteBranchBindingAmbiguous {
+      branch: NonEmptyStr,
+      remote: NonEmptyStr,
+      refs_matched: Int,
+    }
+  | BranchNotPublished {
+      branch: NonEmptyStr,
+      remote_branches_seen: Int,
+    }
+  | PublicationObservationRefused {
+      detail: String,
+    }
+
+data draft_is_carried_not_judged_note: String = "Draft is REPORTED, never derived from. A draft pull request is a perfectly good publication surface for the roadmap's own review process — readiness for review is decided by the roadmap's Run Review action, not by the forge's draft flag — so this module carries the flag and refuses to conclude anything from it. Treating draft as not-yet-published would import a forge convention into a roadmap decision, and would make the roadmap's own trigger unable to review a subject the operator deliberately kept out of the forge's review queue."
+
+data no_silent_pick_note: String = "0/1/MANY, NEVER first() (review correction, 2026-07-31). The previous cut selected the FIRST pull request whose head ref matched the branch. Nothing in the model establishes that the match is unique — a branch can carry pull requests against different bases — so first() silently picked one and reported it as THE publication. That is the same silent-pick defect the namespace lane is eliminating, reintroduced in a module whose whole thesis is that the subject must be exact.\\n\\nUniqueness is therefore established rather than assumed: the match is keyed by head branch AND expected base, and a two-or-more result is its own arm carrying every matching number, so an ambiguous binding is visible instead of resolved by list order.\\n\\nTHE SAME RULE, APPLIED TO THE FOLD BESIDE IT (self-review, 2026-07-31). The first cut of this correction fixed the pull-request fold and left adjudicate_remote_branch handling 0 and then taking the first of the rest — so the note above declared a rule the module did not uniformly keep, one screen below where it was written. A well-formed ref listing cannot carry two refs of one name, so no live observation reaches it; that is exactly the argument this note already rejects for pull requests, because the observation is a caller-supplied list and nothing in the MODEL establishes the uniqueness the code was relying on. Both folds are now 0/1/many. The old singleton arm was worse than a silent pick on top of that: count was already known to be nonzero, so its Absent branch was unreachable, and if reached it answered BranchNotPublished — a confident wrong answer to a question it had not decided. An unreachable arm still has to name what it would mean, and the honest meaning is that the binding was not established, never that the branch is absent.\\n\\nWHAT `NEVER first()` MEANS, because a grep falsifies the headline and the distinction is the whole point. first() survives in the pull-request fold and sole_remote_branch does the same job below, and both are correct: they run only AFTER count has proven the match set is a singleton, so they EXTRACT the one element rather than SELECT among several. The banned move is reaching for the head of a list whose length was never established — that is where list order silently becomes the answer. Extraction after a proven count is not that move, and reading the rule as banning the call rather than the selection would push a reviewer toward replacing a correct guarded extractor with something less clear."
+
+fn pull_requests_for_target(
+  pulls: List<PullRequest>,
+  branch: NonEmptyStr,
+  expected_base: NonEmptyStr,
+) -> List<PullRequest> {
+  filter(pulls, p =>
+    (p.head.ref as String) == (branch as String)
+      && (p.base.ref as String) == (expected_base as String))
+}
+
+fn adjudicate_bound_pull_request(
+  pr: PullRequest,
+  branch: NonEmptyStr,
+  expected_head: CommitSha,
+) -> PublicationOutcome {
+  if (pr.head.sha as String) == (expected_head as String) {
+    PublicationBound {
+      branch: branch,
+      pr_number: pr.number,
+      pr_head: pr.head.sha,
+      url: pr.html_url,
+      draft: pr.draft,
+    }
+  } else {
+    PublicationHeadDiverged {
+      branch: branch,
+      pr_number: pr.number,
+      pr_head: pr.head.sha,
+      expected_head: expected_head,
+      url: pr.html_url,
+    }
+  }
+}
+
+fn remote_branch_for(
+  branches: List<RemoteBranch>,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+) -> List<RemoteBranch> {
+  filter(branches, b =>
+    (b.remote as String) == (remote as String)
+      && (b.branch as String) == (branch as String))
+}
+
+fn sole_remote_branch(branches: List<RemoteBranch>) -> RemoteBranch? {
+  fold(branches, init: none, f: (acc, r) => Present { value: r })
+}
+
+fn adjudicate_remote_branch(
+  branches: List<RemoteBranch>,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  expected_head: CommitSha,
+) -> PublicationOutcome {
+  let matches = remote_branch_for(branches: branches, remote: remote, branch: branch)
+  let matched = count(matches)
+  if matched == 0 {
+    BranchNotPublished {
+      branch: branch,
+      remote_branches_seen: count(branches),
+    }
+  } else if matched > 1 {
+    RemoteBranchBindingAmbiguous {
+      branch: branch,
+      remote: remote,
+      refs_matched: matched,
+    }
+  } else {
+    match sole_remote_branch(branches: matches) {
+      Absent =>
+        RemoteBranchBindingAmbiguous {
+          branch: branch,
+          remote: remote,
+          refs_matched: matched,
+        }
+      Present { value: ref } =>
+        if (ref.head_sha as String) == (expected_head as String) {
+          RemoteBranchAtExpectedHeadWithoutPullRequest {
+            branch: branch,
+            head_sha: ref.head_sha,
+          }
+        } else {
+          RemoteBranchHeadDiverged {
+            branch: branch,
+            remote_head: ref.head_sha,
+            expected_head: expected_head,
+          }
+        }
+    }
+  }
+}
+
+fn adjudicate_publication(
+  pulls: PullRequestObservation,
+  remotes: RemoteBranchObservation,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  expected_base: NonEmptyStr,
+  expected_head: CommitSha,
+) -> PublicationOutcome {
+  match pulls {
+    PullRequestsUnreadable { detail } =>
+      PublicationObservationRefused {
+        detail: join(["the open pull requests could not be read: ", detail], ""),
+      }
+    PullRequestsRead { pulls: listed } => {
+      let matches = pull_requests_for_target(
+        pulls: listed,
+        branch: branch,
+        expected_base: expected_base,
+      )
+      if count(matches) > 1 {
+        PublicationBindingAmbiguous {
+          branch: branch,
+          base_ref: expected_base,
+          pr_numbers: map(matches, p => p.number),
+        }
+      } else if count(matches) == 1 {
+        match first(matches) {
+          Absent =>
+            PublicationObservationRefused {
+              detail: "a single pull request matched and then could not be read back, which is not a state this model can describe",
+            }
+          Present { value: pr } =>
+            adjudicate_bound_pull_request(
+              pr: pr,
+              branch: branch,
+              expected_head: expected_head,
+            )
+        }
+      } else {
+        match remotes {
+          RemoteBranchesUnreadable { detail } =>
+            PublicationObservationRefused {
+              detail: join([
+                "no pull request targets this branch and base, and the remote refs could not be read, so whether the branch was pushed at all is unknown: ",
+                detail,
+              ], ""),
+            }
+          RemoteBranchesRead { branches } =>
+            adjudicate_remote_branch(
+              branches: branches,
+              remote: remote,
+              branch: branch,
+              expected_head: expected_head,
+            )
+        }
+      }
+    }
+  }
+}
+
+data publication_detail_note: String = "The segment detail is derived from the outcome rather than authored beside it, so a new arm cannot render as a stale sentence. Every divergence arm names BOTH shas, because the operator's next action depends on which is stale: a worker that pushed during review needs a re-review of the new head, while a ref pointing at an older commit than the one verified needs a push."
+
+fn publication_detail(outcome: PublicationOutcome) -> String {
+  match outcome {
+    PublicationBound { branch: _, pr_number, pr_head, url: _, draft } =>
+      join([
+        if draft { "draft pull request #" } else { "pull request #" },
+        to_string(pr_number),
+        " at ",
+        pr_head as String,
+      ], "")
+    PublicationHeadDiverged { branch: _, pr_number, pr_head, expected_head, url: _ } =>
+      join([
+        "pull request #",
+        to_string(pr_number),
+        " is at ",
+        pr_head as String,
+        " but the commit under judgment is ",
+        expected_head as String,
+        " — the branch moved, so this pull request offers a different change",
+      ], "")
+    PublicationBindingAmbiguous { branch, base_ref, pr_numbers } =>
+      join([
+        to_string(count(pr_numbers)),
+        " open pull requests target ",
+        branch as String,
+        " against ",
+        base_ref as String,
+        ", so which one publishes this commit is not decidable from the observation",
+      ], "")
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
+      join([
+        "the branch ",
+        branch as String,
+        " is on the remote at ",
+        head_sha as String,
+        " but no open pull request targets it",
+      ], "")
+    RemoteBranchHeadDiverged { branch, remote_head, expected_head } =>
+      join([
+        "the branch ",
+        branch as String,
+        " is on the remote at ",
+        remote_head as String,
+        ", not at the commit under judgment ",
+        expected_head as String,
+      ], "")
+    RemoteBranchBindingAmbiguous { branch, remote, refs_matched } =>
+      join([
+        to_string(refs_matched),
+        " refs on ",
+        remote as String,
+        " answer to ",
+        branch as String,
+        ", so which ref carries the commit under judgment is not decidable from the observation",
+      ], "")
+    BranchNotPublished { branch, remote_branches_seen } =>
+      join([
+        "the branch ",
+        branch as String,
+        " is not on the remote (",
+        to_string(remote_branches_seen),
+        " remote refs read)",
+      ], "")
+    PublicationObservationRefused { detail } => detail
+  }
+}
+
+data offers_the_expected_head_note: String = "The single question a downstream obligation asks of Publication: is the commit I am about to judge the one actually on offer? Exactly ONE arm answers yes, and it is the arm that saw a pull request at the expected head. A remote ref at the expected head is deliberately NOT enough — there is nothing to review, and the review lane's subject is a pull request. Every divergence, ambiguity and refusal answers no, so ignorance never becomes permission."
+
+fn publication_offers_the_expected_head(outcome: PublicationOutcome) -> Bool {
+  match outcome {
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => true
+    PublicationHeadDiverged {
+      branch: _, pr_number: _, pr_head: _, expected_head: _, url: _,
+    } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}

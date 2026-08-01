@@ -74,7 +74,7 @@ import std.realization_schedule {
   NoFinalizationDeclared,
 }
 import gunbc.ci_materialization { FloorFinalization }
-import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
+import v2.lens.schedule_lens { walk_plan_schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
 import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import v2.workflow.executor {
   ExecutorBatch
@@ -1254,13 +1254,17 @@ fn gunbc_ci_plan_artifact_ordinary_batches() -> List<List<Runnable>> {
 
 data walk_plan_uniformity_note: String = "EVERY plan function returns WalkPlan<F>, including the three with no postconditions — on_success_stages: [] is a declared empty set, not an omission the executor papers over. The INSTANTIATION is where the four differ: this floor returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. That DECLARES the intended finalization family and removes the std-level coproduct fork; it does not enforce either, because the typechecker does not check a declared return type against the body (probed by execution — std.realization_schedule walk_finalization_note carries it). Enforcement is the enrolled value witnesses in v2.test.claim.ci_floor_plan_witness plus the executor's runtime parser, and those dissolve when return-position checking lands. The executor has ONE strict parser for the record shape; there is deliberately NO fallback from a failed record parse to a bare-List<List<Runnable>> reading, because that fallback would let a malformed plan silently run with its success stages dropped — the exact silent-widen shape §5 forbids. The `_plan` names replace the `_batches` names in the same motion (operator ruling 2026-07-30): a function whose value now carries postcondition stages must not keep a name that says it returns only batches, or the next author reasonably assumes the stages are not part of the value. The four argv/step consumers follow automatically because they derive from the floor_plan_function / plan_artifact_plan_function / regen_floor_plan_function / falsifier_plan_function constants (gunbc.ci_spec, gunbc.falsifier_workflow) — those constants are the single naming authority, renamed with the functions."
 
+fn gunbc_ci_on_success_stages() -> List<List<Runnable>> {
+  []
+}
+
 fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
   WalkPlan {
     batches: gunbc_ci_floor_ordinary_batches(),
     finalization: FloorFinalization {
       declared_resolve_count: ci_floor_declared_resolve_count,
     },
-    on_success_stages: [],
+    on_success_stages: gunbc_ci_on_success_stages(),
   }
 }
 
@@ -1289,8 +1293,10 @@ fn gunbc_falsifier_plan() -> WalkPlan<NoWalkFinalization> {
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
-  match schedule_lens_verdict_for_ci_floor(
-    plan: gunbc_ci_floor_realization_plan(),
+  match walk_plan_schedule_lens_verdict_for_ci_floor(
+    plan: gunbc_ci_floor_plan(),
+    ordinary_plan: gunbc_ci_floor_realization_plan(),
+    expected_on_success_stages: gunbc_ci_on_success_stages(),
     compile_gate_fn: ci_floor_compile_gate_fn,
     cheap_gate_labels: cheap_floor_gate_step_labels()
   ) {
