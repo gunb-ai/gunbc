@@ -2534,16 +2534,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
       let base_rt = resolved_type(n: base_typed)
-      let resolved_base = if is_deferred_field_access_base(n: base_rt, env: scope.type_env) {
-        base_rt
+      let base_expansion = if is_deferred_field_access_base(n: base_rt, env: scope.type_env) {
+        NodeResolveResult { resolved: base_rt, diagnostics: [] }
       } else {
         expand_type_for_field_access(n: base_rt, env: scope.type_env, module_name: scope.module_name)
       }
+      let resolved_base = base_expansion.resolved
+      let resolved_base_diags = base_expansion.diagnostics
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
         InferResult {
           typed: make_expr_error_node(kind: SemanticExprError, message: "error type cascade", span: span),
-          diagnostics: base_diags
+          diagnostics: concat(base_diags, resolved_base_diags)
         }
       } else {
       let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
@@ -2565,7 +2567,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           )
           InferResult {
             typed: fa_texpr,
-            diagnostics: base_diags
+            diagnostics: concat(base_diags, resolved_base_diags)
           }
         Absent =>
           let base_is_type_var = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
@@ -2580,7 +2582,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             )
             InferResult {
               typed: fa_texpr,
-              diagnostics: base_diags
+              diagnostics: concat(base_diags, resolved_base_diags)
             }
           } else {
             match check_service_field_access_node(base_type: base_rt, field: field_name, service_registry: scope.service_registry, source_indices: scope.type_env.source_indices) {
@@ -2595,14 +2597,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 )
                 InferResult {
                   typed: fa_texpr,
-                  diagnostics: base_diags
+                  diagnostics: concat(base_diags, resolved_base_diags)
                 }
               Absent =>
                 let error_message = concat("no field '", field_name, "' on type '", authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_base), "'")
                 let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
-                  diagnostics: concat(base_diags, [inference_error(
+                  diagnostics: concat(concat(base_diags, resolved_base_diags), [inference_error(
                     message: error_message,
                     span: span,
                     module_name: scope.module_name
@@ -3849,14 +3851,19 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 
 data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction)."
 
-data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated."
+data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics; callers may inspect the resolved probe value, but inference must carry the diagnostics. No second peel outcome vocabulary is minted beside the resolver's own typed carrier."
 
-fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
-  let once = resolve_node(n: n, env: env, module_name: module_name).resolved
-  if (once.connective == Conj || once.connective == Disj) {
+fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
+  let once = resolve_node(n: n, env: env, module_name: module_name)
+  let resolved_once = once.resolved
+  if (resolved_once.connective == Conj || resolved_once.connective == Disj) {
     once
-  } else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
-    if once == n { once } else { peel_alias_once_for_field_access(n: once, env: env, module_name: module_name) }
+  } else if resolved_once.connective == NoConnective && resolved_once.children |> count > 0 && resolved_once.inferred == none {
+    if resolved_once == n { once }
+    else {
+      let rest = peel_alias_once_for_field_access(n: resolved_once, env: env, module_name: module_name)
+      NodeResolveResult { resolved: rest.resolved, diagnostics: concat(once.diagnostics, rest.diagnostics) }
+    }
   } else {
     once
   }
@@ -3940,8 +3947,13 @@ fn alias_chain_carrier(n: Node) -> Node {
   else { structural_from_expanded_type(normed: n) }
 }
 
-fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> Node {
-  let peeled = if needs_alias_field_expansion(n: n, env: env) { peel_alias_once_for_field_access(n: n, env: env, module_name: module_name) } else { n }
+fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> NodeResolveResult {
+  let peel_result = if needs_alias_field_expansion(n: n, env: env) {
+    peel_alias_once_for_field_access(n: n, env: env, module_name: module_name)
+  } else {
+    NodeResolveResult { resolved: n, diagnostics: [] }
+  }
+  let peeled = peel_result.resolved
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
@@ -3957,19 +3969,22 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
     } else { structural }
     let fail_closed = lossy && record_has_unresolved_param_field(record: resolved_record, env: env)
     if fail_closed {
-      nominal_type_ref(name: origin_name)
-    } else { resolved_record }
+      NodeResolveResult { resolved: nominal_type_ref(name: origin_name), diagnostics: peel_result.diagnostics }
+    } else { NodeResolveResult { resolved: resolved_record, diagnostics: peel_result.diagnostics } }
   } else {
     let next_name = carrier_name
 
     let is_optional = structural.return_cardinality == CardOptional
     if is_optional {
       let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: lossy)
-      with_optional_cardinality(n: expanded_inner)
+      NodeResolveResult {
+        resolved: with_optional_cardinality(n: expanded_inner.resolved),
+        diagnostics: concat(peel_result.diagnostics, expanded_inner.diagnostics)
+      }
     } else {
     let stop = next_name == "" || emit_map_has(m: seen, key: next_name)
     if stop {
-      structural
+      NodeResolveResult { resolved: structural, diagnostics: peel_result.diagnostics }
     } else {
       match lookup_type_by_name(env: env, name: next_name) {
         Present { value: target } =>
@@ -3982,24 +3997,28 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
           let next_n = if type_arg_count > 0 && !dropped_args {
             alias_chain_target_after_args(target: target, carrier: carrier, env: env)
           } else { target }
-          expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
-        Absent => structural
+          let expanded_next = expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
+          NodeResolveResult {
+            resolved: expanded_next.resolved,
+            diagnostics: concat(peel_result.diagnostics, expanded_next.diagnostics)
+          }
+        Absent => NodeResolveResult { resolved: structural, diagnostics: peel_result.diagnostics }
       }
     }
     }
   }
 }
 
-fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> Node {
+fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
   if is_deferred_field_access_base(n: n, env: env) {
-    n
+    NodeResolveResult { resolved: n, diagnostics: [] }
   } else {
     let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
     expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: false)
   }
 }
 
-fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
+fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
   expand_type_for_field_access_with_seen(n: n, env: env, module_name: module_name, seen: empty_map())
 }
 
@@ -4012,7 +4031,7 @@ fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<
           _ => decl
         }
       } else { decl }
-      let expanded = expand_type_for_field_access(n: to_expand, env: scope.type_env, module_name: scope.module_name)
+      let expanded = expand_type_for_field_access(n: to_expand, env: scope.type_env, module_name: scope.module_name).resolved
       if expanded.connective == Conj && expanded.children |> count > 0 {
         Present { value: expanded.children }
       } else { none }
@@ -4039,7 +4058,7 @@ fn field_in_any_variant_named(type_name: String, field: String, scope: InferScop
     Present { value: owner } =>
       owner.children |> any(arm =>
         if authored_name_at(source_indices: si, node: arm) == type_name {
-          let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name)
+          let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name).resolved
           let fields = if (ea.connective == Conj) { ea.children } else { arm.children }
           fields |> any(f => authored_name_at(source_indices: si, node: f) == field)
         } else { false }
