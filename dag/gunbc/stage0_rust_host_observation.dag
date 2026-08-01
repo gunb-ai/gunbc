@@ -1,7 +1,7 @@
 module gunbc.stage0_rust_host_observation
 
 import extdeps.git
-import gunbc.output_policy { OutcomeIsData }
+import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.roadmap_authority { SeedGrowthJustification }
 import gunbc.roadmap_model { RoadmapNodeId }
@@ -125,7 +125,7 @@ fn observe_stage0_rust_sources(
   package_root: String,
   base_ref: String
 ) -> RustSourceHostObservation {
-  let head = git.Inspect.HeadCommit(expect: OutcomeIsData)
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
   if !head.success || (head.sha as String) == "" {
     GitObservationRefused { detail: "git.Inspect.HeadCommit refused or returned an empty revision" }
   } else {
@@ -133,7 +133,7 @@ fn observe_stage0_rust_sources(
     let baseline = git.Inspect.MergeBase(
       left: revision as GitRef,
       right: base_ref as GitRef,
-      expect: OutcomeIsData
+      expect: ExpectSuccess
     )
     if !baseline.success || (baseline.sha as String) == "" {
       GitObservationRefused {
@@ -142,7 +142,7 @@ fn observe_stage0_rust_sources(
     } else {
       let current_tree = git.Inspect.ListTreePathsAtRevision(
         ref: revision as GitRef,
-        expect: OutcomeIsData
+        expect: ExpectSuccess
       )
       if !current_tree.success {
         GitObservationRefused {
@@ -154,7 +154,7 @@ fn observe_stage0_rust_sources(
       } else {
         let prior_tree = git.Inspect.ListTreePathsAtRevision(
           ref: baseline.sha as GitRef,
-          expect: OutcomeIsData
+          expect: ExpectSuccess
         )
         if !prior_tree.success {
           GitObservationRefused {
@@ -167,7 +167,7 @@ fn observe_stage0_rust_sources(
           let manifest = git.Core.Show(
             ref: revision as GitRef,
             path: manifest_repo_path,
-            expect: OutcomeIsData
+            expect: ExpectSuccess
           )
           if !manifest.success {
             RustManifestReadRefused {
