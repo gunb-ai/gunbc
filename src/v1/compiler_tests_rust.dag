@@ -1746,8 +1746,6 @@ fn ct_call_shape_wall_witness_test() -> String {
     "    }\n\n")
 }
 
-<<<<<<< HEAD
-=======
 fn ct_method_existence_wall_witness_test() -> String {
   concat(
     "    #[test]\n",
@@ -2096,7 +2094,6 @@ fn ct_declared_type_conformance_witness_test() -> String {
     "    }\n\n")
 }
 
->>>>>>> origin/main
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -2113,7 +2110,6 @@ fn compiler_tests_source() -> String {
     ct_sole_constructor_test(),
     ct_sole_constructor_fieldless_witness_test(),
     ct_contracts_sidecar_witness_test(),
-    ct_call_shape_wall_witness_test(),
     ct_caret_parse_smoke_native_witness_tests(),
     ct_self_parse_all_test(),
     ct_self_resolve_test(),
