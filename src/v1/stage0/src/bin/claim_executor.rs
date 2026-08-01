@@ -5720,7 +5720,32 @@ mod tests {
         let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
             .lock()
             .unwrap_or_else(|p| p.into_inner());
-        f()
+        let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match prior_trace {
+            Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
+            None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
+        }
+        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    fn with_workspace_root_current_dir<F: FnOnce()>(root: &std::path::Path, f: F) {
+        let prior_cwd = std::env::current_dir().ok();
+        std::env::set_current_dir(root).expect("chdir to workspace root for receipt paths");
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        if let Some(cwd) = prior_cwd {
+            let _ = std::env::set_current_dir(cwd);
+        }
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
     }
 
     fn finalization_record(resolve_counts: &[u64]) -> BatchRecord {
@@ -7010,7 +7035,6 @@ mod tests {
     #[test]
     fn materialization_receipt_totals_absorb_on_ctx_drop() {
         with_process_eval_recompute_test_lock(|| {
-            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
             let root = workspace_root();
             let roots = vec![
                 root.join("src/v2").to_string_lossy().into_owned(),
@@ -7087,99 +7111,100 @@ mod tests {
 
     // Discriminating control (DESIGN §5): post-floor pure demand must appear in the
     // on-success materialization receipt and NOT in the ordinary-floor receipt, which
-    // is harvested before stages run.
+    // is harvested before stages run. Population separation is asserted within ONE
+    // staged walk (ordinary receipt is written before on_success_stages in the same
+    // run_walk — no cross-run keyed_calls equality that parallel siblings could
+    // perturb, review 45766). PROCESS_EVAL_RECOMPUTE_TEST_LOCK serializes the
+    // trace-enabled receipt tests and restores trace env/cache afterward (review
+    // 45737, review 45756).
     #[test]
     fn on_success_materialization_receipt_separates_from_ordinary_floor() {
         with_process_eval_recompute_test_lock(|| {
-            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
             let root = workspace_root();
-            std::env::set_current_dir(&root).expect("chdir to workspace root for receipt paths");
-            let roots = vec![
-                root.join("src/v2").to_string_lossy().into_owned(),
-                root.join("dag").to_string_lossy().into_owned(),
-            ];
-            const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
-            let success_receipt = root
-                .join("target")
-                .join(format!("floor-attempt-{TEST_ATTEMPT_ID}"))
-                .join("floor-on-success-materialization-receipt.txt");
-            let ordinary_receipt = root.join("target/floor-materialization-receipt.txt");
-            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            with_workspace_root_current_dir(&root, || {
+                let roots = vec![
+                    root.join("src/v2").to_string_lossy().into_owned(),
+                    root.join("dag").to_string_lossy().into_owned(),
+                ];
+                const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
+                let success_receipt = root
+                    .join("target")
+                    .join(format!("floor-attempt-{TEST_ATTEMPT_ID}"))
+                    .join("floor-on-success-materialization-receipt.txt");
+                let ordinary_receipt = root.join("target/floor-materialization-receipt.txt");
+                let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
 
-            let run_fixture = |on_success_stages: &[Vec<Runnable>]| {
-                let _ = std::fs::remove_file(&success_receipt);
-                let _ = std::fs::remove_file(&ordinary_receipt);
-                let outcome = run_walk_materialization_fixture(&roots, on_success_stages);
+                let run_fixture = |on_success_stages: &[Vec<Runnable>]| {
+                    let _ = std::fs::remove_file(&success_receipt);
+                    let _ = std::fs::remove_file(&ordinary_receipt);
+                    let outcome = run_walk_materialization_fixture(&roots, on_success_stages);
+                    assert!(
+                        !outcome.any_failed,
+                        "walk must pass: {:?}",
+                        outcome.failure_details
+                    );
+                    outcome
+                };
+
+                // RED: no on-success stages => no success-stage materialization receipt.
+                run_fixture(&[]);
                 assert!(
-                    !outcome.any_failed,
-                    "walk must pass: {:?}",
-                    outcome.failure_details
+                    !success_receipt.exists(),
+                    "empty on_success_stages must not write a success materialization receipt"
                 );
-                outcome
-            };
 
-            // RED: no on-success stages => no success-stage materialization receipt.
-            run_fixture(&[]);
-            assert!(
-                !success_receipt.exists(),
-                "empty on_success_stages must not write a success materialization receipt"
-            );
-            let ordinary_keyed_only = parse_materialization_receipt_field(
-                &std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt"),
-                "keyed_calls=",
-            )
-            .expect("keyed_calls");
+                // GREEN: one walk — ordinary receipt harvested before stages; success
+                // receipt harvested after stage_memo drops in the same run_walk.
+                let stage_entry = root
+                    .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                    .to_string_lossy()
+                    .into_owned();
+                let success_stage = vec![vec![Runnable::SingleClaim {
+                    entry: stage_entry,
+                    function: "single_pure_demand_is_accepted_recompute".to_string(),
+                    profile: ParsedRunnableProfile {
+                        provenance: ParsedProfileProvenance::Declared,
+                        heavy_whole_tree_resolve: false,
+                        spawns_host_compiler: false,
+                        memory: ParsedMemoryClass::Negligible,
+                        execution_mode: ExecutionMode::Hermetic,
+                    },
+                }]];
+                run_fixture(&success_stage);
 
-            // GREEN: on-success stage runs pure demand after the ordinary receipt harvest.
-            let stage_entry = root
-                .join("dag/test/claim/materialization_ladder_witness_test.dag")
-                .to_string_lossy()
-                .into_owned();
-            let success_stage = vec![vec![Runnable::SingleClaim {
-                entry: stage_entry,
-                function: "single_pure_demand_is_accepted_recompute".to_string(),
-                profile: ParsedRunnableProfile {
-                    provenance: ParsedProfileProvenance::Declared,
-                    heavy_whole_tree_resolve: false,
-                    spawns_host_compiler: false,
-                    memory: ParsedMemoryClass::Negligible,
-                    execution_mode: ExecutionMode::Hermetic,
-                },
-            }]];
-            run_fixture(&success_stage);
+                let ordinary_body =
+                    std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt");
+                let ordinary_keyed =
+                    parse_materialization_receipt_field(&ordinary_body, "keyed_calls=")
+                        .expect("keyed_calls");
+                let success_body = std::fs::read_to_string(&success_receipt)
+                    .expect("on-success materialization receipt");
+                let success_keyed =
+                    parse_materialization_receipt_field(&success_body, "keyed_calls=").unwrap();
 
-            let ordinary_keyed_with_stages = parse_materialization_receipt_field(
-                &std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt"),
-                "keyed_calls=",
-            )
-            .expect("keyed_calls");
-            let success_body = std::fs::read_to_string(&success_receipt)
-                .expect("on-success materialization receipt");
-            let success_keyed =
-                parse_materialization_receipt_field(&success_body, "keyed_calls=").unwrap();
-
-            assert!(
-                success_body.starts_with(&format!(
-                    "attempt_id={TEST_ATTEMPT_ID}\nplan_site=test::on_success_materialization_fixture\n"
-                )),
-                "success receipt must carry attempt and plan identity in the payload"
-            );
-            assert!(
-                success_keyed > 0,
-                "on-success stage pure demand must be counted in the success receipt"
-            );
-            assert_eq!(
-                ordinary_keyed_with_stages, ordinary_keyed_only,
-                "stage materialization must not leak into the ordinary-floor receipt \
-                 (ordinary with stages={ordinary_keyed_with_stages}, ordinary only={ordinary_keyed_only}, success={success_keyed})"
-            );
-            assert!(
-                parse_materialization_receipt_field(&success_body, "memo_hits=").is_some()
-                    && parse_materialization_receipt_field(&success_body, "memo_misses=").is_some()
-                    && parse_materialization_receipt_field(&success_body, "duplicated_keys=")
-                        .is_some(),
-                "success receipt must carry the same field set as the ordinary receipt"
-            );
+                assert!(
+                    success_body.starts_with(&format!(
+                        "attempt_id={TEST_ATTEMPT_ID}\nplan_site=test::on_success_materialization_fixture\n"
+                    )),
+                    "success receipt must carry attempt and plan identity in the payload"
+                );
+                assert!(
+                    ordinary_keyed > 0,
+                    "ordinary-floor walk must record pure demand in the ordinary receipt"
+                );
+                assert!(
+                    success_keyed > 0,
+                    "on-success stage pure demand must be counted in the success receipt"
+                );
+                assert!(
+                    parse_materialization_receipt_field(&success_body, "memo_hits=").is_some()
+                        && parse_materialization_receipt_field(&success_body, "memo_misses=")
+                            .is_some()
+                        && parse_materialization_receipt_field(&success_body, "duplicated_keys=")
+                            .is_some(),
+                    "success receipt must carry the same field set as the ordinary receipt"
+                );
+            });
         });
     }
 
@@ -7188,53 +7213,55 @@ mod tests {
     // equivalence oracle at the value grain — and (b) record verified hits, so
     // "the cache worked" is a counted fact, never an assumption. Assertions
     // are per-ctx (eval_call_memo_counters), immune to test-process sharing.
+    // Serialized on PROCESS_EVAL_RECOMPUTE_TEST_LOCK: ctx Drop absorbs ledger
+    // totals into the process accumulator when trace is on, so this test must
+    // not overlap materialization-receipt walks (review 45737).
     #[test]
     fn eval_call_memo_serves_verified_hits_with_identical_values() {
-        // Every ledger-touching test must set the trace var BEFORE its first
-        // eval: the enablement latch is process-wide and initialized once, so
-        // whichever test evaluates first fixes it for every sibling (this
-        // exact ordering red-failed the receipt test when this test ran
-        // first without the var).
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
-        let root = workspace_root();
-        let roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
-        ];
-        let entry = root
-            .join("dag/test/claim/materialization_ladder_witness_test.dag")
-            .to_string_lossy()
-            .into_owned();
-        let (graph, indices) =
-            resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
-        // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
-        // the hermetic envelope is exact; a service call sneaking in refuses loudly.
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-        let first = run_value(
-            &ctx,
-            "cross_frame_duplicate_discharged_by_covering_provider",
-        )
-        .expect("first evaluation");
-        let (_, misses_after_first, _) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
-        let second = run_value(
-            &ctx,
-            "cross_frame_duplicate_discharged_by_covering_provider",
-        )
-        .expect("second evaluation");
-        assert!(
-            first == second,
-            "memo-served evaluation must equal the recomputed one"
-        );
-        let (hits, misses, overflow) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
-        assert!(
-            hits > 0,
-            "second identical evaluation must serve verified hits from the eval memo"
-        );
-        assert!(
-            misses >= misses_after_first,
-            "miss counter is monotone (counted, never reset)"
-        );
-        assert_eq!(overflow, 0, "tiny workload must not hit the entry cap");
+        with_process_eval_recompute_test_lock(|| {
+            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            let root = workspace_root();
+            let roots = vec![
+                root.join("src/v2").to_string_lossy().into_owned(),
+                root.join("dag").to_string_lossy().into_owned(),
+            ];
+            let entry = root
+                .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                .to_string_lossy()
+                .into_owned();
+            let (graph, indices) =
+                resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
+            // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+            // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+            let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let first = run_value(
+                &ctx,
+                "cross_frame_duplicate_discharged_by_covering_provider",
+            )
+            .expect("first evaluation");
+            let (_, misses_after_first, _) =
+                v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+            let second = run_value(
+                &ctx,
+                "cross_frame_duplicate_discharged_by_covering_provider",
+            )
+            .expect("second evaluation");
+            assert!(
+                first == second,
+                "memo-served evaluation must equal the recomputed one"
+            );
+            let (hits, misses, overflow) =
+                v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+            assert!(
+                hits > 0,
+                "second identical evaluation must serve verified hits from the eval memo"
+            );
+            assert!(
+                misses >= misses_after_first,
+                "miss counter is monotone (counted, never reset)"
+            );
+            assert_eq!(overflow, 0, "tiny workload must not hit the entry cap");
+        });
     }
 
     fn single(entry: &str, function: &str) -> Runnable {
