@@ -7,6 +7,8 @@ import gunbc.stage0_emit_model {
   stage0_module_emit_filename
 }
 import gunbc.stage0_emit_plan {
+  GeneratedStage0FilesAvailable,
+  GeneratedStage0FilesRefused,
   HandMaintainedCandidate,
   ParsedFromRegenSourceClosure,
   SourceIdentityUnavailable,
@@ -19,10 +21,12 @@ import gunbc.stage0_emit_plan {
   Stage0SourceIdentitySupplyUnavailable,
   V1SourceTree,
   generated_stage0_files_from_plan_rows,
+  generated_stage0_files_from_emission_plan,
   stage0_emission_plan_from_source,
   stage0_emission_plan_from_supply,
   stage0_generated_output_sets_agree
 }
+import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import gunbc.stage0_emit_plan_emit {
   Stage0EmitPlanGenerationRefused,
   stage0_emit_plan_generation_from_outcome
@@ -53,6 +57,14 @@ test fn w_generated_files_classified_generated() -> Bool {
 
 test fn w_generated_file_count_floor_holds() -> Bool {
   generated_stage0_file_count() >= 101
+}
+
+test fn w_enrolled_manifest_equals_typed_emission_plan_derivation() -> Bool {
+  match generated_stage0_files_from_emission_plan() {
+    GeneratedStage0FilesRefused { cause: _ } => false
+    GeneratedStage0FilesAvailable { files } =>
+      (files |> sort_by(file => file)) == (generated_stage0_files |> sort_by(file => file))
+  }
 }
 
 test fn w_emit_naming_rule() -> Bool {

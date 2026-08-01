@@ -64,6 +64,10 @@ type Stage0EmissionPlanOutcome
   = Stage0EmissionPlanAccepted { rows: List<Stage0EmissionPlanRow> }
   | Stage0EmissionPlanRefused { cause: Stage0EmissionPlanRefusalCause }
 
+type GeneratedStage0FilesOutcome
+  = GeneratedStage0FilesAvailable { files: List<String> }
+  | GeneratedStage0FilesRefused { cause: Stage0EmissionPlanRefusalCause }
+
 data stage0_projection_disposition_authority_note: String = "GeneratedProjection versus HandMaintainedCandidate derives from gunbc.stage0_crate_layout_generated.generated_stage0_filenames, the enrolled projection of v2.compiler.self_host.frontier seed-retained facts. This module never owns a second exclusion list."
 
 data stage0_source_identity_supply_scaffold_note: String = "DECLARED SCAFFOLD. stage0_emission_source_identities_host observes SOURCE only: the Rust seed walks gunbc.cli_run.regen_input_sources and parses every row through the source-authority-aligned module binding parser. It must never observe EmitResult or share the emit-output path. DISSOLVE-ON: generated_artifact_gate accepts a v2.compiler.source_authority.ModuleStorageIndex; then this host builtin and this scaffold carrier delete, and the same pure folds consume that index directly."
@@ -243,6 +247,15 @@ fn generated_stage0_paths_from_plan_rows(rows: List<Stage0EmissionPlanRow>) -> L
       HandMaintainedCandidate => acc
     }
   })
+}
+
+fn generated_stage0_files_from_emission_plan() -> GeneratedStage0FilesOutcome {
+  match stage0_emission_plan() {
+    Stage0EmissionPlanRefused { cause } => GeneratedStage0FilesRefused { cause: cause }
+    Stage0EmissionPlanAccepted { rows } => GeneratedStage0FilesAvailable {
+      files: generated_stage0_files_from_plan_rows(rows: rows)
+    }
+  }
 }
 
 fn stage0_generated_output_sets_agree(
