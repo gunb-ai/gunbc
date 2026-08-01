@@ -1,0 +1,98 @@
+module gunbc.stage0_rust_honest_frontier_projection
+
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation
+}
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  derived_generated_stage0_repo_paths,
+  file_grain_lifecycle_repo_paths,
+  list_concat_unique,
+  path_in_list
+}
+import std.types { ContentHash }
+import v2.std.algebra { filter }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data stage0_rust_honest_frontier_projection_note: String = "FIRST PROJECTION ONLY. The revision-addressed tracked-Rust population comes from gunbc.stage0_rust_host_observation. Generated paths and paths with an admitted maintenance disposition remain independent subtraction axes derived from gunbc.stage0_rust_source_lifecycle_scaffold; source roles never supply a disposition. This projection preserves the exact ordered remainder rather than collapsing identity to a count. RustSourceRole, MaintenanceDisposition, GenerationAuthority, and RetirementTrigger remain independent facts. ProductReachability, HandAuthoredLOC, and HandCapability are explicitly deferred to the v1-honest-frontier follow-on; this first slice does not claim them."
+
+data stage0_rust_honest_frontier_deferred_axes: List<String> = [
+  "ProductReachability",
+  "HandAuthoredLOC",
+  "HandCapability"
+]
+
+type TrackedRustUnclassifiedProjection
+  = TrackedRustUnclassifiedPaths { paths: List<String> }
+  | TrackedRustProjectionReadRefused { detail: String }
+  | TrackedRustProjectionParseRefused { detail: String }
+  | TrackedRustProjectionGitRefused { detail: String }
+
+fn exact_unclassified_tracked_rust_paths(
+  tracked_paths: List<String>,
+  generated_paths: List<String>,
+  maintenance_disposition_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: tracked_paths,
+    predicate: fn(path) {
+      !path_in_list(path: path, paths: generated_paths)
+        && !path_in_list(path: path, paths: maintenance_disposition_paths)
+    }
+  )
+}
+
+fn admitted_maintenance_disposition_paths() -> List<String> {
+  let generated_paths = derived_generated_stage0_repo_paths()
+  filter(
+    xs: file_grain_lifecycle_repo_paths(),
+    predicate: fn(path) { !path_in_list(path: path, paths: generated_paths) }
+  )
+}
+
+fn tracked_rust_unclassified_projection(
+  observation: RustSourceHostObservation
+) -> TrackedRustUnclassifiedProjection {
+  match observation {
+    RustManifestReadRefused { detail: detail } =>
+      TrackedRustProjectionReadRefused { detail: detail }
+    RustManifestParseRefused { detail: detail } =>
+      TrackedRustProjectionParseRefused { detail: detail }
+    GitObservationRefused { detail: detail } =>
+      TrackedRustProjectionGitRefused { detail: detail }
+    RustManifestObserved {
+      repository_revision: _,
+      manifest_content_identity: _,
+      tracked_rust_repo_paths: tracked_paths,
+      prior_tracked_rust_repo_paths: _,
+      cargo_bin_repo_paths: _
+    } => TrackedRustUnclassifiedPaths {
+      paths: exact_unclassified_tracked_rust_paths(
+        tracked_paths: tracked_paths,
+        generated_paths: derived_generated_stage0_repo_paths(),
+        maintenance_disposition_paths: admitted_maintenance_disposition_paths()
+      )
+    }
+  }
+}
+
+fn honest_frontier_projection_witness_observation(
+  extra_paths: List<String>
+) -> RustManifestObserved {
+  let generated_paths = derived_generated_stage0_repo_paths()
+  let classified_paths = list_concat_unique(
+    acc: generated_paths,
+    items: admitted_maintenance_disposition_paths()
+  )
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: "witness-abc123" as ContentHash,
+    tracked_rust_repo_paths: list_concat_unique(acc: classified_paths, items: extra_paths),
+    prior_tracked_rust_repo_paths: classified_paths,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
+}

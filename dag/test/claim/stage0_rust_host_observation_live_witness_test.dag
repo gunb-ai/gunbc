@@ -38,7 +38,7 @@ test fn scaffold_host_observation_is_live_and_observed() -> Bool {
 
 test fn scaffold_host_observation_reaches_path_derived_verdict() -> Bool {
   match rust_source_manifest_state_verdict(observation: current_stage0_rust_source_observation()) {
-    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { paths: paths } } => length(xs: paths) > 0
+    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: count } } => count > 0
     ManifestStateScaffoldRefused { cause: CargoTargetMissingLifecycleDisposition { path: path } } => path != ""
     ManifestStateScaffoldOk => true
     ManifestStateScaffoldRefused { cause: _ } => false
