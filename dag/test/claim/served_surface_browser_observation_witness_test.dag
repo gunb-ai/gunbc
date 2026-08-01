@@ -1,7 +1,9 @@
 module test.claim.served_surface_browser_observation_witness
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, FilePath }
 import std.measure { byte_size }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.toolchain.types { Aarch64 }
 import extdeps.browser.chromium {
   ChromiumErrConnectionRefused,
   ChromiumErrHttpResponseCodeFailure,
@@ -32,9 +34,13 @@ import gunbc.served_surface_browser_observation {
   ExplicitReload,
   HealthyResponseDocumentObserved,
   PlaywrightDefaultChromiumLaunch,
+  HeadlessPresentation,
   ContainerVisibleHostKernel,
   LinuxKernelRelease,
   playwright_chromium_151_linux_arm64_headless_navigation_run,
+  playwright_chromium_151_run_environment,
+  playwright_chromium_151_run_observed_on,
+  playwright_chromium_151_run_specimens,
   local_http_url,
   navigation_specimen_stimulus,
   navigation_specimen_outcome,
@@ -45,22 +51,27 @@ import gunbc.served_surface_browser_observation {
 
 test fn witness_run_owns_one_execution_identity() -> Bool {
   let run = playwright_chromium_151_linux_arm64_headless_navigation_run
-  run.environment.chromium_build == chromium_151_0_7922_34
-    && run.environment.chromium_build.source_identity == ChromiumSourceRevisionUnobserved
-    && run.environment.playwright_build == playwright_1_62_1
-    && run.environment.browser_binary_provenance == PlaywrightManagedChromiumDownload
-    && run.environment.container_userland == Debian12Bookworm
-    && run.environment.container_visible_host_kernel == ContainerVisibleHostKernel {
+  let environment = playwright_chromium_151_run_environment(run: run)
+  environment.chromium_build == chromium_151_0_7922_34
+    && environment.chromium_build.source_identity == ChromiumSourceRevisionUnobserved
+    && environment.playwright_build == playwright_1_62_1
+    && environment.browser_binary_provenance == PlaywrightManagedChromiumDownload
+    && environment.container_userland == Debian12Bookworm
+    && environment.container_visible_host_kernel == ContainerVisibleHostKernel {
       visible_release: "6.8.0-124-generic" as LinuxKernelRelease,
     }
-    && match run.environment.launch_configuration {
-      PlaywrightDefaultChromiumLaunch { executable_path: _ } => true
+    && environment.architecture == Aarch64
+    && environment.presentation_mode == HeadlessPresentation
+    && environment.launch_configuration == PlaywrightDefaultChromiumLaunch {
+      executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as FilePath,
     }
-    && count(run.specimens) == 3
+    && playwright_chromium_151_run_observed_on(run: run) == "2026-08-01T04:58:15Z" as Rfc3339Timestamp
+    && count(playwright_chromium_151_run_specimens(run: run)) == 3
 }
 
 test fn witness_connection_refusal_is_exact_specimen() -> Bool {
-  let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.first()
+  let specimens = playwright_chromium_151_run_specimens(run: playwright_chromium_151_linux_arm64_headless_navigation_run)
+  let specimen = specimens.first()
   specimen == ConnectionRefusedPresentationSpecimen
     && match navigation_specimen_stimulus(specimen: specimen) {
       TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == LocalSyntheticHarness
@@ -74,7 +85,8 @@ test fn witness_connection_refusal_is_exact_specimen() -> Bool {
 }
 
 test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
-  let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.skip(n: 1).first()
+  let specimens = playwright_chromium_151_run_specimens(run: playwright_chromium_151_linux_arm64_headless_navigation_run)
+  let specimen = specimens.skip(n: 1).first()
   specimen == EmptyBody502PresentationSpecimen
     && navigation_specimen_coverage(specimen: specimen) == EmptyBody502ExactCoverage
     && match navigation_specimen_stimulus(specimen: specimen) {
@@ -90,7 +102,8 @@ test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
 }
 
 test fn witness_bodied_502_retains_network_document() -> Bool {
-  let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.skip(n: 2).first()
+  let specimens = playwright_chromium_151_run_specimens(run: playwright_chromium_151_linux_arm64_headless_navigation_run)
+  let specimen = specimens.skip(n: 2).first()
   specimen == SentinelBody502PresentationSpecimen
     && match navigation_specimen_stimulus(specimen: specimen) {
       HttpResponseStimulus { requested_url: _, origin, status, configured_headers: _, body } =>
@@ -107,7 +120,8 @@ test fn witness_bodied_502_retains_network_document() -> Bool {
 }
 
 test fn witness_reload_trial_claims_sufficiency_not_necessity() -> Bool {
-  let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.first()
+  let specimens = playwright_chromium_151_run_specimens(run: playwright_chromium_151_linux_arm64_headless_navigation_run)
+  let specimen = specimens.first()
   let trial = navigation_specimen_recovery_trials(specimen: specimen).first()
   trial.action == ExplicitReload
     && trial.outcome == HealthyResponseDocumentObserved

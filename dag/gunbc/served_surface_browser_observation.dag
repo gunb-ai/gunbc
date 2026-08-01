@@ -120,16 +120,13 @@ type RecoveryTrial {
   outcome: RecoveryOutcome
 }
 
-type NavigationPresentationSpecimen
+type PlaywrightChromium151NavigationSpecimen
   = ConnectionRefusedPresentationSpecimen
   | EmptyBody502PresentationSpecimen
   | SentinelBody502PresentationSpecimen
 
-type BrowserDiscriminatorRun {
-  environment: BrowserExecutionEnvironment
-  observed_on: Rfc3339Timestamp
-  specimens: List<NavigationPresentationSpecimen>
-}
+type PlaywrightChromium151LinuxArm64HeadlessRun
+  = | PlaywrightChromium151LinuxArm64HeadlessNavigationRun
 
 fn local_http_url(locator: NonEmptyStr) -> Uri {
   Uri { scheme: Http, locator: locator }
@@ -146,8 +143,11 @@ fn explicit_reload_recovery(body: NonEmptyStr) -> RecoveryTrial {
   }
 }
 
-data playwright_chromium_151_linux_arm64_headless_navigation_run: BrowserDiscriminatorRun = BrowserDiscriminatorRun {
-  environment: BrowserExecutionEnvironment {
+data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChromium151LinuxArm64HeadlessRun = PlaywrightChromium151LinuxArm64HeadlessNavigationRun
+
+fn playwright_chromium_151_run_environment(run: PlaywrightChromium151LinuxArm64HeadlessRun) -> BrowserExecutionEnvironment {
+  match run {
+    PlaywrightChromium151LinuxArm64HeadlessNavigationRun => BrowserExecutionEnvironment {
     chromium_build: chromium_151_0_7922_34,
     playwright_build: playwright_1_62_1,
     browser_binary_provenance: PlaywrightManagedChromiumDownload,
@@ -160,16 +160,27 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: BrowserDiscrim
     launch_configuration: PlaywrightDefaultChromiumLaunch {
       executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as FilePath,
     },
-  },
-  observed_on: "2026-08-01T04:58:15Z" as Rfc3339Timestamp,
-  specimens: [
-    ConnectionRefusedPresentationSpecimen,
-    EmptyBody502PresentationSpecimen,
-    SentinelBody502PresentationSpecimen,
-  ],
+    }
+  }
 }
 
-fn navigation_specimen_stimulus(specimen: NavigationPresentationSpecimen) -> NavigationStimulus {
+fn playwright_chromium_151_run_observed_on(run: PlaywrightChromium151LinuxArm64HeadlessRun) -> Rfc3339Timestamp {
+  match run {
+    PlaywrightChromium151LinuxArm64HeadlessNavigationRun => "2026-08-01T04:58:15Z" as Rfc3339Timestamp
+  }
+}
+
+fn playwright_chromium_151_run_specimens(run: PlaywrightChromium151LinuxArm64HeadlessRun) -> List<PlaywrightChromium151NavigationSpecimen> {
+  match run {
+    PlaywrightChromium151LinuxArm64HeadlessNavigationRun => [
+      ConnectionRefusedPresentationSpecimen,
+      EmptyBody502PresentationSpecimen,
+      SentinelBody502PresentationSpecimen,
+    ]
+  }
+}
+
+fn navigation_specimen_stimulus(specimen: PlaywrightChromium151NavigationSpecimen) -> NavigationStimulus {
   match specimen {
     ConnectionRefusedPresentationSpecimen =>
       TcpConnectionRefusedStimulus {
@@ -205,7 +216,7 @@ fn navigation_specimen_stimulus(specimen: NavigationPresentationSpecimen) -> Nav
   }
 }
 
-fn navigation_specimen_outcome(specimen: NavigationPresentationSpecimen) -> NavigationOutcome {
+fn navigation_specimen_outcome(specimen: PlaywrightChromium151NavigationSpecimen) -> NavigationOutcome {
   match specimen {
     ConnectionRefusedPresentationSpecimen =>
       ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
@@ -216,7 +227,7 @@ fn navigation_specimen_outcome(specimen: NavigationPresentationSpecimen) -> Navi
   }
 }
 
-fn navigation_specimen_document(specimen: NavigationPresentationSpecimen) -> PresentedDocument {
+fn navigation_specimen_document(specimen: PlaywrightChromium151NavigationSpecimen) -> PresentedDocument {
   match specimen {
     ConnectionRefusedPresentationSpecimen =>
       ChromiumInternalPresentedDocument {
@@ -234,7 +245,7 @@ fn navigation_specimen_document(specimen: NavigationPresentationSpecimen) -> Pre
   }
 }
 
-fn navigation_specimen_screenshot(specimen: NavigationPresentationSpecimen) -> ScreenshotArtifact {
+fn navigation_specimen_screenshot(specimen: PlaywrightChromium151NavigationSpecimen) -> ScreenshotArtifact {
   match specimen {
     ConnectionRefusedPresentationSpecimen => ScreenshotArtifact {
       path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as BinaryFilePath,
@@ -254,7 +265,7 @@ fn navigation_specimen_screenshot(specimen: NavigationPresentationSpecimen) -> S
   }
 }
 
-fn navigation_specimen_recovery_trials(specimen: NavigationPresentationSpecimen) -> List<RecoveryTrial> {
+fn navigation_specimen_recovery_trials(specimen: PlaywrightChromium151NavigationSpecimen) -> List<RecoveryTrial> {
   match specimen {
     ConnectionRefusedPresentationSpecimen => [explicit_reload_recovery(body: "RECOVERED_REFUSED" as NonEmptyStr)]
     EmptyBody502PresentationSpecimen => [explicit_reload_recovery(body: "RECOVERED_EMPTY" as NonEmptyStr)]
@@ -267,7 +278,7 @@ type SpecimenCoverage
   | EmptyBody502ExactCoverage
   | SentinelBody502ExactCoverage
 
-fn navigation_specimen_coverage(specimen: NavigationPresentationSpecimen) -> SpecimenCoverage {
+fn navigation_specimen_coverage(specimen: PlaywrightChromium151NavigationSpecimen) -> SpecimenCoverage {
   match specimen {
     ConnectionRefusedPresentationSpecimen => ConnectionRefusedExactCoverage
     EmptyBody502PresentationSpecimen => EmptyBody502ExactCoverage
@@ -275,4 +286,4 @@ fn navigation_specimen_coverage(specimen: NavigationPresentationSpecimen) -> Spe
   }
 }
 
-data evidence_grain_note: NonEmptyStr = "This run claims only what the exact stimuli produced under its one Chromium, Playwright, container-userland, container-visible host-kernel, architecture, presentation-mode, and launch identity. Debian12Bookworm records the container userland reported by /etc/os-release; ContainerVisibleHostKernel separately records the host kernel release exposed by uname inside that container and does not infer a host operating-system distribution from its suffix. Each exact specimen constructor is the sole authored identity; stimulus, navigation outcome, presented document, coverage, screenshot, and recovery are projections from that constructor, so their correlated facts cannot be authored inconsistently. LocalSyntheticHarness prevents these responses from standing in for a production proxy or operational cause. EmptyBody502ExactCoverage cannot widen one specimen into all empty HTTP errors. RecoveryTrial records that ExplicitReload was performed and a healthy response document followed; it carries no reload-necessity constructor. The run names no browser support roster, production response chain, continuity guarantee, or roadmap implementation lane." as NonEmptyStr
+data evidence_grain_note: NonEmptyStr = "PlaywrightChromium151LinuxArm64HeadlessRun has one constructor, and its environment, timestamp, and PlaywrightChromium151NavigationSpecimen set are projections from that run identity; a future run cannot silently inherit these observations through a generic run record. Debian12Bookworm records the container userland reported by /etc/os-release; ContainerVisibleHostKernel separately records the host kernel release exposed by uname inside that container and does not infer a host operating-system distribution from its suffix. Each exact specimen constructor is the sole authored identity; stimulus, navigation outcome, presented document, coverage, screenshot, and recovery are projections from that run-specific constructor, so their correlated facts cannot be authored inconsistently. LocalSyntheticHarness prevents these responses from standing in for a production proxy or operational cause. EmptyBody502ExactCoverage cannot widen one specimen into all empty HTTP errors. RecoveryTrial records that ExplicitReload was performed and a healthy response document followed; it carries no reload-necessity constructor. The run names no browser support roster, production response chain, continuity guarantee, or roadmap implementation lane." as NonEmptyStr
