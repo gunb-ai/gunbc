@@ -1,0 +1,282 @@
+module test.claim.review_tally_observe_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Int, List, CommitSha, ArtifactId }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.review_verdict {
+  Reviewer, AgentReviewer, HumanSeatReviewer,
+  LlmReviewProvider, Codex, Claude, Cursor,
+  ReviewVerdictReport,
+  ReviewVerdict, Approve, ApproveWithComments, RequestChanges,
+  ReportExtractionState, ParsedDiscreteFindings,
+  ReviewFinding,
+  FindingSeverity, Blocking, NonBlocking,
+  FindingPriority, P0, P3,
+  MergeReadinessTally,
+}
+import gunbc.review_tally_observe {
+  ReviewTallyObservation, ReviewTallyRead, ReviewTallyRefused,
+  ReviewTallyRefusalCause, ReportSubjectMismatch,
+  StaleReviewExclusion,
+  review_tally_of,
+  reviewer_identity_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_scope_note: String = "Every arm is claimed from constructed reports with no dashboard, no network and no token, which is the property the pure/transport split exists to give. What is NOT claimed, stated so the bound is visible: nothing here fetches a review artifact or parses a comment body into a verdict. That is the transport half and it is a separate lane; a change that broke the fetch while leaving review_tally_of intact would keep these green."
+
+data head_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data head_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn repo() -> NonEmptyStr { "gunb-ai/gunbc" as NonEmptyStr }
+
+fn report_at(
+  reviewer: Reviewer,
+  head: String,
+  verdict: ReviewVerdict,
+  artifact: String,
+  findings: List<ReviewFinding>,
+) -> ReviewVerdictReport {
+  ReviewVerdictReport {
+    reviewer: reviewer,
+    repo: repo(),
+    pr_number: 7529,
+    head_sha: head as CommitSha,
+    artifact_id: artifact as ArtifactId,
+    verdict: verdict,
+    extraction_state: ParsedDiscreteFindings,
+    findings: findings,
+    evidence: [],
+    parsed_at: none,
+  }
+}
+
+fn approving(provider: LlmReviewProvider, head: String, artifact: String) -> ReviewVerdictReport {
+  report_at(
+    reviewer: AgentReviewer { provider: provider },
+    head: head,
+    verdict: Approve,
+    artifact: artifact,
+    findings: [],
+  )
+}
+
+fn tally_of(reports: List<ReviewVerdictReport>) -> ReviewTallyObservation {
+  review_tally_of(
+    repo: repo(),
+    pr_number: 7529,
+    expected_head: head_a as CommitSha,
+    reports: reports,
+    mergeable_clean: true,
+  )
+}
+
+fn read_tally(o: ReviewTallyObservation) -> MergeReadinessTally? {
+  match o {
+    ReviewTallyRead { tally, excluded_stale: _ } => Present { value: tally }
+    ReviewTallyRefused { cause: _ } => none
+  }
+}
+
+test fn two_distinct_providers_approving_count_as_two() -> Bool {
+  match tally_of(reports: [
+    approving(provider: Claude, head: head_a, artifact: "a1"),
+    approving(provider: Cursor, head: head_a, artifact: "a2"),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale } =>
+      tally.approval_count == 2
+        && count(excluded_stale) == 0
+        && count(tally.source_artifact_ids) == 2
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+data same_reviewer_red_note: String = "THE DISCRIMINATING CLAIM FOR DISTINCT-REVIEWER COUNTING. One provider re-reviewing the same head produces two approving artifacts, and counting artifacts instead of reviewers would report two approvals - letting a single reviewer satisfy a two-approval bar by reviewing twice, which defeats the bar arithmetically rather than by any decision. Replacing count(distinct_reviewer_keys(...)) with count(approving) in review_tally_of turns THIS claim red while every other claim in this file stays green, because every other case already has distinct reviewers."
+
+test fn one_reviewer_approving_twice_counts_once() -> Bool {
+  match tally_of(reports: [
+    approving(provider: Codex, head: head_a, artifact: "a1"),
+    approving(provider: Codex, head: head_a, artifact: "a2"),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale: _ } =>
+      tally.approval_count == 1 && count(tally.source_artifact_ids) == 2
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+test fn approve_with_comments_still_approves() -> Bool {
+  match tally_of(reports: [
+    report_at(
+      reviewer: AgentReviewer { provider: Claude },
+      head: head_a,
+      verdict: ApproveWithComments,
+      artifact: "a1",
+      findings: [],
+    ),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale: _ } => tally.approval_count == 1
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+data stale_red_note: String = "The claim that motivates the whole module. A review of ANOTHER commit must not count toward this commit's merge readiness: it was read perfectly well, it is simply about a revision nobody is merging - the ordinary state after a worker pushes while a review is in flight. Deleting the freshness filter turns this claim red and leaves the rest green."
+
+test fn a_review_of_another_head_is_excluded_and_named() -> Bool {
+  match tally_of(reports: [
+    approving(provider: Claude, head: head_a, artifact: "fresh"),
+    approving(provider: Cursor, head: head_b, artifact: "stale"),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale } =>
+      tally.approval_count == 1
+        && count(excluded_stale) == 1
+        && any(excluded_stale, e => (e.artifact_id as String) == "stale")
+        && any(excluded_stale, e => (e.reviewed_head as String) == head_b)
+        && !any(tally.source_artifact_ids, a => (a as String) == "stale")
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+test fn an_all_stale_set_reads_zero_approvals_not_a_refusal() -> Bool {
+  match tally_of(reports: [
+    approving(provider: Claude, head: head_b, artifact: "s1"),
+    approving(provider: Cursor, head: head_b, artifact: "s2"),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale } =>
+      tally.approval_count == 0 && count(excluded_stale) == 2
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+test fn request_changes_is_counted_by_distinct_reviewer() -> Bool {
+  match tally_of(reports: [
+    report_at(
+      reviewer: AgentReviewer { provider: Codex },
+      head: head_a,
+      verdict: RequestChanges,
+      artifact: "r1",
+      findings: [],
+    ),
+    report_at(
+      reviewer: AgentReviewer { provider: Codex },
+      head: head_a,
+      verdict: RequestChanges,
+      artifact: "r2",
+      findings: [],
+    ),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale: _ } =>
+      tally.request_changes_count == 1 && tally.approval_count == 0
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+fn finding(sev: FindingSeverity, prio: FindingPriority, idx: Int) -> ReviewFinding {
+  ReviewFinding {
+    index_in_run: idx,
+    severity: sev,
+    priority: prio,
+    heading: none,
+    path: none,
+    line: none,
+    body: "witness finding",
+    source_artifact_id: "f1" as ArtifactId,
+  }
+}
+
+data finding_grain_note: String = "Blocking findings are counted PER FINDING, not per reviewer, and that asymmetry with the approval count is deliberate rather than an oversight. Two reviewers finding the same defect is still one defect to fix, but three defects from one reviewer is three pieces of work. Approvals measure independent parties; findings measure work."
+
+test fn blocking_findings_count_per_finding_not_per_reviewer() -> Bool {
+  match tally_of(reports: [
+    report_at(
+      reviewer: AgentReviewer { provider: Codex },
+      head: head_a,
+      verdict: RequestChanges,
+      artifact: "r1",
+      findings: [
+        finding(sev: Blocking, prio: P0, idx: 0),
+        finding(sev: Blocking, prio: P0, idx: 1),
+      ],
+    ),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale: _ } => tally.blocking_finding_count == 2
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+test fn a_nonblocking_low_priority_finding_is_not_counted_as_blocking() -> Bool {
+  match tally_of(reports: [
+    report_at(
+      reviewer: AgentReviewer { provider: Claude },
+      head: head_a,
+      verdict: Approve,
+      artifact: "a1",
+      findings: [finding(sev: NonBlocking, prio: P3, idx: 0)],
+    ),
+  ]) {
+    ReviewTallyRead { tally, excluded_stale: _ } =>
+      tally.blocking_finding_count == 0 && tally.approval_count == 1
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+data subject_mismatch_note: String = "A report about a DIFFERENT pull request refuses rather than being filtered out, and the direction matters. A stale review is a fact about this PR at another commit, so excluding and counting it is honest. A report about another PR is not evidence about this one at all, and silently dropping it would mean a caller that assembled the wrong report set gets a confident tally built from whatever happened to match - a wrong answer that looks like a right one. There is no correct count to compute, so the line stops."
+
+test fn a_report_about_another_pull_request_refuses() -> Bool {
+  match review_tally_of(
+    repo: repo(),
+    pr_number: 7529,
+    expected_head: head_a as CommitSha,
+    reports: [
+      approving(provider: Claude, head: head_a, artifact: "ours"),
+      ReviewVerdictReport {
+        reviewer: AgentReviewer { provider: Cursor },
+        repo: repo(),
+        pr_number: 9999,
+        head_sha: head_a as CommitSha,
+        artifact_id: "theirs" as ArtifactId,
+        verdict: Approve,
+        extraction_state: ParsedDiscreteFindings,
+        findings: [],
+        evidence: [],
+        parsed_at: none,
+      },
+    ],
+    mergeable_clean: true,
+  ) {
+    ReviewTallyRefused { cause } =>
+      match cause {
+        ReportSubjectMismatch { expected_repo: _, expected_pr, found_repo: _, found_pr, artifact_id } =>
+          expected_pr == 7529
+            && found_pr == 9999
+            && (artifact_id as String) == "theirs"
+      }
+    ReviewTallyRead { tally: _, excluded_stale: _ } => false
+  }
+}
+
+test fn an_empty_report_set_reads_zero_not_a_refusal() -> Bool {
+  match tally_of(reports: []) {
+    ReviewTallyRead { tally, excluded_stale } =>
+      tally.approval_count == 0
+        && tally.request_changes_count == 0
+        && tally.blocking_finding_count == 0
+        && count(excluded_stale) == 0
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
+
+test fn a_human_seat_and_an_agent_are_distinct_reviewers() -> Bool {
+  let human = reviewer_identity_key(reviewer: HumanSeatReviewer)
+  let claude = reviewer_identity_key(reviewer: AgentReviewer { provider: Claude })
+  let codex = reviewer_identity_key(reviewer: AgentReviewer { provider: Codex })
+  let cursor = reviewer_identity_key(reviewer: AgentReviewer { provider: Cursor })
+  human != claude && codex != cursor && claude != codex
+}
+
+test fn the_tally_carries_the_head_under_judgment_not_a_reviewed_head() -> Bool {
+  match tally_of(reports: [approving(provider: Claude, head: head_a, artifact: "a1")]) {
+    ReviewTallyRead { tally, excluded_stale: _ } =>
+      (tally.head_sha as String) == head_a && (tally.repo as String) == "gunb-ai/gunbc"
+    ReviewTallyRefused { cause: _ } => false
+  }
+}
