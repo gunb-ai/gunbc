@@ -25,8 +25,9 @@ pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostSha
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
-    DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
-    MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+    DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
+    InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
+    UnknownOccurrenceIdentity, WrongOccurrenceRole,
 };
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
@@ -394,6 +395,33 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    MethodNotFound {
+        method: String,
+        receiver_type: String,
+        span: Rc<SourceSpan>,
+    },
+    MethodExistenceUndecided {
+        method: String,
+        receiver_type: String,
+        span: Rc<SourceSpan>,
+    },
+    MethodExistenceFrontierAdmitted {
+        method: String,
+        receiver_type: String,
+        trigger: String,
+        span: Rc<SourceSpan>,
+    },
+    ReceiverTypeUnestablished {
+        method: String,
+        span: Rc<SourceSpan>,
+    },
+    FrontierOccurrenceBudgetExceeded {
+        method: String,
+        receiver_type: String,
+        declared: i64,
+        observed: i64,
+        span: Rc<SourceSpan>,
+    },
     MissingField {
         field: String,
         type_name: String,
@@ -488,26 +516,40 @@ pub struct ErrorDAG {
     pub errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
+pub fn occurrence_transport_refusal_span_absence_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored location' (review 45364).\n\nWHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in neither entries_by_id nor references_by_id (std.occurrence_binding_resolve resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the validated carrier, so at that point no authored span exists to report. This is absence by construction, not a failure to compute one.\n\nWHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been absorbed into an anonymous placeholder instead of stopping the line. It is now unreachable-by-construction rather than merely unused, because adding a variant reds the total match below AND the total match in occurrence_transport_refusal_diagnostic_message. The '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().\n\nBOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's scope. Until then no_span() is the honest rendering and the message carries the identity.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn occurrence_transport_refusal_diagnostic_span(
     refusal: Rc<OccurrenceTransportRefusal>,
-) -> Rc<SourceSpan> {
+) -> Option<Rc<SourceSpan>> {
     match (*refusal.clone()).clone() {
         OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
             diagnostic_span: span,
             ..
-        } => span.clone(),
+        } => Some(span.clone()),
         OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
             diagnostic_span: span,
             ..
-        } => span.clone(),
+        } => Some(span.clone()),
+        OccurrenceTransportRefusal::DuplicateSuppliedCandidateIdentity {
+            diagnostic_span: span,
+            ..
+        } => Some(span.clone()),
         OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
             diagnostic_span: span,
             ..
-        } => span.clone(),
-        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+        } => Some(span.clone()),
+        OccurrenceTransportRefusal::WrongOccurrenceRole {
             diagnostic_span: span,
             ..
-        } => span.clone(),
+        } => Some(span.clone()),
+        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => None,
     }
 }
 
@@ -517,8 +559,10 @@ pub fn occurrence_transport_refusal_diagnostic_message(
     match (*refusal.clone()).clone() {
     OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: _, .. } => "occurrence transport refused: missing authored occurrence identity".to_string(),
     OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: duplicate authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::DuplicateSuppliedCandidateIdentity { occurrence, .. } => v1_rt::concat("occurrence binding refused: duplicate supplied candidate identity ".to_string(), (occurrence.value.clone()).to_string()),
     OccurrenceTransportRefusal::InconsistentOccurrenceContainment { occurrence, .. } => v1_rt::concat("occurrence transport refused: inconsistent containment for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
-    OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong category for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::WrongOccurrenceRole { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong role for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: occurrence, .. } => v1_rt::concat("occurrence transport refused: unknown occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
 }
 }
 
@@ -531,6 +575,11 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
         CompilerDiagnostic::FieldNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodExistenceUndecided { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
+        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
@@ -549,12 +598,16 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
-        } => occurrence_transport_refusal_diagnostic_span(refusal.clone()),
+        } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
+            Some(span) => span.clone(),
+            None => no_span(),
+        },
     }
 }
 
 pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     match (*d.clone()).clone() {
+<<<<<<< HEAD
         CompilerDiagnostic::UnresolvedImport {
             module_path: m,
             importing_module: i,
@@ -844,6 +897,38 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             refusal: refusal, ..
         } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     }
+=======
+    CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
+    CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
+    CompilerDiagnostic::VariantNotFound { variant: v, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::FieldNotFound { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("field '".to_string(), f.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::MethodNotFound { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' not found on receiver type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::MethodExistenceUndecided { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' cannot be resolved: receiver type '".to_string()), t.clone()), "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it".to_string()),
+    CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
+    CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
+    CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
+    CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
+    CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
+    CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
+    CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::ComplexityUnknown { func_name: f, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("complexity: ".to_string(), f.clone()), ": ".to_string()), r.clone()),
+    CompilerDiagnostic::WhereRefinementUnenforced { predicate: p, formal_type: t, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("where-refinement unenforced: predicate '".to_string(), p.clone()), "' on '".to_string()), t.clone()), "' — ".to_string()), r.clone()),
+    CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
+    CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
+    CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
+    CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
+    CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
+    CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
+    CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
+    CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
+}
+>>>>>>> origin/main
 }
 
 pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
@@ -854,9 +939,57 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
         || (reason.clone() == "string predicate not implemented".to_string()))
 }
 
+pub fn compiler_diagnostic_seed_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontierOccurrenceKey {
+    pub method: String,
+    pub receiver_shape: String,
+}
+
+pub fn diagnostic_frontier_occurrence_key(
+    d: Rc<CompilerDiagnostic>,
+) -> Option<Rc<FrontierOccurrenceKey>> {
+    match (*d.clone()).clone() {
+        CompilerDiagnostic::ReceiverTypeUnestablished { method: m, .. } => {
+            Some(Rc::new(FrontierOccurrenceKey {
+                method: m.clone(),
+                receiver_shape: "Primitive()".to_string(),
+            }))
+        }
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted {
+            method: m,
+            receiver_type: t,
+            ..
+        } => Some(Rc::new(FrontierOccurrenceKey {
+            method: m.clone(),
+            receiver_shape: t.clone(),
+        })),
+        _ => None,
+    }
+}
+
+pub fn diagnostic_frontier_occurrence_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             !is_where_refinement_unenforced_advisory_reason(r.clone())
         }
@@ -880,6 +1013,8 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
             !is_where_refinement_unenforced_advisory_reason(r.clone())
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         _ => true,
     }
 }
@@ -887,6 +1022,8 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             is_where_refinement_unenforced_advisory_reason(r.clone())
         }

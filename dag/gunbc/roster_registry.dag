@@ -31,6 +31,14 @@ fn roster_decl(module_path: String, decl_name: String) -> DeclarationRef {
 
 data roster_registry: List<RosterRegistration> = [
   RosterRegistration {
+    roster: roster_decl(module_path: "v1.compiler.infer", decl_name: "unresolved_method_frontier"),
+    unit_kind: "method call whose receiver establishes no method surface, keyed (module, method, receiver_shape)",
+    membership: DeclaredFrontier {
+      reason: "The method-existence wall refuses an unresolved method rather than inheriting the receiver type, but it can only PROVE absence against a receiver that has a complete declared surface. These rows are the calls whose receiver has none — each an upstream receiver-resolution defect (a lambda parameter whose type never propagates, a coproduct payload typed as its variant name, a bare type variable, an optional whose cardinality is dropped before lookup) rather than a fact about the method. Refusing them would fabricate a refusal over correct working code, including the v2 tokenizer's own LexMatchThunk idiom; admitting them silently would fabricate a success. The rows carry the residue as counted MethodExistenceFrontierAdmitted diagnostics instead. The key includes the receiver SHAPE because that shape IS the evidence, so a new call is refused unless it reproduces the exact unestablished shape the row was measured on.",
+      dissolve_on: "feature:primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete declared surface and the wall decides these directly. Each row also dissolves individually when its own named receiver-resolution defect is fixed."
+    }
+  },
+  RosterRegistration {
     roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
     unit_kind: "witness discovery-exclusion path substring",
     membership: DeclaredFrontier {

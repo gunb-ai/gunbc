@@ -13,7 +13,7 @@ import v2.lens.common.algebraic_composition {
 }
 import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, infer_facts_lookup_miss_diagnostic }
+import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
 import v2.std.algebra { bag_eq, list_snoc_item }
 import v2.std.collection {
   List,
@@ -76,7 +76,7 @@ fn parallelism_facts_for_source(tree: InferredTree, view: DependencyView) -> Wit
 fn parallelism_coupling_absent_diagnostic(facts: InferredFacts) -> Diagnostic {
   Diagnostic {
     reason: ^parallelism_reason_coupling_carrier_absent,
-    at: node_locus(node: facts.grounding.node),
+    at: node_locus(node: inferred_facts_subject_node(facts: facts)),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
