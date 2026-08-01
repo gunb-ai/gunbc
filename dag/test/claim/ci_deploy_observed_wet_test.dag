@@ -19,7 +19,7 @@ fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
           s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
           pattern: ci_deploy_observed_runner_principal_name()
         )
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       string_contains(s: deploy_access_decision_reason(d: d), pattern: deploy_access_refusal_prefix)
   }
 }

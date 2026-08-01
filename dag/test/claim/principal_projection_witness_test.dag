@@ -1,0 +1,59 @@
+module test.claim.principal_projection_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.auth.jwt {
+  NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
+}
+import extdeps.auth.oidc { OidcStandardClaims, OidcIdTokenClaims }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import gunbc.principal_projection {
+  OidcPrincipal, PosixPrincipal,
+  OidcProjection, PosixProjection,
+  PosixEffectivePrincipalEvidence,
+  oidc_principal_projection, posix_principal_projection, projected_principal,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn oidc_evidence() -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://issuer.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "external-subject" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "client" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
+    standard: OidcStandardClaims { email: none, email_verified: none, name: none },
+  }
+}
+
+test fn oidc_principal_is_exact_issuer_subject_projection_with_evidence_retained() -> Bool {
+  let claims = oidc_evidence()
+  let projection = oidc_principal_projection(claims: claims)
+  match projected_principal(projection: projection) {
+    PosixPrincipal { principal: _ } => false
+    OidcPrincipal { principal: principal } =>
+      principal.issuer == claims.issuer && principal.subject == claims.subject
+        && match projection {
+          OidcProjection { claims: retained } => retained == claims
+          PosixProjection { observation: _ } => false
+        }
+  }
+}
+
+test fn posix_principal_is_exact_effective_name_projection_with_evidence_retained() -> Bool {
+  let observation = PosixEffectivePrincipalEvidence {
+    read: EffectivePosixPrincipalRead {}, observed_name: "ghrunner" as NonEmptyStr,
+  }
+  let projection = posix_principal_projection(observation: observation)
+  match projected_principal(projection: projection) {
+    OidcPrincipal { principal: _ } => false
+    PosixPrincipal { principal: principal } =>
+      principal.effective_name == observation.observed_name
+        && match projection {
+          OidcProjection { claims: _ } => false
+          PosixProjection { observation: retained } => retained == observation
+        }
+  }
+}

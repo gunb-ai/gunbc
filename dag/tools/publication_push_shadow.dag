@@ -1,0 +1,116 @@
+module tools.publication_push_shadow
+
+import std.types { Bool, Int, List, String }
+import extdeps.git.hooks { PrePushStdinRow }
+import tools.publication_publisher {
+  ModeledSessionId,
+  PublicWriteAdmission,
+  PublicWriteRefused,
+  PublicWriteAdmitted,
+  NotTheSolePublisher,
+  ProjectionNotAdmitted,
+  UnstampedPublicContent,
+  UnauthorizedPublicPush,
+  admit_public_write,
+}
+import gunbc.publication_grant { PublicPublicationGrantRoster }
+import tools.publication_placement_gate {
+  publication_guard_local_check,
+  PublishGuardLocalOutcome,
+}
+
+data publication_push_shadow_note: String = "Slice-1 shadow witness: a read-only stopped-line-audit observer that replays observed public pushes through the modeled admission stack and ledgers which would have been refused. It reports typed, located, counted refusals; it does not green, gate, or mutate live push paths. The receipt sizes the enforcement stage by naming ordinary-session pushes that today reach the public remote unmodeled."
+
+type ObservedPublicPush {
+  session: ModeledSessionId
+  head: String
+  push: PrePushStdinRow
+  added_paths: List<String>
+}
+
+type ShadowPushLedgerEntry
+  = ShadowPushWouldAdmit {
+      session: ModeledSessionId
+      head: String
+      push: PrePushStdinRow
+    }
+  | ShadowPushWouldRefuse {
+      session: ModeledSessionId
+      head: String
+      push: PrePushStdinRow
+      admission: PublicWriteAdmission
+    }
+
+fn shadow_push_admission(
+  roster: PublicPublicationGrantRoster,
+  observed: ObservedPublicPush,
+) -> PublicWriteAdmission {
+  admit_public_write(
+    session: observed.session,
+    head: observed.head,
+    pushed_refs: [observed.push],
+    outcome: publication_guard_local_check(
+      roster: roster,
+      added_paths: observed.added_paths,
+      head: observed.head,
+    ),
+  )
+}
+
+fn shadow_push_ledger_entry(
+  roster: PublicPublicationGrantRoster,
+  observed: ObservedPublicPush,
+) -> ShadowPushLedgerEntry {
+  let admission = shadow_push_admission(roster: roster, observed: observed)
+  match admission {
+    PublicWriteAdmitted { authority: _ } =>
+      ShadowPushWouldAdmit {
+        session: observed.session,
+        head: observed.head,
+        push: observed.push,
+      }
+    PublicWriteRefused { session: session, cause: cause } =>
+      ShadowPushWouldRefuse {
+        session: session,
+        head: observed.head,
+        push: observed.push,
+        admission: admission,
+      }
+  }
+}
+
+fn shadow_replay_public_pushes(
+  roster: PublicPublicationGrantRoster,
+  events: List<ObservedPublicPush>,
+) -> List<ShadowPushLedgerEntry> {
+  map(events, event => shadow_push_ledger_entry(roster: roster, observed: event))
+}
+
+fn shadow_refusal_count(entries: List<ShadowPushLedgerEntry>) -> Int {
+  fold(entries, init: 0, f: fn(count, entry) {
+    match entry {
+      ShadowPushWouldAdmit { session: _, head: _, push: _ } => count
+      ShadowPushWouldRefuse { session: _, head: _, push: _, admission: _ } => count + 1
+    }
+  })
+}
+
+fn shadow_would_refuse_ordinary_session(
+  roster: PublicPublicationGrantRoster,
+  observed: ObservedPublicPush,
+) -> Bool {
+  match shadow_push_ledger_entry(roster: roster, observed: observed) {
+    ShadowPushWouldAdmit { session: _, head: _, push: _ } => false
+    ShadowPushWouldRefuse { session: _, head: _, push: _, admission: admission } =>
+      match admission {
+        PublicWriteRefused { session: _, cause: cause } =>
+          match cause {
+            NotTheSolePublisher { session: _, sole_publisher: _ } => true
+            ProjectionNotAdmitted { session: _, detail: _ } => false
+            UnstampedPublicContent { session: _, path: _ } => false
+            UnauthorizedPublicPush { session: _, push: _, detail: _ } => false
+          }
+        PublicWriteAdmitted { authority: _ } => false
+      }
+  }
+}

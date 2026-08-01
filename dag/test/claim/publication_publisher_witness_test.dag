@@ -1,0 +1,250 @@
+module test.claim.publication_publisher_witness
+
+import std.types { Bool, String, GitRef, NonEmptyStr }
+import extdeps.git.hooks { PrePushStdinRow, zero_sha }
+import extdeps.git.publication_transport {
+  GitRefUpdateSpec,
+  shape_git_push_argv,
+  shape_git_commit_argv,
+  GitPushRequest,
+  GitCommitRequest,
+}
+import gunbc.publication_grant {
+  public_root_publish_baseline,
+  public_file_publish_grant,
+  PublicPublicationGrantRoster,
+}
+import tools.publication_publisher {
+  ModeledSessionId,
+  SoleModeledPublisher,
+  OrdinarySession,
+  NotTheSolePublisher,
+  ProjectionNotAdmitted,
+  PublicWriteAdmitted,
+  PublicWriteRefused,
+  sole_modeled_publisher_session,
+  session_publication_posture,
+  admit_public_write,
+  ordinary_session_lacks_public_write_authority,
+}
+import tools.publication_push_shadow {
+  ObservedPublicPush,
+  ShadowPushWouldRefuse,
+  ShadowPushWouldAdmit,
+  shadow_replay_public_pushes,
+  shadow_refusal_count,
+  shadow_would_refuse_ordinary_session,
+}
+import tools.publication_placement_gate {
+  publication_guard_local_check,
+  PublishGuardLocalAccepted,
+  PublishGuardLocalRefused,
+  AddedPathPublishGrantAbsent,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data synthetic_added_path: String = "dag/example/new_public_file.dag"
+data synthetic_ordinary_session: ModeledSessionId = "synthetic-ordinary-session" as ModeledSessionId
+data synthetic_head: String = "synthetic-head-sha"
+
+fn synthetic_push() -> PrePushStdinRow {
+  PrePushStdinRow {
+    local_ref: "refs/heads/session/synthetic-ordinary-session",
+    local_sha: synthetic_head,
+    remote_ref: "refs/heads/session/synthetic-ordinary-session",
+    remote_sha: zero_sha,
+  }
+}
+
+fn ungranted_roster() -> PublicPublicationGrantRoster {
+  PublicPublicationGrantRoster {
+    baseline: public_root_publish_baseline,
+    file_grants: [],
+  }
+}
+
+fn granted_roster() -> PublicPublicationGrantRoster {
+  PublicPublicationGrantRoster {
+    baseline: public_root_publish_baseline,
+    file_grants: [public_file_publish_grant(path: synthetic_added_path)],
+  }
+}
+
+test fn ordinary_session_lacks_public_write_authority_holds() -> Bool {
+  ordinary_session_lacks_public_write_authority(session: synthetic_ordinary_session)
+    && match session_publication_posture(session: synthetic_ordinary_session) {
+      OrdinarySession { session: session } => session == synthetic_ordinary_session
+      SoleModeledPublisher { session: _ } => false
+    }
+}
+
+test fn sole_publisher_posture_is_unique() -> Bool {
+  match session_publication_posture(session: sole_modeled_publisher_session) {
+    SoleModeledPublisher { session: session } => session == sole_modeled_publisher_session
+    OrdinarySession { session: _ } => false
+  }
+}
+
+test fn git_push_shape_is_modeled_not_raw_argv() -> Bool {
+  let argv = shape_git_push_argv(request: GitPushRequest {
+    remote: "origin" as NonEmptyStr,
+    ref_updates: [GitRefUpdateSpec {
+      local_ref: "refs/heads/session/example" as GitRef,
+      remote_ref: "refs/heads/session/example" as GitRef,
+    }],
+  })
+  argv == ["git", "push", "origin", "refs/heads/session/example:refs/heads/session/example"]
+}
+
+test fn git_commit_shape_is_modeled_not_raw_argv() -> Bool {
+  let argv = shape_git_commit_argv(request: GitCommitRequest {
+    message: "modeled commit" as NonEmptyStr,
+    allow_empty: false,
+  })
+  argv == ["git", "commit", "-m", "modeled commit"]
+}
+
+test fn ordinary_session_reds_before_projection_check() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: granted_roster(),
+    added_paths: [synthetic_added_path],
+    head: synthetic_head,
+  )
+  match admit_public_write(
+    session: synthetic_ordinary_session,
+    head: synthetic_head,
+    pushed_refs: [synthetic_push()],
+    outcome: outcome,
+  ) {
+    PublicWriteAdmitted { authority: _ } => false
+    PublicWriteRefused { session: session, cause: cause } =>
+      session == synthetic_ordinary_session
+        && match cause {
+          NotTheSolePublisher { session: refused, sole_publisher: sole } =>
+            refused == synthetic_ordinary_session && sole == sole_modeled_publisher_session
+          ProjectionNotAdmitted { session: _, detail: _ } => false
+          UnstampedPublicContent { session: _, path: _ } => false
+          UnauthorizedPublicPush { session: _, push: _, detail: _ } => false
+        }
+  }
+}
+
+test fn sole_publisher_reds_on_ungranted_projection() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: ungranted_roster(),
+    added_paths: [synthetic_added_path],
+    head: synthetic_head,
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: _ } => false
+    PublishGuardLocalRefused { receipt: _, violations: violations } =>
+      violations.count() == 1
+        && match violations.first() {
+          AddedPathPublishGrantAbsent { path: path, root: root, audience: _ } =>
+            path == synthetic_added_path && root == "."
+          _ => false
+        }
+  }
+    && match admit_public_write(
+      session: sole_modeled_publisher_session,
+      head: synthetic_head,
+      pushed_refs: [synthetic_push()],
+      outcome: outcome,
+    ) {
+      PublicWriteAdmitted { authority: _ } => false
+      PublicWriteRefused { session: session, cause: cause } =>
+        session == sole_modeled_publisher_session
+          && match cause {
+            ProjectionNotAdmitted { session: refused, detail: detail } =>
+              refused == sole_modeled_publisher_session
+                && string_contains(s: detail, pattern: "placement gate refused")
+            NotTheSolePublisher { session: _, sole_publisher: _ } => false
+            UnstampedPublicContent { session: _, path: _ } => false
+            UnauthorizedPublicPush { session: _, push: _, detail: _ } => false
+          }
+    }
+}
+
+test fn sole_publisher_greens_on_admitted_projection() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: granted_roster(),
+    added_paths: [synthetic_added_path],
+    head: synthetic_head,
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } =>
+      match admit_public_write(
+        session: sole_modeled_publisher_session,
+        head: synthetic_head,
+        pushed_refs: [synthetic_push()],
+        outcome: outcome,
+      ) {
+        PublicWriteAdmitted { authority: authority } =>
+          authority.publisher_session == sole_modeled_publisher_session
+            && authority.projection.receipt.root == "."
+            && authority.projection.receipt.added_paths == [synthetic_added_path]
+            && authority.projection.admission.source.head == synthetic_head
+        PublicWriteRefused { session: _, cause: _ } => false
+      }
+    PublishGuardLocalRefused { receipt: _, violations: _ } => false
+  }
+}
+
+test fn shadow_observer_refuses_ordinary_session_push() -> Bool {
+  let entries = shadow_replay_public_pushes(
+    roster: granted_roster(),
+    events: [ObservedPublicPush {
+      session: synthetic_ordinary_session,
+      head: synthetic_head,
+      push: synthetic_push(),
+      added_paths: [synthetic_added_path],
+    }],
+  )
+  entries.count() == 1
+    && shadow_refusal_count(entries: entries) == 1
+    && shadow_would_refuse_ordinary_session(
+      roster: granted_roster(),
+      observed: ObservedPublicPush {
+        session: synthetic_ordinary_session,
+        head: synthetic_head,
+        push: synthetic_push(),
+        added_paths: [synthetic_added_path],
+      },
+    )
+    && match entries.first() {
+      Present { value: entry } =>
+        match entry {
+          ShadowPushWouldRefuse { session: session, head: head, push: push, admission: admission } =>
+            session == synthetic_ordinary_session
+              && head == synthetic_head
+              && push.local_sha == synthetic_head
+          ShadowPushWouldAdmit { session: _, head: _, push: _ } => false
+        }
+      Absent => false
+    }
+}
+
+test fn shadow_observer_admits_sole_publisher_with_grant() -> Bool {
+  let entries = shadow_replay_public_pushes(
+    roster: granted_roster(),
+    events: [ObservedPublicPush {
+      session: sole_modeled_publisher_session,
+      head: synthetic_head,
+      push: synthetic_push(),
+      added_paths: [synthetic_added_path],
+    }],
+  )
+  entries.count() == 1
+    && shadow_refusal_count(entries: entries) == 0
+    && match entries.first() {
+      Present { value: entry } =>
+        match entry {
+          ShadowPushWouldAdmit { session: session, head: head, push: _ } =>
+            session == sole_modeled_publisher_session && head == synthetic_head
+          ShadowPushWouldRefuse { session: _, head: _, push: _, admission: _ } => false
+        }
+      Absent => false
+    }
+}

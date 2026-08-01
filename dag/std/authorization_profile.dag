@@ -1,0 +1,198 @@
+module std.authorization_profile
+
+import std.types { Bool, List, Set, String }
+import std.access { AccessRequest, AccessContext, AccessEvidence }
+
+data authorization_profile_note: String = "Typed authorization request profiles over the single std.access kernel. A profile is an exact product and a projection to AccessRequest; none declares an admitted/refused carrier or an allow/deny fold. EffectRequest carries an actor, effect, target, ambient context, and evidence. ReferenceRequest carries the referrer and referenced object separately. PublicationAdmissionRequest asks whether one resource may inhabit an audience set. DisclosureRequest adds the disclosed field set. SealedExecutionRequest keeps the sealed resource, operation, and execution context distinct."
+
+type AudienceSet<P>
+  = UniversalAudience
+  | EnumeratedAudience { members: Set<P> }
+
+data audience_set_note: String = "An audience is a set, not the frozen World > Network > Org > Repo chain from gunbc#7541. Enumerated audiences use the canonical std.types.Set carrier, so duplicate membership is unrepresentable; overlapping sets need not contain one another. UniversalAudience is top and the empty EnumeratedAudience is bottom. audience_subset derives the partial order from canonical set_union, which is also the audience_join operation."
+
+fn audience_member<P>(
+  audience: AudienceSet<P>,
+  principal: P,
+) -> Bool {
+  match audience {
+    UniversalAudience => true
+    EnumeratedAudience { members: members } =>
+      set_contains(members, principal)
+  }
+}
+
+fn audience_subset<P>(
+  left: AudienceSet<P>,
+  right: AudienceSet<P>,
+) -> Bool {
+  match left {
+    UniversalAudience => match right {
+      UniversalAudience => true
+      EnumeratedAudience { members: members } => false
+    }
+    EnumeratedAudience { members: members } => match right {
+      UniversalAudience => true
+      EnumeratedAudience { members: right_members } =>
+        set_union(members, right_members) == right_members
+    }
+  }
+}
+
+fn audience_join<P>(
+  left: AudienceSet<P>,
+  right: AudienceSet<P>,
+) -> AudienceSet<P> {
+  match left {
+    UniversalAudience => UniversalAudience
+    EnumeratedAudience { members: left_members } => match right {
+      UniversalAudience => UniversalAudience
+      EnumeratedAudience { members: right_members } => EnumeratedAudience {
+        members: set_union(left_members, right_members)
+      }
+    }
+  }
+}
+
+type EffectAuthorizationAction<A> {
+  effect: A
+}
+
+type EffectRequest<S, A, O, C, E> {
+  subject: S
+  effect: A
+  target: O
+  context: C
+  evidence: E
+}
+
+fn effect_access_request<S, A, O, C, E>(
+  request: EffectRequest<S, A, O, C, E>,
+) -> AccessRequest<S, EffectAuthorizationAction<A>, O, C, E> {
+  AccessRequest {
+    subject: request.subject,
+    action: EffectAuthorizationAction { effect: request.effect },
+    object: request.target,
+    context: AccessContext { value: request.context },
+    evidence: AccessEvidence { value: request.evidence },
+  }
+}
+
+type ReferenceAction {}
+
+type ReferenceContext<R, C> {
+  referrer: R
+  context: C
+}
+
+type ReferenceRequest<R, C, E> {
+  referrer: R
+  referenced: R
+  context: C
+  evidence: E
+}
+
+fn reference_access_request<R, C, E>(
+  request: ReferenceRequest<R, C, E>,
+) -> AccessRequest<R, ReferenceAction, R, ReferenceContext<R, C>, E> {
+  AccessRequest {
+    subject: request.referrer,
+    action: ReferenceAction {},
+    object: request.referenced,
+    context: AccessContext { value: ReferenceContext {
+      referrer: request.referrer,
+      context: request.context,
+    } },
+    evidence: AccessEvidence { value: request.evidence },
+  }
+}
+
+type PublicationAdmissionAction<S> {
+  source: S
+}
+
+type PublicationContext<C, P> {
+  audience: AudienceSet<P>
+  context: C
+}
+
+type PublicationAdmissionRequest<S, Source, R, C, E, P> {
+  subject: S
+  source: Source
+  resource: R
+  audience: AudienceSet<P>
+  context: C
+  evidence: E
+}
+
+fn publication_access_request<S, Source, R, C, E, P>(
+  request: PublicationAdmissionRequest<S, Source, R, C, E, P>,
+) -> AccessRequest<S, PublicationAdmissionAction<Source>, R, PublicationContext<C, P>, E> {
+  AccessRequest {
+    subject: request.subject,
+    action: PublicationAdmissionAction { source: request.source },
+    object: request.resource,
+    context: AccessContext { value: PublicationContext {
+      audience: request.audience,
+      context: request.context,
+    } },
+    evidence: AccessEvidence { value: request.evidence },
+  }
+}
+
+type DisclosureAction<F> {
+  fields: List<F>
+}
+
+type DisclosureContext<C, P> {
+  audience: AudienceSet<P>
+  context: C
+}
+
+type DisclosureRequest<P, R, F, C, E> {
+  principal: P
+  resource: R
+  fields: List<F>
+  audience: AudienceSet<P>
+  context: C
+  evidence: E
+}
+
+fn disclosure_access_request<P, R, F, C, E>(
+  request: DisclosureRequest<P, R, F, C, E>,
+) -> AccessRequest<P, DisclosureAction<F>, R, DisclosureContext<C, P>, E> {
+  AccessRequest {
+    subject: request.principal,
+    action: DisclosureAction { fields: request.fields },
+    object: request.resource,
+    context: AccessContext { value: DisclosureContext {
+      audience: request.audience,
+      context: request.context,
+    } },
+    evidence: AccessEvidence { value: request.evidence },
+  }
+}
+
+type SealedExecutionAction<O> {
+  operation: O
+}
+
+type SealedExecutionRequest<P, O, R, C, E> {
+  principal: P
+  operation: O
+  sealed_resource: R
+  execution_context: C
+  evidence: E
+}
+
+fn sealed_execution_access_request<P, O, R, C, E>(
+  request: SealedExecutionRequest<P, O, R, C, E>,
+) -> AccessRequest<P, SealedExecutionAction<O>, R, C, E> {
+  AccessRequest {
+    subject: request.principal,
+    action: SealedExecutionAction { operation: request.operation },
+    object: request.sealed_resource,
+    context: AccessContext { value: request.execution_context },
+    evidence: AccessEvidence { value: request.evidence },
+  }
+}

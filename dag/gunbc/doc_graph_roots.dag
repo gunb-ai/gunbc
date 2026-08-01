@@ -357,6 +357,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [],
     dissolution: HasTrigger { text: "Nat lives only in std.nat (coproduct + Peano ops), v2.std.nat imports rather than redefines it, the 138-entry co-occurrence class is gone, and integer's GroupCompletion<Nat> cites the unified type — then this per-concept census doc deletes with this row (full criteria in the doc §9)" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "sole-modeled-publisher-design",
+    primary_work: DeclarationRef { module_path: "tools.publication_publisher", decl_name: "PublicationAuthority", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "tools.publication_push_shadow", decl_name: "shadow_replay_public_pushes", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "Stage 2 binds git.PublicationTransport dispatch to PublicationAuthority (live refuse, not shadow-only), shadow_replay_public_pushes becomes a permanent regression control, and the staged migration either registers as a gunbc.plan.Plan row or deletes when enforcement lands on carriers" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {

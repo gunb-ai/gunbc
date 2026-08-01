@@ -1,0 +1,241 @@
+module tools.publication_publisher
+
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
+import std.authorization_profile {
+  AudienceSet, UniversalAudience,
+  PublicationAdmissionRequest,
+}
+import gunbc.principal_projection { GunbcPrincipal }
+import extdeps.git.hooks { PrePushStdinRow }
+import tools.publication_placement_gate {
+  PublishGuardLocalOutcome,
+  PublishGuardLocalAccepted,
+  PublishGuardLocalRefused,
+  PublishGuardLocalCoverageReceipt,
+}
+
+data publication_publisher_note: String = "Stage-0 sole modeled publisher over admitted public projections (priority-assessment directive section 8; supersedes hook/check-only enforcement as the WHO layer atop P-B's WHAT layer). Ordinary ModeledSessionId values are OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session holds public-write capability, and only when it consumes a std.authorization_profile.PublicationAdmissionRequest built from a PublishGuardLocalAccepted receipt. Hooks and required CI checks remain fast diagnostics; this module constrains who may bind extdeps.git.publication_transport write operations at all. Slice 1 is model + shadow only — no live push path, credential, or remote mutation."
+
+type ModeledSessionId = NonEmptyStr where brand("ModeledSessionId")
+
+type PublisherPlacementSource {
+  head: String
+  pushed_refs: List<PrePushStdinRow>
+}
+
+type PublisherPlacementResource {
+  public_root: FilePath
+  cutover: String
+}
+
+type PublisherWriteContext {
+  stage: String
+}
+
+type PublisherWriteEvidence {
+  baseline_marker_checked: Bool
+  file_marker_paths: List<FilePath>
+  added_paths: List<FilePath>
+}
+
+type PublisherPublicationAdmissionRequest = PublicationAdmissionRequest<ModeledSessionId, PublisherPlacementSource, PublisherPlacementResource, PublisherWriteContext, PublisherWriteEvidence, GunbcPrincipal>
+
+type SessionPublicationPosture
+  = OrdinarySession { session: ModeledSessionId }
+  | SoleModeledPublisher { session: ModeledSessionId }
+
+type AdmittedPublicProjection {
+  receipt: PublishGuardLocalCoverageReceipt
+  admission: PublisherPublicationAdmissionRequest
+}
+
+type PublicationAuthority {
+  publisher_session: ModeledSessionId
+  projection: AdmittedPublicProjection
+}
+
+type PublicWriteAdmission
+  = PublicWriteAdmitted { authority: PublicationAuthority }
+  | PublicWriteRefused {
+      session: ModeledSessionId,
+      cause: PublicWriteRefusal,
+    }
+
+type PublicWriteRefusal
+  = NotTheSolePublisher {
+      session: ModeledSessionId,
+      sole_publisher: ModeledSessionId,
+    }
+  | ProjectionNotAdmitted {
+      session: ModeledSessionId,
+      detail: String,
+    }
+  | UnstampedPublicContent {
+      session: ModeledSessionId,
+      path: String,
+    }
+  | UnauthorizedPublicPush {
+      session: ModeledSessionId,
+      push: PrePushStdinRow,
+      detail: String,
+    }
+
+data sole_modeled_publisher_session: ModeledSessionId = "gunbc-publication-publisher" as ModeledSessionId
+
+fn publisher_public_audience() -> AudienceSet<GunbcPrincipal> {
+  UniversalAudience
+}
+
+fn publication_admission_request_from_receipt(
+  subject: ModeledSessionId,
+  head: String,
+  pushed_refs: List<PrePushStdinRow>,
+  receipt: PublishGuardLocalCoverageReceipt,
+) -> PublisherPublicationAdmissionRequest {
+  PublicationAdmissionRequest {
+    subject: subject,
+    source: PublisherPlacementSource {
+      head: head,
+      pushed_refs: pushed_refs,
+    },
+    resource: PublisherPlacementResource {
+      public_root: receipt.root,
+      cutover: receipt.cutover,
+    },
+    audience: publisher_public_audience(),
+    context: PublisherWriteContext { stage: "slice-1-shadow" },
+    evidence: PublisherWriteEvidence {
+      baseline_marker_checked: true,
+      file_marker_paths: receipt.file_marker_paths,
+      added_paths: receipt.added_paths,
+    },
+  }
+}
+
+fn session_publication_posture(session: ModeledSessionId) -> SessionPublicationPosture {
+  if session == sole_modeled_publisher_session {
+    SoleModeledPublisher { session: session }
+  } else {
+    OrdinarySession { session: session }
+  }
+}
+
+fn posture_is_sole_publisher(posture: SessionPublicationPosture) -> Bool {
+  match posture {
+    SoleModeledPublisher { session: _ } => true
+    OrdinarySession { session: _ } => false
+  }
+}
+
+fn admitted_public_projection_from_outcome(
+  subject: ModeledSessionId,
+  head: String,
+  pushed_refs: List<PrePushStdinRow>,
+  outcome: PublishGuardLocalOutcome,
+) -> AdmittedPublicProjection? {
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } =>
+      Present {
+        value: AdmittedPublicProjection {
+          receipt: receipt,
+          admission: publication_admission_request_from_receipt(
+            subject: subject,
+            head: head,
+            pushed_refs: pushed_refs,
+            receipt: receipt,
+          ),
+        },
+      }
+    PublishGuardLocalRefused { receipt: _, violations: _ } => Absent
+  }
+}
+
+fn public_write_refusal_detail(outcome: PublishGuardLocalOutcome) -> String {
+  match outcome {
+    PublishGuardLocalAccepted { receipt: _ } => "placement gate accepted the public projection"
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
+      join([
+        "placement gate refused the public projection: violation_count=",
+        to_string(violations.count()),
+      ], "")
+  }
+}
+
+fn admit_public_write(
+  session: ModeledSessionId,
+  head: String,
+  pushed_refs: List<PrePushStdinRow>,
+  outcome: PublishGuardLocalOutcome,
+) -> PublicWriteAdmission {
+  match session_publication_posture(session: session) {
+    OrdinarySession { session: ordinary } =>
+      PublicWriteRefused {
+        session: ordinary,
+        cause: NotTheSolePublisher {
+          session: ordinary,
+          sole_publisher: sole_modeled_publisher_session,
+        },
+      }
+    SoleModeledPublisher { session: publisher } =>
+      match admitted_public_projection_from_outcome(
+        subject: publisher,
+        head: head,
+        pushed_refs: pushed_refs,
+        outcome: outcome,
+      ) {
+        Present { value: projection } =>
+          PublicWriteAdmitted {
+            authority: PublicationAuthority {
+              publisher_session: publisher,
+              projection: projection,
+            },
+          }
+        Absent =>
+          PublicWriteRefused {
+            session: publisher,
+            cause: ProjectionNotAdmitted {
+              session: publisher,
+              detail: public_write_refusal_detail(outcome: outcome),
+            },
+          }
+      }
+  }
+}
+
+fn public_write_admission_fold<T>(
+  admission: PublicWriteAdmission,
+  on_admitted: fn(PublicationAuthority) -> T,
+  on_refused: fn(ModeledSessionId, PublicWriteRefusal) -> T,
+) -> T {
+  match admission {
+    PublicWriteAdmitted { authority: authority } => on_admitted(authority)
+    PublicWriteRefused { session: session, cause: cause } => on_refused(session, cause)
+  }
+}
+
+fn public_write_admitted(admission: PublicWriteAdmission) -> Bool {
+  public_write_admission_fold(
+    admission: admission,
+    on_admitted: fn(authority) { true },
+    on_refused: fn(session, cause) { false },
+  )
+}
+
+fn ordinary_session_lacks_public_write_authority(session: ModeledSessionId) -> Bool {
+  !posture_is_sole_publisher(posture: session_publication_posture(session: session))
+}
+
+fn refuse_unstamped_public_content(
+  session: ModeledSessionId,
+  path: String,
+) -> PublicWriteRefusal {
+  UnstampedPublicContent { session: session, path: path }
+}
+
+fn refuse_unauthorized_public_push(
+  session: ModeledSessionId,
+  push: PrePushStdinRow,
+  detail: String,
+) -> PublicWriteRefusal {
+  UnauthorizedPublicPush { session: session, push: push, detail: detail }
+}
