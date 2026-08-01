@@ -7,7 +7,6 @@
 //! SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.walk_plan_stage_fixture_scaffold;
 //! witness: dag/test/claim/walk_plan_stage_fixture_hand_rust_witness_test.dag).
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -30,9 +29,7 @@ impl FixtureSession {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let root = workspace_root();
-        LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
         let authority = materialize_harness_authority(&root);
-        LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = Some(authority.clone()));
         Self {
             _guard: guard,
             root,
@@ -51,10 +48,6 @@ impl FixtureSession {
     fn run_plan(&self, plan_function: &str) -> FixtureOutput {
         run_fixture_plan_unlocked(&self.root, &self.authority, plan_function)
     }
-}
-
-thread_local! {
-    static LAST_HARNESS_AUTHORITY: RefCell<Option<HarnessAuthority>> = const { RefCell::new(None) };
 }
 
 #[derive(Clone, Debug)]
