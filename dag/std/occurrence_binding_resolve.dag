@@ -307,10 +307,22 @@ fn resolve_reference_occurrence_binding_validated(
     Present { value: entry } =>
       match reference_occurrence_by_id(validated: validated, occurrence: occurrence) {
         Absent =>
-          OccurrenceReferenceBindingTransportRefused {
-            refusal: MissingAuthoredOccurrenceIdentity {
-              diagnostic_span: entry.projection.diagnostic_span,
-            },
+          match map_get(validated.declarations_by_id, occurrence.value) {
+            Present { value: observed_declaration } =>
+              OccurrenceReferenceBindingTransportRefused {
+                refusal: WrongOccurrenceRole {
+                  occurrence: occurrence,
+                  expected: ReferenceRole,
+                  observed: DeclarationRole,
+                  diagnostic_span: observed_declaration.diagnostic_span,
+                },
+              }
+            Absent =>
+              OccurrenceReferenceBindingTransportRefused {
+                refusal: MissingAuthoredOccurrenceIdentity {
+                  diagnostic_span: entry.projection.diagnostic_span,
+                },
+              }
           }
         Present { value: reference } =>
           let build = binding_candidates_from_supplied_declarations(

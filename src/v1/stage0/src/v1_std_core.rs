@@ -25,8 +25,9 @@ pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostSha
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
-    DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
-    MissingAuthoredOccurrenceIdentity, UnknownOccurrenceIdentity, WrongOccurrenceCategory,
+    DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
+    InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
+    UnknownOccurrenceIdentity, WrongOccurrenceRole,
 };
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
@@ -509,11 +510,15 @@ pub fn occurrence_transport_refusal_diagnostic_span(
             diagnostic_span: span,
             ..
         } => Some(span.clone()),
+        OccurrenceTransportRefusal::DuplicateSuppliedCandidateIdentity {
+            diagnostic_span: span,
+            ..
+        } => Some(span.clone()),
         OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
             diagnostic_span: span,
             ..
         } => Some(span.clone()),
-        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+        OccurrenceTransportRefusal::WrongOccurrenceRole {
             diagnostic_span: span,
             ..
         } => Some(span.clone()),
@@ -527,8 +532,9 @@ pub fn occurrence_transport_refusal_diagnostic_message(
     match (*refusal.clone()).clone() {
     OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: _, .. } => "occurrence transport refused: missing authored occurrence identity".to_string(),
     OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: duplicate authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::DuplicateSuppliedCandidateIdentity { occurrence, .. } => v1_rt::concat("occurrence binding refused: duplicate supplied candidate identity ".to_string(), (occurrence.value.clone()).to_string()),
     OccurrenceTransportRefusal::InconsistentOccurrenceContainment { occurrence, .. } => v1_rt::concat("occurrence transport refused: inconsistent containment for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
-    OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong category for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::WrongOccurrenceRole { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong role for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
     OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: occurrence, .. } => v1_rt::concat("occurrence transport refused: unknown occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
 }
 }

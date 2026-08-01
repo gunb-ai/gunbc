@@ -3,7 +3,7 @@
 
 use self::NodeOccurrenceIdentity::*;
 use self::OccurrenceCategory::*;
-use self::OccurrenceCategoryBindingVerdict::*;
+use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
 pub use crate::std_algebra::FreeMonoid;
@@ -97,138 +97,13 @@ pub enum OccurrenceCategory {
     MethodOccurrence,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
-pub enum OccurrenceCategoryBindingVerdict {
-    OccurrenceCategoryBindingAdmissible,
-    OccurrenceCategoryBindingInadmissible {
-        reference: OccurrenceCategory,
-        declaration: OccurrenceCategory,
-    },
-}
-impl OccurrenceCategoryBindingVerdict {
-    pub fn reference(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => {
-                panic!("no reference on unit variant")
-            }
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                reference: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-    pub fn declaration(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => {
-                panic!("no declaration on unit variant")
-            }
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                declaration: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-}
-
-pub fn occurrence_category_binding_verdict_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_category_binding_verdict(
-    reference: OccurrenceCategory,
-    declaration: OccurrenceCategory,
-) -> Rc<OccurrenceCategoryBindingVerdict> {
-    match reference.clone() {
-        OccurrenceCategory::TypeOccurrence => match declaration.clone() {
-            OccurrenceCategory::TypeOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::LexicalValueOccurrence => match declaration.clone() {
-            OccurrenceCategory::LexicalValueOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            OccurrenceCategory::CallableOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            OccurrenceCategory::ConstructorOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::CallableOccurrence => match declaration.clone() {
-            OccurrenceCategory::CallableOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::ConstructorOccurrence => match declaration.clone() {
-            OccurrenceCategory::ConstructorOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::FieldOccurrence => match declaration.clone() {
-            OccurrenceCategory::FieldOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::MethodOccurrence => match declaration.clone() {
-            OccurrenceCategory::MethodOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-        OccurrenceCategory::NamespaceSegmentOccurrence => match declaration.clone() {
-            OccurrenceCategory::NamespaceSegmentOccurrence => {
-                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
-            }
-            _ => Rc::new(
-                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                    reference: reference.clone(),
-                    declaration: declaration.clone(),
-                },
-            ),
-        },
-    }
+pub enum OccurrenceRole {
+    DeclarationRole,
+    ReferenceRole,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -300,14 +175,18 @@ pub enum OccurrenceTransportRefusal {
         occurrence: OccurrenceId,
         diagnostic_span: Rc<SourceSpan>,
     },
+    DuplicateSuppliedCandidateIdentity {
+        occurrence: OccurrenceId,
+        diagnostic_span: Rc<SourceSpan>,
+    },
     InconsistentOccurrenceContainment {
         occurrence: OccurrenceId,
         diagnostic_span: Rc<SourceSpan>,
     },
-    WrongOccurrenceCategory {
+    WrongOccurrenceRole {
         occurrence: OccurrenceId,
-        expected: OccurrenceCategory,
-        observed: OccurrenceCategory,
+        expected: OccurrenceRole,
+        observed: OccurrenceRole,
         diagnostic_span: Rc<SourceSpan>,
     },
     UnknownOccurrenceIdentity {
@@ -591,14 +470,14 @@ pub fn declaration_occurrence_refusal(
                     &references_by_id,
                     declaration.occurrence.clone().value.clone(),
                 ) {
-                    Some(reference) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                    Some(reference) => {
+                        Some(Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
                             occurrence: declaration.occurrence.clone(),
-                            expected: declaration.category.clone(),
-                            observed: reference.category.clone(),
+                            expected: OccurrenceRole::DeclarationRole,
+                            observed: OccurrenceRole::ReferenceRole,
                             diagnostic_span: declaration.diagnostic_span.clone(),
-                        },
-                    )),
+                        }))
+                    }
                     None => None,
                 }
             } else {
@@ -633,14 +512,14 @@ pub fn reference_occurrence_refusal(
                     &declarations_by_id,
                     reference.occurrence.clone().value.clone(),
                 ) {
-                    Some(declaration) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                    Some(declaration) => {
+                        Some(Rc::new(OccurrenceTransportRefusal::WrongOccurrenceRole {
                             occurrence: reference.occurrence.clone(),
-                            expected: reference.category.clone(),
-                            observed: declaration.category.clone(),
+                            expected: OccurrenceRole::ReferenceRole,
+                            observed: OccurrenceRole::DeclarationRole,
                             diagnostic_span: reference.diagnostic_span.clone(),
-                        },
-                    )),
+                        }))
+                    }
                     None => None,
                 }
             } else {
@@ -788,3 +667,7 @@ pub struct NamespaceSegmentOccurrence;
 pub struct FieldOccurrence;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MethodOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclarationRole;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceRole;

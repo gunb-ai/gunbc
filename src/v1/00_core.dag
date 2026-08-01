@@ -17,8 +17,9 @@ import std.occurrence_identity {
   OccurrenceTransportRefusal,
   MissingAuthoredOccurrenceIdentity,
   DuplicateAuthoredOccurrenceIdentity,
+  DuplicateSuppliedCandidateIdentity,
   InconsistentOccurrenceContainment,
-  WrongOccurrenceCategory,
+  WrongOccurrenceRole,
   UnknownOccurrenceIdentity,
 }
 
@@ -194,11 +195,15 @@ fn occurrence_transport_refusal_diagnostic_span(
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
+    DuplicateSuppliedCandidateIdentity {
+      occurrence: _,
+      diagnostic_span: span,
+    } => Present { value: span }
     InconsistentOccurrenceContainment {
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
-    WrongOccurrenceCategory {
+    WrongOccurrenceRole {
       occurrence: _,
       expected: _,
       observed: _,
@@ -221,6 +226,13 @@ fn occurrence_transport_refusal_diagnostic_message(
       "occurrence transport refused: duplicate authored occurrence identity ",
       to_string(value: occurrence.value)
     )
+    DuplicateSuppliedCandidateIdentity {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence binding refused: duplicate supplied candidate identity ",
+      to_string(value: occurrence.value)
+    )
     InconsistentOccurrenceContainment {
       occurrence: occurrence,
       diagnostic_span: _,
@@ -228,13 +240,13 @@ fn occurrence_transport_refusal_diagnostic_message(
       "occurrence transport refused: inconsistent containment for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    WrongOccurrenceCategory {
+    WrongOccurrenceRole {
       occurrence: occurrence,
       expected: _,
       observed: _,
       diagnostic_span: _,
     } => concat(
-      "occurrence transport refused: wrong category for authored occurrence identity ",
+      "occurrence transport refused: wrong role for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
     UnknownOccurrenceIdentity { occurrence: occurrence } =>
