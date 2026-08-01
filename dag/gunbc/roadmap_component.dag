@@ -1445,50 +1445,30 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
           right: ts_call(
             callee: ts_member(object: ts_ident(name: "sf"), property: "querySelector"),
             args: [ts_lit_str(value: ".session-facts-text")]))),
+        ts_const(name: "sfx", value: ts_binop(
+          left: ts_member(object: ts_ident(name: "sess"), property: "facts"),
+          op: "||",
+          right: ts_ident(name: "null"))),
         ts_if(
-          cond: ts_ident(name: "st"),
+          cond: ts_binop(
+            left: ts_ident(name: "st"),
+            op: "&&",
+            right: ts_ident(name: "sfx")),
           then: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(object: ts_ident(name: "st"), property: "textContent"),
               op: "=",
               right: ts_binop(
-                left: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)),
-                op: "+",
-                right: ts_binop(
-                  left: ts_lit_str(value: " — "),
-                  op: "+",
-                  right: ts_member(object: ts_ident(name: "sess"), property: "process_state"))))),
+                left: ts_member(object: ts_ident(name: "sfx"), property: "line"),
+                op: "||",
+                right: ts_lit_str(value: "")))),
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(object: ts_ident(name: "st"), property: "title"),
               op: "=",
               right: ts_binop(
-                left: ts_binop(
-                  left: ts_binop(
-                    left: ts_binop(
-                      left: ts_member(object: ts_ident(name: "sess"), property: "configured_provider"),
-                      op: "+",
-                      right: ts_lit_str(value: " configured · ")),
-                    op: "+",
-                    right: ts_member(object: ts_ident(name: "sess"), property: "provider")),
-                  op: "+",
-                  right: ts_lit_str(value: " · ")),
-                op: "+",
-                right: ts_binop(
-                  left: ts_member(object: ts_ident(name: "sess"), property: "provider_readiness"),
-                  op: "+",
-                  right: ts_binop(
-                    left: ts_binop(
-                      left: ts_lit_str(value: " — "),
-                      op: "+",
-                      right: ts_member(object: ts_ident(name: "sess"), property: "session_name")),
-                    op: "+",
-                    right: ts_cond(
-                      test: ts_member(object: ts_ident(name: "sess"), property: "process_detail"),
-                      consequent: ts_binop(
-                        left: ts_lit_str(value: " — "),
-                        op: "+",
-                        right: ts_member(object: ts_ident(name: "sess"), property: "process_detail")),
-                      alternate: ts_lit_str(value: ""))))))),
+                left: ts_member(object: ts_ident(name: "sfx"), property: "detail"),
+                op: "||",
+                right: ts_lit_str(value: "")))),
           ]),
           else_stmt: none),
         ts_let(name: "cc", value: ts_binop(
@@ -1652,31 +1632,55 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
               args: [ts_ident(name: "cc")])),
           ]),
           else_stmt: none),
+        ts_const(name: "sact", value: ts_binop(
+          left: ts_binop(
+            left: ts_ident(name: "sfx"),
+            op: "&&",
+            right: ts_member(object: ts_ident(name: "sfx"), property: "action")),
+          op: "||",
+          right: ts_ident(name: "null"))),
         ts_if(
-          cond: ts_ident(name: "cc"),
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_ident(name: "cc"),
+              op: "&&",
+              right: ts_ident(name: "sact")),
+            op: "&&",
+            right: ts_binop(
+              left: ts_member(object: ts_ident(name: "sact"), property: "kind"),
+              op: "!==",
+              right: ts_lit_str(value: "none"))),
           then: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(
                 object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
                 property: "cleanupAction"),
               op: "=",
-              right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+              right: ts_member(object: ts_ident(name: "sact"), property: "label"))),
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
               op: "=",
-              right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+              right: ts_member(object: ts_ident(name: "sact"), property: "label"))),
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(object: ts_ident(name: "cc"), property: "title"),
               op: "=",
-              right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_detail"))),
+              right: ts_member(object: ts_ident(name: "sact"), property: "detail"))),
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
               op: "=",
-              right: ts_prefix(
-                op: "!",
-                expr: ts_member(object: ts_ident(name: "sess"), property: "cleanup_allowed")))),
+              right: ts_binop(
+                left: ts_member(object: ts_ident(name: "sact"), property: "availability"),
+                op: "!==",
+                right: ts_lit_str(value: "available")))),
           ]),
-          else_stmt: none),
+          else_stmt: Present { value: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "cc"),
+              op: "&&",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "cc"), property: "remove"),
+                args: []))),
+          ]) }),
       ]),
       else_stmt: none,
     ),

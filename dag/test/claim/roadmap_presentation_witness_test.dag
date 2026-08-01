@@ -26,17 +26,25 @@ import gunbc.roadmap_presentation {
   CompletedWork, ActivityUnobservable,
   WorkAttemptFacts, NoActiveAttempt, AttemptUnobservable,
   activity_view_of,
-  ActivityAttention, ActivityRoutine, ActivityNeedsUser, ActivityAnomalous,
+  ActivityAttention, ActivityRoutine, ActivityAnomalous,
   ActionAvailability, ActionUnavailable, AvailableAsOverride, ActionAvailable,
   ActionPriority, PrimaryAction, SecondaryAction, DiagnosticAction,
-  WorkActionKind, DispatchAction, StopAction, ClearSessionAction,
+  WorkActionKind, DispatchAction, ClearSessionAction,
   WorkAction, ActionView,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
+  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
+  work_scheduling, work_scheduling_key, scheduling_dependency_line,
   row_headline, row_summary, legacy_lead,
   dispatch_action, action_view,
-  activity_view_from_parts,
-  work_row_view, row_supporting_facts,
+  activity_view_from_parts, activity_summary_line,
+  WorkRowView, work_row_view, row_supporting_facts,
+  DisclosureView, NoDisclosure, TicketDisclosure, LegacyBodyDisclosure,
+  SessionActionView, NoSessionAction, SessionAction,
+  SessionFactsView, session_facts_view, session_action_view,
+  DailyWorkspaceView, daily_workspace_view, row_is_active_work,
+  ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
+  observation_impact_view, workspace_covers_row_activity,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -71,7 +79,7 @@ test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Boo
     ActiveWork { summary, obligations: _, remaining_obligation_count: remaining, current_activity: _, attention, evidence: _ } =>
       summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
         && remaining == 4
-        && match attention { ActivityRoutine => true ActivityNeedsUser => false ActivityAnomalous => false }
+        && match attention { ActivityRoutine => true ActivityAnomalous => false }
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
@@ -150,7 +158,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
   ) {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
       summary == "Agent failed"
-        && match attention { ActivityAnomalous => true ActivityRoutine => false ActivityNeedsUser => false }
+        && match attention { ActivityAnomalous => true ActivityRoutine => false }
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
@@ -233,14 +241,14 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
   }
 }
 
-data availability_priority_note: String = "The two-axis discrimination: a Ready row's dispatch is Available AND Primary; a blocked/unsized row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails."
+data availability_priority_note: String = "The two-axis discrimination over the TYPED scheduling position: a SchedulingReady row's dispatch is Available AND Primary; an upcoming/unplanned row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails."
 
 test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
-  let ready_view = action_view(ready: true, lifecycle: OpenLifecycle, activity: NoActiveWork)
-  let blocked_view = action_view(ready: false, lifecycle: OpenLifecycle, activity: NoActiveWork)
+  let ready_view = action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle)
+  let blocked_view = action_view(scheduling: SchedulingUpcoming { blockers: ["a2-parent-1"] }, lifecycle: OpenLifecycle)
   let ready_ok = match ready_view.primary_action {
     Present { value: a } =>
-      match a.kind { DispatchAction => true StopAction => false ClearSessionAction => false }
+      match a.kind { DispatchAction => true ClearSessionAction => false }
         && match a.availability { ActionAvailable => true AvailableAsOverride => false ActionUnavailable => false }
     Absent => false
   }
@@ -249,29 +257,86 @@ test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
     Present { value: _ } => false
   }
   let blocked_has_override = fold(blocked_view.secondary_actions, init: false, f: (acc, a) =>
-    acc || (match a.kind { DispatchAction => true StopAction => false ClearSessionAction => false }
+    acc || (match a.kind { DispatchAction => true ClearSessionAction => false }
       && match a.availability { AvailableAsOverride => true ActionAvailable => false ActionUnavailable => false }
       && match a.priority { SecondaryAction => true PrimaryAction => false DiagnosticAction => false }))
   ready_ok && blocked_primary_empty && blocked_has_override
 }
 
 test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
-  count(dispatch_action(ready: true, lifecycle: DoneLifecycle)) == 0
-    && count(dispatch_action(ready: true, lifecycle: SupersededLifecycle)) == 0
+  count(dispatch_action(scheduling: SchedulingReady, lifecycle: DoneLifecycle)) == 0
+    && count(dispatch_action(scheduling: SchedulingReady, lifecycle: SupersededLifecycle)) == 0
 }
 
-test fn witness_session_cleanup_is_diagnostic_not_primary() -> Bool {
-  let view = action_view(ready: true, lifecycle: OpenLifecycle, activity: fx_specimen_activity())
-  let clear_is_diagnostic = fold(view.secondary_actions, init: false, f: (acc, a) =>
-    acc || (match a.kind { ClearSessionAction => true DispatchAction => false StopAction => false }
-      && match a.priority { DiagnosticAction => true PrimaryAction => false SecondaryAction => false }))
-  let primary_is_not_clear = match view.primary_action {
-    Present { value: a } => match a.kind { ClearSessionAction => false DispatchAction => true StopAction => true }
-    Absent => true
+data cleanup_from_admission_note: String = "The session action derives from the OBSERVED cleanup admission and from nothing else (operator blocker 4, 2026-08-01). The prior constructor minted an ActionAvailable ClearSessionAction whenever the activity arm looked active/refused/completed — availability inferred from presentation state, exactly the fabrication the two-axis note forbids in the other direction. The discriminating trio: an allowed observed cleanup is Available and Diagnostic; an observed-but-disallowed cleanup is ActionUnavailable (this arm's first real consumer) while KEEPING its label and detail so the refusal is legible; no observed cleanup action is NoSessionAction, not an empty-labeled button. The RED: the deleted arm — action_view over any activity yields no ClearSessionAction — is asserted directly, so reintroducing the fabrication reds."
+
+test fn witness_session_action_derives_from_observed_admission() -> Bool {
+  let allowed = session_action_view(cleanup_action: "clear", cleanup_allowed: true, cleanup_detail: "only retained tmux session metadata will be removed")
+  let disallowed = session_action_view(cleanup_action: "clear", cleanup_allowed: false, cleanup_detail: "pane still running")
+  let absent = session_action_view(cleanup_action: "", cleanup_allowed: false, cleanup_detail: "")
+  let allowed_ok = match allowed {
+    SessionAction { kind, availability, priority, label, detail: _ } =>
+      match kind { ClearSessionAction => true DispatchAction => false }
+        && match availability { ActionAvailable => true AvailableAsOverride => false ActionUnavailable => false }
+        && match priority { DiagnosticAction => true PrimaryAction => false SecondaryAction => false }
+        && label == "clear"
+    NoSessionAction => false
   }
-  let idle_has_clear = fold(action_view(ready: true, lifecycle: OpenLifecycle, activity: NoActiveWork).secondary_actions,
-    init: false, f: (acc, a) => acc || match a.kind { ClearSessionAction => true DispatchAction => false StopAction => false })
-  clear_is_diagnostic && primary_is_not_clear && !idle_has_clear
+  let disallowed_ok = match disallowed {
+    SessionAction { kind: _, availability, priority: _, label, detail } =>
+      match availability { ActionUnavailable => true ActionAvailable => false AvailableAsOverride => false }
+        && label == "clear" && detail == "pane still running"
+    NoSessionAction => false
+  }
+  let absent_ok = match absent {
+    NoSessionAction => true
+    SessionAction { kind: _, availability: _, priority: _, label: _, detail: _ } => false
+  }
+  allowed_ok && disallowed_ok && absent_ok
+}
+
+fn action_view_has_no_clear(v: ActionView) -> Bool {
+  (match v.primary_action {
+    Present { value: a } => match a.kind { ClearSessionAction => false DispatchAction => true }
+    Absent => true
+  })
+    && !fold(v.secondary_actions, init: false, f: (acc, a) =>
+      acc || match a.kind { ClearSessionAction => true DispatchAction => false })
+}
+
+test fn witness_action_view_never_fabricates_cleanup() -> Bool {
+  action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle))
+    && action_view_has_no_clear(v: action_view(scheduling: SchedulingUpcoming { blockers: [] }, lifecycle: OpenLifecycle))
+    && action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: ReviewLifecycle))
+}
+
+data session_facts_decided_note: String = "The decided session line and title detail (operator blocker 5): the client formerly concatenated 'session · present — ' + process_state and its own provider-facts title in TypeScript — a second prose authority. Both strings are now decided here and the witness pins them, including the empty-process-detail arm (no dangling separator)."
+
+test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
+  let v = session_facts_view(
+    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process_detail: "exit=0 last-command=codex",
+    provider: "codex",
+    configured_provider: "codex",
+    provider_readiness: "ready",
+    session_name: "gunbc-belt-a2-row",
+    cleanup_action: "clear",
+    cleanup_allowed: true,
+    cleanup_detail: "only retained tmux session metadata will be removed")
+  let bare = session_facts_view(
+    process: WorkerProcessRunning { command: "codex exec" },
+    process_detail: "",
+    provider: "codex",
+    configured_provider: "codex",
+    provider_readiness: "ready",
+    session_name: "gunbc-belt-a2-row",
+    cleanup_action: "",
+    cleanup_allowed: false,
+    cleanup_detail: "")
+  v.line == "session · present — process exited"
+    && v.detail == "provider codex (configured codex, readiness ready) — gunbc-belt-a2-row · exit=0 last-command=codex"
+    && bare.line == "session · present — process running"
+    && bare.detail == "provider codex (configured codex, readiness ready) — gunbc-belt-a2-row"
 }
 
 data lifecycle_axis_note: String = "Lifecycle discriminates on the node's own facts, distinct from frontier scheduling: an Unsigned node with unmerged evidence is open; merged evidence without signoff is review — implementation artifacts never accept (roadmap_acceptance_boundary_note); an accepting signoff is done; a superseded line outranks everything and carries its forwarding pointer."
@@ -291,23 +356,109 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
     && work_lifecycle_key(l: work_lifecycle(rn: superseded_node, merged: [])) == "superseded"
 }
 
-data supporting_facts_demotion_note: String = "Owner, sizing, and carriers are supporting facts for the disclosure region — present when declared, absent (not empty-labeled) when not. The integration witness drives work_row_view end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary, complete dependency set in blocked_on, and the actions/facts composed from the same fixture."
+data supporting_facts_demotion_note: String = "Owner, sizing, and carriers are supporting facts for the disclosure region — present when declared, absent (not empty-labeled) when not. The integration witness drives work_row_view end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary, the typed scheduling position with its complete blocker set, and the actions/facts composed from the same fixture."
 
-test fn witness_work_row_view_composes_from_fixture() -> Bool {
-  let rn = gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
-    done: false, content: "row headline — row brief", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
-  let edges = [
+fn fx_row_nodes() -> List<RoadmapNode> {
+  [
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
+      done: false, content: "row headline — row brief", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", done: false, content: "parent one"),
+    gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", done: false, content: "parent two"),
+  ]
+}
+
+fn fx_row_edges() -> List<RoadmapEdge> {
+  [
     gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-1"),
     gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-2"),
   ]
-  let row = work_row_view(rn: rn, edges: edges, merged: [], ready: false, activity: NoActiveWork)
+}
+
+fn fx_row(activity: ActivityView) -> WorkRowView {
+  let nodes = fx_row_nodes()
+  match nodes.first() {
+    Present { value: rn } =>
+      work_row_view(rn: rn, nodes: nodes, edges: fx_row_edges(), merged: [], activity: activity)
+    Absent => work_row_view(
+      rn: gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
+      nodes: [], edges: [], merged: [], activity: activity)
+  }
+}
+
+test fn witness_work_row_view_composes_from_fixture() -> Bool {
+  let row = fx_row(activity: NoActiveWork)
   row.headline == "row headline"
     && row.node_id == "a2-row"
-    && count(row.blocked_on) == 2
+    && (match row.scheduling {
+      SchedulingUpcoming { blockers } =>
+        count(blockers) == 2
+          && fold(blockers, init: true, f: (acc, b) => acc && (b == "a2-parent-1" || b == "a2-parent-2"))
+      SchedulingReady => false
+      SchedulingDone => false
+      SchedulingSuperseded => false
+      SchedulingUnplanned => false
+    })
     && work_lifecycle_key(l: row.lifecycle) == "open"
     && row.superseded_by == ""
     && match row.summary { Absent => true Present { value: _ } => false }
     && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "owner")
     && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
+}
+
+data scheduling_typed_position_note: String = "The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the dependency line renders only for an Upcoming row with more than one blocker."
+
+test fn witness_scheduling_projects_typed_positions() -> Bool {
+  let nodes = fx_row_nodes()
+  let edges = fx_row_edges()
+  let child = match nodes.first() { Present { value: rn } => rn Absent => gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
+  let ready_node = gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
+    done: false, content: "ready row", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+  let unsized_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", done: false, content: "unsized row")
+  let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000013", id: "a2-sup2", by: "a2-ready", content: "old")
+  work_scheduling_key(s: work_scheduling(rn: child, nodes: nodes, edges: edges)) == "upcoming"
+    && work_scheduling_key(s: work_scheduling(rn: ready_node, nodes: [ready_node], edges: [])) == "ready"
+    && work_scheduling_key(s: work_scheduling(rn: unsized_node, nodes: [unsized_node], edges: [])) == "unplanned"
+    && work_scheduling_key(s: work_scheduling(rn: superseded_node, nodes: [superseded_node], edges: [])) == "superseded"
+}
+
+test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
+  let two = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1", "a2-parent-2"] })
+  let one = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1"] })
+  let ready = scheduling_dependency_line(s: SchedulingReady)
+  (match two { Present { value: line } => line == "requires all: a2-parent-1, a2-parent-2" Absent => false })
+    && (match one { Absent => true Present { value: _ } => false })
+    && (match ready { Absent => true Present { value: _ } => false })
+}
+
+data active_before_ready_note: String = "The workspace grouping (operator blocker 6): a row with active or refused work belongs to the operator's attention band above every idle Ready row; CompletedWork stays in its scheduling bucket because a finished receipt is not work in flight; unobservable rows do not join the active band — unknowable never rounds to active any more than to absent."
+
+test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
+  let active_row = fx_row(activity: fx_specimen_activity())
+  let idle_row = fx_row(activity: NoActiveWork)
+  let ws = daily_workspace_view(rows: [idle_row, active_row], program: none, observation: ObservationsNominal)
+  count(ws.active) == 1
+    && fold(ws.active, init: true, f: (acc, r) => acc && row_is_active_work(row: r))
+    && count(ws.upcoming) == 1
+    && count(ws.ready) == 0
+    && !fold(ws.upcoming, init: false, f: (acc, r) => acc || row_is_active_work(row: r))
+}
+
+data narrated_once_note: String = "The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact view carries the located reason) and covers each row's unobservable narration — but only the unobservable arm, and only while the workspace impact is present. The REDs: an active row is never covered (a live attempt's narration must survive a broken observation channel claim), and with a nominal workspace observation a row-specific unobservable reason narrates on its own row (coverage false)."
+
+test fn witness_workspace_impact_narrates_once() -> Bool {
+  let impact = observation_impact_view(workflow_refused: Present { value: "GET /workflow.json refused: connection refused" })
+  let nominal = observation_impact_view(workflow_refused: none)
+  let impact_ok = match impact {
+    WorkspaceObservationImpact { summary, located_reason } =>
+      summary == "workflow observation unavailable"
+        && located_reason == "GET /workflow.json refused: connection refused"
+    ObservationsNominal => false
+  }
+  let unobs = ActivityUnobservable { reason: "GET /workflow.json refused: connection refused" }
+  impact_ok
+    && (match nominal { ObservationsNominal => true WorkspaceObservationImpact { summary: _, located_reason: _ } => false })
+    && workspace_covers_row_activity(observation: impact, a: unobs)
+    && !workspace_covers_row_activity(observation: impact, a: fx_specimen_activity())
+    && !workspace_covers_row_activity(observation: nominal, a: unobs)
 }
