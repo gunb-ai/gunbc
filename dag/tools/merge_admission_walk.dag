@@ -11,7 +11,7 @@ import gunbc.merge_admission {
   classify_merge_admission_verdict_v2,
   current_gate_roster_hash,
 }
-import gunbc.merge_admission_identity {
+import gunbc.merge_admission_subject {
   TestedSubject,
   WalkAttemptId,
   merge_admission_floor_receipt_path,

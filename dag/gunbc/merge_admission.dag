@@ -27,7 +27,7 @@ import std.content_hash { content_hash_atom, content_hash_combine, content_hash_
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repo_identity { gunbc_default_branch_name }
-import gunbc.merge_admission_identity {
+import gunbc.merge_admission_subject {
   WalkAttemptId,
   TestedSubject,
   walk_attempt_id_eq,

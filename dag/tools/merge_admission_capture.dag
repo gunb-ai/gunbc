@@ -9,7 +9,7 @@ import extdeps.git.object_store {
 }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.merge_admission_identity {
+import gunbc.merge_admission_subject {
   TestedSubject,
   WalkAttemptId,
   compose_explicit_walk_attempt_id,

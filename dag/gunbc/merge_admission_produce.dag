@@ -16,7 +16,7 @@ import gunbc.merge_admission {
   mint_merge_admission_receipt,
   current_gate_roster_hash,
 }
-import gunbc.merge_admission_identity {
+import gunbc.merge_admission_subject {
   walk_attempt_id,
   render_git_object_id_wire,
   parse_git_object_id_wire,

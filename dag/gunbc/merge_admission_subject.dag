@@ -1,4 +1,4 @@
-module gunbc.merge_admission_identity
+module gunbc.merge_admission_subject
 
 import std.types { CommitSha, String, List, PathSegment, path_segment_is_safe }
 import extdeps.git.object_store {
@@ -10,7 +10,7 @@ import extdeps.git.object_store {
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 
-data merge_admission_identity_defusion_note: String = "WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and admission classification both consume them. This is a MOVE from gunbc.merge_admission and gunbc.merge_admission_produce, not a second representation: the domain modules import this carrier home. Keeping the checkout capture out of the classifier's commit-roster closure makes its declared Negligible profile true at the realization boundary."
+data merge_admission_subject_defusion_note: String = "WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and admission classification both consume them. This is a MOVE from gunbc.merge_admission and gunbc.merge_admission_produce, not a second representation: the domain modules import this carrier home. Keeping the checkout capture out of the classifier's commit-roster closure makes its declared Negligible profile measurable at the realization boundary."
 
 data walk_attempt_id_note: String = "The attempt identity is a PATH SEGMENT, because it is concatenated into one: merge_admission_attempt_dir builds <root>/.gunbc/merge-admission/<attempt_id>/. As a bare string it was neither path-safe nor wire-safe. Both producers — GitHub-derived composition and explicit GUNBC_WALK_ATTEMPT_ID — go through walk_attempt_id, the only constructor, and refuse rather than sanitizing."
 

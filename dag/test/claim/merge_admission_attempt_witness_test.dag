@@ -3,7 +3,7 @@ module test.claim.merge_admission_attempt_witness
 import std.types { NonEmptyStr, ContentHash, CommitSha, String }
 import extdeps.github.checks { Success, Failure }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_object_id_eq }
-import gunbc.merge_admission_identity {
+import gunbc.merge_admission_subject {
   TestedSubject,
   WalkAttemptId,
   walk_attempt_id,
