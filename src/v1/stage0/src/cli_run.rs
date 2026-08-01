@@ -16481,7 +16481,13 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
 // DELETE WHEN dissolved: `RepeatedTypecheckAttributionMeasurement`,
 // `measure_repeated_typecheck_attribution`, `render_repeated_typecheck_attribution_json`,
 // the `repeated_typecheck_attribution_arithmetic` test module, and
-// `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs`.
+// `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs` — ~600 LOC incl.
+// tests and the bin.
+// Receipt: `rg -c cli_run_repeated_typecheck_attribution_probe src/v1/stage0/src/cli_run.rs`
+// returns 4 while the scaffold stands (this block, the const, and its declaration test)
+// and must return 0 at deletion — the deletion is what the receipt checks, not a fixed hit
+// count. Not a compiler_frontier `.dag` row (seed-Rust, counted here not in the module
+// census), and not enrolled in `gunbc.ci_release_bins` — no `measure_*` probe is.
 pub fn measure_repeated_typecheck_attribution(
     source_roots: &[String],
     scan_dirs: &[String],
