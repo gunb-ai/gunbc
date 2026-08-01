@@ -87,6 +87,7 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "dag/test/claim/tailscale_serve_status_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/workflow_dispatch_input_witness_test.dag"),
   public_file_publish_grant(path: "dag/tools/ci_heal_dispatch.dag"),
+  public_file_publish_grant(path: "dag/tools/merge_admission_current_context.dag"),
   public_file_publish_grant(path: "dag/tools/publication_placement_gate.dag"),
   public_file_publish_grant(path: "docs/plans/roadmap-presentation-seam-design.md"),
   public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit.dag"),
