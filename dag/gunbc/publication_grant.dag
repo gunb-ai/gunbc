@@ -3,7 +3,8 @@ module gunbc.publication_grant
 import std.types { CommitSha, FilePath, List, String }
 import std.access {
   AccessDecision, AccessPolicy, AccessRequest,
-  Permit, Deny, AccessRefusal, AccessRefusalLocation, AccessActionNotGranted,
+  Permit, Deny, AccessRefusal, AccessRefusalLocation,
+  AccessActionNotGranted, AccessEvidenceRejected,
 }
 import std.authorization_profile {
   AudienceSet, UniversalAudience,
@@ -16,7 +17,7 @@ import gunbc.publication_cutover {
   public_publication_root, public_publication_cutover_sha,
 }
 
-data publication_grant_note: String = "Stage-0 public-root publication roster. The one baseline row bulk-stamps every path already present at its exact cutover commit for the universal audience; each file first added after that commit needs one explicit PublicFilePublishGrant row. The gunbc#7541 Envelope + Verb::Publish + AudienceScopeTree carrier is dissolved. A row now carries PublicationAudienceGrant evidence, constructs std.authorization_profile.PublicationAdmissionRequest, projects it to std.access.AccessRequest, and asks public_publication_policy at the one AccessPolicy decision seam. The public checkout remains the only mounted root; this carrier introduces no authored principal or role."
+data publication_grant_note: String = "Stage-0 public-root publication roster. The one baseline row bulk-stamps every path already present at its exact cutover commit for the universal audience; each file first added after that commit needs one explicit PublicFilePublishGrant row. The gunbc#7541 Envelope + Verb::Publish + AudienceScopeTree carrier is dissolved. A row now carries PublicationAudienceGrant evidence bound to its exact resource and public root, constructs std.authorization_profile.PublicationAdmissionRequest, projects it to std.access.AccessRequest, and asks public_publication_policy at the one AccessPolicy decision seam. The policy refuses evidence whose resource/root disagrees with the request object, source, or context before considering audience inclusion, so a universal grant cannot be replayed for another path. The public checkout remains the only mounted root; this carrier introduces no authored principal or role."
 
 type PublicPublicationContext {
   root: FilePath
@@ -29,6 +30,8 @@ type PublicPlacementSource {
 }
 
 type PublicationAudienceGrant<P> {
+  resource: FilePath
+  root: FilePath
   audience: AudienceSet<P>
 }
 
@@ -70,7 +73,26 @@ fn public_publication_request(
 fn public_publication_decide(
   request: AccessRequest<PublicPlacementPolicySubject, PublicationAdmissionAction<PublicPlacementSource>, FilePath, PublicationContext<PublicPublicationContext, GunbcPrincipal>, PublicationAudienceGrant<GunbcPrincipal>>,
 ) -> AccessDecision {
-  if audience_subset(
+  let evidence_matches_request =
+    request.evidence.value.resource == request.object
+      && request.evidence.value.root == request.action.source.root
+      && request.evidence.value.root == request.context.value.context.root
+  if !evidence_matches_request {
+    Deny {
+      refusal: AccessRefusal {
+        cause: AccessEvidenceRejected {
+          evidence: request.evidence.value.resource,
+          reason: "publication grant resource/root does not match the request",
+        },
+        location: AccessRefusalLocation {
+          profile: "PublicationAdmissionRequest",
+          subject: request.action.source.root,
+          action: "publication",
+          object: request.object,
+        },
+      }
+    }
+  } else if audience_subset(
     left: request.context.value.audience,
     right: request.evidence.value.audience,
   ) {
@@ -81,9 +103,9 @@ fn public_publication_decide(
         cause: AccessActionNotGranted { action: "publication" },
         location: AccessRefusalLocation {
           profile: "PublicationAdmissionRequest",
-          subject: request.object,
+          subject: request.action.source.root,
           action: "publication",
-          object: request.context.value.context.root,
+          object: request.object,
         },
       }
     }
@@ -98,20 +120,33 @@ fn decide_publication_request(
   public_publication_policy.decide(publication_access_request(request: request))
 }
 
-fn publish_public_audience_grant() -> PublicationAudienceGrant<GunbcPrincipal> {
-  PublicationAudienceGrant { audience: public_audience() }
+fn publish_public_audience_grant(
+  resource: FilePath,
+  root: FilePath,
+) -> PublicationAudienceGrant<GunbcPrincipal> {
+  PublicationAudienceGrant {
+    resource: resource,
+    root: root,
+    audience: public_audience(),
+  }
 }
 
 data public_root_publish_baseline: PublicRootPublishBaseline = PublicRootPublishBaseline {
   root: public_publication_root,
   cutover: public_publication_cutover_sha,
-  grant: publish_public_audience_grant(),
+  grant: publish_public_audience_grant(
+    resource: public_publication_root,
+    root: public_publication_root,
+  ),
 }
 
 fn public_file_publish_grant(path: FilePath) -> PublicFilePublishGrant {
   PublicFilePublishGrant {
     path: path,
-    grant: publish_public_audience_grant(),
+    grant: publish_public_audience_grant(
+      resource: path,
+      root: public_publication_root,
+    ),
   }
 }
 

@@ -2,6 +2,7 @@ module test.claim.publication_placement_gate
 
 import std.types { Bool, List }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.access { Permit, Deny }
 import std.authorization_profile { EnumeratedAudience }
 import std.measure { percent }
 import extdeps.git {
@@ -12,6 +13,7 @@ import gunbc.publication_grant {
   PublicRootPublishBaseline, PublicFilePublishGrant, PublicPublicationGrantRoster,
   public_root_publish_baseline,
   public_file_publish_grant,
+  public_publication_request, decide_publication_request,
 }
 import gunbc.ci_gate { PublicationPlacementGate }
 import gunbc.commit_workflow {
@@ -67,7 +69,11 @@ fn refused_marker_roster() -> PublicPublicationGrantRoster {
     baseline: public_root_publish_baseline,
     file_grants: [PublicFilePublishGrant {
       path: synthetic_added_path,
-      grant: PublicationAudienceGrant { audience: EnumeratedAudience { members: empty_set() } },
+      grant: PublicationAudienceGrant {
+        resource: synthetic_added_path,
+        root: ".",
+        audience: EnumeratedAudience { members: empty_set() },
+      },
     }],
   }
 }
@@ -225,6 +231,26 @@ test fn refused_publication_marker_reds_gate() -> Bool {
           _ => false
         }
         && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+        && match decide_publication_request(request: public_publication_request(
+          resource: "dag/example/unrelated-public-file.dag",
+          root: ".",
+          grant: public_file_publish_grant(path: synthetic_added_path).grant,
+        )) {
+          Permit => false
+          Deny { refusal: mismatch } =>
+            mismatch.location.profile == "PublicationAdmissionRequest"
+              && mismatch.location.object == "dag/example/unrelated-public-file.dag"
+        }
+        && match decide_publication_request(request: public_publication_request(
+          resource: synthetic_added_path,
+          root: "synthetic-other-public-root",
+          grant: public_file_publish_grant(path: synthetic_added_path).grant,
+        )) {
+          Permit => false
+          Deny { refusal: mismatch } =>
+            mismatch.location.profile == "PublicationAdmissionRequest"
+              && mismatch.location.subject == "synthetic-other-public-root"
+        }
   }
 }
 
