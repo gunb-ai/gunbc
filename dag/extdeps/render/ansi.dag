@@ -1,6 +1,8 @@
 module extdeps.render.ansi
 
 import std.symbols { SemanticColor }
+import std.types { Int, NonEmptyStr }
+import v2.std.algebra { list_map }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -19,80 +21,126 @@ data ansi_carriage_return: String = "\x0d"
 data ansi_line_feed: String = "\n"
 data ansi_horizontal_tab: String = "\x09"
 
-data ansi_c0_controls: List<String> = [
-  "\x00",
-  "\x01",
-  "\x02",
-  "\x03",
-  "\x04",
-  "\x05",
-  "\x06",
-  "\x07",
-  "\x08",
-  ansi_horizontal_tab,
-  ansi_line_feed,
-  "\x0b",
-  "\x0c",
-  ansi_carriage_return,
-  "\x0e",
-  "\x0f",
-  "\x10",
-  "\x11",
-  "\x12",
-  "\x13",
-  "\x14",
-  "\x15",
-  "\x16",
-  "\x17",
-  "\x18",
-  "\x19",
-  "\x1a",
-  ansi_escape,
-  "\x1c",
-  "\x1d",
-  "\x1e",
-  "\x1f",
-  "\x7f",
+data terminal_control_roster_note: String = "THE ROSTER CARRIES CODE POINTS AND THE AUTHORITY'S OWN NAMES, AND BOTH CHANGES FIX A DEFECT THE FLAT LIST HID. It was two List<String> of bare characters, and the C1 half was written as \\u{0080}..\\u{009f} - an escape the language does not implement, so those thirty-two rows were thirty-two strings of LITERAL TEXT and the C1 half of this roster detected nothing. Every consumer that believed it was scanning for C1 controls was scanning for the eight-character sequence backslash-u-brace-0-0-8-0-brace. The C0 half used \\x and was real, which is why CR was still caught and why the gap went unnoticed.\\n\\nThe repair is not to respell the escape but to stop transcribing the character at all. A control IS its code point - that is the grounded fact the standard assigns - so the row carries an Int and the character is DERIVED by from_code_point. A transcription can be wrong while looking right; a derivation cannot. This also makes the roster independent of which string escapes the language happens to implement, which is what let the original defect exist.\\n\\nNAMING FORCED THREE FACTS INTO THE OPEN THAT THE FLAT LIST CONCEALED, and each is a citation question the bare characters made unaskable. ECMA-48 does not assign 0x80, 0x81, or 0x99; the names usually seen for them (PAD, HOP, and SGC) come from early drafts preserved in Unicode's annotations, not from the standard this module cites, so they are recorded as unassigned-with-annotation rather than given a citation they do not have. DEL at 0x7F is not a C0 control in ECMA-48 - it is a separate delete character - so it carries its own band instead of being filed silently among the C0 rows, where it sat before. And 0x1C-0x1F are IS4/IS3/IS2/IS1 here rather than the ASCII spellings FS/GS/RS/US, because the cited authority names them that way.\\n\\nThe derived flat lists below preserve the exact character sets their consumers already depend on, including DEL's membership in the C0 projection, so this decomposition changes what the roster KNOWS without changing what any existing reader SEES."
+
+type ControlAuthorityName
+  = ControlNamed { acronym: NonEmptyStr }
+  | ControlUnassignedInEcma48 { unicode_annotation: NonEmptyStr }
+
+type ControlBand
+  = C0Control
+  | C1Control
+  | DeleteCharacter
+
+type TerminalControl {
+  code_point: Int
+  name: ControlAuthorityName
+  band: ControlBand
+}
+
+data ecma48_c0_controls: List<TerminalControl> = [
+  { code_point: 0,  name: ControlNamed { acronym: "NUL" }, band: C0Control },
+  { code_point: 1,  name: ControlNamed { acronym: "SOH" }, band: C0Control },
+  { code_point: 2,  name: ControlNamed { acronym: "STX" }, band: C0Control },
+  { code_point: 3,  name: ControlNamed { acronym: "ETX" }, band: C0Control },
+  { code_point: 4,  name: ControlNamed { acronym: "EOT" }, band: C0Control },
+  { code_point: 5,  name: ControlNamed { acronym: "ENQ" }, band: C0Control },
+  { code_point: 6,  name: ControlNamed { acronym: "ACK" }, band: C0Control },
+  { code_point: 7,  name: ControlNamed { acronym: "BEL" }, band: C0Control },
+  { code_point: 8,  name: ControlNamed { acronym: "BS" },  band: C0Control },
+  { code_point: 9,  name: ControlNamed { acronym: "HT" },  band: C0Control },
+  { code_point: 10, name: ControlNamed { acronym: "LF" },  band: C0Control },
+  { code_point: 11, name: ControlNamed { acronym: "VT" },  band: C0Control },
+  { code_point: 12, name: ControlNamed { acronym: "FF" },  band: C0Control },
+  { code_point: 13, name: ControlNamed { acronym: "CR" },  band: C0Control },
+  { code_point: 14, name: ControlNamed { acronym: "SO" },  band: C0Control },
+  { code_point: 15, name: ControlNamed { acronym: "SI" },  band: C0Control },
+  { code_point: 16, name: ControlNamed { acronym: "DLE" }, band: C0Control },
+  { code_point: 17, name: ControlNamed { acronym: "DC1" }, band: C0Control },
+  { code_point: 18, name: ControlNamed { acronym: "DC2" }, band: C0Control },
+  { code_point: 19, name: ControlNamed { acronym: "DC3" }, band: C0Control },
+  { code_point: 20, name: ControlNamed { acronym: "DC4" }, band: C0Control },
+  { code_point: 21, name: ControlNamed { acronym: "NAK" }, band: C0Control },
+  { code_point: 22, name: ControlNamed { acronym: "SYN" }, band: C0Control },
+  { code_point: 23, name: ControlNamed { acronym: "ETB" }, band: C0Control },
+  { code_point: 24, name: ControlNamed { acronym: "CAN" }, band: C0Control },
+  { code_point: 25, name: ControlNamed { acronym: "EM" },  band: C0Control },
+  { code_point: 26, name: ControlNamed { acronym: "SUB" }, band: C0Control },
+  { code_point: 27, name: ControlNamed { acronym: "ESC" }, band: C0Control },
+  { code_point: 28, name: ControlNamed { acronym: "IS4" }, band: C0Control },
+  { code_point: 29, name: ControlNamed { acronym: "IS3" }, band: C0Control },
+  { code_point: 30, name: ControlNamed { acronym: "IS2" }, band: C0Control },
+  { code_point: 31, name: ControlNamed { acronym: "IS1" }, band: C0Control },
 ]
 
-data ansi_c1_controls: List<String> = [
-  "\u{0080}",
-  "\u{0081}",
-  "\u{0082}",
-  "\u{0083}",
-  "\u{0084}",
-  "\u{0085}",
-  "\u{0086}",
-  "\u{0087}",
-  "\u{0088}",
-  "\u{0089}",
-  "\u{008a}",
-  "\u{008b}",
-  "\u{008c}",
-  "\u{008d}",
-  "\u{008e}",
-  "\u{008f}",
-  "\u{0090}",
-  "\u{0091}",
-  "\u{0092}",
-  "\u{0093}",
-  "\u{0094}",
-  "\u{0095}",
-  "\u{0096}",
-  "\u{0097}",
-  "\u{0098}",
-  "\u{0099}",
-  "\u{009a}",
-  "\u{009b}",
-  "\u{009c}",
-  "\u{009d}",
-  "\u{009e}",
-  "\u{009f}",
+data ascii_delete_control: TerminalControl = {
+  code_point: 127,
+  name: ControlNamed { acronym: "DEL" },
+  band: DeleteCharacter,
+}
+
+data ecma48_c1_controls: List<TerminalControl> = [
+  { code_point: 128, name: ControlUnassignedInEcma48 { unicode_annotation: "PAD" }, band: C1Control },
+  { code_point: 129, name: ControlUnassignedInEcma48 { unicode_annotation: "HOP" }, band: C1Control },
+  { code_point: 130, name: ControlNamed { acronym: "BPH" }, band: C1Control },
+  { code_point: 131, name: ControlNamed { acronym: "NBH" }, band: C1Control },
+  { code_point: 132, name: ControlNamed { acronym: "IND" }, band: C1Control },
+  { code_point: 133, name: ControlNamed { acronym: "NEL" }, band: C1Control },
+  { code_point: 134, name: ControlNamed { acronym: "SSA" }, band: C1Control },
+  { code_point: 135, name: ControlNamed { acronym: "ESA" }, band: C1Control },
+  { code_point: 136, name: ControlNamed { acronym: "HTS" }, band: C1Control },
+  { code_point: 137, name: ControlNamed { acronym: "HTJ" }, band: C1Control },
+  { code_point: 138, name: ControlNamed { acronym: "VTS" }, band: C1Control },
+  { code_point: 139, name: ControlNamed { acronym: "PLD" }, band: C1Control },
+  { code_point: 140, name: ControlNamed { acronym: "PLU" }, band: C1Control },
+  { code_point: 141, name: ControlNamed { acronym: "RI" },  band: C1Control },
+  { code_point: 142, name: ControlNamed { acronym: "SS2" }, band: C1Control },
+  { code_point: 143, name: ControlNamed { acronym: "SS3" }, band: C1Control },
+  { code_point: 144, name: ControlNamed { acronym: "DCS" }, band: C1Control },
+  { code_point: 145, name: ControlNamed { acronym: "PU1" }, band: C1Control },
+  { code_point: 146, name: ControlNamed { acronym: "PU2" }, band: C1Control },
+  { code_point: 147, name: ControlNamed { acronym: "STS" }, band: C1Control },
+  { code_point: 148, name: ControlNamed { acronym: "CCH" }, band: C1Control },
+  { code_point: 149, name: ControlNamed { acronym: "MW" },  band: C1Control },
+  { code_point: 150, name: ControlNamed { acronym: "SPA" }, band: C1Control },
+  { code_point: 151, name: ControlNamed { acronym: "EPA" }, band: C1Control },
+  { code_point: 152, name: ControlNamed { acronym: "SOS" }, band: C1Control },
+  { code_point: 153, name: ControlUnassignedInEcma48 { unicode_annotation: "SGC" }, band: C1Control },
+  { code_point: 154, name: ControlNamed { acronym: "SCI" }, band: C1Control },
+  { code_point: 155, name: ControlNamed { acronym: "CSI" }, band: C1Control },
+  { code_point: 156, name: ControlNamed { acronym: "ST" },  band: C1Control },
+  { code_point: 157, name: ControlNamed { acronym: "OSC" }, band: C1Control },
+  { code_point: 158, name: ControlNamed { acronym: "PM" },  band: C1Control },
+  { code_point: 159, name: ControlNamed { acronym: "APC" }, band: C1Control },
 ]
 
-data ansi_terminal_controls: List<String> = concat(
-  ansi_c0_controls,
-  ansi_c1_controls
+fn terminal_control_character(control: TerminalControl) -> String {
+  from_code_point(cp: control.code_point)
+}
+
+data ansi_c0_control_rows: List<TerminalControl> = concat(
+  ecma48_c0_controls,
+  [ascii_delete_control]
+)
+
+data ansi_terminal_control_rows: List<TerminalControl> = concat(
+  ansi_c0_control_rows,
+  ecma48_c1_controls
+)
+
+data ansi_c0_controls: List<String> = list_map(
+  xs: ansi_c0_control_rows,
+  f: control => terminal_control_character(control: control)
+)
+
+data ansi_c1_controls: List<String> = list_map(
+  xs: ecma48_c1_controls,
+  f: control => terminal_control_character(control: control)
+)
+
+data ansi_terminal_controls: List<String> = list_map(
+  xs: ansi_terminal_control_rows,
+  f: control => terminal_control_character(control: control)
 )
 
 fn ansi_erase_entire_line() -> String {
