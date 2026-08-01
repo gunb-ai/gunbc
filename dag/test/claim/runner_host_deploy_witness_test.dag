@@ -8,7 +8,6 @@ import gunbc.runner_host_deploy {
   gunbc_ci_github_app,
   runner_host_installer_command,
   runner_instance_names,
-  runner_enable_command,
   runner_host_docker_provision_script,
   runner_host_sccache_provision_script,
   RunnerHostDeploy,
@@ -23,6 +22,14 @@ import gunbc.runner_host_deploy {
   runner_command_admission_blind_widen_sketch,
   runner_host_admission_gate_accepts,
 }
+import gunbc.runner_activation {
+  BuildCacheInstanceReady, HostCompilePoolReady,
+  admit_runner_activation, runner_activate_command,
+}
+import gunbc.build_cache_instance { BuildCacheInstance, ProcessIdentity, ci_cache_instance }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import product.placement_supply { HostIdentity }
+import std.types { NonEmptyStr, String }
 import gunbc.fleet_intent { fleet_intent_execution_surface }
 import extdeps.toolchain.types { ToolchainCapability }
 
@@ -68,7 +75,7 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 
 test fn srv4_enables_five_named_runner_instances() -> Bool {
   let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  let enable = match runner_enable_command(admission: admit_runner_host(deploy: srv4_runner_host_deploy)) {
+  let enable = match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
     RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
     RunnerCommandRefused { host_label: _, reason: _ } => ""
   }
@@ -105,7 +112,7 @@ test fn unenrolled_host_cannot_produce_an_installer_command() -> Bool {
 }
 
 test fn unenrolled_host_cannot_enable_runner_units() -> Bool {
-  match runner_enable_command(admission: admit_runner_host(deploy: unenrolled_host_fixture)) {
+  match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: unenrolled_host_fixture), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
     RunnerCommandRefused { host_label: _, reason: _ } => true
     RunnerCommandReady { command: _ } => false
   }
@@ -125,11 +132,39 @@ data witness_admission_red_control_note: String = "Discriminating RED control on
 test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
   let adm = admit_runner_host(deploy: unenrolled_host_fixture)
   let widened = runner_command_admission_blind_widen_sketch(deploy: unenrolled_host_fixture, admission: adm)
-  let authority = runner_enable_command(admission: adm)
+  let authority = runner_activate_command(admission: admit_runner_activation(host_admission: adm, cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool()))
   match widened {
     RunnerCommandReady { command: _ } => true
     RunnerCommandRefused { host_label: _, reason: _ } => false
   }
     && !runner_host_admission_gate_accepts(outcome: widened, admission: adm)
     && runner_host_admission_gate_accepts(outcome: authority, admission: adm)
+}
+
+data activation_moved_note: String = "runner_enable_command was deleted with the materialization/activation split; these rows now drive runner_activate_command through a readiness receipt. The receipt below is a fixture, and the enrollment assertions it supports are unchanged: an unenrolled host still refuses, and the refusal still carries no command. What changed is that enrollment alone is no longer sufficient, which is the whole point of the split — so these witnesses now assert the WEAKER half of a stronger wall, and the wall's own controls live in test.claim.runner_activation_wall."
+
+fn witness_ready_receipt() -> BuildCacheInstanceReady {
+  BuildCacheInstanceReady {
+    instance: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity),
+    owner: ProcessIdentity {
+      boot_id: "fixture-boot" as NonEmptyStr,
+      pid: 4242,
+      start_time: "80000000" as NonEmptyStr,
+    },
+    managed_unit: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity).intended_unit,
+    endpoint_verified: true,
+    executable_verified: true,
+    principal_verified: true,
+    storage_verified: true,
+    capacity_verified: true,
+    compile_pool_verified: true,
+  }
+}
+
+fn witness_ready_pool() -> HostCompilePoolReady {
+  HostCompilePoolReady {
+    slice_unit: gunbc_managed_compile_pool_slice,
+    pool_declared: true,
+    pool_observed: true,
+  }
 }

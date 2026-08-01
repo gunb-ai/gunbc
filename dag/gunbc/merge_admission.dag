@@ -19,7 +19,7 @@ import std.realization_schedule {
 import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, PublicationPlacementGate,
+  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate,
 }
@@ -78,7 +78,7 @@ fn gate_content_hash(g: Gate) -> ContentHash {
     ExtdepsExternalAuthorityGate => content_hash_atom(value: "ExtdepsExternalAuthorityGate")
     DagCompileCleanGate => content_hash_atom(value: "DagCompileCleanGate")
     GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
-    PublicationPlacementGate => content_hash_atom(value: "PublicationPlacementGate")
+    ExtdepsScopePlacementGate => content_hash_atom(value: "ExtdepsScopePlacementGate")
     SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
     RegenVerifyGate => content_hash_atom(value: "RegenVerifyGate")
     SelfHostReadsRealBytesGate => content_hash_atom(value: "SelfHostReadsRealBytesGate")
