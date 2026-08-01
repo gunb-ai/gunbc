@@ -45,6 +45,9 @@ import gunbc.roadmap_presentation {
   DailyWorkspaceView, daily_workspace_view, row_is_active_work,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
+  lifecycle_chip_renders,
+  WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
+  WorkBandEntry, BandRow, BandFamily,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -433,15 +436,133 @@ test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
 
 data active_before_ready_note: String = "The workspace grouping (operator blocker 6): a row with active or refused work belongs to the operator's attention band above every idle Ready row; CompletedWork stays in its scheduling bucket because a finished receipt is not work in flight; unobservable rows do not join the active band — unknowable never rounds to active any more than to absent."
 
+fn band_entry_row_count(entries: List<WorkBandEntry>) -> Int {
+  fold(entries, init: 0, f: (acc, e) => match e {
+    BandRow { row: _ } => acc + 1
+    BandFamily { family } => acc + count(family.rows)
+  })
+}
+
+fn band_entry_has_active(entries: List<WorkBandEntry>) -> Bool {
+  fold(entries, init: false, f: (acc, e) => acc || (match e {
+    BandRow { row } => row_is_active_work(row: row)
+    BandFamily { family } => fold(family.rows, init: false, f: (a, r) => a || row_is_active_work(row: r))
+  }))
+}
+
 test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
   let active_row = fx_row(activity: fx_specimen_activity())
   let idle_row = fx_row(activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [idle_row, active_row], program: none, observation: ObservationsNominal)
+  let ws = daily_workspace_view(rows: [idle_row, active_row], program: none, observation: ObservationsNominal, families: [], members: [])
   count(ws.active) == 1
     && fold(ws.active, init: true, f: (acc, r) => acc && row_is_active_work(row: r))
-    && count(ws.upcoming) == 1
-    && count(ws.ready) == 0
-    && !fold(ws.upcoming, init: false, f: (acc, r) => acc || row_is_active_work(row: r))
+    && band_entry_row_count(entries: ws.upcoming) == 1
+    && band_entry_row_count(entries: ws.ready) == 0
+    && !band_entry_has_active(entries: ws.upcoming)
+}
+
+data family_grouping_witness_note: String = "The family-once receipts, all against constructed facts. Stated-once: two listed members plus one UNLISTED lookalike (its headline literally starts with the family claim prose) produce ONE BandFamily carrying the claim, member rows whose headlines are the typed SUBJECTS verbatim, and the lookalike as an ungrouped BandRow with its fused headline untouched — proving membership is the typed fact list, never a prefix scan, in both directions (a subject CONTAINING claim prose is not stripped; a headline MATCHING claim prose is not captured). Attention-outranks-taxonomy: a member with active work leaves for the Active band as an individual row while the group keeps only its remaining member. Missing decl: a member fact naming an undeclared family renders as its own ungrouped row (no fabricated header)."
+
+fn fx_family_member_row(node_id: String, headline: String, activity: ActivityView) -> WorkRowView {
+  let base = fx_row(activity: activity)
+  WorkRowView {
+    node_id: node_id,
+    headline: headline,
+    summary: base.summary,
+    lifecycle: base.lifecycle,
+    scheduling: base.scheduling,
+    superseded_by: base.superseded_by,
+    activity: base.activity,
+    action: base.action,
+    supporting_facts: base.supporting_facts,
+    disclosure: base.disclosure,
+  }
+}
+
+fn fx_family_claim() -> String { "Write the closing check — one executable done-condition for each gated node below" }
+
+fn fx_family_decls() -> List<WorkFamilyDecl> {
+  [ WorkFamilyDecl { id: "closing-contract", claim: fx_family_claim() } ]
+}
+
+fn fx_family_members() -> List<WorkFamilyMemberFact> {
+  [
+    WorkFamilyMemberFact { family_id: "closing-contract", task_node: "cc-a", subject: "Alpha subject" },
+    WorkFamilyMemberFact { family_id: "closing-contract", task_node: "cc-b", subject: join([fx_family_claim(), " nested in a subject"], "") },
+  ]
+}
+
+test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
+  let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
+  let lookalike = fx_family_member_row(node_id: "solo", headline: join([fx_family_claim(), " for: Unlisted"], ""), activity: NoActiveWork)
+  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
+  let ws = daily_workspace_view(rows: [m1, lookalike, m2], program: none, observation: ObservationsNominal,
+    families: fx_family_decls(), members: fx_family_members())
+  count(ws.upcoming) == 2
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandFamily { family } =>
+          family.claim == fx_family_claim()
+            && count(family.rows) == 2
+            && (match family.rows.first() {
+              Present { value: r } => r.headline == "Alpha subject"
+              Absent => false
+            })
+        BandRow { row: _ } => false
+      }
+      Absent => false
+    })
+    && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
+      BandRow { row } => row.node_id == "solo" && row.headline == join([fx_family_claim(), " for: Unlisted"], "")
+      BandFamily { family: _ } => false
+    }))
+}
+
+test fn witness_family_membership_is_typed_not_parsed() -> Bool {
+  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
+  let ws = daily_workspace_view(rows: [m2], program: none, observation: ObservationsNominal,
+    families: fx_family_decls(), members: fx_family_members())
+  fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
+    BandFamily { family } => fold(family.rows, init: false, f: (a, r) =>
+      a || r.headline == join([fx_family_claim(), " nested in a subject"], ""))
+    BandRow { row: _ } => false
+  }))
+}
+
+test fn witness_active_family_member_leaves_group() -> Bool {
+  let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: fx_specimen_activity())
+  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
+  let ws = daily_workspace_view(rows: [m1, m2], program: none, observation: ObservationsNominal,
+    families: fx_family_decls(), members: fx_family_members())
+  count(ws.active) == 1
+    && (match ws.active.first() { Present { value: r } => r.node_id == "cc-a" Absent => false })
+    && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
+      BandFamily { family } => count(family.rows) == 1
+      BandRow { row: _ } => false
+    }))
+}
+
+test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
+  let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
+  let ws = daily_workspace_view(rows: [m1], program: none, observation: ObservationsNominal,
+    families: [], members: fx_family_members())
+  count(ws.upcoming) == 1
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.headline == "Write the closing check for: Alpha subject"
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+data lifecycle_chip_witness_note: String = "Routine-state collapse both directions: the open default derives chip-hidden (the band and the node class still carry the state), and every departing lifecycle derives chip-shown. A future lifecycle arm added without a chip decision fails compile at the match, not silently."
+
+test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
+  !lifecycle_chip_renders(l: OpenLifecycle)
+    && lifecycle_chip_renders(l: ReviewLifecycle)
+    && lifecycle_chip_renders(l: DoneLifecycle)
+    && lifecycle_chip_renders(l: SupersededLifecycle)
 }
 
 data narrated_once_note: String = "The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact view carries the located reason) and covers each row's unobservable narration — but only the unobservable arm, and only while the workspace impact is present. The REDs: an active row is never covered (a live attempt's narration must survive a broken observation channel claim), and with a nominal workspace observation a row-specific unobservable reason narrates on its own row (coverage false)."

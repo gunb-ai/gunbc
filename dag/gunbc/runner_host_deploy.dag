@@ -163,14 +163,8 @@ fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
   }
 }
 
-fn runner_enable_command(admission: RunnerHostAdmission) -> RunnerCommandOrRefusal {
-  match admission {
-    RunnerHostEnrolled { deploy: d } =>
-      RunnerCommandReady { command: runner_enable_command_argv(deploy: d) }
-    RunnerHostUnenrolled { host_label: l, reason: r } =>
-      RunnerCommandRefused { host_label: l, reason: r }
-  }
-}
+data runner_enable_command_deleted_note: String = "runner_enable_command USED TO LIVE HERE and is deleted rather than deprecated. It took a RunnerHostAdmission and returned an enable command, so a host that was merely ENROLLED could be activated — no managed cache endpoint, no compile pool, nothing about where the first cache-miss compile would put its server. That is the path every host in this fleet was actually activated through, and it produced four different broken states: srv1 stranded in a retired slot, srv2 and srv3 runner-owned in active ones, srv4 trapped behind a stale socket.\n\nActivation now lives in gunbc.runner_activation and consumes a readiness receipt. This module keeps MATERIALIZATION — the installer command, the slot names, the argv builder — because writing a slot's files cannot spawn a cache server; only letting it accept work can. runner_enable_command_argv stays exported precisely because it is the inert half: an ArgvCommand value with no admission attached, which the activation module wraps in its own wall.\n\nDeprecating instead of deleting would have left the readiness-blind constructor in the namespace, and a wall with a door beside it is a sign."
+
 
 data runner_host_unenrolled_widen_sketch_note: String = "RED-control fixture modeling the forbidden arm: an admission-blind builder that hands back a runnable command for a host the fleet never enrolled. This is what the module looked like before the wall, and it is what the srv4 incident ran through. It must never ship as the authority; runner_host_admission_gate_accepts rejects it."
 

@@ -32,6 +32,8 @@ import gunbc.roadmap_component {
   sound_toggle_class, sound_toggle_reserved_width,
   disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
   roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, roadmap_row_column_gutter, node_mid_class,
+  roadmap_row_head_column, row_region_key,
+  RowRegion, StatusChipRegion, TitleRegion, ActuatorRegion,
   workflow_controls_class,
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
@@ -591,12 +593,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: AlignItems, value: "center"),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
     ] },
+    StaticRule { selector: RawSelector { text: ".node-head > .status" }, decls: [
+      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion)))),
+    ] },
     StaticRule { selector: ClassSelector { name: node_mid_class }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: TitleRegion)))),
     ] },
     StaticRule { selector: ClassSelector { name: workflow_controls_class }, decls: [
       decl(prop: Display, value: "flex"),
@@ -605,6 +611,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion)))),
     ] },
     StaticRule { selector: ClassSelector { name: node_activity_class }, decls: [
       decl(prop: MarginTop, value: scale_var(t: space_4)),
@@ -700,6 +707,26 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: RawSelector { text: ".frontier-active > h2" }, decls: [
       decl(prop: Color, value: "var(--band-in-progress)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-group" }, decls: [
+      decl(prop: Margin, value: scale_pair(a: space_4, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-head" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-claim" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-count" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
     StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
