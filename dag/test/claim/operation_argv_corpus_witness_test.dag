@@ -5,6 +5,8 @@ import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.execution_mechanism {
   ExecutionMechanism,
+  ExecutionMechanismDerived,
+  ExecutionMechanismRefusedWrapper,
   LocalProcess,
   LocalShellScript,
   RemoteShellCommand,
@@ -12,6 +14,7 @@ import v2.std.execution_mechanism {
   ForeignShellArtifact,
   SendStructuredInvocationToRemoteReceiver,
   EmitShellTextForForeignExecutor,
+  SpawnExecutable,
   execution_mechanism_from_evidence,
 }
 import v2.std.operation_argv {
@@ -30,6 +33,8 @@ import v2.std.operation_argv {
   operation_argv_row_bindings,
   ShellTransportMechanismClassified,
   ShellTransportMechanismRefused,
+  ExecutableNotLiteral,
+  ExecutionWrapperGrammarUnmodeled,
   shell_transport_operation_mechanism,
 }
 
@@ -158,7 +163,7 @@ fn operation_mechanism_row_matches(
   if row.at.path == path && row.at.service == service && row.at.operation == operation {
     match shell_transport_operation_mechanism(row: row) {
       ShellTransportMechanismClassified { mechanism: mechanism } => mechanism == expected
-      ShellTransportMechanismRefused { at: _ } => false
+      ShellTransportMechanismRefused { at: _, cause: _ } => false
     }
   } else {
     false
@@ -188,7 +193,27 @@ fn operation_mechanism_is(
 fn operation_mechanism_row_is_refused(row: ShellTransportOperationRow) -> Bool {
   match shell_transport_operation_mechanism(row: row) {
     ShellTransportMechanismClassified { mechanism: _ } => false
-    ShellTransportMechanismRefused { at: _ } => true
+    ShellTransportMechanismRefused { at: _, cause: _ } => true
+  }
+}
+
+fn operation_mechanism_row_is_nonliteral_refusal(row: ShellTransportOperationRow) -> Bool {
+  match shell_transport_operation_mechanism(row: row) {
+    ShellTransportMechanismClassified { mechanism: _ } => false
+    ShellTransportMechanismRefused { at: _, cause: cause } => match cause {
+      ExecutableNotLiteral => true
+      ExecutionWrapperGrammarUnmodeled { executable: _ } => false
+    }
+  }
+}
+
+fn operation_mechanism_row_is_wrapper_refusal(row: ShellTransportOperationRow) -> Bool {
+  match shell_transport_operation_mechanism(row: row) {
+    ShellTransportMechanismClassified { mechanism: _ } => false
+    ShellTransportMechanismRefused { at: _, cause: cause } => match cause {
+      ExecutableNotLiteral => false
+      ExecutionWrapperGrammarUnmodeled { executable: _ } => true
+    }
   }
 }
 
@@ -231,25 +256,32 @@ test fn operation_execution_mechanism_future_structured_and_foreign_artifact_sta
     evidence: EmitShellTextForForeignExecutor
   )
   match structured {
-    RemoteStructuredExecution => match foreign {
-      ForeignShellArtifact => true
-      LocalProcess => false
-      LocalShellScript => false
-      RemoteShellCommand => false
-      RemoteStructuredExecution => false
+    ExecutionMechanismDerived { mechanism: RemoteStructuredExecution } => match foreign {
+      ExecutionMechanismDerived { mechanism: ForeignShellArtifact } => true
+      ExecutionMechanismDerived { mechanism: _ } => false
+      ExecutionMechanismRefusedWrapper { executable: _ } => false
     }
-    LocalProcess => false
-    LocalShellScript => false
-    RemoteShellCommand => false
-    ForeignShellArtifact => false
+    ExecutionMechanismDerived { mechanism: _ } => false
+    ExecutionMechanismRefusedWrapper { executable: _ } => false
   }
 }
 
 test fn operation_execution_mechanism_new_ambiguous_site_wall_holds() -> Bool {
   let refused = shell_transport_operation_rows()
     |> filter(row => operation_mechanism_row_is_refused(row: row))
-  length(xs: refused) == 1
-    && any(xs: refused, predicate: fn(row) { operation_mechanism_row_is_fixture(row: row) })
+  let nonliteral = refused |> filter(row => operation_mechanism_row_is_nonliteral_refusal(row: row))
+  let wrappers = refused |> filter(row => operation_mechanism_row_is_wrapper_refusal(row: row))
+  length(xs: refused) == 11
+    && length(xs: nonliteral) == 1
+    && length(xs: wrappers) == 10
+    && any(xs: nonliteral, predicate: fn(row) { operation_mechanism_row_is_fixture(row: row) })
+}
+
+test fn operation_execution_mechanism_RED_exec_wrapper_cannot_hide_shell() -> Bool {
+  match execution_mechanism_from_evidence(evidence: SpawnExecutable { executable: "env" }) {
+    ExecutionMechanismRefusedWrapper { executable: executable } => executable == "env"
+    ExecutionMechanismDerived { mechanism: _ } => false
+  }
 }
 
 test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool {

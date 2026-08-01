@@ -4,6 +4,8 @@ import std.types { String }
 
 data execution_mechanism_authority_note: String = "The mechanism behind the legacy `transport shell` spelling is derived from what the realization DOES, never copied from that spelling and never hand-labelled at each operation. The seed's dispatch_shell calls std::process::Command::new(argv[0]): an ordinary executable is LocalProcess; a local shell interpreter reads a script as LocalShellScript; OpenSSH is RemoteShellCommand because its remote command is reconstructed and interpreted by the far-side shell. RemoteStructuredExecution is deliberately distinct and currently uninhabited by a handler: it requires a future receiver that accepts a structured invocation and calls exec without shell reinterpretation. ForeignShellArtifact is not execution by this runtime at all: shell text is emitted for GitHub Actions run steps, cron, git hooks, or another foreign executor. These five mechanisms are orthogonal to Placement and Materialization in std.realization: where work occurs and whether it is shared do not say how an operation crosses its execution boundary."
 
+data execution_wrapper_refusal_note: String = "A known exec wrapper is not classified from argv[0]. env, sudo, nohup, timeout, nice, setsid, stdbuf, and xargs select the effective executable through their own option grammar; `env bash -s` is a LocalShellScript while `env git status` is a LocalProcess even though both have the same argv[0]. Looking through without modeling that grammar would recreate argv anemia inside the classifier, so wrappers refuse until their invocation shape is grounded. The executed live census pins the current TEN wrapper rows as counted residue — eight env and two sudo. An earlier source scan counted eight total because it missed two multiline env argv declarations; the derived census, not that grep, is the authority."
+
 type ExecutionMechanism
   = LocalProcess
   | LocalShellScript
@@ -16,29 +18,50 @@ type ExecutionMechanismEvidence
   | SendStructuredInvocationToRemoteReceiver
   | EmitShellTextForForeignExecutor
 
+type ExecutionMechanismDerivation
+  = ExecutionMechanismDerived { mechanism: ExecutionMechanism }
+  | ExecutionMechanismRefusedWrapper { executable: String }
+
 fn executable_is(executable: String, name: String) -> Bool {
   (executable == name) || ends_with(s: executable, suffix: concat("/", name))
 }
 
-fn spawned_executable_mechanism(executable: String) -> ExecutionMechanism {
-  if executable_is(executable: executable, name: "ssh") {
-    RemoteShellCommand
+fn executable_is_unmodeled_wrapper(executable: String) -> Bool {
+  executable_is(executable: executable, name: "env")
+    || executable_is(executable: executable, name: "sudo")
+    || executable_is(executable: executable, name: "nohup")
+    || executable_is(executable: executable, name: "timeout")
+    || executable_is(executable: executable, name: "nice")
+    || executable_is(executable: executable, name: "setsid")
+    || executable_is(executable: executable, name: "stdbuf")
+    || executable_is(executable: executable, name: "xargs")
+}
+
+fn spawned_executable_mechanism(executable: String) -> ExecutionMechanismDerivation {
+  if executable_is_unmodeled_wrapper(executable: executable) {
+    ExecutionMechanismRefusedWrapper { executable: executable }
+  } else if executable_is(executable: executable, name: "ssh") {
+    ExecutionMechanismDerived { mechanism: RemoteShellCommand }
   } else if executable_is(executable: executable, name: "sh")
     || executable_is(executable: executable, name: "bash")
     || executable_is(executable: executable, name: "dash")
     || executable_is(executable: executable, name: "ksh")
     || executable_is(executable: executable, name: "zsh") {
-    LocalShellScript
+    ExecutionMechanismDerived { mechanism: LocalShellScript }
   } else {
-    LocalProcess
+    ExecutionMechanismDerived { mechanism: LocalProcess }
   }
 }
 
-fn execution_mechanism_from_evidence(evidence: ExecutionMechanismEvidence) -> ExecutionMechanism {
+fn execution_mechanism_from_evidence(
+  evidence: ExecutionMechanismEvidence
+) -> ExecutionMechanismDerivation {
   match evidence {
     SpawnExecutable { executable: executable } =>
       spawned_executable_mechanism(executable: executable)
-    SendStructuredInvocationToRemoteReceiver => RemoteStructuredExecution
-    EmitShellTextForForeignExecutor => ForeignShellArtifact
+    SendStructuredInvocationToRemoteReceiver =>
+      ExecutionMechanismDerived { mechanism: RemoteStructuredExecution }
+    EmitShellTextForForeignExecutor =>
+      ExecutionMechanismDerived { mechanism: ForeignShellArtifact }
   }
 }

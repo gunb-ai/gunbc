@@ -4,6 +4,8 @@ import std.types { String, List, Bool }
 import v2.std.algebra { list_map }
 import v2.std.execution_mechanism {
   ExecutionMechanism,
+  ExecutionMechanismDerived,
+  ExecutionMechanismRefusedWrapper,
   SpawnExecutable,
   execution_mechanism_from_evidence,
 }
@@ -72,20 +74,37 @@ type ShellTransportOperationRow {
 
 type ShellTransportMechanismClassification
   = ShellTransportMechanismClassified { mechanism: ExecutionMechanism }
-  | ShellTransportMechanismRefused { at: OperationRef }
+  | ShellTransportMechanismRefused {
+      at: OperationRef,
+      cause: ShellTransportMechanismRefusalCause,
+    }
 
-data shell_transport_mechanism_classification_note: String = "The legacy spelling gets no sixth Unknown mechanism. A literal executable is the construction fact dispatch_shell actually consumes and classifies through v2.std.execution_mechanism. A bindable or otherwise non-literal argv[0] is refused and located instead; the executable-position construction wall already makes that shape invalid. The live-tree census keeps the sole planted executable-position fixture counted, so any new ambiguous transport-shell site turns the executed witness red."
+type ShellTransportMechanismRefusalCause
+  = ExecutableNotLiteral
+  | ExecutionWrapperGrammarUnmodeled { executable: String }
+
+data shell_transport_mechanism_classification_note: String = "The legacy spelling gets no sixth Unknown mechanism. A literal executable is the construction fact dispatch_shell actually consumes and classifies through v2.std.execution_mechanism. A bindable or otherwise non-literal argv[0] is refused and located instead; the executable-position construction wall already makes that shape invalid. A known exec wrapper refuses separately because its effective executable depends on the wrapper's unmodeled option grammar. The live-tree census pins the sole planted executable-position fixture and the ten current wrapper rows independently, so either ambiguity class can shrink but any new ambiguous transport-shell site turns the executed witness red."
 
 fn shell_transport_operation_mechanism(
   row: ShellTransportOperationRow
 ) -> ShellTransportMechanismClassification {
   match row.executable {
-    Present { value: executable } => ShellTransportMechanismClassified {
-      mechanism: execution_mechanism_from_evidence(
+    Present { value: executable } =>
+      match execution_mechanism_from_evidence(
         evidence: SpawnExecutable { executable: executable }
-      )
+      ) {
+        ExecutionMechanismDerived { mechanism: mechanism } =>
+          ShellTransportMechanismClassified { mechanism: mechanism }
+        ExecutionMechanismRefusedWrapper { executable: wrapper } =>
+          ShellTransportMechanismRefused {
+            at: row.at,
+            cause: ExecutionWrapperGrammarUnmodeled { executable: wrapper },
+          }
+      }
+    Absent => ShellTransportMechanismRefused {
+      at: row.at,
+      cause: ExecutableNotLiteral,
     }
-    Absent => ShellTransportMechanismRefused { at: row.at }
   }
 }
 
