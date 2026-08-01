@@ -17,7 +17,17 @@ import gunbc.merge_admission {
   MergeDeniedSubjectMismatch,
   classify_merge_admission_verdict_v2,
   merge_admission_verdict_would_block,
+  gate_roster_content_hash,
+  current_gate_roster_hash,
 }
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  CommitSpecGate,
+  CommitWitnessClaim,
+  CommitCargoFmtCheck,
+  gate_eq,
+}
+import gunbc.ci_gate { GeneratedArtifactDriftGate }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
   merge_admission_tested_subject_schema,
@@ -94,6 +104,76 @@ test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
     merge_target_tree: base_tree_fx(),
     current_roster_hash: roster_fx,
   ) { MergeAdmitted => true  _ => false }
+}
+
+fn pre_criteria_change_roster_hash() -> ContentHash {
+  gate_roster_content_hash(
+    roster: fold(commit_gate_roster, init: [], f: fn(acc, row) {
+      match row.check {
+        CommitSpecGate { gate: gate } =>
+          if gate_eq(a: gate, b: GeneratedArtifactDriftGate) {
+            acc
+          } else {
+            concat(acc, [row])
+          }
+        CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => concat(acc, [row])
+        CommitCargoFmtCheck => concat(acc, [row])
+      }
+    })
+  )
+}
+
+data roster_staleness_recut_note: String = "Recut of #7583 after #7591 deleted PublicationPlacementGate and its per-file roster. The incident-specific control cannot keep the deleted gate alive as a test dependency. This pair instead models the same general admission event using one still-enrolled criterion: a successful receipt minted before GeneratedArtifactDriftGate joined the required commit-check roster is stale against the live roster, while a receipt minted under the live roster admits. Removing the roster comparison makes the first row admit; always refusing makes the second row fail. This is merge-criteria freshness only and does not restore or imply publication-placement policy."
+
+test fn pre_criteria_change_receipt_refuses_against_live_roster() -> Bool {
+  let receipt = MergeAdmissionReceiptV2 {
+    attempt_id: attempt_a(),
+    pr_number: Present { value: 7544 },
+    tested_head_sha: head_sha_fx,
+    tested_base_tree: base_tree_fx(),
+    gate_roster_hash: pre_criteria_change_roster_hash(),
+    conclusion: Success,
+  }
+  (pre_criteria_change_roster_hash() != current_gate_roster_hash)
+    && match classify_merge_admission_verdict_v2(
+      current_attempt_id: attempt_a(),
+      tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+      receipt: receipt,
+      merge_target_tree: base_tree_fx(),
+      current_roster_hash: current_gate_roster_hash,
+    ) {
+      MergeDeniedStaleRoster => true
+      MergeAdmitted => false
+      MergeDeniedStaleBase => false
+      MergeDeniedNotSuccess => false
+      MergeDeniedWrongAttempt => false
+      MergeDeniedSubjectMismatch => false
+    }
+}
+
+test fn current_criteria_receipt_admits_against_live_roster() -> Bool {
+  let receipt = MergeAdmissionReceiptV2 {
+    attempt_id: attempt_a(),
+    pr_number: Present { value: 7544 },
+    tested_head_sha: head_sha_fx,
+    tested_base_tree: base_tree_fx(),
+    gate_roster_hash: current_gate_roster_hash,
+    conclusion: Success,
+  }
+  match classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a(),
+    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    receipt: receipt,
+    merge_target_tree: base_tree_fx(),
+    current_roster_hash: current_gate_roster_hash,
+  ) {
+    MergeAdmitted => true
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
+  }
 }
 
 test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
