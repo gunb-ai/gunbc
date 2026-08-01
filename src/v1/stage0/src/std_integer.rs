@@ -60,7 +60,7 @@ pub enum Signedness {
 pub fn std_integer_std_nat_fork_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "PR1 Signedness lift imports std.nat here, co-resolving std.nat with v2.std.nat in whole-tree compile-clean closures. Known two-std-trees fork: std.nat.Nat = CommutativeSemiring<Magnitude> with std.nat.nat_compare versus v2.std.nat.Nat = Zero|Succ with v2.std.nat.nat_compare — not consolidated in this PR. Dissolve-on: two-std-trees consolidation lands a single Nat authority and retires the parallel compare fns; until then ambiguous bare references must qualify by containment path (namespace-resolution-design section 13).".to_string()
+            "owner: namespace-only resolution lane (docs/plans/namespace-resolution-design.md). lane: two-std-trees Nat/nat_compare co-resolution — std.integer Signedness lift imports std.nat here, so whole-tree compile-clean closures co-resolve std.nat (Nat = CommutativeSemiring<Magnitude>, std.nat.nat_compare) with v2.std.nat (Nat = Zero|Succ, v2.std.nat.nat_compare). interim: parallel authorities stay live; ambiguous bare Nat/nat_compare references qualify by containment path (namespace-resolution-design section 13). bound: this PR does not consolidate; it qualifies only closure-surfaced bare references (v2.std.nat.nat_compare in v2.lens.cost), not a corpus-wide sweep. dissolve-on: feature:two-std-trees-nat-consolidation — single Nat authority retires both nat_compare fns and deletes this note.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
