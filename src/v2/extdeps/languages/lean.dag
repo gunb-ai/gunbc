@@ -894,7 +894,7 @@ fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabita
   let inhabitant = lean_primitive_facts_node(facts: facts)
   match facts.scalar {
 
-    LeanIntegerScalar { signedness, width } => AlgebraInhabitanceDecl {
+    LeanIntegerScalar { signedness, width, overflow: _ } => AlgebraInhabitanceDecl {
       algebra: commutative_ring_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: lean_integer_algebra_witness_node(

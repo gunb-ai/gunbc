@@ -33,22 +33,13 @@ test fn overflow_semantics_three_arms_distinguishable() -> Bool {
   let returns: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
   let raises: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowPanics }
   let undefined: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowUndefined
-  lean_overflow_semantics_arm_tag(semantics: returns) == ^lean_overflow_arm_returns
-    && lean_overflow_semantics_arm_tag(semantics: raises) == ^lean_overflow_arm_raises
-    && lean_overflow_semantics_arm_tag(semantics: undefined) == ^lean_overflow_arm_undefined
-    && lean_overflow_semantics_arm_tag(semantics: returns)
-      != lean_overflow_semantics_arm_tag(semantics: raises)
-    && lean_overflow_semantics_arm_tag(semantics: raises)
-      != lean_overflow_semantics_arm_tag(semantics: undefined)
+  lean_overflow_semantics_arm_tag(semantics: returns) == ^lean_overflow_arm_returns && lean_overflow_semantics_arm_tag(semantics: raises) == ^lean_overflow_arm_raises && lean_overflow_semantics_arm_tag(semantics: undefined) == ^lean_overflow_arm_undefined && lean_overflow_semantics_arm_tag(semantics: returns) != lean_overflow_semantics_arm_tag(semantics: raises) && lean_overflow_semantics_arm_tag(semantics: raises) != lean_overflow_semantics_arm_tag(semantics: undefined)
 }
 
 test fn lean_panic_and_trap_remain_distinct_effects() -> Bool {
   let panic_effect = LeanOverflowPanics
   let trap_effect = LeanOverflowTraps
-  lean_overflow_raise_effect_tag(effect: panic_effect) == ^lean_overflow_effect_panics
-    && lean_overflow_raise_effect_tag(effect: trap_effect) == ^lean_overflow_effect_traps
-    && lean_overflow_raise_effect_tag(effect: panic_effect)
-      != lean_overflow_raise_effect_tag(effect: trap_effect)
+  lean_overflow_raise_effect_tag(effect: panic_effect) == ^lean_overflow_effect_panics && lean_overflow_raise_effect_tag(effect: trap_effect) == ^lean_overflow_effect_traps && lean_overflow_raise_effect_tag(effect: panic_effect) != lean_overflow_raise_effect_tag(effect: trap_effect)
 }
 
 test fn lean_admit_accepts_catalog_wrapping_returns() -> Bool {
