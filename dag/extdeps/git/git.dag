@@ -783,6 +783,35 @@ service git.Core {
       nonzero => String "Config set failed"
     }
   }
+
+  operation ConfigLocalGetInRepo {
+    input { repo: FilePath, key: String }
+    output {
+      success: Bool from "exit_success"
+      value: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "config", "--local", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key not found in local config"
+      nonzero => String "Config read failed"
+    }
+  }
+
+  operation ConfigLocalSetInRepo {
+    input { repo: FilePath, key: String, value: String }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "config", "--local", "{key}", "{value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Config set failed"
+    }
+  }
 }
 
 fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
