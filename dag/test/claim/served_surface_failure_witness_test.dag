@@ -1,0 +1,179 @@
+module test.claim.served_surface_failure_witness
+
+import std.types { NonEmptyStr }
+import extdeps.browser.error_presentation {
+  BrowserRelease,
+  BrowserHttpErrorPresentationPair,
+  BrowserPresentationProfile,
+  BrowserPresentationObserved,
+  BrowserPresentationUnobserved,
+  BrowserReplacesHttpErrorResponse,
+  BrowserRendersHttpErrorResponse,
+  GoogleChrome,
+  MozillaFirefox,
+  google_chrome_error_presentation,
+  mozilla_firefox_error_presentation,
+  apple_safari_error_presentation,
+}
+import gunbc.served_surface_failure {
+  ServedSurfaceFailureState,
+  DnsTailnetFailure,
+  TlsCertificateFailure,
+  TailscaleServeProxyFailure,
+  GunbcServeProcessFailure,
+  GunbcServeCompileWindow,
+  GunbcServeApplication500,
+  ServedSurfaceClientPollingFailure,
+  NameResolutionRefused,
+  ConnectionRefused,
+  GunbcServeCrashed,
+  ClientPollNetworkFailure,
+  ServedSurfaceWireObservable,
+  NoHttpResponse,
+  TlsHandshakeRefused,
+  ProxyGeneratedBodyless502,
+  GunbcTyped500Response,
+  LoadedDocumentPollingRefused,
+  AudienceObservable,
+  BrowserOwned,
+  ProxyFabricated,
+  BodyOwned,
+  AudienceObservableUnobserved,
+  GunbcTypedErrorBody,
+  GunbcClientPollingRefusalSurface,
+  AudienceObservableFixCeiling,
+  ConstructionMoveRequired,
+  ProxyResponseConstructionRequired,
+  BodyPresentationChangeAvailable,
+  BrowserObservationRequired,
+  BlueGreenServeFlipLane,
+  served_surface_wire_observable,
+  audience_observable,
+  audience_observable_fix_ceiling,
+  served_surface_audience_observable_map,
+}
+
+fn observed_chrome_fixture(
+  empty_replaced: Bool,
+  body_replaced: Bool,
+) -> BrowserPresentationProfile {
+  BrowserPresentationObserved {
+    release: BrowserRelease {
+      product: GoogleChrome,
+      exact_version: "fixture-1" as NonEmptyStr,
+    },
+    http_error: BrowserHttpErrorPresentationPair {
+      empty_body: if empty_replaced {
+        BrowserReplacesHttpErrorResponse
+      } else {
+        BrowserRendersHttpErrorResponse
+      },
+      nonempty_body: if body_replaced {
+        BrowserReplacesHttpErrorResponse
+      } else {
+        BrowserRendersHttpErrorResponse
+      },
+    },
+    receipt: "test-local discriminating profile" as NonEmptyStr,
+  }
+}
+
+test fn witness_seven_hops_remain_seven_rows() -> Bool {
+  count(served_surface_audience_observable_map(browser: google_chrome_error_presentation)) == 7
+    && count(served_surface_audience_observable_map(browser: mozilla_firefox_error_presentation)) == 7
+    && count(served_surface_audience_observable_map(browser: apple_safari_error_presentation)) == 7
+}
+
+test fn witness_wire_observables_do_not_collapse() -> Bool {
+  let dns = served_surface_wire_observable(
+    state: DnsTailnetFailure { failure: NameResolutionRefused })
+  let tls = served_surface_wire_observable(state: TlsCertificateFailure)
+  let proxy_down = served_surface_wire_observable(
+    state: TailscaleServeProxyFailure { failure: ConnectionRefused })
+  let process_down = served_surface_wire_observable(
+    state: GunbcServeProcessFailure { absence: GunbcServeCrashed })
+  let compiling = served_surface_wire_observable(state: GunbcServeCompileWindow)
+  let app = served_surface_wire_observable(
+    state: GunbcServeApplication500 { body: "typed failure" as NonEmptyStr })
+  let poll = served_surface_wire_observable(
+    state: ServedSurfaceClientPollingFailure { failure: ClientPollNetworkFailure })
+  match dns {
+    NoHttpResponse { failure: NameResolutionRefused } => match tls {
+      TlsHandshakeRefused => match proxy_down {
+        NoHttpResponse { failure: ConnectionRefused } => match process_down {
+          ProxyGeneratedBodyless502 => match compiling {
+            ProxyGeneratedBodyless502 => match app {
+              GunbcTyped500Response { body } => body == "typed failure" && match poll {
+                LoadedDocumentPollingRefused { failure: ClientPollNetworkFailure } => true
+                _ => false
+              }
+              _ => false
+            }
+            _ => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn witness_observed_browser_pair_discriminates_ownership() -> Bool {
+  let profile = observed_chrome_fixture(empty_replaced: true, body_replaced: false)
+  let bodyless = audience_observable(state: GunbcServeCompileWindow, browser: profile)
+  let bodied = audience_observable(
+    state: GunbcServeApplication500 { body: "typed" as NonEmptyStr },
+    browser: profile)
+  let polling = audience_observable(
+    state: ServedSurfaceClientPollingFailure { failure: ClientPollNetworkFailure },
+    browser: profile)
+  bodyless == BrowserOwned
+    && bodied == BodyOwned { surface: GunbcTypedErrorBody }
+    && polling == BodyOwned { surface: GunbcClientPollingRefusalSurface }
+}
+
+test fn witness_rendered_empty_response_is_proxy_fabricated() -> Bool {
+  let profile = observed_chrome_fixture(empty_replaced: false, body_replaced: false)
+  let observable = audience_observable(state: GunbcServeCompileWindow, browser: profile)
+  observable == ProxyFabricated
+    && audience_observable_fix_ceiling(
+      state: GunbcServeCompileWindow,
+      observable: observable) == ProxyResponseConstructionRequired
+}
+
+test fn witness_browser_owned_compile_window_names_blue_green_mover() -> Bool {
+  audience_observable_fix_ceiling(
+    state: GunbcServeCompileWindow,
+    observable: BrowserOwned,
+  ) == ConstructionMoveRequired { mover: BlueGreenServeFlipLane }
+}
+
+test fn witness_body_owned_cell_has_body_change_ceiling() -> Bool {
+  audience_observable_fix_ceiling(
+    state: GunbcServeApplication500 { body: "typed" as NonEmptyStr },
+    observable: BodyOwned { surface: GunbcTypedErrorBody },
+  ) == BodyPresentationChangeAvailable { surface: GunbcTypedErrorBody }
+}
+
+test fn witness_unobserved_browser_never_fabricates_presentation() -> Bool {
+  let profile = BrowserPresentationUnobserved {
+    product: MozillaFirefox,
+    reason: "not executed" as NonEmptyStr,
+  }
+  let observable = audience_observable(state: GunbcServeCompileWindow, browser: profile)
+  match observable {
+    AudienceObservableUnobserved { browser: MozillaFirefox, reason } =>
+      reason == "not executed" && match audience_observable_fix_ceiling(
+        state: GunbcServeCompileWindow,
+        observable: observable,
+      ) {
+        BrowserObservationRequired { browser: MozillaFirefox, reason: r2 } => r2 == reason
+        _ => false
+      }
+    _ => false
+  }
+}
+

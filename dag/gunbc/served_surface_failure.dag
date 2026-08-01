@@ -1,0 +1,192 @@
+module gunbc.served_surface_failure
+
+import std.types { NonEmptyStr, String, List, Int }
+import extdeps.browser.error_presentation {
+  BrowserProduct,
+  BrowserPresentationProfile,
+  BrowserHttpErrorBodyClass, EmptyHttpErrorBody, NonEmptyHttpErrorBody,
+  BrowserHttpErrorPresentationRead,
+  BrowserHttpErrorPresentationReadObserved,
+  BrowserHttpErrorPresentationReadUnobserved,
+  BrowserHttpErrorPresentation,
+  BrowserReplacesHttpErrorResponse,
+  BrowserRendersHttpErrorResponse,
+  browser_presentation_product,
+  browser_http_error_presentation,
+}
+
+type NoHttpResponseKind
+  = NameResolutionRefused
+  | TailnetUnreachable
+  | ConnectionRefused
+  | ConnectionReset
+  | ResponseTimedOut
+
+type GunbcServeProcessAbsence
+  = GunbcServeStopped
+  | GunbcServeCrashed
+  | GunbcServeOomKilled
+
+type ClientPollFailure
+  = ClientPollNetworkFailure
+  | ClientPollHttpFailure { status: Int }
+  | ClientPollUnreadableBody { status: Int }
+
+type ServedSurfaceFailureState
+  = DnsTailnetFailure { failure: NoHttpResponseKind }
+  | TlsCertificateFailure
+  | TailscaleServeProxyFailure { failure: NoHttpResponseKind }
+  | GunbcServeProcessFailure { absence: GunbcServeProcessAbsence }
+  | GunbcServeCompileWindow
+  | GunbcServeApplication500 { body: NonEmptyStr }
+  | ServedSurfaceClientPollingFailure { failure: ClientPollFailure }
+
+type ServedSurfaceWireObservable
+  = NoHttpResponse { failure: NoHttpResponseKind }
+  | TlsHandshakeRefused
+  | ProxyGeneratedBodyless502
+  | GunbcTyped500Response { body: NonEmptyStr }
+  | LoadedDocumentPollingRefused { failure: ClientPollFailure }
+
+data served_surface_failure_chain_note: String = "THE HOPS STAY DISTINCT EVEN WHEN THE AUDIENCE CANNOT DISTINGUISH THEM. DNS/tailnet failure, TLS refusal, a missing tailscale listener, a missing gunbc-serve process, the 35-39 second pre-bind compile window, an application 500, and a post-load polling failure are seven causal states. gunbc process absence and compile window intentionally project to the SAME proxy-generated bodyless 502: their audience equivalence is derived here instead of erasing the operational distinction needed to fix them. Connection refused/reset, timeout, TLS refusal, bodyless proxy 502, typed bodied 500, and retained-document polling refusal remain distinct wire values. This is upstream of every frontend view; a view consumes the projection and does not reconstruct cause from text."
+
+fn served_surface_wire_observable(state: ServedSurfaceFailureState) -> ServedSurfaceWireObservable {
+  match state {
+    DnsTailnetFailure { failure } => NoHttpResponse { failure: failure }
+    TlsCertificateFailure => TlsHandshakeRefused
+    TailscaleServeProxyFailure { failure } => NoHttpResponse { failure: failure }
+    GunbcServeProcessFailure { absence: _ } => ProxyGeneratedBodyless502
+    GunbcServeCompileWindow => ProxyGeneratedBodyless502
+    GunbcServeApplication500 { body } => GunbcTyped500Response { body: body }
+    ServedSurfaceClientPollingFailure { failure } => LoadedDocumentPollingRefused { failure: failure }
+  }
+}
+
+type BodyOwnedSurface
+  = GunbcTypedErrorBody
+  | GunbcClientPollingRefusalSurface
+
+type AudienceObservable
+  = BrowserOwned
+  | ProxyFabricated
+  | BodyOwned { surface: BodyOwnedSurface }
+  | AudienceObservableUnobserved { browser: BrowserProduct, reason: NonEmptyStr }
+
+fn audience_observable_from_http_error_read(
+  read: BrowserHttpErrorPresentationRead,
+  body_class: BrowserHttpErrorBodyClass,
+) -> AudienceObservable {
+  match read {
+    BrowserHttpErrorPresentationReadObserved { release: _, presentation, receipt: _ } =>
+      match presentation {
+        BrowserReplacesHttpErrorResponse => BrowserOwned
+        BrowserRendersHttpErrorResponse => match body_class {
+          EmptyHttpErrorBody => ProxyFabricated
+          NonEmptyHttpErrorBody => BodyOwned { surface: GunbcTypedErrorBody }
+        }
+      }
+    BrowserHttpErrorPresentationReadUnobserved { product, reason } =>
+      AudienceObservableUnobserved { browser: product, reason: reason }
+  }
+}
+
+fn audience_observable(
+  state: ServedSurfaceFailureState,
+  browser: BrowserPresentationProfile,
+) -> AudienceObservable {
+  match served_surface_wire_observable(state: state) {
+    NoHttpResponse { failure: _ } => BrowserOwned
+    TlsHandshakeRefused => BrowserOwned
+    ProxyGeneratedBodyless502 => audience_observable_from_http_error_read(
+      read: browser_http_error_presentation(profile: browser, body_class: EmptyHttpErrorBody),
+      body_class: EmptyHttpErrorBody)
+    GunbcTyped500Response { body: _ } => audience_observable_from_http_error_read(
+      read: browser_http_error_presentation(profile: browser, body_class: NonEmptyHttpErrorBody),
+      body_class: NonEmptyHttpErrorBody)
+    LoadedDocumentPollingRefused { failure: _ } =>
+      BodyOwned { surface: GunbcClientPollingRefusalSurface }
+  }
+}
+
+type BrowserOwnedConstructionMover
+  = DnsTailnetAvailabilityMover
+  | CertificateValidityMover
+  | TailscaleServeAvailabilityMover
+  | BlueGreenServeFlipLane
+  | BrowserCompatibilityMover
+
+type AudienceObservableFixCeiling
+  = ConstructionMoveRequired { mover: BrowserOwnedConstructionMover }
+  | ProxyResponseConstructionRequired
+  | BodyPresentationChangeAvailable { surface: BodyOwnedSurface }
+  | BrowserObservationRequired { browser: BrowserProduct, reason: NonEmptyStr }
+
+fn browser_owned_mover(state: ServedSurfaceFailureState) -> BrowserOwnedConstructionMover {
+  match state {
+    DnsTailnetFailure { failure: _ } => DnsTailnetAvailabilityMover
+    TlsCertificateFailure => CertificateValidityMover
+    TailscaleServeProxyFailure { failure: _ } => TailscaleServeAvailabilityMover
+    GunbcServeProcessFailure { absence: _ } => BlueGreenServeFlipLane
+    GunbcServeCompileWindow => BlueGreenServeFlipLane
+    GunbcServeApplication500 { body: _ } => BrowserCompatibilityMover
+    ServedSurfaceClientPollingFailure { failure: _ } => BrowserCompatibilityMover
+  }
+}
+
+fn audience_observable_fix_ceiling(
+  state: ServedSurfaceFailureState,
+  observable: AudienceObservable,
+) -> AudienceObservableFixCeiling {
+  match observable {
+    BrowserOwned => ConstructionMoveRequired { mover: browser_owned_mover(state: state) }
+    ProxyFabricated => ProxyResponseConstructionRequired
+    BodyOwned { surface } => BodyPresentationChangeAvailable { surface: surface }
+    AudienceObservableUnobserved { browser, reason } =>
+      BrowserObservationRequired { browser: browser, reason: reason }
+  }
+}
+
+type ServedSurfaceAudienceObservableRow {
+  failure: ServedSurfaceFailureState
+  wire: ServedSurfaceWireObservable
+  browser: BrowserProduct
+  observable: AudienceObservable
+  fix_ceiling: AudienceObservableFixCeiling
+}
+
+fn served_surface_audience_observable_row(
+  failure: ServedSurfaceFailureState,
+  browser: BrowserPresentationProfile,
+) -> ServedSurfaceAudienceObservableRow {
+  let observable = audience_observable(state: failure, browser: browser)
+  ServedSurfaceAudienceObservableRow {
+    failure: failure,
+    wire: served_surface_wire_observable(state: failure),
+    browser: browser_presentation_product(profile: browser),
+    observable: observable,
+    fix_ceiling: audience_observable_fix_ceiling(state: failure, observable: observable),
+  }
+}
+
+fn served_surface_audience_observable_map(
+  browser: BrowserPresentationProfile,
+) -> List<ServedSurfaceAudienceObservableRow> {
+  [
+    served_surface_audience_observable_row(
+      failure: DnsTailnetFailure { failure: NameResolutionRefused }, browser: browser),
+    served_surface_audience_observable_row(
+      failure: TlsCertificateFailure, browser: browser),
+    served_surface_audience_observable_row(
+      failure: TailscaleServeProxyFailure { failure: ConnectionRefused }, browser: browser),
+    served_surface_audience_observable_row(
+      failure: GunbcServeProcessFailure { absence: GunbcServeCrashed }, browser: browser),
+    served_surface_audience_observable_row(
+      failure: GunbcServeCompileWindow, browser: browser),
+    served_surface_audience_observable_row(
+      failure: GunbcServeApplication500 { body: "typed application error" as NonEmptyStr }, browser: browser),
+    served_surface_audience_observable_row(
+      failure: ServedSurfaceClientPollingFailure { failure: ClientPollNetworkFailure }, browser: browser),
+  ]
+}
+
+data observable_fix_ceiling_note: String = "THE FIX CEILING IS DATA. BrowserOwned cannot be styled by the application because no application document controls those pixels; the only reachable move is construction at the failing hop. Process-absence and compile-window browser-owned cells name BlueGreenServeFlipLane as their mover, consuming the active blue/green lane rather than duplicating it. ProxyFabricated can move only by changing proxy response construction. BodyOwned is the only arm where the typed error body or persistent client refusal surface is available to application presentation. Unobserved blocks a fix claim on a browser observation first."

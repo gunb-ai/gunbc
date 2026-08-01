@@ -1,0 +1,143 @@
+module extdeps.browser.error_presentation
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/renderer/net/net_error_helper_core.h"
+  }
+}
+
+data google_chrome_error_page_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data mozilla_firefox_error_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "searchfox.org/firefox-main/source/browser/base/content/aboutNetError.mjs"
+  }
+}
+
+data apple_safari_error_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "webkit.org/status/"
+  }
+}
+
+data fetch_error_semantics_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "fetch.spec.whatwg.org/#dom-global-fetch"
+  }
+}
+
+type BrowserProduct
+  = GoogleChrome
+  | MozillaFirefox
+  | AppleSafari
+
+fn browser_product_label(product: BrowserProduct) -> String {
+  match product {
+    GoogleChrome => "Google Chrome"
+    MozillaFirefox => "Mozilla Firefox"
+    AppleSafari => "Apple Safari"
+  }
+}
+
+fn browser_error_page_authority(product: BrowserProduct) -> ExternalAuthority {
+  match product {
+    GoogleChrome => google_chrome_error_page_authority
+    MozillaFirefox => mozilla_firefox_error_page_authority
+    AppleSafari => apple_safari_error_page_authority
+  }
+}
+
+type BrowserRelease {
+  product: BrowserProduct
+  exact_version: NonEmptyStr
+}
+
+type BrowserHttpErrorBodyClass
+  = EmptyHttpErrorBody
+  | NonEmptyHttpErrorBody
+
+type BrowserHttpErrorPresentation
+  = BrowserReplacesHttpErrorResponse
+  | BrowserRendersHttpErrorResponse
+
+type BrowserHttpErrorPresentationPair {
+  empty_body: BrowserHttpErrorPresentation
+  nonempty_body: BrowserHttpErrorPresentation
+}
+
+type BrowserPresentationProfile
+  = BrowserPresentationObserved {
+      release: BrowserRelease,
+      http_error: BrowserHttpErrorPresentationPair,
+      receipt: NonEmptyStr,
+    }
+  | BrowserPresentationUnobserved {
+      product: BrowserProduct,
+      reason: NonEmptyStr,
+    }
+
+data browser_error_presentation_evidence_note: String = "THESE ARE BUILD-GRAIN OBSERVATIONS, NOT BROWSER PROMISES. Chrome, Firefox, and Safari own network-error UI whose wording and replacement policy can move between releases; the exact release is therefore mandatory on the only constructor that may carry a presentation answer. BrowserPresentationUnobserved has no presentation fields at all: nobody looking cannot be rounded toward either replacement or rendering. A future observation upgrades one whole discriminating pair from the same run — empty 502 versus non-empty 502 — so two separately authored facts cannot accidentally cite different builds. The vendor rows cite the real upstream error-page implementations; fetch_error_semantics_authority separately grounds the script-fetch fact that network errors reject while HTTP error responses remain responses."
+
+data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPresentationUnobserved {
+  product: GoogleChrome,
+  reason: "Chrome for Testing 151.0.7922.34 downloaded via Playwright 1.62.1 on 2026-08-01, but the rootless execution image lacked the browser shared-library closure; no presentation result was fabricated" as NonEmptyStr,
+}
+
+data mozilla_firefox_error_presentation: BrowserPresentationProfile = BrowserPresentationUnobserved {
+  product: MozillaFirefox,
+  reason: "Firefox presentation discriminator not executed in this session" as NonEmptyStr,
+}
+
+data apple_safari_error_presentation: BrowserPresentationProfile = BrowserPresentationUnobserved {
+  product: AppleSafari,
+  reason: "Safari presentation discriminator not executed in this session; Playwright WebKit would not establish Safari product behavior" as NonEmptyStr,
+}
+
+fn browser_presentation_product(profile: BrowserPresentationProfile) -> BrowserProduct {
+  match profile {
+    BrowserPresentationObserved { release, http_error: _, receipt: _ } => release.product
+    BrowserPresentationUnobserved { product, reason: _ } => product
+  }
+}
+
+type BrowserHttpErrorPresentationRead
+  = BrowserHttpErrorPresentationReadObserved {
+      release: BrowserRelease,
+      presentation: BrowserHttpErrorPresentation,
+      receipt: NonEmptyStr,
+    }
+  | BrowserHttpErrorPresentationReadUnobserved {
+      product: BrowserProduct,
+      reason: NonEmptyStr,
+    }
+
+fn browser_http_error_presentation(
+  profile: BrowserPresentationProfile,
+  body_class: BrowserHttpErrorBodyClass,
+) -> BrowserHttpErrorPresentationRead {
+  match profile {
+    BrowserPresentationObserved { release, http_error, receipt } =>
+      BrowserHttpErrorPresentationReadObserved {
+        release: release,
+        presentation: match body_class {
+          EmptyHttpErrorBody => http_error.empty_body
+          NonEmptyHttpErrorBody => http_error.nonempty_body
+        },
+        receipt: receipt,
+      }
+    BrowserPresentationUnobserved { product, reason } =>
+      BrowserHttpErrorPresentationReadUnobserved {
+        product: product,
+        reason: reason,
+      }
+  }
+}
+
