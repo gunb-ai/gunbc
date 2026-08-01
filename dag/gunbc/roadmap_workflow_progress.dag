@@ -73,6 +73,7 @@ import gunbc.roadmap_validation_oracle {
   ValidationReceiptDecoded,
   ValidationReceiptUndecodable,
   validation_receipt_decode,
+
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
@@ -98,6 +99,8 @@ type WorkflowAttemptEvidence {
   validation_summary: String
   validation_receipt_readable: Bool
   validation_receipt: String
+  publication_receipt_readable: Bool
+  publication_receipt: String
 }
 
 type WorkflowAttemptProgress {
@@ -433,11 +436,10 @@ fn workflow_segment_from_evidence(
         validation_receipt: evidence.validation_receipt,
       )
     PublicationWorkflowSegment =>
-      WorkflowSegment {
-        kind: kind,
-        state: WorkflowSegmentPending,
-        detail: "awaiting a verified change-set, publication intent, remote branch read-back, and pull-request binding",
-      }
+      publication_segment(
+        publication_receipt_readable: evidence.publication_receipt_readable,
+        publication_receipt: evidence.publication_receipt,
+      )
     ReviewWorkflowSegment =>
       WorkflowSegment {
         kind: kind,
