@@ -118,6 +118,7 @@ fn walk_plan_stage_stage2_marker_claim() -> Runnable {
 
 fn walk_plan_stage_harness_authority_content() -> String {
   concat(
+    "harness_authority_path=", walk_plan_stage_harness_authority_path, "\n",
     "attempt_id=", walk_plan_stage_attempt_id, "\n",
     "plan_entry=", walk_plan_stage_plan_entry, "\n",
     "stage1_receipt_path=", walk_plan_stage_stage1_receipt_path, "\n",

@@ -23,6 +23,7 @@ thread_local! {
 
 #[derive(Clone, Debug)]
 struct HarnessAuthority {
+    harness_authority_rel: String,
     attempt_id: String,
     plan_entry: String,
     stage1_receipt_rel: String,
@@ -91,10 +92,50 @@ fn parse_harness_authority(content: &str) -> HarnessAuthority {
         })
     };
     HarnessAuthority {
+        harness_authority_rel: require("harness_authority_path"),
         attempt_id: require("attempt_id"),
         plan_entry: require("plan_entry"),
         stage1_receipt_rel: require("stage1_receipt_path"),
         stage2_marker_rel: require("stage2_marker_path"),
+    }
+}
+
+fn relative_path_from_root(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn locate_harness_authority_file(root: &Path) -> PathBuf {
+    let target = root.join("target");
+    let mut candidates = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&target) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let authority = parse_harness_authority(&content);
+            let rel = relative_path_from_root(root, &path);
+            if authority.harness_authority_rel == rel {
+                candidates.push(path);
+            }
+        }
+    }
+    match candidates.len() {
+        0 => panic!(
+            "harness authority file not found under {}; run walk_plan_stage_materialize_harness_authority_holds first",
+            target.display()
+        ),
+        1 => candidates.remove(0),
+        n => panic!(
+            "ambiguous harness authority files under {} ({n} matches)",
+            target.display()
+        ),
     }
 }
 
@@ -125,7 +166,7 @@ fn materialize_harness_authority(root: &Path) -> HarnessAuthority {
         status.success(),
         "walk_plan_stage_materialize_harness_authority_holds must pass before harness walks"
     );
-    let authority_path = root.join("target/walk_plan_stage_harness_authority.txt");
+    let authority_path = locate_harness_authority_file(root);
     let content = std::fs::read_to_string(&authority_path).unwrap_or_else(|e| {
         panic!(
             "failed to read {} after materialize: {e}",
@@ -135,12 +176,17 @@ fn materialize_harness_authority(root: &Path) -> HarnessAuthority {
     parse_harness_authority(&content)
 }
 
-fn last_harness_authority() -> HarnessAuthority {
-    LAST_HARNESS_AUTHORITY.with(|cell| {
-        cell.borrow()
-            .clone()
-            .expect("run_fixture_plan must run before reading harness authority")
-    })
+fn ensure_harness_authority(root: &Path) -> HarnessAuthority {
+    if let Some(auth) = LAST_HARNESS_AUTHORITY.with(|cell| cell.borrow().clone()) {
+        return auth;
+    }
+    let auth = materialize_harness_authority(root);
+    LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = Some(auth.clone()));
+    auth
+}
+
+fn last_harness_authority(root: &Path) -> HarnessAuthority {
+    ensure_harness_authority(root)
 }
 
 fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
@@ -179,11 +225,11 @@ fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
 }
 
 fn stage2_marker_path(root: &PathBuf) -> PathBuf {
-    root.join(&last_harness_authority().stage2_marker_rel)
+    root.join(&last_harness_authority(root).stage2_marker_rel)
 }
 
 fn stage1_receipt_path(root: &PathBuf) -> PathBuf {
-    root.join(&last_harness_authority().stage1_receipt_rel)
+    root.join(&last_harness_authority(root).stage1_receipt_rel)
 }
 
 #[test]
