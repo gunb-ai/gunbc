@@ -15,7 +15,7 @@ test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
   )
   match d {
     Permit => false
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       string_contains(
         s: deploy_access_decision_reason(d: d),
         pattern: "principal mismatch"
@@ -38,7 +38,7 @@ test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
       match intent.privilege_denial {
         Present { value: d } =>
           match d {
-            Deny { reason: _ } =>
+            Deny { refusal: _ } =>
               !string_contains(s: deploy_access_decision_reason(d: d), pattern: privilege_mutation_marker)
             Permit => false
           }
@@ -62,7 +62,7 @@ test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
       match r {
         NotConverged { reason: _, applied: intent } =>
           match intent.privilege_denial {
-            Present { value: Deny { reason: _ } } => true
+            Present { value: Deny { refusal: _ } } => true
             _ => false
           }
         Converged { evidence: _, applied: _ } => false
@@ -102,4 +102,3 @@ test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
     NotConverged { reason: _, applied: _ } => false
   }
 }
-

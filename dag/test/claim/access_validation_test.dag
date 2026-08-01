@@ -1,15 +1,26 @@
 module test.claim.access_validation
 
+import std.types { Bool, Int, NonEmptyStr }
+import std.access {
+  AccessDecision, AccessRequest, AccessPolicy, AccessContext, AccessEvidence,
+  Permit, Deny, access_policy_refusal,
+}
+import extdeps.access.posix { PermissionBits, FilePermissions }
+import extdeps.access.rbac { Permission, RbacPolicy }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn decision_is_permit(d: AccessDecision) -> Bool {
-  match d { Permit => true  Deny { reason: _ } => false }
+  match d { Permit => true  Deny { refusal: _ } => false }
 }
 
 fn decision_is_deny(d: AccessDecision) -> Bool {
-  match d { Deny { reason: _ } => true  Permit => false }
+  match d { Deny { refusal: _ } => true  Permit => false }
 }
+
+type TestAccessContext {}
+type TestAccessEvidence {}
 
 type PosixSubject {
   uid: Int
@@ -41,15 +52,15 @@ fn posix_class_bits(perms: FilePermissions, subject: PosixSubject) -> Permission
   }
 }
 
-fn posix_decide(request: AccessRequest<PosixSubject, PosixAction, FilePermissions>) -> AccessDecision {
+fn posix_decide(request: AccessRequest<PosixSubject, PosixAction, FilePermissions, TestAccessContext, TestAccessEvidence>) -> AccessDecision {
   if posix_bit(bits: posix_class_bits(perms: request.object, subject: request.subject), action: request.action) {
     Permit
   } else {
-    std.access.Deny { reason: none }
+    access_policy_refusal(profile: "posix", subject: to_string(request.subject.uid), action: "mode-bit", object: "file", reason: "permission bit absent")
   }
 }
 
-data posix_access_policy: AccessPolicy<PosixSubject, PosixAction, FilePermissions> = {
+data posix_access_policy: AccessPolicy<PosixSubject, PosixAction, FilePermissions, TestAccessContext, TestAccessEvidence> = {
   decide: posix_decide
 }
 
@@ -67,25 +78,29 @@ data sample_file: FilePermissions = {
 
 test fn posix_owner_can_read() -> Bool {
   decision_is_permit(d: posix_decide(request: {
-    subject: { uid: 1000, gid: 1000 }, action: PosixRead, object: sample_file
+    subject: { uid: 1000, gid: 1000 }, action: PosixRead, object: sample_file,
+    context: AccessContext { value: TestAccessContext {} }, evidence: AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn posix_owner_cannot_execute() -> Bool {
   decision_is_deny(d: posix_decide(request: {
-    subject: { uid: 1000, gid: 1000 }, action: PosixExecute, object: sample_file
+    subject: { uid: 1000, gid: 1000 }, action: PosixExecute, object: sample_file,
+    context: AccessContext { value: TestAccessContext {} }, evidence: AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn posix_group_can_read() -> Bool {
   decision_is_permit(d: posix_decide(request: {
-    subject: { uid: 2000, gid: 1000 }, action: PosixRead, object: sample_file
+    subject: { uid: 2000, gid: 1000 }, action: PosixRead, object: sample_file,
+    context: AccessContext { value: TestAccessContext {} }, evidence: AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn posix_other_cannot_read() -> Bool {
   decision_is_deny(d: posix_decide(request: {
-    subject: { uid: 2000, gid: 2000 }, action: PosixRead, object: sample_file
+    subject: { uid: 2000, gid: 2000 }, action: PosixRead, object: sample_file,
+    context: AccessContext { value: TestAccessContext {} }, evidence: AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
@@ -106,11 +121,11 @@ fn rbac_user_has_permission(policy: RbacPolicy, user: NonEmptyStr, perm: Permiss
   })
 }
 
-fn rbac_decide(policy: RbacPolicy, request: AccessRequest<NonEmptyStr, NonEmptyStr, NonEmptyStr>) -> AccessDecision {
+fn rbac_decide(policy: RbacPolicy, request: AccessRequest<NonEmptyStr, NonEmptyStr, NonEmptyStr, TestAccessContext, TestAccessEvidence>) -> AccessDecision {
   if rbac_user_has_permission(policy: policy, user: request.subject, perm: { operation: request.action, object: request.object }) {
     Permit
   } else {
-    std.access.Deny { reason: none }
+    access_policy_refusal(profile: "rbac", subject: request.subject, action: request.action, object: request.object, reason: "permission assignment absent")
   }
 }
 
@@ -130,18 +145,21 @@ data sample_rbac: RbacPolicy = {
 
 test fn rbac_editor_can_write() -> Bool {
   decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
-    subject: "alice", action: "write", object: "doc1"
+    subject: "alice", action: "write", object: "doc1",
+    context: AccessContext { value: TestAccessContext {} }, evidence: AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn rbac_viewer_cannot_write() -> Bool {
   decision_is_deny(d: rbac_decide(policy: sample_rbac, request: {
-    subject: "bob", action: "write", object: "doc1"
+    subject: "bob", action: "write", object: "doc1",
+    context: AccessContext { value: TestAccessContext {} }, evidence: AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
 
 test fn rbac_viewer_can_read() -> Bool {
   decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
-    subject: "bob", action: "read", object: "doc1"
+    subject: "bob", action: "read", object: "doc1",
+    context: AccessContext { value: TestAccessContext {} }, evidence: AccessEvidence { value: TestAccessEvidence {} }
   }))
 }
