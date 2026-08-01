@@ -31,6 +31,7 @@ import gunbc.guarantee_probe_corpus {
   probe_observation_from_census,
   observation_is_blocking_refusal,
   observation_is_clean,
+  observation_refused_count,
   build_v1_compile_receipt,
   build_v2_phase_receipt,
   receipt_joins_v1_compile_path,
@@ -161,13 +162,15 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
 }
 
 test fn blocking_refusal_observation_is_a_verdict() -> Bool {
+  let census = census_of(source: method_missing_source)
   let receipt = build_v1_compile_receipt(
     class: method_established_surface_class,
     probe: method_missing_red_probe,
-    census: census_of(source: method_missing_source),
+    census: census,
     expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
   )
   observed_is_verdict(o: receipt.observed)
+    && observation_refused_count(o: receipt.observed) == census_blocking_count_for_class(census: census, wanted: "MethodNotFound")
 }
 
 test fn green_control_observation_is_accepted_clean() -> Bool {

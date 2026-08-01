@@ -221,6 +221,19 @@ fn probe_expectation_holds(census: CompileDiagnosticCensus, expectation: ProbeEx
   }
 }
 
+fn observation_refused_count(o: ProbeObservation) -> Int {
+  probe_observation_fold(
+    o: o,
+    fold: ProbeObservationFold {
+      refused: fn(_, c) { c },
+      accepted_clean: 0,
+      accepted_counted: fn(_, _) { 0 },
+      diverged: fn(_) { 0 },
+      not_runnable: fn(_) { 0 },
+    },
+  )
+}
+
 fn probe_observation_from_census(census: CompileDiagnosticCensus, expectation: ProbeExpectation) -> ProbeObservation {
   match census {
     CensusNotRunnable { cause: c } => ProbeNotRunnable { cause: c }
@@ -234,9 +247,9 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus, expectation: P
             match first {
               Present { value: r } =>
                 if r.blocking {
-                  RefusedTyped { diagnostic_class: r.diagnostic_class, count: 1 }
+                  RefusedTyped { diagnostic_class: r.diagnostic_class, count: r.count }
                 } else {
-                  AcceptedCounted { diagnostic_class: r.diagnostic_class, count: 1 }
+                  AcceptedCounted { diagnostic_class: r.diagnostic_class, count: r.count }
                 }
               Absent => AcceptedClean
             }
@@ -244,11 +257,14 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus, expectation: P
         ExpectBlockingRefusal { diagnostic_class: wanted } =>
           let blocking = census_blocking_count_for_class(census: census, wanted: wanted as String)
           if blocking >= 1 {
-            RefusedTyped { diagnostic_class: wanted, count: 1 }
-          } else if census_any_count_for_class(census: census, wanted: wanted as String) >= 1 {
-            AcceptedCounted { diagnostic_class: wanted, count: 1 }
+            RefusedTyped { diagnostic_class: wanted, count: blocking }
           } else {
-            AcceptedClean
+            let advisory = census_any_count_for_class(census: census, wanted: wanted as String)
+            if advisory >= 1 {
+              AcceptedCounted { diagnostic_class: wanted, count: advisory }
+            } else {
+              AcceptedClean
+            }
           }
       }
   }
