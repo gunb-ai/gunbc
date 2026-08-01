@@ -9,12 +9,13 @@ import gunbc.stage0_rust_host_observation {
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_generated_stage0_repo_paths,
-  file_grain_lifecycle_repo_paths,
+  lifecycle_row_well_formed,
   list_concat_unique,
-  path_in_list
+  path_in_list,
+  rust_source_lifecycle_residue_rows
 }
 import std.types { ContentHash }
-import v2.std.algebra { filter }
+import v2.std.algebra { filter, list_map }
 import v2.std.collection { List }
 import v2.std.text { String }
 
@@ -52,10 +53,12 @@ fn exact_unclassified_tracked_rust_paths(
 }
 
 fn admitted_maintenance_disposition_paths() -> List<String> {
-  let generated_paths = derived_generated_stage0_repo_paths()
-  filter(
-    xs: file_grain_lifecycle_repo_paths(),
-    predicate: fn(path) { !path_in_list(path: path, paths: generated_paths) }
+  list_map(
+    xs: filter(
+      xs: rust_source_lifecycle_residue_rows,
+      predicate: fn(row) { lifecycle_row_well_formed(row: row) }
+    ),
+    f: fn(row) { row.path }
   )
 }
 
