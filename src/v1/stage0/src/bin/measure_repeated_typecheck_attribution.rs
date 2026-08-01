@@ -7,9 +7,12 @@
 //! cache hit/miss/refused, typecheck compute wall on miss, first-computing entry,
 //! later-requester count, and per-entry reconcile/assembly timing.
 //!
-//! The slice-2 decision metric is `repeated_type_ratio` (= `decision_ratio`):
-//! cache_hits / (hits + misses). Compare against slice-1's membership duplication
-//! factor to see whether repeated membership becomes avoided typecheck work.
+//! The slice-2 decision metric is `decision_ratio`:
+//! `repeated_typecheck_compute_ns / total_typecheck_compute_ns` — the share of
+//! typecheck wall spent on modules already computed by an earlier entry against
+//! ONE shared typed cache. `cache_hit_ratio` is reported separately for
+//! diagnostics only. Compare `decision_ratio` against slice-1's membership
+//! duplication factor to see whether repeated membership becomes avoided work.
 //!
 //! Measurement only — no union implementation.
 //!
