@@ -4,8 +4,7 @@ module v2.test.claim.lean_bit_width_admissibility_witness
 import v2.extdeps.languages.lean {
   lean_admit_bit_width,
   LeanBitWidthAccepted,
-  LeanBitWidthRefused,
-  LeanAdmittedBitWidth
+  LeanBitWidthRefused
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
