@@ -1,0 +1,117 @@
+module extdeps.crm.hubspot_lifecycle
+
+import std.nat { Nat }
+import std.types { List, NonEmptyStr }
+
+import extdeps.securities { Securities }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.hubspot { hubspot }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "knowledge.hubspot.com/records/use-lifecycle-stages"
+  }
+}
+
+data hubspot_lifecycle_subject: Vendor<Securities> = hubspot
+
+data hubspot_lifecycle_provenance_note: String = "Vocabulary facts live-fetched 2026-08-01 from the HubSpot Knowledge Base page 'Use contact and company lifecycle stages' (the anchor): the eight default lifecycle stages in the vendor's own order, display labels and definition sentences verbatim. The stages apply to both contact and company records upstream (the page title says so). The cited page does NOT publish the internal API values for these stages, so no internal-value field exists on the row -- a plausible internal value from training data would be fabrication, and the field is minted only when a readable API-facing citation lands. These are vocabulary facts about the upstream product; no sales-process opinion lives in this module."
+
+type HubspotLifecycleStage
+  = HubspotSubscriber
+  | HubspotLead
+  | HubspotMarketingQualifiedLead
+  | HubspotSalesQualifiedLead
+  | HubspotOpportunity
+  | HubspotCustomer
+  | HubspotEvangelist
+  | HubspotOther
+
+type HubspotLifecycleStageRow {
+  stage: HubspotLifecycleStage
+  display_label: NonEmptyStr
+  definition_quote: NonEmptyStr
+  sort_order: Nat
+  citation: NonEmptyStr
+}
+
+data hubspot_stage_subscriber: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotSubscriber,
+  display_label: "Subscriber",
+  definition_quote: "a contact that has opted in to hear more from you by signing up for your blog or newsletter",
+  sort_order: 1,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+data hubspot_stage_lead: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotLead,
+  display_label: "Lead",
+  definition_quote: "a contact or company that has converted on your website or through some other interaction with your organization beyond a subscription sign up",
+  sort_order: 2,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+data hubspot_stage_marketing_qualified_lead: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotMarketingQualifiedLead,
+  display_label: "Marketing Qualified Lead",
+  definition_quote: "a contact or company that your marketing team has qualified as ready for the sales team",
+  sort_order: 3,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+data hubspot_stage_sales_qualified_lead: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotSalesQualifiedLead,
+  display_label: "Sales Qualified Lead",
+  definition_quote: "a contact or company that your sales team has qualified as a potential customer",
+  sort_order: 4,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+data hubspot_stage_opportunity: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotOpportunity,
+  display_label: "Opportunity",
+  definition_quote: "a contact or company that is associated with a deal",
+  sort_order: 5,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+data hubspot_stage_customer: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotCustomer,
+  display_label: "Customer",
+  definition_quote: "a contact or company with at least one closed deal",
+  sort_order: 6,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+data hubspot_stage_evangelist: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotEvangelist,
+  display_label: "Evangelist",
+  definition_quote: "a customer that has advocated for your organization",
+  sort_order: 7,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+data hubspot_stage_other: HubspotLifecycleStageRow = HubspotLifecycleStageRow {
+  stage: HubspotOther,
+  display_label: "Other",
+  definition_quote: "a contact or company that does not fit any of the above stages",
+  sort_order: 8,
+  citation: "knowledge.hubspot.com/records/use-lifecycle-stages",
+}
+
+fn hubspot_lifecycle_stage_catalog() -> List<HubspotLifecycleStageRow> {
+  [
+    hubspot_stage_subscriber,
+    hubspot_stage_lead,
+    hubspot_stage_marketing_qualified_lead,
+    hubspot_stage_sales_qualified_lead,
+    hubspot_stage_opportunity,
+    hubspot_stage_customer,
+    hubspot_stage_evangelist,
+    hubspot_stage_other,
+  ]
+}
