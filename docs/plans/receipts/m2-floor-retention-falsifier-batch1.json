@@ -1,0 +1,20 @@
+{
+  "main_sha": "45e7a8caa457da236b1e5e5cef8f3672a555672b",
+  "probe": "falsifier_whole_corpus",
+  "plan_function": "gunbc_falsifier_plan",
+  "batch": 1,
+  "selection": "SelectionPredictOnly",
+  "entries": 842,
+  "witness_rows": 5818,
+  "schedule_evictions": 2094,
+  "retention_unknown": 0,
+  "typed_cache_peak": 722,
+  "peak_rss_bytes": 6730485760,
+  "resolve_ms": 1512066,
+  "eval_ms": 84296,
+  "batch_outcome": "PASS",
+  "governor_target_width": 1,
+  "cgroup_memory_max_bytes": 33578549248,
+  "memory_high": "none",
+  "log": "docs/probes/m2_floor_retention_20260801T082411Z/falsifier_whole_corpus.log"
+}
