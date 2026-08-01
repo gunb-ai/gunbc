@@ -71,7 +71,7 @@ test fn reference_refusal_is_located() -> Bool {
 
 fn publish_admitted_witness(a: PublishAdmission) -> Bool {
   match a {
-    PublishAdmitted => true
+    PublishAdmitted { node: node, audience: audience } => true
     PublishAudienceNotGranted { node: node, audience: audience } => false
   }
 }
@@ -107,7 +107,7 @@ test fn publish_audience_refusal_is_located() -> Bool {
   match publish_to(visibility: private_node(), audience: world_audience()) {
     PublishAudienceNotGranted { node: node, audience: audience } =>
       node == private_node_position && audience == world_audience()
-    PublishAdmitted => false
+    PublishAdmitted { node: node, audience: audience } => false
   }
 }
 

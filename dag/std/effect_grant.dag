@@ -124,19 +124,46 @@ type CoveringGrant
   = CoveredBy { grant: Grant }
   | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: Frame }
 
+type GrantCoverage
+  = GrantCoveredBy { grant: Grant }
+  | GrantNotCovered { verb: Verb, target: NamespacePosition }
+
+fn grant_coverage_fold<T>(
+  coverage: GrantCoverage,
+  on_covered: fn(Grant) -> T,
+  on_not_covered: fn(Verb, NamespacePosition) -> T,
+) -> T {
+  match coverage {
+    GrantCoveredBy { grant: grant } => on_covered(grant)
+    GrantNotCovered { verb: verb, target: target } => on_not_covered(verb, target)
+  }
+}
+
 data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single authority: its root is the reach (via_root), its HandlerBinding is the transport-vs-replay selector at dispatch. admit_effect is DERIVED from this (the reach projection) so there is one walk authority, not two. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is the located refusal (mirrors EffectOutsideGrant), fail-closed."
 
-fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
+fn grant_coverage_go(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
   if grants.count() == 0 {
-    NoCoveringGrant { verb: verb, target: target, frame: frame }
+    GrantNotCovered { verb: verb, target: target }
   } else {
     let g = grants.first()
     if grant_covers(grant: g, verb: verb, target: target) {
-      CoveredBy { grant: g }
+      GrantCoveredBy { grant: g }
     } else {
-      covering_grant_go(grants: grants.skip(n: 1), verb: verb, target: target, frame: frame)
+      grant_coverage_go(grants: grants.skip(n: 1), verb: verb, target: target)
     }
   }
+}
+
+fn grant_coverage(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
+  grant_coverage_go(grants: grants, verb: verb, target: target)
+}
+
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
+  grant_coverage_fold(
+    coverage: grant_coverage(grants: grants, verb: verb, target: target),
+    on_covered: fn(grant) { CoveredBy { grant: grant } },
+    on_not_covered: fn(v, t) { NoCoveringGrant { verb: v, target: t, frame: frame } },
+  )
 }
 
 fn covering_grant(env: Envelope, verb: Verb, target: NamespacePosition) -> CoveringGrant {
