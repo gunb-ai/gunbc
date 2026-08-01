@@ -1,7 +1,8 @@
 module extdeps.automation.playwright
 
 import std.types { NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -16,6 +17,23 @@ data playwright_browser_provisioning_authority: ExternalAuthority = ExternalAuth
     scheme: Https
     locator: "playwright.dev/docs/browsers"
   }
+}
+
+type Playwright
+  = | PlaywrightAutomationProject
+
+data playwright: Playwright = PlaywrightAutomationProject
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.automation.playwright",
+      decl_name: "playwright",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.automation.playwright.extdeps_external_authority_anchor,
+  further_citations: [extdeps.automation.playwright.playwright_browser_provisioning_authority]
 }
 
 type PlaywrightVersion = NonEmptyStr where brand("PlaywrightVersion")

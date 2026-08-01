@@ -1,7 +1,8 @@
 module extdeps.browser.chromium
 
 import std.types { NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -16,6 +17,23 @@ data chromium_net_error_authority: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c/net/base/net_error_list.h"
   }
+}
+
+type Chromium
+  = | ChromiumProject
+
+data chromium: Chromium = ChromiumProject
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.browser.chromium",
+      decl_name: "chromium",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.browser.chromium.extdeps_external_authority_anchor,
+  further_citations: [extdeps.browser.chromium.chromium_net_error_authority]
 }
 
 type ChromiumVersion = NonEmptyStr where brand("ChromiumVersion")

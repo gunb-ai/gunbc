@@ -2,7 +2,8 @@ module extdeps.tools.wc
 
 import std.types { FilePath, String, NonEmptyStr }
 import std.measure { ByteSize, byte_size }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
 
@@ -17,6 +18,18 @@ data wc_cli_tool: CliTool = CliTool {
   name: "wc",
   min_version: none,
   installable_via: [SourceCoreutils],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.wc",
+      decl_name: "wc_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.wc.extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 service wc.ByteCount {
