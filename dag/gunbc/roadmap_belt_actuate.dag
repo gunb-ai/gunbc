@@ -102,7 +102,7 @@ import gunbc.worker_lifecycle {
   transcript_evidence_label,
   terminal_outcome_evidence_label,
 }
-import gunbc.host_layout { srv1_gunbc_repo_root }
+import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
@@ -2571,8 +2571,23 @@ fn belt_run_once_json() -> String {
 
 data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). Fail-closed exit mapping, idiomatic per srv3_boot_once_cd / host_build_cache_provision: a clean idempotent tick -> ExitSuccess (exit 0, silent). ANY problem surfaces the FULL JSON receipt loudly on stderr via exit_failure(reason): observe_refused (the live session set was unknowable, so no actions were taken) -> exit_failure(receipt); or one-or-more spawn_failed outcomes (a git-worktree/tmux/which failure) -> exit_failure(receipt). The receipt is the whole BeltTickResult projection, so the operator reads exactly which node failed at which step. A verify outcome that could not be WRITTEN flips the exit for the same reason a spawn failure does — the belt failed to produce a receipt it was obliged to produce — while a recorded refusal or a recorded red does NOT, because those are the receipt working: the belt's obligation is to produce a verdict, never to produce a green, and flipping the exit on a refusal would make the tick's own success depend on what the validation said. Teardown failures are surfaced in the receipt but do NOT flip the exit — a reap that could not complete is not a reason to fail the tick (the session is still tracked and retried next tick); only a spawn failure or an unknowable observation is a hard stop. For always-on observation of a SUCCESSFUL tick's receipt, belt_run_once_json is the string form (witness/inspection)."
 
+data belt_spawn_workdir_is_a_parameter_note: String = "THE SPAWN ROOT IS SUPPLIED BY WHOEVER INVOKES THE TICK, AND MAKING IT A LITERAL WAS THE DEFECT. belt_actuate_workdir is a projection of srv1_gunbc_repo_root, so a tick spawned `git worktree add` into PRODUCTION's tree no matter which deployment invoked it. That was invisible while nothing invoked the belt on a cadence; the moment a deployment owns a timer it stops being invisible, because the srv1-lab twin would install a unit that actuates production — the failure gunbc.live_deploy.spec's deployment_service_handler_note records for the serve handler, where every path-level check passes and the process simply operates as production.\\n\\nIt enters through the environment for the same reason the node id does (belt_dispatch_node_cli_note): `gunbc run --function` cannot pass an argument, there is no --arg flag. So the deployment's belt unit sets GUNBC_BELT_SPAWN_WORKDIR to ITS instance's repo root, and each instance actuates its own tree.\\n\\nFAIL-CLOSED ON THE CHANNEL, and the choice matters more here than for a node id: defaulting an absent variable to belt_actuate_workdir would restore the exact defect, silently, for every caller that forgot to set it — the absorbing fallback DESIGN §5 forbids, with production's tree as the thing absorbed. A missing OR empty value refuses, and shell.Env.Get returns Present-but-empty for an unset var wet, so both fold into one refusal.\\n\\nbelt_run_once and belt_run_once_json keep the literal default: they are inspection surfaces invoked by hand against production, not the scheduled entrypoint, and belt_run_once_in is the one implementation both spellings route through so the parameterized and default paths cannot drift."
+
 fn belt_run_once_cli() -> ProcessExit {
-  let t = belt_run_once()
+  match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
+    Absent =>
+      exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR not set — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+    Present { value: workdir } =>
+      if string_length(s: workdir) == 0 {
+        exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR is empty — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+      } else {
+        belt_run_once_cli_in(spawn_workdir: workdir)
+      }
+  }
+}
+
+fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
+  let t = belt_run_once_in(spawn_workdir: spawn_workdir)
   let receipt = serialize_json(v: belt_tick_result_json_value(t: t))
   if t.observe_refused {
     exit_failure(reason: receipt)

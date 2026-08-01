@@ -74,6 +74,7 @@ Type=oneshot
 User=briansrls
 Group=briansrls
 WorkingDirectory=/opt/gunbc/gunbc
+Environment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc
 ExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli
 GUNBC_BELT_SERVICE_EOF
 cat > "$_gunbc_stage/gunbc-roadmap-belt.timer" <<'GUNBC_BELT_TIMER_EOF'

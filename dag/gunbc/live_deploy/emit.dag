@@ -40,6 +40,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
@@ -171,6 +172,9 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
     doc_line_of(text: concat("User=", svc.service_user)),
     doc_line_of(text: concat("Group=", svc.service_user)),
     doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
+    doc_line_of(text: join([
+      "Environment=", belt_spawn_workdir_env_var as String, "=", svc.repo_root,
+    ], "")),
     doc_line_of(text: join([
       "ExecStart=", svc.serve_binary,
       " run --source-root dag --source-root src/v2",
