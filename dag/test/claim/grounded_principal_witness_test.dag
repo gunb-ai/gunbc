@@ -1,5 +1,7 @@
 module test.claim.grounded_principal_witness
 
+import std.access { Permit, Deny }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_runner_fiction_not_in_roster() -> Bool {
@@ -145,8 +147,8 @@ test fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
     access: ci_deploy_srv1_access,
     cmd: deploy_access_apt_get_privileged_command()
   ) {
-    Admitted { via_root: _ } => true
-    EffectOutsideGrant { verb: _, target: _, frame: _ } => false
+    Permit => true
+    Deny { refusal: _ } => false
   }
 }
 
@@ -160,8 +162,8 @@ test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
       }
     }
   ) {
-    Admitted { via_root: _ } => false
-    EffectOutsideGrant { verb: _, target: _, frame: _ } => true
+    Permit => false
+    Deny { refusal: _ } => true
   }
 }
 

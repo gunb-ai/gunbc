@@ -5,7 +5,8 @@ import std.access { AccessDecision, Permit, Deny, access_policy_refusal, access_
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_ladder { Frame, SharedStateFrame }
-import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect, EffectAdmission, Admitted, EffectOutsideGrant }
+import std.access { AccessDecision }
+import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect }
 import std.effects { ExecuteEffect }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -246,7 +247,7 @@ fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> HostEffect {
 fn deploy_access_grant_admits_probe(
   access: DeployAccess,
   cmd: PrivilegedCommand
-) -> EffectAdmission {
+) -> AccessDecision {
   let grant = posix_sudo_grant_to_effect_grant(g: cmd.grant)
   admit_effect(
     env: deploy_access_grant_envelope(access: access),

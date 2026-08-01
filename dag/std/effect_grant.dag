@@ -3,8 +3,15 @@ module std.effect_grant
 import std.types { Bool, String, List }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
+import std.access {
+  AccessDecision, AccessPolicy, AccessRequest,
+  Permit, Deny, AccessRefusal, AccessRefusalLocation, AccessActionNotGranted,
+}
+import std.authorization_profile {
+  EffectAuthorizationAction, EffectRequest, effect_access_request,
+}
 
-data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect now GATES real dispatch at the landed P-B enforcement seams (the emit-host build transport, the effect-io host write, the artifact-store scratch store, and the cli_run repo gate). Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
+data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect constructs std.authorization_profile.EffectRequest and delegates the only allow/deny decision to std.access.AccessPolicy; the former EffectAdmission sum is dissolved. Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
 
 type Verb = Read | Write | Execute
 
@@ -100,10 +107,6 @@ fn filesystem_position(path: List<String>) -> NamespacePosition {
   }
 }
 
-type EffectAdmission
-  = Admitted { via_root: NamespacePosition }
-  | EffectOutsideGrant { verb: Verb, target: NamespacePosition, frame: Frame }
-
 fn grant_verb(g: Grant) -> Verb {
   g.verb
 }
@@ -135,7 +138,7 @@ fn grant_coverage_fold<T>(
   }
 }
 
-data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single authority: its root is the reach (via_root), its HandlerBinding is the transport-vs-replay selector at dispatch. admit_effect is DERIVED from this (the reach projection) so there is one walk authority, not two. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is the located refusal (mirrors EffectOutsideGrant), fail-closed."
+data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single reach authority: its root is the reach and its HandlerBinding is the transport-vs-replay selector at dispatch. effect_grant_policy projects this relation into the one std.access decision kernel; it does not mint another admitted/refused carrier. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is typed coverage evidence consumed by that policy, fail-closed."
 
 fn grant_coverage_go(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
   if grants.count() == 0 {
@@ -166,11 +169,51 @@ fn covering_grant(env: Envelope, verb: Verb, target: NamespacePosition) -> Cover
   covering_grant_go(grants: env.grants, verb: verb, target: target, frame: env.frame)
 }
 
-fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> EffectAdmission {
-  match covering_grant(env: env, verb: verb, target: target) {
-    CoveredBy { grant: g } => Admitted { via_root: grant_root(g: g) }
-    NoCoveringGrant { verb: v, target: t, frame: f } => EffectOutsideGrant { verb: v, target: t, frame: f }
+fn effect_verb_label(verb: Verb) -> String {
+  match verb {
+    Read => "read"
+    Write => "write"
+    Execute => "execute"
   }
+}
+
+fn effect_target_label(target: NamespacePosition) -> String {
+  join(target.path, "/")
+}
+
+fn effect_grant_decide(
+  request: AccessRequest<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope>,
+) -> AccessDecision {
+  match covering_grant(
+    env: request.evidence.value,
+    verb: request.action.effect,
+    target: request.object,
+  ) {
+    CoveredBy { grant: grant } => Permit
+    NoCoveringGrant { verb: verb, target: target, frame: frame } => Deny {
+      refusal: AccessRefusal {
+        cause: AccessActionNotGranted { action: effect_verb_label(verb: verb) },
+        location: AccessRefusalLocation {
+          profile: "EffectRequest",
+          subject: frame.name,
+          action: effect_verb_label(verb: verb),
+          object: effect_target_label(target: target),
+        },
+      }
+    }
+  }
+}
+
+data effect_grant_policy: AccessPolicy<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope> = AccessPolicy { decide: effect_grant_decide }
+
+fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> AccessDecision {
+  effect_grant_policy.decide(effect_access_request(request: EffectRequest {
+    subject: env.frame,
+    effect: verb,
+    target: target,
+    context: env.frame,
+    evidence: env,
+  }))
 }
 
 fn parent_covers_grant(parent_grants: List<Grant>, child_grant: Grant) -> Bool {
