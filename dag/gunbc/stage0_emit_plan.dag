@@ -210,13 +210,17 @@ fn stage0_emission_plan_from_source(
   }
 }
 
-fn stage0_emission_plan() -> Stage0EmissionPlanOutcome {
-  match stage0_emission_source_identities_host() {
+fn stage0_emission_plan_from_supply(supply: Stage0SourceIdentitySupply) -> Stage0EmissionPlanOutcome {
+  match supply {
     Stage0SourceIdentitySupplyUnavailable { cause } => Stage0EmissionPlanRefused {
       cause: SourceIdentitySupplyUnavailableRefusal { cause: cause }
     }
     Stage0SourceIdentitySupplyAvailable { identities } => stage0_emission_plan_from_source(identities: identities)
   }
+}
+
+fn stage0_emission_plan() -> Stage0EmissionPlanOutcome {
+  stage0_emission_plan_from_supply(supply: stage0_emission_source_identities_host())
 }
 
 fn empty_stage0_string_list() -> List<String> {

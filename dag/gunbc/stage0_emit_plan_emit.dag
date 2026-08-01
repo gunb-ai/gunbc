@@ -2,6 +2,8 @@ module gunbc.stage0_emit_plan_emit
 
 import gunbc.stage0_emit_plan {
   Stage0EmissionPlanAccepted,
+  Stage0EmissionPlanOutcome,
+  Stage0EmissionPlanRow,
   Stage0EmissionPlanRefused,
   generated_stage0_files_from_plan_rows,
   generated_stage0_paths_from_plan_rows,
@@ -28,7 +30,7 @@ fn render_dag_string_list(xs: List<String>) -> String {
   concat("[\n", concat(render_dag_string_list_items(xs: xs), "\n]"))
 }
 
-fn render_stage0_emit_plan_generated_dag(rows: List<gunbc.stage0_emit_plan.Stage0EmissionPlanRow>) -> String {
+fn render_stage0_emit_plan_generated_dag(rows: List<Stage0EmissionPlanRow>) -> String {
   concat(
     "module gunbc.stage0_emit_plan_generated\n\n",
     "import std.types { List, String }\n\n",
@@ -42,11 +44,15 @@ fn render_stage0_emit_plan_generated_dag(rows: List<gunbc.stage0_emit_plan.Stage
   )
 }
 
-fn expected_stage0_emit_plan_generated_dag() -> Stage0EmitPlanGenerationOutcome {
-  match stage0_emission_plan() {
+fn stage0_emit_plan_generation_from_outcome(outcome: Stage0EmissionPlanOutcome) -> Stage0EmitPlanGenerationOutcome {
+  match outcome {
     Stage0EmissionPlanRefused { cause: _ } => Stage0EmitPlanGenerationRefused
     Stage0EmissionPlanAccepted { rows } => Stage0EmitPlanGenerated {
       content: render_stage0_emit_plan_generated_dag(rows: rows)
     }
   }
+}
+
+fn expected_stage0_emit_plan_generated_dag() -> Stage0EmitPlanGenerationOutcome {
+  stage0_emit_plan_generation_from_outcome(outcome: stage0_emission_plan())
 }
