@@ -1,6 +1,11 @@
 name: ci
 on:
   workflow_dispatch:
+    inputs:
+      expected_healed_sha:
+        description: Immutable healed commit required by an auto-heal revalidation run
+        required: false
+        type: string
   push:
     branches: [main]
   pull_request:
@@ -25,6 +30,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Isolate toolchain dirs
         run: |
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
@@ -123,6 +145,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
@@ -182,6 +221,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
@@ -247,6 +303,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:
@@ -272,6 +345,7 @@ jobs:
     if: github.event_name == 'pull_request'
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Checkout triggering branch head (heal pushes the regeneration back to this branch)
         uses: actions/checkout@v5
@@ -412,11 +486,25 @@ jobs:
           if [ -e "docs/plans/fleet-acceptance-criteria.md" ]; then git add "docs/plans/fleet-acceptance-criteria.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/fleet-acceptance-criteria.md"; fi
           if [ -e "docs/plans/structural-quadratic-wall-coverage-audit.md" ]; then git add "docs/plans/structural-quadratic-wall-coverage-audit.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/structural-quadratic-wall-coverage-audit.md"; fi
           if [ -e "docs/plans/ci-performance-tanking-evidence.md" ]; then git add "docs/plans/ci-performance-tanking-evidence.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-performance-tanking-evidence.md"; fi
+          PRIOR_HEAD=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
-            echo "chore-heal: no generated-artifact drift on this tree; nothing to commit"
+            echo "HealNoChange head=$PRIOR_HEAD"
+            exit 0
           else
+            CHANGED_ARTIFACTS=$(git diff --cached --name-only)
             git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            HEALED_HEAD=$(git rev-parse HEAD)
             git push origin HEAD:${{ github.head_ref || github.ref_name }}
-            echo "chore-heal: pushed regenerated generated artifacts to the triggering branch"
+            echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
+            ROOT=$(git rev-parse --show-toplevel)
+            if ! GUNBC_HEALED_HEAD="$HEALED_HEAD" GUNBC_HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/ci_heal_dispatch.dag --function main
+            then
+            echo "::error::HealDispatchRefused healed_head=$HEALED_HEAD cause=CreateWorkflowDispatchFailed" >&2
+            exit 1
+            fi
+            echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
+            exit 1
           fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         timeout-minutes: 5

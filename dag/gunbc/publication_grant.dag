@@ -1,0 +1,87 @@
+module gunbc.publication_grant
+
+import std.types { CommitSha, FilePath, List, String }
+import std.effect_grant {
+  Publish,
+  Envelope, Grant, RealTransport, LifecycleByConstruction,
+}
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.visibility_grant { world_audience }
+import gunbc.publication_cutover {
+  public_publication_root, public_publication_cutover_sha,
+}
+
+data publication_grant_note: String = "Stage-0 public-root publication roster (docs/plans/node-subtree-visibility-grants.md section 6, P-B public half). The one baseline row bulk-stamps every path already present at its exact cutover commit Publish World; it does not mint thousands of per-file declarations. Each file first added after that commit needs one explicit PublicFilePublishGrant row. Both baseline and file rows carry the existing std.effect_grant.Envelope, and the placement gate asks std.effect_grant.admit_effect(Publish, world_audience) -- this carrier never owns a second admission rule. PROVISIONAL CARRIER DISPOSITION (operator directive 2026-08-01): the Publish verb and audience-tree request shape consumed here are frozen provisional, not the permanent publication authorization ontology; this placement gate is expected to re-home its request onto a PublicationAdmissionRequest profile over the std.access AccessRequest/AccessPolicy/decision_meet kernel when the kernel/profile grounding pass lands. This roster remains only the declared-placement-policy input and introduces no identity, principal, role, or broader audience model. The public checkout is the only mounted root in this stage. Private-root and composed-graph closure are deliberately absent and arrive at P-C."
+
+type PublicRootPublishBaseline {
+  root: FilePath
+  cutover: CommitSha
+  envelope: Envelope
+}
+
+type PublicFilePublishGrant {
+  path: FilePath
+  envelope: Envelope
+}
+
+type PublicPublicationGrantRoster {
+  baseline: PublicRootPublishBaseline
+  file_grants: List<PublicFilePublishGrant>
+}
+
+fn publication_frame(name: String) -> Frame {
+  Frame { name: name, kind: SharedStateFrame }
+}
+
+fn publish_world_envelope(frame_name: String) -> Envelope {
+  Envelope {
+    frame: publication_frame(name: frame_name),
+    grants: [Grant {
+      verb: Publish,
+      root: world_audience(),
+      binding: RealTransport,
+      lifecycle: LifecycleByConstruction,
+    }],
+  }
+}
+
+data public_root_publish_baseline: PublicRootPublishBaseline = PublicRootPublishBaseline {
+  root: public_publication_root,
+  cutover: public_publication_cutover_sha,
+  envelope: publish_world_envelope(frame_name: "public-root-cutover"),
+}
+
+fn public_file_publish_grant(path: FilePath) -> PublicFilePublishGrant {
+  PublicFilePublishGrant {
+    path: path,
+    envelope: publish_world_envelope(frame_name: path),
+  }
+}
+
+data public_file_publish_grants: List<PublicFilePublishGrant> = [
+  public_file_publish_grant(path: "dag/extdeps/advertising/google_ads.dag"),
+  public_file_publish_grant(path: "dag/extdeps/advertising/meta_ads.dag"),
+  public_file_publish_grant(path: "dag/extdeps/advertising/types.dag"),
+  public_file_publish_grant(path: "dag/extdeps/crm/hubspot_lifecycle.dag"),
+  public_file_publish_grant(path: "dag/extdeps/crm/salesforce_opportunity.dag"),
+  public_file_publish_grant(path: "dag/extdeps/git/inspect.dag"),
+  public_file_publish_grant(path: "dag/extdeps/vendor/alphabet.dag"),
+  public_file_publish_grant(path: "dag/extdeps/vendor/hubspot.dag"),
+  public_file_publish_grant(path: "dag/extdeps/vendor/meta_platforms.dag"),
+  public_file_publish_grant(path: "dag/extdeps/vendor/salesforce.dag"),
+  public_file_publish_grant(path: "dag/gunbc/econ/acquisition.dag"),
+  public_file_publish_grant(path: "dag/gunbc/publication_cutover.dag"),
+  public_file_publish_grant(path: "dag/gunbc/publication_grant.dag"),
+  public_file_publish_grant(path: "dag/test/claim/acquisition_mechanism_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/advertising_interface_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/crm_stage_vocabulary_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/tailscale_serve_status_witness_test.dag"),
+  public_file_publish_grant(path: "dag/tools/publication_placement_gate.dag"),
+  public_file_publish_grant(path: "dag/test/claim/publication_placement_gate_test.dag"),
+  public_file_publish_grant(path: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag"),
+]
+
+data public_publication_grant_roster: PublicPublicationGrantRoster = PublicPublicationGrantRoster {
+  baseline: public_root_publish_baseline,
+  file_grants: public_file_publish_grants,
+}

@@ -1,7 +1,7 @@
 module test.claim.roadmap_authority
 
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
 import gunbc.roadmap_authority {
   roadmap_authority_for,
@@ -28,6 +28,9 @@ import gunbc.v1_deletion_plan {
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   ExecutionContract,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  CargoFmtValidation,
   WorkItemExecutionContract,
   dispatch_required_capabilities,
   execution_capability_label,
@@ -552,8 +555,17 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
     && !(accepted |> any(id => id == "2-scm-p1-proof-kernel"))
     && edge_exists(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine")
     && match bound_execution_contract_for(id: "2-scm-p1-proof-kernel") {
-      ExecutionContractUnspecified => true
-      ExecutionContract { validations: _, extra_capabilities: _ } => false
+      ExecutionContractUnspecified => false
+      ExecutionContract { validations, extra_capabilities } =>
+        count(validations) == 1
+          && count(extra_capabilities) == 0
+          && validations |> any(validation => match validation {
+            GunbcClaimValidation { entry, function } =>
+              (entry as String) == "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag"
+                && function == "witness_p1_proof_kernel_acceptance_contract_holds"
+            CargoTestValidation { filter: _ } => false
+            CargoFmtValidation => false
+          })
     }
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
