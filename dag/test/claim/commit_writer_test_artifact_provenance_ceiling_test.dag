@@ -5,6 +5,7 @@ import gunbc.commit_workflow {
   CommitWriterNormalTextObservation,
   CommitWriterAdmitted,
   CommitWriterRefused,
+  ConflictMarkerGrammar,
   admit_commit_writer
 }
 import extdeps.git.object_store {
@@ -45,6 +46,11 @@ test fn caller_minted_test_artifact_cannot_bypass_marker_refusal() -> Bool {
     path: ceiling_fixture_path(),
     text: "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> origin/main\n",
     provenance: caller_minted,
+    marker_grammar: ConflictMarkerGrammar {
+      begin: "<<<<<<<",
+      separator: "=======",
+      end: ">>>>>>>",
+    },
   }
   match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
     CommitWriterAdmitted { writer: _ } => false

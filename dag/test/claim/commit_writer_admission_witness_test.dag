@@ -13,6 +13,7 @@ import gunbc.commit_workflow {
   CommitWriterIndexStageOurs,
   CommitWriterIndexStageTheirs,
   commit_writer_unmerged_git_index_stages,
+  ConflictMarkerGrammar,
   CommitWriterPathObservation,
   CommitWriterAdmitted,
   CommitWriterRefused,
@@ -34,7 +35,7 @@ import extdeps.git.object_store {
 }
 import v2.std.artifact { Artifact, SourceFile, TestClaimArtifact }
 
-data commit_writer_admission_witness_note: String = "Executable reproduction for commit 218dea61248d. The WIP-prefixed dashboard autocommit merge wrote three literal conflict blocks into dag/gunbc/publication_grant.dag. The unmerged-index witness represents the pre-add Git population (Base/Ours/Theirs); the independent stage-0 witness carries all three blocks exactly as committed after add normalized the index. Both refuse with the GitPath and their own structural location. The clean controls cover every declared writer kind. Mutation controls prove this is the complete marker grammar rather than a raw token scan: isolated begin text and begin/end/separator order both admit, while the same complete blocks are exempt only when their staged Artifact provenance is TestClaimArtifact."
+data commit_writer_admission_witness_note: String = "Executable reproduction for commit 218dea61248d. The WIP-prefixed dashboard autocommit merge wrote three literal conflict blocks into dag/gunbc/publication_grant.dag. The unmerged-index witness represents the pre-add Git population (Base/Ours/Theirs); the independent stage-0 witness carries all three blocks exactly as committed after add normalized the index. Both refuse with the GitPath and their own structural location. The clean controls cover every declared writer kind. Mutation controls prove this is the complete marker grammar rather than a raw token scan: isolated begin text and begin/end/separator order both admit, while the same complete blocks are exempt only when their staged Artifact provenance is TestClaimArtifact. The non-default-width control supplies the effective per-path grammar produced by Git's conflict-marker-size attribute and proves a nine-character conflict block refuses rather than hiding behind the default seven-character grammar."
 
 fn publication_grant_path() -> GitPath {
   match git_decode_path_octets(octets: [
@@ -62,6 +63,22 @@ fn source_artifact() -> Artifact {
   }
 }
 
+fn default_conflict_marker_grammar() -> ConflictMarkerGrammar {
+  ConflictMarkerGrammar {
+    begin: "<<<<<<<",
+    separator: "=======",
+    end: ">>>>>>>",
+  }
+}
+
+fn nine_character_conflict_marker_grammar() -> ConflictMarkerGrammar {
+  ConflictMarkerGrammar {
+    begin: "<<<<<<<<<",
+    separator: "=========",
+    end: ">>>>>>>>>",
+  }
+}
+
 fn test_artifact() -> Artifact {
   Artifact {
     kind: TestClaimArtifact,
@@ -75,6 +92,7 @@ fn clean_observation() -> CommitWriterPathObservation {
     path: publication_grant_path(),
     text: "data public_file_publish_grants: List<PublicFilePublishGrant> = []\n",
     provenance: source_artifact(),
+    marker_grammar: default_conflict_marker_grammar(),
   }
 }
 
@@ -97,6 +115,7 @@ fn staged_marker_observation(provenance: Artifact) -> CommitWriterPathObservatio
     path: publication_grant_path(),
     text: staged_marker_218dea6_text(),
     provenance: provenance,
+    marker_grammar: default_conflict_marker_grammar(),
   }
 }
 
@@ -174,6 +193,7 @@ test fn isolated_marker_token_red_control_admits() -> Bool {
     path: publication_grant_path(),
     text: "a legitimate explanation can mention <<<<<<< HEAD without carrying a separator and end",
     provenance: source_artifact(),
+    marker_grammar: default_conflict_marker_grammar(),
   }
   match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
     CommitWriterAdmitted { writer: _ } => true
@@ -186,6 +206,7 @@ test fn out_of_order_marker_red_control_admits() -> Bool {
     path: publication_grant_path(),
     text: "<<<<<<< HEAD\nleft\n>>>>>>> origin/main\n=======\nright\n",
     provenance: source_artifact(),
+    marker_grammar: default_conflict_marker_grammar(),
   }
   match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
     CommitWriterAdmitted { writer: _ } => true
@@ -200,6 +221,19 @@ test fn typed_test_artifact_provenance_exempts_complete_fixture() -> Bool {
   ) {
     CommitWriterAdmitted { writer: _ } => true
     CommitWriterRefused { writer: _, refusals: _ } => false
+  }
+}
+
+test fn non_default_git_conflict_marker_size_refuses() -> Bool {
+  let observation = CommitWriterNormalTextObservation {
+    path: publication_grant_path(),
+    text: "<<<<<<<<< HEAD\nleft\n=========\nright\n>>>>>>>>> origin/main\n",
+    provenance: source_artifact(),
+    marker_grammar: nine_character_conflict_marker_grammar(),
+  }
+  match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
+    CommitWriterAdmitted { writer: _ } => false
+    CommitWriterRefused { writer: _, refusals } => count(refusals) == 1
   }
 }
 
