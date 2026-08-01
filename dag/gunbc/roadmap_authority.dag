@@ -812,13 +812,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-cost",
       path: "docs/plans/inner-cost-lanes-scoping.md",
       t: fields(
-        headline: "Build the shared entry graph once instead of once per entry",
-        boundary: "Hundreds of selected entries are prepared independently even though their dependency closures overlap almost entirely. The end state prepares the union once and serves each entry from it. This row opens with a measurement, not a change.",
-        displaced_cost: "One entry measured at 107 seconds over 528 modules. The name of this lane is misleading in a way that costs time: the step actually called resolve is 0.2 percent of that, while typechecking is 69 percent and loading is 36 percent, so anyone optimizing by the name will optimize the wrong thing.",
-        first_slice: "Measure how much of the per-entry cost is genuinely shared across the selected set, so the prize is known before any architecture moves. If the overlap is smaller than assumed, this row shrinks or closes on that receipt.",
-        red_control: "Acceptance is fleet memory rather than wall time: identical verdicts, and no material increase in peak, hard backoff, or throttle wall at the real slot budget. A dev container has a different memory regime, so a local timing win is not evidence for this row.",
+        headline: "Prove repeated typechecking exists before building a shared entry graph",
+        boundary: "BANKED: slice 1 merged as #7483 (b5191426479ddec5f9a80b60dc6264ca168b42b6) and eliminated loading as the union graph's target: the corpus-wide edge index is already paid once per shared index. Selected closures repeat membership heavily, but that does not prove their typecheck computations are reusable. NEXT: attribute typecheck work per entry against one shared environment before choosing any implementation; implementation remains gated on that receipt and on fleet memory.",
+        displaced_cost: "Across six entries sharing one index, typecheck_compute grew 2.86x while the fixed loading row grew only 1.08x; selected closures repeat membership 35.9–38.4x by module count and 43.0–49.3x by bytes. Those are candidate bounds, not a saving: no receipt yet converts repeated membership into repeated computation.",
+        first_slice: "Measure per-entry typecheck attribution against one shared environment and report repeated typecheck compute / total typecheck compute. Close or recut the row if that decision ratio does not justify an architecture move.",
+        red_control: "The attribution must reconcile on one exclusive basis and must not infer computation from closure membership. Any later implementation requires identical verdicts plus fleet receipts showing no material increase in peak, hard backoff, or throttle wall at the real slot budget; local timing is not acceptance.",
         out_of_scope: "No eviction redesign, and no forking of the entry-closure memo already in flight — sharing more while holding more live collides with retention, which is the axis the floor already fails on.",
-        handback: "The overlap measurement first; the architecture only if that measurement justifies it."
+        handback: "The repeated-typecheck attribution receipt; an implementation proposal only if that receipt and fleet memory justify one."
       )
     ),
     active_small(
@@ -996,13 +996,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/witness-realization-plan.md",
       t: fields(
-        headline: "Compute things once and reuse the result",
-        boundary: "Tests and the compiler share one store keyed by what went into the result, with a size limit and a clear answer when something is missing.",
-        displaced_cost: "Everything is currently recomputed from scratch on every run, and the one-off caches that exist do not help each other.",
-        first_slice: "Serve one family of tests from the shared store.",
+        headline: "Make exact prior results reusable across invocations",
+        boundary: "Iteration-speed and runtime infrastructure: exact input identity selects a bounded materialized result that can be served after restart without compiling. The v1 exit is one consumer of this kernel, not the kernel's parent purpose.",
+        displaced_cost: "Repeated invocations currently rebuild results that an exact identity could safely serve; product iteration, tests, and the v1 exit all pay that recomputation independently.",
+        first_slice: "Bind one exact-tree invocation hit to a restart-stable serve path and demonstrate that the hit serves without compiling.",
         red_control: "Wrong content, a missing entry, and a full store each refuse rather than quietly falling back to recomputing.",
-        out_of_scope: "No cache keyed on 'does a file exist', and no store that grows without limit.",
-        handback: "Cold-start, warm-reuse, corruption, and eviction all demonstrated."
+        out_of_scope: "No cache keyed on 'does a file exist', no store that grows without limit, and no framing that makes v1 deletion the infrastructure's sole purpose.",
+        handback: "Cold-start, exact-tree warm reuse across restart without compilation, corruption, and eviction all demonstrated."
       )
     ),
     active_large(
