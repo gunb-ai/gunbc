@@ -18,7 +18,7 @@ data git_commit_external_authority_anchor: ExternalAuthority = ExternalAuthority
   }
 }
 
-data git_publication_transport_note: String = "Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv on each operation is ONE transport handler, never the semantic model. Slice 1 is model + shadow only — consumers route through tools.publication_publisher before binding a transport handler in the live slice."
+data git_publication_transport_note: String = "Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv lives only in git.PublicationTransport service transport rows — no parallel free-fn argv surface. Slice 1 is model + shadow only — consumers route through tools.publication_publisher before binding a transport handler in the live slice."
 
 type GitRefUpdateSpec {
   local_ref: GitRef
@@ -33,24 +33,6 @@ type GitPushRequest {
 type GitCommitRequest {
   message: NonEmptyStr
   allow_empty: Bool
-}
-
-fn shape_git_push_refspec(update: GitRefUpdateSpec) -> String {
-  join([update.local_ref as String, ":", update.remote_ref as String], "")
-}
-
-fn shape_git_push_argv(request: GitPushRequest) -> List<String> {
-  fold(request.ref_updates, init: ["git", "push", request.remote as String], f: fn(argv, update) {
-    append(argv, items: [shape_git_push_refspec(update: update)])
-  })
-}
-
-fn shape_git_commit_argv(request: GitCommitRequest) -> List<String> {
-  if request.allow_empty {
-    ["git", "commit", "--allow-empty", "-m", request.message as String]
-  } else {
-    ["git", "commit", "-m", request.message as String]
-  }
 }
 
 service git.PublicationTransport {

@@ -22,7 +22,6 @@ type PublicationPolicy {
 type PublicationPolicyConstructionRefusal
   = UnknownTopLevelRoot { prefix: FilePath }
   | ConflictingSubtreeRule { prefix: FilePath }
-  | AmbiguousSubtreeRule { prefix: FilePath }
 
 type PublicationPolicyConstructionOutcome
   = PublicationPolicyAccepted { policy: PublicationPolicy }

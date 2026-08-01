@@ -4,10 +4,7 @@ import std.types { Bool, CommitSha, ContentHash, FilePath, GitRef, NonEmptyStr, 
 import extdeps.git.hooks { PrePushStdinRow, zero_sha }
 import extdeps.git.publication_transport {
   GitRefUpdateSpec,
-  shape_git_push_argv,
-  shape_git_commit_argv,
   GitPushRequest,
-  GitCommitRequest,
 }
 import gunbc.publication_policy {
   PublicationPolicy,
@@ -18,7 +15,6 @@ import gunbc.publication_policy {
   PublicationPolicyRefused,
   UnknownTopLevelRoot,
   ConflictingSubtreeRule,
-  AmbiguousSubtreeRule,
   admit_publication_policy,
   publication_policy_default_disposition,
   resolve_disposition_for_path,
@@ -117,14 +113,15 @@ test fn sole_publisher_posture_is_unique() -> Bool {
 }
 
 test fn git_push_shape_is_modeled_not_raw_argv() -> Bool {
-  let argv = shape_git_push_argv(request: GitPushRequest {
+  let update = GitRefUpdateSpec {
+    local_ref: "refs/heads/session/example" as GitRef,
+    remote_ref: "refs/heads/session/example" as GitRef,
+  }
+  let request = GitPushRequest {
     remote: "origin" as NonEmptyStr,
-    ref_updates: [GitRefUpdateSpec {
-      local_ref: "refs/heads/session/example" as GitRef,
-      remote_ref: "refs/heads/session/example" as GitRef,
-    }],
-  })
-  argv == ["git", "push", "origin", "refs/heads/session/example:refs/heads/session/example"]
+    ref_updates: [update],
+  }
+  request.remote == ("origin" as NonEmptyStr) && request.ref_updates == [update]
 }
 
 test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
@@ -141,7 +138,6 @@ test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
       match cause {
         UnknownTopLevelRoot { prefix: _ } => true
         ConflictingSubtreeRule { prefix: _ } => false
-        AmbiguousSubtreeRule { prefix: _ } => false
       }
   }
 }

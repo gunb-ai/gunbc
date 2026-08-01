@@ -10,7 +10,7 @@ Origin: priority-assessment directive section 8 — publication safety outranks 
 
 | artifact | role |
 |---|---|
-| `extdeps.git.publication_transport` | Modeled `GitPushRequest` / `GitCommitRequest`; argv is one transport handler |
+| `extdeps.git.publication_transport` | Modeled `GitPushRequest` / `GitCommitRequest`; argv only in `PublicationTransport` service rows |
 | `gunbc.publication_policy` | Subtree prefix → disposition; default `WithholdPrivate`; most-specific wins |
 | `gunbc.public_projection` | `PublicProjectionPlan` derived from policy over authored subjects |
 | `gunbc.publication_decision` | `PublicationDecisionReceipt` binds content identity, not pathnames |
@@ -20,7 +20,7 @@ Origin: priority-assessment directive section 8 — publication safety outranks 
 
 ## Authority model
 
-**WHO:** exactly one `sole_modeled_publisher_session` (`gunbc-publication-publisher`) may consume an admitted `PublicProjectionPlan`.
+**WHO:** exactly one `sole_modeled_publisher_session` (`gunbc-publication-publisher`) may consume an admitted `PublicProjectionPlan`. Slice 1 checks this by `ModeledSessionId` equality against a constant — validation, not construction; any caller can mint the same string. Live-slice acceptance bar: unforgeable publisher authority (construction wall), not a renamed brand.
 
 **WHAT:** `PublicationPolicy` derives inclusion from subtree rules — never `public_file_publish_grants` and never the unrestricted authored tree.
 
