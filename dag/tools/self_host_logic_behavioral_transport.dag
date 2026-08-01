@@ -5,6 +5,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
@@ -35,7 +36,7 @@ fn slb_cargo_toml(root: String) -> String {
 }
 
 fn slb_behavioral_receipt_holds() -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
 
   let scratch_src = shell.Mktemp.Dir()
