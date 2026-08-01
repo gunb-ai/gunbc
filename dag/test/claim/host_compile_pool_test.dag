@@ -8,7 +8,7 @@ fn observed_slice(name: String) -> CompilePoolObservation {
   CompilePoolSliceObserved {
     slice_unit: name as NonEmptyStr,
     limits: CgroupMemoryLimits {
-      memory_max: byte_size(0),
+      memory_max: byte_size(4096),
       memory_high: byte_size(0),
       memory_current: byte_size(0),
     },
@@ -114,4 +114,21 @@ test fn witness_undeclared_and_unprovisioned_are_distinguishable_in_the_receipt(
     && unprovisioned.pool_declared
     && (undeclared.pool_observed == false)
     && (unprovisioned.pool_observed == false)
+}
+
+data undersized_slice_doc: String = "The control review 46655 forced. The previous observed_slice fixture carried all-zero limits and witness_a_declared_and_observed_slice_is_ready passed anyway, because the derivation discarded the observed ceilings and reported the JOBSERVER-derived size as though it had been checked against the host. So the acceptance set was certifying the hole rather than catching it. The fixture now carries a ceiling that can hold the derived size, and this witness pins the case it used to admit: a slice observed strictly below the required pool refuses. Both halves are needed -- without the positive fixture the derivation could refuse everything and still pass, and without this one it could admit everything."
+
+test fn witness_a_slice_below_the_derived_size_is_not_ready() -> Bool {
+  readiness_for(
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
+    observed: CompilePoolSliceObserved {
+      slice_unit: gunbc_managed_compile_pool_slice,
+      limits: CgroupMemoryLimits {
+        memory_max: byte_size(512),
+        memory_high: byte_size(512),
+        memory_current: byte_size(0),
+      },
+    },
+  ) == false
 }
