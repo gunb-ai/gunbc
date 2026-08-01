@@ -147,6 +147,18 @@ to record that `.gitattributes` is now an emitted Git compatibility projection w
 non-default rows derive from repository artifact/storage/integration authorities, with no
 independently authored classification.
 
+**Interim status, stated so no two-instructions reading exists (operator sequencing):**
+the amendment rides with lane 2's *implementation* — deliberately not with this charter —
+because amending the row before the modeled policy lands would make the planning
+authority assert an emitted `.gitattributes` while the tree's file is still hand-authored:
+a false statement standing in an authority, the worse §3 state. Until lane 2 merges, the
+invert-hand-maintained row remains the live instruction for the tree as it exists, and
+this charter is the record of its *scheduled* supersession — it does not instruct anyone
+to invert `.gitattributes` today. The two documents therefore never disagree about any
+tree state: one describes the tree before lane 2, the other the ruling that lane 2
+realizes, and lane 2's change flips both atomically (amended `.dag` row + regenerated
+projection + the emitted `.gitattributes` itself).
+
 ## Lane 3 — derive stage0 output membership (gates the emitted-Rust extension)
 
 `generated_stage0_files` (dag/gunbc/stage0_emit_model.dag) is a handwritten filename
