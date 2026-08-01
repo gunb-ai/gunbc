@@ -1,7 +1,7 @@
 module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
-import std.types { CommitSha, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
+import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
@@ -54,6 +54,73 @@ type PullRequest {
   merged_at: Timestamp?
   draft: Bool
 }
+
+data pull_timing_observation_provenance_note: String = "One-time GitHub REST pull on 2026-08-01 under this module's existing GET-pull authority. Each row is the PullRequest.created_at and PullRequest.merged_at pair returned by github.Pulls.Get, normalized once from the wire Timestamp strings to Unix epoch milliseconds so arithmetic consumers do not pretend Timestamp is subtractable. The source URL remains on every row and fetched_on makes staleness inspectable. PullRequest stays the one wire-response authority; PullTimingObservation is its cited, immutable arithmetic projection, not a second endpoint or response model."
+
+type PullTimingObservation {
+  pull_number: Int
+  opened_at: EpochMs
+  merged_at: EpochMs
+  source_url: NonEmptyStr
+  fetched_on: NonEmptyStr
+}
+
+fn pull_timing_observation(
+  pull_number: Int,
+  opened_at: EpochMs,
+  merged_at: EpochMs,
+  source_url: NonEmptyStr,
+) -> PullTimingObservation {
+  PullTimingObservation {
+    pull_number: pull_number,
+    opened_at: opened_at,
+    merged_at: merged_at,
+    source_url: source_url,
+    fetched_on: "2026-08-01",
+  }
+}
+
+data gunbc_pr_7393_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7393,
+  opened_at: 1785284539000,
+  merged_at: 1785298702000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7393",
+)
+
+data gunbc_pr_7405_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7405,
+  opened_at: 1785294084000,
+  merged_at: 1785357921000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7405",
+)
+
+data gunbc_pr_7429_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7429,
+  opened_at: 1785356295000,
+  merged_at: 1785358865000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7429",
+)
+
+data gunbc_pr_7431_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7431,
+  opened_at: 1785358812000,
+  merged_at: 1785397720000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7431",
+)
+
+data gunbc_pr_7441_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7441,
+  opened_at: 1785362512000,
+  merged_at: 1785370233000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7441",
+)
+
+data gunbc_pr_7542_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7542,
+  opened_at: 1785552700000,
+  merged_at: 1785557096000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7542",
+)
 
 type IssueComment {
   id: Int
