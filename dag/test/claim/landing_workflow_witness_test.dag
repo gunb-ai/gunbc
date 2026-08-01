@@ -240,7 +240,7 @@ test fn every_failed_requirement_survives_as_its_typed_cause() -> Bool {
         && any(blockers, blocker => match blocker { RequestChangesBy { provider, at: _ } => (provider as String) == "codex" _ => false })
         && any(blockers, blocker => match blocker { DraftPullRequest { at: _ } => true _ => false })
         && any(blockers, blocker => match blocker { MergeConflict { at: _, mergeable } => mergeable == "DIRTY" _ => false })
-        && any(blockers, blocker => match blocker { ChecksFailing { at: _, state } => state == "failure" _ => false })
+        && any(blockers, blocker => match blocker { ChecksFailing { at: _, state, detail } => state == "failure" && detail == "failure" _ => false })
         && count(ev.review_artifacts) == 1
     _ => false
   }
@@ -354,9 +354,10 @@ test fn dashboard_summary_decoder_projects_authority_and_evidence_without_recoun
 data duplicate_ready_red_note: String = "A duplicate ready identity member is ambiguous JSON. Treating first-or-last as authoritative would permit input ordering to change admission, so the decoder must refuse it."
 
 test fn duplicate_dashboard_ready_member_refuses_fail_closed() -> Bool {
-  let duplicate = string_replace_all(s: dashboard_summary_fixture, pattern: "\"ready\":false", replacement: "\"ready\":false,\"ready\":true")
+  let duplicate = "{\"merge_criteria\":{\"ready\":false,\"ready\":true},\"reviews\":[]}"
   match landing_summary_decode(body: duplicate) {
-    LandingSummaryDecodeRefused { issues } => count(issues) > 0
+    LandingSummaryDecodeRefused { issues } => any(issues, issue =>
+      issue.path == "ready" && string_contains(s: issue.reason, pattern: "duplicated"))
     LandingSummaryRead { criteria: _, artifacts: _ } => false
   }
 }

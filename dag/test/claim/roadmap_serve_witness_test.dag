@@ -7,7 +7,7 @@ import gunbc.roadmap_serve {
   BeltDispatchHandler, DispatchAssetHandler,
   SandboxPageHandler, SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
-  LandingQueueHandler, LandingPrEvidenceHandler, LandingMergeHandler,
+  LandingQueueHandler, LandingPrEvidenceHandler, LandingMergeHandler, LandingReviewArtifactHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -76,6 +76,7 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/landing", want: LandingQueueHandler)
     && selects(method: GET, path: "/landing/pr/7573", want: LandingPrEvidenceHandler)
     && selects(method: POST, path: "/landing/merge/7573", want: LandingMergeHandler)
+    && selects(method: GET, path: "/landing/review/45934", want: LandingReviewArtifactHandler)
 }
 
 data landing_route_red_note: String = "The merge route is POST-only and its PR number is bound by the shared PathTemplate matcher. A GET must fold to 405, preventing links or crawlers from actuating a merge."

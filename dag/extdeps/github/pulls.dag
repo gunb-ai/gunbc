@@ -78,7 +78,7 @@ service github.CliPulls {
         "gh", "pr", "list",
         "--repo", "{repo}",
         "--state", "open",
-        "--limit", "100",
+        "--limit", "1000",
         "--json", "number,title,url,headRefName,headRefOid,isDraft,state",
       ]
     }

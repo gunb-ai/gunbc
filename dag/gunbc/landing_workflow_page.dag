@@ -13,7 +13,7 @@ import gunbc.landing_workflow_runtime {
   landing_blocker_label,
 }
 
-data landing_dashboard_page_note: String = "The landing dashboard is a thin HTML projection over LandingQueueObservation. Its form is only an affordance: POST /landing/merge/{number} repeats fresh server-side admission and exact-head actuation, so hiding or forging a button cannot widen authority. Evidence links resolve through the dedicated detail endpoint and the review/check URLs carried by the observation."
+data landing_dashboard_page_note: String = "The landing dashboard is a thin HTML projection over LandingQueueObservation. Its form is only an affordance: POST /landing/merge/\{number\} repeats fresh server-side admission and exact-head actuation, so hiding or forging a button cannot widen authority. Evidence links resolve through the dedicated detail endpoint and the review/check URLs carried by the observation."
 
 fn landing_evidence_href(number: Int) -> String {
   concat("/landing/pr/", to_string(number))

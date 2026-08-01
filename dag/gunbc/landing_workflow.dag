@@ -82,8 +82,8 @@ type LandingBlocker
   | DraftPullRequest { at: LandingBlockerLocation }
   | MergeConflict { at: LandingBlockerLocation, mergeable: String }
   | MergeabilityUnknown { at: LandingBlockerLocation, mergeable: String }
-  | ChecksPending { at: LandingBlockerLocation }
-  | ChecksFailing { at: LandingBlockerLocation, state: String }
+  | ChecksPending { at: LandingBlockerLocation, detail: String }
+  | ChecksFailing { at: LandingBlockerLocation, state: String, detail: String }
   | RequirementBlockedUnclassified { at: LandingBlockerLocation, actual: String }
 
 type LandingEvidenceProjection {
@@ -219,9 +219,9 @@ fn landing_failed_requirement_blockers(
         }
       DashboardChecksRequirement =>
         if criteria.checks_state == "pending" || criteria.checks_state == "queued" || criteria.checks_state == "in_progress" {
-          [ChecksPending { at: at }]
+          [ChecksPending { at: at, detail: requirement.actual }]
         } else {
-          [ChecksFailing { at: at, state: criteria.checks_state }]
+          [ChecksFailing { at: at, state: criteria.checks_state, detail: requirement.actual }]
         }
       DashboardUnclassifiedRequirement { key: _ } =>
         [RequirementBlockedUnclassified { at: at, actual: requirement.actual }]

@@ -50,6 +50,10 @@ type LandingQueueObservation
   = LandingQueueObserved { projection: LandingQueueProjection }
   | LandingQueueObserveRefused { reason: String }
 
+type LandingReviewArtifactObservation
+  = LandingReviewArtifactObserved { body: String }
+  | LandingReviewArtifactObserveRefused { reason: String }
+
 fn landing_dashboard_base_url() -> String? {
   match shell.Env.Get(name: landing_dashboard_url_env).value {
     Present { value } => if value == "" { none } else { Present { value: value } }
@@ -91,10 +95,46 @@ fn landing_decision_observe(base: String, pr: LandingPullRequestProjection) -> L
       LandingSummaryRead { criteria, artifacts } => project_landing_decision(
         pr: pr,
         criteria: criteria,
-        review_artifacts: artifacts,
+        review_artifacts: map(artifacts, artifact => LandingReviewArtifactProjection {
+          artifact_id: artifact.artifact_id,
+          provider: artifact.provider,
+          reviewed_head: artifact.reviewed_head,
+          verdict: artifact.verdict,
+          artifact_url: concat("/landing/review/", to_string(artifact.artifact_id)) as NonEmptyStr,
+        }),
         actor_authority: srv1_tailnet_operator_authority,
       )
     }
+  }
+}
+
+fn landing_review_artifact_observe(artifact_id: Int) -> LandingReviewArtifactObservation {
+  match landing_dashboard_base_url() {
+    Absent => LandingReviewArtifactObserveRefused { reason: "DASHBOARD_URL is absent or empty" }
+    Present { value: base } => {
+      let got = session_dashboard.Api.Get(url: join([
+        base, "/api/reviews/", to_string(artifact_id), "/artifacts/stdout.log",
+      ], "") as NonEmptyStr)
+      if got.success {
+        LandingReviewArtifactObserved { body: got.body }
+      } else {
+        LandingReviewArtifactObserveRefused { reason: concat("dashboard review artifact GET failed: ", got.stderr) }
+      }
+    }
+  }
+}
+
+fn landing_review_artifact_http_status(o: LandingReviewArtifactObservation) -> HttpStatus {
+  match o {
+    LandingReviewArtifactObserved { body: _ } => 200
+    LandingReviewArtifactObserveRefused { reason: _ } => 502
+  }
+}
+
+fn landing_review_artifact_body(o: LandingReviewArtifactObservation) -> String {
+  match o {
+    LandingReviewArtifactObserved { body } => body
+    LandingReviewArtifactObserveRefused { reason } => reason
   }
 }
 
@@ -271,8 +311,8 @@ fn landing_blocker_label(blocker: LandingBlocker) -> String {
     DraftPullRequest { at: _ } => "draft"
     MergeConflict { at: _, mergeable } => concat("conflict ", mergeable)
     MergeabilityUnknown { at: _, mergeable } => concat("mergeability-unknown ", mergeable)
-    ChecksPending { at: _ } => "checks-pending"
-    ChecksFailing { at: _, state } => concat("checks-failing ", state)
+    ChecksPending { at: _, detail } => concat("checks-pending ", detail)
+    ChecksFailing { at: _, state, detail } => join(["checks-failing ", state, " ", detail], "")
     RequirementBlockedUnclassified { at: _, actual } => concat("unclassified-requirement ", actual)
   }
 }
@@ -289,8 +329,8 @@ fn landing_blocker_json(blocker: LandingBlocker) -> JsonValue {
     DraftPullRequest { at } => at
     MergeConflict { at, mergeable: _ } => at
     MergeabilityUnknown { at, mergeable: _ } => at
-    ChecksPending { at } => at
-    ChecksFailing { at, state: _ } => at
+    ChecksPending { at, detail: _ } => at
+    ChecksFailing { at, state: _, detail: _ } => at
     RequirementBlockedUnclassified { at, actual: _ } => at
   }
   json_object(members: [
@@ -308,6 +348,7 @@ fn landing_admission_json(a: LandingMergeAdmission) -> JsonValue {
     json_kv(key: "head_sha", value: json_string(s: a.head_sha as String)),
     json_kv(key: "criteria", value: landing_criteria_json(c: a.criteria)),
     json_kv(key: "evidence", value: landing_evidence_json(e: a.evidence)),
+    json_kv(key: "evidence_url", value: json_string(s: concat("/landing/pr/", to_string(a.pull_request.pr_number)))),
     json_kv(key: "merge_action", value: json_string(s: concat("/landing/merge/", to_string(a.pull_request.pr_number)))),
   ])
 }

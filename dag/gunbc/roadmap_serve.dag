@@ -82,6 +82,7 @@ import gunbc.landing_workflow_runtime {
   LandingQueueObservation,
   landing_queue_observe, landing_queue_json, landing_queue_http_status,
   landing_pr_detail_json, landing_pr_detail_http_status,
+  landing_review_artifact_observe, landing_review_artifact_http_status, landing_review_artifact_body,
   landing_merge_pr, landing_merge_result_json, landing_merge_result_http_status,
 }
 import gunbc.landing_workflow_page { landing_queue_page }
@@ -119,6 +120,7 @@ type RoadmapServeHandler
   | LandingQueueHandler
   | LandingPrEvidenceHandler
   | LandingMergeHandler
+  | LandingReviewArtifactHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -154,6 +156,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/landing", handler: LandingQueueHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/landing/pr/\{number\}", handler: LandingPrEvidenceHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/landing/merge/\{number\}", handler: LandingMergeHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/landing/review/\{artifact_id\}", handler: LandingReviewArtifactHandler },
   ]
 }
 
@@ -411,6 +414,20 @@ fn roadmap_serve_invoke_for_instance(
             status: landing_merge_result_http_status(r: result),
             content_type: application_json_utf8,
             body: landing_merge_result_json(r: result),
+          )
+        }
+      }
+    }
+    LandingReviewArtifactHandler => {
+      let raw_id = path_param_value(params: params, name: "artifact_id")
+      match parse_int(s: raw_id) {
+        Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "landing review evidence requires an integer artifact id\n")
+        Present { value: artifact_id } => {
+          let observed = landing_review_artifact_observe(artifact_id: artifact_id)
+          serve_text_response(
+            status: landing_review_artifact_http_status(o: observed),
+            content_type: text_plain_utf8,
+            body: landing_review_artifact_body(o: observed),
           )
         }
       }
