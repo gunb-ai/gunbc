@@ -4,6 +4,7 @@ import std.types { String, List, Bool, Int }
 import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.execution_mechanism {
+  ExecutionMechanism,
   LocalProcess,
   LocalShellScript,
   RemoteShellCommand,
@@ -147,26 +148,52 @@ test fn operation_argv_corpus_outside_legacy_vocabulary_is_the_majority() -> Boo
   t.outside_legacy >= 96 && (t.outside_legacy + t.outside_legacy) > t.rows
 }
 
-fn operation_mechanism_is(path: String, service: String, operation: String, expected: String) -> Bool {
+fn operation_mechanism_row_matches(
+  row: ShellTransportOperationRow,
+  path: String,
+  service: String,
+  operation: String,
+  expected: ExecutionMechanism,
+) -> Bool {
+  if row.at.path == path && row.at.service == service && row.at.operation == operation {
+    match shell_transport_operation_mechanism(row: row) {
+      ShellTransportMechanismClassified { mechanism: mechanism } => mechanism == expected
+      ShellTransportMechanismRefused { at: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+fn operation_mechanism_is(
+  path: String,
+  service: String,
+  operation: String,
+  expected: ExecutionMechanism,
+) -> Bool {
   any(
     xs: shell_transport_operation_rows(),
     predicate: fn(row) {
-      if row.at.path == path && row.at.service == service && row.at.operation == operation {
-        match shell_transport_operation_mechanism(row: row) {
-          ShellTransportMechanismClassified { mechanism: mechanism } => match mechanism {
-            LocalProcess => expected == "LocalProcess"
-            LocalShellScript => expected == "LocalShellScript"
-            RemoteShellCommand => expected == "RemoteShellCommand"
-            RemoteStructuredExecution => expected == "RemoteStructuredExecution"
-            ForeignShellArtifact => expected == "ForeignShellArtifact"
-          }
-          ShellTransportMechanismRefused { at: _ } => false
-        }
-      } else {
-        false
-      }
+      operation_mechanism_row_matches(
+        row: row,
+        path: path,
+        service: service,
+        operation: operation,
+        expected: expected
+      )
     }
   )
+}
+
+fn operation_mechanism_row_is_refused(row: ShellTransportOperationRow) -> Bool {
+  match shell_transport_operation_mechanism(row: row) {
+    ShellTransportMechanismClassified { mechanism: _ } => false
+    ShellTransportMechanismRefused { at: _ } => true
+  }
+}
+
+fn operation_mechanism_row_is_fixture(row: ShellTransportOperationRow) -> Bool {
+  row.at.path == operation_argv_fixture_path
 }
 
 test fn operation_execution_mechanism_RED_direct_exec_is_not_shell() -> Bool {
@@ -174,7 +201,7 @@ test fn operation_execution_mechanism_RED_direct_exec_is_not_shell() -> Bool {
     path: "dag/extdeps/git/git.dag",
     service: "git.Core",
     operation: "CurrentBranch",
-    expected: "LocalProcess"
+    expected: LocalProcess
   )
 }
 
@@ -183,7 +210,7 @@ test fn operation_execution_mechanism_RED_local_interpreter_is_script() -> Bool 
     path: "dag/extdeps/shell/exec.dag",
     service: "shell.Exec",
     operation: "Run",
-    expected: "LocalShellScript"
+    expected: LocalShellScript
   )
 }
 
@@ -192,7 +219,7 @@ test fn operation_execution_mechanism_RED_openssh_is_remote_shell() -> Bool {
     path: "dag/extdeps/ssh/session.dag",
     service: "ssh.Session",
     operation: "ExecArgv",
-    expected: "RemoteShellCommand"
+    expected: RemoteShellCommand
   )
 }
 
@@ -220,12 +247,9 @@ test fn operation_execution_mechanism_future_structured_and_foreign_artifact_sta
 
 test fn operation_execution_mechanism_new_ambiguous_site_wall_holds() -> Bool {
   let refused = shell_transport_operation_rows()
-    |> filter(row => match shell_transport_operation_mechanism(row: row) {
-      ShellTransportMechanismClassified { mechanism: _ } => false
-      ShellTransportMechanismRefused { at: _ } => true
-    })
+    |> filter(row => operation_mechanism_row_is_refused(row: row))
   length(xs: refused) == 1
-    && any(xs: refused, predicate: fn(row) { row.at.path == operation_argv_fixture_path })
+    && any(xs: refused, predicate: fn(row) { operation_mechanism_row_is_fixture(row: row) })
 }
 
 test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool {
