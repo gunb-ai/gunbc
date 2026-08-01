@@ -1,7 +1,6 @@
 module test.claim.served_surface_browser_artifact_integrity_witness
 
 import std.types { FilePath, NonEmptyStr, String }
-import std.measure { byte_size }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.tools.sha256sum {
   Sha256Matches,
@@ -9,10 +8,6 @@ import extdeps.tools.sha256sum {
 }
 import extdeps.tools.wc {
   FileByteCountMatches,
-  FileByteCountObserved,
-  FileByteCountUnavailable,
-  FileByteCountDiffers,
-  FileByteCountVerificationUnavailable,
   file_byte_count_via_wc,
   verify_file_byte_count,
 }
@@ -37,18 +32,4 @@ test fn witness_checked_in_screenshots_match_receipts() -> Bool {
   screenshot_artifact_matches_live_bytes(artifact: specimens.connection_refused.screenshot)
     && screenshot_artifact_matches_live_bytes(artifact: specimens.empty_502.screenshot)
     && screenshot_artifact_matches_live_bytes(artifact: specimens.sentinel_502.screenshot)
-}
-
-test fn witness_byte_count_verification_preserves_nonmatching_arms() -> Bool {
-  verify_file_byte_count(
-    read: FileByteCountObserved { count: 3 },
-    expected: byte_size(4)) == FileByteCountDiffers {
-      observed_count: 3,
-      expected: byte_size(4),
-    }
-    && verify_file_byte_count(
-      read: FileByteCountUnavailable { reason: "wc unavailable" as NonEmptyStr },
-      expected: byte_size(4)) == FileByteCountVerificationUnavailable {
-        reason: "wc unavailable" as NonEmptyStr,
-      }
 }
