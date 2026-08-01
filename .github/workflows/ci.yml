@@ -424,6 +424,7 @@ jobs:
           if [ -e ".github/workflows/ci.yml" ]; then git add ".github/workflows/ci.yml"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .github/workflows/ci.yml"; fi
           if [ -e ".github/workflows/falsifier.yml" ]; then git add ".github/workflows/falsifier.yml"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .github/workflows/falsifier.yml"; fi
           if [ -e ".gitignore" ]; then git add ".gitignore"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitignore"; fi
+          if [ -e ".gitattributes" ]; then git add ".gitattributes"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitattributes"; fi
           if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
           if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
           if [ -e ".githooks/pre-push" ]; then git add ".githooks/pre-push"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-push"; fi
