@@ -1,11 +1,19 @@
 module gunbc.ci_materialization_gate
 
+import std.materialization_ladder { verdict_is_exempt_fresh }
+import v2.workflow.ci_heal_revalidation_preflight_emit {
+  ci_heal_revalidation_preflight_script,
+}
 
-data ci_materialization_gate_note: String = "The live binding: the ladder run over the ACTUAL emitted workflow (gunbc.ci_workflow data row), never a fixture copy of it. Demands, exemption identities, and fresh-effect scripts are all resolved against the same authority the ci.yml is emitted from, so a workflow edit that introduces cross-job duplication without a covering provider reds the enrolled witness in the same CI run that would have paid the duplication. Post-fold reality (ci_regen job folded into the ci job 2026-07-11): the workflow now has a SINGLE building job, so the release build is one demand -> AcceptedSingleRecompute (state 5: a single undeclared demand needs no provider, a cache there is dead weight), and the ladder holds WITH AND WITHOUT the sccache provider. The cross-job duplication the ladder refutes is now carried as the discriminating RED control by the synthetic placement_grain witness (two independently-building jobs -> AuthoredDuplication/RefusedNoProvider), which the live witness's demand==1 / discharged==0 pins guard against reintroducing. Fresh effects: the floor cgroup-peak measurement scripts (a memory.peak read is a new fact each run, never memoizable — the rust_tests cgroup-peak measurement was the prior subject; it retired with the rust_tests job 2026-07-11, and the ci-job floor peak pre/post reads are the same measurement category) and every deploy stage script (a deploy is the effect being the use); all resolved by projection, not copied strings."
+data ci_materialization_gate_note: String = "The live binding: the ladder run over the ACTUAL emitted workflow (gunbc.ci_workflow data row), never a fixture copy of it. Demands, exemption identities, and fresh-effect scripts are all resolved against the same authority the ci.yml is emitted from, so a workflow edit that introduces cross-job duplication without a covering provider reds the enrolled witness in the same CI run that would have paid the duplication. Post-fold reality (ci_regen job folded into the ci job 2026-07-11): the workflow now has a SINGLE building job, so the release build is one demand -> AcceptedSingleRecompute (state 5: a single undeclared demand needs no provider, a cache there is dead weight), and the ladder holds WITH AND WITHOUT the sccache provider. The cross-job duplication the ladder refutes is now carried as the discriminating RED control by the synthetic placement_grain witness (two independently-building jobs -> AuthoredDuplication/RefusedNoProvider), which the live witness's demand==1 / discharged==0 pins guard against reintroducing. Fresh effects: the floor cgroup-peak measurement scripts (a memory.peak read is a new fact each run, never memoizable — the rust_tests cgroup-peak measurement was the prior subject; it retired with the rust_tests job 2026-07-11, and the ci-job floor peak pre/post reads are the same measurement category), every deploy stage script (a deploy is the effect being the use), and the heal-revalidation exact-head preflight (git HEAD is a new checkout fact in each isolated job and must be observed there, never memoized or discharged from another job); all resolved by projection, not copied strings."
 
 fn ci_fresh_effect_scripts() -> List<String> {
   concat(
-    [step_run_script(s: ci_floor_peak_pre_step()), step_run_script(s: ci_floor_peak_post_step())],
+    [
+      step_run_script(s: ci_floor_peak_pre_step()),
+      step_run_script(s: ci_floor_peak_post_step()),
+      ci_heal_revalidation_preflight_script(),
+    ],
     map(gunbc_ci_deploy_stages, s => gunbc_ci_deploy_invoke(stage: s))
   )
 }
@@ -129,6 +137,17 @@ fn ci_exempt_fresh_verdict_count() -> Int {
   ci_materialization_verdicts()
     |> filter(v => ci_verdict_is_exempt_fresh_arm(v: v))
     |> count()
+}
+
+fn ci_heal_revalidation_preflight_is_fresh_effect() -> Bool {
+  let identity = ci_heal_revalidation_preflight_script()
+  let demand_count = ci_materialization_demands()
+    |> filter(d => d.identity == identity)
+    |> count()
+  let verdict_count = ci_materialization_verdicts()
+    |> filter(v => verdict_is_exempt_fresh(v: v, identity: identity))
+    |> count()
+  demand_count > 1 && verdict_count == 1
 }
 
 fn ci_uses_steps_skipped_count() -> Int {
