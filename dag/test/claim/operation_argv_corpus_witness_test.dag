@@ -5,19 +5,27 @@ import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.execution_mechanism {
   ExecutionMechanism,
-  ExecutionMechanismDerived,
-  ExecutionMechanismRefusedInvocationShape,
-  ExecutionMechanismRefusedWrapper,
   LocalProcess,
   LocalShellScript,
   RemoteShellCommand,
   RemoteStructuredExecution,
   ForeignShellArtifact,
+}
+import extdeps.execution.mechanism {
+  ExecutionMechanismDerived,
+  ExecutionMechanismRefusedInvocationShape,
+  ExecutionMechanismRefusedWrapper,
   SendStructuredInvocationToRemoteReceiver,
   EmitShellTextForForeignExecutor,
   SpawnExecutable,
   SpawnInvocation,
   execution_mechanism_from_evidence,
+  ShellTransportMechanismClassified,
+  ShellTransportMechanismRefused,
+  ExecutableNotLiteral,
+  ExecutionInvocationShapeUnmodeled,
+  ExecutionWrapperGrammarUnmodeled,
+  shell_transport_operation_mechanism,
 }
 import v2.std.operation_argv {
   ArgvMaterialization,
@@ -33,12 +41,6 @@ import v2.std.operation_argv {
   operation_argv_classify,
   operation_argv_refusal_label,
   operation_argv_row_bindings,
-  ShellTransportMechanismClassified,
-  ShellTransportMechanismRefused,
-  ExecutableNotLiteral,
-  ExecutionInvocationShapeUnmodeled,
-  ExecutionWrapperGrammarUnmodeled,
-  shell_transport_operation_mechanism,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

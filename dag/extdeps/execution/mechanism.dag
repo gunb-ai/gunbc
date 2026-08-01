@@ -1,0 +1,194 @@
+module extdeps.execution.mechanism
+
+import std.types { String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.execution_mechanism {
+  ExecutionMechanism,
+  LocalProcess,
+  LocalShellScript,
+  RemoteShellCommand,
+  RemoteStructuredExecution,
+  ForeignShellArtifact,
+}
+import v2.std.operation_argv {
+  OperationRef,
+  ShellTransportOperationRow,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_row_bindings,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/std/process/struct.Command.html"
+  }
+}
+
+data openssh_cli_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/ssh"
+  }
+}
+
+data execution_wrapper_refusal_note: String = "A known exec wrapper is not classified from argv[0]. env, sudo, nohup, timeout, nice, setsid, stdbuf, and xargs select the effective executable through their own option grammar; `env bash -s` is a LocalShellScript while `env git status` is a LocalProcess even though both have the same argv[0]. Looking through without modeling that grammar would recreate argv anemia inside the classifier, so wrappers refuse until their invocation shape is grounded. The executed live census pins the current TEN wrapper rows as counted residue — eight env and two sudo. An earlier source scan counted eight total because it missed two multiline env argv declarations; the derived census, not that grep, is the authority."
+
+data openssh_invocation_shape_note: String = "The executable name `ssh` is not enough evidence for RemoteShellCommand: OpenSSH also has local inspection and non-shell modes such as -G, -Q, -V, -N, -O, -s, and -W. The bounded decoder below admits only the invocation grammar exercised by the enrolled corpus: zero or more `-o VALUE` option pairs followed by a non-option destination. Every other leading option and a missing destination refuse as ExecutionMechanismRefusedInvocationShape. This is deliberately a conservative partial decoder, not a nickname for the full OpenSSH CLI grammar; a consumer that needs another mode must ground that mode before the classifier can admit it."
+
+type ExecutionMechanismEvidence
+  = SpawnExecutable { executable: String }
+  | SpawnInvocation { executable: String, argv: List<String> }
+  | SendStructuredInvocationToRemoteReceiver
+  | EmitShellTextForForeignExecutor
+
+type ExecutionMechanismDerivation
+  = ExecutionMechanismDerived { mechanism: ExecutionMechanism }
+  | ExecutionMechanismRefusedWrapper { executable: String }
+  | ExecutionMechanismRefusedInvocationShape { executable: String }
+
+type ShellTransportMechanismClassification
+  = ShellTransportMechanismClassified { mechanism: ExecutionMechanism }
+  | ShellTransportMechanismRefused {
+      at: OperationRef,
+      cause: ShellTransportMechanismRefusalCause,
+    }
+
+type ShellTransportMechanismRefusalCause
+  = ExecutableNotLiteral
+  | ExecutionWrapperGrammarUnmodeled { executable: String }
+  | ExecutionInvocationShapeUnmodeled { executable: String }
+
+data shell_transport_mechanism_classification_note: String = "The legacy spelling gets no sixth Unknown mechanism. A literal executable is the construction fact dispatch_shell actually consumes and classifies through this grounded realization handler. A bindable or otherwise non-literal argv[0] is refused and located instead; the executable-position construction wall already makes that shape invalid. A known exec wrapper refuses separately because its effective executable depends on the wrapper's unmodeled option grammar. The live-tree census pins the sole planted executable-position fixture and the ten current wrapper rows independently, so either ambiguity class can shrink but any new ambiguous transport-shell site turns the executed witness red."
+
+data shell_transport_mechanism_enrollment_scope_note: String = "ENROLLMENT DENOMINATOR: this classification wall covers operations declared with `transport shell`, because shell_transport_operation_rows derives exactly that population from parsed declarations under dag/ and src/v2/. It does NOT claim every argv carrier is classified. extdeps.exec.command.ArgvCommand, gunbc.host_effect.ThinInvocation, and the bare List<String> accepted by gunbc.typed_argv_exec are outside this census today; an executable reaching execution through any of them is neither classified nor refused by this wall. The concrete live specimen is gunbc.runner_host_deploy.runner_host_installer_command_argv (ArgvCommand beginning with env); a similarly shaped argv in test.claim.roadmap_dispatch_actuator_witness is fixture-only. This gap dissolves consumer by consumer when those competing carriers converge onto BoundOperationInvocation, at which point one realization-mechanism derivation enrolls every invocation rather than one declaration spelling."
+
+fn executable_is(executable: String, name: String) -> Bool {
+  (executable == name) || ends_with(s: executable, suffix: concat("/", name))
+}
+
+fn executable_is_unmodeled_wrapper(executable: String) -> Bool {
+  executable_is(executable: executable, name: "env")
+    || executable_is(executable: executable, name: "sudo")
+    || executable_is(executable: executable, name: "nohup")
+    || executable_is(executable: executable, name: "timeout")
+    || executable_is(executable: executable, name: "nice")
+    || executable_is(executable: executable, name: "setsid")
+    || executable_is(executable: executable, name: "stdbuf")
+    || executable_is(executable: executable, name: "xargs")
+}
+
+fn openssh_remote_shell_command_from_arguments(
+  executable: String,
+  arguments: List<String>,
+) -> ExecutionMechanismDerivation {
+  match list_head(xs: arguments) {
+    HeadAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+    HeadFound { value: argument } =>
+      if argument == "-o" {
+        match list_tail(xs: arguments) {
+          TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+          TailFound { tail: option_and_rest } => match list_tail(xs: option_and_rest) {
+            TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+            TailFound { tail: rest } => openssh_remote_shell_command_from_arguments(
+              executable: executable,
+              arguments: rest
+            )
+          }
+        }
+      } else if starts_with(s: argument, prefix: "-") {
+        ExecutionMechanismRefusedInvocationShape { executable: executable }
+      } else {
+        ExecutionMechanismDerived { mechanism: RemoteShellCommand }
+      }
+  }
+}
+
+fn spawned_invocation_mechanism(
+  executable: String,
+  argv: List<String>?,
+) -> ExecutionMechanismDerivation {
+  if executable_is_unmodeled_wrapper(executable: executable) {
+    ExecutionMechanismRefusedWrapper { executable: executable }
+  } else if executable_is(executable: executable, name: "ssh") {
+    match argv {
+      Absent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+      Present { value: invocation } => match list_tail(xs: invocation) {
+        TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+        TailFound { tail: arguments } => openssh_remote_shell_command_from_arguments(
+          executable: executable,
+          arguments: arguments
+        )
+      }
+    }
+  } else if executable_is(executable: executable, name: "sh")
+    || executable_is(executable: executable, name: "bash")
+    || executable_is(executable: executable, name: "dash")
+    || executable_is(executable: executable, name: "ksh")
+    || executable_is(executable: executable, name: "zsh") {
+    ExecutionMechanismDerived { mechanism: LocalShellScript }
+  } else {
+    ExecutionMechanismDerived { mechanism: LocalProcess }
+  }
+}
+
+fn execution_mechanism_from_evidence(
+  evidence: ExecutionMechanismEvidence
+) -> ExecutionMechanismDerivation {
+  match evidence {
+    SpawnExecutable { executable: executable } =>
+      spawned_invocation_mechanism(executable: executable, argv: none)
+    SpawnInvocation { executable: executable, argv: argv } =>
+      spawned_invocation_mechanism(
+        executable: executable,
+        argv: Present { value: argv }
+      )
+    SendStructuredInvocationToRemoteReceiver =>
+      ExecutionMechanismDerived { mechanism: RemoteStructuredExecution }
+    EmitShellTextForForeignExecutor =>
+      ExecutionMechanismDerived { mechanism: ForeignShellArtifact }
+  }
+}
+
+fn shell_transport_operation_mechanism(
+  row: ShellTransportOperationRow
+) -> ShellTransportMechanismClassification {
+  match row.executable {
+    Present { value: executable } =>
+      match execution_mechanism_from_evidence(
+        evidence: match shell_materialize_operation_argv(
+          row.at.path,
+          row.at.service,
+          row.at.operation,
+          operation_argv_row_bindings(row: row)
+        ) {
+          ArgvMaterialized { argv: argv } => SpawnInvocation {
+            executable: executable,
+            argv: argv
+          }
+          ArgvMaterializationRefused { at: _, cause: _ } => SpawnExecutable {
+            executable: executable
+          }
+        }
+      ) {
+        ExecutionMechanismDerived { mechanism: mechanism } =>
+          ShellTransportMechanismClassified { mechanism: mechanism }
+        ExecutionMechanismRefusedWrapper { executable: wrapper } =>
+          ShellTransportMechanismRefused {
+            at: row.at,
+            cause: ExecutionWrapperGrammarUnmodeled { executable: wrapper },
+          }
+        ExecutionMechanismRefusedInvocationShape { executable: executable } =>
+          ShellTransportMechanismRefused {
+            at: row.at,
+            cause: ExecutionInvocationShapeUnmodeled { executable: executable },
+          }
+      }
+    Absent => ShellTransportMechanismRefused {
+      at: row.at,
+      cause: ExecutableNotLiteral,
+    }
+  }
+}
