@@ -532,6 +532,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(2));
                 }
             };
+        if let Ok(minimum) = std::env::var("GUNBC_LOCAL_DISCOVERY_MINIMUM") {
+            rows.retain(|row| row.entry.as_str() >= minimum.as_str());
+        }
         let mut seen: std::collections::BTreeSet<(String, String)> = rows
             .iter()
             .map(|r| (r.entry.clone(), r.function.clone()))
