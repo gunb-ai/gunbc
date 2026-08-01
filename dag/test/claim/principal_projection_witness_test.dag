@@ -8,9 +8,9 @@ import extdeps.auth.oidc { OidcStandardClaims, OidcIdTokenClaims }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import gunbc.principal_projection {
   OidcPrincipal, PosixPrincipal,
-  OidcPrincipalEvidence, PosixPrincipalEvidence,
+  OidcProjection, PosixProjection,
   PosixEffectivePrincipalEvidence,
-  oidc_principal_projection, posix_principal_projection,
+  oidc_principal_projection, posix_principal_projection, projected_principal,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -31,13 +31,13 @@ fn oidc_evidence() -> OidcIdTokenClaims {
 test fn oidc_principal_is_exact_issuer_subject_projection_with_evidence_retained() -> Bool {
   let claims = oidc_evidence()
   let projection = oidc_principal_projection(claims: claims)
-  match projection.principal {
+  match projected_principal(projection: projection) {
     PosixPrincipal { principal: _ } => false
     OidcPrincipal { principal: principal } =>
       principal.issuer == claims.issuer && principal.subject == claims.subject
-        && match projection.evidence {
-          OidcPrincipalEvidence { claims: retained } => retained == claims
-          PosixPrincipalEvidence { observation: _ } => false
+        && match projection {
+          OidcProjection { claims: retained } => retained == claims
+          PosixProjection { observation: _ } => false
         }
   }
 }
@@ -47,13 +47,13 @@ test fn posix_principal_is_exact_effective_name_projection_with_evidence_retaine
     read: EffectivePosixPrincipalRead {}, observed_name: "ghrunner" as NonEmptyStr,
   }
   let projection = posix_principal_projection(observation: observation)
-  match projection.principal {
+  match projected_principal(projection: projection) {
     OidcPrincipal { principal: _ } => false
     PosixPrincipal { principal: principal } =>
       principal.effective_name == observation.observed_name
-        && match projection.evidence {
-          OidcPrincipalEvidence { claims: _ } => false
-          PosixPrincipalEvidence { observation: retained } => retained == observation
+        && match projection {
+          OidcProjection { claims: _ } => false
+          PosixProjection { observation: retained } => retained == observation
         }
   }
 }

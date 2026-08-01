@@ -1,32 +1,30 @@
 module std.authorization_profile
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, Set, String }
 import std.access { AccessRequest, AccessContext, AccessEvidence }
 
 data authorization_profile_note: String = "Typed authorization request profiles over the single std.access kernel. A profile is an exact product and a projection to AccessRequest; none declares an admitted/refused carrier or an allow/deny fold. EffectRequest carries an actor, effect, target, ambient context, and evidence. ReferenceRequest carries the referrer and referenced object separately. PublicationAdmissionRequest asks whether one resource may inhabit an audience set. DisclosureRequest adds the disclosed field set. SealedExecutionRequest keeps the sealed resource, operation, and execution context distinct."
 
 type AudienceSet<P>
   = UniversalAudience
-  | EnumeratedAudience { members: List<P> }
+  | EnumeratedAudience { members: Set<P> }
 
-data audience_set_note: String = "An audience is a set, not the frozen World > Network > Org > Repo chain from gunbc#7541. Enumerated audiences may overlap without either containing the other; UniversalAudience is top and the empty EnumeratedAudience is bottom. audience_join and audience_meet are the set lattice operations, parameterized by equality for the externally grounded principal type."
+data audience_set_note: String = "An audience is a set, not the frozen World > Network > Org > Repo chain from gunbc#7541. Enumerated audiences use the canonical std.types.Set carrier, so duplicate membership is unrepresentable; overlapping sets need not contain one another. UniversalAudience is top and the empty EnumeratedAudience is bottom. audience_subset derives the partial order from canonical set_union, which is also the audience_join operation."
 
 fn audience_member<P>(
   audience: AudienceSet<P>,
   principal: P,
-  principal_eq: fn(P, P) -> Bool,
 ) -> Bool {
   match audience {
     UniversalAudience => true
     EnumeratedAudience { members: members } =>
-      any(members, member => principal_eq(member, principal))
+      set_contains(members, principal)
   }
 }
 
 fn audience_subset<P>(
   left: AudienceSet<P>,
   right: AudienceSet<P>,
-  principal_eq: fn(P, P) -> Bool,
 ) -> Bool {
   match left {
     UniversalAudience => match right {
@@ -36,64 +34,21 @@ fn audience_subset<P>(
     EnumeratedAudience { members: members } => match right {
       UniversalAudience => true
       EnumeratedAudience { members: right_members } =>
-        all(members, member => audience_member(
-          audience: EnumeratedAudience { members: right_members },
-          principal: member,
-          principal_eq: principal_eq,
-        ))
+        set_union(members, right_members) == right_members
     }
-  }
-}
-
-fn audience_append_unique<P>(
-  members: List<P>,
-  candidate: P,
-  principal_eq: fn(P, P) -> Bool,
-) -> List<P> {
-  if any(members, member => principal_eq(member, candidate)) {
-    members
-  } else {
-    append(members, items: [candidate])
   }
 }
 
 fn audience_join<P>(
   left: AudienceSet<P>,
   right: AudienceSet<P>,
-  principal_eq: fn(P, P) -> Bool,
 ) -> AudienceSet<P> {
   match left {
     UniversalAudience => UniversalAudience
     EnumeratedAudience { members: left_members } => match right {
       UniversalAudience => UniversalAudience
       EnumeratedAudience { members: right_members } => EnumeratedAudience {
-        members: fold(right_members, init: left_members, f: fn(members, candidate) {
-          audience_append_unique(
-            members: members,
-            candidate: candidate,
-            principal_eq: principal_eq,
-          )
-        })
-      }
-    }
-  }
-}
-
-fn audience_meet<P>(
-  left: AudienceSet<P>,
-  right: AudienceSet<P>,
-  principal_eq: fn(P, P) -> Bool,
-) -> AudienceSet<P> {
-  match left {
-    UniversalAudience => right
-    EnumeratedAudience { members: left_members } => match right {
-      UniversalAudience => left
-      EnumeratedAudience { members: right_members } => EnumeratedAudience {
-        members: filter(left_members, member => audience_member(
-          audience: EnumeratedAudience { members: right_members },
-          principal: member,
-          principal_eq: principal_eq,
-        ))
+        members: set_union(left_members, right_members)
       }
     }
   }

@@ -1,13 +1,13 @@
 module test.claim.access_authorization_profile_witness_test
 
-import std.types { Bool, String }
+import std.types { Bool, Set, String }
 import std.access {
   AccessDecision, Permit, Deny,
   access_policy_refusal, decision_meet,
 }
 import std.authorization_profile {
   AudienceSet, UniversalAudience, EnumeratedAudience,
-  audience_subset, audience_join, audience_meet,
+  audience_subset, audience_join,
   EffectRequest, effect_access_request,
   ReferenceRequest, reference_access_request,
   PublicationAdmissionRequest, publication_access_request,
@@ -18,19 +18,18 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn string_eq(a: String, b: String) -> Bool { a == b }
+fn string_set(a: String, b: String) -> Set<String> {
+  set_insert(set_insert(empty_set(), a), b)
+}
 
 test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool {
-  let left = EnumeratedAudience { members: ["alice", "bob"] }
-  let right = EnumeratedAudience { members: ["bob", "carol"] }
-  !audience_subset(left: left, right: right, principal_eq: string_eq)
-    && !audience_subset(left: right, right: left, principal_eq: string_eq)
-    && match audience_meet(left: left, right: right, principal_eq: string_eq) {
-      EnumeratedAudience { members: members } => members == ["bob"]
-      UniversalAudience => false
-    }
-    && match audience_join(left: left, right: right, principal_eq: string_eq) {
-      EnumeratedAudience { members: members } => members == ["alice", "bob", "carol"]
+  let left = EnumeratedAudience { members: string_set(a: "alice", b: "bob") }
+  let right = EnumeratedAudience { members: string_set(a: "bob", b: "carol") }
+  !audience_subset(left: left, right: right)
+    && !audience_subset(left: right, right: left)
+    && match audience_join(left: left, right: right) {
+      EnumeratedAudience { members: members } =>
+        members == set_insert(string_set(a: "alice", b: "bob"), "carol")
       UniversalAudience => false
     }
 }
@@ -48,7 +47,7 @@ test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
   })
   let disclosure = disclosure_access_request(request: DisclosureRequest {
     principal: "principal", resource: "record", fields: ["email"],
-    audience: EnumeratedAudience { members: ["principal"] },
+    audience: EnumeratedAudience { members: set_insert(empty_set(), "principal") },
     context: "purpose", evidence: "consent",
   })
   let sealed = sealed_execution_access_request(request: SealedExecutionRequest {

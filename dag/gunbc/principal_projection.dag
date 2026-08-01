@@ -1,11 +1,11 @@
 module gunbc.principal_projection
 
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 import extdeps.auth.jwt { JwtStringOrUri }
 import extdeps.auth.oidc { OidcIdTokenClaims }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 
-data principal_projection_note: String = "A gunbc principal is a projection of external authentication evidence, never an independently authored identity. OidcProjectedPrincipal reads issuer and subject directly from extdeps.auth.oidc.OidcIdTokenClaims (whose vocabulary is extdeps.auth.jwt.JwtStringOrUri). PosixProjectedPrincipal reads the non-empty observed result of extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead. PrincipalProjection retains the evidence beside the derived principal so an authorization request can carry what established its subject. Future policy vocabulary must project the named external authorities rather than mint local substitutes: extdeps.access.aws_iam.PolicyDocument, extdeps.access.rbac.RbacPolicy, and extdeps.access.zanzibar.CheckRequest."
+data principal_projection_note: String = "A gunbc principal is a projection of external authentication evidence, never an independently authored identity. OidcProjectedPrincipal reads issuer and subject directly from extdeps.auth.oidc.OidcIdTokenClaims (whose vocabulary is extdeps.auth.jwt.JwtStringOrUri). PosixProjectedPrincipal reads the non-empty observed result of extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead. PrincipalProjection couples each evidence kind to its only matching constructor, and projected_principal derives rather than stores the principal, so contradictory principal/evidence pairs are unrepresentable. Future policy vocabulary must project the named external authorities rather than mint local substitutes: extdeps.access.aws_iam.PolicyDocument, extdeps.access.rbac.RbacPolicy, and extdeps.access.zanzibar.CheckRequest."
 
 type OidcProjectedPrincipal {
   issuer: JwtStringOrUri
@@ -25,36 +25,28 @@ type PosixEffectivePrincipalEvidence {
   observed_name: NonEmptyStr
 }
 
-type GunbcPrincipalEvidence
-  = OidcPrincipalEvidence { claims: OidcIdTokenClaims }
-  | PosixPrincipalEvidence { observation: PosixEffectivePrincipalEvidence }
-
-type PrincipalProjection {
-  principal: GunbcPrincipal
-  evidence: GunbcPrincipalEvidence
-}
+type PrincipalProjection
+  = OidcProjection { claims: OidcIdTokenClaims }
+  | PosixProjection { observation: PosixEffectivePrincipalEvidence }
 
 fn oidc_principal_projection(claims: OidcIdTokenClaims) -> PrincipalProjection {
-  PrincipalProjection {
-    principal: OidcPrincipal { principal: OidcProjectedPrincipal {
-      issuer: claims.issuer,
-      subject: claims.subject,
-    } },
-    evidence: OidcPrincipalEvidence { claims: claims },
-  }
+  OidcProjection { claims: claims }
 }
 
 fn posix_principal_projection(
   observation: PosixEffectivePrincipalEvidence,
 ) -> PrincipalProjection {
-  PrincipalProjection {
-    principal: PosixPrincipal { principal: PosixProjectedPrincipal {
-      effective_name: observation.observed_name,
-    } },
-    evidence: PosixPrincipalEvidence { observation: observation },
-  }
+  PosixProjection { observation: observation }
 }
 
-fn gunbc_principal_eq(a: GunbcPrincipal, b: GunbcPrincipal) -> Bool {
-  a == b
+fn projected_principal(projection: PrincipalProjection) -> GunbcPrincipal {
+  match projection {
+    OidcProjection { claims: claims } => OidcPrincipal { principal: OidcProjectedPrincipal {
+      issuer: claims.issuer,
+      subject: claims.subject,
+    } }
+    PosixProjection { observation: observation } => PosixPrincipal { principal: PosixProjectedPrincipal {
+      effective_name: observation.observed_name,
+    } }
+  }
 }

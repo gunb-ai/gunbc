@@ -67,7 +67,7 @@ fn refused_marker_roster() -> PublicPublicationGrantRoster {
     baseline: public_root_publish_baseline,
     file_grants: [PublicFilePublishGrant {
       path: synthetic_added_path,
-      grant: PublicationAudienceGrant { audience: EnumeratedAudience { members: [] } },
+      grant: PublicationAudienceGrant { audience: EnumeratedAudience { members: empty_set() } },
     }],
   }
 }

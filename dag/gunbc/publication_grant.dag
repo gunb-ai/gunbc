@@ -11,7 +11,7 @@ import std.authorization_profile {
   PublicationAdmissionRequest, publication_access_request,
   audience_subset,
 }
-import gunbc.principal_projection { GunbcPrincipal, gunbc_principal_eq }
+import gunbc.principal_projection { GunbcPrincipal }
 import gunbc.publication_cutover {
   public_publication_root, public_publication_cutover_sha,
 }
@@ -73,7 +73,6 @@ fn public_publication_decide(
   if audience_subset(
     left: request.context.value.audience,
     right: request.evidence.value.audience,
-    principal_eq: gunbc_principal_eq,
   ) {
     Permit
   } else {
