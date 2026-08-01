@@ -212,8 +212,7 @@ type LeanOverflowSemanticsAdmission
       reason: Symbol
     }
 
-data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> =
-  OverflowReturns { value_rule: ReturnWrapping }
+data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
 
 fn lean_admit_fixed_width_overflow_semantics(
   semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
