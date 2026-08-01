@@ -40,13 +40,14 @@ use std::rc::Rc;
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context,
     resolve_closure_request_key_from_digests, resolve_entry_graph, resolve_entry_with_index,
-    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome, ResolvedGraphProviderOutcome,
+    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
-    build_valid_artifact_bytes, closure_content_digest, decode_count, derive_subject_digest,
-    encode_resolved_graph_parts, lookup, probe, subject_digest_for_closure,
-    transform_content_digest, write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult,
-    CacheRejectReason, KeyInputMaterials,
+    build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
+    decode_count, derive_subject_digest, encode_resolved_graph_parts, lookup, probe,
+    subject_digest_for_closure, transform_content_digest, write_raw_artifact_for_test,
+    CacheLookupResult, CacheProbeResult, CacheRejectReason, KeyInputMaterials,
+    UNION_PART_ABSENT_DIGEST,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -728,6 +729,8 @@ fn provider_disposition_four_arm_matrix() {
         si.as_ref(),
         &empty_compile_clean_diags(),
     );
+    let encoded = encode_resolved_graph_parts(&graph, si.as_ref(), &empty_compile_clean_diags())
+        .expect("encode");
     let v3_bytes = build_valid_artifact_bytes(
         &subject,
         &graph,
@@ -798,17 +801,47 @@ fn provider_disposition_four_arm_matrix() {
         );
     });
 
-    // Arm 4 — incomplete provider verdict: typed refusal, never cold widen.
-    let msg = v1_compiler::cli_run::provider_integrity_refusal_message_for_test(
-        ResolvedGraphProviderOutcome::RefusedIncomplete {
-            missing: vec!["compile_clean_diagnostic_union".to_string()],
-        },
+    // Arm 4 — semantically incomplete v3 on disk: typed refusal through live resolve.
+    let incomplete_semantic = resolved_graph_parts_semantic_digest(
+        &encoded.graph_digest,
+        encoded.graph_bytes.len() as u64,
+        &encoded.indices_digest,
+        encoded.indices_bytes.len() as u64,
+        UNION_PART_ABSENT_DIGEST,
+        0,
     )
-    .expect("incomplete must map to typed refusal");
-    assert!(
-        msg.contains("incomplete") && msg.contains("compile_clean_diagnostic_union"),
-        "incomplete refusal must name missing outputs: {msg}"
-    );
+    .expect("incomplete semantic");
+    let incomplete_bytes = build_incomplete_v3_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &incomplete_semantic,
+    )
+    .expect("incomplete bytes");
+    let incomplete_dir = dir.join("incomplete-cache");
+    fs::create_dir_all(&incomplete_dir).expect("incomplete cache dir");
+    write_raw_artifact_for_test(&incomplete_dir, &subject, &incomplete_bytes)
+        .expect("incomplete write");
+    match lookup(&incomplete_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch) => {}
+        other => panic!("incomplete v3 lookup must refuse, not widen to hit: {other:?}"),
+    }
+    with_cache_env(&incomplete_dir, || {
+        let decodes_before = decode_count();
+        let index = build_multi_entry_index(&roots);
+        let err = resolve_entry_with_index(&index, &a).expect_err("incomplete v3 must refuse");
+        assert!(
+            err.contains("incomplete") && err.contains("compile_clean_diagnostic_union"),
+            "typed incomplete refusal must name missing output: {err}"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before,
+            "incomplete v3 must not decode or cold-rebuild"
+        );
+    });
 
     let _ = fs::remove_dir_all(&dir);
 }

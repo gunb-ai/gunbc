@@ -1,5 +1,6 @@
 use crate::resolved_graph_cache::{
-    faithful_probe_unavailable_gap, supports_faithful_probe, FaithfulResolvedGraphProbeParts,
+    faithful_probe_unavailable_gap, is_union_part_absent, supports_faithful_probe,
+    FaithfulResolvedGraphProbeParts,
 };
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 use std::cell::RefCell;
@@ -172,6 +173,56 @@ fn serve_resolved_graph_stored_disk_probe_in_ctx(
     lookup_fold_outcome(ctx, &lookup)
 }
 
+fn serve_resolved_graph_incomplete_stored_disk_probe_in_ctx(
+    ctx: &InterpContext,
+    closure_digest: &str,
+    compiler_digest: &str,
+    stored_request_key: &str,
+    graph_digest: &str,
+    graph_bytes: u64,
+    indices_digest: &str,
+    indices_bytes: u64,
+) -> Result<ResolvedGraphProviderOutcome, String> {
+    let args = [
+        (
+            Some("closure_digest".to_string()),
+            Value::Str(closure_digest.to_string()),
+        ),
+        (
+            Some("compiler_digest".to_string()),
+            Value::Str(compiler_digest.to_string()),
+        ),
+        (
+            Some("stored_request_key".to_string()),
+            Value::Str(stored_request_key.to_string()),
+        ),
+        (
+            Some("graph_digest".to_string()),
+            Value::Str(graph_digest.to_string()),
+        ),
+        (
+            Some("graph_bytes".to_string()),
+            Value::Int(graph_bytes as i64),
+        ),
+        (
+            Some("indices_digest".to_string()),
+            Value::Str(indices_digest.to_string()),
+        ),
+        (
+            Some("indices_bytes".to_string()),
+            Value::Int(indices_bytes as i64),
+        ),
+    ];
+    let lookup = v1_interpreter::run_in_context_with_args(
+        ctx,
+        "serve_resolved_graph_incomplete_stored_disk_probe",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("serve_resolved_graph_incomplete_stored_disk_probe: {e}"))?;
+    lookup_fold_outcome(ctx, &lookup)
+}
+
 pub fn resolve_closure_request_key_from_digests(
     closure_digest: &str,
     compiler_digest: &str,
@@ -279,6 +330,18 @@ pub fn serve_resolved_graph_stored_disk_probe(
         ));
     }
     let ctx = materialization_provider_ctx()?;
+    if is_union_part_absent(parts) {
+        return serve_resolved_graph_incomplete_stored_disk_probe_in_ctx(
+            &ctx,
+            closure_digest,
+            compiler_digest,
+            stored_request_key,
+            &parts.graph_digest,
+            parts.graph_bytes,
+            &parts.indices_digest,
+            parts.indices_bytes,
+        );
+    }
     serve_resolved_graph_stored_disk_probe_in_ctx(
         &ctx,
         closure_digest,

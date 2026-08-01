@@ -931,6 +931,52 @@ pub fn build_valid_artifact_bytes(
     Ok(bytes)
 }
 
+pub fn is_union_part_absent(parts: &FaithfulResolvedGraphProbeParts) -> bool {
+    parts.union_bytes == 0 && parts.union_digest == UNION_PART_ABSENT_DIGEST
+}
+
+pub fn build_incomplete_v3_artifact_bytes(
+    subject_digest: &str,
+    graph: &ResolvedGraph,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
+) -> Result<Vec<u8>, String> {
+    let encoded = encode_resolved_graph_parts(graph, source_indices, compile_clean_diags)?;
+    let payload_bytes = [
+        encoded.graph_bytes.as_slice(),
+        encoded.indices_bytes.as_slice(),
+    ]
+    .concat();
+    let payload_integrity_digest = payload_content_digest(&payload_bytes);
+    let union_offset = (encoded.graph_bytes.len() + encoded.indices_bytes.len()) as u64;
+    let parts = [
+        (0u64, encoded.graph_bytes.len() as u64, encoded.graph_digest),
+        (
+            encoded.graph_bytes.len() as u64,
+            encoded.indices_bytes.len() as u64,
+            encoded.indices_digest,
+        ),
+        (union_offset, 0u64, UNION_PART_ABSENT_DIGEST.to_string()),
+    ];
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(MAGIC);
+    bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+    bytes.extend_from_slice(subject_digest.as_bytes());
+    bytes.extend_from_slice(payload_integrity_digest.as_bytes());
+    bytes.extend_from_slice(stored_request_key.as_bytes());
+    bytes.extend_from_slice(stored_semantic_digest.as_bytes());
+    bytes.extend_from_slice(&(payload_bytes.len() as u64).to_le_bytes());
+    for (offset, length, digest) in parts {
+        bytes.extend_from_slice(&offset.to_le_bytes());
+        bytes.extend_from_slice(&length.to_le_bytes());
+        bytes.extend_from_slice(digest.as_bytes());
+    }
+    bytes.extend_from_slice(&payload_bytes);
+    Ok(bytes)
+}
+
 pub fn serialize_fixture_payload_for_test(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
