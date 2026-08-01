@@ -385,15 +385,13 @@ fn observe_stage0_rust_manifest_at(
         Ok(revision) => revision,
         Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
     };
-    let tracked_rust_repo_paths = match stage0_git_output(
-        root,
-        &["ls-tree", "-rz", "--name-only", &revision],
-    )
-    .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree HEAD"))
-    {
-        Ok(paths) => paths,
-        Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
-    };
+    let tracked_rust_repo_paths =
+        match stage0_git_output(root, &["ls-tree", "-rz", "--name-only", &revision])
+            .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree HEAD"))
+        {
+            Ok(paths) => paths,
+            Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
+        };
     let prior_tracked_rust_repo_paths =
         match stage0_git_output(root, &["ls-tree", "-rz", "--name-only", &baseline_revision])
             .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree merge-base"))
@@ -418,11 +416,7 @@ fn observe_stage0_rust_manifest_at(
             .map_err(|error| format!("manifest object {manifest_object} was not UTF-8: {error}"))
     }) {
         Ok(content) => content,
-        Err(detail) => {
-            return Stage0RustHostObservation::ManifestReadRefused {
-                detail,
-            }
-        }
+        Err(detail) => return Stage0RustHostObservation::ManifestReadRefused { detail },
     };
     let cargo_bin_repo_paths =
         match stage0_cargo_bin_repo_paths_from_manifest_text(&manifest, package_root) {
@@ -545,12 +539,10 @@ path = "src/bin/claim_batch.rs"
         git(&root, &["config", "user.email", "fixture@example.invalid"]);
         git(&root, &["config", "commit.gpgsign", "false"]);
 
-        let committed_manifest =
-            "[[bin]]\nname = \"base\"\npath = \"src/base.rs\"\n";
+        let committed_manifest = "[[bin]]\nname = \"base\"\npath = \"src/base.rs\"\n";
         fs::write(root.join("src/v1/stage0/Cargo.toml"), committed_manifest)
             .expect("base manifest");
-        fs::write(root.join("src/v1/stage0/src/base.rs"), "fn base() {}\n")
-            .expect("base Rust");
+        fs::write(root.join("src/v1/stage0/src/base.rs"), "fn base() {}\n").expect("base Rust");
         git(&root, &["add", "."]);
         git(&root, &["commit", "-m", "base"]);
 
@@ -580,8 +572,7 @@ path = "src/bin/claim_batch.rs"
             "[[bin]]\nname = \"dirty\"\npath = \"src/dirty.rs\"\n",
         )
         .expect("dirty manifest");
-        fs::write(root.join("src/v1/stage0/src/dirty.rs"), "fn dirty() {}\n")
-            .expect("dirty Rust");
+        fs::write(root.join("src/v1/stage0/src/dirty.rs"), "fn dirty() {}\n").expect("dirty Rust");
         git(&root, &["add", "src/v1/stage0/src/dirty.rs"]);
 
         let observation = observe_stage0_rust_manifest_at(
@@ -611,23 +602,21 @@ path = "src/bin/claim_batch.rs"
             cargo_bin_repo_paths,
             vec!["src/v1/stage0/src/base.rs".to_string()]
         );
-        assert!(tracked_rust_repo_paths.iter().any(|p| p.ends_with("feature.rs")));
-        assert!(
-            tracked_rust_repo_paths
-                .iter()
-                .any(|p| p.ends_with("base_unrelated.rs"))
-        );
-        assert!(!tracked_rust_repo_paths.iter().any(|p| p.ends_with("dirty.rs")));
-        assert!(
-            prior_tracked_rust_repo_paths
-                .iter()
-                .any(|p| p.ends_with("base_unrelated.rs"))
-        );
-        assert!(
-            !prior_tracked_rust_repo_paths
-                .iter()
-                .any(|p| p.ends_with("feature.rs"))
-        );
+        assert!(tracked_rust_repo_paths
+            .iter()
+            .any(|p| p.ends_with("feature.rs")));
+        assert!(tracked_rust_repo_paths
+            .iter()
+            .any(|p| p.ends_with("base_unrelated.rs")));
+        assert!(!tracked_rust_repo_paths
+            .iter()
+            .any(|p| p.ends_with("dirty.rs")));
+        assert!(prior_tracked_rust_repo_paths
+            .iter()
+            .any(|p| p.ends_with("base_unrelated.rs")));
+        assert!(!prior_tracked_rust_repo_paths
+            .iter()
+            .any(|p| p.ends_with("feature.rs")));
     }
 }
 

@@ -96,7 +96,7 @@ test fn scaffold_host_observation_is_live_and_observed() -> Bool {
 }
 
 test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
-  stage0_rust_host_observation_hand_rust_loc_delta_net == 392
+  stage0_rust_host_observation_hand_rust_loc_delta_net == 530
     && match stage0_rust_host_observation_hand_rust_scaffold {
       Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.cli_run"

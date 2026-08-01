@@ -40,7 +40,7 @@ data stage0_rust_host_observation_hand_rust_scaffold: Disposition = Scaffold {
   }
 }
 
-data stage0_rust_host_observation_hand_rust_loc_delta_net: Int = 392
+data stage0_rust_host_observation_hand_rust_loc_delta_net: Int = 530
 
 data stage0_rust_host_observation_hand_rust_paths: List<String> = [
   "src/v1/stage0/src/cli_run.rs",
@@ -48,4 +48,4 @@ data stage0_rust_host_observation_hand_rust_paths: List<String> = [
   "src/v1/stage0/src/v1_compiler_infer_method.rs"
 ]
 
-data stage0_rust_host_observation_hand_rust_dissolve_trigger: String = "🟡 HAND-RUST realization receipt: +392 net Rust lines against origin/main (+297 cli_run host effects and refusal tests, +90 interpreter value projection, +5 generated builtin registry). The model and result space live in this module; Rust may only realize its effects. DISSOLVES WHEN the generic Git/filesystem/TOML RealizationDispatch can produce RustSourceHostObservation directly, or V1FinishLine ZeroHandMaintainedRust retires this seed bridge. Discriminating receipts: stage0_rust_host_observation_tests plus scaffold_host_observation_is_live_and_observed and the three exact typed-refusal witnesses."
+data stage0_rust_host_observation_hand_rust_dissolve_trigger: String = "🟡 HAND-RUST realization receipt: +530 net Rust lines against origin/main (+428 cli_run host effects and refusal/regression tests, +97 interpreter value projection, +5 generated builtin registry). The model and result space live in this module; Rust may only realize its effects. DISSOLVES WHEN the generic Git/filesystem/TOML RealizationDispatch can produce RustSourceHostObservation directly, or V1FinishLine ZeroHandMaintainedRust retires this seed bridge. Discriminating receipts: stage0_rust_host_observation_tests (including canonical merge-base plus dirty/index skew) plus scaffold_host_observation_is_live_and_observed and the three exact typed-refusal witnesses."
