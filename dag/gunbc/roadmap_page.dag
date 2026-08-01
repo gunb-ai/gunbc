@@ -28,6 +28,7 @@ import gunbc.roadmap_authority {
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
+  theme_toggle_label_prefix, theme_toggle_auto_value,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
   WorkflowLamp, workflow_lamps_v0, workflow_lamp_key, workflow_lamp_label,
   workflow_lamp_initial_state,
@@ -106,7 +107,7 @@ fn dashboard_instance_banner() -> Fragment {
 }
 
 
-data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. The server renders the control's NAME ('sound'), never its state: the state suffix is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. The former empty-label rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require blankness — a blank button has no visible content and no accessible name, which is a defect, not honesty. Without JS the control now reads 'sound' and does nothing, which is exactly true."
+data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. The former empty-label rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require blankness — a blank button has no visible content and no accessible name, which is a defect, not honesty. The TWO TOGGLES SHIP DIFFERENT AMOUNTS OF STATE, and the asymmetry is the honesty boundary, not an inconsistency (A1 reconciliation, operator feedback 2026-08-01): the theme control ships 'theme · auto' because at parse time the document carries no data-theme and prefers-color-scheme governs — which is the DEFINITION of auto, true for every visitor until the client program applies a stored choice; the sound control ships only its NAME because its state has no parse-time truth — the preference lives in this browser's storage (unreadable at serve), and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated claim for someone. The client program repaints both from storage on load, exactly as before."
 
 fn sound_toggle_control() -> Fragment {
   el_attrs("button", [
@@ -119,7 +120,7 @@ fn theme_toggle_control() -> Fragment {
   el_attrs("button", [
     attr(name: "class", value: theme_toggle_class ),
     attr(name: "type", value: "button" ),
-  ], [ txt("theme") ])
+  ], [ txt(join([theme_toggle_label_prefix, theme_toggle_auto_value], "")) ])
 }
 
 data roadmap_wordmark_note: String = "A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name lives in the wordmark, so the two never restate each other."
