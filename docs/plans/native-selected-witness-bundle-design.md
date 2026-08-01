@@ -34,9 +34,9 @@ This first slice chooses `OneSelectedBundle`: the selected subset is three tiny 
 The interpreter remains an equivalence oracle during cutover. A family is native-consumable only when both facts execute:
 
 - every selected member's native verdict equals its interpreted verdict, including failure verdicts;
-- at least one deliberately wrong body in the family produces the same failing verdict on both paths.
+- at least one deliberately wrong body in the family is rejected by the same interpreter-oracle comparison used for cutover.
 
-`native_witness_bundle_execution_admit` refuses the first divergence with the member and both typed verdicts. It also refuses a family with no live discriminating RED and any receipt claiming other than one bundle process. Nothing auto-picks native or interpreted after a divergence.
+`native_witness_bundle_execution_admit` refuses the first divergence with the member and both typed verdicts. The wrong-body control deliberately preserves the interpreter's canonical `1,1,0` answer while the swapped-arm native bundle returns `0,0,1`; admission must therefore produce `NativeBundleExecutionRefusedDivergence`, never relabel the two answers as an equivalent failure. It also refuses a family with no live discriminating RED and any receipt claiming other than one bundle process. Nothing auto-picks native or interpreted after a divergence.
 
 Bundle admission is a separate check: a bundle compiled under a different compiler identity is `NativeBundleRefusedStaleCompiler`; a bundle whose identity does not equal the current plan is `NativeBundleRefusedPlanIdentity`. Both refuse before execution.
 
@@ -49,10 +49,12 @@ The executing witness records:
 - cold build + run, then a second-process warm run with `compile_skipped = true`;
 - native and interpreted wall nanoseconds around the same three-member population;
 - per-member verdict equivalence for the correct bodies;
-- the all-wrong-body control, where native and interpreted verdicts are both `SelectedWitnessFailed` for every member;
+- the all-wrong-body control, where all three native verdicts fail against canonical interpreter passes and the typed divergence refusal names `meet` first;
 - stale-compiler, identity-drift, no-native-realization count, missing-RED, process-count, and native/interpreter-divergence refusals.
 
-The wall observation uses the existing `ObserveElapsedAtSubject` model through the seed's `observed_monotonic_nanos` realization. It reads elapsed monotonic time only, never calendar time or identity.
+The wall observation uses the existing `ObserveElapsedAtSubject` model through the seed's `observed_monotonic_nanos(boundary)` realization. Distinct boundary labels prevent pure-call memoization from collapsing start and finish, but are never identity material. It reads elapsed monotonic time only, never calendar time or identity.
+
+Local receipt on 2026-08-01 (`CTRL_BUILD_MODE=local`, aarch64 Linux): all 20 bundle witnesses passed in one resolved entry. The correct bundle's cold+warm host witness was 993 ms and the wrong-body cold+warm witness was 977 ms; both logged `compile_skipped=false` then `compile_skipped=true`. The three interpreted correct-member controls totaled 20 ms (8+6+6 ms). Invoking the already-built native artifact directly took 3 ms wall for all three calls in one process; invoking it through the existing warm `cargo run --quiet` host transport took 457 ms and compiled nothing. These name different surfaces deliberately: the direct artifact number is production execution shape, while the larger cached-host number is the current development realization transport retained for the equivalence oracle.
 
 ## Deliberate exclusions
 
