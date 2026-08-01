@@ -65,15 +65,6 @@ type RestOutcome
   | RestTransportRefused { cause: NonEmptyStr }
   | RestBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
 
-fn rest_outcome_transported(outcome: RestOutcome) -> Bool {
-  match outcome {
-    RestOk => true
-    RestStatusRefused { status: _, body: _ } => true
-    RestBodyUndecodable { status: _, cause: _ } => true
-    RestTransportRefused { cause: _ } => false
-  }
-}
-
 data rest_exchange_observation_note: String = "THE HTTP CLIENT BOUNDARY REPORTS FACTS AND DECIDES NO OPERATION POLICY. RestResponseObserved says a status arrived and then says separately whether its body was readable; RestExchangeRefused says no response arrived, so no status can be fabricated. The operation-facing RestOutcome above is downstream: the same dispatch_rest fold consumes this carrier whether a real HTTP handler or an exact fixture replay produced it. A replay arm that returned the operation's final output would sit one layer too high and could green while dispatch_rest was broken - the defect in mock_response and the retired recorded-value fixture seam."
 
 type RestBodyObservation
