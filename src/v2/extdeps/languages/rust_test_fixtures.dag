@@ -2200,6 +2200,18 @@ fn rust_bool_fn_host_runtime_row(
   host_identity_sym: Symbol,
   main_suffix: String
 ) -> TargetEmitHostRuntimeRow {
+  rust_bool_fn_host_runtime_row_with_width(
+    host_identity_sym: host_identity_sym,
+    main_suffix: main_suffix,
+    codec_width: 5
+  )
+}
+
+fn rust_bool_fn_host_runtime_row_with_width(
+  host_identity_sym: Symbol,
+  main_suffix: String,
+  codec_width: Int
+) -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: HostTransportDescriptor {
@@ -2228,7 +2240,7 @@ fn rust_bool_fn_host_runtime_row(
           program: HostToolProgram { executable: "cargo" },
           args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
         },
-        runtime_value_codec: FixedWidthBytes { width: 5 }
+        runtime_value_codec: FixedWidthBytes { width: codec_width }
       },
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
     }
@@ -2453,6 +2465,64 @@ fn rust_logic_family_target_model_staging() -> TargetModel {
     token_class_emit_transforms: base.token_class_emit_transforms,
     authority_source_text: base.authority_source_text,
     runtime_row: rust_logic_family_runtime_row()
+  }
+}
+
+data rust_selected_bundle_direct_call_note: String = "Selected-entry native bundle runtime (native-selected-witness-bundle first slice): the bundle main is derived from the same ordered logic-family member roster as the argv dispatcher, but emits every result expression as a direct call in ONE process. There is no run-time member selection and no one-binary-per-function path; the fixed-width receipt is one five-byte value per ordered selected member."
+
+fn rust_selected_bundle_direct_call(member: RustEmitHostFamilyMember) -> String {
+  concat(
+    "  { let d: i32 = ",
+    concat(
+      member.result_expression,
+      "; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+    )
+  )
+}
+
+fn rust_selected_bundle_direct_calls(members: List<RustEmitHostFamilyMember>) -> String {
+  fold_list(
+    xs: members,
+    empty: "",
+    cons: fn(acc, member) {
+      concat(acc, rust_selected_bundle_direct_call(member: member))
+    }
+  )
+}
+
+fn rust_selected_bundle_main_suffix(
+  prelude: String,
+  members: List<RustEmitHostFamilyMember>
+) -> String {
+  concat(
+    prelude,
+    concat(
+      "\n\nfn main() {\n",
+      concat(rust_selected_bundle_direct_calls(members: members), "}\n")
+    )
+  )
+}
+
+fn rust_logic_selected_bundle_runtime_row() -> TargetEmitHostRuntimeRow {
+  rust_bool_fn_host_runtime_row_with_width(
+    host_identity_sym: ^rust_host_transport_logic_selected_bundle_identity,
+    main_suffix: rust_selected_bundle_main_suffix(
+      prelude: rust_logic_family_prelude,
+      members: rust_logic_family_dispatch_members()
+    ),
+    codec_width: 15
+  )
+}
+
+fn rust_logic_selected_bundle_target_model_staging() -> TargetModel {
+  let base = rust_logic_meet_target_model_staging()
+  TargetModel {
+    bundle: base.bundle,
+    lex: base.lex,
+    binding_spellings: base.binding_spellings,
+    token_class_emit_transforms: base.token_class_emit_transforms,
+    authority_source_text: base.authority_source_text,
+    runtime_row: rust_logic_selected_bundle_runtime_row()
   }
 }
 

@@ -240,6 +240,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "observed_peak_resident_bytes".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "observed_monotonic_nanos".to_string(),
+            int_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "length".to_string(), int_type());
         let m = v1_rt::rc_map_insert(m.clone(), "starts_with".to_string(), bool_type());

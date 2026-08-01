@@ -127,7 +127,18 @@ fn native_bundle_shard_policy_hash(policy: NativeBundleShardPolicy) -> ContentHa
     OneSelectedBundle { reason: _ } => content_hash_atom(value: "one-selected-bundle")
     StableBundleShards { shard_count: count, reason: _ } => content_hash_tagged(
       tag: "stable-selected-bundle-shards",
-      payload: content_hash_atom(value: count as String)
+      payload: native_bundle_shard_count_hash(count: count)
+    )
+  }
+}
+
+fn native_bundle_shard_count_hash(count: Int) -> ContentHash {
+  if count <= 0 {
+    content_hash_atom(value: "selected-bundle-shard-count-zero")
+  } else {
+    content_hash_tagged(
+      tag: "selected-bundle-shard-count-successor",
+      payload: native_bundle_shard_count_hash(count: count - 1)
     )
   }
 }
@@ -246,18 +257,25 @@ fn selected_witness_verdict_eq(left: SelectedWitnessVerdict, right: SelectedWitn
   }
 }
 
+type NativeBundleDivergenceSearch
+  = NativeBundleDivergenceAbsent
+  | NativeBundleDivergenceFound { row: NativeBundleMemberEquivalence }
+
 fn first_native_bundle_divergence(
   rows: List<NativeBundleMemberEquivalence>
-) -> List<NativeBundleMemberEquivalence> {
+) -> NativeBundleDivergenceSearch {
   fold(
     rows,
-    init: [],
-    f: (acc, row) => if length(acc) > 0 {
-      acc
-    } else if selected_witness_verdict_eq(left: row.interpreted, right: row.native) {
-      acc
-    } else {
-      [row]
+    init: NativeBundleDivergenceAbsent,
+    f: (found, row) => match found {
+      NativeBundleDivergenceFound { row: prior } =>
+        NativeBundleDivergenceFound { row: prior }
+      NativeBundleDivergenceAbsent =>
+        if selected_witness_verdict_eq(left: row.interpreted, right: row.native) {
+          NativeBundleDivergenceAbsent
+        } else {
+          NativeBundleDivergenceFound { row: row }
+        }
     }
   )
 }
@@ -266,22 +284,33 @@ fn family_has_discriminating_red(
   family: NonEmptyStr,
   evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> Bool {
-  any(evidence, row => row.family == family && row.discriminating_red_executed)
+  fold(
+    evidence,
+    init: false,
+    f: (found, row) => found || (row.family == family && row.discriminating_red_executed)
+  )
 }
+
+type NativeBundleFamilyRedSearch
+  = NativeBundleFamiliesHaveRed
+  | NativeBundleFamilyMissingRed { family: NonEmptyStr }
 
 fn first_native_bundle_family_without_red(
   rows: List<NativeBundleMemberEquivalence>,
   evidence: List<NativeBundleFamilyCutoverEvidence>
-) -> List<NonEmptyStr> {
+) -> NativeBundleFamilyRedSearch {
   fold(
     rows,
-    init: [],
-    f: (acc, row) => if length(acc) > 0 {
-      acc
-    } else if family_has_discriminating_red(family: row.family, evidence: evidence) {
-      acc
-    } else {
-      [row.family]
+    init: NativeBundleFamiliesHaveRed,
+    f: (found, row) => match found {
+      NativeBundleFamilyMissingRed { family: prior } =>
+        NativeBundleFamilyMissingRed { family: prior }
+      NativeBundleFamiliesHaveRed =>
+        if family_has_discriminating_red(family: row.family, evidence: evidence) {
+          NativeBundleFamiliesHaveRed
+        } else {
+          NativeBundleFamilyMissingRed { family: row.family }
+        }
     }
   )
 }
@@ -294,18 +323,18 @@ fn native_witness_bundle_execution_admit(
     NativeBundleExecutionRefusedProcessCount { observed: receipt.process_count }
   } else {
     match first_native_bundle_divergence(rows: receipt.member_equivalence) {
-      Cons { head: row, tail: _ } => NativeBundleExecutionRefusedDivergence {
+      NativeBundleDivergenceFound { row: row } => NativeBundleExecutionRefusedDivergence {
         witness: row.witness,
         interpreted: row.interpreted,
         native: row.native
       }
-      Empty => match first_native_bundle_family_without_red(
+      NativeBundleDivergenceAbsent => match first_native_bundle_family_without_red(
         rows: receipt.member_equivalence,
         evidence: family_evidence
       ) {
-        Cons { head: family, tail: _ } =>
+        NativeBundleFamilyMissingRed { family: family } =>
           NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family }
-        Empty => NativeBundleExecutionAccepted { receipt: receipt }
+        NativeBundleFamiliesHaveRed => NativeBundleExecutionAccepted { receipt: receipt }
       }
     }
   }

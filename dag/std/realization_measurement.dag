@@ -34,6 +34,8 @@ type RealizationMeasureEffect
 
 data space_measure_duality_note: String = "Space composes as time's DUAL (witness-realization plan P1 / memory-control audit F4): sequential steps RELEASE, so seq peak = max; concurrent steps CO-RESIDE, so par peak = add. The earlier receipt rollup summed space over a sequential list - the parallel rule applied to the serial axis - and the keystone witness enshrined the sum; both corrected with this landing. Realized observation: the observed_peak_resident_bytes host builtin (VmHWM, fail-closed when unavailable) is ObservePeakResidentAtSubject's realization seam."
 
+data elapsed_observation_realization_note: String = "ObserveElapsedAtSubject realization seam: observed_monotonic_nanos(boundary) reads nanoseconds since a process-local monotonic epoch. Callers use distinct start/end boundary labels and subtract the observations around the modeled subject; the labels prevent pure-call memoization from collapsing two observations but are never cache or bundle identity material. The absolute reading is neither calendar time nor identity material. The native-selected-witness bundle receipt uses this seam to compare the same selected population through interpreter and native execution."
+
 fn space_measure_seq(a: ByteSize, b: ByteSize) -> ByteSize {
   byte_size(count: nat_max(a: measure_count(m: a), b: measure_count(m: b)))
 }

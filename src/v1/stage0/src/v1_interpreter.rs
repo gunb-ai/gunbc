@@ -9785,6 +9785,23 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveElapsedAtSubject realization seam: a process-relative monotonic
+            // reading. Only differences between two observations are meaningful.
+            arm "free_call.observed_monotonic_nanos" { "observed_monotonic_nanos" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => {
+                    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+                    let nanos = EPOCH
+                        .get_or_init(std::time::Instant::now)
+                        .elapsed()
+                        .as_nanos()
+                        .min(i64::MAX as u128) as i64;
+                    Ok(Some(Value::Int(nanos)))
+                }
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_monotonic_nanos takes exactly one boundary label".to_string(),
+                }),
+            },
+
             arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
