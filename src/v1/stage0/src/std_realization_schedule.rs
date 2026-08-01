@@ -535,6 +535,23 @@ pub fn scoped_witness_execution_receipt_wire_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn scoped_witness_execution_receipt_refined_identity_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DESIGN section 4b guarantee-ladder scaffold for exactly two fields: ScopedWitnessExecutionResult.batch_id and ScopedWitnessExecutionResult.source_roots_digest. PREVIOUS RUNG: the decoded product named ScopedWitnessBatchId and ContentHash, but reached them by unchecked casts from arbitrary TSV text; that was rung inflation, not validation, and canonical stage0 emission exposed both casts as runtime panic. TEMPORARY RUNG: nonempty String identity text admitted only after the receipt decoder's exact-arity and nonempty checks. REASON AND ATTAINABLE CEILING: the bootstrap has no validating constructor for refined carriers at this boundary; this is the existing ROADMAP capability row `The capability audit: sole_constructor completeness, then seal the proof-carriers`, whose unverified population explicitly includes generic refinements and casts. BOUNDED POPULATION: only these two decoded wire fields; ScopedWitnessBatch.batch_id and the scheduling-side source-roots digest remain branded where their authority constructs them. CROSS-REPRESENTATION JOIN: a consumer compares decoded text only with scoped_witness_batch_id_wire_text or scoped_witness_source_roots_digest_wire_text projected from the scheduled authority, never through an implicit cast. RESTORATION TRIGGER: the sole_constructor completeness audit lands a validating constructor for refined carrier text; the decoder calls it, restores ScopedWitnessBatchId and ContentHash fields, and this scaffold deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn scoped_witness_batch_id_wire_text(batch_id: NonEmptyStr) -> String {
+    v1_rt::concat("".to_string(), batch_id.clone())
+}
+
+pub fn scoped_witness_source_roots_digest_wire_text(source_roots_digest: NonEmptyStr) -> String {
+    v1_rt::concat("".to_string(), source_roots_digest.clone())
+}
+
 pub fn scoped_witness_kind_label(kind: WitnessKind) -> String {
     match kind.clone() {
         WitnessKind::CorpusWitnessKind => "corpus".to_string(),
@@ -600,8 +617,8 @@ pub fn scoped_witness_execution_outcome_detail(
 pub fn scoped_witness_execution_result_tsv_row(row: Rc<ScopedWitnessExecutionResult>) -> String {
     Rc::new(vec![
         row.head_sha.clone(),
-        v1_rt::concat("".to_string(), row.batch_id.clone()),
-        v1_rt::concat("".to_string(), row.source_roots_digest.clone()),
+        row.batch_id.clone(),
+        row.source_roots_digest.clone(),
         row.entry.clone(),
         row.function.clone(),
         scoped_witness_kind_label(row.witness_kind.clone()),
