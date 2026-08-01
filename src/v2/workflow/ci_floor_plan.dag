@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, parser_transport_witness_entries, known_red_probe_entries, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_native_cache_cold_roster,
@@ -191,12 +191,19 @@ fn bin_witness_corpus_enrolled(spec: CiSpec) -> Bool {
   length(xs: spec.discovery_scan_dirs) > 0 && length(xs: bin_witness_wet_entries) > 0
 }
 
+fn parser_transport_witness_batch_enrolled(spec: CiSpec) -> Bool {
+  length(xs: spec.discovery_scan_dirs) > 0 && length(xs: parser_transport_witness_entries) > 0
+}
+
 fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
   concat(
     if length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0 { [floor_corpus_node] } else { [] },
     concat(
       if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] },
-      if bin_witness_corpus_enrolled(spec: spec) { [bin_witness_corpus_node] } else { [] }
+      concat(
+        if bin_witness_corpus_enrolled(spec: spec) { [bin_witness_corpus_node] } else { [] },
+        if parser_transport_witness_batch_enrolled(spec: spec) { [parser_transport_witness_corpus_node] } else { [] }
+      )
     )
   )
 }
@@ -224,6 +231,7 @@ fn floor_resource_anchor_node(node: Node) -> Bool {
     || (node == floor_corpus_node)
     || (node == execution_corpus_node)
     || (node == bin_witness_corpus_node)
+    || (node == parser_transport_witness_corpus_node)
     || fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(acc, g) {
       acc || (node == gate_node(g: g))
     })
@@ -579,6 +587,33 @@ fn bin_witness_corpus_runnable_for() -> Runnable {
   }
 }
 
+data parser_transport_witness_source_roots: List<String> = ["dag", "src/v1"]
+
+data parser_transport_witness_corpus_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_parser_transport_witness_corpus } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data parser_transport_witness_corpus_note: String = "The separate scoped Hermetic batch for parser-reaching witnesses. Its source_roots are exactly parser_transport_witness_source_roots (dag plus src/v1), scan_dirs and exclusions are empty, and parser_transport_witness_entries is a nonempty explicit roster. This preserves gunbc.ci_layer_roots witness_layer_roots as the ordinary dag plus src/v2 discovery authority instead of making unrelated witnesses co-resolve the v1 seed. The substantial-memory, heavy-resolve profile states the real shape: resolving v1.compiler reaches the parser/compiler seed closure, but the claims execute inside the interpreter and spawn no host compiler. parser_transport_witness_batch_enrolled ties the batch to live discovery, so synthetic and regeneration specs do not acquire it. floor_corpus_exclusion_resource_edges orders every other enrolled substantial corpus node before this node, preventing it from co-residing with the ordinary, execution, or bin corpus batches."
+
+fn parser_transport_witness_corpus_runnable_for() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: parser_transport_witness_source_roots,
+    scan_dirs: [],
+    explicit_entries: parser_transport_witness_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
+}
+
 fn floor_nodes(spec: CiSpec) -> List<Node> {
   fold(spec.gates, init: corpus_plan_nodes(spec: spec), f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
@@ -618,7 +653,24 @@ fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
       []
     }
   )
-  fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
+  let parser_isolation = if parser_transport_witness_batch_enrolled(spec: spec) {
+    fold(corpus_nodes, init: after_floor_corpus, f: fn(acc, source) {
+      if source == parser_transport_witness_corpus_node {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: floor_resource_depends_on(
+            source: source,
+            dependent: parser_transport_witness_corpus_node
+          )
+        )
+      }
+    })
+  } else {
+    after_floor_corpus
+  }
+  fold(spec.gates, init: parser_isolation, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
       acc
@@ -789,6 +841,8 @@ fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
     execution_corpus_runnable_for(spec: spec)
   } else if node == bin_witness_corpus_node {
     bin_witness_corpus_runnable_for()
+  } else if node == parser_transport_witness_corpus_node {
+    parser_transport_witness_corpus_runnable_for()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }

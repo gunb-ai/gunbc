@@ -767,6 +767,44 @@ fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
+type ParserTransportWitnessBatchDissolutionTrigger
+  = V2ParserOwnsParserWitnesses
+  | ScheduleWitnessEntryCarriesSourceRoots
+
+data parser_transport_witness_batch_dissolution_triggers: List<ParserTransportWitnessBatchDissolutionTrigger> = [
+  V2ParserOwnsParserWitnesses,
+  ScheduleWitnessEntryCarriesSourceRoots,
+]
+
+data parser_transport_witness_batch_note: String = "The scoped parser-transport witness roster. These claims execute the real v1 parser and therefore require dag plus src/v1 as their resolution scope, while ordinary witness discovery is intentionally confined to witness_layer_roots (dag plus src/v2). Widening witness_layer_roots would force every unrelated witness to co-resolve the dying seed tree, so v2.workflow.ci_floor_plan consumes this roster in its own Hermetic explicit-entry batch. The initial rows are live main-tree inhabitants rather than machinery for an in-flight PR: the pattern-binder production transport witnesses and caret parser smokes were outside every discovery root before this roster. Adding another parser-reaching claim is one parser_transport row; it never changes the ordinary discovery roots. The typed dissolution alternatives are parser_transport_witness_batch_dissolution_triggers: when the v2 parser owns these claims, they move under ordinary discovery; when ScheduleWitnessEntry carries its own source-root scope, this batch becomes the derived projection of per-entry scopes rather than a special constructor."
+
+fn parser_transport(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind }
+}
+
+data parser_transport_witness_entries: List<ScheduleWitnessEntry> = [
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_pattern_parser_materializes_dedicated_declaration_nodes"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_shorthand_wrapper_and_declaration_roles_remain_distinct"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_let_initializer_retains_lexical_reference_category"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_parse_error_preserves_authored_token_ordinal_space"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_accepts_valid_occurrence_transport"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_missing_occurrence_identity"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_duplicate_occurrence_identity"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_wrong_occurrence_role"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_index_terminal_mismatch"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_ancestor_path_mismatch"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_duplicate_declaration_rows"),
+  parser_transport(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag", f: "w_production_frontend_refuses_duplicate_reference_rows"),
+  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_caret_tokenizes_as_sh_caret"),
+  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_caret_paren_tokenizes_as_caret_then_lparen"),
+  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_caret_ident_produces_literal"),
+  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_caret_paren_produces_discriminant_call"),
+  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_expr_caret_paren_full_pipeline"),
+  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_expr_caret_var_arg_produces_discriminant_call"),
+  parser_transport(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag", f: "w_parse_module_let_caret_paren"),
+]
+
 data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spawns claim_batch as a child process to read a passing corpus's own stderr, so it is Wet BY CONSTRUCTION — its whole subject is what the observation layer prints, which only exists when the effects really run. The Hermetic discovery corpus refuses it exactly as install_media_real_execution_wet_note describes ('no mock_response for operation Run — refusing to fabricate Unit'), and that refusal is correct: a mocked child emits no real observation stream, so a hermetic version of this witness could only ever pass vacuously. Landed into hermetic discovery by filename convention on first authoring (run 30178544618 @ b2411f0, batch 3) and re-homed to BinWitnessWet; then D6-rehomed to FalsifierRehomedBinWet (run 30220304152: ~85–90s/row vs bin_witness_wet_per_row_wall_budget_seconds=60, batch-4 FLOOR-BATCH-OVER-BUDGET)."
 
 data excl_expectation_frontier_reason: String = "Reads the [expectation-frontier] receipt out of a real child run's stderr, so it is Wet BY CONSTRUCTION for the same reason the anomaly wall beside it is: the receipt only exists when effects actually dispatch, and a hermetic child emits no real observation stream, so a mocked version could only pass vacuously. Sibling mechanism, same lane, deliberately not a forked one (DESIGN §3). D6-rehomed to FalsifierRehomedBinWet with its anomaly sibling (run 30220304152: ~89–136s/row vs the 60s per-row budget)."

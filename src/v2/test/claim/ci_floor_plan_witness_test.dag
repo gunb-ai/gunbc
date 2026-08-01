@@ -12,6 +12,9 @@ import v2.workflow.ci_floor_plan {
   gunbc_falsifier_plan,
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
+  parser_transport_witness_corpus_runnable_for,
+  parser_transport_witness_batch_enrolled,
+  parser_transport_witness_source_roots,
   corpus_witness_entries, execution_witness_entries,
   floor_corpus_exclusion_resource_edges,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
@@ -59,7 +62,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_batch_clamp_overhead_all_positive,
   witness_floor_batch_clamp_rate_all_nonneg,
 }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, parser_transport_witness_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_self_host_wet_known_red_entries,
@@ -286,6 +289,47 @@ test fn witness_kind_wins_over_path() -> Bool {
       r: execution_corpus_runnable_for(spec: spec),
       expected: synthetic_exec_kind_nonexec_path_row
     )
+}
+
+fn parser_transport_batch_shape_holds(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: exclusions, discovery_scope_dirs: scope, profile: p } =>
+      roots == ["dag", "src/v1"]
+        && roots == parser_transport_witness_source_roots
+        && length(xs: dirs) == 0
+        && length(xs: entries) == length(xs: parser_transport_witness_entries)
+        && length(xs: entries) == 20
+        && length(xs: exclusions) == 0
+        && length(xs: scope) == 0
+        && match mode { SelectionApplied => true  _ => false }
+        && execution_mode_eq(left: p.execution_mode, right: Hermetic)
+        && p.heavy_whole_tree_resolve
+        && (p.spawns_host_compiler == false)
+    _ => false
+  }
+}
+
+fn parser_transport_roster_has_entry(entry: String) -> Bool {
+  fold(parser_transport_witness_entries, init: false, f: fn(found, row) {
+    found || row.entry == entry
+  })
+}
+
+test fn witness_parser_transport_batch_is_scoped_nonempty_and_live() -> Bool {
+  parser_transport_witness_batch_enrolled(spec: gunbc_ci_spec)
+    && parser_transport_batch_shape_holds(r: parser_transport_witness_corpus_runnable_for())
+    && parser_transport_roster_has_entry(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag")
+    && parser_transport_roster_has_entry(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag")
+    && witness_layer_roots == ["dag", "src/v2"]
+}
+
+test fn witness_parser_transport_batch_is_isolated_from_other_corpora() -> Bool {
+  fold(gunbc_ci_floor_ordinary_batches(), init: true, f: fn(ok, batch) {
+    let parser_count = fold(batch, init: 0, f: fn(count, r) {
+      if parser_transport_batch_shape_holds(r: r) { count + 1 } else { count }
+    })
+    ok && (parser_count == 0 || length(xs: batch) == 1)
+  })
 }
 
 test fn witness_optin_roster_drives_corpus_presence() -> Bool {
