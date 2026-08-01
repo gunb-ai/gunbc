@@ -381,10 +381,11 @@ type PublicationSubjectObservation
 
 data publication_receipt_outcome_note: String = "THE RECEIPT PRESERVES THE VARIANT'S FIELDS, NOT A KEY AND A SENTENCE. An earlier cut of this module serialized every PublicationOutcome to an outcome key plus publication_detail's rendered prose, discarding pr_number, pr_head, url, draft, the observed remote head, and the ambiguous sets - all of which existed in the typed value at the moment of serialization.\\n\\nWHAT THAT COST, concretely and not hypothetically: Review's whole input is the pull-request binding this module establishes. A Review producer reading that receipt could recover the PR number only by parsing an English sentence, or by asking GitHub again and re-deriving a fact Publication had already decided. Re-deriving it is worse than it sounds, because the second query can disagree with the first - which is the divergence this module exists to catch, reintroduced by the carrier meant to record it.\\n\\nSO detail IS A PROJECTION, NEVER DURABLE AUTHORITY. publication_detail renders from these fields; nothing reads the rendered string back. That also collapses the three-way string fork the earlier cut carried - an outcome-key writer, a key allow-list, and a key-to-segment-state mapper, three places spelling the same eight constructors - into one coproduct that a consumer matches exhaustively."
 
+data receipt_bound_carries_no_head_note: String = "ReceiptBound DELIBERATELY HAS NO pr_head FIELD, AND THAT ABSENCE IS THE GUARANTEE. The variant means exactly one thing: a pull request is open whose head is the subject's expected_head. So the head it offers IS subject.expected_head - already in the same document, and already the receipt's own filename. Storing it a second time inside the outcome would be one fact in two places, and the second copy is precisely what can disagree with the first.\\n\\nWHAT THAT WOULD ADMIT, concretely: a receipt naming this subject but carrying some other pull request's head would decode cleanly, match the subject on all six subject fields, and complete Publication for a head no pull request actually offers - the exact class this module exists to refuse, walked in through the carrier meant to record it. Checking the two copies against each other at decode time would catch it, but a check concedes the contradictory document is writable; deleting the field means it cannot be written or represented at all.\\n\\nWHY ReceiptHeadDiverged KEEPS ITS pr_head: there the head is genuinely new information - the DIFFERENT head the pull request was found at, which appears nowhere else in the document. A field is redundant only when the fact is already fixed elsewhere, and divergence is the case where it is not."
+
 type PublicationReceiptOutcome
   = ReceiptBound {
       pr_number: Int,
-      pr_head: CommitSha,
       url: NonEmptyStr,
       draft: Bool,
     }
@@ -402,8 +403,8 @@ type PublicationReceiptOutcome
 
 fn publication_receipt_outcome_of(outcome: PublicationOutcome) -> PublicationReceiptOutcome {
   match outcome {
-    PublicationBound { branch: _, pr_number, pr_head, url, draft } =>
-      ReceiptBound { pr_number: pr_number, pr_head: pr_head, url: url, draft: draft }
+    PublicationBound { branch: _, pr_number, pr_head: _, url, draft } =>
+      ReceiptBound { pr_number: pr_number, url: url, draft: draft }
     PublicationHeadDiverged { branch: _, pr_number, pr_head, expected_head: _, url } =>
       ReceiptHeadDiverged { pr_number: pr_number, pr_head: pr_head, url: url }
     PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers } =>
@@ -423,7 +424,7 @@ fn publication_receipt_outcome_of(outcome: PublicationOutcome) -> PublicationRec
 
 fn publication_receipt_outcome_key(outcome: PublicationReceiptOutcome) -> NonEmptyStr {
   match outcome {
-    ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => "publication-bound"
+    ReceiptBound { pr_number: _, url: _, draft: _ } => "publication-bound"
     ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => "publication-head-diverged"
     ReceiptBindingAmbiguous { pr_numbers: _ } => "publication-binding-ambiguous"
     ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } =>
@@ -439,7 +440,7 @@ fn publication_receipt_offers_the_expected_head(
   outcome: PublicationReceiptOutcome,
 ) -> Bool {
   match outcome {
-    ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => true
+    ReceiptBound { pr_number: _, url: _, draft: _ } => true
     ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
     ReceiptBindingAmbiguous { pr_numbers: _ } => false
     ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
@@ -478,11 +479,10 @@ data publication_receipt_schema_v2_note: String = "v2, not v1, because the v1 sh
 
 fn publication_receipt_outcome_json(outcome: PublicationReceiptOutcome) -> JsonValue {
   match outcome {
-    ReceiptBound { pr_number, pr_head, url, draft } =>
+    ReceiptBound { pr_number, url, draft } =>
       json_object(members: [
         json_kv(key: "kind", value: json_string(s: "publication-bound")),
         json_kv(key: "pr_number", value: json_int(n: pr_number)),
-        json_kv(key: "pr_head", value: json_string(s: pr_head as String)),
         json_kv(key: "url", value: json_string(s: url as String)),
         json_kv(key: "draft", value: json_bool(b: draft)),
       ])
@@ -679,25 +679,19 @@ fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecod
         match publication_receipt_int_member(doc: doc, key: "pr_number") {
           Absent => outcome_member_missing(kind: kind, member: "pr_number")
           Present { value: n } =>
-            match publication_receipt_member(doc: doc, key: "pr_head") {
+            match publication_receipt_member(doc: doc, key: "url") {
               ReceiptMemberUnreadable { reason: _ } =>
-                outcome_member_missing(kind: kind, member: "pr_head")
-              ReceiptMemberRead { value: h } =>
-                match publication_receipt_member(doc: doc, key: "url") {
-                  ReceiptMemberUnreadable { reason: _ } =>
-                    outcome_member_missing(kind: kind, member: "url")
-                  ReceiptMemberRead { value: u } =>
-                    match publication_receipt_bool_member(doc: doc, key: "draft") {
-                      Absent => outcome_member_missing(kind: kind, member: "draft")
-                      Present { value: d } =>
-                        OutcomeDecoded {
-                          outcome: ReceiptBound {
-                            pr_number: n,
-                            pr_head: h as CommitSha,
-                            url: u as NonEmptyStr,
-                            draft: d,
-                          },
-                        }
+                outcome_member_missing(kind: kind, member: "url")
+              ReceiptMemberRead { value: u } =>
+                match publication_receipt_bool_member(doc: doc, key: "draft") {
+                  Absent => outcome_member_missing(kind: kind, member: "draft")
+                  Present { value: d } =>
+                    OutcomeDecoded {
+                      outcome: ReceiptBound {
+                        pr_number: n,
+                        url: u as NonEmptyStr,
+                        draft: d,
+                      },
                     }
                 }
             }

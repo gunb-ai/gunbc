@@ -26,6 +26,7 @@ import gunbc.roadmap_publish {
   publication_receipt_of,
   publication_receipt_outcome_key,
   publication_receipt_json,
+  publication_subject_json,
   publication_receipt_decode,
   publication_receipt_schema,
   PublicationReceiptDecode,
@@ -35,6 +36,15 @@ import gunbc.roadmap_publish {
   publication_evidence_for,
 }
 import extdeps.github.github { Repository, github_https_clone_url }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_int,
+  json_bool,
+  json_object,
+  json_kv,
+  serialize_json,
+}
 
 data witness_scope_note: String = "What is claimed is the ADJUDICATION, not the fetch. adjudicate_publication is pure and total over observations the caller already holds, so every arm is reachable with no network and no token.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls or git. A change that broke the reads while leaving the adjudication intact would keep these green. What the coproduct inputs buy is that a broken read is now REPRESENTABLE — the caller reports it and the refusal arm is exercised here — where an earlier cut could only raise."
 
@@ -477,9 +487,9 @@ test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
     ReceiptUndecodable { reason: _ } => false
     ReceiptDecoded { receipt } =>
       match receipt.outcome {
-        ReceiptBound { pr_number, pr_head, url, draft } =>
+        ReceiptBound { pr_number, url, draft } =>
           pr_number == 22
-            && (pr_head as String) == (fixture_expected as String)
+            && (receipt.subject.expected_head as String) == (fixture_expected as String)
             && (url as String) == "https://github.com/gunb-ai/gunbc/pull/1"
             && !draft
         ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
@@ -504,7 +514,7 @@ test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
           pr_number == 22
             && (pr_head as String) == (fixture_older as String)
             && (pr_head as String) != (receipt.subject.expected_head as String)
-        ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => false
+        ReceiptBound { pr_number: _, url: _, draft: _ } => false
         ReceiptBindingAmbiguous { pr_numbers: _ } => false
         ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
         ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
@@ -529,6 +539,46 @@ test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
           publication_receipt_outcome_key(outcome: r1.outcome) == publication_receipt_outcome_key(outcome: r2.outcome)
             && (r1.subject.expected_head as String) != (r2.subject.expected_head as String)
       }
+  }
+}
+
+data one_head_per_bound_receipt_note: String = "THE DEFECT THIS REFUSES, stated as the shape of the document rather than as a rule: a receipt that names THIS subject and simultaneously binds a DIFFERENT pull-request head. Under the earlier cut ReceiptBound carried its own pr_head and the decoder read it independently of the subject, so such a document decoded cleanly, matched the subject on all six subject fields, and completed publication for a head no pull request offered - the exact class this lane exists to catch, walked in through the carrier meant to record it. Reported by review 46116.\\n\\nWHY THERE IS NO CHECK TO TEST: the field is gone. A bound receipt has exactly one head, subject.expected_head, so the contradictory document cannot be constructed in this language at all - the fix is DESIGN section 5 construction, not validation, and the state is unwritable rather than rejected.\\n\\nWHAT THIS CLAIM THEREFORE ASSERTS, since an unwritable state cannot be handed to a decoder: a document carrying a STRAY pr_head inside its bound outcome - the doctored shape the old encoder would have produced - answers with the SUBJECT's head and never the stray one. Under the old code this returned the stray head; under this one the stray member has no meaning to read. The stray sha here is deliberately the other fixture, so the claim goes red if any reading of the outcome's head is ever restored."
+
+fn doctored_bound_receipt_carrying_a_stray_head() -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: publication_receipt_schema as String)),
+    json_kv(key: "subject", value: publication_subject_json(subject: subject_for(head: fixture_expected))),
+    json_kv(key: "outcome", value: json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "publication-bound")),
+      json_kv(key: "pr_number", value: json_int(n: 22)),
+      json_kv(key: "pr_head", value: json_string(s: fixture_older as String)),
+      json_kv(key: "url", value: json_string(s: "https://github.com/gunb-ai/gunbc/pull/1")),
+      json_kv(key: "draft", value: json_bool(b: false)),
+    ])),
+  ]))
+}
+
+test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool {
+  match publication_receipt_decode(receipt: doctored_bound_receipt_carrying_a_stray_head()) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      (receipt.subject.expected_head as String) == (fixture_expected as String)
+        && (receipt.subject.expected_head as String) != (fixture_older as String)
+        && publication_receipt_outcome_key(outcome: receipt.outcome) == "publication-bound"
+  }
+}
+
+test fn a_stray_head_cannot_make_a_receipt_evidence_for_the_head_it_names() -> Bool {
+  match publication_evidence_for(
+    expected: subject_for(head: fixture_older),
+    receipt_readable: true,
+    receipt_text: doctored_bound_receipt_carrying_a_stray_head(),
+  ) {
+    EvidenceForSubject { receipt: _ } => false
+    EvidenceAbsent => false
+    EvidenceUnreadable { reason: _ } => false
+    EvidenceForAnotherSubject { field, expected: _, found: _ } =>
+      (field as String) == "expected_head"
   }
 }
 
@@ -611,7 +661,7 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
         ReceiptBindingAmbiguous { pr_numbers } =>
           count(pr_numbers) == 2
             && pr_numbers.first() == 11
-        ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => false
+        ReceiptBound { pr_number: _, url: _, draft: _ } => false
         ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
         ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
         ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false

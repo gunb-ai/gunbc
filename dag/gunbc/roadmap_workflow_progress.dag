@@ -339,7 +339,7 @@ fn publication_outcome_segment_state(
   outcome: PublicationReceiptOutcome,
 ) -> WorkflowSegmentState {
   match outcome {
-    ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => WorkflowSegmentComplete
+    ReceiptBound { pr_number: _, url: _, draft: _ } => WorkflowSegmentComplete
     ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => WorkflowSegmentFailed
     ReceiptRemoteBranchHeadDiverged { remote_head: _ } => WorkflowSegmentFailed
     ReceiptBranchNotPublished { remote_branches_seen: _ } => WorkflowSegmentPending
@@ -350,14 +350,17 @@ fn publication_outcome_segment_state(
   }
 }
 
+data bound_detail_reads_the_subject_head_note: String = "THE HEAD IN THE BOUND SENTENCE COMES FROM THE SUBJECT, NOT FROM THE OUTCOME. ReceiptBound carries no head of its own - see roadmap_publish's receipt_bound_carries_no_head_note - because the head it offers is the subject's expected_head by the meaning of the variant. So this projection takes that head as a parameter and renders the one copy that exists, which is why the sentence cannot disagree with the judgment it describes."
+
 fn publication_outcome_segment_detail(
   outcome: PublicationReceiptOutcome,
+  expected_head: CommitSha,
 ) -> String {
   match outcome {
-    ReceiptBound { pr_number, pr_head, url, draft } =>
+    ReceiptBound { pr_number, url, draft } =>
       join([
         "published as pull request #", to_string(pr_number),
-        " at the expected head ", pr_head as String,
+        " at the expected head ", expected_head as String,
         if draft { " (draft)" } else { "" },
         ": ", url as String,
       ], "")
@@ -432,7 +435,10 @@ fn publication_evidence_segment(
         kind: PublicationWorkflowSegment,
         state: publication_outcome_segment_state(outcome: receipt.outcome),
         detail: join([
-          publication_outcome_segment_detail(outcome: receipt.outcome),
+          publication_outcome_segment_detail(
+            outcome: receipt.outcome,
+            expected_head: receipt.subject.expected_head,
+          ),
           " (", receipt.subject.branch as String,
           " at ", receipt.subject.expected_head as String,
           " in ", receipt.subject.repository.full_name, ")",

@@ -644,6 +644,18 @@ test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Boo
     && string_contains(s: detail_at_h2, pattern: "expected_head")
 }
 
+data bound_sentence_names_one_head_note: String = "The completed sentence an operator reads must name the head that was actually judged. ReceiptBound no longer carries a head of its own, so this projection renders subject.expected_head - the single copy in the document. The claim asserts BOTH directions: the judged head appears, and the other fixture sha does not, because a sentence that could name a second head is the same defect one layer out from the one review 46116 found in the carrier."
+
+test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
+  let detail = publication_segment_of(
+    subject: PublicationSubjectObserved { subject: pub_subject(head: pub_head) },
+    readable: true,
+    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head),
+  ).detail
+  string_contains(s: detail, pattern: pub_head as String)
+    && !string_contains(s: detail, pattern: pub_other as String)
+}
+
 test fn publication_at_another_head_fails_rather_than_reading_as_progress() -> Bool {
   publication_state_at(
     subject_head: pub_head,
