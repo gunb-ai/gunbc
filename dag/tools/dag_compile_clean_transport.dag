@@ -3,6 +3,7 @@ module tools.dag_compile_clean_transport
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.output_policy { ExpectFailure, ExpectSuccess }
@@ -58,7 +59,7 @@ fn dcc_gunbc_path(root: String) -> String {
 }
 
 fn run_clean_tree_compile_typed() -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let out = shell.Mktemp.Dir()
     if out.success {
@@ -102,7 +103,7 @@ fn dcc_perturb_compile_with_args(
     path: concat(tmp_path, concat("/", module_file)),
     content: source
   )
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   let compile = gunbc.WitnessBin.Run(
     workdir: root.path,
     bin_path: dcc_gunbc_path(root: root.path),
@@ -114,7 +115,7 @@ fn dcc_perturb_compile_with_args(
 }
 
 fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let tmp = shell.Mktemp.Dir()
     if tmp.success {
@@ -134,7 +135,7 @@ fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_suc
 }
 
 fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let tmp = shell.Mktemp.DirWithTemplate(
       template: concat(root.path, "/target/dcc_perturb_fixture_XXXXXX")

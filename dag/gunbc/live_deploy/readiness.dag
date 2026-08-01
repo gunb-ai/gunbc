@@ -84,6 +84,13 @@ fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
   }
 }
 
+fn service_ready_apply_effect_for_deploy(spec: DeploymentSpec) -> ServiceReadyApplyEffect {
+  ServiceReadyApplyEffect {
+    unit: spec.service.unit_name,
+    endpoint: live_deploy_service_ready_endpoint_authority,
+  }
+}
+
 fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -> HealthzEffectiveRead {
   if success {
     HealthzEffectiveRead { body: body, probe_error: "" }
@@ -213,16 +220,23 @@ fn show_healthz_read_fixture_healthy() -> ShowEffectiveRead<HealthzEffectiveRead
 fn reconcile_service_ready_read(
   read: ShowEffectiveRead<HealthzEffectiveRead>
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  reconcile_service_ready_read_for_effect(read: read, effect: service_ready_apply_effect())
+}
+
+fn reconcile_service_ready_read_for_effect(
+  read: ShowEffectiveRead<HealthzEffectiveRead>,
+  effect: ServiceReadyApplyEffect,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
     ReadAbsent { reason: why } =>
       reconcile_grounded(
-        apply_effect: service_ready_apply_effect(),
+        apply_effect: effect,
         show_read: read,
         grounding: DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
       reconcile_grounded(
-        apply_effect: service_ready_apply_effect(),
+        apply_effect: effect,
         show_read: read,
         grounding: ground_service_ready_from_healthz(read: observed)
       )
@@ -234,12 +248,13 @@ fn live_deploy_service_ready_once_for_deploy(
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read(
+  reconcile_service_ready_read_for_effect(
     read: show_healthz_read_for_deploy(
       spec: spec,
       transport: transport,
       access: access,
-    )
+    ),
+    effect: service_ready_apply_effect_for_deploy(spec: spec),
   )
 }
 
@@ -248,6 +263,7 @@ fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, S
 }
 
 fn capture_unit_diagnosis(
+  spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> String {
@@ -259,7 +275,7 @@ fn capture_unit_diagnosis(
       unit_status_capture_text(
         capture: systemctl_status_read(
           transport: transport,
-          unit: live_deploy_service_ready_unit_authority,
+          unit: spec.service.unit_name,
         )
       )
   }
@@ -269,9 +285,9 @@ type ServiceReadyPollOutcome =
     PollSettled { result: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> }
   | PollRefusedAtBound { refusal: ServiceNotReady }
 
-fn poll_bound_refusal(last_probe: String) -> ServiceNotReady {
+fn poll_bound_refusal(spec: DeploymentSpec, last_probe: String) -> ServiceNotReady {
   ServiceNotReady {
-    unit: live_deploy_service_ready_unit_authority,
+    unit: spec.service.unit_name,
     endpoint: live_deploy_service_ready_endpoint_authority,
     waited: live_deploy_service_ready_poll_bound,
     last_probe: last_probe,
@@ -282,7 +298,7 @@ fn poll_bound_refusal(last_probe: String) -> ServiceNotReady {
 fn refusal_to_reconciliation(refusal: ServiceNotReady) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   NotConverged {
     reason: service_not_ready_reason(refusal: refusal),
-    applied: service_ready_apply_effect(),
+    applied: ServiceReadyApplyEffect { unit: refusal.unit, endpoint: refusal.endpoint },
   }
 }
 
@@ -295,7 +311,7 @@ fn live_deploy_poll_service_ready_outcome_after_attempts(
 ) -> ServiceReadyPollOutcome {
   let max_attempts = live_deploy_service_ready_poll_max_attempts()
   if attempt >= max_attempts {
-    PollRefusedAtBound { refusal: poll_bound_refusal(last_probe: last_probe) }
+    PollRefusedAtBound { refusal: poll_bound_refusal(spec: spec, last_probe: last_probe) }
   } else {
     let probe = live_deploy_service_ready_once_for_deploy(
       spec: spec,
@@ -316,7 +332,7 @@ fn live_deploy_poll_service_ready_outcome_after_attempts(
         )
       } else {
         PollRefusedAtBound {
-          refusal: poll_bound_refusal(last_probe: "sleep between health probes failed")
+          refusal: poll_bound_refusal(spec: spec, last_probe: "sleep between health probes failed")
         }
       }
     }
@@ -369,6 +385,7 @@ fn live_deploy_poll_until_service_ready_for_deploy(
         refusal: service_not_ready_with_captured_diagnosis(
           refusal: refusal,
           text: capture_unit_diagnosis(
+            spec: spec,
             transport: transport,
             access: access,
           )

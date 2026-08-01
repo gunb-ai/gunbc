@@ -5,6 +5,7 @@ import gunbc.ci_materialization { ci_catalog_projection_refusals }
 import gunbc.ci_materialization_gate {
   ci_materialization_ladder_holds_live,
   ci_materialization_holds_without_sccache,
+  ci_heal_revalidation_preflight_is_fresh_effect,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -22,4 +23,8 @@ test fn ci_ladder_holds_without_sccache_single_build() -> Bool {
 
 test fn ci_catalog_projection_has_no_refusals() -> Bool {
   ci_catalog_projection_refusals() == 0
+}
+
+test fn ci_heal_revalidation_preflight_is_a_fresh_checkout_observation() -> Bool {
+  ci_heal_revalidation_preflight_is_fresh_effect()
 }
