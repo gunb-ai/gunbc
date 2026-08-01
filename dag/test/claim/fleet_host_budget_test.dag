@@ -204,13 +204,8 @@ test fn witness_plan_derives_and_conserves() -> Bool {
   }
 }
 
-<<<<<<< HEAD
 test fn witness_runner_slice_is_session_worstcase_only() -> Bool {
-  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
-=======
-fn witness_runner_slice_is_session_worstcase_only() -> Bool {
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
->>>>>>> origin/session/wise-crab-547
   let expected = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: session_slice_fixture()) - byte_size_count(b: fitting_headroom_bytes())
   byte_size_count(b: slice) == expected
 }
@@ -224,26 +219,15 @@ test fn witness_runner_slice_excludes_build_pool() -> Bool {
   byte_size_count(b: slice) > 0 && double_subtract_would_starve
 }
 
-<<<<<<< HEAD
 test fn witness_host_conserves_exactly() -> Bool {
-  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
-=======
-fn witness_host_conserves_exactly() -> Bool {
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
->>>>>>> origin/session/wise-crab-547
   let whole = byte_size_count(b: overhead_16gib()) + byte_size_count(b: session_slice_fixture()) + byte_size_count(b: fitting_headroom_bytes()) + byte_size_count(b: slice)
   whole == byte_size_count(b: host_125gib())
 }
 
-<<<<<<< HEAD
 test fn witness_tree_conserves() -> Bool {
-  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
-  let tree = fleet_host_budget_tree(name: "fixture", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: slice)
-=======
-fn witness_tree_conserves() -> Bool {
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), compile_pool: byte_size(0))
   let tree = fleet_host_budget_tree(name: "fixture", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: slice, compile_pool: byte_size(0))
->>>>>>> origin/session/wise-crab-547
   node_conserves(node: tree)
 }
 

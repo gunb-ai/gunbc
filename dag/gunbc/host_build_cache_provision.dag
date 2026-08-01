@@ -17,11 +17,7 @@ import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import product.placement_supply { HostIdentity }
 import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 
-<<<<<<< HEAD
-data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling the forbidden absorbing fallback (the -u RUSTC_WRAPPER cache-drop). The live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2): the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts — no cache-drop widen remains. This fixture stays as the RED control guarding the verdict fold against re-introduction; it must never ship as the authority."
-=======
-data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold. It ALSO models the placement widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged' — which is precisely the behavior that shipped on srv1 and let a lazily auto-spawned server in dead slot srv1-10's cgroup accumulate 229780 memory.max breach events and 12 oom_kills while every provision read reported converged."
->>>>>>> origin/session/wise-crab-547
+data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling TWO forbidden widens; it must never ship as the authority verdict fold. (1) The absorbing fallback (the -u RUSTC_WRAPPER cache-drop): the live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2) — the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts, so no cache-drop widen remains and this fixture guards the fold against its re-introduction. (2) The PLACEMENT widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged'. That is precisely the behavior that shipped on srv1 — a lazily auto-spawned server in dead slot srv1-10's cgroup accumulated 229780 memory.max breach events and 12 oom_kills while every provision read reported converged. Re-confirmed live 2026-08-01: pid 3975946, age 31.2d, cgroup actions-runner@srv1-10.service (unit inactive+disabled, slots 01-05 are the live ones), holding LISTEN on /var/lib/ctrl/sccache-ci/server.sock, resident beside an active runner's rustc."
 
 data host_build_cache_provision_scope_disposition: Disposition = SingleAuthority
 
@@ -67,13 +63,10 @@ type BuildCacheProvisionRefusal
   | RefusalDaemonMisconfigured
   | RefusalPrivilegeDenied
   | RefusalCatalogUnknown
-<<<<<<< HEAD
   | RefusalPathShadowed
   | RefusalDaemonUnsupervised
-=======
   | RefusalServerLazySpawned
   | RefusalPlacementUnknown
->>>>>>> origin/session/wise-crab-547
 
 type BuildCacheProvisionVerdict
   = ProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
