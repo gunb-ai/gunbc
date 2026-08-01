@@ -83,28 +83,30 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn resolve_v1_bin(name: &str) -> PathBuf {
+    let env_key = format!("CARGO_BIN_EXE_{name}");
+    if let Ok(path) = std::env::var(&env_key) {
+        return PathBuf::from(path);
+    }
+    let root = workspace_root();
+    let mut candidates = Vec::new();
+    if let Ok(profile) = std::env::var("PROFILE") {
+        candidates.push(root.join(format!("target/{profile}/{name}")));
+    }
+    candidates.push(root.join(format!("target/release/{name}")));
+    candidates.push(root.join(format!("target/debug/{name}")));
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .unwrap_or_else(|| root.join(format!("target/debug/{name}")))
+}
+
 fn claim_executor_bin() -> PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_claim_executor")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            workspace_root().join(
-                std::env::var("PROFILE")
-                    .map(|p| format!("target/{p}/claim_executor"))
-                    .unwrap_or_else(|_| "target/debug/claim_executor".to_string()),
-            )
-        })
+    resolve_v1_bin("claim_executor")
 }
 
 fn claim_batch_bin() -> PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_claim_batch")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            workspace_root().join(
-                std::env::var("PROFILE")
-                    .map(|p| format!("target/{p}/claim_batch"))
-                    .unwrap_or_else(|_| "target/debug/claim_batch".to_string()),
-            )
-        })
+    resolve_v1_bin("claim_batch")
 }
 
 fn parse_harness_authority(content: &str) -> HarnessAuthority {
