@@ -3,6 +3,7 @@ module v2.lens.inert_carrier
 import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
 import std.disposition { RealizationDispatch }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.collection { fold_list }
 
 data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
 
@@ -13,10 +14,10 @@ fn inert_row(unit: String, reason: String) -> FrontierRow {
 }
 
 data inert_carrier_roster: List<FrontierRow> = [
-  inert_row(unit: "AccessPolicy", reason: "modeled access-policy carrier with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader)"),
   inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CompileDiagnosticCensus", reason: "modeled compile-diagnostic observation carrier whose guarantee-probe consumer is witness-only until a production probe-admission reader lands"),
+  inert_row(unit: "DownstreamSupportRoster", reason: "modeled external-authority observation carrier whose support-portfolio construction is witness-only until a production product/workflow reader lands"),
   inert_row(unit: "FloorWitnessRow", reason: "modeled floor-receipt carrier with no live consumer yet"),
   inert_row(unit: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
   inert_row(unit: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),
