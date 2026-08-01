@@ -94,6 +94,24 @@ fn frontier_probe_located_stage_for_blocker(blocker: FrontierBlockerClass) -> Fr
   }
 }
 
+data frontier_probe_located_stage_projection_note: String = "frontier_probe_located_stage_for_blocker is a blocker-class projection for roster knowledge rows and rank helpers — NOT the live probe receipt authority. Live frontier_probe_emit_from_ingest MUST bind located_stage from the observed execution position: assemble arm → ProbeStageAssemble; emit arm → frontier_probe_located_stage_for_emit_outcome (UpstreamSemanticRefusal alone keeps ProbeStageSemanticDerivation). Mapping every UnknownProbeCause to Assemble fabricates provenance when assemble+emit both succeeded (review 46694)."
+
+fn frontier_probe_located_stage_for_assemble_outcome(
+  blocker: FrontierBlockerClass
+) -> FrontierProbeStage {
+  ProbeStageAssemble
+}
+
+fn frontier_probe_located_stage_for_emit_outcome(
+  blocker: FrontierBlockerClass
+) -> FrontierProbeStage {
+  match blocker {
+    UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } =>
+      ProbeStageSemanticDerivation
+    _ => ProbeStageEmit
+  }
+}
+
 data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `frontier_probe_survey` bin emits UnknownProbeCause with these located_reason symbols when per-module probe fails or emit-accept is unverified; not classified by frontier_classify_rejection_reason (assemble/emit diagnostics only). Dissolves with the P5 bin."
 
 data frontier_blocker_is_probe_survey_host_reason_dispatch_note: String = "frontier_blocker_is_probe_survey_host_reason is the reason-table authority for P5 seed-bin UnknownProbeCause symbols (^frontier_probe_runtime_error, ^frontier_probe_oom_or_budget, ^probe_emit_accept_self_host_bar_unbound). Wired through frontier_classify_rejection_reason and frontier_probe_survey_host_failure_reason; the seed bin reads the latter at runtime — no parallel Rust symbol strings. Dissolves with the P5 bin scaffold."

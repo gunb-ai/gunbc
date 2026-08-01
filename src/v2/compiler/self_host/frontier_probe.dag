@@ -7,10 +7,11 @@ import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeReceipt,
-  ProbeStageAssemble,
+  ProbeStageEmit,
   UnknownProbeCause,
   frontier_classify_rejection_reason,
-  frontier_probe_located_stage_for_blocker
+  frontier_probe_located_stage_for_assemble_outcome,
+  frontier_probe_located_stage_for_emit_outcome
 }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -35,7 +36,7 @@ fn frontier_probe_emit_from_ingest(
       FrontierProbeReceipt {
         module_path: module_path,
         blocker_class: blocker,
-        located_stage: frontier_probe_located_stage_for_blocker(blocker: blocker),
+        located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
         located_reason: d.head.reason
       }
     }
@@ -51,11 +52,7 @@ fn frontier_probe_emit_from_ingest(
             blocker_class: UnknownProbeCause {
               reason: ^probe_emit_accept_self_host_bar_unbound
             },
-            located_stage: frontier_probe_located_stage_for_blocker(
-              blocker: UnknownProbeCause {
-                reason: ^probe_emit_accept_self_host_bar_unbound
-              }
-            ),
+            located_stage: ProbeStageEmit,
             located_reason: ^probe_emit_accept_self_host_bar_unbound
           }
         Rejected { diagnostics: d } => {
@@ -63,7 +60,7 @@ fn frontier_probe_emit_from_ingest(
           FrontierProbeReceipt {
             module_path: module_path,
             blocker_class: blocker,
-            located_stage: frontier_probe_located_stage_for_blocker(blocker: blocker),
+            located_stage: frontier_probe_located_stage_for_emit_outcome(blocker: blocker),
             located_reason: d.head.reason
           }
         }

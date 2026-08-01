@@ -9,12 +9,16 @@ import v2.compiler.self_host.frontier_probe_survey {
 import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
   NameResolutionGap,
+  ProbeStageAssemble,
+  ProbeStageEmit,
   ProbeStageSemanticDerivation,
   UpstreamSemanticRefusal,
   UnknownProbeCause,
   gate_a_flip_probe_unresolved_compiler_error_reason,
   frontier_classify_rejection_reason,
+  frontier_probe_located_stage_for_assemble_outcome,
   frontier_probe_located_stage_for_blocker,
+  frontier_probe_located_stage_for_emit_outcome,
   upstream_semantic_compiler_error_class
 }
 
@@ -64,4 +68,26 @@ test fn compiler_frontier_stale_located_reason_wall_reds_until_second_pass_holds
 
 test fn compiler_frontier_empty_survey_blocker_partition_totality_holds() -> Bool {
   frontier_probe_survey_blocker_partition_totality_holds(receipts: [], module_count: 0)
+}
+
+test fn frontier_emit_accept_unbound_located_stage_is_emit_holds() -> Bool {
+  frontier_probe_located_stage_for_emit_outcome(
+    blocker: UnknownProbeCause { reason: ^probe_emit_accept_self_host_bar_unbound }
+  ) == ProbeStageEmit
+}
+
+test fn frontier_emit_surface_gap_located_stage_is_emit_holds() -> Bool {
+  frontier_probe_located_stage_for_emit_outcome(blocker: EmitSurfaceGap) == ProbeStageEmit
+}
+
+test fn frontier_assemble_unknown_located_stage_is_assemble_holds() -> Bool {
+  frontier_probe_located_stage_for_assemble_outcome(
+    blocker: UnknownProbeCause { reason: ^frontier_probe_runtime_error }
+  ) == ProbeStageAssemble
+}
+
+test fn frontier_blocker_projection_unknown_still_maps_assemble_red_control() -> Bool {
+  frontier_probe_located_stage_for_blocker(
+    blocker: UnknownProbeCause { reason: ^probe_emit_accept_self_host_bar_unbound }
+  ) == ProbeStageAssemble
 }
