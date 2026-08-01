@@ -223,8 +223,18 @@ identity without claiming a winner for the ambiguous reference.
 ## 4. Fresh canonical resolver consuming edge
 
 #7321 remains audit evidence and is not rebased or rescued. Its fresh current-main
-successor is the first production v1 consumer of `std.occurrence_binding`. Its
-candidate producer must:
+successor is the first production v1 consumer of `std.occurrence_binding`.
+
+**These requirements are unchanged, but they are NOT one node's work.** An earlier
+revision of this section listed them as a single "canonical resolver" obligation,
+which contradicted the roadmap boundaries and would have directed an implementer
+straight back into the broad node those boundaries dissolve (`review 45670`). They
+are subdivided below by the node that owns each, with nothing added and nothing
+dropped. Where this list and the roadmap node text disagree, the roadmap node is
+the authority.
+
+**`namespace-reference-derived-closure` — the candidate producer.** Everything that
+decides *which declarations are in view*:
 
 - For each ordinary type, value, and callee occurrence, construct the exact
   `BindingOccurrence<Node>` containment path.
@@ -236,12 +246,27 @@ candidate producer must:
 - Dedupe only identical full `ContainmentPath<Node>` identities.
 - Preserve same terminal nodes at different containment paths as distinct
   candidates.
+
+**`namespace-binding-kernel` — the decision.** Exactly one obligation, over a
+population it is *handed*:
+
 - Call `occurrence_binding_from_candidates` once.
+
+**`namespace-bound-only-consumers` — the readers.** What downstream code may do with
+the answer:
+
 - Project `TypeBinding`/function signature/value semantics only from the accepted
   declaration terminal in `OccurrenceBound`.
+
+**`namespace-ambiguity-discharge` — the genuinely-many cases.**
+
 - Emit the existing located `AmbiguousReference` diagnostic from the typed
   `OccurrenceAmbiguous` population. Diagnostic strings are projections, never
   candidate identity.
+
+**`namespace-canonical-binding` — the changeover.** The deletion, which is the last
+step and not a precondition of the others:
+
 - Never recover through `match_bound_names`, `locals`, function maps,
   `global_bare`, import reachability, nearest-level selection, or a second lookup.
 

@@ -50,7 +50,7 @@ import gunbc.typed_argv_exec {
   typed_argv_probe_over_ssh,
 }
 import extdeps.uri { Uri, Http, uri_wire }
-import extdeps.languages.json.grammar { json_text_parseable }
+import extdeps.languages.json.parse { json_text_parseable }
 import gunbc.roadmap_dashboard_instance {
   dashboard_instance_health_identity_prefix,
   DashboardProvisionTransport,

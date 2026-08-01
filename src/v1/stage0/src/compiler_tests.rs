@@ -565,6 +565,77 @@ mod compiler_tests {
     }
 
     #[test]
+    fn call_shape_wall_witness() {
+        // DISCRIMINATING RED for direct_call_shape_wall_note (04_infer). Before the
+        // wall, `sub(a: 10, bb: 3)` against `fn sub(a: Int, b: Int)` compiled with
+        // ZERO diagnostics: the per-param type walk absorbed the mislabeled arg into
+        // its position, the interpreter refused the same call at runtime
+        // (CallContractMismatch in call_function_inner), and the Rust emitter
+        // silently REORDERED it positionally — two realizations of one program
+        // disagreeing silently. The wall makes the compile seam agree with the
+        // runtime authority, on both of the classes the runtime refuses.
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let mislabeled = compile_one(
+                    "mislabel.dag",
+                    "module mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n",
+                );
+                let unknown: Vec<_> = mislabeled.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallArgumentNameUnknown { .. }))
+                    .collect();
+                assert!(
+                    !unknown.is_empty(),
+                    "an argument labeling a parameter that does not exist must refuse at the compile seam — the interpreter already refuses this call at runtime, and the emitter silently reorders it, got: {:?}",
+                    mislabeled.diagnostics
+                );
+                assert!(
+                    unknown.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                        && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
+                    "CallArgumentNameUnknown must BLOCK — a counted advisory would still emit the silently-reordered realization"
+                );
+                let surplus = compile_one(
+                    "surplus.dag",
+                    "module surplus\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1, 2, 3) }\n",
+                );
+                assert!(
+                    surplus.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalSurplus { .. })),
+                    "a positional argument beyond the declared positional parameters must refuse — the interpreter refuses the same call (too many positional arguments), got: {:?}",
+                    surplus.diagnostics
+                );
+                // POSITIVE CONTROLS at ZERO diagnostics of any severity (the filtering
+                // lesson of codex review 45357: asserting only the absence of the
+                // blocking variant lets an advisory pass unnoticed). Correct labels,
+                // correct positional binding, and the deliberately-unused-parameter
+                // idiom (label `ctx` against declared `_ctx` — the interpreter accepts
+                // it, so the compile seam must too) all stay silent.
+                let green = compile_one(
+                    "green.dag",
+                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n",
+                );
+                assert!(
+                    green.diagnostics.is_empty(),
+                    "correct call shapes must compile with NO diagnostic of any severity, got: {:?}",
+                    green.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_shape_wall_witness panicked");
+    }
+
+    #[test]
     fn caret_parse_smoke_native_compile_emit_witnesses() {
         use crate::v1_tests_claim_caret_parse_smoke_test::*;
         assert!(w_caret_tokenizes_as_sh_caret());
