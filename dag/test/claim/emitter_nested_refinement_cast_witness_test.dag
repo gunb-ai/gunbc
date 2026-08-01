@@ -1,0 +1,29 @@
+module test.claim.emitter_nested_refinement_cast_witness_test
+
+data emitter_nested_refinement_cast_witness_note: String = "Emission-level control for the carrier class that broke gunbc#7480: a where-refinement whose BASE is itself a refined type (NonEmptyStr where pred) is a carrier composition the v1 Rust emitter cannot lower, so instead of refusing at emit time it emits panic!(\"unsupported cast from String to NonEmptyStr\") into the generated Rust. The round-trip witness in content_hash_family_grounded_witness_test.dag does NOT discriminate this class — it was proven green against both the defective and the repaired carrier, because the defect is emission-only and never reaches R0 evaluation. This file is the control that actually reds. Two poles, both executed: single_refinement is the accepted positive control (the repaired shape, String where pred, emits no unsupported cast), and nested_refinement is the discriminating RED control (the defective shape still emits the panic). The RED pole is deliberately asserted as PRESENT rather than fixed: repairing the emitter to lower nested refinements is an emitter feature outside this PR's scope, so the deficit is recorded here as a typed, counted, executing fact instead of an unmarked silence (DESIGN section 4b — no untracked stall; the reported rung must equal the rung executed evidence establishes). NOTE the emitter arm itself is a section 5 fail-open: an unsupported cast should be a located refusal at emit time, never a panic fabricated into generated code — in gunbc#7480 exactly one such panic masked a second one, and the masked one would have paniced at runtime on any accepted non-SHA OCI digest. dissolve-on: feature:emitter-nested-refinement-lowering — when the emitter either lowers nested refinements or refuses them at emit time, the RED pole reds and BOTH poles are rewritten to assert the refusal."
+
+fn w_single_refinement_emits_no_unsupported_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_single\n\nimport std.types { Bool, String }\n\nfn encoded_ok(value: String) -> Bool {\n  !(value == \"\")\n}\n\ntype SingleCarrier = String where encoded_ok\n\nfn parse_single(raw: String) -> SingleCarrier {\n  raw as SingleCarrier\n}\n\nfn render_single(c: SingleCarrier) -> String {\n  c as String\n}\n",
+    "src/emitnested_single.rs",
+    ["fn parse_single"],
+    ["unsupported cast"]
+  )
+}
+
+fn w_nested_refinement_still_emits_unsupported_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_nested\n\nimport std.types { Bool, NonEmptyStr, String }\n\nfn encoded_ok(value: String) -> Bool {\n  !(value == \"\")\n}\n\ntype NestedCarrier = NonEmptyStr where encoded_ok\n\nfn parse_nested(raw: String) -> NestedCarrier {\n  raw as NestedCarrier\n}\n\nfn render_nested(c: NestedCarrier) -> String {\n  c as String\n}\n",
+    "src/emitnested_nested.rs",
+    ["unsupported cast"],
+    []
+  )
+}
+
+test fn single_refinement_carrier_emits_no_unsupported_cast() -> Bool {
+  w_single_refinement_emits_no_unsupported_cast()
+}
+
+test fn nested_refinement_carrier_is_the_discriminating_red_control() -> Bool {
+  w_nested_refinement_still_emits_unsupported_cast()
+}

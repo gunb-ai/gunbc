@@ -1,7 +1,5 @@
 module test.claim.realize_kernel
 
-import std.content_hash { ContentHash, content_hash_of_value }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"

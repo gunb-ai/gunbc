@@ -1,7 +1,7 @@
 module gunbc.scm_compatibility.pijul
 
 import std.types { Bytes, List, NonEmptyStr, String }
-import std.content_hash { ContentHash }
+import std.content_hash { Fnv1a64Structural }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets }
 import v2.std.optional { Present, Absent }
@@ -194,7 +194,7 @@ fn pijul_compatibility_version_text(
 fn pijul_compatibility_octets_identity(
   tag: NonEmptyStr,
   octets: List<UInt8>,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: octets
@@ -210,7 +210,7 @@ fn pijul_compatibility_octets_identity(
 fn pijul_compatibility_bytes_identity(
   tag: NonEmptyStr,
   bytes: Bytes,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   pijul_compatibility_octets_identity(
     tag: tag,
     octets: bytes_octets(b: bytes),
@@ -220,7 +220,7 @@ fn pijul_compatibility_bytes_identity(
 fn pijul_compatibility_path_identity(
   tag: NonEmptyStr,
   path: PijulPath,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   pijul_compatibility_octets_identity(
     tag: tag,
     octets: path.octets,
@@ -230,7 +230,7 @@ fn pijul_compatibility_path_identity(
 fn pijul_compatibility_vertex_identity(
   tag: NonEmptyStr,
   vertex: PijulVertexId,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: [
@@ -248,7 +248,7 @@ fn pijul_compatibility_vertex_identity(
 
 fn pijul_compatibility_graph_vertex_identity(
   vertex: PijulGraphVertex,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-graph-vertex",
     members: [
@@ -266,7 +266,7 @@ fn pijul_compatibility_graph_vertex_identity(
 
 fn pijul_compatibility_edge_disposition_identity(
   disposition: PijulEdgeDisposition,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match disposition {
     PijulAliveEdge => "alive"
     PijulDeletedEdge => "deleted"
@@ -279,7 +279,7 @@ fn pijul_compatibility_edge_disposition_identity(
 
 fn pijul_compatibility_graph_edge_identity(
   edge: PijulGraphEdge,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-graph-edge",
     members: [
@@ -305,7 +305,7 @@ fn pijul_compatibility_graph_edge_identity(
 fn pijul_compatibility_change_hashes_identity(
   tag: NonEmptyStr,
   changes: List<PijulChangeHash>,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: changes
@@ -321,7 +321,7 @@ fn pijul_compatibility_change_hashes_identity(
 fn pijul_compatibility_vertices_identity(
   tag: NonEmptyStr,
   vertices: List<PijulVertexId>,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: vertices
@@ -337,7 +337,7 @@ fn pijul_compatibility_vertices_identity(
 fn pijul_compatibility_paths_identity(
   tag: NonEmptyStr,
   paths: List<PijulPath>,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: paths
@@ -352,7 +352,7 @@ fn pijul_compatibility_paths_identity(
 
 fn pijul_compatibility_conflict_identity(
   conflict: PijulConflictFact,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   pijul_conflict_fact_fold(
     conflict: conflict,
     fold: PijulConflictFactFold {
@@ -449,7 +449,7 @@ fn pijul_compatibility_conflict_identity(
 
 fn pijul_compatibility_tree_entry_kind_identity(
   kind: PijulTreeEntryKind,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match kind {
     PijulDirectoryEntry => "directory"
     PijulFileEntry => "file"
@@ -463,7 +463,7 @@ fn pijul_compatibility_tree_entry_kind_identity(
 
 fn pijul_compatibility_tree_entry_identity(
   entry: PijulTreeEntry,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-tree-entry",
     members: [
@@ -486,7 +486,7 @@ fn pijul_compatibility_tree_entry_identity(
 
 fn pijul_compatibility_working_copy_disposition_identity(
   disposition: PijulWorkingCopyDisposition,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match disposition {
     PijulWorkingCopyClean => "clean"
     PijulWorkingCopyModified => "modified"
@@ -500,7 +500,7 @@ fn pijul_compatibility_working_copy_disposition_identity(
 
 fn pijul_compatibility_working_copy_entry_identity(
   entry: PijulWorkingCopyEntry,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-working-copy-entry",
     members: [
@@ -521,7 +521,7 @@ fn pijul_compatibility_working_copy_entry_identity(
 
 fn pijul_compatibility_channel_identity(
   channel: PijulChannel,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-channel",
     members: [
@@ -544,7 +544,7 @@ fn pijul_compatibility_channel_identity(
 
 fn pijul_compatibility_availability_identity(
   availability: PijulDecodedAvailability,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   match availability {
     PijulDecodedComplete =>
       compatibility_identity_sequence(
@@ -578,7 +578,7 @@ fn pijul_compatibility_availability_identity(
 
 fn pijul_compatibility_observed_state_identity(
   repository: PijulDecodedRepository,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let state = repository.state
   compatibility_identity_sequence(
     tag: "pijul-readback-state-v1",

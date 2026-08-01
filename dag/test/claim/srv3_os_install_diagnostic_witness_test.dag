@@ -1,7 +1,5 @@
 module test.claim.srv3_os_install_diagnostic
 
-import std.content_hash { content_hash_of_value }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn base_observations(

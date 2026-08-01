@@ -1,7 +1,5 @@
 module test.claim.reconcile_in_process_cache
 
-import std.content_hash { ContentHash, content_hash_of_value }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_subject_digest: ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")

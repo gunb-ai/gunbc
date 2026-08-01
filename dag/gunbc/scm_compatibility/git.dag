@@ -1,7 +1,7 @@
 module gunbc.scm_compatibility.git
 
 import std.types { Bool, Bytes, List, NonEmptyStr, String }
-import std.content_hash { ContentHash }
+import std.content_hash { Fnv1a64Structural }
 import std.integer { NonNegativeInt, UInt8 }
 import std.bytes { bytes_octets }
 import extdeps.git { ObjectType }
@@ -406,7 +406,7 @@ fn git_compatibility_bind(
 fn git_compatibility_octets_identity(
   tag: NonEmptyStr,
   octets: List<UInt8>,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: octets
@@ -422,7 +422,7 @@ fn git_compatibility_octets_identity(
 fn git_compatibility_bytes_identity(
   tag: NonEmptyStr,
   bytes: Bytes,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   git_compatibility_octets_identity(
     tag: tag,
     octets: bytes_octets(b: bytes),
@@ -431,7 +431,7 @@ fn git_compatibility_bytes_identity(
 
 fn git_compatibility_object_id_identity(
   oid: GitObjectId,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_text(
     tag: "git-object-id",
     value: git_object_id_wire_hex(oid: oid) as String,
@@ -440,7 +440,7 @@ fn git_compatibility_object_id_identity(
 
 fn git_compatibility_object_format_identity(
   format: GitObjectFormat,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match format {
     GitObjectFormatSha1 => "sha1"
     GitObjectFormatSha256 => "sha256"
@@ -453,7 +453,7 @@ fn git_compatibility_object_format_identity(
 
 fn git_compatibility_tree_wire_entry_identity(
   entry: GitTreeWireEntry,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-tree-wire-entry",
     members: [
@@ -476,7 +476,7 @@ fn git_compatibility_tree_wire_entry_identity(
 
 fn git_compatibility_ref_target_identity(
   target: RefTarget,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   match target {
     DirectTarget { oid } =>
       compatibility_identity_sequence(
@@ -493,7 +493,7 @@ fn git_compatibility_ref_target_identity(
 
 fn git_compatibility_ref_identity(
   record: GitRefRecord,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-ref",
     members: [
@@ -508,7 +508,7 @@ fn git_compatibility_ref_identity(
 
 fn git_compatibility_tree_mode_identity(
   mode: GitTreeMode,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match mode {
     GitRegularBlobMode => "regular"
     GitExecutableBlobMode => "executable"
@@ -524,7 +524,7 @@ fn git_compatibility_tree_mode_identity(
 
 fn git_compatibility_index_stage_identity(
   stage: GitIndexStage,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match stage {
     GitIndexStageNormal => "normal"
     GitIndexStageBase => "base"
@@ -539,7 +539,7 @@ fn git_compatibility_index_stage_identity(
 
 fn git_compatibility_index_entry_identity(
   entry: GitIndexEntry,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-index-entry",
     members: [
@@ -556,7 +556,7 @@ fn git_compatibility_index_entry_identity(
 
 fn git_compatibility_worktree_entry_identity(
   entry: GitWorktreeEntry,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   match entry {
     GitWorktreeRegular { path, executable, content } =>
       compatibility_identity_sequence(
@@ -606,7 +606,7 @@ fn git_compatibility_worktree_entry_identity(
 
 fn git_compatibility_unavailable_identity(
   unavailable: GitUnavailableObject,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   git_unavailable_object_fold(
     unavailable: unavailable,
     fold: GitUnavailableObjectFold {
@@ -646,7 +646,7 @@ fn git_compatibility_unavailable_identity(
 
 fn git_compatibility_observed_state_identity(
   observation: GitR0ReadBackObservation,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-readback-state-v1",
     members: [

@@ -1,8 +1,7 @@
 module gunbc.roadmap_static_site
 
 import std.types { String, Bool, List, NonEmptyStr, HttpMethod, GET, Port }
-import std.content_hash { ContentHash }
-import std.content_hash { content_hash_atom }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Mebibyte, Millicore, mebibyte, millicore }
@@ -39,7 +38,7 @@ type SiteArtifact {
   kind: SiteArtifactKind
   url_path: NonEmptyStr
   body: String
-  digest: ContentHash
+  digest: Fnv1a64Structural
 }
 
 type WebServiceShape {
@@ -77,7 +76,7 @@ data roadmap_site_readback_script_scaffold: Disposition = Scaffold {
   }
 }
 
-fn site_artifact_digest(body: String) -> ContentHash {
+fn site_artifact_digest(body: String) -> Fnv1a64Structural {
   content_hash_atom(value: body as NonEmptyStr)
 }
 
@@ -165,7 +164,7 @@ fn roadmap_site_path_template(raw: String) -> PathTemplate {
 }
 
 fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue {
-  json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body) as String))
+  json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
 }
 
 fn roadmap_site_healthz_body() -> String {
@@ -175,8 +174,8 @@ fn roadmap_site_healthz_body() -> String {
     json_kv(key: "status", value: json_string(s: "ok")),
     json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
     json_kv(key: "artifacts", value: json_object(members: [
-      json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest as String)),
-      json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest as String)),
+      json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest.digest as String)),
+      json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest.digest as String)),
       served_surface_digest_kv(
         url_path: roadmap_site_daily_url_path,
         body: served_page_body(page: roadmap_daily_workspace_page_for_authority()),
@@ -252,7 +251,7 @@ fn roadmap_site_fnv1a_digest_script() -> String {
   )
 }
 
-fn roadmap_site_readback_curl_digest_check(url: String, expected: ContentHash) -> String {
+fn roadmap_site_readback_curl_digest_check(url: String, expected: Fnv1a64Structural) -> String {
   let curl_part = concat(
     concat("ACTUAL=$(", curl_localhost_bounded_get_argv_prefix()),
     concat(" ", sh_single_quote(s: url)),
@@ -263,7 +262,7 @@ fn roadmap_site_readback_curl_digest_check(url: String, expected: ContentHash) -
     " >&2; exit 1; \}; "
   )
   let digest_check = concat(
-    concat(concat("[ \"$ACTUAL\" = ", sh_single_quote(s: expected)), " ]"),
+    concat(concat("[ \"$ACTUAL\" = ", sh_single_quote(s: expected.digest as String)), " ]"),
     concat(
       concat(" || \{ echo roadmap-site-readback: digest mismatch url=", url),
       " >&2; exit 1; \}"
@@ -285,11 +284,11 @@ fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {
       concat(concat("echo roadmap-site-receipt host=", host), concat(" port=", to_string(port))),
       concat(
         concat(concat(" url=http://127.0.0.1:", to_string(port)), roadmap_site_health_path),
-        concat(" roadmap_digest=", roadmap.digest)
+        concat(" roadmap_digest=", roadmap.digest.digest as String)
       )
     ),
     concat(
-      concat(concat(" dispatch_digest=", dispatch.digest), concat(" model_hash=", model_hash)),
+      concat(concat(" dispatch_digest=", dispatch.digest.digest as String), concat(" model_hash=", model_hash.digest as String)),
       " read_back_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     )
   )
