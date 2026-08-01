@@ -98,18 +98,18 @@ fn native_bundle_member_hash(member: NativeWitnessBundleMember) -> ContentHash {
 }
 
 fn selected_witness_plan_native_members(plan: SelectedWitnessPlan) -> List<NativeWitnessBundleMember> {
-  fold(
+  reverse(fold(
     plan.members,
     init: [],
     f: (acc, member) => match member {
       NativeSelected { witness: witness, realization: realization } =>
-        concat(acc, [NativeWitnessBundleMember {
+        concat([NativeWitnessBundleMember {
           witness: witness,
           realization: realization
-        }])
+        }], acc)
       InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => acc
     }
-  )
+  ))
 }
 
 fn selected_witness_plan_interpreter_frontier_count(plan: SelectedWitnessPlan) -> Int {
@@ -186,6 +186,10 @@ type NativeBundleAdmission
       observed: NativeWitnessBundleIdentity
       required: NativeWitnessBundleIdentity
     }
+  | NativeBundleRefusedMemberCoverage {
+      observed: List<NativeWitnessBundleMember>
+      required: List<NativeWitnessBundleMember>
+    }
 
 fn native_witness_bundle_admit(
   plan: SelectedWitnessPlan,
@@ -193,6 +197,7 @@ fn native_witness_bundle_admit(
   current_compiler_identity: ContentHash
 ) -> NativeBundleAdmission {
   let required = native_witness_bundle_identity(plan: plan)
+  let required_members = selected_witness_plan_native_members(plan: plan)
   if bundle.compiler_identity != current_compiler_identity {
     NativeBundleRefusedStaleCompiler {
       bundle_compiler_identity: bundle.compiler_identity,
@@ -202,6 +207,11 @@ fn native_witness_bundle_admit(
     NativeBundleRefusedPlanIdentity {
       observed: bundle.identity,
       required: required
+    }
+  } else if bundle.members != required_members {
+    NativeBundleRefusedMemberCoverage {
+      observed: bundle.members,
+      required: required_members
     }
   } else {
     NativeBundleAdmitted { bundle: bundle }
@@ -221,7 +231,9 @@ type NativeBundleMemberEquivalence {
 
 type NativeBundleFamilyCutoverEvidence {
   family: NonEmptyStr
-  discriminating_red_executed: Bool
+  planted_witness: SelectedWitnessIdentity
+  interpreter_oracle: SelectedWitnessVerdict
+  native_planted_body: SelectedWitnessVerdict
 }
 
 type NativeWitnessBundleExecutionReceipt {
@@ -334,7 +346,11 @@ fn family_has_discriminating_red(
   fold(
     evidence,
     init: false,
-    f: (found, row) => found || (row.family == family && row.discriminating_red_executed)
+    f: (found, row) => found || (
+      row.family == family
+        && row.interpreter_oracle == SelectedWitnessPassed
+        && row.native_planted_body == SelectedWitnessFailed
+    )
   )
 }
 
