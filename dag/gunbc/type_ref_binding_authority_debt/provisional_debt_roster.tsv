@@ -2272,6 +2272,8 @@ TailscaleNodeAttr	dag/gunbc/tailscale_acl_emit.dag	984	1001
 TailscaleSshRule	dag/gunbc/tailscale_acl_emit.dag	631	647
 # TYPE	TailscaleTagOwnerRow	1
 TailscaleTagOwnerRow	dag/gunbc/tailscale_acl_emit.dag	1212	1232
+# TYPE	Temperature	1
+Temperature	dag/std/measure.dag	4899	4910
 # TYPE	TemperatureDifference	1
 TemperatureDifference	dag/std/measure.dag	4951	4972
 # TYPE	UbuntuDistributionCatalogRow	1

@@ -74,10 +74,29 @@ pub enum ResolveTypecheckGate {
     DiscoveryCorpusAdvisory,
 }
 
-fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
+/// Whether a diagnostic blocks resolve / `gunbc run` / serve consumers.
+/// Shares type-ref debt / expect-red admission with compile-clean so incidental
+/// UnresolvedType sites stay typed/located/counted without stopping the line;
+/// does not apply UnlistedImportUse compile-clean policy (that stays gate-local).
+fn is_resolve_or_run_blocking_diagnostic(d: &Rc<ErrorNode>) -> bool {
+    if type_ref_unresolved_admitted_for_compile_clean(d) {
+        false
+    } else {
+        is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+    }
+}
+
+fn is_resolve_typecheck_blocking(d: &Rc<ErrorNode>, gate: ResolveTypecheckGate) -> bool {
+    if type_ref_unresolved_admitted_for_compile_clean(d) {
+        return false;
+    }
     match gate {
-        ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
+        ResolveTypecheckGate::Strict => {
+            is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+        }
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
+            is_discovery_corpus_blocking_diagnostic(d.diagnostic.clone())
+        }
     }
 }
 
@@ -2524,6 +2543,8 @@ pub fn type_ref_binding_authority_expect_red_covers(d: &Rc<ErrorNode>) -> bool {
 
 /// Gate admission for UnresolvedType under the type-ref refusal arm: incidental debt
 /// or deliberate expect-red. Neither is FloorNotYet — the arm still refuses.
+/// Shared by compile-clean, resolve typecheck gates, and `gunbc run` / serve so debt
+/// sites do not red regen naming hygiene or heal while the arm keeps refusing.
 /// Set `GUNBC_TYPE_REF_DEBT_ADMIT=0` to disable admission (raw UnresolvedType census).
 fn type_ref_unresolved_admitted_for_compile_clean(d: &Rc<ErrorNode>) -> bool {
     match std::env::var_os("GUNBC_TYPE_REF_DEBT_ADMIT") {
@@ -2538,8 +2559,9 @@ fn type_ref_unresolved_admitted_for_compile_clean(d: &Rc<ErrorNode>) -> bool {
 /// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// `UnresolvedType` admitted by type-ref debt / expect-red identity sets is non-blocking
-/// for the gate only (arm still refuses); all other classes delegate to
-/// `00_core.dag` `is_interpreter_blocking_diagnostic`.
+/// for compile-clean and for resolve/`gunbc run` consumers that share
+/// `type_ref_unresolved_admitted_for_compile_clean` (arm still refuses); all other
+/// classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     match d.diagnostic.as_ref() {
@@ -10172,12 +10194,12 @@ fn resolved_graph_from_sources_with_index(
     let has_type_errors = typed
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_resolve_typecheck_blocking(d, typecheck_gate));
     if has_type_errors {
         let msgs: Vec<String> = typed
             .diagnostics
             .iter()
-            .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
+            .filter(|d| is_resolve_typecheck_blocking(d, typecheck_gate))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
         return Err(msgs.join("\n"));
@@ -11421,7 +11443,7 @@ fn resolved_graph_from_sources(
     let has_errors = result
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_resolve_typecheck_blocking(d, typecheck_gate));
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -11430,7 +11452,7 @@ fn resolved_graph_from_sources(
             .collect();
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
-            if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
+            if !is_resolve_typecheck_blocking(d, typecheck_gate) {
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
@@ -13272,7 +13294,7 @@ pub fn handle_run_with_options(
     let has_errors = result
         .diagnostics
         .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+        .any(is_resolve_or_run_blocking_diagnostic);
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -13280,7 +13302,7 @@ pub fn handle_run_with_options(
             .map(|idx| (idx.file.clone(), idx.clone()))
             .collect();
         for d in result.diagnostics.iter() {
-            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+            if !is_resolve_or_run_blocking_diagnostic(d) {
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());

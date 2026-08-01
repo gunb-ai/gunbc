@@ -373,6 +373,7 @@ TailscaleGrant	1
 TailscaleNodeAttr	1
 TailscaleSshRule	1
 TailscaleTagOwnerRow	1
+Temperature	1
 TemperatureDifference	1
 UbuntuDistributionCatalogRow	1
 VersionConstraint	1

@@ -1701,6 +1701,15 @@ pub fn resolve_node_bounded(
                                                         type_name.clone(),
                                                     )) == false))
                                                 {
+                                                    // Refuse with UnresolvedType (same class as
+                                                    // absent-from-pool) while keeping the pool hit's
+                                                    // structure. Dropping to `n` recreated silent
+                                                    // Product(<anon>)-class cascades as TypeMismatch
+                                                    // / call-shape reds that debt admission cannot
+                                                    // cover — the debt contract admits this
+                                                    // diagnostic class only. Structure from the hit
+                                                    // is not fabrication-without-signal: the
+                                                    // diagnostic is the refusal (DESIGN §5).
                                                     v1_rt::type_ref_fail_open_record_pool_present_unreachable(
                                                         module_name.clone(),
                                                         type_name.clone(),
@@ -1708,8 +1717,18 @@ pub fn resolve_node_bounded(
                                                         n.span.clone().start.clone(),
                                                         n.span.clone().end.clone(),
                                                     );
+                                                    let is_optional = (n.return_cardinality
+                                                        .clone()
+                                                        == Cardinality::CardOptional);
+                                                    let final_resolved = if is_optional.clone() {
+                                                        with_optional_cardinality(
+                                                            structurally_resolved.clone(),
+                                                        )
+                                                    } else {
+                                                        structurally_resolved.clone()
+                                                    };
                                                     Rc::new(NodeResolveResult {
-                                                        resolved: n.clone(),
+                                                        resolved: final_resolved,
                                                         diagnostics: Rc::new(vec![
                                                             make_error_node(
                                                                 bare_name_miss_diagnostic(
