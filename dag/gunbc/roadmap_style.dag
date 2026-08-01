@@ -681,6 +681,26 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
+    StaticRule { selector: ClassSelector { name: "workspace-observation" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_8)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "workspace-observation-summary" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "workspace-observation-reason" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: RawSelector { text: ".frontier-active > h2" }, decls: [
+      decl(prop: Color, value: "var(--band-in-progress)"),
+    ] },
     StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),

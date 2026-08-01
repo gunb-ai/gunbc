@@ -46,6 +46,10 @@ test fn sessions_observed_projects_to_wire() -> Bool {
     && string_contains(s: j, pattern: "\"worker_phase\": \"phase unobserved\"")
     && string_contains(s: j, pattern: "\"cleanup_action\": \"unavailable\"")
     && string_contains(s: j, pattern: "\"cleanup_allowed\": false")
+    && string_contains(s: j, pattern: "\"facts\": ")
+    && string_contains(s: j, pattern: "\"line\": \"session · present — process unobserved\"")
+    && string_contains(s: j, pattern: "\"detail\": \"provider unobserved (configured Codex, readiness readiness unobserved) — gunbc-dispatch-5-regen-cutover · ")
+    && string_contains(s: j, pattern: "\"availability\": \"unavailable\"")
     && belt_sessions_http_status(o: Observed { live: [fixture_live()] }) == 200
 }
 
@@ -65,6 +69,9 @@ test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
     && string_contains(s: j, pattern: "\"process_detail\": \"exit=0 last-command=env\"")
     && string_contains(s: j, pattern: "\"cleanup_action\": \"clear\"")
     && string_contains(s: j, pattern: "\"cleanup_allowed\": true")
+    && string_contains(s: j, pattern: "\"line\": \"session · present — process exited\"")
+    && string_contains(s: j, pattern: "\"label\": \"clear\"")
+    && string_contains(s: j, pattern: "\"availability\": \"available\"")
     && string_contains(s: j, pattern: "only retained tmux session metadata will be removed")
 }
 
@@ -77,21 +84,24 @@ test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
     && !string_contains(s: j, pattern: "\"sessions\"")
 }
 
+data sessions_client_decided_facts_note: String = "The A2 flip of this witness's pins (operator blocker 5): the client no longer composes any session prose — it paints the wire's DECIDED facts verbatim (sfx.line into the visible text, sfx.detail into the title, sact.label/detail/availability onto the cleanup chip). The former positives (sess.process_state, sess.cleanup_action, sess.cleanup_allowed, the composed 'session · present' literal) are now the discriminating NEGATIVES: any of them reappearing in the emitted source is a second session presentation authority standing back up."
+
 test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "fetch('/sessions.json')")
     && string_contains(s: js, pattern: "sj.observe_refused")
-    && string_contains(s: js, pattern: "session · present")
-    && string_contains(s: js, pattern: "dispatch · accepted")
+    && string_contains(s: js, pattern: "sess.facts")
+    && string_contains(s: js, pattern: "sfx.line")
+    && string_contains(s: js, pattern: "sfx.detail")
+    && string_contains(s: js, pattern: "sact.label")
+    && string_contains(s: js, pattern: "sact.availability !== 'available'")
+    && !string_contains(s: js, pattern: "session · present")
     && !string_contains(s: js, pattern: "session · spawned")
     && !string_contains(s: js, pattern: "session · live")
-    && string_contains(s: js, pattern: "sess.configured_provider")
-    && string_contains(s: js, pattern: "sess.provider")
-    && string_contains(s: js, pattern: "sess.provider_readiness")
-    && string_contains(s: js, pattern: "sess.process_state")
-    && string_contains(s: js, pattern: "sess.process_detail")
-    && string_contains(s: js, pattern: "sess.cleanup_action")
-    && string_contains(s: js, pattern: "sess.cleanup_allowed")
+    && !string_contains(s: js, pattern: "sess.process_state")
+    && !string_contains(s: js, pattern: "sess.cleanup_action")
+    && !string_contains(s: js, pattern: "sess.cleanup_allowed")
+    && string_contains(s: js, pattern: "dispatch · accepted")
     && string_contains(s: js, pattern: "session-facts")
     && string_contains(s: js, pattern: "'cleanup-chip'")
     && string_contains(s: js, pattern: "'observe-refused sessions-observe-refused'")

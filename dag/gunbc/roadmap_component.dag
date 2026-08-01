@@ -16,6 +16,9 @@ import gunbc.design.theme {
   day_theme, night_theme,
 }
 import gunbc.design.interaction { DispatchBtnElement, Approach, Dispatch }
+import gunbc.roadmap_presentation {
+  activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, activity_disclosure_label,
+}
 import gunbc.roadmap_belt_actuate {
   belt_dispatch_all_status_labels, belt_dispatch_label_is_ok,
   belt_dispatch_ok_status_labels, belt_dispatch_path_prefix,
@@ -134,13 +137,12 @@ fn dispatch_reserved_width() -> String {
   css_length_wire(l: dispatch_reserved_length())
 }
 
-data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST renders `dispatch · accepted`: worktree/process creation returned success, or the idempotent request found the desired dispatch already accepted. Only the independent /sessions.json observation may render `session · present`, and that wording claims tmux/process presence only — never provider readiness, execution, or completion. The response's exact spawned/already_live wire label remains in the title channel.
+data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST renders `dispatch · accepted`: worktree/process creation returned success, or the idempotent request found the desired dispatch already accepted. Only the independent /sessions.json observation may show the session sentence — and at A2 that sentence is DECIDED by gunbc.roadmap_presentation.session_facts_view and carried on the wire under `facts`; this client paints it verbatim, so no session prose constant lives here anymore (operator blocker 5). The wording claims tmux/process presence only — never provider readiness, execution, or completion. The response's exact spawned/already_live wire label remains in the title channel.
 
 The observe-only posture independently renders `dispatch · disabled`; it is neither an accepted dispatch nor session evidence. All three captions stay inside the reserved width derived from the caption set, so re-observation cannot reflow the row. The session chip remains type-distinct from the node's status chip at the head of the row."
 
 data dispatch_ack_prefix: String = "dispatch · "
 data dispatch_ack_word: String = "accepted"
-data dispatch_session_chip_prefix: String = "session · "
 
 data sessions_route_path: String = "/sessions.json"
 data dashboard_instance_route_path: String = "/instance.json"
@@ -303,9 +305,7 @@ data node_activity_region_note: String = "The client realization of the archetyp
 
 data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain pending until their own producers exist. The server decides the presentation (the 'activity' member on each wire attempt, derived by gunbc.roadmap_presentation from roadmap_attempt_workflow_segment_kinds and the reconcile report); the client paints it into the UnderHead activity region without policy. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
 
-data dispatch_caption_live_word_note: String = "The session route observes tmux container presence independently from pane/process lifecycle. Its caption is therefore `present`, never `live` or `executing`; the Session lamp names that same narrow fact. A neighboring process chip renders running, exited, absent, or unobserved from the pane source."
-
-data dispatch_caption_present_word: String = "present"
+data dispatch_caption_live_word_note: String = "The session route observes tmux container presence independently from pane/process lifecycle. Its decided sentence says `present`, never `live` or `executing` (the wording now lives in gunbc.roadmap_presentation.session_facts_view, which composes it from the shared worker-process evidence)."
 
 data dispatch_class_requested: String = "dispatch-requested"
 data dispatch_class_ok: String = "dispatch-ok"
@@ -2083,7 +2083,7 @@ fn activity_container_create_stmts() -> List<TsStmt> {
     ts_expr_stmt(expr: ts_binop(
       left: ts_member(object: ts_ident(name: "asm"), property: "textContent"),
       op: "=",
-      right: ts_lit_str(value: "activity"))),
+      right: ts_lit_str(value: activity_disclosure_label))),
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(object: ts_ident(name: "adet"), property: "append"),
       args: [ts_ident(name: "asm")])),
@@ -2240,14 +2240,14 @@ fn activity_paint_stmts() -> List<TsStmt> {
                   left: ts_binop(
                     left: ts_member(object: ts_ident(name: "seg"), property: "label"),
                     op: "+",
-                    right: ts_lit_str(value: " · ")),
+                    right: ts_lit_str(value: activity_state_sep)),
                   op: "+",
                   right: ts_member(object: ts_ident(name: "seg"), property: "state")),
                 op: "+",
                 right: ts_cond(
                   test: ts_member(object: ts_ident(name: "seg"), property: "detail"),
                   consequent: ts_binop(
-                    left: ts_lit_str(value: " — "),
+                    left: ts_lit_str(value: activity_detail_sep),
                     op: "+",
                     right: ts_member(object: ts_ident(name: "seg"), property: "detail")),
                   alternate: ts_lit_str(value: ""))))),
@@ -2328,7 +2328,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
                 left: ts_binop(
                   left: ts_member(object: ts_ident(name: "row"), property: "label"),
                   op: "+",
-                  right: ts_lit_str(value: ": ")),
+                  right: ts_lit_str(value: activity_evidence_kv_sep)),
                 op: "+",
                 right: ts_member(object: ts_ident(name: "row"), property: "value")))),
             ts_expr_stmt(expr: ts_call(

@@ -27,6 +27,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+import extdeps.languages.json.emit { serialize_json }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -471,4 +472,109 @@ test fn witness_overlong_lead_reds() -> Bool {
   v.length() == 1
     && all(v, x => x.node == "overlong-lead" && x.lead_chars > roadmap_lead_budget_chars())
     && lead_budget_violations(nodes: [ready_dispatch_node()]).length() == 0
+}
+
+data parity_witness_note: String = "The server/client semantic parity obligation (operator blocker 7, 2026-08-01), discharged over the SAME constructed facts across every executable link: (1) the SERVER realization — render_work_row over the falsifier specimen view — is serialized and its semantic regions asserted exactly (arm and attention data, the decided summary sentence, each obligation label · state — detail line, each evidence label: value row, and on the refused arm the located reason inside an OPEN disclosure); (2) the WIRE — activity_view_json_value over the same view — carries the identical summary string, so the client receives byte-what the server rendered; (3) the CLIENT realization is pinned verbatim-paint: it reads av.summary / av.arm / av.attention and composes obligation and evidence lines from the SAME seam constants (activity_state_sep / activity_detail_sep / activity_evidence_kv_sep / activity_disclosure_label are data the emitted program embeds), so its composed strings equal the server's by one-authority construction. The DOM-mutation link the interpreter cannot execute is covered by the playwright specimen receipt (falsifier fixture intercepted, real emitted client, three widths). RED directions: a server renderer that drops a region reds (1); a seam change that moves the summary reds (1) and (2) together or not at all; a client that re-derives its own composition loses the shared-constant literals and reds (3)."
+
+fn parity_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
+  [
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "admission receipt readable" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "worktree created" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+  ]
+}
+
+fn parity_specimen_activity() -> gunbc.roadmap_presentation.ActivityView {
+  gunbc.roadmap_presentation.activity_view_from_parts(
+    segments: parity_specimen_segments(),
+    remaining: 4,
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    current_activity: "Worked for 6m 34s")
+}
+
+fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
+    node_id: "parity-specimen",
+    headline: "Record which generator actually produced each result",
+    summary: none,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    superseded_by: "",
+    activity: activity,
+    action: gunbc.roadmap_presentation.action_view(
+      scheduling: gunbc.roadmap_presentation.SchedulingReady,
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle),
+    supporting_facts: [],
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
+  }
+}
+
+fn parity_row_html(activity: gunbc.roadmap_presentation.ActivityView) -> String {
+  let view = parity_specimen_view(activity: activity)
+  match try_serialize_html_source(node: Element {
+    tag: "li",
+    attributes: gunbc.roadmap_page.node_li_attributes(view: view),
+    children: gunbc.roadmap_page.render_work_row(view: view),
+  }) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+test fn witness_parity_server_realizes_decided_regions() -> Bool {
+  let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
+  let h = parity_row_html(activity: parity_specimen_activity())
+  summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
+    && string_contains(s: h, pattern: "class=\"node-activity\"")
+    && string_contains(s: h, pattern: "data-arm=\"active\"")
+    && string_contains(s: h, pattern: "data-attention=\"routine\"")
+    && string_contains(s: h, pattern: summary)
+    && string_contains(s: h, pattern: "Environment · complete — admission receipt readable")
+    && string_contains(s: h, pattern: "Verification · pending")
+    && string_contains(s: h, pattern: "session container: present")
+    && string_contains(s: h, pattern: "worker process: process exited")
+    && string_contains(s: h, pattern: ">activity</summary>")
+}
+
+test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
+  let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
+  let wire = serialize_json(
+    v: gunbc.roadmap_presentation.activity_view_json_value(view: parity_specimen_activity()))
+  string_contains(s: wire, pattern: join(["\"summary\": \"", summary, "\""], ""))
+    && string_contains(s: wire, pattern: "\"arm\": \"active\"")
+    && string_contains(s: wire, pattern: "\"attention\": \"routine\"")
+    && string_contains(s: wire, pattern: "\"remaining_obligation_count\": 4")
+}
+
+test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "av.summary")
+    && string_contains(s: js, pattern: "av.arm")
+    && string_contains(s: js, pattern: "av.attention")
+    && string_contains(s: js, pattern: "seg.label + ' · ' + seg.state")
+    && string_contains(s: js, pattern: "' — ' + seg.detail")
+    && string_contains(s: js, pattern: "row.label + ': ' + row.value")
+    && string_contains(s: js, pattern: "'activity'")
+}
+
+data parity_refused_note: String = "The refused arm's parity: the server realization carries the located reason inside an OPEN activity disclosure (the attention rule's auto-expand, realized as the open attribute at render), and the client pins the same auto-open decision through data-auto-opened. A refusal whose reason failed to reach either surface is the title-only world the anomaly witnesses forbid."
+
+test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
+  let refused = gunbc.roadmap_presentation.activity_view_from_parts(
+    segments: [
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+    ],
+    remaining: 6,
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    current_activity: "")
+  let h = parity_row_html(activity: refused)
+  string_contains(s: h, pattern: "data-arm=\"refused\"")
+    && string_contains(s: h, pattern: "class=\"activity-located-reason\"")
+    && string_contains(s: h, pattern: "turn.completed with process unobserved: no exit was established")
+    && string_contains(s: h, pattern: " open")
 }

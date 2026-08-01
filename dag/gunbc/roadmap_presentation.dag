@@ -619,6 +619,13 @@ fn activity_arm_key(a: ActivityView) -> String {
   }
 }
 
+data activity_composition_constants_note: String = "The composition constants BOTH realizations consume (the parity obligation's construction half): the server renderer joins obligation label/state/detail and evidence label/value with exactly these separators, and the emitted client program embeds the same data values as its string literals — one authority, so the two realizations cannot drift apart on composition without the parity witness reddening. The disclosure summary word is here for the same reason: 'activity' must be the same word whether the details element was server-rendered or client-created."
+
+data activity_state_sep: String = " · "
+data activity_detail_sep: String = " — "
+data activity_evidence_kv_sep: String = ": "
+data activity_disclosure_label: String = "activity"
+
 data activity_summary_line_note: String = "The one visible line per arm, decided ONCE for both realizations: the server renderer and the emitted client compose the identical selection (active/refused → summary, completed → outcome, unobservable → the prefixed reason) — the parity witness holds them equal, so a drift in either realization reds rather than shipping two sentences for one state."
 
 fn activity_summary_line(a: ActivityView) -> String {

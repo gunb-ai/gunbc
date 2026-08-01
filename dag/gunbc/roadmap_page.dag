@@ -44,6 +44,7 @@ import gunbc.roadmap_presentation {
   DisclosureField, DisclosureNote,
   work_scheduling_key, row_is_active_work,
   activity_view_from_progress,
+  activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, activity_disclosure_label,
   ProgramProgressView,
   DailyWorkspaceView, daily_workspace_view,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
@@ -235,11 +236,7 @@ fn supporting_fact_node(f: SupportingFact) -> Fragment {
   if f.href == "" {
     el_class("span", f.label, [ txt(f.value) ])
   } else {
-    Element {
-      tag: "a",
-      attributes: [ attr(name: "href", value: join([github_blob_base, f.href], "") ) ],
-      children: [ txt(f.value) ],
-    }
+    el_attrs("a", [ attr(name: "href", value: join([github_blob_base, f.href], "") ) ], [ txt(f.value) ])
   }
 }
 
@@ -398,13 +395,13 @@ fn activity_obligation_node(s: WorkflowSegment) -> Fragment {
     attr(name: "class", value: activity_obligation_class ),
     attr(name: "data-state", value: state ),
   ], [ txt(join([
-    workflow_segment_kind_label(kind: s.kind), " · ", state,
-    if s.detail == "" { "" } else { join([" — ", s.detail], "") },
+    workflow_segment_kind_label(kind: s.kind), activity_state_sep, state,
+    if s.detail == "" { "" } else { join([activity_detail_sep, s.detail], "") },
   ], "")) ])
 }
 
 fn activity_evidence_row_node(row: ActivityEvidenceRow) -> Fragment {
-  el_class("div", activity_evidence_row_class, [ txt(join([row.label, ": ", row.value], "")) ])
+  el_class("div", activity_evidence_row_class, [ txt(join([row.label, activity_evidence_kv_sep, row.value], "")) ])
 }
 
 fn activity_detail_nodes(obligations: List<WorkflowSegment>, evidence: List<ActivityEvidenceRow>, located_reason: String, open: Bool) -> Fragment {
@@ -413,7 +410,7 @@ fn activity_detail_nodes(obligations: List<WorkflowSegment>, evidence: List<Acti
       [ attr(name: "class", value: activity_detail_class ) ],
       if open { [ attr(name: "open", value: "" ) ] } else { [] }),
     [
-      el("summary", [ txt("activity") ]),
+      el("summary", [ txt(activity_disclosure_label) ]),
       el_class("div", activity_ledger_class, map(obligations, s => activity_obligation_node(s: s))),
       el_class("div", activity_evidence_class, concat(
         map(evidence, row => activity_evidence_row_node(row: row)),
