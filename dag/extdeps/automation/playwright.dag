@@ -32,6 +32,6 @@ data playwright_1_62_1: PlaywrightBuild = PlaywrightBuild {
 }
 
 type PlaywrightBrowserBinaryProvenance
-  = PlaywrightManagedChromiumDownload
+  = | PlaywrightManagedChromiumDownload
 
 data playwright_identity_boundary_note: NonEmptyStr = "PlaywrightBuild names the automation dependency. PlaywrightManagedChromiumDownload says only that Playwright provisioned and launched the tested Chromium binary; it does not reclassify that binary as Google Chrome or establish behavior for any browser distribution." as NonEmptyStr

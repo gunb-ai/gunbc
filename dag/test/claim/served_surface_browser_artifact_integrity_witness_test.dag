@@ -1,0 +1,37 @@
+module test.claim.served_surface_browser_artifact_integrity_witness
+
+import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.tools.sha256sum {
+  Sha256Matches,
+  sha256sum_verify_via_shell,
+}
+import extdeps.tools.wc {
+  FileByteCountObserved,
+  file_byte_count_via_wc,
+}
+import gunbc.served_surface_browser_observation {
+  ScreenshotArtifact,
+  playwright_chromium_151_linux_arm64_headless_navigation_run,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn screenshot_artifact_matches_live_bytes(artifact: ScreenshotArtifact) -> Bool {
+  let digest = sha256sum_verify_via_shell(
+    path: artifact.path as NonEmptyStr,
+    expected_digest: artifact.digest.hex)
+  let bytes = file_byte_count_via_wc(path: artifact.path)
+  digest == Sha256Matches
+    && match bytes {
+      FileByteCountObserved { bytes: observed } => observed == artifact.bytes
+      _ => false
+    }
+}
+
+test fn witness_checked_in_screenshots_match_receipts() -> Bool {
+  let specimens = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens
+  screenshot_artifact_matches_live_bytes(artifact: specimens.first().screenshot)
+    && screenshot_artifact_matches_live_bytes(artifact: specimens.skip(n: 1).first().screenshot)
+    && screenshot_artifact_matches_live_bytes(artifact: specimens.skip(n: 2).first().screenshot)
+}

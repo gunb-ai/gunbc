@@ -1,0 +1,251 @@
+module gunbc.served_surface_browser_observation
+
+import std.types { NonEmptyStr, List, BinaryFilePath, FilePath, HttpStatus }
+import std.measure { ByteSize, byte_size }
+import extdeps.uri { Uri, Http }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.browser.chromium {
+  ChromiumBuild,
+  ChromiumNavigationError,
+  ChromiumErrConnectionRefused,
+  ChromiumErrHttpResponseCodeFailure,
+  ChromiumInternalDocument,
+  ChromiumWebDataErrorDocument,
+  ChromiumInternalUrl,
+  ChromiumWebDataErrorUrl,
+  chromium_151_0_7922_34,
+}
+import extdeps.automation.playwright {
+  PlaywrightBuild,
+  PlaywrightBrowserBinaryProvenance,
+  PlaywrightManagedChromiumDownload,
+  playwright_1_62_1,
+}
+
+type BrowserObservationOperatingSystem
+  = | DebianGnuLinux12Bookworm
+
+type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
+
+type BrowserPresentationMode
+  = | HeadlessPresentation
+
+type BrowserLaunchConfiguration
+  = | PlaywrightDefaultChromiumLaunch {
+      executable_path: FilePath,
+    }
+
+type BrowserExecutionEnvironment {
+  chromium_build: ChromiumBuild
+  playwright_build: PlaywrightBuild
+  browser_binary_provenance: PlaywrightBrowserBinaryProvenance
+  operating_system: BrowserObservationOperatingSystem
+  kernel_release: LinuxKernelRelease
+  architecture: Architecture
+  presentation_mode: BrowserPresentationMode
+  launch_configuration: BrowserLaunchConfiguration
+}
+
+type NavigationSpecimenId
+  = ConnectionRefusedSpecimen
+  | EmptyBody502Specimen
+  | SentinelBody502Specimen
+
+type NavigationHttpHeader
+  = ContentLengthHeader { bytes: ByteSize }
+  | TextPlainUtf8ContentTypeHeader
+  | GunbcSpecimenHeader { specimen: NavigationSpecimenId }
+
+type NavigationResponseBody
+  = EmptyNavigationResponseBody
+  | Utf8NavigationResponseBody {
+      text: NonEmptyStr,
+      bytes: ByteSize,
+    }
+
+type NavigationStimulusOrigin
+  = | LocalSyntheticHarness
+
+type NavigationStimulus
+  = TcpConnectionRefusedStimulus {
+      requested_url: Uri,
+      origin: NavigationStimulusOrigin,
+    }
+  | HttpResponseStimulus {
+      requested_url: Uri,
+      origin: NavigationStimulusOrigin,
+      status: HttpStatus,
+      configured_headers: List<NavigationHttpHeader>,
+      body: NavigationResponseBody,
+    }
+
+type NavigationOutcome
+  = ChromiumNavigationFailed {
+      error: ChromiumNavigationError,
+    }
+  | NavigationReturnedHttpResponse {
+      status: HttpStatus,
+    }
+
+type PresentedDocument
+  = ChromiumInternalPresentedDocument {
+      document: ChromiumInternalDocument,
+      final_url: ChromiumInternalUrl,
+    }
+  | NetworkResponsePresentedDocument {
+      final_url: Uri,
+      response_specimen: NavigationSpecimenId,
+    }
+
+type ScreenshotArtifact {
+  path: BinaryFilePath
+  digest: Digest
+  bytes: ByteSize
+}
+
+type HealthyTransition
+  = | RouteChangedToHealthyHttpResponse {
+      status: HttpStatus,
+      body: NonEmptyStr,
+    }
+
+type RecoveryAction
+  = | ExplicitReload
+
+type RecoveryOutcome
+  = | HealthyResponseDocumentObserved
+
+type RecoveryTrial {
+  healthy_transition: HealthyTransition
+  action: RecoveryAction
+  outcome: RecoveryOutcome
+}
+
+type NavigationPresentationSpecimen {
+  id: NavigationSpecimenId
+  stimulus: NavigationStimulus
+  navigation: NavigationOutcome
+  document: PresentedDocument
+  screenshot: ScreenshotArtifact
+  recovery_trials: List<RecoveryTrial>
+}
+
+type BrowserDiscriminatorRun {
+  environment: BrowserExecutionEnvironment
+  observed_on: Rfc3339Timestamp
+  specimens: List<NavigationPresentationSpecimen>
+}
+
+fn local_http_url(locator: NonEmptyStr) -> Uri {
+  Uri { scheme: Http, locator: locator }
+}
+
+fn explicit_reload_recovery(body: NonEmptyStr) -> RecoveryTrial {
+  RecoveryTrial {
+    healthy_transition: RouteChangedToHealthyHttpResponse {
+      status: 200,
+      body: body,
+    },
+    action: ExplicitReload,
+    outcome: HealthyResponseDocumentObserved,
+  }
+}
+
+data playwright_chromium_151_linux_arm64_headless_navigation_run: BrowserDiscriminatorRun = BrowserDiscriminatorRun {
+  environment: BrowserExecutionEnvironment {
+    chromium_build: chromium_151_0_7922_34,
+    playwright_build: playwright_1_62_1,
+    browser_binary_provenance: PlaywrightManagedChromiumDownload,
+    operating_system: DebianGnuLinux12Bookworm,
+    kernel_release: "6.8.0-124-generic" as LinuxKernelRelease,
+    architecture: Aarch64,
+    presentation_mode: HeadlessPresentation,
+    launch_configuration: PlaywrightDefaultChromiumLaunch {
+      executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as FilePath,
+    },
+  },
+  observed_on: "2026-08-01T04:58:15Z" as Rfc3339Timestamp,
+  specimens: [
+    NavigationPresentationSpecimen {
+      id: ConnectionRefusedSpecimen,
+      stimulus: TcpConnectionRefusedStimulus {
+        requested_url: local_http_url(locator: "127.0.0.1:43822/refused" as NonEmptyStr),
+        origin: LocalSyntheticHarness,
+      },
+      navigation: ChromiumNavigationFailed { error: ChromiumErrConnectionRefused },
+      document: ChromiumInternalPresentedDocument {
+        document: ChromiumWebDataErrorDocument,
+        final_url: ChromiumWebDataErrorUrl,
+      },
+      screenshot: ScreenshotArtifact {
+        path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as BinaryFilePath,
+        digest: sha256_digest(hex: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as NonEmptyStr),
+        bytes: byte_size(19520),
+      },
+      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_REFUSED" as NonEmptyStr)],
+    },
+    NavigationPresentationSpecimen {
+      id: EmptyBody502Specimen,
+      stimulus: HttpResponseStimulus {
+        requested_url: local_http_url(locator: "127.0.0.1:43821/empty" as NonEmptyStr),
+        origin: LocalSyntheticHarness,
+        status: 502,
+        configured_headers: [
+          ContentLengthHeader { bytes: byte_size(0) },
+          GunbcSpecimenHeader { specimen: EmptyBody502Specimen },
+        ],
+        body: EmptyNavigationResponseBody,
+      },
+      navigation: ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure },
+      document: ChromiumInternalPresentedDocument {
+        document: ChromiumWebDataErrorDocument,
+        final_url: ChromiumWebDataErrorUrl,
+      },
+      screenshot: ScreenshotArtifact {
+        path: "dag/test/fixtures/browser/chromium_151_empty_502.png" as BinaryFilePath,
+        digest: sha256_digest(hex: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as NonEmptyStr),
+        bytes: byte_size(14089),
+      },
+      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_EMPTY" as NonEmptyStr)],
+    },
+    NavigationPresentationSpecimen {
+      id: SentinelBody502Specimen,
+      stimulus: HttpResponseStimulus {
+        requested_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
+        origin: LocalSyntheticHarness,
+        status: 502,
+        configured_headers: [
+          ContentLengthHeader { bytes: byte_size(26) },
+          TextPlainUtf8ContentTypeHeader,
+          GunbcSpecimenHeader { specimen: SentinelBody502Specimen },
+        ],
+        body: Utf8NavigationResponseBody {
+          text: "GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
+          bytes: byte_size(26),
+        },
+      },
+      navigation: NavigationReturnedHttpResponse { status: 502 },
+      document: NetworkResponsePresentedDocument {
+        final_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
+        response_specimen: SentinelBody502Specimen,
+      },
+      screenshot: ScreenshotArtifact {
+        path: "dag/test/fixtures/browser/chromium_151_bodied_502.png" as BinaryFilePath,
+        digest: sha256_digest(hex: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as NonEmptyStr),
+        bytes: byte_size(6337),
+      },
+      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_BODY" as NonEmptyStr)],
+    },
+  ],
+}
+
+type SpecimenCoverage
+  = | ExactSpecimenCoverage { specimen: NavigationSpecimenId }
+
+fn navigation_specimen_coverage(specimen: NavigationPresentationSpecimen) -> SpecimenCoverage {
+  ExactSpecimenCoverage { specimen: specimen.id }
+}
+
+data evidence_grain_note: NonEmptyStr = "This run claims only what the exact stimuli produced under its one Chromium, Playwright, operating-system, architecture, presentation-mode, and launch identity. Specimens cannot repeat or contradict build identity because identity exists only on BrowserDiscriminatorRun. LocalSyntheticHarness prevents these responses from standing in for a production proxy or operational cause. ExactSpecimenCoverage cannot widen EmptyBody502Specimen into all empty HTTP errors. RecoveryTrial records that ExplicitReload was performed and a healthy response document followed; it carries no reload-necessity constructor. The run names no browser support roster, production response chain, continuity guarantee, or roadmap implementation lane." as NonEmptyStr
