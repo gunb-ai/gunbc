@@ -5636,9 +5636,33 @@ enum FloorWorkerRole {
 
 struct ObservedFloorWorker {
     worker: String,
-    termination: String,
-    terminal_receipt: String,
-    outcome: String,
+    termination: FloorWorkerTermination,
+    terminal_receipt: FloorWorkerTerminalReceipt,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FloorWorkerTermination {
+    Exited(i32),
+    Signaled(i32),
+    Unobserved,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FloorWorkerTerminalReceipt {
+    Observed(FloorWorkerTerminalReport),
+    Missing,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FloorWorkerTerminalReport {
+    Completed(String),
+    Refused(String),
+    Failed(String),
+    Malformed(String),
+}
+
+struct DerivedFloorWorkerOutcome {
+    label: &'static str,
     detail: String,
 }
 
@@ -5714,18 +5738,93 @@ fn read_scoped_witness_batch_manifest() -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-fn exit_status_termination(status: &ExitStatus) -> String {
+fn exit_status_termination(status: &ExitStatus) -> FloorWorkerTermination {
     if let Some(code) = status.code() {
-        return format!("exited:{code}");
+        return FloorWorkerTermination::Exited(code);
     }
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt as _;
         if let Some(signal) = status.signal() {
-            return format!("signaled:{signal}");
+            return FloorWorkerTermination::Signaled(signal);
         }
     }
-    "termination-unobserved".to_string()
+    FloorWorkerTermination::Unobserved
+}
+
+fn floor_worker_termination_label(termination: &FloorWorkerTermination) -> String {
+    match termination {
+        FloorWorkerTermination::Exited(code) => format!("exited:{code}"),
+        FloorWorkerTermination::Signaled(signal) => format!("signaled:{signal}"),
+        FloorWorkerTermination::Unobserved => "termination-unobserved".to_string(),
+    }
+}
+
+fn floor_worker_terminal_report_label(report: &FloorWorkerTerminalReport) -> &'static str {
+    match report {
+        FloorWorkerTerminalReport::Completed(_) => "completed",
+        FloorWorkerTerminalReport::Refused(_) => "refused",
+        FloorWorkerTerminalReport::Failed(_) => "failed",
+        FloorWorkerTerminalReport::Malformed(_) => "malformed",
+    }
+}
+
+fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWorkerOutcome {
+    let termination = floor_worker_termination_label(&row.termination);
+    match &row.terminal_receipt {
+        FloorWorkerTerminalReceipt::Missing => DerivedFloorWorkerOutcome {
+            label: "died-without-terminal-receipt",
+            detail: format!(
+                "worker `{}` terminated as {termination}; no terminal receipt was observed",
+                row.worker
+            ),
+        },
+        FloorWorkerTerminalReceipt::Observed(report) => match (&row.termination, report) {
+            (FloorWorkerTermination::Exited(0), FloorWorkerTerminalReport::Completed(detail)) => {
+                DerivedFloorWorkerOutcome {
+                    label: "completed",
+                    detail: detail.clone(),
+                }
+            }
+            (FloorWorkerTermination::Exited(code), FloorWorkerTerminalReport::Refused(detail))
+                if *code != 0 =>
+            {
+                DerivedFloorWorkerOutcome {
+                    label: "refused",
+                    detail: detail.clone(),
+                }
+            }
+            (_, FloorWorkerTerminalReport::Failed(detail))
+            | (_, FloorWorkerTerminalReport::Malformed(detail)) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: detail.clone(),
+            },
+            (FloorWorkerTermination::Signaled(signal), _) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: format!(
+                    "worker `{}` reported {} but died from signal {signal}",
+                    row.worker,
+                    floor_worker_terminal_report_label(report)
+                ),
+            },
+            (FloorWorkerTermination::Unobserved, _) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: format!(
+                    "worker `{}` reported {} but process termination was unobserved",
+                    row.worker,
+                    floor_worker_terminal_report_label(report)
+                ),
+            },
+            (FloorWorkerTermination::Exited(code), _) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: format!(
+                    "worker `{}` report {} contradicted exit code {code}",
+                    row.worker,
+                    floor_worker_terminal_report_label(report)
+                ),
+            },
+        },
+    }
 }
 
 fn observe_floor_worker(
@@ -5735,35 +5834,26 @@ fn observe_floor_worker(
 ) -> ObservedFloorWorker {
     let termination = exit_status_termination(&status);
     let terminal = fs::read_to_string(terminal_path).ok();
-    let (terminal_receipt, outcome, detail) = match terminal {
-        None => (
-            "missing".to_string(),
-            "died-without-terminal-receipt".to_string(),
-            format!(
-                "worker `{worker}` terminated as {termination}; no terminal receipt was observed"
-            ),
-        ),
+    let terminal_receipt = match terminal {
+        None => FloorWorkerTerminalReceipt::Missing,
         Some(body) => {
             let line = body.trim_end_matches(['\r', '\n']);
             let (label, terminal_detail) = line.split_once('\t').unwrap_or((line, ""));
-            let outcome = match (label, status.success()) {
-                ("completed", true) => "completed",
-                ("refused", _) => "refused",
-                _ => "failed",
+            let report = match label {
+                "completed" => FloorWorkerTerminalReport::Completed(terminal_detail.to_string()),
+                "refused" => FloorWorkerTerminalReport::Refused(terminal_detail.to_string()),
+                "failed" => FloorWorkerTerminalReport::Failed(terminal_detail.to_string()),
+                _ => FloorWorkerTerminalReport::Malformed(format!(
+                    "unknown worker terminal report `{label}`: {terminal_detail}"
+                )),
             };
-            (
-                "observed".to_string(),
-                outcome.to_string(),
-                terminal_detail.to_string(),
-            )
+            FloorWorkerTerminalReceipt::Observed(report)
         }
     };
     ObservedFloorWorker {
         worker: worker.to_string(),
         termination,
         terminal_receipt,
-        outcome,
-        detail,
     }
 }
 
@@ -5779,21 +5869,33 @@ fn append_floor_worker_observation(row: &ObservedFloorWorker) -> Result<(), Stri
     if needs_header {
         writeln!(
             file,
-            "worker\ttermination\tterminal_receipt\toutcome\tdetail"
+            "worker\ttermination\tterminal_receipt\tterminal_report\toutcome\tdetail"
         )
         .map_err(|e| format!("write floor worker observation header: {e}"))?;
     }
-    let clean_detail = row.detail.replace(['\t', '\r', '\n'], " ");
+    let outcome = floor_worker_observation_outcome(row);
+    let (receipt_label, report_label) = match &row.terminal_receipt {
+        FloorWorkerTerminalReceipt::Missing => ("missing", "absent"),
+        FloorWorkerTerminalReceipt::Observed(report) => {
+            ("observed", floor_worker_terminal_report_label(report))
+        }
+    };
+    let clean_detail = outcome.detail.replace(['\t', '\r', '\n'], " ");
     writeln!(
         file,
-        "{}\t{}\t{}\t{}\t{}",
-        row.worker, row.termination, row.terminal_receipt, row.outcome, clean_detail
+        "{}\t{}\t{}\t{}\t{}\t{}",
+        row.worker,
+        floor_worker_termination_label(&row.termination),
+        receipt_label,
+        report_label,
+        outcome.label,
+        clean_detail
     )
     .map_err(|e| format!("write floor worker observation row: {e}"))
 }
 
 fn floor_worker_succeeded(row: &ObservedFloorWorker) -> bool {
-    row.outcome == "completed" && row.termination == "exited:0"
+    floor_worker_observation_outcome(row).label == "completed"
 }
 
 fn spawn_floor_worker(
@@ -5823,13 +5925,14 @@ fn spawn_floor_worker(
         .map_err(|e| format!("spawn floor worker `{worker}`: {e}"))?;
     let observed = observe_floor_worker(&worker, status, &terminal_path);
     append_floor_worker_observation(&observed)?;
+    let outcome = floor_worker_observation_outcome(&observed);
     eprintln!(
-        "[floor-worker-observation] worker={} termination={} terminal_receipt={} outcome={} detail={}",
+        "[floor-worker-observation] worker={} termination={} terminal_receipt={:?} outcome={} detail={}",
         observed.worker,
-        observed.termination,
+        floor_worker_termination_label(&observed.termination),
         observed.terminal_receipt,
-        observed.outcome,
-        observed.detail
+        outcome.label,
+        outcome.detail
     );
     Ok(observed)
 }
@@ -9080,10 +9183,14 @@ mod tests {
         let _ = fs::remove_file(&terminal);
         let status = Command::new("sh").arg("-c").arg("exit 0").status().unwrap();
         let observed = observe_floor_worker("ordinary", status, &terminal);
-        assert_eq!(observed.terminal_receipt, "missing");
-        assert_eq!(observed.outcome, "died-without-terminal-receipt");
-        assert!(observed.detail.contains("ordinary"));
-        assert!(observed.detail.contains("no terminal receipt"));
+        let outcome = floor_worker_observation_outcome(&observed);
+        assert_eq!(
+            observed.terminal_receipt,
+            FloorWorkerTerminalReceipt::Missing
+        );
+        assert_eq!(outcome.label, "died-without-terminal-receipt");
+        assert!(outcome.detail.contains("ordinary"));
+        assert!(outcome.detail.contains("no terminal receipt"));
         assert!(
             !floor_worker_succeeded(&observed),
             "an OS-success exit cannot turn receipt absence into floor success"
@@ -9100,9 +9207,12 @@ mod tests {
         let status = Command::new("sh").arg("-c").arg("exit 7").status().unwrap();
         let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
         let _ = fs::remove_file(&terminal);
-        assert_eq!(observed.termination, "exited:7");
-        assert_eq!(observed.terminal_receipt, "observed");
-        assert_eq!(observed.outcome, "failed");
+        assert_eq!(observed.termination, FloorWorkerTermination::Exited(7));
+        assert!(matches!(
+            observed.terminal_receipt,
+            FloorWorkerTerminalReceipt::Observed(FloorWorkerTerminalReport::Completed(_))
+        ));
+        assert_eq!(floor_worker_observation_outcome(&observed).label, "failed");
         assert!(
             !floor_worker_succeeded(&observed),
             "a completed receipt cannot normalize a failing process exit"
@@ -9119,8 +9229,9 @@ mod tests {
         let status = Command::new("sh").arg("-c").arg("exit 1").status().unwrap();
         let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
         let _ = fs::remove_file(&terminal);
-        assert_eq!(observed.outcome, "refused");
-        assert!(observed.detail.contains("FreshJobProcess"));
+        let outcome = floor_worker_observation_outcome(&observed);
+        assert_eq!(outcome.label, "refused");
+        assert!(outcome.detail.contains("FreshJobProcess"));
         assert!(!floor_worker_succeeded(&observed));
     }
 
@@ -9138,8 +9249,29 @@ mod tests {
             .status()
             .unwrap();
         let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
-        assert!(observed.termination.starts_with("signaled:"));
-        assert_eq!(observed.outcome, "died-without-terminal-receipt");
+        assert!(matches!(
+            observed.termination,
+            FloorWorkerTermination::Signaled(_)
+        ));
+        assert_eq!(
+            floor_worker_observation_outcome(&observed).label,
+            "died-without-terminal-receipt"
+        );
+        assert!(!floor_worker_succeeded(&observed));
+    }
+
+    #[test]
+    fn floor_worker_signal_overrules_a_completed_terminal_report() {
+        let observed = ObservedFloorWorker {
+            worker: "scoped:batch-a".to_string(),
+            termination: FloorWorkerTermination::Signaled(9),
+            terminal_receipt: FloorWorkerTerminalReceipt::Observed(
+                FloorWorkerTerminalReport::Completed("walk said complete".to_string()),
+            ),
+        };
+        let outcome = floor_worker_observation_outcome(&observed);
+        assert_eq!(outcome.label, "failed");
+        assert!(outcome.detail.contains("signal 9"));
         assert!(!floor_worker_succeeded(&observed));
     }
 }

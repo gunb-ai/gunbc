@@ -68,6 +68,11 @@ import std.realization_schedule {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch, RunnableScopedWitnessBatch,
   RunnableOwnsBatchClamp, runnable_batch_clamp_source,
   SequentialChildProcess,
+  ScopedWitnessExecutionReceiptDecoded, ScopedWitnessExecutionReceiptRefused,
+  ScopedWitnessExecuted, scoped_witness_execution_receipt_decode,
+  FloorWorkerObservation, OrdinaryFloorWorker, FloorWorkerExited, FloorWorkerSignaled,
+  FloorWorkerTerminalReceiptObserved, FloorWorkerReportedCompleted,
+  FloorWorkerCompleted, FloorWorkerFailed, floor_worker_observation_outcome,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
@@ -333,6 +338,49 @@ test fn witness_scoped_batch_is_singleton_and_outside_positional_clamps() -> Boo
     && (runnable_batch_index(batches: batches, target: target) == length(xs: batches) - 1)
     && (length(xs: batches.skip(n: length(xs: batches) - 1).first()) == 1)
     && (length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: batches) - 1)
+}
+
+test fn scoped_witness_execution_receipt_decoder_accepts_writer_projection() -> Bool {
+  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\tdigest\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\texecuted\ttrue\n") {
+    ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
+      length(xs: rows) == 1
+        && match rows.first().outcome {
+          ScopedWitnessExecuted { ok: ok } => ok
+          _ => false
+        }
+    ScopedWitnessExecutionReceiptRefused { detail: _ } => false
+  }
+}
+
+test fn scoped_witness_execution_receipt_decoder_refuses_empty_ledger() -> Bool {
+  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\n") {
+    ScopedWitnessExecutionReceiptDecoded { rows: _ } => false
+    ScopedWitnessExecutionReceiptRefused { detail: detail } => detail != ""
+  }
+}
+
+test fn floor_worker_observation_outcome_is_derived_from_evidence() -> Bool {
+  let completed = FloorWorkerObservation {
+    worker: OrdinaryFloorWorker,
+    termination: FloorWorkerExited { code: 0 },
+    terminal_receipt: FloorWorkerTerminalReceiptObserved {
+      report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }
+    },
+  }
+  let contradicted = FloorWorkerObservation {
+    worker: OrdinaryFloorWorker,
+    termination: FloorWorkerSignaled { signal: 9 },
+    terminal_receipt: FloorWorkerTerminalReceiptObserved {
+      report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }
+    },
+  }
+  match floor_worker_observation_outcome(observation: completed) {
+    FloorWorkerCompleted => match floor_worker_observation_outcome(observation: contradicted) {
+      FloorWorkerFailed { detail: detail } => detail != ""
+      _ => false
+    }
+    _ => false
+  }
 }
 
 test fn witness_optin_roster_drives_corpus_presence() -> Bool {

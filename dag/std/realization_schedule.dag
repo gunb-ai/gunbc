@@ -117,8 +117,14 @@ type FloorWorkerTermination
   | FloorWorkerTerminationUnobserved
 
 type FloorWorkerTerminalReceipt
-  = FloorWorkerTerminalReceiptObserved
+  = FloorWorkerTerminalReceiptObserved { report: FloorWorkerTerminalReport }
   | FloorWorkerTerminalReceiptMissing
+
+type FloorWorkerTerminalReport
+  = FloorWorkerReportedCompleted { detail: String }
+  | FloorWorkerReportedRefused { detail: String }
+  | FloorWorkerReportedFailed { detail: String }
+  | FloorWorkerTerminalReportMalformed { detail: String }
 
 type FloorWorkerObservationOutcome
   = FloorWorkerCompleted
@@ -130,7 +136,38 @@ type FloorWorkerObservation {
   worker: FloorWorkerIdentity
   termination: FloorWorkerTermination
   terminal_receipt: FloorWorkerTerminalReceipt
-  outcome: FloorWorkerObservationOutcome
+}
+
+fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> FloorWorkerObservationOutcome {
+  match observation.terminal_receipt {
+    FloorWorkerTerminalReceiptMissing => FloorWorkerDiedWithoutTerminalReceipt {
+      detail: "worker termination had no terminal report"
+    }
+    FloorWorkerTerminalReceiptObserved { report: report } => match observation.termination {
+      FloorWorkerExited { code: 0 } => match report {
+        FloorWorkerReportedCompleted { detail: _ } => FloorWorkerCompleted
+        FloorWorkerReportedRefused { detail: detail } => FloorWorkerFailed {
+          detail: "refusal report contradicted exit code 0: " + detail
+        }
+        FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
+        FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
+      }
+      FloorWorkerExited { code: _ } => match report {
+        FloorWorkerReportedCompleted { detail: _ } => FloorWorkerFailed {
+          detail: "completion report contradicted nonzero exit"
+        }
+        FloorWorkerReportedRefused { detail: detail } => FloorWorkerRefused { detail: detail }
+        FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
+        FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
+      }
+      FloorWorkerSignaled { signal: _ } => FloorWorkerFailed {
+        detail: "terminal report contradicted signal death"
+      }
+      FloorWorkerTerminationUnobserved => FloorWorkerFailed {
+        detail: "terminal report exists but process termination was unobserved"
+      }
+    }
+  }
 }
 
 type FloorWorkerObservationReceiptPath = NonEmptyStr where brand("FloorWorkerObservationReceiptPath")
@@ -141,7 +178,7 @@ type ScopedWitnessBatchManifestPath = NonEmptyStr where brand("ScopedWitnessBatc
 
 data scoped_witness_batch_manifest_path: ScopedWitnessBatchManifestPath = "target/scoped-witness-batch-manifest.tsv" as ScopedWitnessBatchManifestPath
 
-data floor_worker_observation_note: String = "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. The ordinary worker projects the plan's ScopedWitnessBatch identities into scoped_witness_batch_manifest_path, then the coordinator waits for that worker to EXIT before spawning any SequentialChildProcess scoped worker, so their substantial live sets never overlap. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that receipt with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. FreshJobProcess is intentionally uninhabited and refuses until a workflow realization supplies its distinct cgroup, timeout, and scheduling semantics. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the manifest and observation storage projections from List<ScopedWitnessBatchId> and FloorWorkerObservation, deleting the seed wire labels while preserving both branded paths."
+data floor_worker_observation_note: String = "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. The ordinary worker projects the plan's ScopedWitnessBatch identities into scoped_witness_batch_manifest_path, then the coordinator waits for that worker to EXIT before spawning any SequentialChildProcess scoped worker, so their substantial live sets never overlap. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. FreshJobProcess is intentionally uninhabited and refuses until a workflow realization supplies its distinct cgroup, timeout, and scheduling semantics. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the manifest and observation storage projections from List<ScopedWitnessBatchId> and FloorWorkerObservation, deleting the seed wire labels while preserving both branded paths."
 
 type ScopedWitnessBatchResourceProfile {
   runnable: RunnableResourceProfile
@@ -526,11 +563,13 @@ All four profile restrictions are conditional on mechanisms stages do not yet ha
 
 Every plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading."
 
-data walk_plan_run_stage_claim_executor_seed_deferral: String = "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, and the walk-attempt observation are HAND-RUST in `claim_executor.rs`: the executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.
+data walk_plan_run_stage_claim_executor_seed_deferral: String = "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining selection-refused discovery rows is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.
 
 WHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.
 
-MIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, and receipt emission expressed as modeled effects rather than as `std::thread` plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, since a `.dag`-expressed executor needs native witness execution to run at all. Until then the honest statement is that these are seed-retained by necessity with a named trigger, which is exactly what a self-host frontier row is for."
+WHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, and SequentialChildProcess selection. `scoped_witness_execution_receipt_decoder_accepts_writer_projection` and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder in both directions. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, and `floor_worker_signal_overrules_a_completed_terminal_report` pin the coordinator's typed observation boundary and the derived-verdict law. Deleting or flattening the modeled arms, accepting receipt absence, normalizing a signal into success, storing an authored outcome, or restoring the old isolation spelling makes one of those controls red.
+
+MIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for."
 
 data walk_finalization_note: String = "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan \{ batches: floor_batches, finalization: NoWalkFinalization, .. \}` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.
 
