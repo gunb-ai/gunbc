@@ -39,12 +39,16 @@ import gunbc.roadmap_forecast {
   ForecastAnchorObservation,
   ReviewCycleCount,
   OperatorMergeLatencyAssumption,
+  unit_worker_demand_assumption,
   ScheduleForecastAssumptions,
+  ScheduleForecast,
   ScheduleForecastKnown,
   ScheduleForecastRefused,
+  ForecastGraphEmpty,
   DependencyCycle,
   NodeUnsized,
   NoCalibrationSample,
+  WorkerConcurrencyCapInvalid,
   CalibrationHistoryRefused,
   DependencyEndpointUnknown,
   ForecastBuildRefused,
@@ -56,12 +60,17 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn assumptions() -> ScheduleForecastAssumptions {
+fn assumptions_with_cap(max_concurrent: Int) -> ScheduleForecastAssumptions {
   ScheduleForecastAssumptions {
-    worker_concurrency_cap: BeltCapacity { max_concurrent: 3 },
+    worker_concurrency_cap: BeltCapacity { max_concurrent: max_concurrent },
     review_cycle_count: ReviewCycleCount { count: positive_measure_count(predecessor: 0) },
     operator_merge_latency: OperatorMergeLatencyAssumption { duration: millisecond(count: 5) },
+    unit_worker_demand: unit_worker_demand_assumption,
   }
+}
+
+fn assumptions() -> ScheduleForecastAssumptions {
+  assumptions_with_cap(max_concurrent: 3)
 }
 
 fn anchor() -> ForecastAnchorObservation {
@@ -195,8 +204,10 @@ test fn witness_live_graph_refuses_with_four_located_calibration_gaps() -> Bool 
                   && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyMedium, volume: VolumeLarge }))
                   && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyHigh, volume: VolumeLarge }))
               DependencyCycle { nodes: _ } => false
+              ForecastGraphEmpty => false
               DependencyEndpointUnknown { nodes: _ } => false
               NodeUnsized { nodes: _ } => false
+              WorkerConcurrencyCapInvalid { declared_cap: _ } => false
               CalibrationHistoryRefused { refusals: _ } => false
               ForecastBuildRefused { node: _ } => false
             }
@@ -214,9 +225,11 @@ test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
     ScheduleForecastRefused { refusals } =>
       count(refusals) == 1 && any(refusals, refusal => match refusal {
         NoCalibrationSample { gaps: _ } => true
+        ForecastGraphEmpty => false
         DependencyCycle { nodes: _ } => false
         DependencyEndpointUnknown { nodes: _ } => false
         NodeUnsized { nodes: _ } => false
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
         CalibrationHistoryRefused { refusals: _ } => false
         ForecastBuildRefused { node: _ } => false
       })
@@ -240,11 +253,89 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
     ScheduleForecastKnown { forecast } =>
       forecast.critical_path == [a.node, b.node]
         && count(forecast.nodes) == 3
-        && forecast.completion.earliest.epoch_ms == 1030
-        && forecast.completion.median.epoch_ms == 1050
-        && forecast.completion.latest.epoch_ms == 1070
+        && forecast.completion_lower_bound.earliest.epoch_ms == 1030
+        && forecast.completion_lower_bound.median.epoch_ms == 1050
+        && forecast.completion_lower_bound.latest.epoch_ms == 1070
+        && millisecond_count(m: forecast.lower_bounds.total_work.duration.median) == 75
+        && millisecond_count(m: forecast.lower_bounds.critical_path_minimum.duration.median) == 50
+        && millisecond_count(m: forecast.lower_bounds.capacity_constrained_minimum.duration.median) == 50
+        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.num) == 75
+        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.denom) == 50
         && forecast.assumptions.worker_concurrency_cap.max_concurrent == 3
         && millisecond_count(m: forecast.assumptions.operator_merge_latency.duration) == 5
+  }
+}
+
+test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
+  let a = sized_node(id: "capacity-a", cell: fixture_cell())
+  let b = sized_node(id: "capacity-b", cell: fixture_cell())
+  let c = sized_node(id: "capacity-c", cell: fixture_cell())
+  let one_worker = schedule_forecast(
+    nodes: [a, b, c],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions_with_cap(max_concurrent: 1),
+    anchor: anchor(),
+  )
+  let three_workers = schedule_forecast(
+    nodes: [a, b, c],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions_with_cap(max_concurrent: 3),
+    anchor: anchor(),
+  )
+  match one_worker {
+    ScheduleForecastRefused { refusals: _ } => false
+    ScheduleForecastKnown { forecast: serialized_bound } => match three_workers {
+      ScheduleForecastRefused { refusals: _ } => false
+      ScheduleForecastKnown { forecast: parallel_bound } =>
+        serialized_bound.completion_lower_bound.median.epoch_ms == 1075
+          && parallel_bound.completion_lower_bound.median.epoch_ms == 1025
+          && millisecond_count(m: serialized_bound.lower_bounds.total_work.duration.median) == 75
+          && millisecond_count(m: serialized_bound.lower_bounds.critical_path_minimum.duration.median) == 25
+          && millisecond_count(m: serialized_bound.lower_bounds.capacity_constrained_minimum.duration.median) == 75
+          && serialized_bound.completion_lower_bound.median.epoch_ms > parallel_bound.completion_lower_bound.median.epoch_ms
+    }
+  }
+}
+
+test fn witness_invalid_worker_cap_refuses() -> Bool {
+  let n = sized_node(id: "invalid-cap", cell: fixture_cell())
+  match schedule_forecast(
+    nodes: [n],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions_with_cap(max_concurrent: 0),
+    anchor: anchor(),
+  ) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } => count(refusals) == 1 && any(refusals, refusal => match refusal {
+      WorkerConcurrencyCapInvalid { declared_cap } => declared_cap == 0
+      ForecastGraphEmpty => false
+      DependencyCycle { nodes: _ } => false
+      DependencyEndpointUnknown { nodes: _ } => false
+      NodeUnsized { nodes: _ } => false
+      NoCalibrationSample { gaps: _ } => false
+      CalibrationHistoryRefused { refusals: _ } => false
+      ForecastBuildRefused { node: _ } => false
+    })
+  }
+}
+
+test fn witness_empty_graph_refuses() -> Bool {
+  match schedule_forecast(
+    nodes: [],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  ) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } => refusals == [ForecastGraphEmpty]
   }
 }
 
@@ -261,9 +352,11 @@ test fn witness_unsized_node_refuses() -> Bool {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
       NodeUnsized { nodes } => nodes == [n.node]
+      ForecastGraphEmpty => false
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
       NoCalibrationSample { gaps: _ } => false
+      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
     })
@@ -286,9 +379,11 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
       NoCalibrationSample { gaps } => count(gaps) == 1 && first(gaps).nodes == [n.node]
+      ForecastGraphEmpty => false
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
       NodeUnsized { nodes: _ } => false
+      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
     })
@@ -312,9 +407,11 @@ test fn witness_dependency_cycle_refuses() -> Bool {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
       DependencyCycle { nodes } => count(nodes) == 2
+      ForecastGraphEmpty => false
       DependencyEndpointUnknown { nodes: _ } => false
       NodeUnsized { nodes: _ } => false
       NoCalibrationSample { gaps: _ } => false
+      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
     })
@@ -334,7 +431,7 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
   ) {
     ScheduleForecastRefused { refusals: _ } => false
     ScheduleForecastKnown { forecast } => {
-      let projected = forecast
+      let projected: ScheduleForecast = forecast
       millisecond_count(m: observed.cycle_time) == 10
         && projected.anchor.observed_at == anchor().observed_at
     }

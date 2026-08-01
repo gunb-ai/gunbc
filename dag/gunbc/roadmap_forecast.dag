@@ -9,11 +9,14 @@ import std.measure {
   positive_measure_count_value,
 }
 import std.graph { GraphEdge, CallGraph, graph_cycle_members }
+import std.algebra { FieldOfFractions }
 import extdeps.project_schedule.cpm_pert {
   CriticalPathMethod,
   ThreePointEstimateMethod,
+  ResourceCapacityLowerBoundMethod,
   critical_path_method,
   three_point_estimate_method,
+  resource_capacity_lower_bound_method,
 }
 import extdeps.github.pull_timing_history {
   CitedPullTiming,
@@ -44,12 +47,15 @@ import gunbc.roadmap_authority {
   roadmap_acceptance_receipts,
 }
 
-data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. The only operation that can produce a ScheduleForecast is schedule_forecast, and its result is a ScheduleForecastResult whose refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
+data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
 
-data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. ReviewCycleCount states how many normalized historical open-to-merge cycles to budget, and OperatorMergeLatencyAssumption is added once per node. Worker concurrency is carried explicitly because dependency-only CPM assumes the declared cap is available; resource-constrained scheduling below that cap is outside this slice and is not fabricated here."
+data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. ReviewCycleCount states how many normalized historical open-to-merge cycles to budget, and OperatorMergeLatencyAssumption is added once per node. Worker concurrency enters the completion lower bound through ceil(total unit-worker activity duration / cap). The output is explicitly a lower bound, never a resource-leveled expected date. dissolve-on: a separately grounded RCPSP resource-leveling slice can replace lower-bound-only projection with a typed feasible schedule; until then no consumer may read these bounds as promised landing dates."
+
+data remaining_cost_relative_sizing_follow_on_note: String = "FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing: remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished dependency closure, bucketed relative to the historical plus active task population by a separately grounded order-of-magnitude or quantile policy. It must project from this module's TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative portfolio sizing and grounds one population-bucketing policy; then one fold derives the label without creating a second sizing authority."
 
 data critical_path_method_used: CriticalPathMethod = critical_path_method
 data three_point_estimate_method_used: ThreePointEstimateMethod = three_point_estimate_method
+data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod = resource_capacity_lower_bound_method
 
 type SizingCell {
   intricacy: Intricacy
@@ -266,15 +272,20 @@ type ReviewCycleCount { count: PositiveMeasureCount }
 
 type OperatorMergeLatencyAssumption { duration: Millisecond }
 
+type UnitWorkerDemandAssumption {}
+
+data unit_worker_demand_assumption: UnitWorkerDemandAssumption = UnitWorkerDemandAssumption {}
+
 type ScheduleForecastAssumptions {
   worker_concurrency_cap: BeltCapacity
   review_cycle_count: ReviewCycleCount
   operator_merge_latency: OperatorMergeLatencyAssumption
+  unit_worker_demand: UnitWorkerDemandAssumption
 }
 
 type ForecastInstant { epoch_ms: EpochMs }
 
-type ForecastInterval {
+type ForecastLowerBoundInterval {
   earliest: ForecastInstant
   median: ForecastInstant
   latest: ForecastInstant
@@ -283,7 +294,34 @@ type ForecastInterval {
 type NodeScheduleForecast {
   node: RoadmapNodeId
   calibrated_cycle_time: CycleTimeInterval
-  landing: ForecastInterval
+  landing_lower_bound: ForecastLowerBoundInterval
+}
+
+type DurationEstimateInterval {
+  minimum: Millisecond
+  median: Millisecond
+  maximum: Millisecond
+}
+
+type TotalWork { duration: DurationEstimateInterval }
+
+type CriticalPathMinimum { duration: DurationEstimateInterval }
+
+type CapacityConstrainedMinimum { duration: DurationEstimateInterval }
+
+type ParallelismHeadroomInterval {
+  minimum: FieldOfFractions<Millisecond>
+  median: FieldOfFractions<Millisecond>
+  maximum: FieldOfFractions<Millisecond>
+}
+
+type ParallelismHeadroom { ratio: ParallelismHeadroomInterval }
+
+type ScheduleLowerBounds {
+  total_work: TotalWork
+  critical_path_minimum: CriticalPathMinimum
+  capacity_constrained_minimum: CapacityConstrainedMinimum
+  parallelism_headroom: ParallelismHeadroom
 }
 
 type ScheduleForecast {
@@ -291,7 +329,8 @@ type ScheduleForecast {
   assumptions: ScheduleForecastAssumptions
   nodes: List<NodeScheduleForecast>
   critical_path: List<RoadmapNodeId>
-  completion: ForecastInterval
+  lower_bounds: ScheduleLowerBounds
+  completion_lower_bound: ForecastLowerBoundInterval
 }
 
 type CalibrationGap {
@@ -300,10 +339,12 @@ type CalibrationGap {
 }
 
 type ForecastRefusal
-  = DependencyCycle { nodes: List<RoadmapNodeId> }
+  = ForecastGraphEmpty
+  | DependencyCycle { nodes: List<RoadmapNodeId> }
   | DependencyEndpointUnknown { nodes: List<RoadmapNodeId> }
   | NodeUnsized { nodes: List<RoadmapNodeId> }
   | NoCalibrationSample { gaps: List<CalibrationGap> }
+  | WorkerConcurrencyCapInvalid { declared_cap: Int }
   | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
   | ForecastBuildRefused { node: RoadmapNodeId }
 
@@ -324,6 +365,8 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
     ScheduleForecastRefused { refusals } => refusals |> fold(init: 0, f: (acc, refusal) =>
       acc + match refusal {
         NoCalibrationSample { gaps } => count(gaps)
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => 0
+        ForecastGraphEmpty => 0
         DependencyCycle { nodes: _ } => 0
         DependencyEndpointUnknown { nodes: _ } => 0
         NodeUnsized { nodes: _ } => 0
@@ -514,7 +557,7 @@ fn build_node_forecast(
           forecast: NodeScheduleForecast {
             node: node.node,
             calibrated_cycle_time: calibrated,
-            landing: ForecastInterval {
+            landing_lower_bound: ForecastLowerBoundInterval {
               earliest: forecast_instant(anchor: anchor, duration: early.duration),
               median: forecast_instant(anchor: anchor, duration: middle.duration),
               latest: forecast_instant(anchor: anchor, duration: late.duration),
@@ -527,19 +570,87 @@ fn build_node_forecast(
   }
 }
 
-fn forecast_interval_max(nodes: List<NodeScheduleForecast>, anchor: ForecastAnchorObservation) -> ForecastInterval {
+fn dependency_completion_lower_bound(nodes: List<NodeScheduleForecast>, anchor: ForecastAnchorObservation) -> ForecastLowerBoundInterval {
   nodes |> fold(
-    init: ForecastInterval {
+    init: ForecastLowerBoundInterval {
       earliest: ForecastInstant { epoch_ms: anchor.observed_at },
       median: ForecastInstant { epoch_ms: anchor.observed_at },
       latest: ForecastInstant { epoch_ms: anchor.observed_at },
     },
-    f: (acc, node) => ForecastInterval {
-      earliest: ForecastInstant { epoch_ms: if node.landing.earliest.epoch_ms > acc.earliest.epoch_ms { node.landing.earliest.epoch_ms } else { acc.earliest.epoch_ms } },
-      median: ForecastInstant { epoch_ms: if node.landing.median.epoch_ms > acc.median.epoch_ms { node.landing.median.epoch_ms } else { acc.median.epoch_ms } },
-      latest: ForecastInstant { epoch_ms: if node.landing.latest.epoch_ms > acc.latest.epoch_ms { node.landing.latest.epoch_ms } else { acc.latest.epoch_ms } },
+    f: (acc, node) => ForecastLowerBoundInterval {
+      earliest: ForecastInstant { epoch_ms: if node.landing_lower_bound.earliest.epoch_ms > acc.earliest.epoch_ms { node.landing_lower_bound.earliest.epoch_ms } else { acc.earliest.epoch_ms } },
+      median: ForecastInstant { epoch_ms: if node.landing_lower_bound.median.epoch_ms > acc.median.epoch_ms { node.landing_lower_bound.median.epoch_ms } else { acc.median.epoch_ms } },
+      latest: ForecastInstant { epoch_ms: if node.landing_lower_bound.latest.epoch_ms > acc.latest.epoch_ms { node.landing_lower_bound.latest.epoch_ms } else { acc.latest.epoch_ms } },
     },
   )
+}
+
+fn total_work_duration(
+  nodes: List<NodeScheduleForecast>,
+  assumptions: ScheduleForecastAssumptions,
+  bound: ForecastBound,
+) -> Millisecond {
+  let total = nodes |> fold(init: 0, f: (acc, node) =>
+    acc + millisecond_count(m: adjusted_node_duration(
+      interval: node.calibrated_cycle_time,
+      bound: bound,
+      assumptions: assumptions,
+    ))
+  )
+  millisecond(count: total)
+}
+
+fn total_work(
+  nodes: List<NodeScheduleForecast>,
+  assumptions: ScheduleForecastAssumptions,
+) -> TotalWork {
+  TotalWork { duration: DurationEstimateInterval {
+    minimum: total_work_duration(nodes: nodes, assumptions: assumptions, bound: EarliestBound),
+    median: total_work_duration(nodes: nodes, assumptions: assumptions, bound: MedianBound),
+    maximum: total_work_duration(nodes: nodes, assumptions: assumptions, bound: LatestBound),
+  } }
+}
+
+fn critical_path_minimum(
+  bound: ForecastLowerBoundInterval,
+  anchor: ForecastAnchorObservation,
+) -> CriticalPathMinimum {
+  CriticalPathMinimum { duration: DurationEstimateInterval {
+    minimum: millisecond(count: bound.earliest.epoch_ms - anchor.observed_at),
+    median: millisecond(count: bound.median.epoch_ms - anchor.observed_at),
+    maximum: millisecond(count: bound.latest.epoch_ms - anchor.observed_at),
+  } }
+}
+
+fn capacity_constrained_minimum(
+  total: TotalWork,
+  critical: CriticalPathMinimum,
+  worker_cap: Int,
+) -> CapacityConstrainedMinimum {
+  CapacityConstrainedMinimum { duration: DurationEstimateInterval {
+    minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
+    median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
+    maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
+  } }
+}
+
+fn completion_lower_bound_from_duration(
+  duration: DurationEstimateInterval,
+  anchor: ForecastAnchorObservation,
+) -> ForecastLowerBoundInterval {
+  ForecastLowerBoundInterval {
+    earliest: forecast_instant(anchor: anchor, duration: duration.minimum),
+    median: forecast_instant(anchor: anchor, duration: duration.median),
+    latest: forecast_instant(anchor: anchor, duration: duration.maximum),
+  }
+}
+
+fn parallelism_headroom(total: TotalWork, critical: CriticalPathMinimum) -> ParallelismHeadroom {
+  ParallelismHeadroom { ratio: ParallelismHeadroomInterval {
+    minimum: FieldOfFractions { num: total.duration.minimum, denom: critical.duration.minimum },
+    median: FieldOfFractions { num: total.duration.median, denom: critical.duration.median },
+    maximum: FieldOfFractions { num: total.duration.maximum, denom: critical.duration.maximum },
+  } }
 }
 
 fn schedule_forecast(
@@ -554,15 +665,22 @@ fn schedule_forecast(
   let unknown_endpoints = unknown_dependency_endpoints(nodes: nodes, edges: edges)
   let unsized = nodes |> filter(n => match n.sizing { Unsized => true Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => false }) |> map(n => n.node)
   let gaps = calibration_gaps(nodes: nodes, observations: observations)
+  let invalid_worker_cap = assumptions.worker_concurrency_cap.max_concurrent <= 0
   let refusals = concat(
-    if count(cycles) > 0 { [DependencyCycle { nodes: cycles }] } else { [] },
+    if count(nodes) == 0 { [ForecastGraphEmpty] } else { [] },
     concat(
-      if count(unknown_endpoints) > 0 { [DependencyEndpointUnknown { nodes: unknown_endpoints }] } else { [] },
+      if count(cycles) > 0 { [DependencyCycle { nodes: cycles }] } else { [] },
       concat(
-        if count(unsized) > 0 { [NodeUnsized { nodes: unsized }] } else { [] },
+        if count(unknown_endpoints) > 0 { [DependencyEndpointUnknown { nodes: unknown_endpoints }] } else { [] },
         concat(
-          if count(gaps) > 0 { [NoCalibrationSample { gaps: gaps }] } else { [] },
-          if count(history_refusals) > 0 { [CalibrationHistoryRefused { refusals: history_refusals }] } else { [] },
+          if count(unsized) > 0 { [NodeUnsized { nodes: unsized }] } else { [] },
+          concat(
+            if count(gaps) > 0 { [NoCalibrationSample { gaps: gaps }] } else { [] },
+            concat(
+              if invalid_worker_cap { [WorkerConcurrencyCapInvalid { declared_cap: assumptions.worker_concurrency_cap.max_concurrent }] } else { [] },
+              if count(history_refusals) > 0 { [CalibrationHistoryRefused { refusals: history_refusals }] } else { [] },
+            ),
+          ),
         ),
       ),
     ),
@@ -594,17 +712,34 @@ fn schedule_forecast(
     f: (best, candidate) => match candidate {
       NodeForecastBuildRefused { node: _ } => best
       NodeForecastBuilt { forecast, median_path } =>
-        if forecast.landing.median.epoch_ms >= best.median_epoch_ms {
-          CriticalPathChoice { median_epoch_ms: forecast.landing.median.epoch_ms, path: median_path }
+        if forecast.landing_lower_bound.median.epoch_ms >= best.median_epoch_ms {
+          CriticalPathChoice { median_epoch_ms: forecast.landing_lower_bound.median.epoch_ms, path: median_path }
         } else { best }
     },
+  )
+  let dependency_bound = dependency_completion_lower_bound(nodes: forecasts, anchor: anchor)
+  let total = total_work(
+    nodes: forecasts,
+    assumptions: assumptions,
+  )
+  let critical_minimum = critical_path_minimum(bound: dependency_bound, anchor: anchor)
+  let capacity_minimum = capacity_constrained_minimum(
+    total: total,
+    critical: critical_minimum,
+    worker_cap: assumptions.worker_concurrency_cap.max_concurrent,
   )
   ScheduleForecastKnown { forecast: ScheduleForecast {
     anchor: anchor,
     assumptions: assumptions,
     nodes: forecasts,
     critical_path: critical.path,
-    completion: forecast_interval_max(nodes: forecasts, anchor: anchor),
+    lower_bounds: ScheduleLowerBounds {
+      total_work: total,
+      critical_path_minimum: critical_minimum,
+      capacity_constrained_minimum: capacity_minimum,
+      parallelism_headroom: parallelism_headroom(total: total, critical: critical_minimum),
+    },
+    completion_lower_bound: completion_lower_bound_from_duration(duration: capacity_minimum.duration, anchor: anchor),
   } }
 }
 
