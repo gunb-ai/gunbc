@@ -46,8 +46,9 @@ use v1_compiler::resolved_graph_cache::{
     build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
     decode_count, derive_subject_digest, encode_resolved_graph_parts, lookup,
     lookup_verified_probe, probe, subject_digest_for_closure, transform_content_digest,
-    write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult, CacheRejectReason,
-    KeyInputMaterials, UNION_PART_ABSENT_DIGEST,
+    write as write_resolved_graph_cache, write_raw_artifact_for_test, CacheLookupResult,
+    CacheProbeResult, CacheRejectReason, CacheWriteOutcome, KeyInputMaterials,
+    UNION_PART_ABSENT_DIGEST,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -887,6 +888,60 @@ fn legacy_v1_cold_rebuild_migrates_to_v3_on_fresh_index() {
             "fresh index must decode v3 once after legacy migration"
         );
     });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// review 46697: commit revalidates disposition — a verified v3 row is never deleted
+/// because an earlier classify saw legacy.
+#[test]
+fn v3_write_refuses_when_verified_artifact_already_present() {
+    let dir = temp_dir("v3-write-refuse");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let v3_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("v3 bytes");
+    let cache_dir = dir.join("v3-present");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+    write_raw_artifact_for_test(&cache_dir, &subject, &v3_bytes).expect("seed v3");
+    let artifact_path = cache_dir.join(&subject[..2]).join(format!("{subject}.bin"));
+
+    let outcome = write_resolved_graph_cache(
+        &cache_dir,
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("write against existing v3");
+    assert_eq!(
+        outcome,
+        CacheWriteOutcome::AlreadyExists,
+        "verified v3 must refuse overwrite"
+    );
+    let on_disk = fs::read(&artifact_path).expect("read v3 artifact");
+    assert_eq!(
+        on_disk, v3_bytes,
+        "write must not replace verified v3 bytes"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }

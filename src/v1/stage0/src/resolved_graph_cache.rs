@@ -977,15 +977,6 @@ pub fn write(
     }
     let final_path = artifact_path(cache_root, subject_digest);
     match classify_existing_artifact(&final_path, subject_digest)? {
-        ExistingArtifactDisposition::Absent => {}
-        ExistingArtifactDisposition::LegacyV1Upgrade => {
-            fs::remove_file(&final_path).map_err(|e| {
-                format!(
-                    "failed to remove legacy v1 cache artifact {:?} before v3 migration write: {e}",
-                    final_path
-                )
-            })?;
-        }
         ExistingArtifactDisposition::V3Present => return Ok(CacheWriteOutcome::AlreadyExists),
         ExistingArtifactDisposition::Unrecognized => {
             return Err(format!(
@@ -993,6 +984,7 @@ pub fn write(
                 final_path
             ));
         }
+        ExistingArtifactDisposition::Absent | ExistingArtifactDisposition::LegacyV1Upgrade => {}
     }
     if let Some(parent) = final_path.parent() {
         fs::create_dir_all(parent)
@@ -1059,19 +1051,50 @@ pub fn write(
         file.sync_all()
             .map_err(|e| format!("cache fsync failed: {e}"))?;
     }
-    match fs::rename(&temp_path, &final_path) {
-        Ok(()) => {
-            enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
-            Ok(CacheWriteOutcome::Written)
-        }
-        Err(_) if final_path.exists() => {
+    match commit_v3_temp_artifact(&temp_path, &final_path, subject_digest, cache_root) {
+        Ok(outcome) => Ok(outcome),
+        Err(e) => {
             let _ = fs::remove_file(&temp_path);
-            Ok(CacheWriteOutcome::AlreadyExists)
+            Err(e)
         }
-        Err(e) => Err(format!(
-            "cache rename {:?} -> {:?}: {}",
-            temp_path, final_path, e
+    }
+}
+
+fn commit_v3_temp_artifact(
+    temp_path: &Path,
+    final_path: &Path,
+    subject_digest: &str,
+    cache_root: &Path,
+) -> Result<CacheWriteOutcome, String> {
+    match classify_existing_artifact(final_path, subject_digest)? {
+        ExistingArtifactDisposition::V3Present => Ok(CacheWriteOutcome::AlreadyExists),
+        ExistingArtifactDisposition::Unrecognized => Err(format!(
+            "refusing v3 commit: unrecognized cache artifact at {:?}",
+            final_path
         )),
+        ExistingArtifactDisposition::Absent | ExistingArtifactDisposition::LegacyV1Upgrade => {
+            match fs::rename(temp_path, final_path) {
+                Ok(()) => {
+                    enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
+                    Ok(CacheWriteOutcome::Written)
+                }
+                Err(e) if final_path.exists() => {
+                    match classify_existing_artifact(final_path, subject_digest)? {
+                        ExistingArtifactDisposition::V3Present => {
+                            Ok(CacheWriteOutcome::AlreadyExists)
+                        }
+                        other => Err(format!(
+                            "cache rename {:?} -> {:?} lost race ({other:?}): {e}",
+                            temp_path, final_path
+                        )),
+                    }
+                }
+                Err(e) => Err(format!(
+                    "cache rename {:?} -> {:?}: {}",
+                    temp_path, final_path, e
+                )),
+            }
+        }
     }
 }
 
