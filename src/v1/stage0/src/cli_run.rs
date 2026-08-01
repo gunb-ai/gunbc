@@ -7072,15 +7072,16 @@ fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
 // the process union.
 static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-// Union-resolve receipt tests reset/read the process-wide counter; `cargo test` runs
-// `#[test]` fns in parallel by default — serialize those oracles (not production use).
-static TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
+// Union-resolve receipt tests reset/read process-wide oracles (`TYPECHECK_COMPUTE_COUNT`,
+// repeated-typecheck attribution probe state). `cargo test` runs `#[test]` fns in parallel
+// by default — serialize those oracles (not production use).
+static UNION_RESOLVE_PROCESS_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
 
 /// Run a counter-based receipt test with exclusive access to `TYPECHECK_COMPUTE_COUNT`.
 pub fn with_typecheck_compute_count_receipt<R>(f: impl FnOnce() -> R) -> R {
-    let _guard = TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK
+    let _guard = UNION_RESOLVE_PROCESS_RECEIPT_LOCK
         .lock()
-        .expect("typecheck_compute_count receipt lock poisoned");
+        .expect("union resolve process receipt lock poisoned");
     f()
 }
 
@@ -7373,15 +7374,12 @@ impl RepeatedTypecheckAttributionRun {
 static REPEATED_TYPECHECK_ATTRIBUTION_RUN: Mutex<Option<RepeatedTypecheckAttributionRun>> =
     Mutex::new(None);
 
-// Union-resolve slice-2 attribution tests arm/disarm this process-wide probe; `cargo test`
-// runs `#[test]` fns in parallel by default — serialize those oracles (not production use).
-static REPEATED_TYPECHECK_ATTRIBUTION_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
-
-/// Run an attribution-probe receipt test with exclusive access to the process-wide probe.
+/// Run an attribution-probe receipt test with exclusive access to the process-wide probe
+/// and `TYPECHECK_COMPUTE_COUNT` (resolves bump the counter; same lock as counter receipts).
 pub fn with_repeated_typecheck_attribution_receipt<R>(f: impl FnOnce() -> R) -> R {
-    let _guard = REPEATED_TYPECHECK_ATTRIBUTION_RECEIPT_LOCK
+    let _guard = UNION_RESOLVE_PROCESS_RECEIPT_LOCK
         .lock()
-        .expect("repeated typecheck attribution receipt lock poisoned");
+        .expect("union resolve process receipt lock poisoned");
     f()
 }
 
