@@ -156,18 +156,18 @@ fn landing_approval_requirement_blockers(
     requirement: DashboardApprovalsRequirement,
   )
   let approval = if criteria.approval_count == 0 && criteria.stale_provider_count == 0 {
-    [AwaitingFirstReview { at: at, required: criteria.required_approval_count }]
+    [AwaitingFirstReview { at: at, required: criteria.required_approval_count } as LandingBlocker]
   } else {
     [AwaitingApprovals {
       at: at,
       actual: criteria.approval_count,
       required: criteria.required_approval_count,
-    }]
+    } as LandingBlocker]
   }
   append(
     approval,
     items: map(criteria.stale_providers, provider =>
-      StaleApprovalReReviewPending { at: at, provider: provider }),
+      StaleApprovalReReviewPending { at: at, provider: provider } as LandingBlocker),
   )
 }
 
@@ -181,10 +181,10 @@ fn landing_request_changes_blockers(
     requirement: DashboardRequestChangesRequirement,
   )
   if count(criteria.request_change_providers) == 0 {
-    [RequestChangesUnattributed { at: at, count: criteria.request_changes_count }]
+    [RequestChangesUnattributed { at: at, count: criteria.request_changes_count } as LandingBlocker]
   } else {
     map(criteria.request_change_providers, provider =>
-      RequestChangesBy { at: at, provider: provider })
+      RequestChangesBy { at: at, provider: provider } as LandingBlocker)
   }
 }
 
@@ -207,24 +207,24 @@ fn landing_failed_requirement_blockers(
       DashboardRequestChangesRequirement =>
         landing_request_changes_blockers(pr: pr, criteria: criteria)
       DashboardActiveReviewsRequirement =>
-        [ActiveReviewOnCurrentHead { at: at, count: criteria.active_review_count }]
+        [ActiveReviewOnCurrentHead { at: at, count: criteria.active_review_count } as LandingBlocker]
       DashboardOpenRequirement =>
-        [PullRequestNotOpen { at: at, lifecycle: criteria.lifecycle }]
-      DashboardDraftRequirement => [DraftPullRequest { at: at }]
+        [PullRequestNotOpen { at: at, lifecycle: criteria.lifecycle } as LandingBlocker]
+      DashboardDraftRequirement => [DraftPullRequest { at: at } as LandingBlocker]
       DashboardMergeableRequirement =>
         if criteria.mergeable == "CONFLICTING" || criteria.mergeable == "DIRTY" {
-          [MergeConflict { at: at, mergeable: criteria.mergeable }]
+          [MergeConflict { at: at, mergeable: criteria.mergeable } as LandingBlocker]
         } else {
-          [MergeabilityUnknown { at: at, mergeable: criteria.mergeable }]
+          [MergeabilityUnknown { at: at, mergeable: criteria.mergeable } as LandingBlocker]
         }
       DashboardChecksRequirement =>
         if criteria.checks_state == "pending" || criteria.checks_state == "queued" || criteria.checks_state == "in_progress" {
-          [ChecksPending { at: at, detail: requirement.actual }]
+          [ChecksPending { at: at, detail: requirement.actual } as LandingBlocker]
         } else {
-          [ChecksFailing { at: at, state: criteria.checks_state, detail: requirement.actual }]
+          [ChecksFailing { at: at, state: criteria.checks_state, detail: requirement.actual } as LandingBlocker]
         }
       DashboardUnclassifiedRequirement { key: _ } =>
-        [RequirementBlockedUnclassified { at: at, actual: requirement.actual }]
+        [RequirementBlockedUnclassified { at: at, actual: requirement.actual } as LandingBlocker]
     }
   }
 }
