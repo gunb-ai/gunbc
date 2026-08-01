@@ -169,7 +169,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Measure<Q, S, M: Clone> {
+pub struct Measure<Q, S, M> {
     pub count: M,
     pub _phantom: std::marker::PhantomData<(Q, S, M)>,
 }

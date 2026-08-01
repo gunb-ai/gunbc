@@ -4091,6 +4091,22 @@ fn batch_unit_lane(
     }
 }
 
+/// Population-semantic refinement of the shared lane decision. Green-only claims that
+/// would spawn instead stay on the executor's main thread, where the process-shared
+/// module index is already warm. The claim still runs through `run_batch_unit`, so this
+/// changes placement only — not governor admission, grouping, or verdict semantics.
+fn population_unit_lane(
+    population: StagePopulation,
+    unit: &BatchUnit,
+    memo: &std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
+) -> UnitLane {
+    match (population, batch_unit_lane(unit, memo, memo_path_entries)) {
+        (StagePopulation::OnSuccessStage, UnitLane::Spawned) => UnitLane::MainThread,
+        (_, lane) => lane,
+    }
+}
+
 /// Arm-time admissibility of the success-stage population. Called immediately after
 /// the plan parses, BEFORE the governor arms and before any ordinary batch runs: a
 /// plan-shape error is knowable at parse time, and discovering it after a 20-30 minute
@@ -4361,10 +4377,11 @@ fn join_units(handles: Vec<thread::JoinHandle<Vec<ClaimResult>>>) -> (Vec<ClaimR
     (results, panicked)
 }
 
-/// Which of the walk's two populations a stage belongs to. It selects LABELS only —
-/// the execution path below is byte-identical for both, which is the entire point of
-/// the extraction (`std.realization_schedule.walk_plan_note`). Ordering and failure
-/// policy live in the callers, where the two populations genuinely differ.
+/// Which of the walk's two populations a stage belongs to. Besides labels, this selects
+/// the one population-semantic placement difference: on-success units that would be
+/// spawned execute through `run_batch_unit` on the main thread so they consume its warm
+/// thread-local index. Ordinary spawned units stay unchanged. Ordering and failure
+/// policy continue to live in the callers.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StagePopulation {
     OrdinaryBatch,
@@ -4501,13 +4518,18 @@ fn run_stage(
     );
     let memory_before = stage_memory_snapshot();
     let stage_start = Instant::now();
-    // Partition units into lanes (decision table: `batch_unit_lane`): memo and Discovery
-    // units stay on the main thread; others spawn.
+    // Partition units into lanes (decision table: `batch_unit_lane`). Ordinary spawned
+    // units remain worker-thread units. On-success units that would otherwise spawn run
+    // through the SAME run_batch_unit path on the main thread: they still acquire an
+    // AdmittedSlot, but now consume this thread's already-warm process_shared_index
+    // instead of rebuilding a cold index in a fresh thread-local. The WalkPlan contract
+    // deliberately permits withdrawing sibling overlap, and the live roster's stages are
+    // singletons. Memo and Discovery placement is unchanged.
     let mut memo_units: Vec<BatchUnit> = Vec::new();
     let mut main_thread_units: Vec<BatchUnit> = Vec::new();
     let mut thread_units: Vec<BatchUnit> = Vec::new();
     for unit in units {
-        match batch_unit_lane(&unit, memo, memo_path_entries) {
+        match population_unit_lane(population, &unit, memo, memo_path_entries) {
             UnitLane::Memo => memo_units.push(unit),
             UnitLane::MainThread => main_thread_units.push(unit),
             UnitLane::Spawned => thread_units.push(unit),
@@ -4566,9 +4588,10 @@ fn run_stage(
             memo_results.extend(results);
         }
     }
-    // Discovery pumps on the main thread (see the partition above): the pump's
-    // `process_shared_index` is this thread's — the one the eager compile-clean receipt
-    // install warmed — so the corpus reads the gate's typed store.
+    // Main-thread units include Discovery pumps and on-success spawned-eligible claims.
+    // Both intentionally consume this thread's process_shared_index — the one the eager
+    // compile-clean receipt install warmed. run_batch_unit itself preserves governor-slot
+    // acquisition for the claim case; Discovery keeps its existing admission behavior.
     for unit in main_thread_units {
         memo_results.extend(run_batch_unit(
             source_roots.to_vec(),
@@ -4718,7 +4741,10 @@ impl PopulationBudgetProgress {
     }
 
     fn enter(&self, population_index: usize, active_unit: String) {
-        let mut locus = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut locus = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *locus = PopulationBudgetLocus {
             population_index,
             active_unit,
@@ -5037,16 +5063,19 @@ fn run_walk(
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
     // is an ordinary-floor policy and never applies between stages. Members run through
     // `run_stage`, the SAME executor the ordinary batches use — same unit grouping, same
-    // lane partition, same CLAMP MECHANISM, same per-lane admission rule. Three of those
+    // lane decision, same CLAMP MECHANISM, same per-lane admission rule. On-success
+    // spawned-eligible units have one population-semantic placement refinement: they run
+    // on this main thread to consume its warm thread-local index. Three of those
     // are deliberately weaker than an earlier draft's wording (review 2026-07-31). NOT
-    // "same governor admission": admission is PER-LANE, and only the spawned lane acquires
-    // a slot. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
+    // "same governor admission": admission is PER-LANE. Ordinary spawned units and
+    // on-success main-thread claim units both reach run_batch_unit and acquire a slot;
+    // memo and Discovery lanes do not. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
     // deliberately pass None and stay inside a narrow admissible profile instead — the
     // mechanism is shared, the parameters are not. And NOT "concurrent exactly as the
-    // contract says": the contract promises only that distinct spawned groups MAY overlap.
-    // The two
-    // populations differ here only in ordering and failure policy, which is the whole
-    // claim of the extraction. Their memo contexts drop AFTER
+    // contract says": the contract never guarantees sibling overlap, and on-success
+    // placement deliberately withdraws it to preserve index warmth. The two populations
+    // differ where their semantics require it: ordering/failure policy and warm-index
+    // placement for postconditions. Their memo contexts drop AFTER
     // write_materialization_receipt above, so stage materialization is structurally NOT
     // folded into the floor receipt. A second attempt-scoped receipt harvests the stage
     // population after stage_memo drops.
@@ -6174,8 +6203,14 @@ mod tests {
     fn population_budget_watchdog_refuses_and_writes_located_receipt() {
         const CHILD_MARKER: &str = "GUNBC_POPULATION_BUDGET_WATCHDOG_CHILD";
         if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
-            let _armed =
-                arm_population_budget_watchdog("ordinary_floor", "fixture::bounded_plan", Some(50));
+            let progress = PopulationBudgetProgress::before_first_unit();
+            progress.enter(3, "dag/tools/fixture.dag::bounded_stage_claim".to_string());
+            let _armed = arm_population_budget_watchdog(
+                "ordinary_floor",
+                "fixture::bounded_plan",
+                Some(50),
+                progress,
+            );
             std::thread::sleep(std::time::Duration::from_secs(2));
             panic!("watchdog did not terminate the child");
         }
@@ -6199,6 +6234,9 @@ mod tests {
         assert!(
             stderr.contains("ORDINARY-FLOOR-OVER-BUDGET")
                 && stderr.contains("fixture::bounded_plan")
+                && stderr.contains("population_index=3")
+                && stderr.contains("dag/tools/fixture.dag::bounded_stage_claim")
+                && stderr.contains("elapsed_ms=")
                 && stderr.contains("budget_ms=50"),
             "refusal must be typed and located, got: {stderr}"
         );
@@ -6207,6 +6245,9 @@ mod tests {
         assert!(
             receipt.contains("population=ordinary_floor")
                 && receipt.contains("plan_site=fixture::bounded_plan")
+                && receipt.contains("population_index=3")
+                && receipt.contains("active_unit=dag/tools/fixture.dag::bounded_stage_claim")
+                && receipt.contains("elapsed_ms=")
                 && receipt.contains("budget_ms=50")
                 && receipt.contains("outcome=refused"),
             "receipt must carry the refused population and its subject: {receipt}"
@@ -6816,6 +6857,49 @@ mod tests {
         assert_eq!(
             batch_unit_lane(&cheap_units[0], &empty_memo, &no_heavy),
             UnitLane::Spawned
+        );
+    }
+
+    #[test]
+    fn on_success_spawned_claims_move_to_warm_main_thread_only() {
+        let runnable = Runnable::SingleClaim {
+            entry: "dag/tools/merge_admission_walk.dag".to_string(),
+            function: "stamp_tested_floor".to_string(),
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
+        };
+        let units = group_batch_units(&[runnable]);
+        let memo = std::collections::HashMap::new();
+        let memo_entries = std::collections::HashSet::new();
+        assert_eq!(
+            batch_unit_lane(&units[0], &memo, &memo_entries),
+            UnitLane::Spawned,
+            "the shared lane authority remains unchanged"
+        );
+        assert_eq!(
+            population_unit_lane(
+                StagePopulation::OrdinaryBatch,
+                &units[0],
+                &memo,
+                &memo_entries,
+            ),
+            UnitLane::Spawned,
+            "ordinary claim placement must remain unchanged"
+        );
+        assert_eq!(
+            population_unit_lane(
+                StagePopulation::OnSuccessStage,
+                &units[0],
+                &memo,
+                &memo_entries,
+            ),
+            UnitLane::MainThread,
+            "green-only claim must consume the warm main-thread index"
         );
     }
 

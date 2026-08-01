@@ -129,7 +129,7 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FieldOfFractions<R: Clone> {
+pub struct FieldOfFractions<R> {
     pub num: R,
     pub denom: R,
     pub _phantom: std::marker::PhantomData<R>,
