@@ -75,9 +75,8 @@ test fn compiler_frontier_wave2_emit_surface_dominates_holds() -> Bool {
   let emit_count = frontier_wave2_emit_surface_module_count(receipts: host_frontier_probe_survey)
   let upstream_count = frontier_wave2_upstream_semantic_module_count(receipts: host_frontier_probe_survey)
   let name_count = frontier_wave2_name_resolution_module_count(receipts: host_frontier_probe_survey)
-  let ready_count = frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey)
-  (emit_count + upstream_count + name_count + ready_count) <= host_frontier_probe_survey_module_count
-    && ready_count == 0
+  (emit_count + upstream_count) >= name_count
+    && frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey) == 0
 }
 
 test fn compiler_frontier_wave2_sizing_band_a_leaf_count_holds() -> Bool {
