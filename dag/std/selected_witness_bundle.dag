@@ -237,6 +237,20 @@ type NativeWitnessBundleExecutionReceipt {
 
 type NativeWitnessBundleExecutionVerdict
   = NativeBundleExecutionAccepted { receipt: NativeWitnessBundleExecutionReceipt }
+  | NativeBundleExecutionRefusedNoNativeMembers
+  | NativeBundleExecutionRefusedStaleCompiler {
+      receipt_compiler_identity: ContentHash
+      current_compiler_identity: ContentHash
+    }
+  | NativeBundleExecutionRefusedPlanIdentity {
+      observed: NativeWitnessBundleIdentity
+      required: NativeWitnessBundleIdentity
+    }
+  | NativeBundleExecutionRefusedMemberCoverage {
+      observed: ContentHash
+      required: ContentHash
+    }
+  | NativeBundleExecutionRefusedFrontierCount { observed: Int, required: Int }
   | NativeBundleExecutionRefusedDivergence {
       witness: SelectedWitnessIdentity
       interpreted: SelectedWitnessVerdict
@@ -245,17 +259,49 @@ type NativeWitnessBundleExecutionVerdict
   | NativeBundleExecutionRefusedMissingDiscriminatingRed { family: NonEmptyStr }
   | NativeBundleExecutionRefusedProcessCount { observed: Int }
 
-fn selected_witness_verdict_eq(left: SelectedWitnessVerdict, right: SelectedWitnessVerdict) -> Bool {
-  match left {
-    SelectedWitnessPassed => match right {
-      SelectedWitnessPassed => true
-      SelectedWitnessFailed => false
-    }
-    SelectedWitnessFailed => match right {
-      SelectedWitnessPassed => false
-      SelectedWitnessFailed => true
-    }
-  }
+fn native_bundle_execution_member_hash(
+  witness: SelectedWitnessIdentity,
+  family: NonEmptyStr
+) -> ContentHash {
+  content_hash_tagged(
+    tag: "selected-witness-executed-member",
+    payload: content_hash_combine(
+      left: selected_witness_identity_hash(witness: witness),
+      right: content_hash_atom(value: family)
+    )
+  )
+}
+
+fn native_bundle_required_execution_roster_hash(
+  members: List<NativeWitnessBundleMember>
+) -> ContentHash {
+  fold(
+    members,
+    init: content_hash_atom(value: "selected-witness-execution-roster"),
+    f: (acc, member) => content_hash_combine(
+      left: acc,
+      right: native_bundle_execution_member_hash(
+        witness: member.witness,
+        family: member.realization.family
+      )
+    )
+  )
+}
+
+fn native_bundle_observed_execution_roster_hash(
+  rows: List<NativeBundleMemberEquivalence>
+) -> ContentHash {
+  fold(
+    rows,
+    init: content_hash_atom(value: "selected-witness-execution-roster"),
+    f: (acc, row) => content_hash_combine(
+      left: acc,
+      right: native_bundle_execution_member_hash(
+        witness: row.witness,
+        family: row.family
+      )
+    )
+  )
 }
 
 type NativeBundleDivergenceSearch
@@ -272,7 +318,7 @@ fn first_native_bundle_divergence(
       NativeBundleDivergenceFound { row: prior } =>
         NativeBundleDivergenceFound { row: prior }
       NativeBundleDivergenceAbsent =>
-        if selected_witness_verdict_eq(left: row.interpreted, right: row.native) {
+        if row.interpreted == row.native {
           NativeBundleDivergenceAbsent
         } else {
           NativeBundleDivergenceFound { row: row }
@@ -317,11 +363,42 @@ fn first_native_bundle_family_without_red(
 }
 
 fn native_witness_bundle_execution_admit(
+  plan: SelectedWitnessPlan,
+  current_compiler_identity: ContentHash,
   receipt: NativeWitnessBundleExecutionReceipt,
   family_evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> NativeWitnessBundleExecutionVerdict {
+  let required_bundle = native_witness_bundle_from_plan(plan: plan)
+  let required_members = required_bundle.members
+  let required_frontier_count = selected_witness_plan_interpreter_frontier_count(plan: plan)
+  let required_roster = native_bundle_required_execution_roster_hash(members: required_members)
+  let observed_roster = native_bundle_observed_execution_roster_hash(
+    rows: receipt.member_equivalence
+  )
   if receipt.process_count != 1 {
     NativeBundleExecutionRefusedProcessCount { observed: receipt.process_count }
+  } else if receipt.compiler_identity != current_compiler_identity {
+    NativeBundleExecutionRefusedStaleCompiler {
+      receipt_compiler_identity: receipt.compiler_identity,
+      current_compiler_identity: current_compiler_identity
+    }
+  } else if receipt.bundle_identity.structural_fingerprint != required_bundle.identity.structural_fingerprint {
+    NativeBundleExecutionRefusedPlanIdentity {
+      observed: receipt.bundle_identity,
+      required: required_bundle.identity
+    }
+  } else if required_members.count() == 0 {
+    NativeBundleExecutionRefusedNoNativeMembers
+  } else if receipt.interpreter_frontier_count != required_frontier_count {
+    NativeBundleExecutionRefusedFrontierCount {
+      observed: receipt.interpreter_frontier_count,
+      required: required_frontier_count
+    }
+  } else if observed_roster != required_roster {
+    NativeBundleExecutionRefusedMemberCoverage {
+      observed: observed_roster,
+      required: required_roster
+    }
   } else {
     match first_native_bundle_divergence(rows: receipt.member_equivalence) {
       NativeBundleDivergenceFound { row: row } => NativeBundleExecutionRefusedDivergence {

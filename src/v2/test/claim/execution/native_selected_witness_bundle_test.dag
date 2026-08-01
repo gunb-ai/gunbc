@@ -10,8 +10,13 @@ import std.selected_witness_bundle {
   NativeBundleAdmitted,
   NativeBundleExecutionAccepted,
   NativeBundleExecutionRefusedDivergence,
+  NativeBundleExecutionRefusedFrontierCount,
+  NativeBundleExecutionRefusedMemberCoverage,
   NativeBundleExecutionRefusedMissingDiscriminatingRed,
+  NativeBundleExecutionRefusedNoNativeMembers,
+  NativeBundleExecutionRefusedPlanIdentity,
   NativeBundleExecutionRefusedProcessCount,
+  NativeBundleExecutionRefusedStaleCompiler,
   NativeBundleFamilyCutoverEvidence,
   NativeBundleMemberEquivalence,
   NativeBundleRefusedStaleCompiler,
@@ -19,6 +24,7 @@ import std.selected_witness_bundle {
   NativeRealizationIdentity,
   NativeSelected,
   NativeWitnessBundleExecutionReceipt,
+  NativeWitnessBundleExecutionVerdict,
   OneSelectedBundle,
   SelectedWitnessFailed,
   SelectedWitnessIdentity,
@@ -485,6 +491,19 @@ fn selected_logic_cutover_evidence() -> List<NativeBundleFamilyCutoverEvidence> 
   }]
 }
 
+fn selected_logic_execution_admit(
+  plan: SelectedWitnessPlan,
+  receipt: NativeWitnessBundleExecutionReceipt,
+  family_evidence: List<NativeBundleFamilyCutoverEvidence>
+) -> NativeWitnessBundleExecutionVerdict {
+  native_witness_bundle_execution_admit(
+    plan: plan,
+    current_compiler_identity: plan.compiler_identity,
+    receipt: receipt,
+    family_evidence: family_evidence
+  )
+}
+
 test fn native_selected_witness_bundle_monotonic_observation_holds() -> Bool {
   let start = observed_monotonic_nanos("selected-bundle-monotonic-control-start")
   let finish = observed_monotonic_nanos("selected-bundle-monotonic-control-finish")
@@ -514,7 +533,8 @@ test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
     )
     interpreter_frontier_count: 0
   }
-  match native_witness_bundle_execution_admit(
+  match selected_logic_execution_admit(
+    plan: plan,
     receipt: receipt,
     family_evidence: selected_logic_cutover_evidence()
   ) {
@@ -636,7 +656,8 @@ fn selected_logic_execution_holds(
                     && observation.warm_wall_nanos > 0
                     && interpreter_finish - interpreter_start > 0
                     && expected_interpreted
-                    && (match native_witness_bundle_execution_admit(
+                    && (match selected_logic_execution_admit(
+                      plan: plan,
                       receipt: receipt,
                       family_evidence: selected_logic_cutover_evidence()
                     ) {
@@ -705,7 +726,8 @@ test fn native_selected_witness_bundle_discriminating_red_holds() -> Bool {
                     && interpreted.meet == SelectedWitnessPassed
                     && interpreted.join == SelectedWitnessPassed
                     && interpreted.complement == SelectedWitnessPassed
-                    && (match native_witness_bundle_execution_admit(
+                    && (match selected_logic_execution_admit(
+                      plan: plan,
                       receipt: receipt,
                       family_evidence: selected_logic_cutover_evidence()
                     ) {
@@ -751,6 +773,7 @@ fn selected_logic_sample_receipt() -> NativeWitnessBundleExecutionReceipt {
 }
 
 test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let divergent = NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
@@ -764,10 +787,24 @@ test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
       family: "logic"
       interpreted: SelectedWitnessFailed
       native: SelectedWitnessPassed
+    }, NativeBundleMemberEquivalence {
+      witness: selected_logic_identity(function_name: "join", tree: family_crate_join_tree())
+      family: "logic"
+      interpreted: SelectedWitnessPassed
+      native: SelectedWitnessPassed
+    }, NativeBundleMemberEquivalence {
+      witness: selected_logic_identity(
+        function_name: "complement",
+        tree: family_crate_complement_tree()
+      )
+      family: "logic"
+      interpreted: SelectedWitnessPassed
+      native: SelectedWitnessPassed
     }]
     interpreter_frontier_count: receipt.interpreter_frontier_count
   }
-  match native_witness_bundle_execution_admit(
+  match selected_logic_execution_admit(
+    plan: plan,
     receipt: divergent,
     family_evidence: selected_logic_cutover_evidence()
   ) {
@@ -781,7 +818,9 @@ test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
 }
 
 test fn native_selected_witness_bundle_missing_red_refuses_holds() -> Bool {
-  match native_witness_bundle_execution_admit(
+  let plan = selected_logic_primary_plan()
+  match selected_logic_execution_admit(
+    plan: plan,
     receipt: selected_logic_sample_receipt(),
     family_evidence: []
   ) {
@@ -791,6 +830,7 @@ test fn native_selected_witness_bundle_missing_red_refuses_holds() -> Bool {
 }
 
 test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let invalid = NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
@@ -802,11 +842,117 @@ test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool {
     member_equivalence: receipt.member_equivalence
     interpreter_frontier_count: receipt.interpreter_frontier_count
   }
-  match native_witness_bundle_execution_admit(
+  match selected_logic_execution_admit(
+    plan: plan,
     receipt: invalid,
     family_evidence: selected_logic_cutover_evidence()
   ) {
     NativeBundleExecutionRefusedProcessCount { observed: count } => count == 3
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_empty_coverage_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
+  let receipt = selected_logic_sample_receipt()
+  let empty = NativeWitnessBundleExecutionReceipt {
+    bundle_identity: receipt.bundle_identity
+    compiler_identity: receipt.compiler_identity
+    process_count: receipt.process_count
+    compile_skipped: receipt.compile_skipped
+    native_wall_nanos: receipt.native_wall_nanos
+    interpreted_wall_nanos: receipt.interpreted_wall_nanos
+    member_equivalence: []
+    interpreter_frontier_count: receipt.interpreter_frontier_count
+  }
+  match selected_logic_execution_admit(
+    plan: plan,
+    receipt: empty,
+    family_evidence: selected_logic_cutover_evidence()
+  ) {
+    NativeBundleExecutionRefusedMemberCoverage { observed: observed, required: required } =>
+      observed != required
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool {
+  let primary = selected_logic_primary_plan()
+  let plan = SelectedWitnessPlan {
+    compiler_identity: primary.compiler_identity
+    shard_policy: primary.shard_policy
+    members: []
+  }
+  let bundle = native_witness_bundle_from_plan(plan: plan)
+  let receipt = NativeWitnessBundleExecutionReceipt {
+    bundle_identity: bundle.identity
+    compiler_identity: plan.compiler_identity
+    process_count: 1
+    compile_skipped: true
+    native_wall_nanos: nanosecond_duration(count: 1)
+    interpreted_wall_nanos: nanosecond_duration(count: 1)
+    member_equivalence: []
+    interpreter_frontier_count: 0
+  }
+  match selected_logic_execution_admit(
+    plan: plan,
+    receipt: receipt,
+    family_evidence: []
+  ) {
+    NativeBundleExecutionRefusedNoNativeMembers => true
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_execution_plan_identity_refuses_holds() -> Bool {
+  let required_plan = selected_logic_alt_plan()
+  match selected_logic_execution_admit(
+    plan: required_plan,
+    receipt: selected_logic_sample_receipt(),
+    family_evidence: selected_logic_cutover_evidence()
+  ) {
+    NativeBundleExecutionRefusedPlanIdentity { observed: observed, required: required } =>
+      observed.structural_fingerprint != required.structural_fingerprint
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_execution_stale_compiler_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
+  match native_witness_bundle_execution_admit(
+    plan: plan,
+    current_compiler_identity: content_hash_atom(value: "different-compiler"),
+    receipt: selected_logic_sample_receipt(),
+    family_evidence: selected_logic_cutover_evidence()
+  ) {
+    NativeBundleExecutionRefusedStaleCompiler {
+      receipt_compiler_identity: observed,
+      current_compiler_identity: current
+    } => observed != current
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_frontier_count_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
+  let receipt = selected_logic_sample_receipt()
+  let invalid = NativeWitnessBundleExecutionReceipt {
+    bundle_identity: receipt.bundle_identity
+    compiler_identity: receipt.compiler_identity
+    process_count: receipt.process_count
+    compile_skipped: receipt.compile_skipped
+    native_wall_nanos: receipt.native_wall_nanos
+    interpreted_wall_nanos: receipt.interpreted_wall_nanos
+    member_equivalence: receipt.member_equivalence
+    interpreter_frontier_count: 1
+  }
+  match selected_logic_execution_admit(
+    plan: plan,
+    receipt: invalid,
+    family_evidence: selected_logic_cutover_evidence()
+  ) {
+    NativeBundleExecutionRefusedFrontierCount { observed: observed, required: required } =>
+      observed == 1 && required == 0
     _ => false
   }
 }
