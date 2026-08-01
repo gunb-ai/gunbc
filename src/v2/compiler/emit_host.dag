@@ -4,7 +4,7 @@ import v2.compiler.emit { emit }
 import v2.compiler.emit_module { emit_module }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.build_transport_admission { build_transport_admissible }
-import std.effect_grant { EffectAdmission, Admitted, EffectOutsideGrant }
+import std.access { AccessDecision, Permit, Deny }
 import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
@@ -411,11 +411,11 @@ fn run_host_process_with_cache(
   let _inputs = fixture_inputs
   let transport = row.transport
   match build_transport_admissible(transport: transport) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+    Deny { refusal: refusal } =>
       outcome_rejected(d: emit_host_transport_outside_grant_diagnostic())
-    Admitted { via_root: r } =>
+    Permit =>
       run_host_process_admitted(
-        admission: Admitted { via_root: r },
+        admission: Permit,
         workspace_dir: workspace_dir,
         transport: transport,
         target: target,
@@ -427,7 +427,7 @@ fn run_host_process_with_cache(
 }
 
 fn run_host_process_admitted(
-  admission: EffectAdmission,
+  admission: AccessDecision,
   workspace_dir: String,
   transport: HostTransportDescriptor,
   target: TargetModel,

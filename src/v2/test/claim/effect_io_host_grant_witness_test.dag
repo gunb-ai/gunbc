@@ -3,10 +3,7 @@ module v2.test.claim.effect_io_host_grant_witness
 import std.types { Bool }
 import std.content_hash { content_hash_atom }
 import std.execution_mode { Hermetic, Wet }
-import std.effect_grant {
-  Write, verb_eq,
-  EffectAdmission, Admitted, EffectOutsideGrant,
-}
+import std.access { AccessDecision, Permit, Deny }
 import v2.extdeps.runtimes.effect_io_host_grant {
   effect_io_host_write_admissible,
   effect_io_host_locator_position,
@@ -22,7 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data effect_io_host_grant_witness_note: String = "P-B discriminating witnesses for v2.extdeps.runtimes.effect_io_host_grant (docs/plans/effect-namespace-grants.md 6). Write admission consults the construction-time Envelope only (never re-reads ExecutionMode). Hermetic envelopes refuse every write via EffectOutsideGrant; wet envelopes admit writes on the declared backend subtree. Backend/locator mismatch is a located refusal before admit_effect (review 40162)."
+data effect_io_host_grant_witness_note: String = "P-B discriminating witnesses for v2.extdeps.runtimes.effect_io_host_grant (docs/plans/effect-namespace-grants.md 6). Write admission consults the construction-time Envelope only (never re-reads ExecutionMode). Hermetic envelopes refuse every write through a located std.access.Deny; wet envelopes permit writes on the declared backend subtree. Backend/locator mismatch is a typed evidence refusal before admit_effect (review 40162)."
 
 data sample_locator: EffectIoResourceLocator = EffectIoResourceLocator {
   backend: HttpResourceBackend,
@@ -34,17 +31,17 @@ data mismatched_backend_locator: EffectIoResourceLocator = EffectIoResourceLocat
   identity: content_hash_atom(value: "effect-io-grant-witness-mismatch")
 }
 
-fn is_refused(a: EffectAdmission) -> Bool {
+fn is_refused(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => false
-    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+    Permit => false
+    Deny { refusal: refusal } => true
   }
 }
 
-fn is_admitted(a: EffectAdmission) -> Bool {
+fn is_admitted(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => true
-    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+    Permit => true
+    Deny { refusal: refusal } => false
   }
 }
 
@@ -85,9 +82,11 @@ test fn effect_io_host_hermetic_refusal_is_located() -> Bool {
     backend: HttpResourceBackend,
     locator: sample_locator
   ) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
-      verb_eq(a: v, b: Write) && f == effect_io_host_frame
-    Admitted { via_root: r } => false
+    Deny { refusal: refusal } =>
+      refusal.location.profile == "EffectRequest"
+        && refusal.location.subject == effect_io_host_frame.name
+        && refusal.location.action == "write"
+    Permit => false
   }
 }
 

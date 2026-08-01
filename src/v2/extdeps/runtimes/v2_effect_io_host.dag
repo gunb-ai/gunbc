@@ -25,10 +25,11 @@ import v2.extdeps.runtimes.effect_io_host_grant {
   effect_io_host_locator_position,
 }
 import std.effect_grant {
-  Admitted, EffectOutsideGrant, Envelope,
+  Envelope,
   Read, RealTransport, Replay,
   CoveringGrant, CoveredBy, NoCoveringGrant, covering_grant,
 }
+import std.access { Permit, Deny }
 import v2.std.collection { Absent, List, Map }
 import v2.std.diagnostic {
   Accepted,
@@ -210,9 +211,9 @@ fn effect_io_host_dispatch_write(
             backend: backend,
             locator: locator
           ) {
-            EffectOutsideGrant { verb: v, target: t, frame: f } =>
+            Deny { refusal: refusal } =>
               outcome_rejected(d: effect_io_host_write_outside_grant_diagnostic())
-            Admitted { via_root: r } =>
+            Permit =>
               match host_ctx {
                 HostFileContext { context: ctx } =>
                   effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
