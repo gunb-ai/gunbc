@@ -41,80 +41,9 @@ type OccurrenceCategory
   | FieldOccurrence
   | MethodOccurrence
 
-type OccurrenceCategoryBindingVerdict
-  = OccurrenceCategoryBindingAdmissible
-  | OccurrenceCategoryBindingInadmissible {
-      reference: OccurrenceCategory,
-      declaration: OccurrenceCategory,
-    }
-
-data occurrence_category_binding_verdict_note: String = "Canonical reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct."
-
-fn occurrence_category_binding_verdict(
-  reference: OccurrenceCategory,
-  declaration: OccurrenceCategory
-) -> OccurrenceCategoryBindingVerdict {
-  match reference {
-    TypeOccurrence =>
-      match declaration {
-        TypeOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    LexicalValueOccurrence =>
-      match declaration {
-        LexicalValueOccurrence => OccurrenceCategoryBindingAdmissible
-        CallableOccurrence => OccurrenceCategoryBindingAdmissible
-        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    CallableOccurrence =>
-      match declaration {
-        CallableOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    ConstructorOccurrence =>
-      match declaration {
-        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    FieldOccurrence =>
-      match declaration {
-        FieldOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    MethodOccurrence =>
-      match declaration {
-        MethodOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-    NamespaceSegmentOccurrence =>
-      match declaration {
-        NamespaceSegmentOccurrence => OccurrenceCategoryBindingAdmissible
-        _ => OccurrenceCategoryBindingInadmissible {
-          reference: reference,
-          declaration: declaration,
-        }
-      }
-  }
-}
+type OccurrenceRole
+  = DeclarationRole
+  | ReferenceRole
 
 type OccurrenceProjection {
   occurrence: OccurrenceId
@@ -200,14 +129,15 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
 type OccurrenceTransportRefusal
   = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
   | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | DuplicateSuppliedCandidateIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
   | InconsistentOccurrenceContainment {
       occurrence: OccurrenceId,
       diagnostic_span: SourceSpan,
     }
-  | WrongOccurrenceCategory {
+  | WrongOccurrenceRole {
       occurrence: OccurrenceId,
-      expected: OccurrenceCategory,
-      observed: OccurrenceCategory,
+      expected: OccurrenceRole,
+      observed: OccurrenceRole,
       diagnostic_span: SourceSpan,
     }
   | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
@@ -454,10 +384,10 @@ fn declaration_occurrence_refusal(
         match map_get(references_by_id, declaration.occurrence.value) {
           Present { value: reference } =>
             Present {
-              value: WrongOccurrenceCategory {
+              value: WrongOccurrenceRole {
                 occurrence: declaration.occurrence,
-                expected: declaration.category,
-                observed: reference.category,
+                expected: DeclarationRole,
+                observed: ReferenceRole,
                 diagnostic_span: declaration.diagnostic_span,
               },
             }
@@ -494,10 +424,10 @@ fn reference_occurrence_refusal(
         match map_get(declarations_by_id, reference.occurrence.value) {
           Present { value: declaration } =>
             Present {
-              value: WrongOccurrenceCategory {
+              value: WrongOccurrenceRole {
                 occurrence: reference.occurrence,
-                expected: reference.category,
-                observed: declaration.category,
+                expected: ReferenceRole,
+                observed: DeclarationRole,
                 diagnostic_span: reference.diagnostic_span,
               },
             }

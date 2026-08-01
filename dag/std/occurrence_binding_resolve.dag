@@ -1,7 +1,7 @@
 module std.occurrence_binding_resolve
 
 import std.algebra { FreeMonoid, Empty }
-import std.types { String, List }
+import std.types { String, List, Int }
 import std.occurrence_binding {
   ContainmentPath,
   BindingOccurrence,
@@ -21,9 +21,18 @@ import std.occurrence_identity {
   ValidatedOccurrenceTransport,
   DeclarationOccurrence,
   ReferenceOccurrence,
-  OccurrenceCategoryBindingAdmissible,
-  OccurrenceCategoryBindingInadmissible,
-  occurrence_category_binding_verdict,
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  TypeOccurrence,
+  CallableOccurrence,
+  ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
+  FieldOccurrence,
+  MethodOccurrence,
+  DeclarationRole,
+  ReferenceRole,
+  DuplicateSuppliedCandidateIdentity,
+  WrongOccurrenceRole,
   occurrence_transport_validate,
 }
 
@@ -31,7 +40,82 @@ data occurrence_binding_resolve_authority_note: String = "THE one exact name-bin
 
 data occurrence_binding_resolve_transport_boundary_note: String = "Transport validity is outside OccurrenceBindingResult: malformed transports or supplied identities that do not name the validated reference/declaration roles refuse as OccurrenceReferenceBindingTransportRefused before any Bound/Unbound/Ambiguous decision. ValidatedOccurrenceTransport entries_by_id, references_by_id, and declarations_by_id are the exact lookup authorities; the resolver never rescans a transported population."
 
-data occurrence_binding_resolve_duplicate_identity_residual_note: String = "RESIDUAL: a repeated exact OccurrenceId in supplied_candidates currently reaches the canonical Many arm and reports OccurrenceAmbiguous. This fails closed, but conflates a malformed producer population with genuine ambiguity between distinct declarations. DISSOLVE-ON: P2a's exact candidate catalogue is the sole caller and this resolver carries a typed, located malformed-supplied-population refusal naming the repeated identity before the cardinality fold. Never silently deduplicate here: that would fabricate a plausible Bound result and hide the producer defect."
+data occurrence_binding_resolve_duplicate_identity_law: String = "A supplied candidate population contains semantic declarations, not discovery observations. P2 candidate construction collapses repeated discovery of one exact full identity before supplying the population. If a raw supplied list nevertheless repeats an OccurrenceId, P1 refuses with DuplicateSuppliedCandidateIdentity before the cardinality fold; it never silently deduplicates a defective producer input and never reports one declaration as genuine ambiguity."
+
+type OccurrenceCategoryBindingVerdict
+  = OccurrenceCategoryBindingAdmissible
+  | OccurrenceCategoryBindingInadmissible {
+      reference: OccurrenceCategory,
+      declaration: OccurrenceCategory,
+    }
+
+data occurrence_category_binding_verdict_note: String = "Canonical namespace-binding reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. Occurrence identity carries each category; this binding authority alone decides their admissibility relation."
+
+fn occurrence_category_binding_verdict(
+  reference: OccurrenceCategory,
+  declaration: OccurrenceCategory
+) -> OccurrenceCategoryBindingVerdict {
+  match reference {
+    TypeOccurrence =>
+      match declaration {
+        TypeOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    LexicalValueOccurrence =>
+      match declaration {
+        LexicalValueOccurrence => OccurrenceCategoryBindingAdmissible
+        CallableOccurrence => OccurrenceCategoryBindingAdmissible
+        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    CallableOccurrence =>
+      match declaration {
+        CallableOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    ConstructorOccurrence =>
+      match declaration {
+        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    FieldOccurrence =>
+      match declaration {
+        FieldOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    MethodOccurrence =>
+      match declaration {
+        MethodOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    NamespaceSegmentOccurrence =>
+      match declaration {
+        NamespaceSegmentOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+  }
+}
 
 fn occurrence_containment_to_binding_path(
   path: OccurrenceContainmentPath
@@ -64,6 +148,7 @@ fn binding_candidate_from_declaration(
 
 type OccurrenceCandidatePopulationBuild {
   candidates: FreeMonoid<BindingCandidate<OccurrenceId>>
+  seen_candidate_ids: Map<Int, OccurrenceId>
   refusal: OccurrenceTransportRefusal?
 }
 
@@ -76,6 +161,7 @@ fn binding_candidates_from_supplied_declarations(
     supplied_candidates,
     init: OccurrenceCandidatePopulationBuild {
       candidates: Empty,
+      seen_candidate_ids: empty_map(),
       refusal: none,
     },
     f: (build, candidate_occurrence) =>
@@ -89,6 +175,7 @@ fn binding_candidates_from_supplied_declarations(
             Absent =>
               OccurrenceCandidatePopulationBuild {
                 candidates: build.candidates,
+                seen_candidate_ids: build.seen_candidate_ids,
                 refusal: Present {
                   value: UnknownOccurrenceIdentity {
                     occurrence: candidate_occurrence,
@@ -97,37 +184,85 @@ fn binding_candidates_from_supplied_declarations(
               }
             Present { value: entry } =>
               match map_get(
-                validated.declarations_by_id,
+                build.seen_candidate_ids,
                 candidate_occurrence.value,
               ) {
-                Absent =>
+                Present { value: _ } =>
                   OccurrenceCandidatePopulationBuild {
                     candidates: build.candidates,
+                    seen_candidate_ids: build.seen_candidate_ids,
                     refusal: Present {
-                      value: MissingAuthoredOccurrenceIdentity {
+                      value: DuplicateSuppliedCandidateIdentity {
+                        occurrence: candidate_occurrence,
                         diagnostic_span: entry.projection.diagnostic_span,
                       },
                     },
                   }
-                Present { value: declaration } =>
-                  match occurrence_category_binding_verdict(
-                    reference: reference.category,
-                    declaration: declaration.category,
+                Absent =>
+                  match map_get(
+                    validated.declarations_by_id,
+                    candidate_occurrence.value,
                   ) {
-                    OccurrenceCategoryBindingAdmissible =>
-                      OccurrenceCandidatePopulationBuild {
-                        candidates: concat(
-                          build.candidates,
-                          [binding_candidate_from_declaration(
-                            declaration: declaration,
-                          )],
-                        ),
-                        refusal: none,
+                    Absent =>
+                      match map_get(
+                        validated.references_by_id,
+                        candidate_occurrence.value,
+                      ) {
+                        Present { value: observed_reference } =>
+                          OccurrenceCandidatePopulationBuild {
+                            candidates: build.candidates,
+                            seen_candidate_ids: build.seen_candidate_ids,
+                            refusal: Present {
+                              value: WrongOccurrenceRole {
+                                occurrence: candidate_occurrence,
+                                expected: DeclarationRole,
+                                observed: ReferenceRole,
+                                diagnostic_span: observed_reference.diagnostic_span,
+                              },
+                            },
+                          }
+                        Absent =>
+                          OccurrenceCandidatePopulationBuild {
+                            candidates: build.candidates,
+                            seen_candidate_ids: build.seen_candidate_ids,
+                            refusal: Present {
+                              value: MissingAuthoredOccurrenceIdentity {
+                                diagnostic_span: entry.projection.diagnostic_span,
+                              },
+                            },
+                          }
                       }
-                    OccurrenceCategoryBindingInadmissible {
-                      reference: _,
-                      declaration: _,
-                    } => build
+                    Present { value: declaration } =>
+                      let seen_candidate_ids = map_insert(
+                        build.seen_candidate_ids,
+                        candidate_occurrence.value,
+                        candidate_occurrence,
+                      )
+                      match occurrence_category_binding_verdict(
+                        reference: reference.category,
+                        declaration: declaration.category,
+                      ) {
+                        OccurrenceCategoryBindingAdmissible =>
+                          OccurrenceCandidatePopulationBuild {
+                            candidates: concat(
+                              build.candidates,
+                              [binding_candidate_from_declaration(
+                                declaration: declaration,
+                              )],
+                            ),
+                            seen_candidate_ids: seen_candidate_ids,
+                            refusal: none,
+                          }
+                        OccurrenceCategoryBindingInadmissible {
+                          reference: _,
+                          declaration: _,
+                        } =>
+                          OccurrenceCandidatePopulationBuild {
+                            candidates: build.candidates,
+                            seen_candidate_ids: seen_candidate_ids,
+                            refusal: none,
+                          }
+                      }
                   }
               }
           }
