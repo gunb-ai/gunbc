@@ -1,0 +1,318 @@
+module test.claim.roadmap_presentation_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge,
+  IntricacyLow, VolumeSmall,
+}
+import gunbc.roadmap_status {
+  AuthoredLine,
+  RedControlExecuted, HandbackDelivered,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentState,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
+  WorkflowSegmentFailed, WorkflowSegmentRefused,
+  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
+  VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence, WorkerProcessExited, WorkerProcessRunning,
+}
+import gunbc.roadmap_presentation {
+  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused,
+  CompletedWork, ActivityUnobservable,
+  WorkAttemptFacts, NoActiveAttempt, AttemptUnobservable,
+  activity_view_of,
+  ActivityAttention, ActivityRoutine, ActivityNeedsUser, ActivityAnomalous,
+  ActionAvailability, ActionUnavailable, AvailableAsOverride, ActionAvailable,
+  ActionPriority, PrimaryAction, SecondaryAction, DiagnosticAction,
+  WorkActionKind, DispatchAction, StopAction, ClearSessionAction,
+  WorkAction, ActionView,
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
+  work_lifecycle, work_lifecycle_key,
+  row_headline, row_summary, legacy_lead,
+  dispatch_action, action_view,
+  activity_view_from_parts,
+  work_row_view, row_supporting_facts,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data presentation_witness_fixture_note: String = "Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live count or a live row is a moving target that turns a semantic claim into a snapshot transcription (the A1 lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with Environment/Workspace/Agent complete, four pending, worker process exited, session container present."
+
+fn fx_specimen_segments() -> List<WorkflowSegment> {
+  [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+  ]
+}
+
+fn fx_specimen_activity() -> ActivityView {
+  activity_view_from_parts(
+    segments: fx_specimen_segments(),
+    remaining: 4,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    session_present: true,
+    current_activity: "Worked for 6m 34s",
+  )
+}
+
+data specimen_consequence_note: String = "The operator's worked example verbatim: 'session container present' beside 'process exited' must not ship as an uninterpreted evidence pair. The routine specimen summary must (a) state the consequence sentence, (b) name the NEXT obligation rather than implying a percentage, and (c) carry the ledger's remaining count — while the raw container/process facts appear only as labeled evidence rows. The RED control: a summary that merely relabels the evidence ('process exited') or asserts a scalar ('43%') has no arm that could produce it — the discriminating assertions below fail if the consequence, the next obligation, or the derived count is dropped."
+
+test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Bool {
+  match fx_specimen_activity() {
+    ActiveWork { summary, obligations: _, remaining_obligation_count: remaining, current_activity: _, attention, evidence: _ } =>
+      summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
+        && remaining == 4
+        && match attention { ActivityRoutine => true ActivityNeedsUser => false ActivityAnomalous => false }
+    NoActiveWork => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
+  match fx_specimen_activity() {
+    ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
+      count(evidence) == 2
+        && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "session container" && row.value == "present"))
+        && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "worker process" && row.value == "process exited"))
+        && count(obligations) == 7
+    NoActiveWork => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
+  let segments = [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
+    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+  ]
+  match activity_view_from_parts(
+    segments: segments,
+    remaining: 5,
+    process: WorkerProcessRunning { command: "codex exec" },
+    session_present: true,
+    current_activity: "",
+  ) {
+    ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
+      summary == "Agent working"
+    NoActiveWork => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+data refusal_first_class_note: String = "A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail string, and a failed segment must rank as anomalous ActiveWork — the two are distinct states with distinct remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap the failure count cannot explain."
+
+test fn witness_refused_segment_projects_located_reason() -> Bool {
+  let segments = [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+  ]
+  match activity_view_from_parts(
+    segments: segments,
+    remaining: 6,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    session_present: true,
+    current_activity: "",
+  ) {
+    ActiveWorkRefused { summary, located_reason, evidence: _ } =>
+      summary == "Agent evidence refused"
+        && located_reason == "turn.completed with process unobserved: no exit was established"
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    NoActiveWork => false
+    CompletedWork { outcome: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
+  let segments = [
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
+  ]
+  match activity_view_from_parts(
+    segments: segments,
+    remaining: 6,
+    process: WorkerProcessExited { exit_code: 1, last_command: "" },
+    session_present: true,
+    current_activity: "",
+  ) {
+    ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
+      summary == "Agent failed"
+        && match attention { ActivityAnomalous => true ActivityRoutine => false ActivityNeedsUser => false }
+    NoActiveWork => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+data headline_no_fusion_note: String = "The ticket headline is ONE typed field read end-to-end. The discriminating input is a headline that CONTAINS the legacy separators (an em-dash clause and a sentence break): under the deleted recompose-and-reparse round trip ('**headline** — brief' then split at punctuation) this headline would come back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine, where the lead heuristic is the declared residue of this projection."
+
+test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
+  let t = gunbc.roadmap_authority.fields(
+    headline: "Close the wall — phase 2. Cleanly",
+    boundary: "brief text",
+    displaced_cost: "",
+    first_slice: "",
+    red_control: "",
+    out_of_scope: "",
+    handback: "")
+  let rn = gunbc.roadmap_authority.ticket_row(identity: "rnfx_A2PRES0000000000000001", id: "a2-headline", done: false, t: t)
+  row_headline(line: rn.line) == "Close the wall — phase 2. Cleanly"
+}
+
+test fn witness_legacy_line_keeps_lead_residue() -> Bool {
+  legacy_lead(full: "lead claim — trailing brief") == "lead claim"
+    && legacy_lead(full: "First sentence. Second sentence") == "First sentence"
+    && legacy_lead(full: "no separator at all") == "no separator at all"
+}
+
+test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
+  let rn = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum", done: false, content: "content — with dash")
+  match row_summary(line: rn.line) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+data exact_constructor_note: String = "The exact-constructor discrimination (operator constraint 3): 'active' is never a disjunction of narrower facts. NoActiveAttempt projects to NoActiveWork with zero furniture; an unreadable evidence situation projects to ActivityUnobservable PRESERVING its located reason — distinct from both refusal and absence; and a fully-complete ledger projects to CompletedWork (the receipt-backed outcome), never to a routine ActiveWork whose summary happens to say complete. The RED controls are the cross-arm assertions: if unobservable collapsed into absence, the reason would be dropped and the second witness fails; if terminal collapsed into active, the third witness's CompletedWork arm never matches."
+
+test fn witness_no_attempt_projects_zero_furniture() -> Bool {
+  match activity_view_of(facts: NoActiveAttempt) {
+    NoActiveWork => true
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+test fn witness_unobservable_preserves_located_reason() -> Bool {
+  match activity_view_of(facts: AttemptUnobservable { reason: "attempt state file unreadable: permission denied" }) {
+    ActivityUnobservable { reason } => reason == "attempt state file unreadable: permission denied"
+    NoActiveWork => false
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _ } => false
+  }
+}
+
+test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
+  let segments = [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+  ]
+  match activity_view_from_parts(
+    segments: segments,
+    remaining: 0,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    session_present: false,
+    current_activity: "",
+  ) {
+    CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    NoActiveWork => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+data availability_priority_note: String = "The two-axis discrimination: a Ready row's dispatch is Available AND Primary; a blocked/unsized row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails."
+
+test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
+  let ready_view = action_view(ready: true, lifecycle: OpenLifecycle, activity: NoActiveWork)
+  let blocked_view = action_view(ready: false, lifecycle: OpenLifecycle, activity: NoActiveWork)
+  let ready_ok = match ready_view.primary_action {
+    Present { value: a } =>
+      match a.kind { DispatchAction => true StopAction => false ClearSessionAction => false }
+        && match a.availability { ActionAvailable => true AvailableAsOverride => false ActionUnavailable => false }
+    Absent => false
+  }
+  let blocked_primary_empty = match blocked_view.primary_action {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let blocked_has_override = fold(blocked_view.secondary_actions, init: false, f: (acc, a) =>
+    acc || (match a.kind { DispatchAction => true StopAction => false ClearSessionAction => false }
+      && match a.availability { AvailableAsOverride => true ActionAvailable => false ActionUnavailable => false }
+      && match a.priority { SecondaryAction => true PrimaryAction => false DiagnosticAction => false }))
+  ready_ok && blocked_primary_empty && blocked_has_override
+}
+
+test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
+  count(dispatch_action(ready: true, lifecycle: DoneLifecycle)) == 0
+    && count(dispatch_action(ready: true, lifecycle: SupersededLifecycle)) == 0
+}
+
+test fn witness_session_cleanup_is_diagnostic_not_primary() -> Bool {
+  let view = action_view(ready: true, lifecycle: OpenLifecycle, activity: fx_specimen_activity())
+  let clear_is_diagnostic = fold(view.secondary_actions, init: false, f: (acc, a) =>
+    acc || (match a.kind { ClearSessionAction => true DispatchAction => false StopAction => false }
+      && match a.priority { DiagnosticAction => true PrimaryAction => false SecondaryAction => false }))
+  let primary_is_not_clear = match view.primary_action {
+    Present { value: a } => match a.kind { ClearSessionAction => false DispatchAction => true StopAction => true }
+    Absent => true
+  }
+  let idle_has_clear = fold(action_view(ready: true, lifecycle: OpenLifecycle, activity: NoActiveWork).secondary_actions,
+    init: false, f: (acc, a) => acc || match a.kind { ClearSessionAction => true DispatchAction => false StopAction => false })
+  clear_is_diagnostic && primary_is_not_clear && !idle_has_clear
+}
+
+data lifecycle_axis_note: String = "Lifecycle discriminates on the node's own facts, distinct from frontier scheduling: an Unsigned node with unmerged evidence is open; merged evidence without signoff is review — implementation artifacts never accept (roadmap_acceptance_boundary_note); an accepting signoff is done; a superseded line outranks everything and carries its forwarding pointer."
+
+test fn witness_lifecycle_axes_discriminate() -> Bool {
+  let open_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
+  let done_line_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
+  let signed_node = gunbc.roadmap_authority.sign(rn: open_node, s: gunbc.roadmap_authority.signed(
+    by: "operator",
+    works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
+    scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+    as_expected: true))
+  let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
+  work_lifecycle_key(l: work_lifecycle(rn: open_node, merged: [])) == "open"
+    && work_lifecycle_key(l: work_lifecycle(rn: done_line_node, merged: [])) == "review"
+    && work_lifecycle_key(l: work_lifecycle(rn: signed_node, merged: [])) == "done"
+    && work_lifecycle_key(l: work_lifecycle(rn: superseded_node, merged: [])) == "superseded"
+}
+
+data supporting_facts_demotion_note: String = "Owner, sizing, and carriers are supporting facts for the disclosure region — present when declared, absent (not empty-labeled) when not. The integration witness drives work_row_view end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary, complete dependency set in blocked_on, and the actions/facts composed from the same fixture."
+
+test fn witness_work_row_view_composes_from_fixture() -> Bool {
+  let rn = gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
+    done: false, content: "row headline — row brief", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-1"),
+    gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-2"),
+  ]
+  let row = work_row_view(rn: rn, edges: edges, merged: [], ready: false, activity: NoActiveWork)
+  row.headline == "row headline"
+    && row.node_id == "a2-row"
+    && count(row.blocked_on) == 2
+    && work_lifecycle_key(l: row.lifecycle) == "open"
+    && row.superseded_by == ""
+    && match row.summary { Absent => true Present { value: _ } => false }
+    && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
+    && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "owner")
+    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
+}

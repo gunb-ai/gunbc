@@ -376,7 +376,7 @@ data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
 data dispatch_class_loud: String = "dispatch-loud"
 
-data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refined by workflow lamps v0 without adding a head track): the row's five regions remain status chip, title, meta, disclosure, actuator. The ActuatorRegion is realized by one always-present workflow-controls wrapper containing the workflow strip and the optional dispatch control; dynamic process evidence and its stop/clear/unavailable cleanup action also land inside that wrapper. This preserves the derived auto 1fr auto grid while giving done/superseded rows an observation surface and preventing a cleanup action or lamp strip from becoming an implicit fourth grid item. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
+data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; ActivityRegion added at A2 after the live-session falsifier, operator 2026-08-01 — docs/plans/roadmap-presentation-seam-design.md section 1). The prior revision of this note declared the fusion the falsifier refuted: it packed the workflow strip, dynamic process evidence, AND the cleanup action into the one actuator wrapper 'to preserve the derived auto 1fr auto grid' — evidence about an action and the action itself sharing one region because the layout had one cell left. Under the first realistic live state the intrinsic-width actuator track starved the 1fr title on WIDE screens (the stacked realization fires only below the compact breakpoint, so the pathology never reached it). The correction is regional, not spatial: ActivityRegion — what is happening to this work — is its own region placed UnderHead, where width is not contested with the title; ActuatorRegion shrinks back to ACTIONS only (dispatch, stop); evidence rows render inside the activity region's disclosure, never as head-track furniture. The head grid stays the derived auto 1fr auto with a small third track. The activity content itself is the decided ActivityView from gunbc.roadmap_presentation (single projection authority across server and client); the attention rule governs its rendering — no attempt means NO activity DOM at all. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
 
 type RowTrack
   = AutoTrack
@@ -398,6 +398,7 @@ type RowRegion
   = StatusChipRegion
   | TitleRegion
   | MetaRegion
+  | ActivityRegion
   | DisclosureRegion
   | ActuatorRegion
 
@@ -406,6 +407,7 @@ fn row_region_key(r: RowRegion) -> String {
     StatusChipRegion => "status-chip"
     TitleRegion => "title"
     MetaRegion => "meta"
+    ActivityRegion => "activity"
     DisclosureRegion => "disclosure"
     ActuatorRegion => "actuator"
   }
@@ -420,6 +422,7 @@ data roadmap_row_archetype: List<RoadmapRowRegion> = [
   RoadmapRowRegion { region: StatusChipRegion, placement: HeadTrack { track: AutoTrack } },
   RoadmapRowRegion { region: TitleRegion, placement: HeadTrack { track: FlexTrack } },
   RoadmapRowRegion { region: MetaRegion, placement: InTitleFlow },
+  RoadmapRowRegion { region: ActivityRegion, placement: UnderHead },
   RoadmapRowRegion { region: DisclosureRegion, placement: UnderHead },
   RoadmapRowRegion { region: ActuatorRegion, placement: HeadTrack { track: AutoTrack } },
 ]
