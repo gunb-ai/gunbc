@@ -399,6 +399,9 @@ test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool {
       rows: vacuity_falsification_suite_rows,
       census: census
     )
+    && census.proven_duplicate_count == 4
+    && census.proven_independent_count == 6
+    && census.unknown_count == 2
 }
 
 test fn vacuity_falsification_suite_nonempty() -> Bool {

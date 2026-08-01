@@ -10,7 +10,6 @@ import gunbc.observation_emit_census {
   MigratedToObservation,
   CountedFrontierSite,
   observation_emit_roster,
-  observation_emit_frontier_count,
   emit_site_is_frontier,
   emit_site_dissolve_on,
   floor_memory_site,
