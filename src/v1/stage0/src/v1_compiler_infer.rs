@@ -131,14 +131,9 @@ use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics}
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, CallArgumentNameUnknown, CallPositionalSurplus, FieldNotFound,
-<<<<<<< HEAD
-    InternalError, MissingField, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
-=======
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
     SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
->>>>>>> origin/main
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
