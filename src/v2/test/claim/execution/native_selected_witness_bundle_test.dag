@@ -21,10 +21,13 @@ import std.selected_witness_bundle {
   NativeBundleExecutionRefusedPlanIdentity,
   NativeBundleExecutionRefusedProcessCount,
   NativeBundleExecutionRefusedStaleCompiler,
+  NativeBundleExecutionRefusedStalePlanCompiler,
+  NativeBundleExecutionRefusedWarmArtifactMiss,
   NativeBundleFamilyCutoverEvidence,
   NativeBundleMemberEquivalence,
   NativeBundleRefusedMemberCoverage,
   NativeBundleRefusedStaleCompiler,
+  NativeBundleRefusedStalePlanCompiler,
   NativeRealizationAbsent,
   NativeRealizationIdentity,
   NativeSelected,
@@ -1040,6 +1043,57 @@ test fn native_selected_witness_bundle_execution_stale_compiler_refuses_holds() 
   }
 }
 
+test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
+  let receipt = selected_logic_sample_receipt()
+  let current = content_hash_atom(value: "different-compiler")
+  let forged_current_receipt = NativeWitnessBundleExecutionReceipt {
+    bundle_identity: receipt.bundle_identity
+    compiler_identity: current
+    process_count: receipt.process_count
+    compile_skipped: receipt.compile_skipped
+    native_wall_nanos: receipt.native_wall_nanos
+    interpreted_wall_nanos: receipt.interpreted_wall_nanos
+    member_equivalence: receipt.member_equivalence
+    interpreter_frontier_count: receipt.interpreter_frontier_count
+  }
+  match native_witness_bundle_execution_admit(
+    plan: plan,
+    current_compiler_identity: current,
+    receipt: forged_current_receipt,
+    family_evidence: selected_logic_sample_cutover_evidence()
+  ) {
+    NativeBundleExecutionRefusedStalePlanCompiler {
+      plan_compiler_identity: observed,
+      current_compiler_identity: required
+    } => observed != required
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_warm_artifact_miss_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
+  let receipt = selected_logic_sample_receipt()
+  let cold = NativeWitnessBundleExecutionReceipt {
+    bundle_identity: receipt.bundle_identity
+    compiler_identity: receipt.compiler_identity
+    process_count: receipt.process_count
+    compile_skipped: false
+    native_wall_nanos: receipt.native_wall_nanos
+    interpreted_wall_nanos: receipt.interpreted_wall_nanos
+    member_equivalence: receipt.member_equivalence
+    interpreter_frontier_count: receipt.interpreter_frontier_count
+  }
+  match selected_logic_execution_admit(
+    plan: plan,
+    receipt: cold,
+    family_evidence: selected_logic_sample_cutover_evidence()
+  ) {
+    NativeBundleExecutionRefusedWarmArtifactMiss => true
+    _ => false
+  }
+}
+
 test fn native_selected_witness_bundle_frontier_count_refuses_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
@@ -1076,6 +1130,28 @@ test fn native_selected_witness_bundle_stale_compiler_refuses_holds() -> Bool {
       bundle_compiler_identity: observed,
       current_compiler_identity: current
     } => observed != current
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
+  let required = native_witness_bundle_from_plan(plan: plan)
+  let current = content_hash_atom(value: "different-compiler")
+  let forged_current_bundle = NativeWitnessBundle {
+    identity: required.identity
+    compiler_identity: current
+    members: required.members
+  }
+  match native_witness_bundle_admit(
+    plan: plan,
+    bundle: forged_current_bundle,
+    current_compiler_identity: current
+  ) {
+    NativeBundleRefusedStalePlanCompiler {
+      plan_compiler_identity: observed,
+      current_compiler_identity: required_identity
+    } => observed != required_identity
     _ => false
   }
 }
