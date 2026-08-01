@@ -41,6 +41,10 @@ type OccurrenceCategory
   | FieldOccurrence
   | MethodOccurrence
 
+type OccurrenceRole
+  = DeclarationRole
+  | ReferenceRole
+
 type OccurrenceProjection {
   occurrence: OccurrenceId
   authored_name: String
@@ -127,16 +131,18 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
 type OccurrenceTransportRefusal
   = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
   | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | DuplicateSuppliedCandidateIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
   | InconsistentOccurrenceContainment {
       occurrence: OccurrenceId,
       diagnostic_span: SourceSpan,
     }
-  | WrongOccurrenceCategory {
+  | WrongOccurrenceRole {
       occurrence: OccurrenceId,
-      expected: OccurrenceCategory,
-      observed: OccurrenceCategory,
+      expected: OccurrenceRole,
+      observed: OccurrenceRole,
       diagnostic_span: SourceSpan,
     }
+  | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
 
 data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority."
 
@@ -380,10 +386,10 @@ fn declaration_occurrence_refusal(
         match map_get(references_by_id, declaration.occurrence.value) {
           Present { value: reference } =>
             Present {
-              value: WrongOccurrenceCategory {
+              value: WrongOccurrenceRole {
                 occurrence: declaration.occurrence,
-                expected: declaration.category,
-                observed: reference.category,
+                expected: DeclarationRole,
+                observed: ReferenceRole,
                 diagnostic_span: declaration.diagnostic_span,
               },
             }
@@ -420,10 +426,10 @@ fn reference_occurrence_refusal(
         match map_get(declarations_by_id, reference.occurrence.value) {
           Present { value: declaration } =>
             Present {
-              value: WrongOccurrenceCategory {
+              value: WrongOccurrenceRole {
                 occurrence: reference.occurrence,
-                expected: reference.category,
-                observed: declaration.category,
+                expected: ReferenceRole,
+                observed: DeclarationRole,
                 diagnostic_span: reference.diagnostic_span,
               },
             }
@@ -440,21 +446,35 @@ fn reference_occurrence_refusal(
   }
 }
 
-fn occurrence_transport_refusal(
+type ValidatedOccurrenceTransport {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  declarations_by_id: Map<Int, DeclarationOccurrence>
+  references_by_id: Map<Int, ReferenceOccurrence>
+  declarations: List<DeclarationOccurrence>
+  references: List<ReferenceOccurrence>
+}
+
+type OccurrenceTransportValidation
+  = OccurrenceTransportValidated { transport: ValidatedOccurrenceTransport }
+  | OccurrenceTransportRefused { refusal: OccurrenceTransportRefusal }
+
+data occurrence_transport_validation_authority_note: String = "Canonical transport validity boundary: occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id, declarations_by_id, and references_by_id are the exact lookup authorities. Resolvers consume the validated carrier and never rescan OccurrenceIndex.entries or either role population per supplied identity. The declaration/reference lists remain as the authored transport order, not as lookup paths."
+
+fn occurrence_transport_validate(
   transport: OccurrenceTransport
-) -> OccurrenceTransportRefusal? {
+) -> OccurrenceTransportValidation {
   let index_build = occurrence_transport_index_build(
     index: transport.index
   )
   match index_build.refusal {
-    Present { value: refusal } => Present { value: refusal }
+    Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
     Absent =>
       let role_index_build = occurrence_transport_role_index_build(
         declarations: transport.declarations,
         references: transport.references
       )
       match role_index_build.refusal {
-        Present { value: refusal } => Present { value: refusal }
+        Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
         Absent =>
           let declaration_refusal = fold(
             transport.declarations,
@@ -470,9 +490,9 @@ fn occurrence_transport_refusal(
               }
           )
           match declaration_refusal {
-            Present { value: refusal } => Present { value: refusal }
+            Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
             Absent =>
-              fold(
+              let reference_refusal = fold(
                 transport.references,
                 init: none,
                 f: (refusal, reference) =>
@@ -485,7 +505,28 @@ fn occurrence_transport_refusal(
                     )
                   }
               )
+              match reference_refusal {
+                Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+                Absent => OccurrenceTransportValidated {
+                  transport: ValidatedOccurrenceTransport {
+                    entries_by_id: index_build.entries_by_id,
+                    declarations_by_id: role_index_build.declarations_by_id,
+                    references_by_id: role_index_build.references_by_id,
+                    declarations: transport.declarations,
+                    references: transport.references,
+                  },
+                }
+              }
           }
       }
+  }
+}
+
+fn occurrence_transport_refusal(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportRefusal? {
+  match occurrence_transport_validate(transport: transport) {
+    OccurrenceTransportRefused { refusal: refusal } => Present { value: refusal }
+    OccurrenceTransportValidated { transport: _ } => none
   }
 }

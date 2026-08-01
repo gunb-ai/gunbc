@@ -26091,7 +26091,7 @@ pub fn emit_operation_method(
                         corpus_repr.clone(),
                         env.source_indices.clone(),
                         v1_rt::rc_empty_map::<String, String>(),
-                        env.clone().clone(),
+                        env.clone(),
                     ),
                 ));
             }
@@ -28352,7 +28352,7 @@ pub fn emit_capability_method(
                         corpus_repr.clone(),
                         env.source_indices.clone(),
                         v1_rt::rc_empty_map::<String, String>(),
-                        env.clone().clone(),
+                        env.clone(),
                     ),
                 ));
             }

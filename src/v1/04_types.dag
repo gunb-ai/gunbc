@@ -249,6 +249,31 @@ type KernelTypeBuild {
   diagnostics: List<ErrorNode>
 }
 
+data kernel_record_type_note: String = "A builtin whose return type is registered as a bare type_variable_node establishes NOTHING about its result, so every field access on that result falls through lookup_field_type_node's Absent arm and the caller fabricates a success-shaped Primitive() in its place. That is this lane's own finding one level down — a missing judgment rendered as an accepted type — and it stayed invisible because the fabricated type propagates silently until some later stage asks a question it cannot answer. make_kernel_record_type lets a builtin declare the product type it actually returns, so the field's type is READ from the declaration rather than invented. It is the same Conj-with-named-children shape lookup_field_type_node already walks for authored records, not a second representation of one (DESIGN §3): the kernel path and the authored path resolve fields through the identical traversal, so a kernel record cannot drift from what an authored record means."
+
+fn make_kernel_record_field(field_name: String, field_type: Node) -> Node {
+  Node {
+    name: field_name, span: kernel_span(name: field_name),
+    ident_span: Present { value: kernel_span(name: field_name) },
+    children: [], connective: NoConnective, params: [],
+    inferred: Present { value: Resolved { node: field_type } },
+    return_cardinality: Required, uses: [], body: none, transport: none,
+    properties: [], type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn make_kernel_record_type(type_name: String, fields: List<Node>) -> Node {
+  Node {
+    name: type_name, span: kernel_span(name: type_name),
+    ident_span: Present { value: kernel_span(name: type_name) },
+    children: fields, connective: Conj, params: [], inferred: none,
+    return_cardinality: Required, uses: [], body: none, transport: none,
+    properties: [], type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
 fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
   match container_param_name(kind_name: kind_name, index: 0) {
     Present { value: param_name } =>

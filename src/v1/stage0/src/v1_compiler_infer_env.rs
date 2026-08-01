@@ -10,6 +10,13 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
+use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
+    ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
+};
+pub use crate::v1_compiler_infer_occurrence_binding::{
+    ambiguity_labels_from_decide, module_path_owner_binding_decide,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
@@ -57,7 +64,7 @@ pub struct TypeBinding {
 pub fn global_bare_fallback_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment — the candidate whose module path shares the strictly longest leading-segment prefix with the REFERENCING module (TypeEnv.module_path) wins; any tie at the max, including the all-disjoint lcp=0 case, REFUSES (Absent — fail-closed, never guesses, §5; the source must qualify by containment path). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
+            "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -964,7 +971,7 @@ pub fn global_bare_nearest_ancestor(
 pub fn unique_on_chain_policy_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1: under NameResolutionPolicy = NamespaceOnlyY (name_resolution_policy_is_namespace_only, thread-local host gate, default ON = NamespaceOnlyY (8 step 4 flip); host bracket false = ImportScoped byte-for-byte), a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; zero or two-plus REFUSES (Absent from lookup + global_bare_is_ambiguous true, surfaced as the typed AmbiguousReference diagnostic at the reference site) — no nearest-wins, no fallback chain: adding a nearer homonym must loudly break a reference, never silently rebind it (the 13 edit-stability invariant). The zero-on-chain whole-pool-homonym case is Ambiguous, not Unresolved, mirroring the census containment walk (cli_run.rs containment_resolve_fn_v1: lexical Unbound + GlobalBareAmbiguousBinding => Ambiguous).".to_string()
+            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through module_path_owner_binding_decide.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -998,9 +1005,28 @@ pub fn global_bare_unique_chain_candidate(
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
         let chain = global_bare_chain_candidates(env_module_path.clone(), candidates.clone());
-        match ((chain.clone().len() as i64) == 1) {
-            true => chain.clone().first().cloned(),
-            false => None,
+        match (*module_path_owner_binding_decide(Rc::new({
+            let mut __result = Vec::new();
+            for c in chain.clone().iter().cloned() {
+                __result.push(c.module_path.clone());
+            }
+            __result
+        })))
+        .clone()
+        {
+            ModulePathBindingProjection::ModulePathBindingHit { owner: owner, .. } => Rc::new({
+                let mut __result = Vec::new();
+                for c in chain.clone().iter().cloned() {
+                    if (c.module_path.clone() == owner.clone()) {
+                        __result.push(c);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned(),
+            ModulePathBindingProjection::ModulePathBindingMiss => None,
+            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => None,
         }
     }
 }
@@ -1029,27 +1055,16 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
                 candidates: cands, ..
             }) => {
                 let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                if ((chain.clone().len() as i64) == 1) {
-                    Rc::new(vec![])
-                } else {
-                    {
-                        let pool = if ((chain.clone().len() as i64) >= 2) {
-                            chain.clone()
-                        } else {
-                            cands.clone()
-                        };
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for c in pool.clone().iter().cloned() {
-                                __result.push(v1_rt::concat(
-                                    v1_rt::concat(c.module_path.clone(), ".".to_string()),
-                                    name.clone(),
-                                ));
-                            }
-                            __result
-                        })
-                    }
-                }
+                ambiguity_labels_from_decide(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.clone().iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    }),
+                    name.clone(),
+                )
             }
             _ => Rc::new(vec![]),
         }
@@ -1427,7 +1442,26 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
             candidates: cands, ..
         }) => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
-                (global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) == None)
+                {
+                    let chain =
+                        global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+                    match (*module_path_owner_binding_decide(Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.clone().iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    })))
+                    .clone()
+                    {
+                        ModulePathBindingProjection::ModulePathBindingAmbiguous {
+                            owners: _,
+                            ..
+                        } => true,
+                        ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => false,
+                        ModulePathBindingProjection::ModulePathBindingMiss => false,
+                    }
+                }
             } else {
                 (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
             }
