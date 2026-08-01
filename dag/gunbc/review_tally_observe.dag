@@ -1,0 +1,146 @@
+module gunbc.review_tally_observe
+
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, ArtifactId }
+import gunbc.review_verdict {
+  Reviewer,
+  AgentReviewer, HumanSeatReviewer, PolicyReviewer, UnattributedReviewer,
+  LlmReviewProvider, OpenaiPro, Codex, Claude, Cursor,
+  ReviewVerdictReport,
+  ReviewVerdict, Approve, ApproveWithComments, RequestChanges, NeedsHumanTriage, NoVerdict,
+  MergeReadinessTally,
+  is_approving_verdict,
+  is_actionable_finding,
+}
+
+data observer_role_note: String = "THE PRODUCER THE REVIEW STAGE NEVER HAD. gunbc.code_change_workflow's decide_code_change_transition already adjudicates a MergeReadinessTally with twelve typed refusal arms - stale head, missing tally, request-changes, blocking findings, not-mergeable-clean, and the rest. Nothing in the corpus BUILDS one: a whole-tree search finds MergeReadinessTally constructed only inside witnesses, and decide_code_change_transition called only from its own. So the Review stage is a complete fail-closed judgment that nothing in production can ask a question of.\\n\\nThat is the same state Publication was in before its observer landed, and this module is the same split applied here: gunbc.roadmap_publish adjudicates values a caller already holds, gunbc.roadmap_publish_observe reads the remote. This is the PURE half - it takes reports a caller already holds and decides everything from them, so every arm is reachable in a hermetic witness with no dashboard, no network and no token. The transport half, which fetches the review artifacts and parses their bodies, is deliberately NOT here: it rides the process-observation substrate and is a separate lane.\\n\\nWHY THE TALLY IS WRAPPED RATHER THAN EXTENDED. Excluded stale reviews have to be COUNTED - DESIGN §5 says a degradation is a typed located countable diagnostic, never an absorbed one - and MergeReadinessTally has no field for them. Extending it would edit a carrier whose consumer is a live twelve-arm adjudicator. Wrapping it does not: ReviewTallyObservation carries the tally beside the exclusions, decide_code_change_transition keeps taking exactly the MergeReadinessTally it takes today, and the staleness is visible to whoever wants it. That is the shape RemoteBranchObservation already uses one module over, so it is a precedent rather than an invention."
+
+data stale_exclusion_note: String = "A STALE REVIEW IS NOT AN UNREADABLE ONE, WHICH IS WHY IT IS NEITHER AN ERROR NOR A SILENT DROP. A report whose head_sha differs from the head under judgment was read perfectly well; it is simply ABOUT a different commit. Counting it would answer the merge question with evidence from a revision nobody is merging - the ordinary state after a worker pushes while a review is in flight, and the exact failure PublicationHeadDiverged exists to prevent one stage earlier.\\n\\nSo it is excluded from every count AND carried on the observation with its reviewer, its artifact and the head it actually reviewed. A consumer that wants to say two approvals, three of them stale can; a consumer that only wants the tally is unaffected. What is forbidden is the third option - dropping it and reporting two approvals as though nothing were excluded - because then the exclusion's frequency is zero by construction and nobody ever learns that reviews are going stale faster than they land."
+
+data distinct_reviewer_note: String = "APPROVALS ARE COUNTED BY DISTINCT REVIEWER, NOT BY ARTIFACT, and this is the count's actual semantics rather than a policy layered on it. One provider re-reviewing the same head after a push produces two approving artifacts and must still count once: the question the tally answers is how many INDEPENDENT parties approved, and the same party twice is one party. Counting artifacts would let a single reviewer satisfy a two-approval bar by reviewing twice, which is the merge bar defeated arithmetically rather than by any decision anyone made.\\n\\nThe identity is the reviewer, so two different LLM providers are two, a human seat is its own, and an unattributed reviewer is keyed by the name it reported. Request-changes is counted the same way for the same reason. Blocking findings are counted per FINDING rather than per reviewer, because two reviewers finding the same defect is still one defect to fix but three defects from one reviewer is three."
+
+type StaleReviewExclusion {
+  reviewer: Reviewer
+  artifact_id: ArtifactId
+  reviewed_head: CommitSha
+}
+
+type ReviewTallyRefusalCause
+  = ReportSubjectMismatch {
+      expected_repo: NonEmptyStr
+      expected_pr: Int
+      found_repo: NonEmptyStr
+      found_pr: Int
+      artifact_id: ArtifactId
+    }
+
+type ReviewTallyObservation
+  = ReviewTallyRead {
+      tally: MergeReadinessTally
+      excluded_stale: List<StaleReviewExclusion>
+    }
+  | ReviewTallyRefused { cause: ReviewTallyRefusalCause }
+
+fn llm_provider_key(provider: LlmReviewProvider) -> String {
+  match provider {
+    OpenaiPro => "llm:openai-pro"
+    Codex => "llm:codex"
+    Claude => "llm:claude"
+    Cursor => "llm:cursor"
+  }
+}
+
+fn reviewer_identity_key(reviewer: Reviewer) -> String {
+  match reviewer {
+    AgentReviewer { provider } => llm_provider_key(provider: provider)
+    HumanSeatReviewer => "human:seat"
+    PolicyReviewer { policy } => join(["policy:", policy.id as String, "@", policy.version as String], "")
+    UnattributedReviewer { provider_name } => join(["unattributed:", provider_name as String], "")
+  }
+}
+
+fn distinct_reviewer_keys(reports: List<ReviewVerdictReport>) -> List<String> {
+  fold(
+    reports,
+    init: [],
+    f: (acc, r) => {
+      let k = reviewer_identity_key(reviewer: r.reviewer)
+      if any(acc, seen => seen == k) { acc } else { list_append(acc, [k]) }
+    },
+  )
+}
+
+fn report_is_fresh(r: ReviewVerdictReport, expected_head: CommitSha) -> Bool {
+  (r.head_sha as String) == (expected_head as String)
+}
+
+fn subject_mismatch_of(
+  reports: List<ReviewVerdictReport>,
+  repo: NonEmptyStr,
+  pr_number: Int,
+) -> List<ReviewVerdictReport> {
+  filter(reports, r => (r.repo as String) != (repo as String) || r.pr_number != pr_number)
+}
+
+fn stale_exclusions_of(
+  reports: List<ReviewVerdictReport>,
+  expected_head: CommitSha,
+) -> List<StaleReviewExclusion> {
+  map(
+    filter(reports, r => !report_is_fresh(r: r, expected_head: expected_head)),
+    r => StaleReviewExclusion {
+      reviewer: r.reviewer,
+      artifact_id: r.artifact_id,
+      reviewed_head: r.head_sha,
+    },
+  )
+}
+
+fn blocking_finding_count_of(reports: List<ReviewVerdictReport>) -> Int {
+  fold(
+    reports,
+    init: 0,
+    f: (acc, r) => acc + count(filter(r.findings, f => is_actionable_finding(finding: f))),
+  )
+}
+
+fn review_tally_of(
+  repo: NonEmptyStr,
+  pr_number: Int,
+  expected_head: CommitSha,
+  reports: List<ReviewVerdictReport>,
+  mergeable_clean: Bool,
+) -> ReviewTallyObservation {
+  let foreign = subject_mismatch_of(reports: reports, repo: repo, pr_number: pr_number)
+  if count(foreign) > 0 {
+    let bad = first(foreign)
+    ReviewTallyRefused {
+      cause: ReportSubjectMismatch {
+        expected_repo: repo,
+        expected_pr: pr_number,
+        found_repo: bad.repo,
+        found_pr: bad.pr_number,
+        artifact_id: bad.artifact_id,
+      },
+    }
+  } else {
+    let fresh = filter(reports, r => report_is_fresh(r: r, expected_head: expected_head))
+    let approving = filter(fresh, r => is_approving_verdict(verdict: r.verdict))
+    let changes = filter(fresh, r => match r.verdict {
+      RequestChanges => true
+      _ => false
+    })
+    ReviewTallyRead {
+      tally: MergeReadinessTally {
+        repo: repo,
+        pr_number: pr_number,
+        head_sha: expected_head,
+        source_artifact_ids: map(fresh, r => r.artifact_id),
+        approval_count: count(distinct_reviewer_keys(reports: approving)),
+        request_changes_count: count(distinct_reviewer_keys(reports: changes)),
+        blocking_finding_count: blocking_finding_count_of(reports: fresh),
+        mergeable_clean: mergeable_clean,
+      },
+      excluded_stale: stale_exclusions_of(reports: reports, expected_head: expected_head),
+    }
+  }
+}
