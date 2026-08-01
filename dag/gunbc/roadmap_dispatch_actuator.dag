@@ -59,6 +59,12 @@ import extdeps.tmux {
   shape_tmux_list_panes_argv_for,
   shape_tmux_attempt_panes_argv_for,
   TmuxPipeCommand,
+  TmuxLsEntry,
+  parse_tmux_ls_output,
+  TmuxAttemptPaneEntry,
+  AttemptPanesParsed,
+  AttemptPanesParseRefused,
+  parse_tmux_attempt_panes_output,
 }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
@@ -210,11 +216,6 @@ data dispatch_brief_fields_invariant_note: String = "DispatchBriefFields contain
 
 
 data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
-
-type TmuxLsEntry {
-  session_name: String
-  windows: Int
-}
 
 type TmuxSessionScope {
   session_name: NonEmptyStr
