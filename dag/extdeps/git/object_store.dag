@@ -1,7 +1,8 @@
 module extdeps.git.object_store
 
 import std.types { ContentHash, NonEmptyStr, Bytes, Map }
-import std.integer { UInt8, NonNegativeInt }
+import std.integer { UInt8, NonNegativeInt, PositiveInt }
+import std.render_repeat_string_bootstrap { repeat_string }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import std.cache_interface { ContentAddressedByValue, WriteOnce }
@@ -530,12 +531,22 @@ type GitIndexStage
   | GitIndexStageTheirs
 
 type GitEffectiveConflictMarkerGrammar {
-  begin: String
-  separator: String
-  end: String
+  size: PositiveInt
 }
 
-data git_effective_conflict_marker_grammar_note: String = "Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another width for a path; consumers must observe the effective value rather than assume the default. The three tokens travel together so begin/separator/end cannot be sourced from different attribute observations."
+data git_effective_conflict_marker_grammar_note: String = "Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another positive width for a path; consumers must observe the effective value rather than assume the default. The upstream fact is stored once as std.integer.PositiveInt and all three tokens derive from it, so empty, mismatched, and non-marker grammars are unwritable."
+
+fn git_conflict_marker_begin(grammar: GitEffectiveConflictMarkerGrammar) -> String {
+  repeat_string(s: "<", n: grammar.size)
+}
+
+fn git_conflict_marker_separator(grammar: GitEffectiveConflictMarkerGrammar) -> String {
+  repeat_string(s: "=", n: grammar.size)
+}
+
+fn git_conflict_marker_end(grammar: GitEffectiveConflictMarkerGrammar) -> String {
+  repeat_string(s: ">", n: grammar.size)
+}
 
 type GitIndexEntry {
   path: GitPath

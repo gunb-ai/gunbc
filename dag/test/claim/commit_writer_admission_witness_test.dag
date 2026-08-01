@@ -65,17 +65,13 @@ fn source_artifact() -> Artifact {
 
 fn default_conflict_marker_grammar() -> GitEffectiveConflictMarkerGrammar {
   GitEffectiveConflictMarkerGrammar {
-    begin: "<<<<<<<",
-    separator: "=======",
-    end: ">>>>>>>",
+    size: 7,
   }
 }
 
 fn nine_character_conflict_marker_grammar() -> GitEffectiveConflictMarkerGrammar {
   GitEffectiveConflictMarkerGrammar {
-    begin: "<<<<<<<<<",
-    separator: "=========",
-    end: ">>>>>>>>>",
+    size: 9,
   }
 }
 

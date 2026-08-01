@@ -47,9 +47,7 @@ test fn caller_minted_test_artifact_cannot_bypass_marker_refusal() -> Bool {
     text: "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> origin/main\n",
     provenance: caller_minted,
     marker_grammar: GitEffectiveConflictMarkerGrammar {
-      begin: "<<<<<<<",
-      separator: "=======",
-      end: ">>>>>>>",
+      size: 7,
     },
   }
   match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {

@@ -13,13 +13,22 @@ import gunbc.generated_artifact {
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import std.types { NonEmptyStr }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.git.object_store {
   GitPath,
+  git_path_octets,
+  GitObjectId,
+  git_object_id_eq,
+  GitIndexEntry,
   GitIndexStage,
+  GitIndexStageNormal,
   GitIndexStageBase,
   GitIndexStageOurs,
   GitIndexStageTheirs,
-  GitEffectiveConflictMarkerGrammar
+  GitEffectiveConflictMarkerGrammar,
+  git_conflict_marker_begin,
+  git_conflict_marker_separator,
+  git_conflict_marker_end
 }
 import v2.std.artifact { Artifact, TestClaimArtifact }
 import std.realization_schedule {
@@ -36,29 +45,34 @@ type CommitWriter
   | HealAutocommit
   | IntegrationCommit
 
-type CommitWriterPathObservation
-  = CommitWriterNormalTextObservation {
-      path: GitPath,
+type CommitWriterObservedBlobClassification
+  = CommitWriterBlobTextDecoded {
       text: String,
-      provenance: Artifact,
       marker_grammar: GitEffectiveConflictMarkerGrammar,
+      artifact_claim: Artifact,
     }
-  | CommitWriterNormalNonTextObservation {
-      path: GitPath,
+  | CommitWriterBlobNonTextClassified {
+      artifact_claim: Artifact,
     }
-  | CommitWriterUnmergedObservation {
-      path: GitPath,
-      stages: CommitWriterUnmergedStagePopulation,
+  | CommitWriterBlobClassificationUnavailable {
+      cause: String,
     }
 
-type CommitWriterUnmergedStage
-  = CommitWriterIndexStageBase
-  | CommitWriterIndexStageOurs
-  | CommitWriterIndexStageTheirs
+type CommitWriterBlobClassificationReceipt sole_constructor {
+  observed: CommitWriterObservedBlobClassification
+}
 
-type CommitWriterUnmergedStagePopulation {
-  first: CommitWriterUnmergedStage
-  rest: List<CommitWriterUnmergedStage>
+type CommitWriterStagedBlobObservation {
+  path: GitPath
+  indexed_oid: GitObjectId
+  content_oid: GitObjectId
+  classification: CommitWriterBlobClassificationReceipt
+}
+
+type CompleteStagedCommitObservation {
+  index: List<GitIndexEntry>
+  blobs: List<CommitWriterStagedBlobObservation>
+  tracked_artifacts: List<Artifact>
 }
 
 type ConflictMarkerLocation {
@@ -81,8 +95,28 @@ type ConflictMarkerParseFold {
 type CommitWriterRefusal
   = CommitWriterUnmergedIndexRefusal {
       path: GitPath,
-      stages: CommitWriterUnmergedStagePopulation
+      stages: List<GitIndexStage>
     }
+  | CommitWriterMissingBlobObservationRefusal { path: GitPath, indexed_oid: GitObjectId }
+  | CommitWriterExtraBlobObservationRefusal { path: GitPath, indexed_oid: GitObjectId }
+  | CommitWriterDuplicateBlobObservationRefusal { path: GitPath, count: Int }
+  | CommitWriterDuplicateNormalIndexEntryRefusal { path: GitPath, count: Int }
+  | CommitWriterIndexBlobIdentityMismatchRefusal {
+      path: GitPath,
+      index_oid: GitObjectId,
+      observed_index_oid: GitObjectId,
+    }
+  | CommitWriterBlobContentMismatchRefusal {
+      path: GitPath,
+      indexed_oid: GitObjectId,
+      content_oid: GitObjectId,
+    }
+  | CommitWriterBlobClassificationUnavailableRefusal { path: GitPath, cause: String }
+  | CommitWriterArtifactPathMismatchRefusal {
+      path: GitPath,
+      provenance_file_path: String,
+    }
+  | CommitWriterArtifactUntrackedRefusal { path: GitPath, artifact: Artifact }
   | CommitWriterConflictMarkerTextRefusal {
       location: ConflictMarkerLocation
     }
@@ -96,39 +130,68 @@ type CommitWriterAdmission
 
 data commit_writer_admission_note: String = "ONE ADMISSION PREDICATE FOR EVERY COMMIT WRITER. The path-observation coproduct makes the index/content relationship structural: the Normal constructors carry no second GitIndexStage fact that can disagree with their arm, while CommitWriterUnmergedStagePopulation is nonempty and its closed stage coproduct has only Base/Ours/Theirs; there is no normal-but-uninspected, empty-unmerged, or Normal-in-unmerged constructor. commit_writer_git_index_stage projects those three inhabitants back onto extdeps.git.object_store GitIndexStage, preserving the canonical Git fact in the typed, located refusal rather than collapsing it into a stringly conflicted-tree flag. The staged-text arm is independent because git add can erase those nonzero stages while retaining literal conflict blocks. It parses the complete begin -> separator -> end line grammar over the exact staged text supplied at the write boundary; isolated marker-like lines and out-of-order tokens are not a conflict block. The grammar is a PER-PATH OBSERVATION rather than a repository constant because Git's conflict-marker-size attribute can change all three marker widths from the default seven; the writer transport must observe the effective gitattributes result for each staged path and cannot construct a text observation without carrying it. Only v2.std.artifact TestClaimArtifact provenance exempts intentional fixture text, so no path allowlist or repo-wide grep exists. PROVENANCE TRUST BOUNDARY AND HONEST RUNG: provenance and marker grammar are observer/transport stamps, never commit-author-supplied input. Artifact remains publicly constructible today, so a dishonest caller can mint TestClaimArtifact; commit_writer_test_artifact_provenance_ceiling_test is the enrolled expecting-red proof of that ceiling. The exemption is mechanically preventive only at a trusted writer observation boundary; its attainable structural ceiling and next-rung trigger are DESIGN's unforgeable-construction capability and the sole_constructor completeness audit, after which the unchanged RED becomes a permanent regression control. This function is the repository authority; the generated pre-commit hook is optional feedback and cannot enforce it. LIVE BINDING SPLIT: commit 218dea61248d has the dashboard sweep's WIP-prefixed subject even though its reused committer identity says gunbc-ci-auto-heal, so DashboardAutocommit is the evidenced missing external consumer. The repository CI HealAutocommit already carries a partial realization in v2.workflow.ci_heal_skew_guard_emit: ci_heal_skew_authored_conflict_refusal aborts authored conflicts, while ci_heal_skew_conflict_arm resolves registered generated paths and writes through extdeps.git shape_git_commit_no_verify_no_edit_argv. That --no-verify path proves the hook cannot be this writer's enforcement boundary. COUNTABLE FOLLOW-UP BINDINGS: (1) v2.workflow.ci_heal_skew_guard_emit ci_heal_skew_conflict_arm and (2) the out-of-repository dashboard autocommit daemon must each acquire the missing staged-blob observation, effective per-path conflict-marker grammar, and trusted typed artifact-provenance transport, then call admit_commit_writer immediately before writing. The heal binding must also move regeneration and byte-proof before commit rather than treating post-commit drift as the wall. Until those realization bindings land, this model and executable reproduction close the decision but not the writer transports."
 
-fn commit_writer_git_index_stage(stage: CommitWriterUnmergedStage) -> GitIndexStage {
-  match stage {
-    CommitWriterIndexStageBase => GitIndexStageBase
-    CommitWriterIndexStageOurs => GitIndexStageOurs
-    CommitWriterIndexStageTheirs => GitIndexStageTheirs
+fn commit_writer_text_classification_receipt(
+  text: String,
+  marker_grammar: GitEffectiveConflictMarkerGrammar,
+  artifact_claim: Artifact,
+) -> CommitWriterBlobClassificationReceipt {
+  CommitWriterBlobClassificationReceipt {
+    observed: CommitWriterBlobTextDecoded {
+      text: text,
+      marker_grammar: marker_grammar,
+      artifact_claim: artifact_claim,
+    }
   }
 }
 
-fn commit_writer_unmerged_git_index_stage_rest(
-  stages: List<CommitWriterUnmergedStage>,
-  index: Int,
-) -> List<GitIndexStage> {
-  if index >= count(stages) {
-    []
-  } else {
-    append(
-      [commit_writer_git_index_stage(stage: stages.skip(n: index).first())],
-      items: commit_writer_unmerged_git_index_stage_rest(
-        stages: stages,
-        index: index + 1,
-      ),
-    )
+fn commit_writer_non_text_classification_receipt(
+  artifact_claim: Artifact,
+) -> CommitWriterBlobClassificationReceipt {
+  CommitWriterBlobClassificationReceipt {
+    observed: CommitWriterBlobNonTextClassified { artifact_claim: artifact_claim }
   }
 }
 
-fn commit_writer_unmerged_git_index_stages(
-  stages: CommitWriterUnmergedStagePopulation,
-) -> List<GitIndexStage> {
-  append(
-    [commit_writer_git_index_stage(stage: stages.first)],
-    items: commit_writer_unmerged_git_index_stage_rest(stages: stages.rest, index: 0),
-  )
+fn commit_writer_unavailable_classification_receipt(
+  cause: String,
+) -> CommitWriterBlobClassificationReceipt {
+  CommitWriterBlobClassificationReceipt {
+    observed: CommitWriterBlobClassificationUnavailable { cause: cause }
+  }
 }
+
+type CommitWriterBindingSite
+  = CommitWriterHealSkewConflictArm
+  | CommitWriterDashboardAutocommitDaemon
+
+type CommitWriterBindingOwner
+  = CommitWriterHealOrchestrationLaneOwner
+  | CommitWriterDashboardInfrastructureOperatorOwner
+
+type CommitWriterBindingTrigger
+  = BindWhenCompleteStagedObservationTransportLands
+
+type CommitWriterBindingWork {
+  site: CommitWriterBindingSite
+  writer: CommitWriter
+  owner: CommitWriterBindingOwner
+  trigger: CommitWriterBindingTrigger
+}
+
+data commit_writer_binding_work: List<CommitWriterBindingWork> = [
+  CommitWriterBindingWork {
+    site: CommitWriterHealSkewConflictArm,
+    writer: HealAutocommit,
+    owner: CommitWriterHealOrchestrationLaneOwner,
+    trigger: BindWhenCompleteStagedObservationTransportLands,
+  },
+  CommitWriterBindingWork {
+    site: CommitWriterDashboardAutocommitDaemon,
+    writer: DashboardAutocommit,
+    owner: CommitWriterDashboardInfrastructureOperatorOwner,
+    trigger: BindWhenCompleteStagedObservationTransportLands,
+  },
+]
 
 fn conflict_marker_line_has_prefix(line: String, marker: String) -> Bool {
   (line == marker) || starts_with(s: line, prefix: concat(marker, " "))
@@ -141,7 +204,7 @@ fn conflict_marker_parse_line(
   line_number: Int,
   grammar: GitEffectiveConflictMarkerGrammar,
 ) -> ConflictMarkerParseFold {
-  if conflict_marker_line_has_prefix(line: line, marker: grammar.begin) {
+  if conflict_marker_line_has_prefix(line: line, marker: git_conflict_marker_begin(grammar: grammar)) {
     ConflictMarkerParseFold {
       state: ConflictMarkerBegun { begin_line: line_number }
       locations: fold_state.locations
@@ -153,7 +216,7 @@ fn conflict_marker_parse_line(
         locations: fold_state.locations
       }
       ConflictMarkerBegun { begin_line } =>
-        if line == grammar.separator {
+        if line == git_conflict_marker_separator(grammar: grammar) {
           ConflictMarkerParseFold {
             state: ConflictMarkerSeparated {
               begin_line: begin_line,
@@ -168,7 +231,7 @@ fn conflict_marker_parse_line(
           }
         }
       ConflictMarkerSeparated { begin_line, separator_line } =>
-        if conflict_marker_line_has_prefix(line: line, marker: grammar.end) {
+        if conflict_marker_line_has_prefix(line: line, marker: git_conflict_marker_end(grammar: grammar)) {
           ConflictMarkerParseFold {
             state: ConflictMarkerOutside
             locations: append(
@@ -239,12 +302,13 @@ fn conflict_marker_locations_from_lines(
 fn commit_writer_text_marker_refusals(
   path: GitPath,
   text: String,
-  provenance: Artifact,
+  exempt_as_tracked_test_artifact: Bool,
   grammar: GitEffectiveConflictMarkerGrammar,
 ) -> List<CommitWriterRefusal> {
-  match provenance.kind {
-    TestClaimArtifact => []
-    _ => map(
+  if exempt_as_tracked_test_artifact {
+    []
+  } else {
+    map(
         conflict_marker_locations_from_lines(
           lines: split(s: text, delimiter: "\n"),
           path: path,
@@ -257,32 +321,283 @@ fn commit_writer_text_marker_refusals(
   }
 }
 
-fn commit_writer_path_refusals(
-  observation: CommitWriterPathObservation,
+fn commit_writer_index_entries_for_path(
+  index: List<GitIndexEntry>,
+  path: GitPath,
+) -> List<GitIndexEntry> {
+  filter(index, entry => entry.path == path)
+}
+
+fn commit_writer_normal_index_entries_for_path(
+  index: List<GitIndexEntry>,
+  path: GitPath,
+) -> List<GitIndexEntry> {
+  flat_map(
+    commit_writer_index_entries_for_path(index: index, path: path),
+    entry => match entry.stage {
+      GitIndexStageNormal => [entry]
+      GitIndexStageBase => []
+      GitIndexStageOurs => []
+      GitIndexStageTheirs => []
+    },
+  )
+}
+
+fn commit_writer_index_stages_for_path(
+  index: List<GitIndexEntry>,
+  path: GitPath,
+) -> List<GitIndexStage> {
+  map(commit_writer_index_entries_for_path(index: index, path: path), entry => entry.stage)
+}
+
+fn commit_writer_path_seen_before(
+  index: List<GitIndexEntry>,
+  path: GitPath,
+  before: Int,
+) -> Bool {
+  count(filter(index.take(n: before), entry => entry.path == path)) > 0
+}
+
+fn commit_writer_unmerged_index_refusals_at(
+  index: List<GitIndexEntry>,
+  at: Int,
 ) -> List<CommitWriterRefusal> {
-  match observation {
-    CommitWriterNormalTextObservation { path, text, provenance, marker_grammar } =>
-      commit_writer_text_marker_refusals(
-        path: path,
-        text: text,
-        provenance: provenance,
-        grammar: marker_grammar,
-      )
-    CommitWriterNormalNonTextObservation { path: _ } => []
-    CommitWriterUnmergedObservation { path, stages } => [
-      CommitWriterUnmergedIndexRefusal {
-        path: path,
-        stages: stages,
-      },
-    ]
+  if at >= count(index) {
+    []
+  } else {
+    let entry = index.skip(n: at).first()
+    let tail = commit_writer_unmerged_index_refusals_at(index: index, at: at + 1)
+    match entry.stage {
+      GitIndexStageNormal => tail
+      GitIndexStageBase =>
+        if commit_writer_path_seen_before(index: index, path: entry.path, before: at) {
+          tail
+        } else {
+          append(
+            [CommitWriterUnmergedIndexRefusal {
+              path: entry.path,
+              stages: commit_writer_index_stages_for_path(index: index, path: entry.path),
+            }],
+            items: tail,
+          )
+        }
+      GitIndexStageOurs =>
+        if commit_writer_path_seen_before(index: index, path: entry.path, before: at) {
+          tail
+        } else {
+          append(
+            [CommitWriterUnmergedIndexRefusal {
+              path: entry.path,
+              stages: commit_writer_index_stages_for_path(index: index, path: entry.path),
+            }],
+            items: tail,
+          )
+        }
+      GitIndexStageTheirs =>
+        if commit_writer_path_seen_before(index: index, path: entry.path, before: at) {
+          tail
+        } else {
+          append(
+            [CommitWriterUnmergedIndexRefusal {
+              path: entry.path,
+              stages: commit_writer_index_stages_for_path(index: index, path: entry.path),
+            }],
+            items: tail,
+          )
+        }
+    }
   }
+}
+
+fn commit_writer_blobs_for_path(
+  blobs: List<CommitWriterStagedBlobObservation>,
+  path: GitPath,
+) -> List<CommitWriterStagedBlobObservation> {
+  filter(blobs, blob => blob.path == path)
+}
+
+fn commit_writer_artifact_path_matches(path: GitPath, artifact: Artifact) -> Bool {
+  bytes_octets(bytes: utf8_encode_bytes(s: artifact.file_path)) == git_path_octets(path: path)
+}
+
+fn commit_writer_artifact_is_tracked(
+  artifact: Artifact,
+  tracked_artifacts: List<Artifact>,
+) -> Bool {
+  count(filter(tracked_artifacts, tracked => tracked == artifact)) > 0
+}
+
+fn commit_writer_artifact_refusals(
+  path: GitPath,
+  artifact: Artifact,
+  tracked_artifacts: List<Artifact>,
+) -> List<CommitWriterRefusal> {
+  append(
+    if commit_writer_artifact_path_matches(path: path, artifact: artifact) {
+      []
+    } else {
+      [CommitWriterArtifactPathMismatchRefusal {
+        path: path,
+        provenance_file_path: artifact.file_path,
+      }]
+    },
+    items: if commit_writer_artifact_is_tracked(
+      artifact: artifact,
+      tracked_artifacts: tracked_artifacts,
+    ) {
+      []
+    } else {
+      [CommitWriterArtifactUntrackedRefusal { path: path, artifact: artifact }]
+    },
+  )
+}
+
+fn commit_writer_tracked_test_artifact_exemption(
+  path: GitPath,
+  artifact: Artifact,
+  tracked_artifacts: List<Artifact>,
+) -> Bool {
+  commit_writer_artifact_path_matches(path: path, artifact: artifact)
+    && commit_writer_artifact_is_tracked(
+      artifact: artifact,
+      tracked_artifacts: tracked_artifacts,
+    )
+    && match artifact.kind {
+      TestClaimArtifact => true
+      _ => false
+    }
+}
+
+fn commit_writer_blob_classification_refusals(
+  blob: CommitWriterStagedBlobObservation,
+  tracked_artifacts: List<Artifact>,
+) -> List<CommitWriterRefusal> {
+  match blob.classification.observed {
+    CommitWriterBlobClassificationUnavailable { cause } =>
+      [CommitWriterBlobClassificationUnavailableRefusal { path: blob.path, cause: cause }]
+    CommitWriterBlobNonTextClassified { artifact_claim } =>
+      commit_writer_artifact_refusals(
+        path: blob.path,
+        artifact: artifact_claim,
+        tracked_artifacts: tracked_artifacts,
+      )
+    CommitWriterBlobTextDecoded { text, marker_grammar, artifact_claim } =>
+      append(
+        commit_writer_artifact_refusals(
+          path: blob.path,
+          artifact: artifact_claim,
+          tracked_artifacts: tracked_artifacts,
+        ),
+        items: commit_writer_text_marker_refusals(
+          path: blob.path,
+          text: text,
+          exempt_as_tracked_test_artifact: commit_writer_tracked_test_artifact_exemption(
+            path: blob.path,
+            artifact: artifact_claim,
+            tracked_artifacts: tracked_artifacts,
+          ),
+          grammar: marker_grammar,
+        ),
+      )
+  }
+}
+
+fn commit_writer_blob_coverage_refusals(
+  blob: CommitWriterStagedBlobObservation,
+  observation: CompleteStagedCommitObservation,
+) -> List<CommitWriterRefusal> {
+  let matching_index = commit_writer_normal_index_entries_for_path(
+    index: observation.index,
+    path: blob.path,
+  )
+  let same_path_blobs = commit_writer_blobs_for_path(blobs: observation.blobs, path: blob.path)
+  append(
+    if count(matching_index) == 0 {
+      [CommitWriterExtraBlobObservationRefusal {
+        path: blob.path,
+        indexed_oid: blob.indexed_oid,
+      }]
+    } else if count(matching_index) > 1 {
+      [CommitWriterDuplicateNormalIndexEntryRefusal {
+        path: blob.path,
+        count: count(matching_index),
+      }]
+    } else {
+      let index_entry = matching_index.first()
+      append(
+        if git_object_id_eq(left: index_entry.oid, right: blob.indexed_oid) {
+          []
+        } else {
+          [CommitWriterIndexBlobIdentityMismatchRefusal {
+            path: blob.path,
+            index_oid: index_entry.oid,
+            observed_index_oid: blob.indexed_oid,
+          }]
+        },
+        items: if git_object_id_eq(left: blob.indexed_oid, right: blob.content_oid) {
+          []
+        } else {
+          [CommitWriterBlobContentMismatchRefusal {
+            path: blob.path,
+            indexed_oid: blob.indexed_oid,
+            content_oid: blob.content_oid,
+          }]
+        },
+      )
+    },
+    items: append(
+      if count(same_path_blobs) > 1 {
+        [CommitWriterDuplicateBlobObservationRefusal {
+          path: blob.path,
+          count: count(same_path_blobs),
+        }]
+      } else {
+        []
+      },
+      items: commit_writer_blob_classification_refusals(
+        blob: blob,
+        tracked_artifacts: observation.tracked_artifacts,
+      ),
+    ),
+  )
+}
+
+fn commit_writer_missing_blob_refusals(
+  observation: CompleteStagedCommitObservation,
+) -> List<CommitWriterRefusal> {
+  flat_map(
+    observation.index,
+    entry => match entry.stage {
+      GitIndexStageNormal =>
+        if count(commit_writer_blobs_for_path(blobs: observation.blobs, path: entry.path)) == 0 {
+          [CommitWriterMissingBlobObservationRefusal {
+            path: entry.path,
+            indexed_oid: entry.oid,
+          }]
+        } else {
+          []
+        }
+      GitIndexStageBase => []
+      GitIndexStageOurs => []
+      GitIndexStageTheirs => []
+    },
+  )
 }
 
 fn admit_commit_writer(
   writer: CommitWriter,
-  paths: List<CommitWriterPathObservation>,
+  observation: CompleteStagedCommitObservation,
 ) -> CommitWriterAdmission {
-  let refusals = flat_map(paths, p => commit_writer_path_refusals(observation: p))
+  let refusals = append(
+    commit_writer_unmerged_index_refusals_at(index: observation.index, at: 0),
+    items: append(
+      commit_writer_missing_blob_refusals(observation: observation),
+      items: flat_map(
+        observation.blobs,
+        blob => commit_writer_blob_coverage_refusals(blob: blob, observation: observation),
+      ),
+    ),
+  )
   if refusals == [] {
     CommitWriterAdmitted { writer: writer }
   } else {
