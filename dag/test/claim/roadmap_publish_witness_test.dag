@@ -7,6 +7,7 @@ import gunbc.roadmap_publish {
   RemoteBranch,
   PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
+  RemoteBranchReadFailure, RefAdvertisementRefused,
   PublicationOutcome,
   PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous,
   RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged,
@@ -75,7 +76,7 @@ fn adjudicate_with(
 }
 
 fn remotes_deliberately_unreadable() -> RemoteBranchObservation {
-  RemoteBranchesUnreadable { detail: "not consulted on this path" }
+  RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as NonEmptyStr, exit_code: 128, stderr: "not consulted on this path" } }
 }
 
 fn one_pull(sha: CommitSha, draft: Bool) -> PullRequestObservation {
@@ -318,7 +319,7 @@ test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool
 test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpublished() -> Bool {
   match adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesUnreadable { detail: "ls-remote timed out" },
+    remotes: RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as NonEmptyStr, exit_code: 124, stderr: "ls-remote timed out" } },
   ) {
     PublicationObservationRefused { detail } =>
       string_contains(s: detail, pattern: "ls-remote timed out")
