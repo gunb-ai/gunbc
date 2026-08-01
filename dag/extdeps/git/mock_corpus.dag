@@ -107,15 +107,15 @@ data git_core_mock_case_head_commit_short: PublishedMockCase = PublishedMockCase
   case_id: 0
 }
 
-data git_core_mock_case_toplevel: PublishedMockCase = PublishedMockCase {
-  operation_key: "git.Core.Toplevel",
-  service: "git.Core",
+data git_inspect_mock_case_toplevel: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Inspect.Toplevel",
+  service: "git.Inspect",
   operation: "Toplevel",
   case_id: 0
 }
 
 data git_published_mock_corpus: List<PublishedMockCase> = [
-  git_core_mock_case_toplevel,
+  git_inspect_mock_case_toplevel,
   git_core_mock_case_current_branch,
   git_core_mock_case_remote_branches,
   git_core_mock_case_ls_files,

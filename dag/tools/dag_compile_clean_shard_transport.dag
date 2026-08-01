@@ -2,6 +2,7 @@ module tools.dag_compile_clean_shard_transport
 
 import extdeps.shell
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
 import tools.dag_compile_clean_transport {
@@ -13,7 +14,7 @@ import tools.dag_compile_clean_transport {
 data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
 
 fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let stage = shell.Mktemp.Dir()
     let out = shell.Mktemp.Dir()

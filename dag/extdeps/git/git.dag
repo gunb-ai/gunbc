@@ -541,20 +541,6 @@ service git.Core {
     }
   }
 
-  operation Toplevel {
-    input {}
-    output { path: FilePath from "stdout" }
-    readonly
-    transport shell { argv: ["git", "rev-parse", "--show-toplevel"] }
-    exit {
-      0 => Unit
-      128 => String "Not a git repository"
-    }
-    mock_response {
-      0 => { path: "." } "hermetic checkout root: the runner contract binds cwd = repo toplevel, so the relative root composes with checkout-rooted reads exactly as the absolute toplevel does wet"
-    }
-  }
-
   operation RemoteBranches {
     input {}
     output { branches: List<String> from "stdout_lines" }

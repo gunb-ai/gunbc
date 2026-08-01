@@ -12,7 +12,7 @@ data git_red_omit_keys: List<String> = ["git.Core.DiffNameOnlyMerge"]
 data git_phase3b_red_omit_keys: List<String> = ["git.Inspect.ShowTree"]
 
 fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock> {
-  if case.operation_key == "git.Core.Toplevel" {
+  if case.operation_key == "git.Inspect.Toplevel" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_toplevel })
   } else if case.operation_key == "git.Core.CurrentBranch" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_current_branch })
