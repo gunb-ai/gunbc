@@ -157,6 +157,7 @@ test fn heal_produced_dispatches_and_supersedes_old_run() -> Bool {
     && string_contains(s: script, pattern: "PRIOR_HEAD=$(git rev-parse HEAD)")
     && string_contains(s: script, pattern: "HEALED_HEAD=$(git rev-parse HEAD)")
     && string_contains(s: script, pattern: "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\"")
+    && string_contains(s: script, pattern: "GITHUB_TOKEN=\"${{ github.token }}\"")
     && string_contains(s: script, pattern: "SupersededByHealedHead")
     && string_contains(s: script, pattern: "revalidation-required")
     && string_contains(s: script, pattern: "exit 1")
