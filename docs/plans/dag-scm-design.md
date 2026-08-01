@@ -1258,7 +1258,9 @@ does not wait for a native store:
    **Status 2026-08-01:** the three R0 receipts, P−1 receipt, R1 receipt, and P0 receipt are accepted
    in `roadmap_authority.dag`. P0's `gunbc.source_integration_landing_spine` consumes the accepted
    evidence and compatibility shapes but deliberately does not claim the P1 proof kernel or P3
-   write transport; those later lanes remain parked.
+   write transport. The operator-authored P1 roadmap node is now the one active SCM slice; it stays
+   fail-closed at `ExecutionContractUnspecified` until its first modeled carrier supplies a
+   discriminating acceptance witness. P2 and P3 remain parked.
 5. **P0 — user contract, cost, and layered scenario model:** carry the §0
    `Landed | ChoiceRequired | CouldNotLand` surface, stress profile, proposal contract roles,
    evidence profiles, semantic
