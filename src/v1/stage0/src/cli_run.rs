@@ -6800,6 +6800,16 @@ pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
     index.typed_module_cache.borrow().len()
 }
 
+/// Test-only projection of the durable typed-cache authority: the content keys whose
+/// computations populated this private index. A fresh, non-evicting test index makes
+/// this exactly the distinct-computation set without retaining request attribution.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_content_keys_for_test(
+    index: &MultiEntryIndex,
+) -> std::collections::BTreeSet<String> {
+    index.typed_module_cache.borrow().keys().cloned().collect()
+}
+
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
     index.typed_cache_evictions.get()
