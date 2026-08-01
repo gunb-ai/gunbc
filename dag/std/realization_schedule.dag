@@ -5,9 +5,11 @@ import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
 import std.nat { Nat }
 import std.measure {
   Measure, Time, ByteSize, Watt,
+  Second, Millisecond,
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
+import std.content_hash { content_hash_atom, content_hash_combine }
 
 type CostBasis
   = Predicted
@@ -90,15 +92,56 @@ type RunnableResourceProfile {
 }
 
 type RunnableBatchClamp {
-  overhead_seconds: Int
-  per_unit_ms: Int
+  overhead: Second
+  per_unit: Millisecond
 }
+
+type RunnableBatchClampSource
+  = RunnableUsesFloorPositionalClamp
+  | RunnableOwnsBatchClamp { clamp: RunnableBatchClamp }
 
 type ScopedWitnessProcessIsolation
   = SharedWalkProcess
-  | FreshProcess
+  | SequentialChildProcess
+  | FreshJobProcess
 
 type ScopedWitnessBatchId = NonEmptyStr where brand("ScopedWitnessBatchId")
+
+type FloorWorkerIdentity
+  = OrdinaryFloorWorker
+  | ScopedWitnessFloorWorker { batch_id: ScopedWitnessBatchId }
+
+type FloorWorkerTermination
+  = FloorWorkerExited { code: Int }
+  | FloorWorkerSignaled { signal: Int }
+  | FloorWorkerTerminationUnobserved
+
+type FloorWorkerTerminalReceipt
+  = FloorWorkerTerminalReceiptObserved
+  | FloorWorkerTerminalReceiptMissing
+
+type FloorWorkerObservationOutcome
+  = FloorWorkerCompleted
+  | FloorWorkerRefused { detail: String }
+  | FloorWorkerFailed { detail: String }
+  | FloorWorkerDiedWithoutTerminalReceipt { detail: String }
+
+type FloorWorkerObservation {
+  worker: FloorWorkerIdentity
+  termination: FloorWorkerTermination
+  terminal_receipt: FloorWorkerTerminalReceipt
+  outcome: FloorWorkerObservationOutcome
+}
+
+type FloorWorkerObservationReceiptPath = NonEmptyStr where brand("FloorWorkerObservationReceiptPath")
+
+data floor_worker_observation_receipt_path: FloorWorkerObservationReceiptPath = "target/floor-worker-observation-receipt.tsv" as FloorWorkerObservationReceiptPath
+
+type ScopedWitnessBatchManifestPath = NonEmptyStr where brand("ScopedWitnessBatchManifestPath")
+
+data scoped_witness_batch_manifest_path: ScopedWitnessBatchManifestPath = "target/scoped-witness-batch-manifest.tsv" as ScopedWitnessBatchManifestPath
+
+data floor_worker_observation_note: String = "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. The ordinary worker projects the plan's ScopedWitnessBatch identities into scoped_witness_batch_manifest_path, then the coordinator waits for that worker to EXIT before spawning any SequentialChildProcess scoped worker, so their substantial live sets never overlap. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that receipt with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. FreshJobProcess is intentionally uninhabited and refuses until a workflow realization supplies its distinct cgroup, timeout, and scheduling semantics. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the manifest and observation storage projections from List<ScopedWitnessBatchId> and FloorWorkerObservation, deleting the seed wire labels while preserving both branded paths."
 
 type ScopedWitnessBatchResourceProfile {
   runnable: RunnableResourceProfile
@@ -114,6 +157,12 @@ type ScopedWitnessBatch {
   node_frontier_selection: NodeFrontierSelection
   execution_mode: ExecutionMode
   resource_profile: ScopedWitnessBatchResourceProfile
+}
+
+fn scoped_witness_source_roots_digest(source_roots: List<String>) -> ContentHash {
+  fold(source_roots, init: content_hash_atom(value: "scoped-witness-source-roots"), f: fn(acc, root) {
+    content_hash_combine(acc, content_hash_atom(value: root))
+  })
 }
 
 fn scoped_witness_batch(
@@ -155,9 +204,13 @@ type ScopedWitnessExecutionReceiptDecode
   = ScopedWitnessExecutionReceiptDecoded { rows: List<ScopedWitnessExecutionResult> }
   | ScopedWitnessExecutionReceiptRefused { detail: String }
 
-data scoped_witness_execution_receipt_path: String = "target/scoped-witness-execution-receipt.tsv"
+type ScopedWitnessExecutionReceiptPath = NonEmptyStr where brand("ScopedWitnessExecutionReceiptPath")
+
+data scoped_witness_execution_receipt_path: ScopedWitnessExecutionReceiptPath = "target/scoped-witness-execution-receipt.tsv" as ScopedWitnessExecutionReceiptPath
 
 data scoped_witness_execution_receipt_header: String = "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail"
+
+data scoped_witness_execution_receipt_wire_note: String = "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface."
 
 fn scoped_witness_kind_label(kind: WitnessKind) -> String {
   match kind {
@@ -192,6 +245,19 @@ fn scoped_witness_execution_outcome_detail(outcome: ScopedWitnessExecutionOutcom
     ScopedWitnessSchedulingRefused { detail: detail } => detail
     ScopedWitnessBudgetKilled { detail: detail } => detail
   }
+}
+
+fn scoped_witness_execution_result_tsv_row(row: ScopedWitnessExecutionResult) -> String {
+  join([
+    row.head_sha,
+    row.batch_id as String,
+    row.source_roots_digest as String,
+    row.entry,
+    row.function,
+    scoped_witness_kind_label(kind: row.witness_kind),
+    scoped_witness_execution_outcome_label(outcome: row.outcome),
+    scoped_witness_execution_outcome_detail(outcome: row.outcome),
+  ], "\t")
 }
 
 fn scoped_witness_execution_outcome_from_wire(label: String, detail: String) -> ScopedWitnessExecutionOutcome? {
@@ -256,12 +322,18 @@ fn scoped_witness_execution_result_from_columns(columns: List<String>) -> Scoped
   }
 }
 
-fn decode_scoped_witness_execution_receipt(text: String) -> ScopedWitnessExecutionReceiptDecode {
+fn scoped_witness_execution_receipt_decode(text: String) -> ScopedWitnessExecutionReceiptDecode {
   let lines = split(s: text, delimiter: "\n")
   if length(lines) < 2 || lines.first() != scoped_witness_execution_receipt_header {
     ScopedWitnessExecutionReceiptRefused { detail: "schema header absent or receipt has no rows" }
   } else {
-    let parsed = fold(lines.skip(n: 1), init: ScopedWitnessExecutionReceiptDecoded { rows: [] }, f: fn(state, line) {
+    let body = lines.skip(n: 1)
+    let rows = if body.skip(n: length(body) - 1).first() == "" {
+      body.take(n: length(body) - 1)
+    } else {
+      body
+    }
+    let parsed = fold(rows, init: ScopedWitnessExecutionReceiptDecoded { rows: [] }, f: fn(state, line) {
       match state {
         ScopedWitnessExecutionReceiptRefused { detail: detail } => ScopedWitnessExecutionReceiptRefused { detail: detail }
         ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
@@ -343,6 +415,15 @@ fn runnable_profile(r: Runnable) -> RunnableResourceProfile {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
     RunnableScopedWitnessBatch { batch: batch } => batch.resource_profile.runnable
     RunnableKernelWorkload { fused_op_count: _ } => runnable_resource_profile_negligible()
+  }
+}
+
+fn runnable_batch_clamp_source(r: Runnable) -> RunnableBatchClampSource {
+  match r {
+    RunnableScopedWitnessBatch { batch: batch } => RunnableOwnsBatchClamp { clamp: batch.resource_profile.clamp }
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => RunnableUsesFloorPositionalClamp
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => RunnableUsesFloorPositionalClamp
+    RunnableKernelWorkload { fused_op_count: _ } => RunnableUsesFloorPositionalClamp
   }
 }
 

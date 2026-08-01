@@ -14322,6 +14322,8 @@ pub struct DiscoverySummary {
     pub deferred_rows: Vec<DeferredDiscoveryRow>,
     /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
     pub predicted_unaffected: Vec<(String, String)>,
+    /// Applied mode: enrolled rows retained when affected-set selection declined execution.
+    pub selection_skipped_rows: Vec<(String, String)>,
     /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
     /// counted, typed attribution of a missing selection edge (never a rerun trigger).
     pub divergences: Vec<String>,
@@ -18439,6 +18441,12 @@ pub fn run_discovery_corpus_with_options(
     out
 }
 
+pub fn expand_explicit_witness_entries(
+    explicit_entries: &[(String, String)],
+) -> Result<Vec<(String, String)>, String> {
+    test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
+}
+
 fn run_discovery_corpus_with_options_inner(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -19067,6 +19075,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         skipped: 0,
         deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
+        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
@@ -19084,6 +19093,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged
             .predicted_unaffected
             .extend(summary.predicted_unaffected);
+        merged
+            .selection_skipped_rows
+            .extend(summary.selection_skipped_rows);
         merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
@@ -19326,6 +19338,7 @@ fn run_discovery_rows(
         skipped: 0,
         deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
+        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
@@ -19430,6 +19443,9 @@ fn run_discovery_rows(
                 ctx = None;
             }
             summary.skipped += 1;
+            summary
+                .selection_skipped_rows
+                .push((row.entry.clone(), row.function.clone()));
             if floor_verbose() {
                 eprintln!(
                     "SKIP [assumed-green node-frontier] {} ({})",
@@ -19542,6 +19558,9 @@ fn run_discovery_rows(
             match selection {
                 NodeFrontierSelectionMode::Applied => {
                     summary.skipped += 1;
+                    summary
+                        .selection_skipped_rows
+                        .push((row.entry.clone(), row.function.clone()));
                     if floor_verbose() {
                         eprintln!(
                             "SKIP [assumed-green node-frontier] {} ({})",
@@ -23745,6 +23764,7 @@ mod discovery_summary_merge_tests {
             skipped: 0,
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
+            selection_skipped_rows: Vec::new(),
             divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![

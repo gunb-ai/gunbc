@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, parser_transport_witness_entries, known_red_probe_entries, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_entries, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_native_cache_cold_roster,
@@ -45,7 +45,7 @@ import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.nat { Nat }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, millisecond_count }
 import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
   SelectionApplied,
@@ -56,6 +56,11 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
+  RunnableScopedWitnessBatch,
+  ScopedWitnessBatch,
+  RunnableUsesFloorPositionalClamp,
+  RunnableOwnsBatchClamp,
+  runnable_batch_clamp_source,
   ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
   RunnableResourceProfile,
@@ -191,19 +196,12 @@ fn bin_witness_corpus_enrolled(spec: CiSpec) -> Bool {
   length(xs: spec.discovery_scan_dirs) > 0 && length(xs: bin_witness_wet_entries) > 0
 }
 
-fn parser_transport_witness_batch_enrolled(spec: CiSpec) -> Bool {
-  length(xs: spec.discovery_scan_dirs) > 0 && length(xs: parser_transport_witness_entries) > 0
-}
-
 fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
   concat(
     if length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0 { [floor_corpus_node] } else { [] },
     concat(
       if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] },
-      concat(
-        if bin_witness_corpus_enrolled(spec: spec) { [bin_witness_corpus_node] } else { [] },
-        if parser_transport_witness_batch_enrolled(spec: spec) { [parser_transport_witness_corpus_node] } else { [] }
-      )
+      if bin_witness_corpus_enrolled(spec: spec) { [bin_witness_corpus_node] } else { [] }
     )
   )
 }
@@ -231,7 +229,6 @@ fn floor_resource_anchor_node(node: Node) -> Bool {
     || (node == floor_corpus_node)
     || (node == execution_corpus_node)
     || (node == bin_witness_corpus_node)
-    || (node == parser_transport_witness_corpus_node)
     || fold(gunbc_ci_cheap_floor_gate_membership, init: false, f: fn(acc, g) {
       acc || (node == gate_node(g: g))
     })
@@ -359,7 +356,7 @@ fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
   let corpus_labels = list_map(xs: corpus_plan_nodes(spec: spec), f: fn(node) {
     runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
   })
-  concat(gate_labels, corpus_labels)
+  concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
 }
 
 fn gunbc_ci_floor_schedule_runnable_labels(batches: List<List<Runnable>>) -> List<String> {
@@ -373,6 +370,7 @@ fn gunbc_ci_floor_schedule_runnable_labels(batches: List<List<Runnable>>) -> Lis
 fn runnable_is_discovery_batch(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => true
+    RunnableScopedWitnessBatch { batch: _ } => true
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -457,23 +455,23 @@ fn gunbc_ci_fast_lane_eval_budget_ms() -> v2.std.nat.Nat {
 }
 
 fn gunbc_ci_floor_batch_clamp_overhead_seconds() -> List<Int> {
-  map(gunbc_ci_floor_batch_clamp_params, c => c.overhead_seconds)
+  map(gunbc_ci_floor_batch_clamp_params, c => second_count(s: c.overhead))
 }
 
 fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
-  map(gunbc_ci_floor_batch_clamp_params, c => c.per_unit_ms)
+  map(gunbc_ci_floor_batch_clamp_params, c => millisecond_count(m: c.per_unit))
 }
 
 fn gunbc_ci_compile_clean_clamp_overhead_seconds() -> Int {
-  gunbc_ci_compile_clean_clamp.overhead_seconds
+  second_count(s: gunbc_ci_compile_clean_clamp.overhead)
 }
 
 fn gunbc_ci_compile_clean_clamp_rate_per_unit_ms() -> Int {
-  gunbc_ci_compile_clean_clamp.per_unit_ms
+  millisecond_count(m: gunbc_ci_compile_clean_clamp.per_unit)
 }
 
 fn gunbc_ci_compile_clean_clamp_ms(units: Int) -> Int {
-  (gunbc_ci_compile_clean_clamp.overhead_seconds * 1000) + (units * gunbc_ci_compile_clean_clamp.per_unit_ms)
+  (second_count(s: gunbc_ci_compile_clean_clamp.overhead) * 1000) + (units * millisecond_count(m: gunbc_ci_compile_clean_clamp.per_unit))
 }
 
 fn gunbc_ci_compile_clean_wall_exceeds_clamp(observed_ms: Int, units: Int) -> Bool {
@@ -481,7 +479,19 @@ fn gunbc_ci_compile_clean_wall_exceeds_clamp(observed_ms: Int, units: Int) -> Bo
 }
 
 fn witness_floor_batch_clamp_params_cover_schedule() -> Bool {
-  length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: gunbc_ci_floor_ordinary_batches())
+  let positional_batches = fold(gunbc_ci_floor_ordinary_batches(), init: 0, f: fn(count, batch) {
+    if fold(batch, init: false, f: fn(found, runnable) {
+      found || match runnable_batch_clamp_source(r: runnable) {
+        RunnableUsesFloorPositionalClamp => true
+        RunnableOwnsBatchClamp { clamp: _ } => false
+      }
+    }) {
+      count + 1
+    } else {
+      count
+    }
+  })
+  length(xs: gunbc_ci_floor_batch_clamp_params) == positional_batches
 }
 
 fn witness_floor_batch_clamp_overhead_all_positive() -> Bool {
@@ -587,55 +597,6 @@ fn bin_witness_corpus_runnable_for() -> Runnable {
   }
 }
 
-data parser_transport_witness_source_roots: List<String> = ["dag", "src/v1"]
-
-data parser_transport_witness_corpus_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_parser_transport_witness_corpus } },
-  children: [],
-  occurrence_id: SyntheticOccurrence
-}
-
-type ParserTransportStopBeforeDependentsMaskedLane
-  = ParserTransportMasksExecutionCorpus
-  | ParserTransportMasksBinWitnessCorpus
-  | ParserTransportMasksEmitHostTail
-
-data parser_transport_stop_before_dependents_masked_lanes: List<ParserTransportStopBeforeDependentsMaskedLane> = [
-  ParserTransportMasksExecutionCorpus,
-  ParserTransportMasksBinWitnessCorpus,
-  ParserTransportMasksEmitHostTail,
-]
-
-type ResourceExclusionStopPolicyConflationDissolutionTrigger
-  = StopWalkConsultsDependencyKind
-  | StopWalkConsultsDependencyReachability
-
-data resource_exclusion_stop_policy_conflation_dissolve_on: List<ResourceExclusionStopPolicyConflationDissolutionTrigger> = [
-  StopWalkConsultsDependencyKind,
-  StopWalkConsultsDependencyReachability,
-]
-
-data resource_exclusion_stop_policy_conflation_finding: String = "ResourceDependsOn and DataDependsOn both enter v2.workflow.realization_runner parallel_executor_plan_from_dependencies and become ordered ExecutorBatch layers. The v1 claim_executor run_walk consumer applies StopBeforeDependents to any failed earlier batch without consulting the dependency kind or actual descendant reachability, so a resource-exclusion fact silently acquires success-precondition semantics and the plan cannot express non-co-residence without predecession. resource_exclusion_stop_policy_conflation_dissolve_on names the two typed exits: make the stop-walk consult dependency kind, or make it halt only batches reachable as actual dependents."
-
-data parser_transport_witness_corpus_note: String = "The separate scoped Hermetic batch for parser-reaching witnesses. Its source_roots are exactly parser_transport_witness_source_roots (dag plus src/v1), scan_dirs and exclusions are empty, and parser_transport_witness_entries is a nonempty explicit roster. This preserves gunbc.ci_layer_roots witness_layer_roots as the ordinary dag plus src/v2 discovery authority instead of making unrelated witnesses co-resolve the v1 seed. The substantial-memory, heavy-resolve profile states the real shape: resolving v1.compiler reaches the parser/compiler seed closure, but the claims execute inside the interpreter and spawn no host compiler. parser_transport_witness_batch_enrolled ties the batch to live discovery, so synthetic and regeneration specs do not acquire it. floor_corpus_exclusion_resource_edges orders the ordinary discovery corpus before this node, then orders the execution and bin corpora after it, preventing co-residence while giving parser transport an executable slot before the variable wet tail. Under StopBeforeDependents, a parser-transport red therefore stops exactly parser_transport_stop_before_dependents_masked_lanes: the wet execution corpus, wet bin-witness corpus, and emit-host tail. That bounded masking is accepted to obtain real execution after run 30689615953 showed the prior wet-first order could starve this batch; it is an artifact of resource_exclusion_stop_policy_conflation_finding, not a claim that parser transport is a semantic prerequisite of those lanes."
-
-fn parser_transport_witness_corpus_runnable_for() -> Runnable {
-  RunnableDiscoveryBatch {
-    source_roots: parser_transport_witness_source_roots,
-    scan_dirs: [],
-    explicit_entries: parser_transport_witness_entries,
-    node_frontier_selection: SelectionApplied,
-    exclude_substrings: [],
-    discovery_scope_dirs: [],
-    profile: runnable_resource_profile(
-      heavy_whole_tree_resolve: true,
-      spawns_host_compiler: false,
-      memory: runnable_memory_substantial(),
-      execution_mode: Hermetic
-    )
-  }
-}
-
 fn floor_nodes(spec: CiSpec) -> List<Node> {
   fold(spec.gates, init: corpus_plan_nodes(spec: spec), f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
@@ -675,32 +636,7 @@ fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
       []
     }
   )
-  let parser_isolation = if parser_transport_witness_batch_enrolled(spec: spec) {
-    fold(corpus_nodes, init: after_floor_corpus, f: fn(acc, source) {
-      if source == parser_transport_witness_corpus_node {
-        acc
-      } else if source == floor_corpus_node {
-        list_snoc_item(
-          xs: acc,
-          item: floor_resource_depends_on(
-            source: floor_corpus_node,
-            dependent: parser_transport_witness_corpus_node
-          )
-        )
-      } else {
-        list_snoc_item(
-          xs: acc,
-          item: floor_resource_depends_on(
-            source: parser_transport_witness_corpus_node,
-            dependent: source
-          )
-        )
-      }
-    })
-  } else {
-    after_floor_corpus
-  }
-  fold(spec.gates, init: parser_isolation, f: fn(acc, g) {
+  fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
       acc
@@ -871,8 +807,6 @@ fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
     execution_corpus_runnable_for(spec: spec)
   } else if node == bin_witness_corpus_node {
     bin_witness_corpus_runnable_for()
-  } else if node == parser_transport_witness_corpus_node {
-    parser_transport_witness_corpus_runnable_for()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }
@@ -1241,11 +1175,14 @@ fn gunbc_pr_native_batch() -> Runnable {
 }
 
 fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
-  falsifier_batches_append_if_enrolled(
+  let ordinary = falsifier_batches_append_if_enrolled(
     acc: gunbc_ci_floor_realization_plan().schedule,
     enrolled: gunbc_pr_native_batch_enrolled(),
     batch: gunbc_pr_native_batch()
   )
+  fold(scoped_witness_batches, init: ordinary, f: fn(acc, batch) {
+    list_snoc_item(xs: acc, item: [RunnableScopedWitnessBatch { batch: batch }])
+  })
 }
 
 data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_plan, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
@@ -1257,6 +1194,7 @@ fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
 fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
+    RunnableScopedWitnessBatch { batch: batch } => length(xs: batch.scan_dirs)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => 0 - 1
     RunnableKernelWorkload { fused_op_count: _ } => 0 - 1
   }
@@ -1308,6 +1246,7 @@ fn runnable_single_claim_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
+    RunnableScopedWitnessBatch { batch: _ } => "__scoped_witness_batch__"
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -1399,6 +1338,7 @@ fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   fold(batch, init: 0, f: fn(acc, r) {
     match r {
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
+      RunnableScopedWitnessBatch { batch: _ } => acc
       RunnableKernelWorkload { fused_op_count: _ } => acc
       RunnableSingleClaim { entry: _, function: f, profile: p } =>
         if f == ci_floor_compile_gate_fn {

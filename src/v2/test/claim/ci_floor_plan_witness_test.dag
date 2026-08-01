@@ -1,8 +1,5 @@
 module v2.test.claim.ci_floor_plan_witness
 
-import std.realization {
-  RunnableDiscoveryBatch,
-}
 import v2.workflow.ci_floor_plan {
   gunbc_falsifier_ordinary_batches,
   gunbc_ci_floor_ordinary_batches,
@@ -13,16 +10,6 @@ import v2.workflow.ci_floor_plan {
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
   bin_witness_corpus_runnable_for,
-  parser_transport_witness_corpus_runnable_for,
-  parser_transport_witness_batch_enrolled,
-  parser_transport_witness_source_roots,
-  parser_transport_stop_before_dependents_masked_lanes,
-  ParserTransportMasksExecutionCorpus,
-  ParserTransportMasksBinWitnessCorpus,
-  ParserTransportMasksEmitHostTail,
-  resource_exclusion_stop_policy_conflation_dissolve_on,
-  StopWalkConsultsDependencyKind,
-  StopWalkConsultsDependencyReachability,
   corpus_witness_entries, execution_witness_entries,
   floor_corpus_exclusion_resource_edges,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
@@ -70,7 +57,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_batch_clamp_overhead_all_positive,
   witness_floor_batch_clamp_rate_all_nonneg,
 }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, parser_transport_witness_entries, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch, scoped_witness_batches, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_self_host_wet_known_red_entries,
@@ -78,7 +65,9 @@ import v2.compiler.self_host.wet_receipt_enrollment {
 }
 import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
 import std.realization_schedule {
-  Runnable, RunnableSingleClaim,
+  Runnable, RunnableSingleClaim, RunnableDiscoveryBatch, RunnableScopedWitnessBatch,
+  RunnableOwnsBatchClamp, runnable_batch_clamp_source,
+  FreshProcess,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
@@ -88,6 +77,7 @@ import std.realization_schedule {
 import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared }
 import gunbc.ci_materialization { FloorFinalization, ci_floor_declared_resolve_count }
 import std.execution_mode { Hermetic, Wet, execution_mode_eq }
+import std.measure { second_count, millisecond_count }
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
 import std.types { Int }
@@ -161,6 +151,7 @@ fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => corpus_sentinel
+    RunnableScopedWitnessBatch { batch: _ } => "__scoped_witness_batch__"
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -232,6 +223,7 @@ fn runnable_is_heavy_discovery(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       runnable_heavy_whole_tree_resolve(profile: p)
+    RunnableScopedWitnessBatch { batch: batch } => runnable_heavy_whole_tree_resolve(profile: batch.resource_profile.runnable)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -300,77 +292,6 @@ test fn witness_kind_wins_over_path() -> Bool {
     )
 }
 
-fn parser_transport_batch_shape_holds(r: Runnable) -> Bool {
-  runnable_eq(
-    left: r,
-    right: RunnableDiscoveryBatch {
-      source_roots: ["dag", "src/v1"],
-      scan_dirs: [],
-      explicit_entries: parser_transport_witness_entries,
-      node_frontier_selection: SelectionApplied,
-      exclude_substrings: [],
-      discovery_scope_dirs: [],
-      profile: runnable_resource_profile(
-        heavy_whole_tree_resolve: true,
-        spawns_host_compiler: false,
-        memory: runnable_memory_substantial(),
-        execution_mode: Hermetic
-      )
-    }
-  ) && length(xs: parser_transport_witness_entries) == 20
-}
-
-fn parser_transport_roster_has_entry(entry: String) -> Bool {
-  fold(parser_transport_witness_entries, init: false, f: fn(found, row) {
-    found || row.entry == entry
-  })
-}
-
-test fn witness_parser_transport_batch_is_scoped_nonempty_and_live() -> Bool {
-  parser_transport_witness_batch_enrolled(spec: gunbc_ci_spec)
-    && parser_transport_batch_shape_holds(r: parser_transport_witness_corpus_runnable_for())
-    && parser_transport_roster_has_entry(entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag")
-    && parser_transport_roster_has_entry(entry: "src/v1/tests/claim/caret_parse_smoke_test.dag")
-    && witness_layer_roots == ["dag", "src/v2"]
-}
-
-test fn witness_parser_transport_batch_is_isolated_from_other_corpora() -> Bool {
-  fold(gunbc_ci_floor_ordinary_batches(), init: true, f: fn(ok, batch) {
-    let parser_count = fold(batch, init: 0, f: fn(count, r) {
-      if parser_transport_batch_shape_holds(r: r) { count + 1 } else { count }
-    })
-    ok && (parser_count == 0 || length(xs: batch) == 1)
-  })
-}
-
-test fn witness_parser_transport_masking_and_conflation_triggers_are_scoped() -> Bool {
-  parser_transport_stop_before_dependents_masked_lanes == [
-    ParserTransportMasksExecutionCorpus,
-    ParserTransportMasksBinWitnessCorpus,
-    ParserTransportMasksEmitHostTail,
-  ]
-    && resource_exclusion_stop_policy_conflation_dissolve_on == [
-      StopWalkConsultsDependencyKind,
-      StopWalkConsultsDependencyReachability,
-    ]
-}
-
-fn parser_transport_batch_index(batches: List<List<Runnable>>) -> Int {
-  if length(xs: batches) == 0 {
-    0 - 1
-  } else {
-    let present = fold(batches.first(), init: false, f: fn(found, r) {
-      found || parser_transport_batch_shape_holds(r: r)
-    })
-    if present {
-      0
-    } else {
-      let rest = parser_transport_batch_index(batches: skip(xs: batches, n: 1))
-      if rest < 0 { rest } else { rest + 1 }
-    }
-  }
-}
-
 fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int {
   if length(xs: batches) == 0 {
     0 - 1
@@ -387,14 +308,30 @@ fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int 
   }
 }
 
-test fn witness_parser_transport_clamp_position_precedes_emit_host() -> Bool {
+test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
+  let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
+  (length(xs: scoped_witness_batches) == 1)
+    && (length(xs: v1_claim_scoped_witness_entries) == 2)
+    && (v1_claim_scoped_witness_entries.first().function == "")
+    && (v1_claim_scoped_witness_entries.skip(n: 1).first().function == "")
+    && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
+    && (v1_claim_scoped_witness_batch.scan_dirs == [])
+    && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
+    && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == FreshProcess)
+    && match runnable_batch_clamp_source(r: target) {
+      RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 180) && (millisecond_count(m: clamp.per_unit) == 0)
+      _ => false
+    }
+    && witness_layer_roots == ["dag", "src/v2"]
+}
+
+test fn witness_scoped_batch_is_singleton_and_outside_positional_clamps() -> Bool {
   let batches = gunbc_ci_floor_ordinary_batches()
+  let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
   (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1)
-    && (parser_transport_batch_index(batches: batches) == 3)
-    && (runnable_batch_index(batches: batches, target: execution_corpus_runnable_for(spec: gunbc_ci_spec)) == 4)
-    && (runnable_batch_index(batches: batches, target: bin_witness_corpus_runnable_for()) == 4)
-    && (batch_index_of(batches: batches, target: "emit_host_gate_passes") == 5)
-    && (length(xs: gunbc_ci_floor_batch_clamp_params) == 6)
+    && (runnable_batch_index(batches: batches, target: target) == length(xs: batches) - 1)
+    && (length(xs: batches.skip(n: length(xs: batches) - 1).first()) == 1)
+    && (length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: batches) - 1)
 }
 
 test fn witness_optin_roster_drives_corpus_presence() -> Bool {
@@ -465,6 +402,7 @@ fn discovery_batch_declares_hermetic(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       execution_mode_eq(left: p.execution_mode, right: Hermetic)
+    RunnableScopedWitnessBatch { batch: batch } => execution_mode_eq(left: batch.execution_mode, right: Hermetic)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -496,6 +434,7 @@ fn discovery_batch_declares_wet(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       execution_mode_eq(left: p.execution_mode, right: Wet)
+    RunnableScopedWitnessBatch { batch: batch } => execution_mode_eq(left: batch.execution_mode, right: Wet)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -508,6 +447,7 @@ fn falsifier_predict_only_batch_holds(r: Runnable) -> Bool {
         && (length(xs: entries) == 0)
         && (length(xs: dirs) == 3)
         && execution_mode_eq(left: p.execution_mode, right: Hermetic)
+    RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -525,6 +465,7 @@ fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
         && (length(xs: entries) == length(xs: falsifier_self_host_wet_entries()))
         && discovery_batch_declares_wet(r: r)
         && p.spawns_host_compiler
+    RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -542,6 +483,7 @@ fn falsifier_known_red_probe_batch_holds(r: Runnable) -> Bool {
         && (length(xs: entries) == length(xs: known_red_probe_entries))
         && discovery_batch_declares_hermetic(r: r)
         && (p.spawns_host_compiler == false)
+    RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -559,6 +501,7 @@ fn falsifier_self_host_wet_known_red_batch_holds(r: Runnable) -> Bool {
         && (length(xs: entries) == length(xs: falsifier_self_host_wet_known_red_entries))
         && discovery_batch_declares_wet(r: r)
         && p.spawns_host_compiler
+    RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -577,6 +520,7 @@ fn falsifier_silent_pick_gate_batch_holds(r: Runnable) -> Bool {
         && discovery_batch_declares_wet(r: r)
         && p.spawns_host_compiler
         && p.heavy_whole_tree_resolve
+    RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -594,6 +538,7 @@ fn falsifier_substrate_long_lane_batch_holds(r: Runnable) -> Bool {
         && (length(xs: entries) == length(xs: falsifier_substrate_long_lane_entries()))
         && discovery_batch_declares_hermetic(r: r)
         && (p.spawns_host_compiler == false)
+    RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -624,6 +569,7 @@ fn falsifier_cadence_witness_batch_holds(r: Runnable) -> Bool {
         && discovery_batch_declares_wet(r: r)
         && p.spawns_host_compiler
         && (p.heavy_whole_tree_resolve == false)
+    RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }

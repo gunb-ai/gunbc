@@ -63,11 +63,19 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "parser_transport_witness_entries"),
-    unit_kind: "schedule witness entry (entry file x function)",
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "scoped_witness_batches"),
+    unit_kind: "scoped witness batch instance",
     membership: DeclaredFrontier {
-      reason: "v1 parser-reaching claims cannot resolve inside ordinary dag plus src/v2 discovery; the explicit roster is the single membership authority consumed by the isolated Hermetic dag plus src/v1 batch named by parser_transport_witness_batch_note",
-      dissolve_on: "gunbc.ci_layer_roots parser_transport_witness_batch_dissolution_triggers: V2ParserOwnsParserWitnesses or ScheduleWitnessEntryCarriesSourceRoots"
+      reason: "source-root envelopes outside ordinary discovery enroll through the generic std.realization_schedule ScopedWitnessBatch carrier; the current v1 claim instance is the first live member",
+      dissolve_on: "per instance: its source-root envelope joins ordinary discovery or its typed instance dissolution trigger fires; roster-wide, scoped batches derive from declarations that require a non-ordinary source-root envelope"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "v1_claim_scoped_witness_entries"),
+    unit_kind: "file-grain schedule witness entry",
+    membership: DeclaredFrontier {
+      reason: "these two v1 claim files require the dag plus src/v1 envelope declared by v1_claim_scoped_witness_batch and are outside ordinary dag plus src/v2 discovery",
+      dissolve_on: "gunbc.ci_layer_roots v1_claim_scoped_witness_dissolve_on: V2ParserOwnsV1Claims"
     }
   },
   RosterRegistration {
