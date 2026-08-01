@@ -110,8 +110,8 @@ broad/cold p95 ≤ **10–15 min**; falsifier cadence ≤ **20–30 min** initia
 
 ## Verified receipts (execution-backed)
 
-Only figures verified in committed receipts, PR test plans, or PR bodies are
-cited here.
+Only figures verified by execution in this session or committed on main are cited
+at full altitude. Claimed-not-verified figures are typed separately.
 
 | receipt | source | what stands |
 |---|---|---|
@@ -120,11 +120,19 @@ cited here.
 | M2 retention width-1 | #7581 PR body | peak 6.27 GiB, `schedule_evictions=2094`, 842 entries PASS |
 | child-spawn tax | [ci-floor-child-spawn-attribution](ci-floor-child-spawn-attribution.md) | single cold child 49.8s (CI) vs 47.2s pooled; 389s Pi spawned (8.2×) |
 | compile clean 3-root | [ci_floor_pi_srv_stretch TSV](../probes/ci_floor_pi_srv_stretch_2026-07-23.tsv) | 3m29s / 5.9GB standalone CLI compile |
-| native bundle slice (3-fn) | #7599 PR body · `native_selected_witness_bundle_test.dag` (20/20 on PR branch) | ~3 ms native direct vs ~20 ms interpreted vs ~457 ms warm `cargo run`; cold+warm host witness ~993 ms; swapped-body red ~977 ms |
+| native bundle witness suite | **executed** at #7599 head `2f9e780e6` · `native_selected_witness_bundle_test.dag` | **25/25 PASS** (`claim_batch --wet`, srv remote ctrl-build, 2026-08-01); cold/warm wet witnesses log `compile_skipped=false` then `compile_skipped=true` |
+
+**Claimed-not-verified (provenance typed; not at executed-receipt altitude):**
+
+| claim | provenance | verification trigger |
+|---|---|---|
+| native bundle timing (3-fn slice) | reported in #7599 PR body at `2f9e780e6` (`CTRL_BUILD_MODE=local` author run) | merge + committed receipt artifact or fleet rerun; `claim_batch` does not emit native/interpreted wall breakdown |
+| ~3 ms native direct / ~20 ms interpreted / ~457 ms warm `cargo run` | same | same |
+| cold+warm host witness ~993 ms; swapped-body red ~977 ms | same | same |
 
 **Not verified in tree (omitted from authority):** #6663 158.2s→61.6s, #7029
 3m29s→2m19s, #7522 26m05s floor + 197.13s baseline, #7522 probable ~1–1.5 min
-net admission — flag for operator receipt before transcribing.
+net admission — operator expectation only until measured.
 
 ---
 
