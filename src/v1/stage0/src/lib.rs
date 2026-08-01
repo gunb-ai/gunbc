@@ -129,6 +129,7 @@ pub mod v1_rt;
 pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
 pub mod v1_tests_claim_caret_parse_smoke_test;
+pub mod v1_tests_claim_occurrence_identity_debt_receipt_test;
 pub mod v1_tests_claim_pattern_binder_declaration_node_test;
 pub mod v2_compiler_infer;
 pub mod v2_compiler_program_partition;
