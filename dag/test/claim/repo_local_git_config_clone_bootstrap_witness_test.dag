@@ -8,8 +8,8 @@ import gunbc.repo_local_git_config_clone_bootstrap {
   repo_local_git_config_clone_bootstrap_enrolled_path_count,
 }
 
-test fn clone_bootstrap_population_covers_session_and_dev() -> Bool {
-  repo_local_git_config_clone_bootstrap_population.session_worktrees
+test fn clone_bootstrap_population_records_missing_session_worktree_enrollment() -> Bool {
+  !repo_local_git_config_clone_bootstrap_population.session_worktrees
     && repo_local_git_config_clone_bootstrap_population.dev_clone_setup_surface
 }
 
