@@ -1,5 +1,7 @@
 module gunbc.v1_interpreter_primitive_surface
 
+import std.types { NonEmptyStr }
+
 data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
 
 type InterpreterDispatchForm
