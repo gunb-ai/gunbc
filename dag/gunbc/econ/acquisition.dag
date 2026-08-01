@@ -1,6 +1,5 @@
 module gunbc.econ.acquisition
 
-import std.currency { CurrencyCode }
 import std.measure { MoneyOnce, money_once_micros }
 import std.nat { Nat }
 import std.types { List, NonEmptyStr, list_length }
@@ -41,12 +40,10 @@ type AcquisitionCostForecast {
   entry_stage_label: NonEmptyStr
   outcome_stage_label: NonEmptyStr
   composed_rate: ConversionRate
-  cost_per_outcome_micros_numerator: Nat
-  cost_per_outcome_divisor: Nat
-  currency: CurrencyCode
+  entry_unit_cost: MoneyOnce
 }
 
-data acquisition_forecast_distinctness_note: String = "AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be passed where an actual is required -- the distinction is structural, not a naming convention. cost_per_outcome is carried as an exact micros fraction (numerator over divisor, the divisor never zero by construction because a zero numerator refuses before composition); acquisition_forecast_cost_floor_micros below is the explicit lossy projection."
+data acquisition_forecast_distinctness_note: String = "AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be passed where an actual is required -- the distinction is structural, not a naming convention. Money stays on the std.measure MoneyOnce carrier (currency and micro denomination live there, never as bare scalars beside it), and the cost per outcome is DERIVED, never stored: the exact value is entry_unit_cost scaled by cohort over converted (both on the ConversionRate carrier, converted never zero by construction because a zero numerator refuses before composition). acquisition_forecast_cost_floor_micros below is the explicit lossy floor projection of that exact fraction."
 
 type AcquisitionForecastResult
   = AcquisitionForecastDerived { forecast: AcquisitionCostForecast }
@@ -128,9 +125,7 @@ fn derive_acquisition_cost_forecast(input: AcquisitionScenarioInput) -> Acquisit
                     converted: acc.converted_product,
                     cohort: acc.cohort_product,
                   },
-                  cost_per_outcome_micros_numerator: money_once_micros(q: s.entry_unit_cost) * acc.cohort_product,
-                  cost_per_outcome_divisor: acc.converted_product,
-                  currency: s.entry_unit_cost.currency,
+                  entry_unit_cost: s.entry_unit_cost,
                 },
               }
           }
@@ -140,5 +135,5 @@ fn derive_acquisition_cost_forecast(input: AcquisitionScenarioInput) -> Acquisit
 }
 
 fn acquisition_forecast_cost_floor_micros(forecast: AcquisitionCostForecast) -> Nat {
-  forecast.cost_per_outcome_micros_numerator / forecast.cost_per_outcome_divisor
+  (money_once_micros(q: forecast.entry_unit_cost) * forecast.composed_rate.cohort) / forecast.composed_rate.converted
 }

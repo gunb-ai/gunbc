@@ -19,7 +19,7 @@ import gunbc.econ.acquisition {
   derive_acquisition_cost_forecast,
 }
 import std.currency { Usd }
-import std.measure { MoneyOnce, money_amount_micro }
+import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -43,8 +43,7 @@ test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool {
     AcquisitionForecastDerived { forecast: f } =>
       (f.composed_rate.converted == 1)
         && (f.composed_rate.cohort == 40)
-        && (f.cost_per_outcome_micros_numerator == 80000000)
-        && (f.cost_per_outcome_divisor == 1)
+        && (money_once_micros(q: f.entry_unit_cost) == 2000000)
         && (acquisition_forecast_cost_floor_micros(forecast: f) == 80000000)
         && ((f.entry_stage_label as String) == "click")
         && ((f.outcome_stage_label as String) == "customer")
@@ -63,10 +62,11 @@ data indivisible_scenario: AcquisitionScenario = AcquisitionScenario {
 test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: indivisible_scenario }) {
     AcquisitionForecastDerived { forecast: f } =>
-      (f.cost_per_outcome_micros_numerator == 7000000)
-        && (f.cost_per_outcome_divisor == 3)
+      (f.composed_rate.converted == 3)
+        && (f.composed_rate.cohort == 7)
+        && (money_once_micros(q: f.entry_unit_cost) == 1000000)
         && (acquisition_forecast_cost_floor_micros(forecast: f) == 2333333)
-        && ((acquisition_forecast_cost_floor_micros(forecast: f) * f.cost_per_outcome_divisor) != f.cost_per_outcome_micros_numerator)
+        && ((acquisition_forecast_cost_floor_micros(forecast: f) * f.composed_rate.converted) != (money_once_micros(q: f.entry_unit_cost) * f.composed_rate.cohort))
     AcquisitionForecastRefused { cause: _ } => false
   }
 }
