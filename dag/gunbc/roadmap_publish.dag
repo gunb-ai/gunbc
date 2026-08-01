@@ -5,6 +5,7 @@ import extdeps.github.pulls {
   PullRequest,
   PullRequestState, Open,
 }
+import v2.std.operation_argv { OperationRef, operation_ref_label }
 
 data publish_producer_note: String = "PUBLICATION IS ADJUDICATED AGAINST AN EXACT HEAD, NOT LOOKED UP BY BRANCH (operator ruling, 2026-07-31). An earlier cut of this module answered 'which pull request belongs to this branch', which is a lookup rather than a judgment: it reported whatever head that pull request happened to carry and left the caller to compare. Every downstream obligation — verify, review, audit, acceptance — is about one exact commit, so the question Publication has to answer is whether THIS commit is the one on offer.\\n\\nThe branch is a lookup and publication handle. A completed judgment belongs to a head sha.\\n\\nTHE ARM THAT MOTIVATES THE REWRITE is PublicationHeadDiverged. A pull request exists, its branch matches, and its head is NOT the commit under judgment — the ordinary state after a worker pushes a revision while a review is in flight. Under a branch lookup that reads as a successful publication, and every later receipt binds to a commit nobody assessed. It is the one outcome a lookup cannot express and the one most likely to occur."
 
@@ -29,24 +30,31 @@ type RemoteBranchReadFailure
   | AdvertisedLineUnparsed { remote: NonEmptyStr, index: Int, line: String }
   | AdvertisedRefProjectsEmptyBranch { remote: NonEmptyStr, ref_names: List<String> }
 
-data ls_remote_operation_identity: String = "git.Core.LsRemoteHeads"
+data ls_remote_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/git/git.dag",
+  service: "git.Core",
+  operation: "LsRemoteHeads",
+}
+
+data ls_remote_operation_ref_note: String = "WHY A REF AND NOT THE STRING `git.Core.LsRemoteHeads`. An earlier cut of this module carried the identity as a free String, which is a second textual naming scheme for something the declaration already names, and which goes stale silently when the operation is renamed - nothing anywhere can tell that it did (DESIGN 3, cite the symbol). An OperationRef is the corpus's single vocabulary for `which operation`, and the difference is decidability rather than tidiness: shell_transport_operation_rows enumerates the declared rows each carrying its own `at`, so a ref naming nothing is findable from that enumeration, and a sentence fragment is not reachable from it at all.\\n\\nWHY THE REF IS WRITTEN HERE RATHER THAN DERIVED, which is the sharper question and is refused on purpose. Deriving it would mean selecting the row out of shell_transport_operation_rows, and that builtin reads the declarations in the live source tree. This module's whole property is that it adjudicates over values a caller already holds - see belt_observes_note - which is what makes every arm, including the refusals, reachable with no network, no token, and no tree. Buying a staleness check with that property would be a bad trade: it would move the module from pure to ReadsLiveTree, and the arms that a witness can currently construct directly would become dependent on what the tree happens to contain.\\n\\nSo the check belongs OUTSIDE this module, over the corpus's refs at once, where the enumeration is already being read for other reasons - not inlined at each site that names an operation."
 
 fn render_remote_branch_read_failure(cause: RemoteBranchReadFailure) -> String {
+  let at = operation_ref_label(at: ls_remote_operation)
   match cause {
     RefAdvertisementRefused { remote, exit_code, stderr } =>
       join([
-        ls_remote_operation_identity, " against ", remote as String,
+        at, " against ", remote as String,
         " exited ", to_string(exit_code), ": ", stderr,
       ], "")
     AdvertisedLineUnparsed { remote, index, line } =>
       join([
-        ls_remote_operation_identity, " against ", remote as String,
+        at, " against ", remote as String,
         " advertised a line at index ", to_string(index),
         " that is not an object-id/ref pair: ", line,
       ], "")
     AdvertisedRefProjectsEmptyBranch { remote, ref_names } =>
       join([
-        ls_remote_operation_identity, " against ", remote as String,
+        at, " against ", remote as String,
         " advertised ", to_string(count(ref_names)),
         " head ref(s) projecting to an empty branch name: ",
         join(ref_names, ", "),
