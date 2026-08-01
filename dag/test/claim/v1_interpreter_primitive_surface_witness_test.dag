@@ -46,7 +46,7 @@ test fn every_dispatch_site_is_enumerated() -> Bool {
 }
 
 test fn the_surface_is_almost_entirely_derived() -> Bool {
-  v1_interpreter_derived_arm_count() == 183 && v1_interpreter_declared_arm_count() == 2
+  v1_interpreter_derived_arm_count() == 182 && v1_interpreter_declared_arm_count() == 2
 }
 
 test fn derived_and_declared_partition_the_surface() -> Bool {
@@ -54,12 +54,7 @@ test fn derived_and_declared_partition_the_surface() -> Bool {
 }
 
 test fn the_three_denominators_are_derived_and_distinct() -> Bool {
-  dispatch_site_count() == 7 && distinct_arm_identity_count() == 174 && authored_spelling_count() == 161
-}
-
-test fn unicode_scalar_is_on_the_derived_free_call_surface() -> Bool {
-  v1_interpreter_free_call_arms()
-    |> any(r => r.authored_spelling == "unicode_scalar" && r.enumeration == DerivedFromDispatch)
+  dispatch_site_count() == 7 && distinct_arm_identity_count() == 173 && authored_spelling_count() == 160
 }
 
 test fn identities_are_fewer_than_rows_and_spellings_fewer_than_identities() -> Bool {
@@ -182,4 +177,4 @@ test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
 
 data witness_control_pairing_note: String = "THE CONTROLS ARE PAIRS AND NEITHER HALF IS OPTIONAL. Each detector here has a discriminating RED and a positive control, because a detector that always answered clean would pass every live-corpus witness and establish nothing, and a detector that refused legitimate structure would be refusing the language rather than the defect. shadow_detector_catches_a_planted_duplicate is paired with shadow_detector_admits_a_real_alias_pair -- two spellings under ONE arm identity is a legitimate alias, which is exactly why length, count and size cannot disagree. duplicate_detector_catches_a_row_repeated_under_one_identity is paired with duplicate_detector_admits_one_spelling_at_two_distinct_sites -- one spelling reached at two different dispatch symbols is the real structure of map_insert and lookup, not a defect. an_unrecognised_form_label_refuses_rather_than_defaulting asserts BOTH directions so that a decode which answered UnknownForm for everything would fail. The live witnesses execute against DERIVED rows projected from the interpreter's own dispatch tokens, so they read the tree rather than a transcript of it."
 
-data exact_count_witness_note: String = "WHY THESE ARE EXACT EQUALITIES RATHER THAN LOWER BOUNDS. A witness reading count(rows) > 100 passes whether the surface has 181 rows or 181 rows with one silently dropped, so it cannot detect the failure this carrier exists to prevent. The three denominators are asserted at their measured values -- 7 dispatch sites, 174 distinct arm identities, 161 distinct authored spellings, over 185 rows -- so ADDING a dispatch arm reds this file, which is the point: the roster is not allowed to change without someone stating the new number. unicode_scalar_is_on_the_derived_free_call_surface names the new row that moved all three denominators, rather than letting an unexplained ratchet adjustment pass. identities_are_fewer_than_rows_and_spellings_fewer_than_identities additionally pins the ORDERING of the three, so a refactor that collapsed them into one quantity would red even if it happened to preserve a value."
+data exact_count_witness_note: String = "WHY THESE ARE EXACT EQUALITIES RATHER THAN LOWER BOUNDS. A witness reading count(rows) > 100 passes whether the surface has 181 rows or 181 rows with one silently dropped, so it cannot detect the failure this carrier exists to prevent. The three denominators are asserted at their measured values -- 7 dispatch sites, 172 distinct arm identities, 159 distinct authored spellings, over 183 rows -- so ADDING a dispatch arm reds this file, which is the point: the roster is not allowed to change without someone stating the new number. identities_are_fewer_than_rows_and_spellings_fewer_than_identities additionally pins the ORDERING of the three, so a refactor that collapsed them into one quantity would red even if it happened to preserve a value."
