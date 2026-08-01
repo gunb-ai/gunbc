@@ -213,13 +213,23 @@ test fn manifest_rows_nonempty_floor() -> Bool {
   (read_manifest_rows() |> count) > 150
 }
 
+fn roster_path_resolves(path: String) -> Bool {
+  let r = filesystem_read(path: path)
+  r.content != ""
+}
+
+test fn roster_paths_resolve_on_disk() -> Bool {
+  let union = concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows()))
+  all(union, p => roster_path_resolves(path: p))
+}
+
 test fn frontier_rosters_are_disjoint() -> Bool {
   let manifest = read_manifest_rows()
   all(scope_carrier_paths, p => !strings_contain(xs: scope_machinery_exempt_paths, s: p) && !strings_contain(xs: manifest, s: p))
     && all(scope_machinery_exempt_paths, p => !strings_contain(xs: manifest, s: p))
 }
 
-data wet_half_split_note: String = "The live observations (Filesystem.List directory walk of dag/extdeps; git.Core.DiffNameStatus freeze..HEAD) run in dag/test/claim/external_model_scope_live_cover_witness_test.dag — a wet-integration row, discovery-excluded per gunbc.ci_layer_roots (the d4bef96 floor red: hermetic discovery executed those service ops against the mock corpus, which publishes no operation for them). THIS file keeps everything hermetic-safe per-PR: the kernel RED/GREEN controls, the manifest/roster accounting via the filesystem_read carve-out, the carrier-content verification, and the RED controls of the shared pure decision fns (scope_cover_holds, manifest_freeze_holds on gunbc.extdeps_scope_frontier) that the wet file executes against live observations."
+data wet_half_split_note: String = "The live observations (Filesystem.List directory walk of dag/extdeps; git.Core.DiffNameStatus freeze..HEAD) run in dag/test/claim/external_model_scope_live_cover_witness_test.dag — a wet-integration row, discovery-excluded per gunbc.ci_layer_roots (the d4bef96 floor red: hermetic discovery executed those service ops against the mock corpus, which publishes no operation for them). THIS file keeps everything hermetic-safe per-PR: the kernel RED/GREEN controls, the manifest/roster accounting via the filesystem_read carve-out, the carrier-content verification, roster_paths_resolve_on_disk (per-PR roster-to-disk direction: every rostered path across all three rosters must resolve in the checkout — a stale or fabricated row reds via the interpreter's typed hermetic Read refusal, 'no mock_response for operation Read', verified by execution on a nonexistent probe path during development), and the RED controls of the shared pure decision fns (scope_cover_holds, manifest_freeze_holds on gunbc.extdeps_scope_frontier) that the wet file executes against live observations."
 
 test fn red_cover_check_refuses_unrostered_file() -> Bool {
   scope_cover_holds(
