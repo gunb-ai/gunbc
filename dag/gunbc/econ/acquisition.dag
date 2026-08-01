@@ -1,5 +1,6 @@
 module gunbc.econ.acquisition
 
+import std.algebra { FieldOfFractions }
 import std.measure { MoneyOnce, money_once_micros }
 import std.nat { Nat }
 import std.types { List, NonEmptyStr, list_length }
