@@ -9,11 +9,14 @@ import gunbc.live_rust_observation {
   LiveManifestParseRefused,
   LiveRevisionMismatch,
   LiveExpectationEmpty,
+  LiveExpectationMissing,
   LiveTrackedPopulationEmpty,
   LivePriorPopulationEmpty,
   LiveCargoTargetsEmpty,
-  admit_live_rust_observation
+  admit_live_rust_observation,
+  admit_current_actions_rust_observation
 }
+import extdeps.github.actions_environment { ActionsShaMissing, ActionsShaEmpty }
 import gunbc.stage0_rust_host_observation {
   RustSourceHostObservation,
   RustManifestObserved,
@@ -93,6 +96,28 @@ test fn control_2_absent_expectation_refuses_rather_than_passes() -> Bool {
     observation: populated_observation(revision: test_revision)
   ) {
     LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } } => !(detail == "")
+    _ => false
+  }
+}
+
+test fn control_missing_runner_sha_is_distinct_typed_refusal() -> Bool {
+  match admit_current_actions_rust_observation(
+    actions: ActionsShaMissing { detail: "GITHUB_SHA was not set" },
+    observation: populated_observation(revision: test_revision)
+  ) {
+    LiveObservationRefused { cause: LiveExpectationMissing { detail: detail } } =>
+      detail == "GITHUB_SHA was not set"
+    _ => false
+  }
+}
+
+test fn control_empty_runner_sha_is_distinct_typed_refusal() -> Bool {
+  match admit_current_actions_rust_observation(
+    actions: ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" },
+    observation: populated_observation(revision: test_revision)
+  ) {
+    LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } } =>
+      detail == "GITHUB_SHA was present but empty"
     _ => false
   }
 }

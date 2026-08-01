@@ -23,7 +23,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
 import std.types { CommitSha, ContentHash, Int, NonEmptyStr, String }
 import v2.std.algebra { length }
 
-data live_rust_observation_note: String = "THE CLOSING CONTRACT FOR THE RUST-SOURCE OBSERVATION: proof that a run observed the exact subject it claims to have tested, rather than proof that an observation function is callable.\n\nWHAT MAKES THIS EVIDENCE RATHER THAN A GREEN LIGHT. The expected revision is supplied by the workflow runner (extdeps.github.actions_environment GITHUB_SHA), NOT derived from the repository the observation reads. Deriving both sides with git would compare git to itself -- true by construction, incapable of failing, and exactly the reflection-evidence-for-structural-proof failure DESIGN names. Because the two sides have independent origins, a mismatch is reachable, and a reachable mismatch is what makes the match meaningful.\n\nWHY THE FOLD TAKES THE OBSERVATION AS A PARAMETER. admit_live_rust_observation is pure: it decides an outcome from a request and an observation it is handed. Only live_rust_observation_wet calls the host. That split is deliberate and load-bearing -- it means every control except the revision match can execute HERMETICALLY against constructed observations, at no host cost and with no Git mock anywhere, while the single genuinely-live claim stays in the one wet entry. A contract whose controls all required the host would have to be trusted; this one is mostly decidable.\n\nNO MOCKS, STATED SO IT IS NOT ADDED LATER AS A CONVENIENCE. Publishing static Git mock responses to make the live witness green would let a witness named for liveness pass against a constant sha. The hermetic controls below use constructed RustSourceHostObservation values, which is a different thing: they exercise the FOLD, and none of them claims to have observed anything.\n\nEVERY REFUSAL IS TYPED AND DISTINCT. The three host refusals stay separable (a Git failure is not a manifest read failure is not a TOML parse failure), an empty population is its own cause rather than a quiet success, and a revision mismatch names both sides. A failure arm refuses and never widens (DESIGN 5): there is no arm that accepts a partial population, and no arm that treats an unavailable expectation as satisfied."
+data live_rust_observation_note: String = "THE CLOSING CONTRACT FOR THE RUST-SOURCE OBSERVATION: proof that a run observed the exact subject it claims to have tested, rather than proof that an observation function is callable.\n\nWHAT MAKES THIS EVIDENCE RATHER THAN A GREEN LIGHT. The expected revision is supplied by the workflow runner (extdeps.github.actions_environment GITHUB_SHA), NOT derived from the repository the observation reads. Deriving both sides with git would compare git to itself -- true by construction, incapable of failing, and exactly the reflection-evidence-for-structural-proof failure DESIGN names. Because the two sides have independent origins, a mismatch is reachable, and a reachable mismatch is what makes the match meaningful.\n\nLAYERING. extdeps.github.actions_environment owns what GITHUB_SHA means; extdeps.shell shell.Env.Get owns reading a process environment variable. This module only projects that existing operation into the GitHub-owned observation type. It adds no GitHub-specific environment transport and no new Rust realization.\n\nWHY THE FOLD TAKES THE OBSERVATION AS A PARAMETER. admit_live_rust_observation is pure: it decides an outcome from a request and an observation it is handed. Only live_rust_observation_wet calls the host. That split is deliberate and load-bearing -- it means every control except the revision match can execute HERMETICALLY against constructed observations, at no host cost and with no Git mock anywhere, while the single genuinely-live claim stays in the one wet entry. A contract whose controls all required the host would have to be trusted; this one is mostly decidable.\n\nNO MOCKS, STATED SO IT IS NOT ADDED LATER AS A CONVENIENCE. Publishing static Git mock responses to make the live witness green would let a witness named for liveness pass against a constant sha. The hermetic controls below use constructed RustSourceHostObservation values, which is a different thing: they exercise the FOLD, and none of them claims to have observed anything.\n\nEVERY REFUSAL IS TYPED AND DISTINCT. The three host refusals stay separable (a Git failure is not a manifest read failure is not a TOML parse failure), missing and present-but-empty runner expectations are different arms, an empty population is its own cause rather than a quiet success, and a revision mismatch names both sides. A failure arm refuses and never widens (DESIGN 5): there is no arm that accepts a partial population, and no arm that treats an unavailable expectation as satisfied.\n\nCOST. The enrolled claim enters CI batch 4, the wet corpora batch. Its per_unit_ms is currently 0 under the declared D2 calibration gap, so this new unit is honestly unpriced rather than free; the batch's fixed overhead remains the active backstop until that calibration lands."
 
 type LiveRustObservationRequest {
   expected_repository_revision: CommitSha
@@ -115,6 +115,23 @@ fn current_actions_sha_observation() -> ActionsShaObservation {
         ActionsShaObserved { sha: value as CommitSha }
       }
     Absent => ActionsShaMissing { detail: "GITHUB_SHA was not set" }
+  }
+}
+
+fn admit_current_actions_rust_observation(
+  actions: ActionsShaObservation,
+  observation: RustSourceHostObservation
+) -> LiveRustObservationOutcome {
+  match actions {
+    ActionsShaMissing { detail: detail } =>
+      LiveObservationRefused { cause: LiveExpectationMissing { detail: detail } }
+    ActionsShaEmpty { detail: detail } =>
+      LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } }
+    ActionsShaObserved { sha: expected } =>
+      admit_live_rust_observation(
+        request: LiveRustObservationRequest { expected_repository_revision: expected },
+        observation: observation
+      )
   }
 }
 
