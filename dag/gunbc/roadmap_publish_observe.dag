@@ -1,6 +1,6 @@
 module gunbc.roadmap_publish_observe
 
-import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, Secret }
 import extdeps.git
 import extdeps.git {
   AdvertisedRef,
@@ -13,7 +13,12 @@ import gunbc.roadmap_publish {
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure,
   RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
+  PullRequestObservation, PullRequestsRead,
+  PublicationOutcome,
+  adjudicate_publication,
 }
+import extdeps.github.github { Repository, github_https_clone_url }
+import extdeps.github.pulls
 
 data observer_role_note: String = "THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES. gunbc.roadmap_publish adjudicates observations a caller already holds, which is what makes every one of its arms reachable from constructed values in a witness. That property is worth keeping, so the reading lives here instead: this module calls the transport, decides what was learned, and hands back an ordinary value. The split is the reason the refusal arms are constructible at all - a function that called the service itself could not build them, because a transport failure there is not a value.\\n\\nWhat this module must never become is a second adjudicator. It reports what it saw and refuses when it could not see; which outcome that implies is roadmap_publish's business."
 
@@ -86,5 +91,36 @@ fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
     exit_code: result.exit_code,
     stderr: result.stderr,
     advertised: result.advertised,
+  )
+}
+
+data pull_observation_transport_bound_note: String = "ONE ARM OF PullRequestObservation IS REACHABLE FROM THIS TRANSPORT AND ONE IS NOT, and saying so is the point of this note rather than an apology for it. github.Pulls.List declares its outputs for the 200 case, so a successful read builds PullRequestsRead here. A non-2xx does NOT arrive as a value: the REST dispatch raises, so control never returns to this function and PullRequestsUnreadable cannot be constructed from a failed call - only by a caller that already holds one.\\n\\nThat asymmetry against the remote-branch half above is not incidental. git.Core.LsRemoteHeads declares exit_code and stderr as outputs, so its failure IS a value; the REST path has no equivalent, which is exactly the response-table realization tracked as its own lane. Until that lands, the honest statement is that this function observes success and dies on failure, and the refusal arm remains witness-constructible rather than transport-reachable. It is NOT dressed up by wrapping the call in a fabricated refusal that no failure would ever produce.\\n\\nWhy the arm still exists in the type: a caller CAN hold a refusal - a prior read that failed, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it would push the ignorance-as-answer conflation back into every other producer."
+
+fn observe_pull_requests(auth_token: Secret, repo: Repository) -> PullRequestObservation {
+  let result = github.Pulls.List(
+    auth_token: auth_token,
+    owner: repo.owner,
+    repo: repo.name,
+  )
+  PullRequestsRead { pulls: result.pulls }
+}
+
+data repository_bound_observation_note: String = "BOTH READS NAME THE SAME REPOSITORY BY CONSTRUCTION, WHICH IS THE WHOLE REASON THIS FUNCTION EXISTS RATHER THAN TWO CALLS AT A CALL SITE. The remote is projected from the same Repository that supplies owner and name to the pull-request read, so there is no arrangement of arguments in which the ref advertisement and the pull request list describe different repositories.\\n\\nThe alternative that this deliberately forecloses is reading refs from the local alias `origin` while reading pull requests from an owner/name pair. Those two reads are only COINCIDENTALLY about one repository: `origin` is a fact about one checkout's configuration, and a checkout whose origin points elsewhere would produce a publication judgment that looks entirely ordinary and is about the wrong subject. Nothing in either result would reveal it. See repository_remote_url_note in extdeps.github.github for the projection and its citation.\\n\\nThis function calls the transport and adjudicates in one breath, which the observer note above otherwise warns against - so the boundary is stated: it performs no judgment of its own. It reads, and hands both observations to adjudicate_publication unchanged. Every arm of the result is decided there, over values, and remains reachable in a hermetic witness through that function directly."
+
+fn observe_publication_for_repository(
+  auth_token: Secret,
+  repo: Repository,
+  branch: NonEmptyStr,
+  expected_base: NonEmptyStr,
+  expected_head: CommitSha,
+) -> PublicationOutcome {
+  let remote = github_https_clone_url(repo: repo)
+  adjudicate_publication(
+    pulls: observe_pull_requests(auth_token: auth_token, repo: repo),
+    remotes: observe_remote_branches(remote: remote),
+    remote: remote,
+    branch: branch,
+    expected_base: expected_base,
+    expected_head: expected_head,
   )
 }
