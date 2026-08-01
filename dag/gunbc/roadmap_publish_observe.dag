@@ -151,14 +151,3 @@ fn observe_publication_for_subject(
   )
 }
 
-data gunbc_repository_single_authority_note: String = "ONE VALUE FOR THE REPOSITORY THIS PROJECT LIVES IN, because there were already three spellings of it and this lane would have made a fourth. gunbc.runner_host_deploy carries `org: gunb-ai`, gunbc.tools.review defaults a parameter to `owner: gunb-ai`, and gunbc.tools.review_codex declares `owner` and `repo` as separate data rows. Each is correct today and each can drift alone; none of them is a Repository, so none can be handed to github.Pulls.List or projected to a clone URL without re-pairing the two halves by hand.\\n\\nWHAT THIS DOES AND DOES NOT CLAIM: it is the authority for THIS lane, and the three sites above are not migrated here - that is a separate change touching deploy and review tooling, and folding it into a publication slice would bury it. What it does prevent is the publication lane adding a fourth. Dissolve-on: the three existing sites consume this value and their local spellings delete."
-
-fn gunbc_repository() -> Repository {
-  Repository {
-    owner: "gunb-ai",
-    name: "gunbc",
-    full_name: "gunb-ai/gunbc",
-    private: false,
-    default_branch: "main",
-  }
-}

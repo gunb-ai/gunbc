@@ -1,5 +1,6 @@
 module gunbc.tools.review_codex
 
+import gunbc.repository { gunbc_repository }
 import extdeps.shell
 
 data default_model: String = "gpt-5.4"
@@ -12,8 +13,8 @@ data cron_schedule: CronSchedule = CronSchedule {
   day_of_week: Wildcard
 }
 data cron_tag: String = "review-agent"
-data owner: String = "gunb-ai"
-data repo: String = "gunbc"
+data owner: String = gunbc_repository.owner
+data repo: String = gunbc_repository.name
 
 data github_auth: CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 data openai_auth: CredentialSource = std.credentials.EnvVar { name: "OPENAI_API_KEY" }

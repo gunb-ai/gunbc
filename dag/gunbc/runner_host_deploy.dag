@@ -1,5 +1,6 @@
 module gunbc.runner_host_deploy
 
+import gunbc.repository { gunbc_repository }
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
@@ -25,7 +26,7 @@ type GithubAppRunnerConfig {
 data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
   app_id: "2653532",
   installation_id: "104134109",
-  org: "gunb-ai",
+  org: gunbc_repository.owner,
   app_pem_secret: SecretRef {
     project: fleet_secrets_gcp_project,
     secret: "ci-github-app-private-key",

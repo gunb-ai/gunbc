@@ -131,6 +131,7 @@ import gunbc.roadmap_execution_contract {
   execution_contract_validation_summary,
 }
 import std.credentials { CredentialSource }
+import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publish {
   PublicationSubject,
   PublicationSubjectObservation,
@@ -148,7 +149,6 @@ import gunbc.roadmap_publish_observe {
   PublicationCredential,
   PublicationCredentialPresent, PublicationCredentialAbsent,
   observe_publication_for_subject,
-  gunbc_repository,
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap_validation_oracle {
@@ -3096,9 +3096,9 @@ fn belt_publication_subject_for(
           subject: PublicationSubject {
             node_id: node_id,
             attempt_key: attempt_key,
-            repository: gunbc_repository(),
+            repository: gunbc_repository,
             branch: branch as NonEmptyStr,
-            expected_base: gunbc_repository().default_branch as NonEmptyStr,
+            expected_base: gunbc_repository.default_branch as NonEmptyStr,
             expected_head: revision as CommitSha,
           },
         }
