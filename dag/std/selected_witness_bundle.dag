@@ -1,6 +1,7 @@
 module std.selected_witness_bundle
 
 import std.types { ContentHash, NonEmptyStr, List, Int, Bool }
+import std.verification { NanosecondDuration }
 import std.content_hash {
   content_hash_atom,
   content_hash_combine,
@@ -228,8 +229,8 @@ type NativeWitnessBundleExecutionReceipt {
   compiler_identity: ContentHash
   process_count: Int
   compile_skipped: Bool
-  native_wall_nanos: Int
-  interpreted_wall_nanos: Int
+  native_wall_nanos: NanosecondDuration
+  interpreted_wall_nanos: NanosecondDuration
   member_equivalence: List<NativeBundleMemberEquivalence>
   interpreter_frontier_count: Int
 }

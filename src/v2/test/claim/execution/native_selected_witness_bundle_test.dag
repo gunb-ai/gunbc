@@ -4,6 +4,7 @@ import std.content_hash { content_hash_atom }
 import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.algebra { Cons, Empty }
 import std.types { Bool, ContentHash, Int, NonEmptyStr, String }
+import std.verification { nanosecond_duration }
 import std.selected_witness_bundle {
   InterpreterFrontier,
   NativeBundleAdmitted,
@@ -466,8 +467,8 @@ fn selected_logic_receipt(
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: observation.warm.compile_skipped
-    native_wall_nanos: observation.warm_wall_nanos
-    interpreted_wall_nanos: interpreted_wall_nanos
+    native_wall_nanos: nanosecond_duration(count: observation.warm_wall_nanos)
+    interpreted_wall_nanos: nanosecond_duration(count: interpreted_wall_nanos)
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,
@@ -502,8 +503,8 @@ test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: 1
-    interpreted_wall_nanos: 1
+    native_wall_nanos: nanosecond_duration(count: 1)
+    interpreted_wall_nanos: nanosecond_duration(count: 1)
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,
@@ -738,8 +739,8 @@ fn selected_logic_sample_receipt() -> NativeWitnessBundleExecutionReceipt {
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: 1
-    interpreted_wall_nanos: 1
+    native_wall_nanos: nanosecond_duration(count: 1)
+    interpreted_wall_nanos: nanosecond_duration(count: 1)
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,

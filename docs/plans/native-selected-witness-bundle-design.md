@@ -47,7 +47,7 @@ Bundle admission is a separate check: a bundle compiled under a different compil
 The executing witness records:
 
 - cold build + run, then a second-process warm run with `compile_skipped = true`;
-- native and interpreted wall nanoseconds around the same three-member population;
+- native and interpreted wall durations around the same three-member population, grounded as `NanosecondDuration = Measure<Time, Nano, Nat>`;
 - per-member verdict equivalence for the correct bodies;
 - the all-wrong-body control, where all three native verdicts fail against canonical interpreter passes and the typed divergence refusal names `meet` first;
 - stale-compiler, identity-drift, no-native-realization count, missing-RED, process-count, and native/interpreter-divergence refusals.
