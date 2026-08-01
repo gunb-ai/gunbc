@@ -35,7 +35,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { Absent, List, Map, Present, Set }
+import v2.std.collection { Absent, List, Map, Optional, Present, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty }
 import std.integer {
@@ -49,7 +49,7 @@ import std.integer {
   ReturnSaturating
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_map }
+import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, Empty, fold_list, list_map, list_snoc_item }
 import v2.std.text { String }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
@@ -195,7 +195,7 @@ type LeanProofCheckSemantics<IRCarrier> {
 
 data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. LeanAdmittedBitWidth is sole_constructor — cross-module forge is refused; honest rung is accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test), not structural impossibility. Catalog fixed widths match admission Accepted before constructing LeanIntegerScalar; refusal stops at LeanWidthAdmissionRefused, not LeanIntegerWidth. Platform word is LeanPlatformWord. Signedness is std.integer.Signedness."
 
-data lean_overflow_semantics_admissibility_note: String = "P3b PR2 cluster-2 receipt (lean end-to-end): overflow axis is LeanAdmittedOverflowSemantics (sole_constructor) on LeanIntegerScalar only — BoolScalar, LeanWidthAdmissionRefused, and LeanOverflowAdmissionRefused carry no admitted overflow field. lean_admit_fixed_width_overflow_semantics is the admission boundary producing LeanOverflowAccepted with LeanAdmittedOverflowSemantics or LeanOverflowRefused pinning the observed semantics. Catalog fixed widths admit ReturnWrapping before constructing LeanIntegerScalar; refusal stops at LeanOverflowAdmissionRefused, not LeanIntegerScalar. Panic and trap remain distinct inhabitants of LeanOverflowRaiseEffect. Honest rung: accepted refinement with executing refusal (witness lean_overflow_semantics_witness_test), not structural impossibility."
+data lean_overflow_semantics_admissibility_note: String = "P3b PR2 cluster-2 receipt (lean end-to-end): overflow axis is LeanAdmittedOverflowSemantics (sole_constructor) on LeanIntegerScalar only — BoolScalar, LeanWidthAdmissionRefused, and LeanOverflowAdmissionRefused carry no admitted overflow field. lean_admit_fixed_width_overflow_semantics is the admission boundary producing LeanOverflowAccepted with LeanAdmittedOverflowSemantics or LeanOverflowRefused pinning the observed semantics. Catalog fixed widths admit ReturnWrapping before constructing LeanIntegerScalar; refusal stops at LeanOverflowAdmissionRefused, not LeanIntegerScalar. Admission-refused scalars publish no algebra inhabitance (lean_model_core_inhabitance_decls skips them). Panic and trap remain distinct inhabitants of LeanOverflowRaiseEffect. Honest rung: accepted refinement with executing refusal (witness lean_overflow_semantics_witness_test), not structural impossibility."
 
 type LeanOverflowRaiseEffect
   = LeanOverflowPanics
@@ -926,41 +926,47 @@ fn lean_bool_algebra_witness_node() -> Node {
 }
 }
 
-fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> Optional<AlgebraInhabitanceDecl> {
   let inhabitant = lean_primitive_facts_node(facts: facts)
   match facts.scalar {
+    LeanIntegerScalar { signedness, width, overflow: _ } => Present {
+      value: AlgebraInhabitanceDecl {
+        algebra: commutative_ring_type_node(inhabitant: inhabitant),
+        inhabitant: inhabitant,
+        witness: lean_integer_algebra_witness_node(
+          facts: facts,
+          signedness: signedness,
+          width: width
+        )
+      }
+    }
+    BoolScalar => Present {
+      value: AlgebraInhabitanceDecl {
+        algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+        inhabitant: inhabitant,
+        witness: lean_bool_algebra_witness_node()
+      }
+    }
+    LeanWidthAdmissionRefused { width: _ } => Absent
+    LeanOverflowAdmissionRefused { semantics: _ } => Absent
+  }
+}
 
-    LeanIntegerScalar { signedness, width, overflow: _ } => AlgebraInhabitanceDecl {
-      algebra: commutative_ring_type_node(inhabitant: inhabitant),
-      inhabitant: inhabitant,
-      witness: lean_integer_algebra_witness_node(
-        facts: facts,
-        signedness: signedness,
-        width: width
-      )
-    }
-    BoolScalar => AlgebraInhabitanceDecl {
-      algebra: boolean_algebra_type_node(inhabitant: inhabitant),
-      inhabitant: inhabitant,
-      witness: lean_bool_algebra_witness_node()
-    }
-    LeanWidthAdmissionRefused { width: _ } => AlgebraInhabitanceDecl {
-      algebra: boolean_algebra_type_node(inhabitant: inhabitant),
-      inhabitant: inhabitant,
-      witness: lean_bool_algebra_witness_node()
-    }
-    LeanOverflowAdmissionRefused { semantics: _ } => AlgebraInhabitanceDecl {
-      algebra: boolean_algebra_type_node(inhabitant: inhabitant),
-      inhabitant: inhabitant,
-      witness: lean_bool_algebra_witness_node()
-    }
+fn lean_inhabitance_decl_step(acc: List<AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<AlgebraInhabitanceDecl> {
+  match lean_scalar_algebra_inhabitance_optional(facts: facts) {
+    Present { value: decl } => list_snoc_item(xs: acc, item: decl)
+    Absent => acc
   }
 }
 
 fn lean_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  list_map(xs: lean_primitive_facts_catalog, f: fn(facts) {
-    lean_scalar_algebra_inhabitance(facts: facts)
-  })
+  fold_list(
+    xs: lean_primitive_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      lean_inhabitance_decl_step(acc: acc, facts: facts)
+    }
+  )
 }
 
 fn lean_model_core() -> ModelCore {
