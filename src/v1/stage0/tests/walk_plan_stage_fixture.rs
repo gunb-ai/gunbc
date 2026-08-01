@@ -107,6 +107,12 @@ fn relative_path_from_root(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
+fn looks_like_harness_authority(content: &str) -> bool {
+    content
+        .lines()
+        .any(|line| line.starts_with("harness_authority_path="))
+}
+
 fn locate_harness_authority_file(root: &Path) -> PathBuf {
     let target = root.join("target");
     let mut candidates = Vec::new();
@@ -119,6 +125,9 @@ fn locate_harness_authority_file(root: &Path) -> PathBuf {
             let Ok(content) = std::fs::read_to_string(&path) else {
                 continue;
             };
+            if !looks_like_harness_authority(&content) {
+                continue;
+            }
             let authority = parse_harness_authority(&content);
             let rel = relative_path_from_root(root, &path);
             if authority.harness_authority_rel == rel {
