@@ -1,9 +1,0 @@
-module gunbc.publication_cutover
-
-import std.types { CommitSha, FilePath, String }
-
-data publication_cutover_authority_note: String = "Fixed Stage-0 public publication cutover authority. The publication roster consumes these values, while the server-side gate independently validates its roster input against them before observing any diff. A roster edit therefore cannot advance the grandfathered corpus. Changing this authority is a distinct operator policy migration, not an ordinary grant-row edit; the gate remains fail-closed until its input agrees with this pin."
-
-data public_publication_root: FilePath = "."
-
-data public_publication_cutover_sha: CommitSha = "7ead65c60397231ac50b55898300f17191ad931f"
