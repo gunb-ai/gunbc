@@ -656,7 +656,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
       [ci_heal_branch_head_checkout_step()],
-      [ci_heal_binary_source_skew_guard_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_repo_local_git_config_step(), ci_heal_author_commit_upload_step()]
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_repo_local_git_config_step(), ci_heal_binary_source_skew_guard_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
     ),
     needs: ["build"],
     env: none,
