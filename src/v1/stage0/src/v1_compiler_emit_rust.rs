@@ -18081,9 +18081,18 @@ pub fn emit_rust_expr_record_lit(
                 Some(n) => n.clone(),
                 None => "".to_string(),
             };
-            let peeled_type_name = if (((parent_enum.clone() == None)
+            let concrete_peel_would_erase_optional_ctor = (is_optional_variant_name(
+                variant_name.clone(),
+            )
+                && !(variant_belongs_to_enum(
+                    emit_info.type_summaries.clone(),
+                    variant_name.clone(),
+                    authored_name_at(si.clone(), expanded_rt.clone()),
+                )));
+            let peeled_type_name = if ((((parent_enum.clone() == None)
                 && (expanded_rt.connective.clone() == Connective::Conj))
                 && (expanded_rt.ident_span.clone() != None))
+                && !(concrete_peel_would_erase_optional_ctor.clone()))
             {
                 {
                     let concrete = authored_name_at(si.clone(), expanded_rt.clone());

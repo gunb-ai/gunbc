@@ -6661,6 +6661,8 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
   }
 }
 
+data concrete_peel_optional_ctor_note: String = "The concrete-type peel below replaces the AUTHORED record-literal name with the resolved concrete type name, which is right for an ordinary record literal whose type resolved to a nominal carrier. It was WRONG for the built-in optional constructors: a cast reaching the payload (Present { value: text as Carrier }) gives the literal a concrete resolved type, so the peel fired and overwrote the authored `Present` with the payload's concrete name, and emit_typed_record_lit then never recognised the literal as an optional constructor. The lowering fell through to the generic arm and fabricated `Optional::String { value: .. }` — not a Rust constructor, so the emitted crate failed with E0433. This was the actual name-loss point (gunbc#7480); it is in the CALLER, not in emit_typed_record_lit's variant_surface_name fallback, which was the standing hypothesis until the peel was read. The gate is deliberately narrow: the peel is suppressed ONLY when the authored name is a built-in optional constructor AND the concrete type does not itself declare a variant of that name. A user-defined enum that declares its own `Present` still peels exactly as before, because variant_belongs_to_enum finds it there — so the special case keys on the resolved parent genuinely being the built-in Optional rather than on the spelling alone. Ordinary variants are untouched: is_optional_variant_name is false for them, so the guard collapses and the peel proceeds unchanged. The variant identity is preserved rather than inferred from the payload type. Evidence: dag/test/claim/emitter_optional_payload_cast_witness_test.dag, whose cast poles flip from known-red to green with this repair, alongside the ordinary-enum Wrap::Holds control that must stay green. This does NOT address nested-refinement lowering, which remains separately tracked by emitter_nested_refinement_cast_witness_test.dag."
+
 fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprRecordLit { parent_enum: parent_enum } =>
@@ -6672,7 +6674,13 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
       let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name)
       let variant_name = match tn { Present { value: n } => n  Absent => "" }
 
-      let peeled_type_name = if parent_enum == none && expanded_rt.connective == Conj && expanded_rt.ident_span != none {
+      let concrete_peel_would_erase_optional_ctor = is_optional_variant_name(name: variant_name)
+        && !variant_belongs_to_enum(
+          type_summaries: emit_info.type_summaries,
+          variant_name: variant_name,
+          enum_name: authored_name_at(source_indices: si, node: expanded_rt)
+        )
+      let peeled_type_name = if parent_enum == none && expanded_rt.connective == Conj && expanded_rt.ident_span != none && !concrete_peel_would_erase_optional_ctor {
         let concrete = authored_name_at(source_indices: si, node: expanded_rt)
         if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
       } else { tn }
