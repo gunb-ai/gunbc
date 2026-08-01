@@ -5805,6 +5805,58 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
+        // An active witness replay frame OUTRANKS the published-mock layer, because the
+        // two answer different questions and only one of them is the seam under test.
+        // `eval_mock_response` replays the operation RESULT off the declaration; a replay
+        // frame supplies the transport OBSERVATION and requires the real dispatcher fold
+        // to run on top of it. Letting the mock answer first is the exact fail-open the
+        // seam exists to close: the fixture greens while the dispatcher is never reached,
+        // so a broken dispatcher is unobservable in the mode CI actually runs (hermetic).
+        // Measured: `rest_transport_failure_is_persistable` returns true under `gunbc run
+        // --claim-run` (Wet, reaches `dispatch_rest`) and false under `claim_batch`
+        // (Hermetic, answered here) on one binary and one tree.
+        //
+        // Fail-closed on both arms, never a widen (§5): for a REST transport this routes
+        // to the ordinary wet dispatch so `rest_exchange_selection` decides, and that
+        // selection already refuses `RestReplayExchangeAbsent`/`Ambiguous` BEFORE any
+        // socket is opened — so an active frame with no matching fixture is a typed
+        // refusal, not a live request escaping hermetic mode. Every other transport
+        // refuses here rather than falling through: a declared replay intent this
+        // machinery cannot honor must stop the line, not silently degrade to the mock
+        // (which would fabricate a plausible answer) nor to a real shell/file effect.
+        //
+        // HAND-RUST GATE — seed-retained, lane `v1-materialization-kernel`
+        // (rn_53JPH6BB7G588K7DMZNWM0E3AS, docs/plans/witness-realization-plan.md),
+        // terminating at `v1-interpreter-quarantine` → `v1-interpreter-delete`; the same
+        // lane the `WITNESS_EVALUATION_FRAMES` deferral above names. Deletion condition,
+        // checkable by execution: when witnesses emit to native code and the emitted
+        // runtime realizes the evaluation frame, this arm deletes with that stack while
+        // `rest_transport_failure_is_persistable` stays green under the corpus runner
+        // without it. That witness is this arm's regression control, not merely the
+        // frame's — it reds if the mock layer ever preempts a replay frame again.
+        if current_witness_evaluation_frame().is_some() {
+            if is_shell_transport(transport.clone())
+                || is_file_transport(transport.clone(), ctx.si())
+            {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "witness replay frame is active for {key}, but its transport has no \
+                         replay realization — refusing (only REST exchanges are replayable; \
+                         the frame is not silently ignored)"
+                    ),
+                });
+            }
+            return dispatch_service_wet(
+                service_node,
+                op_node,
+                transport,
+                &param_env,
+                ctx,
+                &key,
+                expected,
+            );
+        }
+
         trace_emit(
             OutputChannel::Instrumentation,
             &format!("[hermetic:mock] {}.{}", service_name, op_name),
