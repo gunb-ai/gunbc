@@ -229,13 +229,6 @@ type NativeBundleMemberEquivalence {
   native: SelectedWitnessVerdict
 }
 
-type NativeBundleFamilyCutoverEvidence {
-  family: NonEmptyStr
-  planted_witness: SelectedWitnessIdentity
-  interpreter_oracle: SelectedWitnessVerdict
-  native_planted_body: SelectedWitnessVerdict
-}
-
 type NativeWitnessBundleExecutionReceipt {
   bundle_identity: NativeWitnessBundleIdentity
   compiler_identity: ContentHash
@@ -245,6 +238,11 @@ type NativeWitnessBundleExecutionReceipt {
   interpreted_wall_nanos: NanosecondDuration
   member_equivalence: List<NativeBundleMemberEquivalence>
   interpreter_frontier_count: Int
+}
+
+type NativeBundleFamilyCutoverEvidence {
+  planted_plan: SelectedWitnessPlan
+  execution: NativeWitnessBundleExecutionReceipt
 }
 
 type NativeWitnessBundleExecutionVerdict
@@ -339,17 +337,70 @@ fn first_native_bundle_divergence(
   )
 }
 
+fn native_bundle_red_receipt_matches_plan(
+  evidence: NativeBundleFamilyCutoverEvidence,
+  current_compiler_identity: ContentHash
+) -> Bool {
+  let planted_bundle = native_witness_bundle_from_plan(plan: evidence.planted_plan)
+  let required_members = planted_bundle.members
+  let required_roster = native_bundle_required_execution_roster_hash(members: required_members)
+  let observed_roster = native_bundle_observed_execution_roster_hash(
+    rows: evidence.execution.member_equivalence
+  )
+  evidence.planted_plan.compiler_identity == current_compiler_identity
+    && evidence.execution.compiler_identity == current_compiler_identity
+    && evidence.execution.process_count == 1
+    && evidence.execution.bundle_identity.structural_fingerprint == planted_bundle.identity.structural_fingerprint
+    && evidence.execution.interpreter_frontier_count == selected_witness_plan_interpreter_frontier_count(
+      plan: evidence.planted_plan
+    )
+    && required_members.count() > 0
+    && observed_roster == required_roster
+}
+
+fn planted_red_row_matches_production_member(
+  row: NativeBundleMemberEquivalence,
+  family: NonEmptyStr,
+  production_members: List<NativeWitnessBundleMember>
+) -> Bool {
+  fold(
+    production_members,
+    init: false,
+    f: (found, member) => found || (
+      member.realization.family == family
+        && row.family == family
+        && row.witness.entry == member.witness.entry
+        && row.witness.function == member.witness.function
+        && row.witness.subject_digest != member.witness.subject_digest
+        && row.interpreted == SelectedWitnessPassed
+        && row.native == SelectedWitnessFailed
+    )
+  )
+}
+
 fn family_has_discriminating_red(
   family: NonEmptyStr,
+  production_plan: SelectedWitnessPlan,
+  current_compiler_identity: ContentHash,
   evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> Bool {
+  let production_members = selected_witness_plan_native_members(plan: production_plan)
   fold(
     evidence,
     init: false,
-    f: (found, row) => found || (
-      row.family == family
-        && row.interpreter_oracle == SelectedWitnessPassed
-        && row.native_planted_body == SelectedWitnessFailed
+    f: (found, candidate) => found || (
+      native_bundle_red_receipt_matches_plan(
+        evidence: candidate,
+        current_compiler_identity: current_compiler_identity
+      ) && fold(
+        candidate.execution.member_equivalence,
+        init: false,
+        f: (row_found, row) => row_found || planted_red_row_matches_production_member(
+          row: row,
+          family: family,
+          production_members: production_members
+        )
+      )
     )
   )
 }
@@ -360,6 +411,8 @@ type NativeBundleFamilyRedSearch
 
 fn first_native_bundle_family_without_red(
   rows: List<NativeBundleMemberEquivalence>,
+  production_plan: SelectedWitnessPlan,
+  current_compiler_identity: ContentHash,
   evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> NativeBundleFamilyRedSearch {
   fold(
@@ -369,7 +422,12 @@ fn first_native_bundle_family_without_red(
       NativeBundleFamilyMissingRed { family: prior } =>
         NativeBundleFamilyMissingRed { family: prior }
       NativeBundleFamiliesHaveRed =>
-        if family_has_discriminating_red(family: row.family, evidence: evidence) {
+        if family_has_discriminating_red(
+          family: row.family,
+          production_plan: production_plan,
+          current_compiler_identity: current_compiler_identity,
+          evidence: evidence
+        ) {
           NativeBundleFamiliesHaveRed
         } else {
           NativeBundleFamilyMissingRed { family: row.family }
@@ -424,6 +482,8 @@ fn native_witness_bundle_execution_admit(
       }
       NativeBundleDivergenceAbsent => match first_native_bundle_family_without_red(
         rows: receipt.member_equivalence,
+        production_plan: plan,
+        current_compiler_identity: current_compiler_identity,
         evidence: family_evidence
       ) {
         NativeBundleFamilyMissingRed { family: family } =>
