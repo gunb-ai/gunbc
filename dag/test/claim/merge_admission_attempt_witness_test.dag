@@ -22,12 +22,9 @@ import gunbc.merge_admission {
 }
 import gunbc.commit_workflow {
   commit_gate_roster,
-  CommitSpecGate,
-  CommitWitnessClaim,
+  CommitCheckEnrollment,
   CommitCargoFmtCheck,
-  gate_eq,
 }
-import gunbc.ci_gate { PublicationPlacementGate }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
   merge_admission_tested_subject_schema,
@@ -106,33 +103,27 @@ test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
   ) { MergeAdmitted => true  _ => false }
 }
 
-fn publication_pre_activation_roster_hash() -> ContentHash {
+fn synthetic_changed_roster_hash() -> ContentHash {
   gate_roster_content_hash(
-    roster: fold(commit_gate_roster, init: [], f: fn(acc, row) {
-      match row.check {
-        CommitSpecGate { gate: gate } =>
-          if gate_eq(a: gate, b: PublicationPlacementGate) {
-            acc
-          } else {
-            concat(acc, [row])
-          }
-        CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => concat(acc, [row])
-        CommitCargoFmtCheck => concat(acc, [row])
-      }
-    })
+    roster: concat(commit_gate_roster, [CommitCheckEnrollment {
+      check: CommitCargoFmtCheck,
+      surfaces: [],
+    }])
   )
 }
 
-test fn pre_publication_wall_receipt_refuses_against_live_roster() -> Bool {
+data roster_staleness_control_recut_note: String = "RECUT AFTER #7591 INVALIDATED #7583. The 2026-08-01 incident motivates the roster-identity law, but this control does not reconstruct that incident by execution. Its stale roster is the live roster plus one synthetic, surface-less check enrollment, so the two hashes differ without naming any production gate or asserting any historical roster content. The prior control named PublicationPlacementGate; that coupled the regression control to one volatile roster member's continued existence, and the member's operator-ordered deletion invalidated the entire PR from a direction its original evidence did not watch. A control for a roster-identity law must exercise the SHAPE of a roster change, never a particular member, or its lifetime is bounded by the least stable thing it mentions. The stale arm must classify MergeDeniedStaleRoster and the live arm must classify MergeAdmitted, so an always-admit or always-refuse implementation fails one control."
+
+test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
   let receipt = MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
     tested_base_tree: base_tree_fx(),
-    gate_roster_hash: publication_pre_activation_roster_hash(),
+    gate_roster_hash: synthetic_changed_roster_hash(),
     conclusion: Success,
   }
-  (publication_pre_activation_roster_hash() != current_gate_roster_hash)
+  (synthetic_changed_roster_hash() != current_gate_roster_hash)
     && match classify_merge_admission_verdict_v2(
       current_attempt_id: attempt_a(),
       tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
@@ -149,7 +140,7 @@ test fn pre_publication_wall_receipt_refuses_against_live_roster() -> Bool {
     }
 }
 
-test fn current_publication_wall_receipt_admits_against_live_roster() -> Bool {
+test fn current_roster_receipt_admits_against_live_roster() -> Bool {
   let receipt = MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
