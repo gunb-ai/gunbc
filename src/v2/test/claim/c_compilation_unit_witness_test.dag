@@ -61,7 +61,7 @@ data hostile_slash: CompilationUnitId = "a/b" as CompilationUnitId
 data hostile_backslash: CompilationUnitId = "a\\b" as CompilationUnitId
 data hostile_quote: CompilationUnitId = "a\"b" as CompilationUnitId
 data hostile_newline: CompilationUnitId = "a\nb" as CompilationUnitId
-data hostile_cr: CompilationUnitId = "a\rb" as CompilationUnitId
+data hostile_cr: CompilationUnitId = "a\u{000d}b" as CompilationUnitId
 data hostile_nul: CompilationUnitId = "a\u{0000}b" as CompilationUnitId
 data hostile_dot: CompilationUnitId = "." as CompilationUnitId
 data hostile_dotdot: CompilationUnitId = ".." as CompilationUnitId
@@ -542,4 +542,12 @@ test fn probe_nul_literal_backslash() -> Bool {
 
 test fn probe_nul_len() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 9
+}
+
+test fn probe_nul_len1() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 1
+}
+
+test fn probe_nul_len8() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 8
 }
