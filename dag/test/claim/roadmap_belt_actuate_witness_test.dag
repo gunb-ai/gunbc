@@ -305,6 +305,22 @@ test fn witness_observe_empty_on_no_sessions() -> Bool {
   )) == 0
 }
 
+test fn witness_observe_empty_on_no_server_enoent() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "error connecting to /tmp/tmux-1000/srv1-green (No such file or directory)",
+  )) == 0
+}
+
+test fn witness_observe_refuses_connection_refused() -> Bool {
+  let stderr = "error connecting to /tmp/tmux-1000/srv1-green (Connection refused)"
+  match belt_observe_from_result(success: false, stdout: "", stderr: stderr) {
+    ObserveRefused { reason } => string_contains(s: reason, pattern: stderr)
+    Observed { live: _ } => false
+  }
+}
+
 test fn witness_observe_refuses_permission_error() -> Bool {
   is_observe_refused(o: belt_observe_from_result(
     success: false,
