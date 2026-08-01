@@ -734,19 +734,39 @@ scrutinee's inferred type `is_compiler_error` (a diagnostic already exists). The
 producer, and the route to that finding is itself a measurement lesson.** An earlier draft of this
 entry recorded the opposite — that the census could *represent* a counted advisory but no probe
 could *produce* one, so a `FrontierAccepted` disposition would be derived from an empty population.
-That was **wrong, and wrong because of the harness rather than the compiler**: the three candidate
-probes (a where-refinement alias, an unlisted-import shape, an unresolved method on a bare type
-parameter) were run through a fixture-only CLI compile whose single source root contains no `std`,
-so the refinement never resolved *to* a refinement and the negative result measured the closure.
-`compile_dag_diagnostic_census` resolves against the witness roots, and the same where-refinement
-source class fires `WhereRefinementUnenforced` as a counted advisory through it
-(`census_reports_advisory_severity_as_data`, green by execution). What prompted the recheck was a
-corpus reading rather than a hunch: the whole-tree census carries **1,981** `where-refinement`
-advisories, so the class was demonstrably reachable and a probe finding none was evidence against
-the probe. The general rule this pays for, and the one the baseline stage should carry: **a
-synthetic-probe negative is only as good as its closure** — a "class is unreachable" finding
-measured under a narrower source root than the class needs is an artifact, and the corpus
-prevalence is the cheap cross-check that catches it.
+That was **wrong, and wrong because of the probe rather than the compiler** — but the first
+diagnosis of *why* was also wrong, and the second correction is the load-bearing one. The initial
+account blamed the closure: the three candidates (a where-refinement alias, an unlisted-import
+shape, an unresolved method on a bare type parameter) ran through a fixture-only CLI compile whose
+single source root carries no `std`, so the refinement supposedly never resolved *to* a refinement.
+**A discriminating control refuted that.** Run under the full `dag` + `src/v2` pool, the
+where-refinement alias `type Tight = String where non_empty` is **still silent** — zero diagnostics
+with `std` fully available — while a *different* shape, a cast to `std`'s refined brand
+(`fn tighten(s: String) -> NonEmptyStr { s as NonEmptyStr }`), fires `WhereRefinementUnenforced` as
+a counted advisory on the same harness. So the closure was not the discriminator between the
+failure and the success: **the probe SHAPE was.** The locally-declared `where`-alias does not
+exercise the judgment at all (its predicate resolves nowhere in either closure); the cast to a
+declared refined type does. The corrected rule, and the one the baseline stage should carry:
+**a synthetic-probe negative is only as good as the probe's ability to reach the judgment**, and
+that can fail two independent ways — a closure too narrow for the judgment's machinery, *or* a
+shape that never triggers it. Corpus prevalence is the cheap cross-check for both: the whole-tree
+census carries **1,981** `where-refinement` advisories, so the class was demonstrably reachable
+while the probe found none, and a probe disagreeing with corpus prevalence is evidence against the
+probe. Both the original claim and its first correction are recorded here rather than overwritten,
+because the sequence is the lesson: a plausible mechanism accepted without a discriminating control
+is how a wrong explanation survives its own correction. **PROBE-ADEQUACY RECEIPTS for the four
+below-floor findings, since the rule above applies first to the rows that prompted it.** Each was
+originally measured under a fixture-only closure and has been re-run under the full `dag` +
+`src/v2` pool; the discriminating control for the re-run is the refined-brand cast above, which
+surfaces a diagnostic on that same harness, so a zero result there is the compiler's silence and
+not the harness's. `generic-instantiation` (`Boxed { inner: "not an int" }` at `Boxed<Int>`) — full
+pool, zero diagnostics, **verdict unchanged**. `field-through-generics` (`t.no_such_field` on a
+bare `T`) — full pool, zero diagnostics, **verdict unchanged**. `parse-list-separator` (three
+elements, one comma dropped) — full pool, zero diagnostics, **verdict unchanged**.
+`exhaustiveness-type-variable-scrutinee` (`match t { Red => 1 }` on `T`) — full pool, zero
+diagnostics, **verdict unchanged**. All four declare only local types over kernel scalars, so the
+wider pool adds no machinery they depend on; the receipts record that this was *measured* rather
+than argued.
 
 ## 11. Audit queue
 
