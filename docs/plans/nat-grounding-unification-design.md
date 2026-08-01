@@ -61,7 +61,7 @@ Sample floor entries with live co-occurrence (first 10): `dag/test/claim/ci_mate
 | `nat_add` | fn | |
 | `nat_mul` | fn | |
 | `nat_compare` | fn | coproduct `==` / `<` |
-| `is_zero` | fn | |
+| `is_zero` | fn | manual `match` on coproduct (§3.3 A′ — must dissolve into `nat_cata`) |
 | `nat_lte` | fn | |
 | `nat_gte` | fn | |
 | `nat_additive_commutative_monoid` | data | `CommutativeMonoid<Nat>` witness |
@@ -75,7 +75,8 @@ Imports: `std.algebra` (structures + `Ordering`), `v2.std.node { Symbol }`, `v2.
 
 | category | decls | action |
 | --- | --- | --- |
-| **A — structural authority (MOVE to `std.nat`)** | `Nat`, `Zero`, `Succ`, `nat_cata`, `nat_add`, `nat_mul`, `is_zero`, `nat_lte`, `nat_gte`, `nat_compare` (coproduct impl), `nat_additive_commutative_monoid`, `nat_semiring` | Coproduct + Peano ops are the grounded model (#5428); become the single `dag/std/nat.dag` authority. |
+| **A — structural authority (MOVE to `std.nat`)** | `Nat`, `Zero`, `Succ`, `nat_cata`, `nat_add`, `nat_mul`, `nat_lte`, `nat_gte`, `nat_compare` (coproduct impl), `nat_additive_commutative_monoid`, `nat_semiring` | Coproduct + Peano ops are the grounded model (#5428); become the single `std.nat` authority. |
+| **A′ — MOVE with predicate dissolution (not verbatim)** | `is_zero` | Today `v2.std.nat.is_zero` is a forbidden coproduct predicate — manual `match` on `Zero`/`Succ` while `nat_cata` is already the canonical fold. Migration **re-expresses** as `nat_cata(n: n, zero: true, succ: fn(_) { false })` (or an equivalent derived one-liner) and **deletes** the manual walker; never copy the match arm verbatim into `std.nat`. |
 | **B — DELETE (alias dies)** | dag `Nat = CommutativeSemiring<Magnitude>` | Not a second definition — replaced by coproduct + inhabitance-derived semiring instance (`nat_semiring` data). |
 | **C — STAY in v2 tree (node-bound)** | `NatAlgebraLawObligation`, `nat_declared_algebra_law_obligations` | Import `v2.std.node { Symbol }`; cannot cross to `dag/std` until `node` defork (audit category (c)). Thin `v2.std.nat` (or `v2.std.algebra_laws`) module importing `std.nat` for `Nat`/`Zero`/`Succ`/ops. |
 | **D — MERGE / re-home** | dag `nat_max`, `nat_min` | 4 + 2 live importer modules in `dag/` (§4.0); re-express on coproduct `nat_compare` or move beside coproduct ops in unified `std.nat`. |
@@ -137,7 +138,7 @@ Zero `dag/` importer paths contain `fixture`. The census subject is the **61 mod
 | entanglement | evidence | consequence |
 | --- | --- | --- |
 | **#5428 numeric tower (runtime)** | `v1_interpreter.rs` Nat eval; `cross_representation_equality_test`; `std_coercion.rs` grounded_primitive note | Coproduct is the **realized** form; dag semiring alias is stale relative to runtime. |
-| **`integer` fork** | `dag/std/integer.dag:21` `Int = AbelianGroup<GroupCompletion<Nat>`; `src/v2/std/integer.dag:32` `Int = GroupCompletion<v2.std.nat.Nat>` | Unification must land **with** integer repoint; `Nat` in `GroupCompletion<Nat>` must be the coproduct authority. |
+| **`integer` fork** | `std.integer.Int` (`AbelianGroup<GroupCompletion<Nat>>`) vs `v2.std.integer.Int` (`GroupCompletion<v2.std.nat.Nat>`) | Unification must land **with** integer repoint; `Nat` in `GroupCompletion<Nat>` must be the coproduct authority. |
 | **`float` fork** | imports `v2.std.nat` ops | Same tower lane. |
 | **Emitter / trait derive** | `GroupCompletion<Nat>` phantom params; `trait_derive_shape_grounding_lane_handoff` | `Nat` coproduct must be the type arg GroupCompletion carries after merge. |
 | **Algebra law roster** | `nat_declared_algebra_law_obligations` + generated conformance | Ops + instances must stay consistent with unified `std.nat`. |
@@ -174,7 +175,7 @@ This is **not** "delete v2 copy and repoint" alone: the dag-side alias must be *
 | wall | detail |
 | --- | --- |
 | **Law roster node-binding** | `nat_declared_algebra_law_obligations` uses `Symbol` — stays v2-side (category C) like algebra encoding fns. |
-| **Qualified `v2.std.nat.Nat` in integer** | `GroupCompletion<v2.std.nat.Nat>` must become `GroupCompletion<Nat>` with unambiguous `std.nat` import — 5 sites in `integer.dag`. |
+| **Qualified `v2.std.nat.Nat` in integer** | `v2.std.integer.Int` body cites `GroupCompletion<v2.std.nat.Nat>` | Must become `GroupCompletion<Nat>` under `std.nat` after repoint. |
 | **Co-occurrence surface** | 138 floor entries — any partial collapse must be **atomic** (§5 auto-committer hazard). |
 
 **Explicitly NOT this lane's first PR:** full `integer`/`float` tower, `GroupCompletion<M>` pair construction (#7197), hollow-alias wall — tracked separately.
