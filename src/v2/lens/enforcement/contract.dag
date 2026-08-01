@@ -503,7 +503,13 @@ data lens_contract_vacuity: LensContract = {
   entry: lens_registry_v0_vacuity,
   mode: AuditOnly,
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: BoundConsumerWitness {
+    witness: ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/vacuity_consumer_witness_test.dag",
+      function: "vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate",
+      kind: CorpusWitnessKind
+    }
+  },
   exemptions: [],
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
 }
