@@ -3,7 +3,7 @@ module extdeps.vendor.microsoft
 import extdeps.vendor { Vendor }
 import extdeps.securities { Securities }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -11,6 +11,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=MSFT"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { name: "Microsoft Corporation" },
+  revision: none,
+  first_citation: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=MSFT"
+    }
+  },
+  further_citations: []
 }
 
 data microsoft: Vendor<Securities> = Vendor { legal_name: "Microsoft Corporation" }

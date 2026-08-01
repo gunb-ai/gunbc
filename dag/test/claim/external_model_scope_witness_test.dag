@@ -1,0 +1,239 @@
+module test.claim.external_model_scope_witness
+
+import extdeps.filesystem.filesystem_io
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+  ModeledExtdepsModule, DownstreamSupportRoster,
+  ScopeAdmission, ScopeAdmitted, ScopeRefused,
+  ScopeFinding, ForeignSubjectRow, ConsumerCoverageInUpstream,
+  admit_external_model_scope, admit_external_model_scope_portfolio,
+  external_model_scope_citations,
+}
+import extdeps.uri { Uri, Https }
+import gunbc.extdeps_scope_frontier {
+  scope_carrier_paths, scope_machinery_exempt_paths,
+  extdeps_scope_frontier_paths, extdeps_scope_frontier_declared_count,
+}
+import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
+import extdeps.vendor.microsoft
+import extdeps.vendor.atlassian
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data external_model_scope_witness_note: String = "RED and GREEN controls for the ExternalModelScope admission gate, in exactly the operator-verdict shapes (gunbc#7556): RED = a generic browser module declaring a Chromium subject scope while carrying Chrome | Firefox | Safari concrete rows refuses; GREEN = a shared navigation shape plus separate Chromium and Firefox modules plus a downstream support roster admits. Plus the staged-enrollment frontier accounting (counted, disjoint, live-tree covered) for gunbc.extdeps_scope_frontier."
+
+fn subject(name: String) -> ExternalSubjectRef {
+  ExternalSubjectRef { name: name }
+}
+
+fn synthetic_scope(subject_name: String, locator: String) -> ExternalModelScope {
+  ExternalModelScope {
+    subject: subject(name: subject_name),
+    revision: none,
+    first_citation: ExternalAuthority {
+      uri: Uri { scheme: Https, locator: locator }
+    },
+    further_citations: []
+  }
+}
+
+fn admission_refused_with_count(a: ScopeAdmission, n: Int) -> Bool {
+  match a {
+    ScopeAdmitted => false
+    ScopeRefused { finding_count: c, findings: _ } => c == n
+  }
+}
+
+fn admission_admitted(a: ScopeAdmission) -> Bool {
+  match a {
+    ScopeAdmitted => true
+    ScopeRefused { finding_count: _, findings: _ } => false
+  }
+}
+
+fn finding_is_foreign(f: ScopeFinding) -> Bool {
+  match f {
+    ForeignSubjectRow { module: _, declared: _, foreign: _ } => true
+    ConsumerCoverageInUpstream { module: _, coverage_row: _ } => false
+  }
+}
+
+data red_control_note: String = "The first red control is exactly the gunbc#7556 shape: one generic browser module, a Chromium subject scope, and Chrome | Firefox | Safari concrete product rows — three independently governed subjects in one module, refused with one located ForeignSubjectRow per foreign subject."
+
+fn red_generic_browser_module() -> ModeledExtdepsModule {
+  ModeledExtdepsModule {
+    module: "extdeps.browser",
+    scope: synthetic_scope(subject_name: "Chromium", locator: "www.chromium.org/developers"),
+    product_fact_subjects: [
+      subject(name: "Google Chrome"),
+      subject(name: "Mozilla Firefox"),
+      subject(name: "Apple Safari")
+    ],
+    consumer_coverage_rows: []
+  }
+}
+
+test fn red_generic_browser_module_with_product_rows_refused() -> Bool {
+  let a = admit_external_model_scope(m: red_generic_browser_module())
+  admission_refused_with_count(a: a, n: 3)
+}
+
+test fn red_generic_browser_module_findings_are_all_foreign_subject_rows() -> Bool {
+  match admit_external_model_scope(m: red_generic_browser_module()) {
+    ScopeAdmitted => false
+    ScopeRefused { finding_count: _, findings: fs } =>
+      all(fs, f => finding_is_foreign(f: f))
+  }
+}
+
+test fn red_consumer_coverage_in_upstream_refused() -> Bool {
+  let m = ModeledExtdepsModule {
+    module: "extdeps.browser.chromium",
+    scope: synthetic_scope(subject_name: "Chromium", locator: "www.chromium.org/developers"),
+    product_fact_subjects: [subject(name: "Chromium")],
+    consumer_coverage_rows: ["served_surface_chromium_support_state"]
+  }
+  match admit_external_model_scope(m: m) {
+    ScopeAdmitted => false
+    ScopeRefused { finding_count: c, findings: fs } =>
+      c == 1 && all(fs, f => !finding_is_foreign(f: f))
+  }
+}
+
+data green_control_note: String = "The green control is the decomposed portfolio: a shared navigation-shape module with no product rows, one module per implementation subject (Chromium, Firefox), and the coverage state carried by a DownstreamSupportRoster in the product/workflow layer rather than by any upstream module."
+
+fn green_portfolio() -> List<ModeledExtdepsModule> {
+  [
+    ModeledExtdepsModule {
+      module: "extdeps.whatwg.html_navigation",
+      scope: synthetic_scope(subject_name: "WHATWG HTML Standard", locator: "html.spec.whatwg.org/multipage/browsing-the-web.html"),
+      product_fact_subjects: [],
+      consumer_coverage_rows: []
+    },
+    ModeledExtdepsModule {
+      module: "extdeps.browser.chromium",
+      scope: synthetic_scope(subject_name: "Chromium", locator: "www.chromium.org/developers"),
+      product_fact_subjects: [subject(name: "Chromium")],
+      consumer_coverage_rows: []
+    },
+    ModeledExtdepsModule {
+      module: "extdeps.browser.firefox",
+      scope: synthetic_scope(subject_name: "Mozilla Firefox", locator: "www.mozilla.org/en-US/firefox/releases/"),
+      product_fact_subjects: [subject(name: "Mozilla Firefox")],
+      consumer_coverage_rows: []
+    }
+  ]
+}
+
+fn green_downstream_roster() -> DownstreamSupportRoster {
+  DownstreamSupportRoster {
+    module: "gunbc.served_surface_browser_support",
+    coverage_rows: ["chromium_observed_receipt", "firefox_unobserved_obligation"]
+  }
+}
+
+test fn green_decomposed_portfolio_with_downstream_roster_admitted() -> Bool {
+  let roster = green_downstream_roster()
+  admission_admitted(a: admit_external_model_scope_portfolio(mods: green_portfolio()))
+    && (roster.coverage_rows |> count) == 2
+}
+
+test fn adopted_vendor_scopes_admitted_by_execution() -> Bool {
+  let ms = ModeledExtdepsModule {
+    module: "extdeps.vendor.microsoft",
+    scope: extdeps.vendor.microsoft.extdeps_model_scope,
+    product_fact_subjects: [extdeps.vendor.microsoft.extdeps_model_scope.subject],
+    consumer_coverage_rows: []
+  }
+  let at = ModeledExtdepsModule {
+    module: "extdeps.vendor.atlassian",
+    scope: extdeps.vendor.atlassian.extdeps_model_scope,
+    product_fact_subjects: [extdeps.vendor.atlassian.extdeps_model_scope.subject],
+    consumer_coverage_rows: []
+  }
+  admission_admitted(a: admit_external_model_scope_portfolio(mods: [ms, at]))
+    && (external_model_scope_citations(scope: extdeps.vendor.microsoft.extdeps_model_scope) |> count) == 1
+    && (external_model_scope_citations(scope: extdeps.vendor.atlassian.extdeps_model_scope) |> count) == 1
+    && extdeps.vendor.microsoft.extdeps_model_scope.subject.name == "Microsoft Corporation"
+    && extdeps.vendor.atlassian.extdeps_model_scope.subject.name == "Atlassian Corporation"
+}
+
+test fn preflight_rows_counted() -> Bool {
+  (extdeps_modeling_preflight_rows |> count) == 8
+}
+
+fn strings_contain(xs: List<String>, s: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || x == s })
+}
+
+fn scope_roster_union() -> List<String> {
+  concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, extdeps_scope_frontier_paths))
+}
+
+test fn frontier_declared_count_matches_rows() -> Bool {
+  (extdeps_scope_frontier_paths |> count) == extdeps_scope_frontier_declared_count
+}
+
+test fn frontier_rosters_are_disjoint() -> Bool {
+  all(scope_carrier_paths, p => !strings_contain(xs: scope_machinery_exempt_paths, s: p) && !strings_contain(xs: extdeps_scope_frontier_paths, s: p))
+    && all(scope_machinery_exempt_paths, p => !strings_contain(xs: extdeps_scope_frontier_paths, s: p))
+}
+
+type ScopeCoverWalk {
+  files: List<String>
+  walk_failures: Int
+}
+
+fn scope_cover_walk(path: String) -> ScopeCoverWalk {
+  let l = Filesystem.List(path: path)
+  if l.success {
+    if l.entries == "" {
+      ScopeCoverWalk { files: [], walk_failures: 0 }
+    } else {
+      fold(split(l.entries, separator: "\n"), init: ScopeCoverWalk { files: [], walk_failures: 0 }, f: fn(acc, name) {
+        let child = concat(path, "/", name)
+        if name.ends_with(suffix: ".dag") {
+          ScopeCoverWalk { files: concat(acc.files, [child]), walk_failures: acc.walk_failures }
+        } else {
+          let sub = scope_cover_walk(path: child)
+          ScopeCoverWalk { files: concat(acc.files, sub.files), walk_failures: acc.walk_failures + sub.walk_failures }
+        }
+      })
+    }
+  } else {
+    ScopeCoverWalk { files: [], walk_failures: 1 }
+  }
+}
+
+fn scope_cover_holds(walked: List<String>, union: List<String>) -> Bool {
+  all(walked, p => strings_contain(xs: union, s: p))
+    && all(union, p => strings_contain(xs: walked, s: p))
+}
+
+test fn red_cover_check_refuses_unrostered_file() -> Bool {
+  scope_cover_holds(
+    walked: ["dag/extdeps/a.dag", "dag/extdeps/unrostered_probe.dag"],
+    union: ["dag/extdeps/a.dag"]
+  ) == false
+}
+
+test fn red_cover_check_refuses_stale_roster_row() -> Bool {
+  scope_cover_holds(
+    walked: ["dag/extdeps/a.dag"],
+    union: ["dag/extdeps/a.dag", "dag/extdeps/departed_stale_row.dag"]
+  ) == false
+}
+
+test fn red_cover_walker_refuses_missing_root() -> Bool {
+  let w = scope_cover_walk(path: "dag/extdeps_nonexistent_probe_root")
+  w.walk_failures == 1 && (w.files |> count) == 0
+}
+
+test fn frontier_cover_of_live_extdeps_tree_holds() -> Bool {
+  let w = scope_cover_walk(path: "dag/extdeps")
+  w.walk_failures == 0
+    && scope_cover_holds(walked: w.files, union: scope_roster_union())
+    && (w.files |> count) > 150
+}

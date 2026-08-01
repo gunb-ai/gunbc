@@ -1,0 +1,60 @@
+module gunbc.plans.extdeps_modeling_preflight
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.types { NonEmptyStr }
+import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
+
+data extdeps_modeling_preflight_law: String = "Normative authority rows for the extdeps modeling preflight (operator verdict on gunbc#7556; DESIGN §3 'External upstream decomposition'): before any new extdeps work, the agent returns this table, and no implementation starts until the table is coherent. The typed rows below are the single authority; the registered plan doc renders its table FROM these rows (derive, never a second copy)."
+
+type ExtdepsPreflightRow {
+  question: NonEmptyStr
+  required_answer: NonEmptyStr
+}
+
+data extdeps_modeling_preflight_rows: List<ExtdepsPreflightRow> = [
+  ExtdepsPreflightRow { question: "Independently governed upstream subjects", required_answer: "Enumerated by name" },
+  ExtdepsPreflightRow { question: "Shared standard/interface concepts", required_answer: "Enumerated separately" },
+  ExtdepsPreflightRow { question: "Product-/engine-specific facts", required_answer: "Assigned to their upstream modules" },
+  ExtdepsPreflightRow { question: "Local execution observations", required_answer: "Assigned downstream" },
+  ExtdepsPreflightRow { question: "Consumer policy or coverage", required_answer: "Assigned downstream" },
+  ExtdepsPreflightRow { question: "Exact version/build authority", required_answer: "Named for each upstream" },
+  ExtdepsPreflightRow { question: "Existing model searched", required_answer: "Symbols and modules listed" },
+  ExtdepsPreflightRow { question: "Proposed file map", required_answer: "One subject per implementation module" }
+]
+
+fn extdeps_preflight_table() -> MarkdownBlock {
+  TableBlock {
+    header: row(cells: [cell(text: "Question"), cell(text: "Required answer")]),
+    alignments: [AlignNone, AlignNone],
+    rows: map(extdeps_modeling_preflight_rows, r =>
+      row(cells: [cell(text: r.question), cell(text: r.required_answer)])
+    ),
+  }
+}
+
+fn extdeps_modeling_preflight_body() -> List<MarkdownBlock> {
+  [
+    BlockquoteBlock { blocks: [p(text: "Operator-directed (verdict on gunbc#7556, 2026-08-01). Normative source: DESIGN §3 → \"External upstream decomposition\". The typed rows live in `gunbc.plans.extdeps_modeling_preflight` `extdeps_modeling_preflight_rows`; this table is rendered from them.")] },
+    h2(text: "The preflight"),
+    p(text: "Before any new extdeps work, the agent should return this table:"),
+    extdeps_preflight_table(),
+    p(text: "No implementation starts until the table is coherent."),
+    h2(text: "How the answers are checked"),
+    ul(items: [
+      li(text: "**One subject per module** is the `ExternalModelScope` contract (`extdeps.external_authority` — subject, optional revision, one-or-more citations), gated by `admit_external_model_scope`: a product-/engine-specific fact row attributed to a subject other than the module's declared subject refuses (`ForeignSubjectRow`), and consumer coverage state stored in an upstream module refuses (`ConsumerCoverageInUpstream`)."),
+      li(text: "**Observations and coverage live downstream** — receipts in the observing product/workflow layer (`DownstreamSupportRoster`), never `Unobserved` properties authored inside an upstream module."),
+      li(text: "**Enrollment is staged** behind the declared, counted frontier `gunbc.extdeps_scope_frontier`: every `dag/extdeps` file is a scope carrier, machinery-exempt, or a counted frontier row; the cover witness refuses a file in none of the three."),
+      li(text: "**The non-precedent counterexample** is `extdeps.browser` (its disposition note names the conflation and the eventual split: `extdeps.automation.playwright` / agnostic interaction shape / transport realization)."),
+    ]),
+  ]
+}
+
+data extdeps_modeling_preflight_plan: Plan = Plan {
+  slug: "extdeps-modeling-preflight",
+  title: "extdeps modeling preflight — one subject per upstream module",
+  body: extdeps_modeling_preflight_body(),
+  dissolution: HasTrigger {
+    text: "Dissolves when the preflight's decidable half is machine-consumed end-to-end: the ExternalModelScope requirement is promoted from the gunbc.extdeps_scope_frontier staging roster to a v2.lens.mandatory_tag region (compile-grain wall), at which point the subject/coverage questions are enforced by construction and this doc's residue (the genuinely judgment-shaped rows: existing-model search, proposed file map) folds into DESIGN §3's standing text."
+  }
+}
