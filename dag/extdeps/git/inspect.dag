@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data git_inspect_service_note: String = "Read-only repository-root, revision, and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. This is a MOVE of the existing Toplevel, HeadCommit, and ShowTree operations, including their argv, result fields, mock, and exit meanings; no second git observation surface remains in extdeps.git."
+data git_inspect_service_note: String = "Read-only repository-root, revision, and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this same inspection authority for revision-addressed Rust-source observation. No second Git inspection surface remains in extdeps.git."
 
 service git.Inspect {
   operation Toplevel {
@@ -39,6 +39,37 @@ service git.Inspect {
     exit {
       0 => Unit
       128 => String "Not a git repository"
+    }
+  }
+
+  operation MergeBase {
+    input { left: GitRef, right: GitRef }
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "merge-base", "{left}", "{right}"] }
+    exit {
+      0 => Unit
+      1 => String "No merge base"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ListTreePathsAtRevision {
+    input { ref: GitRef }
+    output {
+      paths_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-rz", "--name-only", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
     }
   }
 

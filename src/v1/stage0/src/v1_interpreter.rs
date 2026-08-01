@@ -9330,6 +9330,42 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
+            arm "free_call.parse_stage0_cargo_manifest_bins" { "parse_stage0_cargo_manifest_bins" } => {
+                let manifest = expect_str(
+                    $positional.first().copied(),
+                    "parse_stage0_cargo_manifest_bins manifest",
+                )?;
+                let parsed = crate::cli_run::parse_stage0_cargo_manifest_bin_paths(&manifest);
+                let variant = match parsed {
+                    crate::cli_run::Stage0CargoManifestBinParse::Parsed {
+                        authored_relative_paths,
+                    } => Value::Variant {
+                        type_name: $ctx.sym("CargoManifestBinParse"),
+                        variant_name: $ctx.sym("CargoManifestBinsParsed"),
+                        fields: Rc::new(sorted_fields(vec![(
+                            $ctx.sym("authored_relative_paths"),
+                            list_value(
+                                authored_relative_paths
+                                    .into_iter()
+                                    .map(Value::Str)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        )])),
+                    },
+                    crate::cli_run::Stage0CargoManifestBinParse::Refused { detail } => {
+                        Value::Variant {
+                            type_name: $ctx.sym("CargoManifestBinParse"),
+                            variant_name: $ctx.sym("CargoManifestBinsParseRefused"),
+                            fields: Rc::new(sorted_fields(vec![(
+                                $ctx.sym("detail"),
+                                Value::Str(detail),
+                            )])),
+                        }
+                    }
+                };
+                Ok(Some(variant))
+            },
+
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),

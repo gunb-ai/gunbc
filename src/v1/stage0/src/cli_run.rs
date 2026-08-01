@@ -192,6 +192,131 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
     )
 }
 
+/// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
+/// Git effects, repository policy, path normalization, and lifecycle classification stay in
+/// `.dag`; this bridge returns only the authored `[[bin]].path` facts or a typed parse refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stage0CargoManifestBinParse {
+    Parsed {
+        authored_relative_paths: Vec<String>,
+    },
+    Refused {
+        detail: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stage0CargoBinManifestParseRefusal {
+    BinTableMissingPath,
+    BinTablePathUnquoted,
+    BinTableTomlParse,
+}
+
+impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BinTableMissingPath => write!(f, "[[bin]] table missing path"),
+            Self::BinTablePathUnquoted => {
+                write!(f, "[[bin]] path value must be a TOML string")
+            }
+            Self::BinTableTomlParse => write!(f, "Cargo manifest is not valid TOML"),
+        }
+    }
+}
+
+fn stage0_cargo_bin_paths_from_manifest_text(
+    content: &str,
+) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
+    let document: toml::Table = toml::from_str(content)
+        .map_err(|_| Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+    let bins = match document.get("bin") {
+        None => return Ok(Vec::new()),
+        Some(toml::Value::Array(bins)) => bins,
+        Some(_) => return Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse),
+    };
+    let mut paths = Vec::with_capacity(bins.len());
+    for bin in bins {
+        let table = bin
+            .as_table()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+        let path = table
+            .get("path")
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)?
+            .as_str()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)?;
+        paths.push(path.to_string());
+    }
+    Ok(paths)
+}
+
+pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManifestBinParse {
+    match stage0_cargo_bin_paths_from_manifest_text(content) {
+        Ok(authored_relative_paths) => Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        },
+        Err(error) => Stage0CargoManifestBinParse::Refused {
+            detail: error.to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod stage0_cargo_manifest_parser_tests {
+    use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
+
+    #[test]
+    fn cargo_bins_parse_to_authored_relative_paths() {
+        let manifest = r#"
+[[bin]]
+name = "gunbc"
+path = "src/main.rs"
+
+[[bin]]
+name = "claim_batch"
+path = "src/bin/claim_batch.rs"
+"#;
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths(manifest),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec![
+                    "src/main.rs".to_string(),
+                    "src/bin/claim_batch.rs".to_string(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn cargo_bin_missing_path_is_typed_refusal() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\nname = \"orphan\"\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "[[bin]] table missing path".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn malformed_toml_is_typed_refusal() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"unterminated\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "Cargo manifest is not valid TOML".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn path_policy_is_not_applied_by_the_toml_realization() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"../../outside.rs\"\n"),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec!["../../outside.rs".to_string()],
+            }
+        );
+    }
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
