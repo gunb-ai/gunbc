@@ -1,38 +1,50 @@
 module extdeps.external_authority
 
 import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import extdeps.uri { Uri, File }
 
 type ExternalAuthority {
   uri: Uri
 }
 
-data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdict on gunbc#7556): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared here as one ExternalModelScope per module: ONE subject, at most one revision, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state — those are the two refusal arms below. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."
+data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdicts on gunbc#7556 and gunbc#7571): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared as one ExternalModelScope per module: ONE subject, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."
 
-data external_model_scope_citations_shape_note: String = "citations is nonempty BY CONSTRUCTION (first_citation a required scalar + further_citations), the gunbc.doc_graph_roots primary_work/additional_works precedent — the operator sketch wrote NonEmptyList<ExternalAuthority>; no such generic carrier exists in std today, and the split-field shape makes the zero-citation scope unwritable rather than checked (DESIGN §5)."
+data external_subject_symbolic_identity_note: String = "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactAuthorityOverride.fact off prose applies to every identity this carrier holds."
 
 type ExternalSubjectRef {
-  name: NonEmptyStr
+  declaration: DeclarationRef
 }
 
-type ExternalRevision {
-  label: NonEmptyStr
-}
+data external_model_scope_revision_grain_note: String = "ExternalModelScope deliberately carries NO revision field (operator verdict on gunbc#7571): a subject module legitimately models multiple releases of one upstream (Chromium 151/152/153 are one subject, not one module each), so an exact revision is a fact on the specific build/release/fact row, symbolically referenced where needed — never a property of the module scope. An earlier revision carried 'revision: ExternalRevision?' with a free label; both the optional module-grain slot and the label-typed revision (which erased semver vs commit vs release vs specification-edition distinctions) were removed."
 
 type ExternalModelScope {
   subject: ExternalSubjectRef
-  revision: ExternalRevision?
   first_citation: ExternalAuthority
   further_citations: List<ExternalAuthority>
 }
+
+data external_model_scope_citations_shape_note: String = "citations is nonempty BY CONSTRUCTION (first_citation a required scalar + further_citations), the gunbc.doc_graph_roots primary_work/additional_works precedent — the operator sketch wrote NonEmptyList<ExternalAuthority>; no such generic carrier exists in std today, and the split-field shape makes the zero-citation scope unwritable rather than checked (DESIGN §5)."
 
 fn external_model_scope_citations(scope: ExternalModelScope) -> List<ExternalAuthority> {
   concat([scope.first_citation], scope.further_citations)
 }
 
+fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
+  match a {
+    WholeDeclaration => match b { WholeDeclaration => true  NamedField { field_name: _ } => false }
+    NamedField { field_name: fa } => match b { WholeDeclaration => false  NamedField { field_name: fb } => fa == fb }
+  }
+}
+
+fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  a.module_path == b.module_path
+    && a.decl_name == b.decl_name
+    && decl_field_eq(a: a.field, b: b.field)
+}
+
 fn external_subject_ref_eq(a: ExternalSubjectRef, b: ExternalSubjectRef) -> Bool {
-  a.name == b.name
+  declaration_ref_eq(a: a.declaration, b: b.declaration)
 }
 
 data fact_authority_override_ref_note: String = "FactAuthorityOverride.fact is a DeclarationRef, not prose (operator verdict on gunbc#7556; the §3 cite-the-symbol rule applied to the override carrier): the overridden fact is named by module + declaration in the containment tree's own key space, so a stale override is decidable by symbol resolution rather than rotting as free text."
@@ -42,13 +54,15 @@ type FactAuthorityOverride {
   authority: ExternalAuthority
 }
 
-data modeled_extdeps_module_facts_note: String = "ModeledExtdepsModule is the admission gate's synthetic fact row for one extdeps module (the v2.lens.extdeps_shape_transport_policy lens-unit pattern): the module's declared scope, the per-row subject attribution of every product-/engine-/distribution-specific fact row it carries, and the names of any consumer-coverage/observation-state rows it stores. The gate is a pure fn over these rows; wiring the same verdict at the module-carrier grain is the staged mandatory-tag region named in gunbc.extdeps_scope_frontier."
+data external_model_scope_decision_kernel_note: String = "HONESTY BOUNDARY (operator verdict on gunbc#7571, 2026-08-01): external_model_scope_decision is a pure DECISION KERNEL over DECLARED fact rows — it is NOT an admission wall, because its inputs (DeclaredScopeFacts) are caller-authored: a module whose declarations carry three subjects admits if the caller declares one. What IS mechanically enforced today is scope PRESENCE at the storage grain (gunbc.extdeps_scope_frontier's manifest + live cover witness). Subject-content coherence — that a module's actual declarations attribute to exactly its declared subject — is the named enforcement frontier feature:extdeps-subject-content-derived: it dissolves when a Node-tree projection derives DeclaredScopeFacts from the real module tree (the module's extdeps_model_scope declaration, the subject attribution of every product-/engine-/distribution-specific declaration, and any consumer-coverage declarations actually present) and feeds THIS kernel, at which point the kernel's verdict becomes an admission fact rather than a coherence check of what a caller chose to say. The RED/GREEN controls below the kernel exercise the decision shape the projection will feed; they are controls of the kernel, not proof of a wall."
 
-type ModeledExtdepsModule {
+data declared_scope_facts_note: String = "DeclaredScopeFacts is one extdeps module's caller-declared scope facts: its declared scope, the per-row subject attribution of the product-/engine-/distribution-specific fact rows it carries, and the consumer-coverage/observation-state declarations it stores (each a DeclarationRef — coverage identity is symbolic for the same reason subject identity is)."
+
+type DeclaredScopeFacts {
   module: NonEmptyStr
   scope: ExternalModelScope
   product_fact_subjects: List<ExternalSubjectRef>
-  consumer_coverage_rows: List<NonEmptyStr>
+  consumer_coverage_rows: List<DeclarationRef>
 }
 
 type ScopeFinding
@@ -59,60 +73,60 @@ type ScopeFinding
     }
   | ConsumerCoverageInUpstream {
       module: NonEmptyStr
-      coverage_row: NonEmptyStr
+      coverage_row: DeclarationRef
     }
 
-type ScopeAdmission
-  = ScopeAdmitted
-  | ScopeRefused {
+type ScopeDecision
+  = ScopeCoherent
+  | ScopeIncoherent {
       finding_count: Int
       findings: List<ScopeFinding>
     }
 
-fn external_model_scope_foreign_subject_findings(m: ModeledExtdepsModule) -> List<ScopeFinding> {
+fn external_model_scope_foreign_subject_findings(m: DeclaredScopeFacts) -> List<ScopeFinding> {
   m.product_fact_subjects
     |> filter(s => !external_subject_ref_eq(a: s, b: m.scope.subject))
     |> map(s => ForeignSubjectRow { module: m.module, declared: m.scope.subject, foreign: s })
 }
 
-fn external_model_scope_coverage_findings(m: ModeledExtdepsModule) -> List<ScopeFinding> {
+fn external_model_scope_coverage_findings(m: DeclaredScopeFacts) -> List<ScopeFinding> {
   m.consumer_coverage_rows
     |> map(r => ConsumerCoverageInUpstream { module: m.module, coverage_row: r })
 }
 
-fn external_model_scope_findings(m: ModeledExtdepsModule) -> List<ScopeFinding> {
+fn external_model_scope_findings(m: DeclaredScopeFacts) -> List<ScopeFinding> {
   concat(
     external_model_scope_foreign_subject_findings(m: m),
     external_model_scope_coverage_findings(m: m)
   )
 }
 
-fn external_model_scope_admission_of_findings(findings: List<ScopeFinding>) -> ScopeAdmission {
+fn external_model_scope_decision_of_findings(findings: List<ScopeFinding>) -> ScopeDecision {
   let n = findings |> count
   if n == 0 {
-    ScopeAdmitted
+    ScopeCoherent
   } else {
-    ScopeRefused { finding_count: n, findings: findings }
+    ScopeIncoherent { finding_count: n, findings: findings }
   }
 }
 
-fn admit_external_model_scope(m: ModeledExtdepsModule) -> ScopeAdmission {
-  external_model_scope_admission_of_findings(findings: external_model_scope_findings(m: m))
+fn external_model_scope_decision(m: DeclaredScopeFacts) -> ScopeDecision {
+  external_model_scope_decision_of_findings(findings: external_model_scope_findings(m: m))
 }
 
-fn admit_external_model_scope_portfolio(mods: List<ModeledExtdepsModule>) -> ScopeAdmission {
-  external_model_scope_admission_of_findings(
+fn external_model_scope_portfolio_decision(mods: List<DeclaredScopeFacts>) -> ScopeDecision {
+  external_model_scope_decision_of_findings(
     findings: fold(mods, init: [], f: fn(acc, m) {
       concat(acc, external_model_scope_findings(m: m))
     })
   )
 }
 
-data downstream_support_roster_note: String = "Where the refused rows GO: a support/coverage roster is a downstream (product/workflow layer) fact join over the per-subject upstream modules — DESIGN §3's gunbc.served_surface_browser_support example. It is deliberately NOT gated by admit_external_model_scope: consumer policy and coverage state are exactly what an upstream module may not carry and a downstream module exists to carry."
+data downstream_support_roster_note: String = "Where the refused rows GO: a support/coverage roster is a downstream (product/workflow layer) fact join over the per-subject upstream modules — DESIGN §3's gunbc.served_surface_browser_support example. It is deliberately NOT judged by external_model_scope_decision: consumer policy and coverage state are exactly what an upstream module may not carry and a downstream module exists to carry."
 
 type DownstreamSupportRoster {
   module: NonEmptyStr
-  coverage_rows: List<NonEmptyStr>
+  coverage_rows: List<DeclarationRef>
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

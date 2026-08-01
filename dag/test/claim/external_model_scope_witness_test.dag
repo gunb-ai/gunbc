@@ -3,16 +3,17 @@ module test.claim.external_model_scope_witness
 import extdeps.filesystem.filesystem_io
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
-  ModeledExtdepsModule, DownstreamSupportRoster,
-  ScopeAdmission, ScopeAdmitted, ScopeRefused,
+  DeclaredScopeFacts, DownstreamSupportRoster,
+  ScopeDecision, ScopeCoherent, ScopeIncoherent,
   ScopeFinding, ForeignSubjectRow, ConsumerCoverageInUpstream,
-  admit_external_model_scope, admit_external_model_scope_portfolio,
-  external_model_scope_citations,
+  external_model_scope_decision, external_model_scope_portfolio_decision,
+  external_model_scope_citations, external_subject_ref_eq,
 }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.extdeps_scope_frontier {
   scope_carrier_paths, scope_machinery_exempt_paths,
-  extdeps_scope_frontier_paths, extdeps_scope_frontier_declared_count,
+  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
 }
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
 import extdeps.vendor.microsoft
@@ -22,16 +23,25 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data external_model_scope_witness_note: String = "RED and GREEN controls for the ExternalModelScope admission gate, in exactly the operator-verdict shapes (gunbc#7556): RED = a generic browser module declaring a Chromium subject scope while carrying Chrome | Firefox | Safari concrete rows refuses; GREEN = a shared navigation shape plus separate Chromium and Firefox modules plus a downstream support roster admits. Plus the staged-enrollment frontier accounting (counted, disjoint, live-tree covered) for gunbc.extdeps_scope_frontier."
+data external_model_scope_witness_note: String = "RED and GREEN controls for the external_model_scope_decision KERNEL, in exactly the operator-verdict shapes (gunbc#7556): RED = a generic browser module declaring a Chromium subject scope while carrying Chrome | Firefox | Safari concrete rows is incoherent; GREEN = a shared navigation shape plus separate Chromium and Firefox modules plus a downstream support roster is coherent. These are controls of the decision kernel over DECLARED facts — not proof of an admission wall (the kernel's honesty boundary is external_model_scope_decision_kernel_note; the mechanical wall witnessed here is scope PRESENCE: the frozen-manifest cover accounting below). Plus the staged-enrollment accounting for gunbc.extdeps_scope_frontier's frozen legacy manifest."
 
-fn subject(name: String) -> ExternalSubjectRef {
-  ExternalSubjectRef { name: name }
+fn subject(module_path: String, decl_name: String) -> ExternalSubjectRef {
+  ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: module_path,
+      decl_name: decl_name,
+      field: WholeDeclaration
+    }
+  }
 }
 
-fn synthetic_scope(subject_name: String, locator: String) -> ExternalModelScope {
+fn coverage_row(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration }
+}
+
+fn synthetic_scope(subject_ref: ExternalSubjectRef, locator: String) -> ExternalModelScope {
   ExternalModelScope {
-    subject: subject(name: subject_name),
-    revision: none,
+    subject: subject_ref,
     first_citation: ExternalAuthority {
       uri: Uri { scheme: Https, locator: locator }
     },
@@ -39,17 +49,17 @@ fn synthetic_scope(subject_name: String, locator: String) -> ExternalModelScope 
   }
 }
 
-fn admission_refused_with_count(a: ScopeAdmission, n: Int) -> Bool {
-  match a {
-    ScopeAdmitted => false
-    ScopeRefused { finding_count: c, findings: _ } => c == n
+fn decision_incoherent_with_count(d: ScopeDecision, n: Int) -> Bool {
+  match d {
+    ScopeCoherent => false
+    ScopeIncoherent { finding_count: c, findings: _ } => c == n
   }
 }
 
-fn admission_admitted(a: ScopeAdmission) -> Bool {
-  match a {
-    ScopeAdmitted => true
-    ScopeRefused { finding_count: _, findings: _ } => false
+fn decision_coherent(d: ScopeDecision) -> Bool {
+  match d {
+    ScopeCoherent => true
+    ScopeIncoherent { finding_count: _, findings: _ } => false
   }
 }
 
@@ -60,68 +70,83 @@ fn finding_is_foreign(f: ScopeFinding) -> Bool {
   }
 }
 
-data red_control_note: String = "The first red control is exactly the gunbc#7556 shape: one generic browser module, a Chromium subject scope, and Chrome | Firefox | Safari concrete product rows — three independently governed subjects in one module, refused with one located ForeignSubjectRow per foreign subject."
+data red_control_note: String = "The first red control is exactly the gunbc#7556 shape: one generic browser module, a Chromium subject scope, and Chrome | Firefox | Safari concrete product rows — three independently governed subjects in one module, incoherent with one located ForeignSubjectRow per foreign subject. Subjects are symbolic DeclarationRefs into the one-module-per-subject file map DESIGN §3 names."
 
-fn red_generic_browser_module() -> ModeledExtdepsModule {
-  ModeledExtdepsModule {
+fn red_generic_browser_module() -> DeclaredScopeFacts {
+  DeclaredScopeFacts {
     module: "extdeps.browser",
-    scope: synthetic_scope(subject_name: "Chromium", locator: "www.chromium.org/developers"),
+    scope: synthetic_scope(
+      subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+      locator: "www.chromium.org/developers"
+    ),
     product_fact_subjects: [
-      subject(name: "Google Chrome"),
-      subject(name: "Mozilla Firefox"),
-      subject(name: "Apple Safari")
+      subject(module_path: "extdeps.browser.google_chrome", decl_name: "google_chrome"),
+      subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
+      subject(module_path: "extdeps.browser.apple_safari", decl_name: "apple_safari")
     ],
     consumer_coverage_rows: []
   }
 }
 
-test fn red_generic_browser_module_with_product_rows_refused() -> Bool {
-  let a = admit_external_model_scope(m: red_generic_browser_module())
-  admission_refused_with_count(a: a, n: 3)
+test fn red_generic_browser_module_with_product_rows_incoherent() -> Bool {
+  let d = external_model_scope_decision(m: red_generic_browser_module())
+  decision_incoherent_with_count(d: d, n: 3)
 }
 
 test fn red_generic_browser_module_findings_are_all_foreign_subject_rows() -> Bool {
-  match admit_external_model_scope(m: red_generic_browser_module()) {
-    ScopeAdmitted => false
-    ScopeRefused { finding_count: _, findings: fs } =>
+  match external_model_scope_decision(m: red_generic_browser_module()) {
+    ScopeCoherent => false
+    ScopeIncoherent { finding_count: _, findings: fs } =>
       all(fs, f => finding_is_foreign(f: f))
   }
 }
 
-test fn red_consumer_coverage_in_upstream_refused() -> Bool {
-  let m = ModeledExtdepsModule {
+test fn red_consumer_coverage_in_upstream_incoherent() -> Bool {
+  let m = DeclaredScopeFacts {
     module: "extdeps.browser.chromium",
-    scope: synthetic_scope(subject_name: "Chromium", locator: "www.chromium.org/developers"),
-    product_fact_subjects: [subject(name: "Chromium")],
-    consumer_coverage_rows: ["served_surface_chromium_support_state"]
+    scope: synthetic_scope(
+      subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+      locator: "www.chromium.org/developers"
+    ),
+    product_fact_subjects: [subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
+    consumer_coverage_rows: [coverage_row(module_path: "extdeps.browser.chromium", decl_name: "served_surface_chromium_support_state")]
   }
-  match admit_external_model_scope(m: m) {
-    ScopeAdmitted => false
-    ScopeRefused { finding_count: c, findings: fs } =>
+  match external_model_scope_decision(m: m) {
+    ScopeCoherent => false
+    ScopeIncoherent { finding_count: c, findings: fs } =>
       c == 1 && all(fs, f => !finding_is_foreign(f: f))
   }
 }
 
 data green_control_note: String = "The green control is the decomposed portfolio: a shared navigation-shape module with no product rows, one module per implementation subject (Chromium, Firefox), and the coverage state carried by a DownstreamSupportRoster in the product/workflow layer rather than by any upstream module."
 
-fn green_portfolio() -> List<ModeledExtdepsModule> {
+fn green_portfolio() -> List<DeclaredScopeFacts> {
   [
-    ModeledExtdepsModule {
+    DeclaredScopeFacts {
       module: "extdeps.whatwg.html_navigation",
-      scope: synthetic_scope(subject_name: "WHATWG HTML Standard", locator: "html.spec.whatwg.org/multipage/browsing-the-web.html"),
+      scope: synthetic_scope(
+        subject_ref: subject(module_path: "extdeps.whatwg.html_navigation", decl_name: "whatwg_html_standard"),
+        locator: "html.spec.whatwg.org/multipage/browsing-the-web.html"
+      ),
       product_fact_subjects: [],
       consumer_coverage_rows: []
     },
-    ModeledExtdepsModule {
+    DeclaredScopeFacts {
       module: "extdeps.browser.chromium",
-      scope: synthetic_scope(subject_name: "Chromium", locator: "www.chromium.org/developers"),
-      product_fact_subjects: [subject(name: "Chromium")],
+      scope: synthetic_scope(
+        subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+        locator: "www.chromium.org/developers"
+      ),
+      product_fact_subjects: [subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
       consumer_coverage_rows: []
     },
-    ModeledExtdepsModule {
+    DeclaredScopeFacts {
       module: "extdeps.browser.firefox",
-      scope: synthetic_scope(subject_name: "Mozilla Firefox", locator: "www.mozilla.org/en-US/firefox/releases/"),
-      product_fact_subjects: [subject(name: "Mozilla Firefox")],
+      scope: synthetic_scope(
+        subject_ref: subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
+        locator: "www.mozilla.org/en-US/firefox/releases/"
+      ),
+      product_fact_subjects: [subject(module_path: "extdeps.browser.firefox", decl_name: "firefox")],
       consumer_coverage_rows: []
     }
   ]
@@ -130,34 +155,39 @@ fn green_portfolio() -> List<ModeledExtdepsModule> {
 fn green_downstream_roster() -> DownstreamSupportRoster {
   DownstreamSupportRoster {
     module: "gunbc.served_surface_browser_support",
-    coverage_rows: ["chromium_observed_receipt", "firefox_unobserved_obligation"]
+    coverage_rows: [
+      coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "chromium_observed_receipt"),
+      coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "firefox_unobserved_obligation")
+    ]
   }
 }
 
-test fn green_decomposed_portfolio_with_downstream_roster_admitted() -> Bool {
+test fn green_decomposed_portfolio_with_downstream_roster_coherent() -> Bool {
   let roster = green_downstream_roster()
-  admission_admitted(a: admit_external_model_scope_portfolio(mods: green_portfolio()))
+  decision_coherent(d: external_model_scope_portfolio_decision(mods: green_portfolio()))
     && (roster.coverage_rows |> count) == 2
 }
 
-test fn adopted_vendor_scopes_admitted_by_execution() -> Bool {
-  let ms = ModeledExtdepsModule {
+test fn adopted_vendor_scopes_coherent_by_execution() -> Bool {
+  let ms_subject = extdeps.vendor.microsoft.extdeps_model_scope.subject
+  let at_subject = extdeps.vendor.atlassian.extdeps_model_scope.subject
+  let ms = DeclaredScopeFacts {
     module: "extdeps.vendor.microsoft",
     scope: extdeps.vendor.microsoft.extdeps_model_scope,
-    product_fact_subjects: [extdeps.vendor.microsoft.extdeps_model_scope.subject],
+    product_fact_subjects: [ms_subject],
     consumer_coverage_rows: []
   }
-  let at = ModeledExtdepsModule {
+  let at = DeclaredScopeFacts {
     module: "extdeps.vendor.atlassian",
     scope: extdeps.vendor.atlassian.extdeps_model_scope,
-    product_fact_subjects: [extdeps.vendor.atlassian.extdeps_model_scope.subject],
+    product_fact_subjects: [at_subject],
     consumer_coverage_rows: []
   }
-  admission_admitted(a: admit_external_model_scope_portfolio(mods: [ms, at]))
+  decision_coherent(d: external_model_scope_portfolio_decision(mods: [ms, at]))
     && (external_model_scope_citations(scope: extdeps.vendor.microsoft.extdeps_model_scope) |> count) == 1
     && (external_model_scope_citations(scope: extdeps.vendor.atlassian.extdeps_model_scope) |> count) == 1
-    && extdeps.vendor.microsoft.extdeps_model_scope.subject.name == "Microsoft Corporation"
-    && extdeps.vendor.atlassian.extdeps_model_scope.subject.name == "Atlassian Corporation"
+    && external_subject_ref_eq(a: ms_subject, b: subject(module_path: "extdeps.vendor.microsoft", decl_name: "microsoft"))
+    && external_subject_ref_eq(a: at_subject, b: subject(module_path: "extdeps.vendor.atlassian", decl_name: "atlassian"))
     && extdeps.vendor.microsoft.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=MSFT"
     && extdeps.vendor.atlassian.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=TEAM"
 }
@@ -170,17 +200,25 @@ fn strings_contain(xs: List<String>, s: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || x == s })
 }
 
-fn scope_roster_union() -> List<String> {
-  concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, extdeps_scope_frontier_paths))
+data manifest_read_note: String = "The frozen legacy manifest is a live-tree input of this witness (one path per line; row count DERIVED by parse_frontier_manifest, never hand-declared). A manifest read failure is a red, never an empty frontier — an unreadable manifest must not widen into 'everything is enrolled'."
+
+fn read_manifest_rows() -> List<String> {
+  let r = filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path)
+  parse_frontier_manifest(content: r.content)
 }
 
-test fn frontier_declared_count_matches_rows() -> Bool {
-  (extdeps_scope_frontier_paths |> count) == extdeps_scope_frontier_declared_count
+fn scope_roster_union() -> List<String> {
+  concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows()))
+}
+
+test fn manifest_rows_nonempty_floor() -> Bool {
+  (read_manifest_rows() |> count) > 150
 }
 
 test fn frontier_rosters_are_disjoint() -> Bool {
-  all(scope_carrier_paths, p => !strings_contain(xs: scope_machinery_exempt_paths, s: p) && !strings_contain(xs: extdeps_scope_frontier_paths, s: p))
-    && all(scope_machinery_exempt_paths, p => !strings_contain(xs: extdeps_scope_frontier_paths, s: p))
+  let manifest = read_manifest_rows()
+  all(scope_carrier_paths, p => !strings_contain(xs: scope_machinery_exempt_paths, s: p) && !strings_contain(xs: manifest, s: p))
+    && all(scope_machinery_exempt_paths, p => !strings_contain(xs: manifest, s: p))
 }
 
 type ScopeCoverWalk {
