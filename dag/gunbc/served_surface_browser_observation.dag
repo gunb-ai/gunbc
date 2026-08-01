@@ -6,6 +6,7 @@ import extdeps.uri { Uri, Http }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.os.debian { DebianRelease, Debian12Bookworm }
 import extdeps.browser.chromium {
   ChromiumBuild,
   ChromiumNavigationError,
@@ -24,9 +25,6 @@ import extdeps.automation.playwright {
   playwright_1_62_1,
 }
 
-type BrowserObservationOperatingSystem
-  = | DebianGnuLinux12Bookworm
-
 type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
 
 type BrowserPresentationMode
@@ -41,7 +39,7 @@ type BrowserExecutionEnvironment {
   chromium_build: ChromiumBuild
   playwright_build: PlaywrightBuild
   browser_binary_provenance: PlaywrightBrowserBinaryProvenance
-  operating_system: BrowserObservationOperatingSystem
+  operating_system: DebianRelease
   kernel_release: LinuxKernelRelease
   architecture: Architecture
   presentation_mode: BrowserPresentationMode
@@ -158,7 +156,7 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: BrowserDiscrim
     chromium_build: chromium_151_0_7922_34,
     playwright_build: playwright_1_62_1,
     browser_binary_provenance: PlaywrightManagedChromiumDownload,
-    operating_system: DebianGnuLinux12Bookworm,
+    operating_system: Debian12Bookworm,
     kernel_release: "6.8.0-124-generic" as LinuxKernelRelease,
     architecture: Aarch64,
     presentation_mode: HeadlessPresentation,
