@@ -30,8 +30,13 @@ test fn alias_spellings_share_one_arm_identity() -> Bool {
   count(a) == 1 && count(b) == 1 && (a |> all(x => b |> any(y => y == x)))
 }
 
-test fn free_call_form_has_no_shadowed_spelling() -> Bool {
+test fn derived_free_call_arms_have_no_internal_shadow() -> Bool {
   form_has_no_shadowed_spelling(rows: v1_interpreter_free_call_arms())
+}
+
+test fn free_call_form_shadowing_is_exactly_the_two_inert_lens_bridges() -> Bool {
+  let s = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == FreeCall))
+  count(s) > 0 && (s |> all(x => x == "inert_lens_unreached_module_count" || x == "inert_lens_top_level_module_count"))
 }
 
 test fn method_call_form_shadowing_is_exactly_the_known_lookup_case() -> Bool {
