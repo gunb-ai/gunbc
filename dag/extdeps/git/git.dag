@@ -524,6 +524,18 @@ fn shape_git_config_get_argv(key: String) -> List<String> {
   ["git", "config", "--get", key]
 }
 
+fn shape_git_config_local_get_argv(key: String) -> List<String> {
+  ["git", "config", "--local", "--get", key]
+}
+
+fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
+  ["-C", repo as String, "config", "--local", key, value]
+}
+
+fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
+  ["-C", repo as String, "config", "--local", "--get", key]
+}
+
 fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
   ["git", "rev-parse", "--verify", "--quiet", target]
 }
@@ -727,6 +739,35 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Not a git repository"
+    }
+  }
+
+  operation ConfigLocalGet {
+    input { key: String }
+    output {
+      success: Bool from "exit_success"
+      value: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "config", "--local", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key not found in local config"
+      nonzero => String "Config read failed"
+    }
+  }
+
+  operation ConfigLocalSet {
+    input { key: String, value: String }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "config", "--local", "{key}", "{value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Config set failed"
     }
   }
 }

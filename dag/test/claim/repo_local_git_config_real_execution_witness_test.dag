@@ -1,0 +1,136 @@
+module test.claim.repo_local_git_config_real_execution
+
+import std.logic { Bool }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import gunbc.retained_shell_script { retained_runtime }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.repo_local_git_config {
+  desired_repo_local_git_config_bindings,
+  repo_local_git_config_reconcile,
+  repo_local_git_config_install_argv_in_repo,
+  repo_local_git_config_read_back_argv_in_repo,
+  observed_binding,
+  generated_artifact_merge_driver_key,
+  generated_artifact_merge_driver_value,
+  core_hooks_path_key,
+  core_hooks_path_value,
+}
+import gunbc.membership_reconcile { membership_upsert_count }
+import extdeps.git { git_shell_join_argv, shape_git_config_get_argv }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "Wet execution witness for repository-local Git config actuator (generated-file conflict policy charter, lane 2, review 46452). Creates an isolated temp git repo, seeds a matching GLOBAL value for merge.generated-artifact.driver, proves global-scope get would fabricate convergence while local read-back stays absent, then applies the reconcile upserts at local scope and verifies both bindings read back. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — git.Core.ConfigLocalGet/Set and shell.Mktemp.Dir have no mock_response."
+
+fn shell_run_bash(body: String, reason: NonEmptyStr) -> shell.Exec.Result {
+  shell.Exec.Run(
+    script: retained_runtime(
+      body: shell_exec_via_bash(body: concat("set -euo pipefail\n", body)),
+      reason: reason,
+    ),
+    expect: OutcomeIsData,
+  )
+}
+
+fn git_cmd_in_repo(repo: String, argv: List<String>) -> String {
+  concat("cd ", concat(repo, concat(" && ", concat(git_shell_join_argv(argv: argv), "\n"))))
+}
+
+fn git_cmd_in_repo_with_git_prefix(repo: String, args: List<String>) -> String {
+  git_cmd_in_repo(repo: repo, argv: concat(["git"], args))
+}
+
+test fn repo_local_git_config_actuator_sets_local_bindings_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let repo = dir.path as String
+  let init = shell_run_bash(
+    body: concat(
+      git_cmd_in_repo_with_git_prefix(repo: repo, args: ["init", "-q"]),
+      concat(
+        "git config --global ",
+        concat(generated_artifact_merge_driver_key, concat(" ", concat(generated_artifact_merge_driver_value, "\n"))),
+      ),
+    ),
+    reason: "repo local git config witness init temp repo with global merge-driver value" as NonEmptyStr,
+  )
+  let global_before = shell_run_bash(
+    body: git_cmd_in_repo(repo: repo, argv: shape_git_config_get_argv(key: generated_artifact_merge_driver_key)),
+    reason: "repo local git config witness global get before local apply" as NonEmptyStr,
+  )
+  let merge_binding = observed_binding(
+    key: generated_artifact_merge_driver_key,
+    value: generated_artifact_merge_driver_value,
+  )
+  let hooks_binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
+  let local_before = shell_run_bash(
+    body: git_cmd_in_repo_with_git_prefix(
+      repo: repo,
+      args: repo_local_git_config_read_back_argv_in_repo(
+        repo: dir.path,
+        binding: merge_binding,
+      ),
+    ),
+    reason: "repo local git config witness local get before apply must fail" as NonEmptyStr,
+  )
+  let plan = repo_local_git_config_reconcile(
+    desired: desired_repo_local_git_config_bindings(),
+    observed: [],
+  )
+  let upserts = membership_upsert_count(plan: plan)
+  let apply_merge = shell_run_bash(
+    body: git_cmd_in_repo_with_git_prefix(
+      repo: repo,
+      args: repo_local_git_config_install_argv_in_repo(
+        repo: dir.path,
+        binding: merge_binding,
+      ),
+    ),
+    reason: "repo local git config witness apply merge-driver local binding" as NonEmptyStr,
+  )
+  let apply_hooks = shell_run_bash(
+    body: git_cmd_in_repo_with_git_prefix(
+      repo: repo,
+      args: repo_local_git_config_install_argv_in_repo(
+        repo: dir.path,
+        binding: hooks_binding,
+      ),
+    ),
+    reason: "repo local git config witness apply core.hooksPath local binding" as NonEmptyStr,
+  )
+  let local_merge_after = shell_run_bash(
+    body: git_cmd_in_repo_with_git_prefix(
+      repo: repo,
+      args: repo_local_git_config_read_back_argv_in_repo(
+        repo: dir.path,
+        binding: merge_binding,
+      ),
+    ),
+    reason: "repo local git config witness local get merge-driver after apply" as NonEmptyStr,
+  )
+  let local_hooks_after = shell_run_bash(
+    body: git_cmd_in_repo_with_git_prefix(
+      repo: repo,
+      args: repo_local_git_config_read_back_argv_in_repo(
+        repo: dir.path,
+        binding: hooks_binding,
+      ),
+    ),
+    reason: "repo local git config witness local get core.hooksPath after apply" as NonEmptyStr,
+  )
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && init.success
+    && global_before.success
+    && trim(s: global_before.stdout) == generated_artifact_merge_driver_value
+    && !local_before.success
+    && upserts == 2
+    && apply_merge.success
+    && apply_hooks.success
+    && local_merge_after.success
+    && trim(s: local_merge_after.stdout) == generated_artifact_merge_driver_value
+    && local_hooks_after.success
+    && trim(s: local_hooks_after.stdout) == core_hooks_path_value
+    && cleaned.success
+}
