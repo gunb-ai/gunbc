@@ -258,6 +258,7 @@ fn declared_error_arm_decodes_typed_refusal(idx: &ModuleIndex) -> Result<(), Str
             status,
             body_type,
             detail,
+            decoded,
             ..
         }) => {
             if status != 401 {
@@ -271,6 +272,11 @@ fn declared_error_arm_decodes_typed_refusal(idx: &ModuleIndex) -> Result<(), Str
             if !detail.contains("message=denied") {
                 return Err(format!(
                     "expected decoded message field in refusal, got: {detail}"
+                ));
+            }
+            if !value_record_has_str_field(&decoded, "denied") {
+                return Err(format!(
+                    "expected decoded ErrorShape.message=denied, got: {decoded:?}"
                 ));
             }
             Ok(())
@@ -331,12 +337,46 @@ fn no_table_still_raises_on_error(idx: &ModuleIndex) -> Result<(), String> {
     }
 }
 
+fn value_record_has_str_field(val: &Value, want: &str) -> bool {
+    match val {
+        Value::Record { fields, .. } => fields
+            .iter()
+            .any(|(_, v)| matches!(v, Value::Str(s) if s == want)),
+        _ => false,
+    }
+}
+
+fn malformed_error_body_refuses_inhabitance(idx: &ModuleIndex) -> Result<(), String> {
+    let port = serve_canned("401 Unauthorized", r#"{"wrong":true}"#)?;
+    let src = table_source(port);
+    match run_probe(idx, &src, "probe_detail")? {
+        Err(InterpError::TypeError { msg }) => {
+            if !msg.contains("does not inhabit ErrorShape") {
+                return Err(format!("expected inhabitance refusal, got: {msg}"));
+            }
+            Ok(())
+        }
+        Err(InterpError::RestResponseRefused { .. }) => Err(
+            "malformed body must not produce typed RestResponseRefused without inhabiting ErrorShape"
+                .to_string(),
+        ),
+        Err(other) => Err(format!("expected TypeError inhabitance refusal, got {other:?}")),
+        Ok(v) => Err(format!(
+            "REGRESSION: malformed 401 body returned data {v:?} instead of refusing"
+        )),
+    }
+}
+
 type WitnessCase = (&'static str, fn(&ModuleIndex) -> Result<(), String>);
 
 const CASES: &[WitnessCase] = &[
     (
         "declared_error_arm_decodes_typed_refusal",
         declared_error_arm_decodes_typed_refusal,
+    ),
+    (
+        "malformed_error_body_refuses_inhabitance",
+        malformed_error_body_refuses_inhabitance,
     ),
     (
         "undeclared_status_refuses_fail_closed",

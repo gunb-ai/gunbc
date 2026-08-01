@@ -7636,8 +7636,10 @@ fn realize_rest_response_body(
         }
     } else {
         let json: serde_json::Value =
-            serde_json::from_str(body).unwrap_or(serde_json::Value::String(body.to_string()));
-        let decoded = json_to_value(&json);
+            serde_json::from_str(body).map_err(|e| InterpError::TypeError {
+                msg: format!("HTTP {status} ({}): invalid JSON: {e}", arm.body_type),
+            })?;
+        let decoded = map_json_to_declared_body_type(&json, &arm.body_type, ctx)?;
         let detail = format_rest_error_refusal(status, &arm.body_type, body);
         Err(InterpError::RestResponseRefused {
             status: status as i64,
@@ -8219,12 +8221,67 @@ fn map_response_to_value_json(
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => return Ok(json_to_value(json)),
     };
-    let children = &return_type.children;
+    let output_type_name = authored_name_at(ctx.si(), op_node.clone());
+    map_json_to_type_structure(json, &return_type, &output_type_name, ctx, false)
+}
+
+fn type_decl_structure(ctx: &InterpContext, type_item: &Rc<Node>) -> Rc<Node> {
+    if let Some(crate::v1_std_core::InferredNode::Resolved { node }) = type_item.inferred.as_deref()
+    {
+        if !node.children.is_empty() {
+            return node.clone();
+        }
+    }
+    type_item.clone()
+}
+
+/// Decode a JSON response body into `type_name`, fail-closed when the payload cannot inhabit
+/// the declared record/primitive (missing fields, wrong JSON kind).
+fn map_json_to_declared_body_type(
+    json: &serde_json::Value,
+    type_name: &str,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let Some(type_item) = lookup_type_item_across_modules(ctx, type_name) else {
+        return Err(InterpError::TypeError {
+            msg: format!("REST response body type '{type_name}' not in module closure"),
+        });
+    };
+    let structure = type_decl_structure(ctx, &type_item);
+    map_json_to_type_structure(json, &structure, type_name, ctx, true)
+}
+
+fn map_json_to_type_structure(
+    json: &serde_json::Value,
+    structure: &Rc<Node>,
+    type_name: &str,
+    ctx: &InterpContext,
+    require_all_fields: bool,
+) -> InterpResult<Value> {
+    let kernel = cast_target_underlying_kernel(ctx, structure.clone());
+    if kernel == "String" {
+        return match json {
+            serde_json::Value::String(s) => Ok(Value::Str(s.clone())),
+            _ => Err(InterpError::TypeError {
+                msg: format!(
+                    "REST response body does not inhabit {type_name}: expected JSON string"
+                ),
+            }),
+        };
+    }
+
+    let children = &structure.children;
     if children.is_empty() {
+        if require_all_fields {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "REST response body type '{type_name}' has no field structure in module closure"
+                ),
+            });
+        }
         return Ok(json_to_value(json));
     }
 
-    let type_name = authored_name_at(ctx.si(), return_type.clone());
     if type_name == "List" && children.is_empty() {
         return Ok(json_to_value(json));
     }
@@ -8232,10 +8289,18 @@ fn map_response_to_value_json(
     if json.is_array() && !children.is_empty() {
         let first_field = authored_name_at(ctx.si(), children[0].clone());
         return Ok(Value::Record {
-            type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+            type_name: ctx.sym(type_name),
             fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
         });
     }
+
+    let obj = if require_all_fields {
+        Some(json.as_object().ok_or_else(|| InterpError::TypeError {
+            msg: format!("REST response body does not inhabit {type_name}: expected JSON object"),
+        })?)
+    } else {
+        json.as_object()
+    };
 
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
@@ -8246,18 +8311,32 @@ fn map_response_to_value_json(
                 let pointer = format!("/{}", path);
                 match json.pointer(&pointer) {
                     Some(v) => json_to_value(v),
+                    None if require_all_fields => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "REST response body does not inhabit {type_name}: missing field '{field_name}'"
+                            ),
+                        });
+                    }
                     None => Value::Null,
                 }
             }
-            None => match json.get(&field_name) {
-                Some(v) => json_to_value(v),
-                None => {
-                    if children.len() == 1 {
-                        json_to_value(json)
-                    } else {
-                        Value::Null
-                    }
+            None => match obj.and_then(|o| o.get(&field_name)).or_else(|| {
+                if children.len() == 1 && !require_all_fields {
+                    Some(json)
+                } else {
+                    None
                 }
+            }) {
+                Some(v) => json_to_value(v),
+                None if require_all_fields => {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "REST response body does not inhabit {type_name}: missing field '{field_name}'"
+                        ),
+                    });
+                }
+                None => Value::Null,
             },
         };
         fields.push((ctx.sym(&field_name), val));
@@ -8265,7 +8344,7 @@ fn map_response_to_value_json(
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(type_name),
         fields: Rc::new(fields),
     })
 }

@@ -43,7 +43,7 @@ type RestResponseStatusPattern
   = ExactStatus { code: HttpStatus }
   | StatusHundredsRange { hundreds: Int }
 
-data rest_response_table_authority_note: String = "The operation's declared response {} block is a status-pattern to body-type table — not a success/failure directive. Parse lowers each arm to a response_<pattern> property on the operation node; emit and interp realize the SAME table via rest_response_pattern_matches and rest_response_arm_status_class (§3 single authority). A Successful-class arm decodes into the operation's output {}; other classes decode the declared body type and the operation still refuses — the payload is richer, the disposition does not flip. An undeclared status is a typed refusal, never a silent widen."
+data rest_response_table_authority_note: String = "The operation's declared response {} block is a status-pattern to body-type table — not a success/failure directive. Parse lowers each arm to a response_<pattern> property on the operation node; emit and interp realize the SAME table via rest_response_pattern_matches and rest_response_arm_status_class (§3 single authority). A Successful-class arm decodes into the operation's output {}; other classes decode through the declared body type (fail-closed inhabitance — missing fields or wrong JSON kind refuse before RestResponseRefused). An undeclared status is a typed refusal, never a silent widen."
 
 type RestResponseTableRow {
   pattern: RestResponseStatusPattern
@@ -72,7 +72,7 @@ fn rest_response_arm_status_class(pattern: RestResponseStatusPattern) -> HttpSta
   }
 }
 
-data rest_response_table_modeled_surface_dissolution_note: String = "Parse still lowers response arms to stringly response_<k> properties on the operation node; the v1 seed interpreter projects each key to RestResponseStatusPattern and calls rest_response_pattern_matches / rest_response_arm_status_class from this module (no parallel Rust predicates). Dissolves when parse stores RestResponseStatusPattern on the operation node directly and emit shares the same carrier — land with the shared REST realization row when the seed shrinks."
+data rest_response_table_modeled_surface_dissolution_note: String = "Parse still lowers response arms to stringly response_<k> properties on the operation node; the v1 seed interpreter projects each key to RestResponseStatusPattern and calls rest_response_pattern_matches / rest_response_arm_status_class from this module (no parallel Rust predicates). Body decode for error arms uses map_json_to_declared_body_type against the declared type name. Dissolves when parse stores RestResponseStatusPattern on the operation node and body decode is v2-emitted from the same carrier — lane: transport_argv_anemia_dissolution REST response-table row; interim receipt: rest_response_table_witness + rest_response_table_model_witness_test enrolled in ci_release_bins."
 
 type HttpTransportRefused {
   cause: String
