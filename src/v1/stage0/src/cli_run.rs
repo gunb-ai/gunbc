@@ -2938,6 +2938,53 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
     Ok(result)
 }
 
+/// Source-side carrier for `gunbc.stage0_emit_plan`'s declared host-supply scaffold.
+///
+/// This deliberately stops before resolve/infer/emit: every identity comes from the same
+/// parse-derived module-binding path used by `v2.compiler.source_authority`, over exactly the
+/// `regen_input_sources` closure. It must never accept an `EmitResult` or inspect emitted paths.
+/// Dissolve-on: generated_artifact_gate accepts a source_authority ModuleStorageIndex.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stage0EmissionSourceIdentity {
+    pub module_path: String,
+    pub storage_path: String,
+    pub source_tree: &'static str,
+}
+
+pub fn stage0_emission_source_identities(
+    workspace: &Path,
+) -> Result<Vec<Stage0EmissionSourceIdentity>, String> {
+    let mut identities = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (storage_path, content) in regen_input_sources(workspace)? {
+        let parsed = parse_module_binding(Path::new(&storage_path), &content)?
+            .ok_or_else(|| format!(
+                "stage0 emission source identity missing module declaration: {storage_path}"
+            ))?;
+        if !seen.insert(parsed.module_path.clone()) {
+            return Err(format!(
+                "stage0 emission source identity duplicated module: {}",
+                parsed.module_path
+            ));
+        }
+        let source_tree = if storage_path.starts_with("src/v1/") {
+            "V1SourceTree"
+        } else if storage_path.starts_with("dag/") {
+            "DagSourceTree"
+        } else {
+            return Err(format!(
+                "stage0 emission source identity outside modeled regen roots: {storage_path}"
+            ));
+        };
+        identities.push(Stage0EmissionSourceIdentity {
+            module_path: parsed.module_path,
+            storage_path,
+            source_tree,
+        });
+    }
+    Ok(identities)
+}
+
 /// Does a diff-changed path belong to the regen input surface (fail-closed superset)?
 fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> bool {
     let p = normalize_repo_path(changed);

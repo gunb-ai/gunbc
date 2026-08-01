@@ -1,0 +1,153 @@
+module gunbc.stage0_emit_plan
+
+import v2.compiler.self_host.frontier { hand_maintained_stage0_filenames }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+type Stage0SourceTree
+  = V1SourceTree
+  | DagSourceTree
+
+type Stage0SourceIdentityProvenance
+  = ParsedFromRegenSourceClosure
+
+type Stage0SourceModuleIdentity {
+  module_path: String
+  storage_path: String
+  source_tree: Stage0SourceTree
+  provenance: Stage0SourceIdentityProvenance
+}
+
+type Stage0ProducedFileKind
+  = ModuleProjection
+  | CompilerSupportProjection
+
+type Stage0ProducedFileIdentity {
+  producer_identity: String
+  basename: String
+  kind: Stage0ProducedFileKind
+}
+
+type Stage0ProjectionDisposition
+  = GeneratedProjection
+  | HandMaintainedCandidate
+
+type Stage0EmissionPlanRow {
+  produced: Stage0ProducedFileIdentity
+  disposition: Stage0ProjectionDisposition
+  canonical_repo_path: String
+}
+
+data stage0_source_identity_supply_scaffold_note: String = "DECLARED SCAFFOLD. stage0_emission_source_identities_host observes SOURCE only: the Rust seed walks gunbc.cli_run.regen_input_sources and parses every row through the source-authority-aligned module binding parser. It must never observe EmitResult or share the emit-output path. DISSOLVE-ON: generated_artifact_gate accepts a v2.compiler.source_authority.ModuleStorageIndex; then this host builtin and this scaffold carrier delete, and the same pure folds consume that index directly."
+
+// Native seed supply for the declared scaffold above. The Rust interpreter intercepts this
+// spelling before the body; the empty body keeps non-seed realizations explicit and fail-closed
+// (their exact-agreement witness cannot green over an empty expected population).
+fn stage0_emission_source_identities_host() -> List<Stage0SourceModuleIdentity> {
+  []
+}
+
+fn stage0_module_emit_basename(module_path: String) -> String {
+  rust_qualified_module_mod_basename(qualified_module: module_path)
+}
+
+fn stage0_module_emit_filename(module_path: String) -> String {
+  rust_qualified_module_mod_filename(qualified_module: module_path)
+}
+
+fn module_produced_file(identity: Stage0SourceModuleIdentity) -> Stage0ProducedFileIdentity {
+  Stage0ProducedFileIdentity {
+    producer_identity: identity.module_path,
+    basename: stage0_module_emit_filename(module_path: identity.module_path),
+    kind: ModuleProjection
+  }
+}
+
+data stage0_compiler_support_file_identities: List<Stage0ProducedFileIdentity> = [
+  Stage0ProducedFileIdentity {
+    producer_identity: "rust-crate-library-root",
+    basename: "lib.rs",
+    kind: CompilerSupportProjection
+  },
+  Stage0ProducedFileIdentity {
+    producer_identity: "rust-runtime-support",
+    basename: "v1_rt.rs",
+    kind: CompilerSupportProjection
+  },
+  Stage0ProducedFileIdentity {
+    producer_identity: "compiler-test-harness",
+    basename: "compiler_tests.rs",
+    kind: CompilerSupportProjection
+  }
+]
+
+fn stage0_produced_file_identities_from_source(
+  identities: List<Stage0SourceModuleIdentity>
+) -> List<Stage0ProducedFileIdentity> {
+  concat(
+    identities |> map(identity => module_produced_file(identity: identity)),
+    stage0_compiler_support_file_identities
+  ) |> sort_by(row => row.basename)
+}
+
+fn stage0_file_disposition(basename: String) -> Stage0ProjectionDisposition {
+  if hand_maintained_stage0_filenames() |> any(file => file == basename) {
+    HandMaintainedCandidate
+  } else {
+    GeneratedProjection
+  }
+}
+
+fn stage0_canonical_repo_path(basename: String) -> String {
+  concat("src/v1/stage0/src/", basename)
+}
+
+fn stage0_emission_plan_from_source(
+  identities: List<Stage0SourceModuleIdentity>
+) -> List<Stage0EmissionPlanRow> {
+  stage0_produced_file_identities_from_source(identities: identities)
+    |> map(produced => Stage0EmissionPlanRow {
+         produced: produced,
+         disposition: stage0_file_disposition(basename: produced.basename),
+         canonical_repo_path: stage0_canonical_repo_path(basename: produced.basename)
+       })
+}
+
+fn stage0_emission_plan() -> List<Stage0EmissionPlanRow> {
+  stage0_emission_plan_from_source(identities: stage0_emission_source_identities_host())
+}
+
+fn generated_stage0_files_from_plan_rows(rows: List<Stage0EmissionPlanRow>) -> List<String> {
+  fold_list(rows, empty: [], cons: fn(acc, row) {
+    match row.disposition {
+      GeneratedProjection => concat(acc, [row.produced.basename])
+      HandMaintainedCandidate => acc
+    }
+  })
+}
+
+fn generated_stage0_paths_from_plan_rows(rows: List<Stage0EmissionPlanRow>) -> List<String> {
+  fold_list(rows, empty: [], cons: fn(acc, row) {
+    match row.disposition {
+      GeneratedProjection => concat(acc, [row.canonical_repo_path])
+      HandMaintainedCandidate => acc
+    }
+  })
+}
+
+fn generated_stage0_files_from_emission_plan() -> List<String> {
+  generated_stage0_files_from_plan_rows(rows: stage0_emission_plan())
+}
+
+fn generated_stage0_paths_from_emission_plan() -> List<String> {
+  generated_stage0_paths_from_plan_rows(rows: stage0_emission_plan())
+}
+
+fn stage0_generated_output_sets_agree(
+  modeled: List<String>,
+  observed: List<String>
+) -> Bool {
+  (modeled |> sort_by(path => path)) == (observed |> sort_by(path => path))
+}
+

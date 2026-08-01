@@ -8,6 +8,7 @@ import gunbc.generated_artifact {
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
+  Stage0EmitPlanGeneratedDagArtifact,
   LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact,
   artifact_path
 }
@@ -30,6 +31,7 @@ import gunbc.stage0_crate_layout_emit {
 import gunbc.stage0_crate_partition_emit {
   expected_stage0_crate_partition_generated_dag
 }
+import gunbc.stage0_emit_plan_emit { expected_stage0_emit_plan_generated_dag }
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script
@@ -48,6 +50,7 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     Stage0CrateLayoutGeneratedDagArtifact => expected_stage0_crate_layout_generated_dag()
     Stage0CrateLayoutGeneratedRsArtifact => expected_stage0_crate_layout_generated_rs()
     Stage0CratePartitionGeneratedDagArtifact => expected_stage0_crate_partition_generated_dag()
+    Stage0EmitPlanGeneratedDagArtifact => expected_stage0_emit_plan_generated_dag()
     LiveDeployApplyScriptArtifact => expected_live_deploy_apply_script()
     LiveDeployRetractScriptArtifact => expected_live_deploy_retract_script()
     AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
@@ -69,6 +72,7 @@ fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
+    Stage0EmitPlanGeneratedDagArtifact => true
     LiveDeployApplyScriptArtifact => true
     LiveDeployRetractScriptArtifact => true
     AutoinstallUserDataArtifact { spec: _ } => true
