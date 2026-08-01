@@ -1,12 +1,5 @@
 module extdeps.git.ls_remote_advertisement
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "git-scm.com/docs/git-ls-remote"
-  }
-}
-
 import std.types { String, Int, List, NonEmptyStr, Bytes }
 import extdeps.git { advertised_ref_branch_name }
 import extdeps.git.object_store {
@@ -17,6 +10,13 @@ import extdeps.git.object_store {
   GitObjectIdTextDecoded,
   GitObjectIdTextRefused,
   git_decode_object_id_text,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-remote"
+  }
 }
 
 data ls_remote_advertisement_authority_note: String = "Typed decoder for git ls-remote ref-advertisement output. Strict line framing, validated object ids through git_decode_object_id_text, full ref identity, located malformed-line refusal, duplicate-ref refusal. Branch projection reuses extdeps.git.advertised_ref_branch_name. No cast from arbitrary text to CommitSha or NonEmptyStr — those brands are not construction-enforced in this corpus."
