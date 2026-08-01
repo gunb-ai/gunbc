@@ -19,10 +19,10 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
   }
 }
 
-fn grammar_one() -> Hash { atom_identity_hash(s: ^ctk_grammar_one) }
-fn grammar_two() -> Hash { atom_identity_hash(s: ^ctk_grammar_two) }
-fn tokens_one() -> Hash { atom_identity_hash(s: ^ctk_tokens_one) }
-fn tokens_two() -> Hash { atom_identity_hash(s: ^ctk_tokens_two) }
+fn grammar_one() -> Hash { symbol_identity_digest(sym: ^ctk_grammar_one) }
+fn grammar_two() -> Hash { symbol_identity_digest(sym: ^ctk_grammar_two) }
+fn tokens_one() -> Hash { symbol_identity_digest(sym: ^ctk_tokens_one) }
+fn tokens_two() -> Hash { symbol_identity_digest(sym: ^ctk_tokens_two) }
 
 fn table_g1_t1() -> ParseTable { mk_table(grammar: grammar_one(), tokens: tokens_one()) }
 fn table_g2_t1() -> ParseTable { mk_table(grammar: grammar_two(), tokens: tokens_one()) }
