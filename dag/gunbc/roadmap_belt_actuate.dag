@@ -68,7 +68,6 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_ls_argv_for_instance,
   tmux_kill_session_argv,
   tmux_kill_session_argv_for_instance,
-  dispatch_live_sessions,
   dispatch_live_sessions_from_entries,
   dispatch_live_sessions_with_process,
   DispatchStopRunningProcess,
