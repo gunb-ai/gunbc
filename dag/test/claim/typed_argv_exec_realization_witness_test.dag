@@ -44,7 +44,10 @@ data typed_argv_exec_realization_note: String = "Wave C5 receipt: deploy-preflig
 
 test fn witness_posix_effective_principal_read_typed_argv_holds() -> Bool {
   let result = access.PosixEffectivePrincipal.Read(read: EffectivePosixPrincipalRead {})
-  result.success && result.stdout == "ghrunner"
+  result.exit_code == 1
+    && !result.success
+    && result.stdout == ""
+    && result.stderr == "hermetic effective-principal observation unavailable"
 }
 
 test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
