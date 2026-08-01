@@ -145,7 +145,7 @@ import gunbc.hostname_set {
 }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op {
-  posix_effective_principal_read_argv,
+  posix_effective_principal_read_argv, effective_posix_principal_read,
 }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
@@ -1365,7 +1365,7 @@ fn realize_effective_principal_read_on_host(
   let argv = posix_effective_principal_read_argv()
   match transport {
     LocalShell => {
-      let result = access.PosixEffectivePrincipal.Read(read: read)
+      let result = effective_posix_principal_read(read: read)
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
           exit_code: result.exit_code,

@@ -5,11 +5,15 @@ import extdeps.auth.jwt {
   NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
 }
 import extdeps.auth.oidc { OidcStandardClaims, OidcIdTokenClaims }
-import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.access.posix_effective_principal {
+  EffectivePosixPrincipalRead,
+  EffectivePosixPrincipalReadOutcome,
+  EffectivePosixPrincipalObserved, EffectivePosixPrincipalObservationRefused,
+  effective_posix_principal_observation, effective_posix_principal_name,
+}
 import gunbc.principal_projection {
   OidcPrincipal, PosixPrincipal,
   OidcProjection, PosixProjection,
-  PosixEffectivePrincipalEvidence,
   oidc_principal_projection, posix_principal_projection, projected_principal,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -43,17 +47,49 @@ test fn oidc_principal_is_exact_issuer_subject_projection_with_evidence_retained
 }
 
 test fn posix_principal_is_exact_effective_name_projection_with_evidence_retained() -> Bool {
-  let observation = PosixEffectivePrincipalEvidence {
-    read: EffectivePosixPrincipalRead {}, observed_name: "ghrunner" as NonEmptyStr,
+  match effective_posix_principal_observation(
+    outcome: EffectivePosixPrincipalReadOutcome {
+      read: EffectivePosixPrincipalRead {}, exit_code: 0, success: true,
+      stdout: "ghrunner\n", stderr: "",
+    },
+  ) {
+    EffectivePosixPrincipalObservationRefused { read: _, reason: _ } => false
+    EffectivePosixPrincipalObserved { observation: observation } => {
+      let projection = posix_principal_projection(observation: observation)
+      match projected_principal(projection: projection) {
+        OidcPrincipal { principal: _ } => false
+        PosixPrincipal { principal: principal } =>
+          principal.effective_name == "ghrunner"
+            && match projection {
+              OidcProjection { claims: _ } => false
+              PosixProjection { observation: retained } =>
+                effective_posix_principal_name(observation: retained) == "ghrunner"
+            }
+      }
+    }
   }
-  let projection = posix_principal_projection(observation: observation)
-  match projected_principal(projection: projection) {
-    OidcPrincipal { principal: _ } => false
-    PosixPrincipal { principal: principal } =>
-      principal.effective_name == observation.observed_name
-        && match projection {
-          OidcProjection { claims: _ } => false
-          PosixProjection { observation: retained } => retained == observation
-        }
+}
+
+test fn posix_principal_observation_refuses_failed_or_empty_reads() -> Bool {
+  let failed = effective_posix_principal_observation(
+    outcome: EffectivePosixPrincipalReadOutcome {
+      read: EffectivePosixPrincipalRead {}, exit_code: 1, success: false,
+      stdout: "root", stderr: "whoami failed",
+    },
+  )
+  let empty = effective_posix_principal_observation(
+    outcome: EffectivePosixPrincipalReadOutcome {
+      read: EffectivePosixPrincipalRead {}, exit_code: 0, success: true,
+      stdout: "\n", stderr: "",
+    },
+  )
+  (match failed {
+    EffectivePosixPrincipalObserved { observation: _ } => false
+    EffectivePosixPrincipalObservationRefused { read: _, reason: reason } => reason == "whoami failed"
+  }) && (match empty {
+    EffectivePosixPrincipalObserved { observation: _ } => false
+    EffectivePosixPrincipalObservationRefused { read: _, reason: reason } =>
+      reason == "successful effective-principal read returned no name"
   }
+  )
 }

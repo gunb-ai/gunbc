@@ -1,7 +1,9 @@
 module extdeps.access.posix_effective_principal_read_op
 
 import std.types { String, Int, Bool, List }
-import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.access.posix_effective_principal {
+  EffectivePosixPrincipalRead, EffectivePosixPrincipalReadOutcome,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -16,6 +18,19 @@ data posix_effective_principal_read_op_note: String = "Typed argv transport for 
 
 fn posix_effective_principal_read_argv() -> List<String> {
   ["whoami"]
+}
+
+func effective_posix_principal_read(
+  read: EffectivePosixPrincipalRead,
+) -> EffectivePosixPrincipalReadOutcome {
+  let result = access.PosixEffectivePrincipal.Read(read: read)
+  return EffectivePosixPrincipalReadOutcome {
+    read: read,
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  }
 }
 
 service access.PosixEffectivePrincipal {

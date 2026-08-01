@@ -3,9 +3,11 @@ module gunbc.principal_projection
 import std.types { NonEmptyStr }
 import extdeps.auth.jwt { JwtStringOrUri }
 import extdeps.auth.oidc { OidcIdTokenClaims }
-import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.access.posix_effective_principal {
+  EffectivePosixPrincipalObservation, effective_posix_principal_name,
+}
 
-data principal_projection_note: String = "A gunbc principal is a projection of external authentication evidence, never an independently authored identity. OidcProjectedPrincipal reads issuer and subject directly from extdeps.auth.oidc.OidcIdTokenClaims (whose vocabulary is extdeps.auth.jwt.JwtStringOrUri). PosixProjectedPrincipal reads the non-empty observed result of extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead. PrincipalProjection couples each evidence kind to its only matching constructor, and projected_principal derives rather than stores the principal, so contradictory principal/evidence pairs are unrepresentable. Future policy vocabulary must project the named external authorities rather than mint local substitutes: extdeps.access.aws_iam.PolicyDocument, extdeps.access.rbac.RbacPolicy, and extdeps.access.zanzibar.CheckRequest."
+data principal_projection_note: String = "A gunbc principal is a projection of external authentication evidence, never an independently authored identity. OidcProjectedPrincipal reads issuer and subject directly from extdeps.auth.oidc.OidcIdTokenClaims (whose vocabulary is extdeps.auth.jwt.JwtStringOrUri). PosixProjectedPrincipal reads extdeps.access.posix_effective_principal.EffectivePosixPrincipalObservation, whose opaque name is constructible only by that authority's successful non-empty read decoder. PrincipalProjection couples each evidence kind to its only matching constructor, and projected_principal derives rather than stores the principal, so contradictory principal/evidence pairs are unrepresentable. Future policy vocabulary must project the named external authorities rather than mint local substitutes: extdeps.access.aws_iam.PolicyDocument, extdeps.access.rbac.RbacPolicy, and extdeps.access.zanzibar.CheckRequest."
 
 type OidcProjectedPrincipal {
   issuer: JwtStringOrUri
@@ -20,21 +22,16 @@ type GunbcPrincipal
   = OidcPrincipal { principal: OidcProjectedPrincipal }
   | PosixPrincipal { principal: PosixProjectedPrincipal }
 
-type PosixEffectivePrincipalEvidence {
-  read: EffectivePosixPrincipalRead
-  observed_name: NonEmptyStr
-}
-
 type PrincipalProjection
   = OidcProjection { claims: OidcIdTokenClaims }
-  | PosixProjection { observation: PosixEffectivePrincipalEvidence }
+  | PosixProjection { observation: EffectivePosixPrincipalObservation }
 
 fn oidc_principal_projection(claims: OidcIdTokenClaims) -> PrincipalProjection {
   OidcProjection { claims: claims }
 }
 
 fn posix_principal_projection(
-  observation: PosixEffectivePrincipalEvidence,
+  observation: EffectivePosixPrincipalObservation,
 ) -> PrincipalProjection {
   PosixProjection { observation: observation }
 }
@@ -46,7 +43,7 @@ fn projected_principal(projection: PrincipalProjection) -> GunbcPrincipal {
       subject: claims.subject,
     } }
     PosixProjection { observation: observation } => PosixPrincipal { principal: PosixProjectedPrincipal {
-      effective_name: observation.observed_name,
+      effective_name: effective_posix_principal_name(observation: observation),
     } }
   }
 }

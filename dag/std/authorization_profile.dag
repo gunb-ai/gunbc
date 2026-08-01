@@ -2,6 +2,7 @@ module std.authorization_profile
 
 import std.types { Bool, List, Set, String }
 import std.access { AccessRequest, AccessContext, AccessEvidence }
+import std.disposition { Disposition, Terminal }
 
 data authorization_profile_note: String = "Typed authorization request profiles over the single std.access kernel. A profile is an exact product and a projection to AccessRequest; none declares an admitted/refused carrier or an allow/deny fold. EffectRequest carries an actor, effect, target, ambient context, and evidence. ReferenceRequest carries the referrer and referenced object separately. PublicationAdmissionRequest asks whether one resource may inhabit an audience set. DisclosureRequest adds the disclosed field set. SealedExecutionRequest keeps the sealed resource, operation, and execution context distinct."
 
@@ -11,15 +12,8 @@ type AudienceSet<P>
 
 data audience_set_note: String = "An audience is a set, not the frozen World > Network > Org > Repo chain from gunbc#7541. Enumerated audiences use the canonical std.types.Set carrier, so duplicate membership is unrepresentable; overlapping sets need not contain one another. UniversalAudience is top and the empty EnumeratedAudience is bottom. audience_subset derives the partial order from canonical set_union, which is also the audience_join operation."
 
-fn audience_member<P>(
-  audience: AudienceSet<P>,
-  principal: P,
-) -> Bool {
-  match audience {
-    UniversalAudience => true
-    EnumeratedAudience { members: members } =>
-      set_contains(members, principal)
-  }
+data authorization_profile_audience_query_contract: Disposition = Terminal {
+  reason: "Structural readers over the closed AudienceSet coproduct: audience_subset derives the partial order only from canonical std.types.Set union/equality, and audience_join delegates finite union to canonical set_union. UniversalAudience is the one explicit top arm. Terminal because the coproduct has exactly those two variants and the overlapping-audience witness covers incomparable enumerated sets, universal top, and the join result."
 }
 
 fn audience_subset<P>(
