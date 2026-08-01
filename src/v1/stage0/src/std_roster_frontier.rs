@@ -4,6 +4,7 @@
 use self::DissolveTrigger::*;
 use self::FrontierSubject::*;
 use crate::std_decl_ref::DeclField::{NamedField, WholeDeclaration};
+pub use crate::std_decl_ref::{decl_field_ref, decl_ref};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
@@ -84,28 +85,6 @@ pub fn frontier_row_decl(
         subject: Rc::new(FrontierSubject::DeclSubject { ref_: ref_.clone() }),
         reason: reason.clone(),
         trigger: trigger.clone(),
-    })
-}
-
-pub fn decl_ref(module_path: String, decl_name: String) -> Rc<DeclarationRef> {
-    Rc::new(DeclarationRef {
-        module_path: module_path.clone(),
-        decl_name: decl_name.clone(),
-        field: Rc::new(DeclField::WholeDeclaration),
-    })
-}
-
-pub fn decl_field_ref(
-    module_path: String,
-    decl_name: String,
-    field_name: String,
-) -> Rc<DeclarationRef> {
-    Rc::new(DeclarationRef {
-        module_path: module_path.clone(),
-        decl_name: decl_name.clone(),
-        field: Rc::new(DeclField::NamedField {
-            field_name: field_name.clone(),
-        }),
     })
 }
 
