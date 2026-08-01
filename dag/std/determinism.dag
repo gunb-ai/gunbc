@@ -5,6 +5,21 @@ type Determinism
   = Deterministic
   | NonDeterministic { source: DeclarationRef }
 
+type TraversalOrder
+  = PreservesAuthoredOrder
+  | CanonicalOrder { ordering: DeclarationRef }
+  | HostUnspecifiedOrder { realization: DeclarationRef }
+
+type CollectionOperation {
+  name: String
+  signature: Symbol
+}
+
+type CollectionOperationSemantics {
+  operation: CollectionOperation
+  traversal_order: TraversalOrder?
+}
+
 fn determinism_from_perturbation(verdict: std.perturbation.PerturbationVerdict, reached: DeclarationRef) -> Determinism {
   match verdict {
     ResponseConsistent => Deterministic
