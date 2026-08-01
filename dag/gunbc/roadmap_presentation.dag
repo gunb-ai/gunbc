@@ -76,7 +76,6 @@ type WorkAttemptFacts
   | ActiveAttempt {
       progress: WorkflowAttemptProgress
       process: WorkerProcessEvidence
-      session_present: Bool
       current_activity: String
     }
   | AttemptUnobservable { reason: String }
@@ -352,11 +351,22 @@ fn agent_completion_claim(process: WorkerProcessEvidence) -> String {
   }
 }
 
-fn activity_evidence_rows(process: WorkerProcessEvidence, session_present: Bool) -> List<ActivityEvidenceRow> {
+data evidence_rows_one_authority_note: String = "Both evidence rows derive from the ONE process-evidence authority rather than a separate session Bool that could disagree with it: per belt_sessions_observation_separation_note, a running or exited pane implies a present session container, an unobserved pane probe maps a PRESENT session to process-unobserved, and Absent means no container was observed. A second session_present parameter would be the two-facts-one-truth fork §3 forbids."
+
+fn session_container_value(process: WorkerProcessEvidence) -> String {
+  match process {
+    WorkerProcessRunning { command: _ } => "present"
+    WorkerProcessExited { exit_code: _, last_command: _ } => "present"
+    WorkerProcessUnobserved { reason: _ } => "present"
+    WorkerProcessAbsent => "absent"
+  }
+}
+
+fn activity_evidence_rows(process: WorkerProcessEvidence) -> List<ActivityEvidenceRow> {
   [
     ActivityEvidenceRow {
       label: "session container",
-      value: if session_present { "present" } else { "absent" },
+      value: session_container_value(process: process),
     },
     ActivityEvidenceRow {
       label: "worker process",
@@ -391,10 +401,9 @@ fn activity_view_from_parts(
   segments: List<WorkflowSegment>,
   remaining: Int,
   process: WorkerProcessEvidence,
-  session_present: Bool,
   current_activity: String,
 ) -> ActivityView {
-  let evidence = activity_evidence_rows(process: process, session_present: session_present)
+  let evidence = activity_evidence_rows(process: process)
   match first_refused(segments: segments) {
     Present { value: refused } => ActiveWorkRefused {
       summary: join([workflow_segment_kind_label(kind: refused.kind), " evidence refused"], ""),
