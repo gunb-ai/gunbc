@@ -1,0 +1,194 @@
+module test.claim.heal_revalidation_witness
+
+import std.content_hash { content_hash_atom }
+import std.types { CommitSha, ContentHash }
+import extdeps.github.checks { Success }
+import gunbc.merge_admission {
+  CheckCoverageComplete,
+  CoveredGateConclusion
+}
+import gunbc.heal_revalidation {
+  HealOutcome, HealNoChange, HealProduced,
+  HealDispatchPending, HealDispatchAccepted, HealDispatchRefused,
+  HealRevalidationNotRequired, HealRevalidationRequired, HealRevalidationCoverageObserved,
+  PriorRunStillCurrent, SupersededByHealedHead,
+  OrdinaryWorkflowDispatch, HealWorkflowDispatchSubjectMatched,
+  HealWorkflowDispatchCheckoutMismatch, HealWorkflowDispatchRunSubjectMismatch,
+  HealRevalidationAdmittedNoChange, HealRevalidationAdmittedExactCoverage,
+  HealRevalidationDeniedRequired, HealRevalidationDeniedCoverage,
+  heal_revalidation_initial,
+  prior_run_disposition,
+  classify_workflow_dispatch_preflight,
+  classify_heal_revalidation_admission,
+  heal_revalidation_admits
+}
+
+data prior_head: CommitSha = "1111111111111111111111111111111111111111"
+data healed_head: CommitSha = "2222222222222222222222222222222222222222"
+data other_head: CommitSha = "3333333333333333333333333333333333333333"
+data required_roster: ContentHash = content_hash_atom(value: "heal-roster")
+data required_gate: ContentHash = content_hash_atom(value: "heal-gate")
+
+fn produced() -> HealOutcome {
+  HealProduced {
+    prior_head: prior_head,
+    healed_head: healed_head,
+    changed_artifacts: [".github/workflows/ci.yml"]
+  }
+}
+
+fn successful_coverage(head: CommitSha) -> gunbc.merge_admission.CheckCoverage {
+  CheckCoverageComplete {
+    head: head,
+    roster: required_roster,
+    conclusions: [CoveredGateConclusion { gate: required_gate, conclusion: Success }]
+  }
+}
+
+test fn heal_no_change_creates_no_revalidation_obligation() -> Bool {
+  heal_revalidation_admits(
+    state: heal_revalidation_initial(outcome: HealNoChange { head: prior_head }),
+    required_roster: required_roster,
+    required_gates: [required_gate]
+  )
+}
+
+test fn heal_produced_is_immediately_revalidation_required() -> Bool {
+  let state = heal_revalidation_initial(outcome: produced())
+  match state {
+    HealRevalidationRequired { prior_head: prior, healed_head: healed, changed_artifacts, dispatch } =>
+      prior == prior_head
+        && healed == healed_head
+        && changed_artifacts == [".github/workflows/ci.yml"]
+        && match dispatch {
+          HealDispatchPending { healed_head: pending } => pending == healed_head
+          HealDispatchAccepted { healed_head: _, run: _ } => false
+          HealDispatchRefused { healed_head: _, cause: _ } => false
+        }
+    HealRevalidationNotRequired { head: _ } => false
+    HealRevalidationCoverageObserved { prior_head: _, healed_head: _, changed_artifacts: _, coverage: _ } => false
+  }
+}
+
+test fn produced_head_supersedes_prior_run() -> Bool {
+  match prior_run_disposition(outcome: produced()) {
+    SupersededByHealedHead { prior_head: prior, healed_head: healed } =>
+      prior == prior_head && healed == healed_head
+    PriorRunStillCurrent { head: _ } => false
+  }
+}
+
+test fn accepted_dispatch_is_not_revalidation() -> Bool {
+  !heal_revalidation_admits(
+    state: HealRevalidationRequired {
+      prior_head: prior_head,
+      healed_head: healed_head,
+      changed_artifacts: [".github/workflows/ci.yml"],
+      dispatch: HealDispatchAccepted { healed_head: healed_head, run: "run-42" }
+    },
+    required_roster: required_roster,
+    required_gates: [required_gate]
+  )
+}
+
+test fn refused_dispatch_stays_required_and_located() -> Bool {
+  let verdict = classify_heal_revalidation_admission(
+    state: HealRevalidationRequired {
+      prior_head: prior_head,
+      healed_head: healed_head,
+      changed_artifacts: [".github/workflows/ci.yml"],
+      dispatch: HealDispatchRefused {
+        healed_head: healed_head,
+        cause: "CreateWorkflowDispatch permission denied"
+      }
+    },
+    required_roster: required_roster,
+    required_gates: [required_gate]
+  )
+  match verdict {
+    HealRevalidationDeniedRequired { healed_head: denied, dispatch } =>
+      denied == healed_head && match dispatch {
+        HealDispatchRefused { healed_head: refused, cause } =>
+          refused == healed_head && string_contains(s: cause, pattern: "permission denied")
+        HealDispatchPending { healed_head: _ } => false
+        HealDispatchAccepted { healed_head: _, run: _ } => false
+      }
+    HealRevalidationAdmittedNoChange { head: _ } => false
+    HealRevalidationAdmittedExactCoverage { healed_head: _ } => false
+    HealRevalidationDeniedCoverage { healed_head: _, coverage: _ } => false
+  }
+}
+
+test fn only_exact_healed_head_complete_coverage_admits() -> Bool {
+  heal_revalidation_admits(
+    state: HealRevalidationCoverageObserved {
+      prior_head: prior_head,
+      healed_head: healed_head,
+      changed_artifacts: [".github/workflows/ci.yml"],
+      coverage: successful_coverage(head: healed_head)
+    },
+    required_roster: required_roster,
+    required_gates: [required_gate]
+  ) && !heal_revalidation_admits(
+    state: HealRevalidationCoverageObserved {
+      prior_head: prior_head,
+      healed_head: healed_head,
+      changed_artifacts: [".github/workflows/ci.yml"],
+      coverage: successful_coverage(head: prior_head)
+    },
+    required_roster: required_roster,
+    required_gates: [required_gate]
+  )
+}
+
+test fn manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidation() -> Bool {
+  match classify_workflow_dispatch_preflight(
+    expected_healed_head: none,
+    checkout_head: healed_head,
+    run_subject_head: healed_head
+  ) {
+    OrdinaryWorkflowDispatch { checkout_head, run_subject_head } =>
+      checkout_head == healed_head && run_subject_head == healed_head
+    HealWorkflowDispatchSubjectMatched { expected_head: _ } => false
+    HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchRunSubjectMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+  }
+}
+
+test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool {
+  let matched = classify_workflow_dispatch_preflight(
+    expected_healed_head: Present { value: healed_head },
+    checkout_head: healed_head,
+    run_subject_head: healed_head
+  )
+  let checkout_mismatch = classify_workflow_dispatch_preflight(
+    expected_healed_head: Present { value: healed_head },
+    checkout_head: other_head,
+    run_subject_head: healed_head
+  )
+  let run_subject_mismatch = classify_workflow_dispatch_preflight(
+    expected_healed_head: Present { value: healed_head },
+    checkout_head: healed_head,
+    run_subject_head: other_head
+  )
+  match matched {
+    HealWorkflowDispatchSubjectMatched { expected_head } => expected_head == healed_head
+    OrdinaryWorkflowDispatch { checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchRunSubjectMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+  } && match checkout_mismatch {
+    HealWorkflowDispatchCheckoutMismatch { expected_head, checkout_head, run_subject_head } =>
+      expected_head == healed_head && checkout_head == other_head && run_subject_head == healed_head
+    OrdinaryWorkflowDispatch { checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchSubjectMatched { expected_head: _ } => false
+    HealWorkflowDispatchRunSubjectMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+  } && match run_subject_mismatch {
+    HealWorkflowDispatchRunSubjectMismatch { expected_head, checkout_head, run_subject_head } =>
+      expected_head == healed_head && checkout_head == healed_head && run_subject_head == other_head
+    OrdinaryWorkflowDispatch { checkout_head: _, run_subject_head: _ } => false
+    HealWorkflowDispatchSubjectMatched { expected_head: _ } => false
+    HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
+  }
+}
+
+data heal_revalidation_closed_denominator_witness_note: String = "These executing witnesses enumerate both current HealOutcome arms and every HealDispatchOutcome arm through exhaustive matches. A newly added heal path or dispatch classification makes this file and the admission folds fail to compile until it is explicitly classified; unclassified cannot become success. The RED controls discriminate dispatch accepted from coverage complete, refused dispatch from an in-flight run, old-head green from healed-head green, and ordinary manual dispatch from heal revalidation."

@@ -1,13 +1,17 @@
 module test.claim.live_deploy.emit
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
+  OwnedArtifactKind,
   DeploymentDependencyStep,
   TailscalePackage,
   TmuxPackage,
   deployment_spec_srv1,
+  deployment_spec_srv1_green,
+  deployment_slot_spec,
+  deployment_route_spec,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
   deployment_owned_steps,
@@ -85,6 +89,33 @@ import extdeps.apt { package_tailscale, package_tmux }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn spec_artifact_kind_count(spec: DeploymentSpec, kind: OwnedArtifactKind) -> Int {
+  count(filter(spec.steps, step => match step {
+    ArtifactStep { step: art } => art.kind == kind
+    Dependency { step: _ } => false
+  }))
+}
+
+test fn witness_blue_green_slots_are_disjoint_but_share_one_route_identity() -> Bool {
+  let blue = deployment_spec_srv1()
+  let green = deployment_spec_srv1_green()
+  deployment_plan_listen_port(spec: blue) == 8080
+    && deployment_plan_listen_port(spec: green) == 18080
+    && blue.service.unit_name != green.service.unit_name
+    && blue.service.repo_root != green.service.repo_root
+    && blue.names.tailscale_serve_endpoint.https_port == green.names.tailscale_serve_endpoint.https_port
+    && blue.names.tailscale_serve_endpoint.mount == green.names.tailscale_serve_endpoint.mount
+}
+
+test fn witness_slot_and_route_specs_make_preflip_mapping_mutation_unwritable() -> Bool {
+  let green = deployment_spec_srv1_green()
+  let slot = deployment_slot_spec(spec: green)
+  let route = deployment_route_spec(spec: green)
+  spec_artifact_kind_count(spec: slot, kind: TailscaleServeMapping) == 0
+    && spec_artifact_kind_count(spec: route, kind: TailscaleServeMapping) == 1
+    && count(route.steps) == 1
+}
 
 test fn witness_spec_targets_srv1() -> Bool {
   deployment_plan_host_identity(spec: deployment_spec_srv1()) == "srv1"

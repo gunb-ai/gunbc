@@ -3,6 +3,7 @@ module tools.merge_admission_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { GitRef }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission {
   current_gate_roster_hash,
@@ -38,7 +39,7 @@ fn verdict_reason(v: MergeAdmissionVerdict) -> String {
 }
 
 func main() -> ProcessExit {
-  let root = git.Core.Toplevel().path as String
+  let root = git.Inspect.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let read = Filesystem.Read(path: path)
   if !read.success {

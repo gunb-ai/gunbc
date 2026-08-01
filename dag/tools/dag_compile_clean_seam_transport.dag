@@ -3,6 +3,7 @@ module tools.dag_compile_clean_seam_transport
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import std.types { String, Bool }
 import tools.dag_compile_clean_transport { dcc_gunbc_path, dcc_gunbc_ready }
@@ -60,7 +61,7 @@ fn cross_shard_seam_break_module(broken_dag: String) -> Bool {
 }
 
 fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let broken = shell.Mktemp.Dir()
     let stage_y = shell.Mktemp.Dir()

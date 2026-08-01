@@ -1,0 +1,176 @@
+module gunbc.heal_revalidation
+
+import std.types { CommitSha, ContentHash, NonEmptyStr }
+import gunbc.merge_admission {
+  CheckCoverage,
+  check_coverage_admits
+}
+
+type HealOutcome
+  = HealNoChange { head: CommitSha }
+  | HealProduced {
+      prior_head: CommitSha,
+      healed_head: CommitSha,
+      changed_artifacts: List<String>
+    }
+
+type HealDispatchOutcome
+  = HealDispatchPending { healed_head: CommitSha }
+  | HealDispatchAccepted {
+      healed_head: CommitSha,
+      run: NonEmptyStr
+    }
+  | HealDispatchRefused {
+      healed_head: CommitSha,
+      cause: NonEmptyStr
+    }
+
+type PriorRunDisposition
+  = PriorRunStillCurrent { head: CommitSha }
+  | SupersededByHealedHead {
+      prior_head: CommitSha,
+      healed_head: CommitSha
+    }
+
+type HealRevalidationState
+  = HealRevalidationNotRequired { head: CommitSha }
+  | HealRevalidationRequired {
+      prior_head: CommitSha,
+      healed_head: CommitSha,
+      changed_artifacts: List<String>,
+      dispatch: HealDispatchOutcome
+    }
+  | HealRevalidationCoverageObserved {
+      prior_head: CommitSha,
+      healed_head: CommitSha,
+      changed_artifacts: List<String>,
+      coverage: CheckCoverage
+    }
+
+type HealRevalidationAdmissionVerdict
+  = HealRevalidationAdmittedNoChange { head: CommitSha }
+  | HealRevalidationAdmittedExactCoverage { healed_head: CommitSha }
+  | HealRevalidationDeniedRequired { healed_head: CommitSha, dispatch: HealDispatchOutcome }
+  | HealRevalidationDeniedCoverage {
+      healed_head: CommitSha,
+      coverage: CheckCoverage
+    }
+
+type WorkflowDispatchPreflight
+  = OrdinaryWorkflowDispatch {
+      checkout_head: CommitSha,
+      run_subject_head: CommitSha
+    }
+  | HealWorkflowDispatchSubjectMatched { expected_head: CommitSha }
+  | HealWorkflowDispatchCheckoutMismatch {
+      expected_head: CommitSha,
+      checkout_head: CommitSha,
+      run_subject_head: CommitSha
+    }
+  | HealWorkflowDispatchRunSubjectMismatch {
+      expected_head: CommitSha,
+      checkout_head: CommitSha,
+      run_subject_head: CommitSha
+    }
+
+data heal_revalidation_subject_universe_note: String = "HEAL REVALIDATION IS A TOTAL CLASSIFICATION OVER EVERY HEAD THE HEAL CAN PRODUCE (operator mandate 2026-08-01). HealNoChange creates no new subject. HealProduced creates an immutable healed_head, immediately supersedes prior_head, and starts in HealRevalidationRequired; Pending, Accepted, and Refused dispatches all remain refusals until CheckCoverageComplete for that exact healed head and the current nonempty roster admits through gunbc.merge_admission. The dispatched run also classifies its GitHub run/check subject separately from checkout HEAD: both must equal healed_head, and either mismatch is a typed refusal. Adding a heal path or preflight subject state means adding a coproduct arm, which turns the exhaustive folds red until that new subject is classified. There is no unknown-head arm and no rerun-everything fallback."
+
+data heal_revalidation_external_boundary_note: String = "This module and the CI workflow close the in-repository model/realization loop: a produced heal explicitly dispatches a new run and exact-head coverage is required. The external dashboard readout that historically treated an absent run as ok, and its separate aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository and are not fixed or claimed fixed here."
+
+fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
+  match outcome {
+    HealNoChange { head } => HealRevalidationNotRequired { head: head }
+    HealProduced { prior_head, healed_head, changed_artifacts } =>
+      HealRevalidationRequired {
+        prior_head: prior_head,
+        healed_head: healed_head,
+        changed_artifacts: changed_artifacts,
+        dispatch: HealDispatchPending { healed_head: healed_head }
+      }
+  }
+}
+
+fn prior_run_disposition(outcome: HealOutcome) -> PriorRunDisposition {
+  match outcome {
+    HealNoChange { head } => PriorRunStillCurrent { head: head }
+    HealProduced { prior_head, healed_head, changed_artifacts: _ } =>
+      SupersededByHealedHead { prior_head: prior_head, healed_head: healed_head }
+  }
+}
+
+fn classify_workflow_dispatch_preflight(
+  expected_healed_head: CommitSha?,
+  checkout_head: CommitSha,
+  run_subject_head: CommitSha,
+) -> WorkflowDispatchPreflight {
+  match expected_healed_head {
+    Absent => OrdinaryWorkflowDispatch {
+      checkout_head: checkout_head,
+      run_subject_head: run_subject_head
+    }
+    Present { value: expected } =>
+      if expected != run_subject_head {
+        HealWorkflowDispatchRunSubjectMismatch {
+          expected_head: expected,
+          checkout_head: checkout_head,
+          run_subject_head: run_subject_head
+        }
+      } else if expected == checkout_head {
+        HealWorkflowDispatchSubjectMatched { expected_head: expected }
+      } else {
+        HealWorkflowDispatchCheckoutMismatch {
+          expected_head: expected,
+          checkout_head: checkout_head,
+          run_subject_head: run_subject_head
+        }
+      }
+  }
+}
+
+fn classify_heal_revalidation_admission(
+  state: HealRevalidationState,
+  required_roster: ContentHash,
+  required_gates: List<ContentHash>,
+) -> HealRevalidationAdmissionVerdict {
+  match state {
+    HealRevalidationNotRequired { head } =>
+      HealRevalidationAdmittedNoChange { head: head }
+    HealRevalidationRequired {
+      prior_head: _, healed_head, changed_artifacts: _, dispatch
+    } =>
+      HealRevalidationDeniedRequired { healed_head: healed_head, dispatch: dispatch }
+    HealRevalidationCoverageObserved {
+      prior_head: _, healed_head, changed_artifacts: _, coverage
+    } =>
+      if check_coverage_admits(
+        coverage: coverage,
+        required_head: healed_head,
+        required_roster: required_roster,
+        required_gates: required_gates
+      ) {
+        HealRevalidationAdmittedExactCoverage { healed_head: healed_head }
+      } else {
+        HealRevalidationDeniedCoverage {
+          healed_head: healed_head,
+          coverage: coverage
+        }
+      }
+  }
+}
+
+fn heal_revalidation_admits(
+  state: HealRevalidationState,
+  required_roster: ContentHash,
+  required_gates: List<ContentHash>,
+) -> Bool {
+  match classify_heal_revalidation_admission(
+    state: state,
+    required_roster: required_roster,
+    required_gates: required_gates
+  ) {
+    HealRevalidationAdmittedNoChange { head: _ } => true
+    HealRevalidationAdmittedExactCoverage { healed_head: _ } => true
+    HealRevalidationDeniedRequired { healed_head: _, dispatch: _ } => false
+    HealRevalidationDeniedCoverage { healed_head: _, coverage: _ } => false
+  }
+}
