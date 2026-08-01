@@ -1,6 +1,7 @@
 module v1.compiler.tokenize
 
 import std.types { SourceSpan }
+import std.unicode.types { unicode_scalar }
 
 import v1.std.core {
   make_file_span,
@@ -243,9 +244,30 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
 }
 
 type StringScanResult
-  = ClosedString { content: String, end_pos: Int }
-  | InterpolationStart { content: String, end_pos: Int }
-  | UnterminatedString { content: String, end_pos: Int }
+  = ClosedString { content: List<Int>, end_pos: Int }
+  | InterpolationStart { content: List<Int>, end_pos: Int }
+  | UnterminatedString { content: List<Int>, end_pos: Int }
+
+type EscapeProcessResult
+  = EscapesProcessed { text: String }
+  | EscapeProcessingRefused {}
+
+fn make_processed_string_token(
+  content: List<Int>,
+  span: SourceSpan,
+  accepted_shape: TokenShape
+) -> Token {
+  match process_escapes(chars: content) {
+    EscapesProcessed { text: processed } =>
+      make_token(text: processed, span: span, shape: accepted_shape)
+    EscapeProcessingRefused {} =>
+      make_token(
+        text: chars_to_string(chars: content, start: 0, end: count(content)),
+        span: span,
+        shape: ShUnknown
+      )
+  }
+}
 
 fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   let span_start = pos.pos
@@ -253,16 +275,22 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   let result = scan_string_body(source: source, pos: body_start, acc: [])
   match result {
     ClosedString { content, end_pos } => {
-      let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShLitStr)
+      let token = make_processed_string_token(
+        content: content,
+        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: ShLitStr
+      )
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
       }
     }
     InterpolationStart { content, end_pos } => {
-      let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrBegin)
+      let token = make_processed_string_token(
+        content: content,
+        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: ShStrBegin
+      )
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -270,8 +298,11 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
       }
     }
     UnterminatedString { content, end_pos } => {
-      let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos), shape: ShUnknown)
+      let token = make_processed_string_token(
+        content: content,
+        span: make_file_span(file: source.file, start: span_start, end: end_pos),
+        accepted_shape: ShUnknown
+      )
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
@@ -284,16 +315,22 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
   let result = scan_string_body(source: source, pos: pos.pos, acc: [])
   match result {
     ClosedString { content, end_pos } => {
-      let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrEnd)
+      let token = make_processed_string_token(
+        content: content,
+        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: ShStrEnd
+      )
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
       }
     }
     InterpolationStart { content, end_pos } => {
-      let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrMid)
+      let token = make_processed_string_token(
+        content: content,
+        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: ShStrMid
+      )
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -301,8 +338,11 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
       }
     }
     UnterminatedString { content, end_pos } => {
-      let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos), shape: ShUnknown)
+      let token = make_processed_string_token(
+        content: content,
+        span: make_file_span(file: source.file, start: span_start, end: end_pos),
+        accepted_shape: ShUnknown
+      )
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
@@ -311,25 +351,33 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
   }
 }
 
-fn scan_string_body(source: SourceRef, pos: Int, acc: List<String>) -> StringScanResult {
+fn scan_string_body(source: SourceRef, pos: Int, acc: List<Int>) -> StringScanResult {
   if pos >= source_len(source: source) {
-    UnterminatedString { content: join(acc, separator: ""), end_pos: pos }
+    UnterminatedString { content: acc, end_pos: pos }
   } else {
-    let ch = source_char(source: source, pos: pos)
-    if ch == "\"" {
-      ClosedString { content: join(acc, separator: ""), end_pos: pos }
-    } else if ch == "\\" {
+    let ch = source.source_chars[pos]
+    if ch == 34 {
+      ClosedString { content: acc, end_pos: pos }
+    } else if ch == 92 {
       if pos + 1 < source_len(source: source) {
-        let escaped = source_char(source: source, pos: pos + 1)
-        scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, "\\"), escaped))
+        let escaped = source.source_chars[pos + 1]
+        if escaped == 117 && pos + 2 < source_len(source: source) && source.source_chars[pos + 2] == 123 {
+          scan_string_body(
+            source: source,
+            pos: pos + 3,
+            acc: list_push(list_push(list_push(acc, 92), 117), 123)
+          )
+        } else {
+          scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, 92), escaped))
+        }
       } else {
-        UnterminatedString { content: join(list_push(acc, "\\"), separator: ""), end_pos: pos + 1 }
+        UnterminatedString { content: list_push(acc, 92), end_pos: pos + 1 }
       }
-    } else if ch == "{" {
+    } else if ch == 123 {
       if should_start_interpolation(source: source, pos: pos) {
-        InterpolationStart { content: join(acc, separator: ""), end_pos: pos }
+        InterpolationStart { content: acc, end_pos: pos }
       } else {
-        scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, "{"))
+        scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, 123))
       }
     } else {
       scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, ch))
@@ -346,16 +394,27 @@ fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
   }
 }
 
-fn process_escapes(raw: String) -> String {
-  process_escapes_loop(source: raw, pos: 0, acc: [])
+fn process_escapes(chars: List<Int>) -> EscapeProcessResult {
+  process_escapes_loop(source: chars, pos: 0, acc: [])
 }
+
+data code_point_at_accessor_note: String = "Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but the Rust realization of an index is a bare element that panics out of range. The two disagree, so wherever the emitter acts on the declared type it emits a coercion the realization cannot satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64` (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary. It works because return position is not checked against the body (recorded on the finalization carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together with those two when the index model and its realization are reconciled — either the index realizes as an Option or it types as the element — at which point return-position typechecking would red all three at once."
+
+fn code_point_at(chars: List<Int>, pos: Int) -> Int {
+  chars[pos]
+}
+
+data escape_code_point_table_note: String = "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL, 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file."
+
+data escape_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, counted here rather than left silent. The discovery-enrolled .dag wall in test.claim.string_brace_escape_witness_test constructs malformed source at runtime and executes the production v1 compile path, so malformed and unknown escape refusal is enforced in CI. The Rust receipt retains finer token identity, spelling, file and full-span assertions plus the decode table. Its wall-clock cost separation stays #[ignore]d because contention can fail correct code and the available work counter does not instrument char_at/string_length. This file does not enter the hand-maintained stage0 module ratchet because tests/ is not a crate module. DISSOLVES ON the v1 terminal deletion path, when the coverage moves under the v1-test-migration bar and this hand-written receipt deletes with src/v1. The benchmark half can dissolve earlier when a structural lens rejects per-character raw-String index walks."
 
 data hex_escape_note: String = "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies)."
 
-data unknown_escape_passthrough_frontier: String = "🟡 dissolve-on: tokenizer_unknown_escape_strict_close (opened 2026-07-25) — the else-arm below resolves an UNRECOGNIZED escape to concat(backslash, next), so \\s silently means backslash-s and is indistinguishable from a typo'd escape. That is a closed-vocabulary violation (DESIGN §4: the vocabulary is closed; §5: a failure arm refuses, never widens) and it is knowingly RETAINED, not accepted: refusing today would red 142 occurrences across 38 files (textual census 2026-07-25 — grep over .dag, so an upper bound, and DESIGN's own caution about grep census applies), overwhelmingly regex fragments (\\' 28, \\. 19, \\| 13, \\/ 12, \\B 10) that intend the backslash to survive. NOT the four sites a \\x-only count suggests. DISSOLVES WHEN a raw-string form lands to carry regex fragments, the 142 occurrences migrate onto it, and this arm becomes a typed located parse refusal (the Rust rule: unknown escape is an error, a literal backslash is spelled \\\\). Because that is a PARSE-SEMANTICS change over a tokenizer every lane's probes compile through, the strict close lands with a corpus-wide compile receipt, never the site migration alone."
+data unicode_escape_note: String = "\\u\{H...\} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan."
 
-fn hex_digit_value(ch: String) -> Int? {
-  let cp = code_point(ch)
+data unknown_escape_refusal_note: String = "An escape marker has already entered a closed grammar production, so an unrecognized or malformed escape refuses as one located ShUnknown string token; it never returns a successfully decoded prefix and never copies unsupported syntax into an accepted value. A literal backslash is spelled \\\\. The former passthrough arm made unsupported syntax indistinguishable from supported syntax and was the root class behind the inert Unicode escapes. Its 142-site regex-heavy corpus frontier migrated with this close, and the whole corpus is the receipt because every source passes through this tokenizer."
+
+fn hex_digit_value(cp: Int) -> Int? {
   if cp >= 48 && cp <= 57 {
     Present { value: cp - 48 }
   } else {
@@ -371,39 +430,99 @@ fn hex_digit_value(ch: String) -> Int? {
   }
 }
 
-fn hex_escape_char(hi: String, lo: String) -> String? {
-  match hex_digit_value(ch: hi) {
-    Present { value: h } => match hex_digit_value(ch: lo) {
-      Present { value: l } => Present { value: from_code_point(h * 16 + l) }
+fn hex_escape_char(hi: Int, lo: Int) -> Int? {
+  match hex_digit_value(cp: hi) {
+    Present { value: h } => match hex_digit_value(cp: lo) {
+      Present { value: l } => Present { value: h * 16 + l }
       Absent => none
     }
     Absent => none
   }
 }
 
-fn process_escapes_loop(source: String, pos: Int, acc: List<String>) -> String {
-  if pos >= string_length(s: source) {
-    join(acc, separator: "")
+type UnicodeEscape {
+  code_point: Int
+  next_pos: Int
+}
+
+fn unicode_escape_at(
+  source: List<Int>,
+  pos: Int,
+  digit_count: Int,
+  value: Int
+) -> UnicodeEscape? {
+  if pos >= count(source) {
+    none
   } else {
-    let ch = char_at(s: source, pos: pos)
-    if ch == "\\" && pos + 1 < string_length(s: source) {
-      let next = char_at(s: source, pos: pos + 1)
-      if next == "x" && pos + 3 < string_length(s: source) {
-        match hex_escape_char(hi: char_at(s: source, pos: pos + 2), lo: char_at(s: source, pos: pos + 3)) {
-          Present { value: decoded } =>
-            process_escapes_loop(source: source, pos: pos + 4, acc: list_push(acc, decoded))
-          Absent =>
-            process_escapes_loop(source: source, pos: pos + 2, acc: list_push(acc, concat("\\", next)))
-        }
+    let ch = code_point_at(chars: source, pos: pos)
+    if ch == 125 {
+      if digit_count > 0 && unicode_scalar(code_point: value) {
+        Present { value: UnicodeEscape { code_point: value, next_pos: pos + 1 } }
       } else {
-        let resolved = if next == "\"" { "\"" }
-          else if next == "\\" { "\\" }
-          else if next == "n" { "\n" }
-          else if next == "t" { "\t" }
-          else if next == "{" { "{" }
-          else if next == "}" { "}" }
-          else { concat("\\", next) }
-        process_escapes_loop(source: source, pos: pos + 2, acc: list_push(acc, resolved))
+        none
+      }
+    } else if digit_count >= 6 {
+      none
+    } else {
+      match hex_digit_value(cp: ch) {
+        Present { value: digit } => unicode_escape_at(
+          source: source,
+          pos: pos + 1,
+          digit_count: digit_count + 1,
+          value: value * 16 + digit
+        )
+        Absent => none
+      }
+    }
+  }
+}
+
+fn process_escapes_loop(source: List<Int>, pos: Int, acc: List<Int>) -> EscapeProcessResult {
+  if pos >= count(source) {
+    EscapesProcessed { text: chars_to_string(chars: acc, start: 0, end: count(acc)) }
+  } else {
+    let ch = code_point_at(chars: source, pos: pos)
+    if ch == 92 {
+      if pos + 1 >= count(source) {
+        EscapeProcessingRefused {}
+      } else {
+        let next = code_point_at(chars: source, pos: pos + 1)
+        if next == 120 && pos + 3 < count(source) {
+          let hi = code_point_at(chars: source, pos: pos + 2)
+          let lo = code_point_at(chars: source, pos: pos + 3)
+          match hex_escape_char(hi: hi, lo: lo) {
+            Present { value: decoded } =>
+              process_escapes_loop(source: source, pos: pos + 4, acc: list_push(acc, decoded))
+            Absent => EscapeProcessingRefused {}
+          }
+        } else if next == 117 && pos + 2 < count(source) && code_point_at(chars: source, pos: pos + 2) == 123 {
+          match unicode_escape_at(source: source, pos: pos + 3, digit_count: 0, value: 0) {
+            Present { value: decoded } => process_escapes_loop(
+              source: source,
+              pos: decoded.next_pos,
+              acc: list_push(acc, decoded.code_point)
+            )
+            Absent => EscapeProcessingRefused {}
+          }
+        } else {
+          let decoded = if next == 34 { Present { value: 34 } }
+            else if next == 48 { Present { value: 0 } }
+            else if next == 92 { Present { value: 92 } }
+            else if next == 110 { Present { value: 10 } }
+            else if next == 114 { Present { value: 13 } }
+            else if next == 116 { Present { value: 9 } }
+            else if next == 123 { Present { value: 123 } }
+            else if next == 125 { Present { value: 125 } }
+            else { none }
+          match decoded {
+            Present { value: code_point } => process_escapes_loop(
+              source: source,
+              pos: pos + 2,
+              acc: list_push(acc, code_point)
+            )
+            Absent => EscapeProcessingRefused {}
+          }
+        }
       }
     } else {
       process_escapes_loop(source: source, pos: pos + 1, acc: list_push(acc, ch))

@@ -2002,7 +2002,7 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
         let max_fields = if r2.max_val != none {
           [make_field_init_node(name: "max", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.max_val.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)]
         } else { [] }
-        PredResult { predicate: make_field_init_node(name: "Range", value: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: concat(min_fields, max_fields), inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: r3.tokens, ctx: r2.ctx, err: none }
+        PredResult { predicate: make_field_init_node(name: "range", value: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: concat(min_fields, max_fields), inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: r3.tokens, ctx: r2.ctx, err: none }
       }
       _ =>
         PredResult { predicate: dummy_pred, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: token_span(tok: token_stream_first(stream: tokens))) } }
@@ -2010,7 +2010,7 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
   EatUnchanged { tokens: __eu } =>
     match pred_name {
       "non_empty" =>
-        PredResult { predicate: make_field_init_node(name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: tokens, ctx: ctx, err: none }
+        PredResult { predicate: make_field_init_node(name: "non_empty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: tokens, ctx: ctx, err: none }
       _ =>
         PredResult { predicate: make_field_init_node(name: pred_name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: tokens, ctx: ctx, err: none }
     }
@@ -2437,7 +2437,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let body_result = if tok_is_eq(tok: token_stream_first(stream: tokens)) {
     let r = expect(tokens: tokens, expected: ExpectEq)
     if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
-    parse_expr(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+    parse_required_expression_after_separator(tokens: r.tokens, ctx: ctx)
   } else if tok_is_lbrace(tok: token_stream_first(stream: tokens)) {
     parse_block(tokens: tokens, ctx: ctx)
   } else {
@@ -4860,6 +4860,16 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   }
 }
 
+data required_expression_newline_continuation_note: String = "A newline is whitespace in a syntactically incomplete required-expression position (the parser has consumed a keyword or separator and still owes an expression). Authority: parse_required_expression_after_separator (parse_expr sites) and parse_required_expression_no_brace_after_separator (for-in collection after 'in'). Not at generic parse_expr entry — statement boundaries stay token-aligned."
+
+fn parse_required_expression_after_separator(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  parse_expr(tokens: skip_newlines(tokens: tokens), ctx: ctx)
+}
+
+fn parse_required_expression_no_brace_after_separator(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  parse_expr_no_brace(tokens: skip_newlines(tokens: tokens), ctx: ctx)
+}
+
 fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
@@ -4877,7 +4887,7 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if has_err(err: tr.err) { return ExprResult { expr: dummy_expr, tokens: tr.tokens, ctx: tr.ctx, err: tr.err } }
     let r2 = expect(tokens: tr.tokens, expected: ExpectEq)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: tr.ctx, err: r2.err } }
-    let r3 = parse_expr(tokens: r2.tokens, ctx: tr.ctx)
+    let r3 = parse_required_expression_after_separator(tokens: r2.tokens, ctx: tr.ctx)
     if has_err(err: r3.err) { return r3 }
     let node = Node {
       name: name, span: span, ident_span: Present { value: name_span }, children: [r3.expr],
@@ -4890,7 +4900,7 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   EatUnchanged { tokens: __eu } =>
     let r2 = expect(tokens: __eu, expected: ExpectEq)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: ctx, err: r2.err } }
-    let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+    let r3 = parse_required_expression_after_separator(tokens: r2.tokens, ctx: ctx)
     if has_err(err: r3.err) { return r3 }
     ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span), tokens: r3.tokens, ctx: r3.ctx, err: none }
   }
@@ -4902,7 +4912,7 @@ fn parse_return(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "return" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr(tokens: r.tokens, ctx: ctx)
+  let r = parse_required_expression_after_separator(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   ExprResult { expr: make_expr_node(expr_data: ExprReturn, children: [r.expr], inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
 }
@@ -4921,7 +4931,7 @@ fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = expect(tokens: r.tokens, expected: ExpectKeyword { text: "in" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr_no_brace(tokens: r.tokens, ctx: ctx)
+  let r = parse_required_expression_no_brace_after_separator(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let collection = r.expr
 

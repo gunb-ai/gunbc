@@ -1,18 +1,26 @@
 module gunbc.falsifier_workflow
 
 import v2.std.collection { Absent }
-import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Listed }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep,
+  Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Schedule, WorkflowDispatch,
   WorkflowPermissions, PermRead,
-  ConcurrencyMappingQueueNotMax, CancelInProgressBool
+  ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+  upload_artifact_action
 }
 import gunbc.ci_workflow {
   ci_prelude_steps, ci_release_build_step,
   ci_floor_peak_pre_step, ci_floor_peak_post_step,
-  gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes
+  ci_selection_control_step,
+  gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes,
+  gunbc_ci_selection_control_step_timeout_minutes,
+  gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+import gunbc.floor_component_receipt {
+  floor_component_receipt_path,
+  floor_component_receipt_artifact_name
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_spec { plan_artifact_plan_function }
@@ -63,7 +71,7 @@ fn gunbc_falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
 
 data gunbc_falsifier_step_timeout_note: String = "120 -> 170 (2026-07-11, run 29135185172 receipt): the first corpus-reaching cold run was TIME-killed at the 120-min step ceiling with the corpus incomplete (1970 rows, closure 1396 modules, width 1) and floor peak 16146612224 bytes against a 16GiB slot budget, still growing - so 120 censored the measurement without bounding anything real (the memory cap is the true wall). 170 lets a nightly run reach either completion (exact-labeled receipt) or the cap kill (censored-labeled receipt); both are the falsifier doing its measurement job, and the job backstop DERIVES from this value so it stretches in step. Revisit down when the resolver graph-major module split (S2a move 2) shrinks cold-resolve wall and residency."
 
-data falsifier_plan_function: String = "gunbc_falsifier_batches"
+data falsifier_plan_function: String = "gunbc_falsifier_plan"
 
 fn falsifier_invoke() -> String {
   concat(
@@ -163,21 +171,45 @@ fn native_cache_cold_control_step() -> Step {
   }
 }
 
-fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+data floor_component_receipt_upload_note: String = "Uploads the floor's per-component receipt so the alert workflow can READ which component failed instead of inferring one hardcoded story from the overall run conclusion (gunbc.floor_component_receipt carries the priced defect). if: always() is load-bearing and is the whole point: the receipt matters MOST on a red run, and a red floor step would otherwise skip the upload and leave the alert blind — which is the state that produced the false 'affected-set cold control is dark' claim on run 30509024051. It sits immediately after falsifier_step so it captures that step's receipt before the two cold controls, which a red floor skips. if-no-files-found: error, because a silently absent receipt is the same blindness one layer down; the alert's own missing-artifact arm reports an explicit unknown rather than re-widening. Its transfer term joins gunbc_falsifier_job_backstop_timeout_minutes so the backstop stays the exact step-sum + prelude (the invariant falsifier_workflow_witness_test asserts)."
+
+fn floor_component_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload floor component receipt (read by falsifier-alert)" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: floor_component_receipt_artifact_name)),
+        kv(key: "path", value: yaml_string(s: floor_component_receipt_path)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 30)),
+        kv(key: "compression-level", value: yaml_int(n: 0))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
+
+fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+data gunbc_falsifier_selection_control_relocation_note: String = "The affected-set selection control (ci_selection_control_step, authority gunbc.ci_workflow) rides this cadence as of 2026-07-29, demoted from the per-PR ci job — full rationale, measurement, and return trigger in gunbc_ci_selection_control_step_note. Placement is load-bearing on two counts. (1) BEFORE ci_floor_peak_pre_step: the peak pre/post pair brackets the floor's cgroup measurement, so a step inside it would attribute its own residency to the falsifier's peak receipt — the control sits outside the bracket and the measurement stays the floor's. (2) BEFORE falsifier_step: the control is hermetic and ~10m, the falsifier step is up to 170m, so a broken selector reds in minutes instead of after the corpus walk. This is the third control on this job and the same shape as the other two (compile_clean_cold_control_step, native_cache_cold_control_step): a deterministic whole-corpus arm whose per-PR counterpart is scoped or skipped. Its 15m term joins gunbc_falsifier_job_backstop_timeout_minutes so the backstop stays the exact step-sum + prelude; the ci job's backstop drops the same term in the same motion, which is why the two edits are one change and not two."
 
 fn falsifier_job() -> Job {
   Job {
     id: "falsifier",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), falsifier_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_selection_control_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
-    strategy: none,
     timeout_minutes: Present { value: gunbc_falsifier_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,

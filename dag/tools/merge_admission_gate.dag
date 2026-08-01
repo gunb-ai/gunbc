@@ -3,6 +3,7 @@ module tools.merge_admission_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { GitRef }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission {
   current_gate_roster_hash,
@@ -11,6 +12,8 @@ import gunbc.merge_admission {
   MergeDeniedStaleBase,
   MergeDeniedStaleRoster,
   MergeDeniedNotSuccess,
+  MergeDeniedWrongAttempt,
+  MergeDeniedSubjectMismatch,
   MergeAdmitted,
 }
 import gunbc.merge_admission_produce {
@@ -30,11 +33,13 @@ fn verdict_reason(v: MergeAdmissionVerdict) -> String {
     MergeDeniedStaleBase => "stale base tree — re-run CI against current main"
     MergeDeniedStaleRoster => "stale gate roster — re-run CI after criteria change"
     MergeDeniedNotSuccess => "receipt conclusion is not success"
+    MergeDeniedWrongAttempt => "receipt belongs to a different walk attempt — not the subject; re-run CI"
+    MergeDeniedSubjectMismatch => "receipt describes a different head or base tree than this attempt captured — not the subject; re-run CI"
   }
 }
 
 func main() -> ProcessExit {
-  let root = git.Core.Toplevel().path as String
+  let root = git.Inspect.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let read = Filesystem.Read(path: path)
   if !read.success {

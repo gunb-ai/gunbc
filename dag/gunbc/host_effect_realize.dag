@@ -81,7 +81,7 @@ import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
 }
-import std.access { AccessDecision, Permit, Deny }
+import std.access { AccessDecision, Permit, Deny, access_policy_refusal }
 import gunbc.ci_deploy_access {
   DeployAccess,
   DeployAccessActor,
@@ -145,7 +145,7 @@ import gunbc.hostname_set {
 }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op {
-  posix_effective_principal_read_argv,
+  posix_effective_principal_read_argv, effective_posix_principal_read,
 }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
@@ -1365,7 +1365,7 @@ fn realize_effective_principal_read_on_host(
   let argv = posix_effective_principal_read_argv()
   match transport {
     LocalShell => {
-      let result = access.PosixEffectivePrincipal.Read(read: read)
+      let result = effective_posix_principal_read(read: read)
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
           exit_code: result.exit_code,
@@ -1797,14 +1797,13 @@ fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
   match deploy_access_observed_actor(access: access) {
     Present { value: actor } => deploy_access_check(access: access, actor: actor)
     Absent =>
-      Deny {
-        reason: Present {
-          value: concat(
+      access_policy_refusal(
+        profile: "deploy-access-observation", subject: "unobserved", action: "execute", object: "host-effect",
+        reason: concat(
             deploy_access_refusal_prefix,
             " — could not observe principal (ReadEffectivePosixPrincipal failed)"
-          )
-        }
-      }
+          ),
+      )
   }
 }
 
@@ -1869,7 +1868,7 @@ fn host_effect_apply_gated(
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
       }
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       NotConverged {
         reason: deploy_access_decision_reason(d: verdict),
         applied: HostEffectIntent {
@@ -1897,7 +1896,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
     Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
-        Present { value: Deny { reason: _ } } => Refused { reason: why }
+        Present { value: Deny { refusal: _ } } => Refused { reason: why }
         Present { value: Permit } => not_converged_directive(drive: host_effect_drive(intent: intent))
         Absent =>
           match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {

@@ -256,6 +256,142 @@ fn git_diff_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<
   }
 }
 
+data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-remote"
+  }
+}
+
+data advertised_ref_note: String = "WHY THIS EXISTS BESIDE RemoteBranches, which already lists remote branches. RemoteBranches runs `git branch -r`, whose output is ref NAMES and nothing else, and it reads the local remote-tracking refs rather than asking the remote. Neither property is a defect in it - it answers `which remote branches does this clone know about` - but it cannot answer `what commit is the remote branch AT`, and a consumer that needs an exact head therefore cannot be built on it at all. `git ls-remote --heads` is the ref-advertisement protocol reading: it contacts the remote and returns object id plus full ref name per line, which is the pair an exact-head judgment needs.\\n\\nThe two are kept separate rather than one being widened because they answer different questions with different freshness: `branch -r` is local and offline, ls-remote is a network read that can fail on its own. Collapsing them would make every name listing pay a network round trip and inherit its failure modes."
+
+type AdvertisedRef {
+  object_id: CommitSha
+  ref_name: String
+}
+
+data advertised_ref_scan_note: String = "The scan REFUSES on a line it cannot read rather than skipping it, and the located line is carried so the refusal names what it choked on. Dropping unparseable lines is the shape DESIGN 5 calls the absorbing fallback: the answer would still be a well-formed ref list, so a consumer could not tell a complete advertisement from a partial one, and the deficit's frequency would be zero by construction. A partial ref list is exactly the input that makes an exact-head judgment answer `not published` about a branch that is in fact published."
+
+data ls_remote_reports_termination_not_success_note: String = "IT REPORTS THE EXIT CODE AND NOT A SUCCESS BOOL, WHICH IS A NARROWING FROM ITS FIRST CUT. That cut declared `success: Bool from \"exit_success\"` beside `exit_code`, and the two are not independent: the seed derives exit_success as exactly `exit_code == 0` (v1_interpreter.rs, the shell dispatch output-source match), so the pair carried one fact twice.\\n\\nCARRYING IT TWICE WAS NOT MERELY REDUNDANT, IT MADE A CONTRADICTION WRITABLE. A caller of the deciding function could pass success true beside a nonzero exit code, and the function branched on success - so a failed advertisement read as a successful one and the branch reported unpublished rather than unreadable. That is the ignorance-as-answer conflation this operation exists to prevent, reachable through the operation own output shape. Dropping the Bool makes the contradictory pair unrepresentable rather than merely unlikely, which is why this is construction and not a check.\\n\\nWHICH LAYER OWNS SUCCESS, since something still has to answer it: the caller EXPECTATION does. Process termination, operation observation, caller expectation and log disposition are four facts, and a probe may legitimately use a nonzero exit as an ANSWER rather than a verdict - so an operation that pre-judges its own exit code as success has decided something only its caller can. See gunbc.plans.transport_argv_anemia_dissolution, which measures 148 sibling operations in dag/extdeps still carrying the Bool while 51 preserve the integer. This operation is the first consumer of that correction, not a local exception."
+
+data ls_remote_carries_no_exit_block_note: String = "WHY LsRemoteHeads DECLARES NO `exit` BLOCK WHILE EVERY SIBLING OPERATION DOES, which is the first thing a reader will notice. The `exit` arms are INERT AT RUN TIME - established by reading the seed, not assumed. The shell dispatch in v1_interpreter.rs maps declared output sources (`stdout`, `stderr`, `exit_success`, `exit_code`, `stdout_lines`) onto the process result and returns a record; it never consults the operation's exit arms and never raises on a nonzero exit. The only consumer of exit_props anywhere outside the parser is v1_compiler_emit_rust.rs, which round-trips them back to source so the self-host fixed point holds. So an exit arm is a declaration that is parsed, re-emitted, and never realized.\\n\\nThat makes this operation's OUTPUTS the realized authority for its outcome: a caller learns whether the read succeeded from `exit_code`/`stderr`, which are values it can match on. (It carried a `success` Bool too until this operation narrowed - see ls_remote_reports_termination_not_success_note directly above, which is the authority for why. Left unfixed, this sentence would have been a stale citation inside the very PR that made it false.) Adding an exit block beside them would be a second representation of the same fact where only one of the two executes - and since this operation is new, authoring one knowing it is inert would be minting a fresh declared-but-unrealized instance rather than inheriting an existing one. The corpus-wide inertness of exit blocks is a real finding and a separate correction; it is not fixed by making one operation diverge from a hundred siblings, and it is not made worse by declining to add the hundred-and-first."
+
+type AdvertisedRefScan
+  = AdvertisedRefsRead { refs: List<AdvertisedRef> }
+  | AdvertisedRefLineUnparsed { line: String, index: Int }
+
+data advertised_ref_heads_prefix: String = "refs/heads/"
+
+fn advertised_ref_branch_name(ref_name: String) -> String {
+  if starts_with(s: ref_name, prefix: advertised_ref_heads_prefix) {
+    substring(
+      s: ref_name,
+      start: advertised_ref_heads_prefix.length(),
+      end: ref_name.length(),
+    )
+  } else {
+    ref_name
+  }
+}
+
+type AdvertisedRefFields {
+  object_id: String
+  ref_name: String
+  seen: Int
+}
+
+fn advertised_ref_field_step(acc: AdvertisedRefFields, p: String) -> AdvertisedRefFields {
+  if acc.seen == 0 {
+    AdvertisedRefFields { object_id: p, ref_name: acc.ref_name, seen: 1 }
+  } else {
+    AdvertisedRefFields { object_id: acc.object_id, ref_name: p, seen: acc.seen + 1 }
+  }
+}
+
+fn parse_advertised_ref_line(line: String) -> AdvertisedRef? {
+  let parts = split(s: line, delimiter: "\t")
+  if count(parts) != 2 {
+    none
+  } else {
+    let fields = fold(
+      parts,
+      init: AdvertisedRefFields { object_id: "", ref_name: "", seen: 0 },
+      f: (acc, p) => advertised_ref_field_step(acc: acc, p: p),
+    )
+    if fields.object_id == "" || fields.ref_name == "" {
+      none
+    } else {
+      Present {
+        value: AdvertisedRef {
+          object_id: fields.object_id as CommitSha,
+          ref_name: fields.ref_name,
+        },
+      }
+    }
+  }
+}
+
+type AdvertisedRefFold {
+  refs: List<AdvertisedRef>
+  index: Int
+  failed_line: String
+  failed_index: Int
+  failed: Bool
+}
+
+fn advertised_ref_step(acc: AdvertisedRefFold, line: String) -> AdvertisedRefFold {
+  if acc.failed {
+    AdvertisedRefFold {
+      refs: acc.refs,
+      index: acc.index + 1,
+      failed_line: acc.failed_line,
+      failed_index: acc.failed_index,
+      failed: true,
+    }
+  } else {
+    match parse_advertised_ref_line(line: line) {
+      Absent =>
+        AdvertisedRefFold {
+          refs: acc.refs,
+          index: acc.index + 1,
+          failed_line: line,
+          failed_index: acc.index,
+          failed: true,
+        }
+      Present { value: r } =>
+        AdvertisedRefFold {
+          refs: acc.refs |> list_push(r),
+          index: acc.index + 1,
+          failed_line: "",
+          failed_index: 0,
+          failed: false,
+        }
+    }
+  }
+}
+
+fn scan_advertised_refs(lines: List<String>) -> AdvertisedRefScan {
+  let folded = fold(
+    lines,
+    init: AdvertisedRefFold {
+      refs: [],
+      index: 0,
+      failed_line: "",
+      failed_index: 0,
+      failed: false,
+    },
+    f: (acc, line) => advertised_ref_step(acc: acc, line: line),
+  )
+  if folded.failed {
+    AdvertisedRefLineUnparsed {
+      line: folded.failed_line,
+      index: folded.failed_index,
+    }
+  } else {
+    AdvertisedRefsRead { refs: folded.refs }
+  }
+}
+
 type GitRemoteRefParts {
   remote: String
   ref_name: String
@@ -384,6 +520,10 @@ fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
   ["git", "rev-parse", "--verify", "--quiet", target]
 }
 
+fn shape_git_rev_parse_head_args() -> List<String> {
+  ["rev-parse", "HEAD"]
+}
+
 fn git_observe_meta_shell_fragment() -> String {
   concat(
     "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
@@ -403,34 +543,6 @@ service git.Core {
     }
   }
 
-  operation Toplevel {
-    input {}
-    output { path: FilePath from "stdout" }
-    readonly
-    transport shell { argv: ["git", "rev-parse", "--show-toplevel"] }
-    exit {
-      0 => Unit
-      128 => String "Not a git repository"
-    }
-    mock_response {
-      0 => { path: "." } "hermetic checkout root: the runner contract binds cwd = repo toplevel, so the relative root composes with checkout-rooted reads exactly as the absolute toplevel does wet"
-    }
-  }
-
-  operation HeadCommit {
-    input {}
-    output {
-      sha: CommitSha from "stdout"
-      success: Bool from "exit_success"
-    }
-    readonly
-    transport shell { argv: ["git", "rev-parse", "HEAD"] }
-    exit {
-      0 => Unit
-      128 => String "Not a git repository"
-    }
-  }
-
   operation RemoteBranches {
     input {}
     output { branches: List<String> from "stdout_lines" }
@@ -440,6 +552,17 @@ service git.Core {
       0 => Unit
       128 => String "Not a git repository"
     }
+  }
+
+  operation LsRemoteHeads {
+    input { remote: String }
+    output {
+      advertised: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-remote", "--heads", "{remote}"] }
   }
 
   operation LsFiles {
@@ -554,21 +677,6 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "File not found or invalid ref"
-    }
-  }
-
-  operation ShowTree {
-    input { ref: GitRef }
-    output {
-      tree: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell { argv: ["git", "show", "-s", "--format=%T", "{ref}"] }
-    exit {
-      0 => Unit
-      128 => String "Invalid ref or not a git repository"
     }
   }
 

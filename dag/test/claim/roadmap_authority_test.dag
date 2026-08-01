@@ -1,6 +1,6 @@
 module test.claim.roadmap_authority
 
-import std.types { ContentHash }
+import std.types { ContentHash, String }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
 import gunbc.roadmap_authority {
   roadmap_authority_for,
@@ -13,7 +13,11 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
-  caret_parse_smoke_seed_growth_justification,
+}
+import gunbc.roadmap_spawner {
+  roadmap_rendered_ghost_count,
+  roadmap_ghost_node_red_probe_count,
+  roadmap_altered_copy_red_probe_count,
 }
 import gunbc.v1_deletion_plan {
   V1FinishLine,
@@ -28,6 +32,9 @@ import gunbc.v1_deletion_plan {
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   ExecutionContract,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  CargoFmtValidation,
   WorkItemExecutionContract,
   dispatch_required_capabilities,
   execution_capability_label,
@@ -262,10 +269,11 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
   all(nodes(), n => active_node_admissible(n: n))
 }
 
+data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
+
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   let accepted = accepted_roadmap_node_ids()
-  count(accepted) == 8
-    && (accepted |> any(a => a == "namespace-occurrence-transport"))
+  (accepted |> any(a => a == "namespace-occurrence-transport"))
     && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
     && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
     && (accepted |> any(a => a == "v1-test-hygiene-producer-retirement"))
@@ -273,6 +281,8 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
     && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
     && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
     && (accepted |> any(a => a == "2-claim-indexed-evidence"))
+    && (accepted |> any(a => a == "2-scm-compatibility-shape"))
+    && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
     && count(active_nodes()) == count(nodes()) - count(accepted)
     && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
     && all(accepted, a => id_exists(id: a))
@@ -323,18 +333,21 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
   let act = active_edges()
-  !(act |> any(e => e.child == "namespace-canonical-binding" && e.parent == "namespace-occurrence-transport"))
+  !(act |> any(e => e.child == "namespace-binding-kernel" && e.parent == "namespace-occurrence-transport"))
     && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
-    && !(act |> any(e => e.child == "2-scm-compatibility-shape"))
-    && is_top_level(edges: act, node: "namespace-canonical-binding")
+    && !(act |> any(e => e.child == "2-scm-p0-landing-spine"))
+    && is_top_level(edges: act, node: "namespace-binding-kernel")
+    && !is_top_level(edges: act, node: "namespace-canonical-binding")
     && is_top_level(edges: act, node: "pderive-static-supplemental-contract")
-    && is_top_level(edges: act, node: "2-scm-compatibility-shape")
-    && edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+    && is_top_level(edges: act, node: "2-scm-p0-landing-spine")
+    && edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
     && edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model")
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model")
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model")
     && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
+    && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape")
+    && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence")
 }
 
 fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
@@ -406,7 +419,11 @@ test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
 }
 
 test fn witness_namespace_chain_is_explicit() -> Bool {
-  edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+  edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel")
+    && edge_exists(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure")
+    && edge_exists(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge")
+    && !edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
     && edge_exists(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding")
     && edge_exists(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion")
@@ -435,6 +452,30 @@ test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() 
     && edge_exists(child: "v1-interpreter-delete", parent: "v1-emitter-delete")
 }
 
+test fn witness_five_minute_ci_gate_program_chain_is_explicit() -> Bool {
+  id_exists(id: "five-minute-ci-gate")
+    && active_id_exists(id: "five-minute-ci-gate")
+    && id_exists(id: "warm-merge-admission")
+    && id_exists(id: "native-selected-witness-bundle")
+    && id_exists(id: "module-grain-materialization")
+    && id_exists(id: "pre-index-materialization-lookup")
+    && id_exists(id: "phased-single-process-ci")
+    && id_exists(id: "per-entry-assembly-decomposition")
+    && !id_exists(id: "native-selected-witness-corpus")
+    && !id_exists(id: "exact-tree-materialization")
+    && edge_exists(child: "warm-merge-admission", parent: "five-minute-ci-gate")
+    && edge_exists(child: "native-selected-witness-bundle", parent: "five-minute-ci-gate")
+    && edge_exists(child: "native-selected-witness-bundle", parent: "warm-merge-admission")
+    && edge_exists(child: "module-grain-materialization", parent: "five-minute-ci-gate")
+    && edge_exists(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate")
+    && edge_exists(child: "phased-single-process-ci", parent: "five-minute-ci-gate")
+    && edge_exists(child: "per-entry-assembly-decomposition", parent: "five-minute-ci-gate")
+    && edge_exists(child: "pre-index-materialization-lookup", parent: "module-grain-materialization")
+    && edge_exists(child: "per-entry-assembly-decomposition", parent: "module-grain-materialization")
+    && !edge_exists(child: "entry-graph-union-construction", parent: "five-minute-ci-gate")
+    && node_has_carrier_path(path: "docs/plans/five-minute-ci-gate-design.md")
+}
+
 test fn witness_observation_and_placement_chains_are_explicit() -> Bool {
   edge_exists(
     child: "observation-scoped-run-consumer",
@@ -460,27 +501,6 @@ test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
     && node_has_carrier_path(path: "dag/gunbc/plans/cli_run_hollowing_plan.dag")
 }
 
-test fn witness_caret_parse_smoke_seed_frontier_is_countable_owned_and_triggered() -> Bool {
-  let id = "caret-parse-smoke-seed-growth-justification"
-  let j = caret_parse_smoke_seed_growth_justification()
-  id_count(id: id) == 1
-    && (nodes() |> any(n =>
-      n.node == id
-        && n.owner == "self-host"
-        && (n.carriers |> any(p => p.path == "dag/gunbc/v1_deletion_plan.dag"))
-    ))
-    && j.owning_dissolution_lane == "v1-zero-hand-maintained-rust"
-    && j.current_boundary == "src/v1/stage0/tests/caret_parse_smoke.rs"
-    && string_contains(s: j.reason, pattern: "predates")
-    && string_contains(s: j.reason, pattern: "no new behaviour")
-    && string_contains(s: j.trigger, pattern: "regenerate this test")
-    && string_contains(s: j.trigger, pattern: "delete it")
-    && edge_exists(
-      child: "v1-zero-hand-maintained-rust",
-      parent: "caret-parse-smoke-seed-growth-justification",
-    )
-}
-
 test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
   edge_exists(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt")
     && edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
@@ -498,10 +518,6 @@ test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
     && edge_exists(child: "v1-products-v1-free", parent: "v1-hand-queue-drain")
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free")
     && !edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete")
-    && edge_exists(
-      child: "v1-zero-hand-maintained-rust",
-      parent: "caret-parse-smoke-seed-growth-justification",
-    )
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration")
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision")
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement")
@@ -537,37 +553,48 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
     && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
 }
 
-data scm_prerequisite_witness_focus_note: String = "Projected UNFOCUSED deliberately. This claim is about which lanes the AUTHORITY declares active, and it happens to read the markdown to check it. Left on the focused projection it would silently become a claim about the current view — going red whenever someone focused the page, reporting a roadmap defect where none exists. NoFocus keeps the claim measuring what it names."
+data scm_prerequisite_witness_focus_note: String = "The accepted SCM sequence is checked against the authority rather than inferred from the focused markdown projection. P0 acceptance leaves the prerequisite spine as declared history; the operator-authored P1 node is the one active SCM slice and depends directly on P0. P2 and P3 remain absent rather than being implied by P1 activation. Carrier-path checks stay over the declared node population so accepting a node cannot erase its authority link."
 
-test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
+test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
   let accepted = accepted_roadmap_node_ids()
-  let out = serialize_markdown_source(
-    doc: project_roadmap_to_markdown(
-      doc: roadmap_authority_for(focus: NoFocus),
-      merged: authored_merged_prs()
-    )
-  )
-  string_contains(s: out, pattern: "(docs/plans/dag-scm-design.md)")
-    && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
-    && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
-    && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
-    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 5
-    && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
+  node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 7
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
     && id_exists(id: "2-scm-git-upstream-model")
     && id_exists(id: "2-scm-mercurial-upstream-model")
     && id_exists(id: "2-scm-pijul-upstream-model")
     && id_exists(id: "2-claim-indexed-evidence")
     && id_exists(id: "2-scm-compatibility-shape")
+    && id_exists(id: "2-scm-p0-landing-spine")
+    && id_exists(id: "2-scm-p1-proof-kernel")
     && !active_id_exists(id: "2-scm-git-upstream-model")
     && !active_id_exists(id: "2-scm-mercurial-upstream-model")
     && !active_id_exists(id: "2-scm-pijul-upstream-model")
     && !active_id_exists(id: "2-claim-indexed-evidence")
-    && active_id_exists(id: "2-scm-compatibility-shape")
+    && !active_id_exists(id: "2-scm-compatibility-shape")
+    && !active_id_exists(id: "2-scm-p0-landing-spine")
+    && active_id_exists(id: "2-scm-p1-proof-kernel")
     && (accepted |> any(id => id == "2-scm-git-upstream-model"))
     && (accepted |> any(id => id == "2-scm-mercurial-upstream-model"))
     && (accepted |> any(id => id == "2-scm-pijul-upstream-model"))
     && (accepted |> any(id => id == "2-claim-indexed-evidence"))
+    && (accepted |> any(id => id == "2-scm-compatibility-shape"))
+    && (accepted |> any(id => id == "2-scm-p0-landing-spine"))
+    && !(accepted |> any(id => id == "2-scm-p1-proof-kernel"))
+    && edge_exists(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine")
+    && match bound_execution_contract_for(id: "2-scm-p1-proof-kernel") {
+      ExecutionContractUnspecified => false
+      ExecutionContract { validations, extra_capabilities } =>
+        count(validations) == 1
+          && count(extra_capabilities) == 0
+          && validations |> any(validation => match validation {
+            GunbcClaimValidation { entry, function } =>
+              (entry as String) == "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag"
+                && function == "witness_p1_proof_kernel_acceptance_contract_holds"
+            CargoTestValidation { filter: _ } => false
+            CargoFmtValidation => false
+          })
+    }
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
 }
@@ -615,12 +642,17 @@ test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
     && any(caps, c => execution_capability_label(capability: c) == "gunbc-claim-runner")
 }
 
-test fn witness_execution_contract_frontier_is_exactly_two_nodes() -> Bool {
-  count(nodes()
-    |> filter(n => match n.execution {
+test fn witness_every_binding_carries_a_validation() -> Bool {
+  all(
+    nodes() |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
         ExecutionContract { validations: _, extra_capabilities: _ } => true
-      })) == 4
+      }),
+    n => match n.execution {
+        ExecutionContractUnspecified => false
+        ExecutionContract { validations, extra_capabilities: _ } => count(validations) > 0
+      },
+  )
 }
 
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
@@ -632,4 +664,19 @@ test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
       ExecutionContractUnspecified => false
       ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
     }
+}
+
+data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
+
+test fn witness_rendered_nodes_are_declared_or_derived() -> Bool {
+  roadmap_rendered_ghost_count(doc: roadmap_authority_for(focus: NoFocus)) == 0
+    && roadmap_rendered_ghost_count(doc: roadmap_authority()) == 0
+}
+
+test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
+  roadmap_ghost_node_red_probe_count() == 1
+}
+
+test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
+  roadmap_altered_copy_red_probe_count() == 1
 }

@@ -17,13 +17,12 @@ import gunbc.ci_spec {
 import v2.workflow.ci_merge_admission_gate_emit {
   ci_merge_admission_gate_script,
 }
+import v2.workflow.ci_heal_revalidation_preflight_emit {
+  ci_heal_revalidation_preflight_script,
+}
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
-import gunbc.ci_materialization {
-  ci_floor_resolve_receipt_gate_script,
-  ci_floor_materialization_receipt_gate_script
-}
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import v2.workflow.ci_floor_peak_emit {
@@ -33,10 +32,12 @@ import v2.workflow.ci_floor_peak_emit {
 }
 import v2.workflow.ci_workflow_run_emit {
   ci_isolate_toolchain_script,
+  ci_native_cache_root_script,
   ci_pin_rustup_default_script,
   ci_selection_control_script
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
+import v2.workflow.ci_v1_compiler_tests_compile_gate_emit { ci_v1_compiler_tests_compile_gate_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
@@ -44,6 +45,7 @@ import gunbc.repo_identity { gunbc_default_branch_name }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
+  DispatchInput, InputString,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   WorkflowPermissions, PermRead, PermWrite,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool, CancelInProgressExpression,
@@ -60,6 +62,38 @@ fn ci_checkout_step() -> Step {
       value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
     },
     env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_heal_revalidation_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        kv(key: "ref", value: yaml_string(s: "${{ inputs.expected_healed_sha || github.sha }}"))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_heal_revalidation_preflight_step() -> Step {
+  RunStep {
+    name: Present { value: "Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA" },
+    id: none,
+    run: ci_heal_revalidation_preflight_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
@@ -109,9 +143,35 @@ fn ci_isolate_toolchain_step() -> Step {
   }
 }
 
-fn ci_prelude_steps() -> List<Step> {
+data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
+
+fn ci_native_cache_root_step() -> Step {
+  RunStep {
+    name: Present { value: ci_native_cache_derive_step_name },
+    id: none,
+    run: ci_native_cache_root_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_native_cache_prelude_order_bridge() -> String {
+  concat(
+    concat("HOME: ", ci_setup_rust_home()),
+    concat("\n      - name: ", ci_native_cache_derive_step_name)
+  )
+}
+
+data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ordering witness (not a structural Step-order predicate): ci_native_cache_prelude_order_bridge builds the setup-rust HOME env line immediately followed by the native-cache step name at the emitter's six-space yaml indent. witness_prelude_native_cache_root_step_follows_setup_rust asserts expected_ci_yml/falsifier_yml contain that substring. The real invariant is only that segment derivation runs after setup-rust-toolchain installs rustc; this check over-constrains to textual adjacency and can false-RED on a legitimate step inserted between setup-rust and native-cache, emitter yaml reformatting, or setup-rust gaining fields after HOME — but not false-green if ordering regresses. A hand-rolled match on Step would be the structural alternative; non-fold-residue forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves when prelude ordering is witnessed without coproduct-residue match arms."
+
+fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Step>) -> List<Step> {
   [
-    ci_checkout_step(),
+    checkout,
+  ] |> concat(exact_head_preflight) |> concat([
     ci_isolate_toolchain_step(),
     UsesStep {
       name: Present { value: "Setup Rust" },
@@ -131,6 +191,7 @@ fn ci_prelude_steps() -> List<Step> {
       continue_on_error: none,
       timeout_minutes: none
     },
+    ci_native_cache_root_step(),
     RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
@@ -158,7 +219,18 @@ fn ci_prelude_steps() -> List<Step> {
       continue_on_error: none,
       timeout_minutes: none
     }
-  ]
+  ])
+}
+
+fn ci_prelude_steps() -> List<Step> {
+  ci_prelude_steps_with_checkout(checkout: ci_checkout_step(), exact_head_preflight: [])
+}
+
+fn ci_heal_revalidation_prelude_steps() -> List<Step> {
+  ci_prelude_steps_with_checkout(
+    checkout: ci_heal_revalidation_checkout_step(),
+    exact_head_preflight: [ci_heal_revalidation_preflight_step()]
+  )
 }
 
 data ci_artifact_consumer_prelude_note: String = "Checkout-only prelude for deploy jobs that consume the build job's release-bins artifact. Rust release-bin build + isolated rustup stay on build only — deploy verifies and runs prebuilt binaries."
@@ -185,11 +257,11 @@ fn ci_floor_gate_toolchain_step() -> Step {
 }
 
 fn ci_artifact_consumer_prelude_steps() -> List<Step> {
-  [ci_checkout_step()]
+  [ci_heal_revalidation_checkout_step(), ci_heal_revalidation_preflight_step()]
 }
 
 fn ci_floor_job_prelude_steps() -> List<Step> {
-  [ci_checkout_step(), ci_floor_gate_toolchain_step()]
+  [ci_heal_revalidation_checkout_step(), ci_heal_revalidation_preflight_step(), ci_floor_gate_toolchain_step()]
 }
 
 fn ci_floor_spec_from_roster() -> CiSpec {
@@ -214,6 +286,20 @@ fn ci_fmt_gate_step() -> Step {
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_v1_compiler_tests_compile_gate_step() -> Step {
+  RunStep {
+    name: Present { value: "cargo check -p v1-compiler-tests --tests (compile gate; no test execution)" },
+    id: none,
+    run: ci_v1_compiler_tests_compile_gate_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes }
   }
 }
 
@@ -339,34 +425,6 @@ fn ci_floor_peak_post_step() -> Step {
   }
 }
 
-fn ci_floor_resolve_receipt_gate_step() -> Step {
-  RunStep {
-    name: Present { value: "Floor resolve receipt gate (declared cold-resolve count)" },
-    id: none,
-    run: ci_floor_resolve_receipt_gate_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-fn ci_floor_materialization_receipt_gate_step() -> Step {
-  RunStep {
-    name: Present { value: "Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)" },
-    id: none,
-    run: ci_floor_materialization_receipt_gate_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
 data merge_admission_gate_step_name: String = "Merge-admission gate (receipt required; freshness block held until GatingEnforced)"
 
 data merge_admission_ci_gate_step_disposition: Disposition = Terminal {
@@ -434,26 +492,34 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 10
+
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). 10m is the fleet-pressure envelope for a cold compile-only gate after main growth — not RustMonolithGate re-enrollment."
+
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
 data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
 
 data gunbc_ci_selection_control_step_timeout_minutes: Int = 15
 
-data gunbc_ci_selection_control_step_note: String = "The affected-set selection control suite as a per-PR gate (operator fork (c), 2026-07-10 — the acceptance's 'green AND wired' half): floor_skip_discovery_witness runs the hermetic skip/refuse/divergence controls, including predict_only_red_predicted_unaffected_is_divergence — the discriminating RED for the falsifier's divergence counting — and the empty-diff-skips pin (ruling 2026-07-05: a failure arm refuses, never widens). It rides the per-PR ci job, not only the nightly falsifier cadence, so a PR that reintroduces a widen (the cli_run.rs entry_file_touched class) reds BEFORE merge, not the morning after. Hermetic: both diff channels are injected (floor_diff_observe.dag's floor_observe_git_diff_unified/floor_observe_git_diff_name_status GUNBC_CI_DIFF_UNIFIED/GUNBC_CI_DIFF_NAME_STATUS arms), so the suite measures fixtures, never this checkout's real diff. Budget: 80s measured local (2026-07-10, full suite, release build); 15m is the fleet-pressure envelope, a named term in the ci backstop sum."
+data gunbc_ci_selection_control_step_note: String = "The affected-set selection control suite as a per-PR gate (operator fork (c), 2026-07-10 — the acceptance's 'green AND wired' half): floor_skip_discovery_witness runs the hermetic skip/refuse/divergence controls, including predict_only_red_predicted_unaffected_is_divergence — the discriminating RED for the falsifier's divergence counting — and the empty-diff-skips pin (ruling 2026-07-05: a failure arm refuses, never widens). DEMOTED to the falsifier cadence 2026-07-29 (operator ruling, PR-timing analysis) — it no longer rides the per-PR ci job; the coverage delta and detection window are stated at the end of this note. Hermetic: both diff channels are injected (floor_diff_observe.dag's floor_observe_git_diff_unified/floor_observe_git_diff_name_status GUNBC_CI_DIFF_UNIFIED/GUNBC_CI_DIFF_NAME_STATUS arms), so the suite measures fixtures, never this checkout's real diff. Budget: 80s measured local (2026-07-10, full suite, release build); 15m is the fleet-pressure envelope, a named term in the ci backstop sum. MEASURED CORRECTION 2026-07-29: the 80s local basis above had drifted 6.8x — the step measured 9m02s on the fleet (run 30482171871, job 90679506428, 19:22:04 to 19:31:06), about 27 percent of a 33.6-minute ci job wall, and nothing alarmed because the 15m step cap left it at 60 percent of its ceiling. The step's own in-code note (floor_skip_discovery_witness.rs) had already recorded a 4m51s-vs-80s incident and the D3 fix for it, so this is that same class regressed to ~1.9x the state the fix was written to repair. ACCOUNTING, from the job log: the assertions cost nothing (every witness row reports 0.0-0.3ms); the wall is 18 serial scenario setups — ~4m49s for two whole-corpus index builds (one shared-index build plus budget_roster_resolves_cold, the deliberate Class-B pool-coincidence control), ~34s for the eight scenarios that hit the shared index and report 'unaffected (import-closure, skipped without resolve)', ~3m30s for the ~7 scenarios that land 'in the affected closure (resolving to decide node-frontier)' at ~30s per resolve, and 11.2s of thread-local teardown. RESPONSE, in the order the costs were priced: (a) the step is now affected-set scoped by ci_selection_control_skip_step (v2.workflow.ci_workflow_run_emit ci_selection_control_skip_policy_note) — the mechanism applied to itself, pull_request-gated with push-to-main as the unconditional cold control. That is the lever that matters, but it is a TRADE, not a free win, and the numbers are in that policy note: the skip witness costs ~100s per invocation (the cold whole-pool index its diff observation builds), so a skipping PR saves ~7m22s while a non-skipping PR pays ~100s MORE than before. MEASURED SKIP RATE 23 of the last 100 main commits (35 touch src/v1/**, 36 touch markdown, 1 touches Cargo config, and 13 of the remainder intersect the suite's actual 391-file dag closure), for an expected ~-25s/PR — about 1.2 percent of the job. That supersedes two earlier claims in the policy note, -7.7 min/PR (unmeasured 85 percent) and -4.3 min/PR (a <=66 percent ceiling extrapolated from the src/v1/** prefix before markdown and the closure were counted); both are kept visible there rather than replaced. So the cost win alone does not carry the scaffold under DESIGN §6 — the ~100s cold diff observation is what ruins the mean, and it is an already-named deficit this change did not create. (b) the teardown path is removed BY CONSTRUCTION — the suite now exits via process::exit, which does not run thread-local destructors, so cli_run's whole-pool Rc index is never dropped. HONESTY ON THIS ONE: the 11.2s is the CI-MEASURED cost of the path that was removed (the unlogged gap between the final receipt line and step completion on run 30482171871), and the removal is a property of process::exit rather than an inference; what was NOT done is an end-to-end before/after local re-measure, because the suite exceeds the local measurement window available here. So read (b) as mechanism-plus-prior-measurement, not as a fresh paired timing — the next CI run of the unscoped arm is where the paired number lands. STILL OWED, deliberately not fixed here: the ~30s-per-node-frontier-resolve unit is unexplained — it is 4x the ~7.2s/resolve the floor resolve receipt records, so it is either a genuinely larger closure or a PROCESS_RESOLVE_STORE miss, and it wants a measurement rather than a guess. PLACEMENT CALL MADE (operator ruling 2026-07-29, PR-timing analysis) — this note's own line above held the falsifier-cadence question 'for an operator call because that is the placement decision the D3b gate flip mispriced'. The call is: the WHOLE step rides gunbc.falsifier_workflow, not just budget_roster_resolves_cold. IT SUBSUMES THE (a) TRADE RATHER THAN COMPETING WITH IT, using this note's own measured numbers: (a) left a skipping PR paying ~100s and a NON-skipping PR paying 542s + ~100s, at a measured 23-of-100 skip rate for an expected ~-25s/PR, which is why this note already concluded the cost win alone does not carry the scaffold under DESIGN §6. Demotion moves the step and its in-script skip together, so the per-PR job loses BOTH the 542s suite and the ~100s cold diff observation — about -642s on the 77 percent that do not skip and -100s on the rest, dominating the trade instead of tuning it. The ~100s double payment the yellow dissolve-on below counts is halved in the same motion, since only regen_floor_skip_witness still pays it per PR. THE SKIP STAYS CORRECT UNDER DEMOTION BY CONSTRUCTION: ci_selection_control_skip_step's condition is StrEq on \"$GITHUB_EVENT_NAME\" == pull_request, so on the falsifier's schedule event it cannot fire and the suite runs UNCONDITIONALLY — which is exactly the cold-control posture, the same shape as the two controls it now sits beside. MEASUREMENT BASIS, dated honestly: the demotion was priced at 10m09s median on the per-PR ci job (n=6 green runs, range 8m41s-10m32s), which is a WIDER sample than the single 9m02s run above but was taken BEFORE (a) and (b) landed, so it does not credit the teardown removal or the skip. The post-(a)/(b) per-PR number is therefore OWED and not claimed here; the demotion does not rest on it, because (a)'s own measured expectation is only ~-25s/PR and the non-skipping majority still pays minutes. PLACEMENT on the falsifier is load-bearing twice and pinned structurally (test.claim.falsifier_workflow_witness_test): AFTER the release build, because the step executes the release-built floor_skip_discovery_witness, and BEFORE ci_floor_peak_pre_step, because that pair brackets the floor's cgroup measurement and a step inside it would attribute its own residency to the floor's peak receipt. Exactly-one on the falsifier, zero on ci, asserted in both directions — a yaml substring presence test passes for every permutation and cannot express either invariant. COVERAGE DELTA, and the earlier claim retracted: a PR that reintroduces a widen now reds when the NEXT COMPLETED falsifier control runs, NOT 'within one 4h cadence window' (review correction 2026-07-30 — that claim was too strong). The falsifier is queue-not-cancel with a 230-minute backstop class and this step sits after the prelude and release build, so a change landing just after a run passed the control waits for that run's remainder, plus queued-run startup, plus the next run's prelude and build — a sum that can exceed one cadence period. What bounds the damage is unchanged: a widen is bounded by the status quo (per-PR the witness would not have run at all), and the divergence is COUNTED when detected, never absorbed. RETURN TRIGGER, stated as an OUTCOME rather than a mechanism (review correction 2026-07-30 — the prior text prescribed per-gate pooled children, a fix that had already landed while the suite still measured minutes, so it named a stale mechanism as its own re-entry condition): re-enrol per-PR once a named receipt shows the ENTIRE step, spawn to verdict, on the CI fleet rather than a local host, consistently below a seconds-scale ceiling across a full falsifier window. Whichever mechanism buys that — the persistent content-keyed node store the yellow dissolve-on names, witness realization to native bins, or something else — is the lane's business, not this note's. BUDGET: the 15m envelope is retained as a named term in the FALSIFIER backstop sum; the ci backstop drops the same term and falls 115m -> 100m, which is why the two edits are one change and not two."
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
 
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
+data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
+data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
+data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
+
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_regen_job_backstop_timeout_minutes() -> Int {
@@ -479,10 +545,15 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: ci_deploy_push_to_main_if },
-    strategy: none,
     timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
     continue_on_error: none,
-    concurrency: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: srv1_dashboard_deploy_concurrency_group,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none,
+      }
+    },
     permissions: none
   }
 }
@@ -529,7 +600,9 @@ fn ci_heal_commit_push_step() -> Step {
     id: none,
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -537,7 +610,7 @@ fn ci_heal_commit_push_step() -> Step {
   }
 }
 
-data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class (ci-chores lane, operator-directed 2026-07-23: 'i would regen push to PRs please — convenience in general, by the time it gets to main this should be green regardless'). A generated-artifact drift is a red whose remedy is a pure function of the tree — regenerate the projection from its .dag authority — so the pipeline heals it without a human. The job runs on pull_request ONLY (ci_regen_heal_if), needs only build (the release gunbc binary), and is deliberately independent of the ci job's verdict: the drift gate lives IN ci, so a heal gated on ci passing would be skipped exactly when it is needed. It checks out the PR SOURCE branch head (ci_heal_branch_head_checkout_step — github.head_ref), downloads+unpacks the release bins, runs main_wet to rewrite drifted artifacts, then commits+pushes the fix back to THAT branch ONLY if git diff shows a change — so a drifted PR is repaired on its own branch before it can reach main. main is deliberately NOT auto-healed (operator-directed 2026-07-23: 'i think we can disable main pushes for now — i don't expect this to be needed on main — we can just fail CI on main if regen somehow fails there'): main is protected by a ruleset requiring the 'ci' check, so a heal push to main is rejected (GH013, receipt 2026-07-23), and it is not wanted anyway — on main the ci job's own drift gate reds honestly if regen ever drifts, which is the correct main behavior since a change reaching main should already be green from its PR heal. contents:write is scoped to THIS job (least privilege, DESIGN §5): the workflow default stays contents:read, so the whole-corpus ci floor never runs with a push-capable token — only this regen+push job does. Fail-closed: main_wet stops on the first write failure, and the git add stages ONLY registered artifact paths that exist on the tree (ci_heal_git_add_lines — a registered-but-absent artifact, e.g. one deleted by a later PR while its registry row lingered, is loudly skipped and counted, never an exit-128 that fails the whole heal). The loop terminates by construction, NOT by a re-run — a GITHUB_TOKEN-pushed commit does not trigger a new workflow (GitHub's cascade-prevention), so there is no self-verifying second run; loop-safety rests on the byte-idempotent fixed point proven pre-merge by witness_committed_is_fixed_point (generated_artifact_drift_test.dag) with its RED control, so a heal that regenerated a still-drifting artifact would already have failed the drift gate before landing. KNOWN CAVEAT (drift gate still in ci floor): because the heal push does not re-trigger CI, the run that FIRST observes drift still shows the ci job's drift gate red on its pre-heal checkout even though the branch is now auto-fixed; the next push/run is green, and main relies on the PR having healed before merge. Making even that first run green requires moving drift from a ci-floor validation gate to construction (regen owns it), a separate merge-admission change. Judgment-class reds (producer bugs, roster staleness) are untouched — this job only re-derives what the registry already declares generatable, never a human decision. Same-repo session branches (the fleet's PR model) are pushable with the job's GITHUB_TOKEN; a fork PR's branch is not writable by GITHUB_TOKEN and the push would fail loudly (never silently), which is correct — fork heals are out of scope."
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci, because the drift gate that triggers it can stop ci's dependent witness population. When regeneration changes a registered artifact, the job pushes the new PR head and explicitly workflow_dispatches CI with expected_healed_sha. The old run is SupersededByHealedHead and deliberately remains non-success; the dispatched run requires both its GitHub check subject (github.sha) and checkout HEAD to equal the immutable SHA before any gate. A dispatch or subject refusal leaves revalidation required and fails loudly. contents:write and actions:write are scoped to this job: contents is needed for the repair push, and Actions write is the narrowest GitHub permission that can invoke CreateWorkflowDispatch (it can start workflows, so it is not granted to build/regen/ci or the workflow default). The dispatching step explicitly binds `${{ github.token }}` into GITHUB_TOKEN, the sole environment authority consumed by github.Workflows; GitHub Actions does not implicitly export that context value as a process variable. The heal job is excluded from workflow_dispatch, preventing a dispatch loop. Main is not auto-healed. Judgment-class reds and the separate compile timeout are untouched."
 
 fn ci_heal_generated_artifacts_job() -> Job {
   Job {
@@ -552,7 +625,6 @@ fn ci_heal_generated_artifacts_job() -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: ci_regen_heal_if },
-    strategy: none,
     timeout_minutes: Present { value: gunbc_ci_heal_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
@@ -561,7 +633,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
         contents: Present { value: PermWrite },
         pull_requests: none,
         issues: none,
-        actions: none,
+        actions: Present { value: PermWrite },
         id_token: none
       }
     }
@@ -573,12 +645,11 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_v1_compiler_tests_compile_gate_step(), ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
-    strategy: none,
     timeout_minutes: Present { value: gunbc_ci_build_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
@@ -591,12 +662,11 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_resolve_receipt_gate_step(), ci_floor_materialization_receipt_gate_step(), ci_selection_control_step(), ci_merge_admission_gate_step()]),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(),  ci_merge_admission_gate_step()]),
     needs: ["build", "regen"],
     env: none,
     outputs: none,
     if_condition: none,
-    strategy: none,
     timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
@@ -630,7 +700,6 @@ fn ci_regen_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    strategy: none,
     timeout_minutes: Present { value: gunbc_ci_regen_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
@@ -643,7 +712,17 @@ data ci_merge_group_trigger_note: String = "merge_group trigger: the merge queue
 data ci_workflow: Workflow = {
   name: "ci",
   on: [
-    WorkflowDispatch { inputs: [] },
+    WorkflowDispatch {
+      inputs: [
+        DispatchInput {
+          name: "expected_healed_sha",
+          description: Present { value: "Immutable healed commit required by an auto-heal revalidation run" },
+          required: false,
+          default: none,
+          type: InputString
+        }
+      ]
+    },
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],

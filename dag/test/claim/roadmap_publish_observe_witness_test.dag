@@ -1,0 +1,216 @@
+module test.claim.roadmap_publish_observe_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Int, List, CommitSha }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap_publish_observe {
+  remote_branch_observation_of,
+  advertised_refs_projecting_empty_branch,
+}
+import gunbc.roadmap_publish {
+  RemoteBranch,
+  RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
+  RemoteBranchReadFailure,
+  RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
+  render_remote_branch_read_failure,
+  adjudicate_remote_branch,
+  PublicationOutcome,
+  RemoteBranchAtExpectedHeadWithoutPullRequest,
+  RemoteBranchHeadDiverged,
+  BranchNotPublished,
+}
+import extdeps.git { AdvertisedRef }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_scope_note: String = "Every arm of the remote-branch observation is claimed here with no remote and no credentials, which is possible only because the deciding function takes the three values the transport returns rather than calling it. What is NOT claimed, stated so the bound is visible: nothing here runs git.Core.LsRemoteHeads. A change that broke the transport while leaving remote_branch_observation_of intact would keep these green - the shim that calls it has no branches of its own, which is what makes that residue small enough to state rather than large enough to hide in."
+
+data fixture_sha_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn tab() -> String { from_code_point(cp: 9) }
+
+fn line_of(sha: String, ref_name: String) -> String {
+  concat(sha, concat(tab(), ref_name))
+}
+
+fn origin() -> NonEmptyStr { "origin" as NonEmptyStr }
+
+fn read_ok(advertised: List<String>) -> RemoteBranchObservation {
+  remote_branch_observation_of(
+    remote: origin(),
+    exit_code: 0,
+    stderr: "",
+    advertised: advertised,
+  )
+}
+
+fn observed_branch_count(o: RemoteBranchObservation) -> Int {
+  match o {
+    RemoteBranchesRead { branches } => count(branches)
+    RemoteBranchesUnreadable { cause: _ } => 0 - 1
+  }
+}
+
+test fn an_advertisement_becomes_remote_branch_rows_carrying_head_shas() -> Bool {
+  let o = read_ok(advertised: [
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
+  ])
+  match o {
+    RemoteBranchesUnreadable { cause: _ } => false
+    RemoteBranchesRead { branches } =>
+      count(branches) == 2
+        && all(branches, b => (b.remote as String) == "origin")
+        && any(branches, b =>
+             (b.branch as String) == "dispatch/node-a7"
+               && (b.head_sha as String) == fixture_sha_b)
+  }
+}
+
+test fn an_empty_advertisement_reads_as_zero_branches_not_a_refusal() -> Bool {
+  observed_branch_count(o: read_ok(advertised: [])) == 0
+}
+
+data transport_refusal_note: String = "The claim that motivates the whole slice. A nonzero exit from the ref advertisement must NOT arrive as an empty branch list: an empty list is the same value a successful read of a remote with no branches produces, so a consumer handed one for both reports the branch unpublished when the truth is that nothing was learned. That is ignorance-as-answer arriving in the direction that looks like an ordinary negative result, and it is the reason the observation is a coproduct."
+
+test fn a_failed_ref_advertisement_refuses_rather_than_reading_empty() -> Bool {
+  let o = remote_branch_observation_of(
+    remote: origin(),
+    exit_code: 128,
+    stderr: "fatal: repository not found",
+    advertised: [],
+  )
+  match o {
+    RemoteBranchesRead { branches: _ } => false
+    RemoteBranchesUnreadable { cause } =>
+      match cause {
+        RefAdvertisementRefused { remote, exit_code, stderr } =>
+          (remote as String) == "origin"
+            && exit_code == 128
+            && stderr == "fatal: repository not found"
+        _ => false
+      }
+  }
+}
+
+data renderer_is_a_projection_note: String = "THE RENDERER IS CLAIMED SEPARATELY FROM THE CAUSE, and the split is the point of typing the cause at all. The claims above assert the FIELDS - which failure, which remote, which exit code, which stderr - so they hold whatever sentence is produced from them. This claim asserts that the sentence is derived from those fields and names the OPERATION rather than the argv spelling, which is the property the transport-anemia plan asks for.\\n\\nThe previous cut could only assert substrings of a flattened String, so it could not distinguish a renderer that lost a field from one that never had it. Splitting the two means a rendering regression and a modeling regression now fail different claims."
+
+test fn the_renderer_names_the_operation_and_not_the_argv_spelling() -> Bool {
+  let rendered = render_remote_branch_read_failure(
+    cause: RefAdvertisementRefused {
+      remote: origin(),
+      exit_code: 2,
+      stderr: "connection refused",
+    },
+  )
+  string_contains(s: rendered, pattern: "git.Core.LsRemoteHeads")
+    && !string_contains(s: rendered, pattern: "ls-remote --heads")
+    && string_contains(s: rendered, pattern: "origin")
+    && string_contains(s: rendered, pattern: "2")
+    && string_contains(s: rendered, pattern: "connection refused")
+}
+
+test fn the_renderer_names_every_degenerate_ref_it_was_given() -> Bool {
+  let rendered = render_remote_branch_read_failure(
+    cause: AdvertisedRefProjectsEmptyBranch {
+      remote: origin(),
+      ref_names: ["refs/heads/", "refs/heads/"],
+    },
+  )
+  string_contains(s: rendered, pattern: "git.Core.LsRemoteHeads")
+    && string_contains(s: rendered, pattern: "2")
+    && string_contains(s: rendered, pattern: "refs/heads/")
+}
+
+test fn an_unreadable_advertisement_line_refuses_and_locates_itself() -> Bool {
+  let o = read_ok(advertised: [
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+    "this line has no tab at all",
+  ])
+  match o {
+    RemoteBranchesRead { branches: _ } => false
+    RemoteBranchesUnreadable { cause } =>
+      match cause {
+        AdvertisedLineUnparsed { remote, index, line } =>
+          (remote as String) == "origin"
+            && index == 1
+            && line == "this line has no tab at all"
+        _ => false
+      }
+  }
+}
+
+data empty_branch_red_note: String = "The discriminating claim for the guard that exists because the brand does not enforce itself. RemoteBranch.branch is NonEmptyStr and `as NonEmptyStr` does not check - the compiler says so out loud, emitting `where-refinement unenforced: predicate 'non_empty'` at the cast site. So a ref advertised as exactly the heads prefix projects to the empty string and would be cast into a type whose entire content is the claim that it is not empty. Deleting the pre-cast guard turns this claim red while every other claim in this file stays green, because the empty name is well-formed at every other layer."
+
+test fn a_ref_projecting_to_an_empty_branch_name_refuses() -> Bool {
+  let o = read_ok(advertised: [
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/"),
+  ])
+  match o {
+    RemoteBranchesRead { branches: _ } => false
+    RemoteBranchesUnreadable { cause } =>
+      match cause {
+        AdvertisedRefProjectsEmptyBranch { remote, ref_names } =>
+          (remote as String) == "origin"
+            && count(ref_names) == 1
+            && any(ref_names, n => n == "refs/heads/")
+        _ => false
+      }
+  }
+}
+
+test fn the_empty_projection_filter_returns_only_the_degenerate_ref() -> Bool {
+  let refs = [
+    AdvertisedRef { object_id: fixture_sha_a as CommitSha, ref_name: "refs/heads/main" },
+    AdvertisedRef { object_id: fixture_sha_b as CommitSha, ref_name: "refs/heads/" },
+  ]
+  let degenerate = advertised_refs_projecting_empty_branch(refs: refs)
+  count(degenerate) == 1
+    && any(degenerate, r => (r.object_id as String) == fixture_sha_b)
+    && !any(degenerate, r => (r.object_id as String) == fixture_sha_a)
+    && count(advertised_refs_projecting_empty_branch(refs: [])) == 0
+}
+
+data end_to_end_note: String = "The observation is only worth building if it composes with the judgment it was built for, so this claim runs an advertisement all the way to a PublicationOutcome. It is the first place the two halves meet: extdeps.git reads the ref advertisement, gunbc.roadmap_publish_observe turns it into observations, gunbc.roadmap_publish adjudicates. Before this slice roadmap_publish had no producer at all - adjudicate_publication was called only from its own witness - so the adjudicator was a judgment nothing could ask."
+
+fn branches_of(o: RemoteBranchObservation) -> List<RemoteBranch> {
+  match o {
+    RemoteBranchesRead { branches } => branches
+    RemoteBranchesUnreadable { cause: _ } => []
+  }
+}
+
+test fn an_advertisement_at_the_expected_head_adjudicates_as_published() -> Bool {
+  let o = read_ok(advertised: [
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/dispatch/node-a7"),
+  ])
+  match adjudicate_remote_branch(
+    branches: branches_of(o: o),
+    remote: origin(),
+    branch: "dispatch/node-a7" as NonEmptyStr,
+    expected_head: fixture_sha_a as CommitSha,
+  ) {
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
+      (branch as String) == "dispatch/node-a7" && (head_sha as String) == fixture_sha_a
+    _ => false
+  }
+}
+
+test fn an_advertisement_at_another_head_adjudicates_as_diverged() -> Bool {
+  let o = read_ok(advertised: [
+    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
+  ])
+  match adjudicate_remote_branch(
+    branches: branches_of(o: o),
+    remote: origin(),
+    branch: "dispatch/node-a7" as NonEmptyStr,
+    expected_head: fixture_sha_a as CommitSha,
+  ) {
+    RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
+      (remote_head as String) == fixture_sha_b
+        && (expected_head as String) == fixture_sha_a
+    _ => false
+  }
+}
+
+data divergence_is_the_point_note: String = "The two claims above are the same advertisement differing only in which commit the branch points at, and they must not produce the same answer. A name-shaped publication check reports both as published, which is precisely the defect the exact-head rewrite exists to remove: the ordinary state after a worker pushes a revision while a review is in flight is a branch whose name still matches and whose head no longer does."

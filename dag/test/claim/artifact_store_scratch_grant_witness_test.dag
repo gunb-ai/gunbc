@@ -1,9 +1,9 @@
 module test.claim.artifact_store_scratch_grant_witness
 
 import std.types { Bool, String }
+import std.access { AccessDecision, Permit, Deny }
 import std.effect_grant {
   Read, Write, verb_eq,
-  EffectAdmission, Admitted, EffectOutsideGrant,
 }
 import std.artifact_store_scratch_grant {
   artifact_store_scratch_write_admissible,
@@ -14,24 +14,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data artifact_store_scratch_grant_witness_note: String = "P-B discriminating witnesses for std.artifact_store_scratch_grant (docs/plans/effect-namespace-grants.md 6). A /tmp/gunbc_* store root is Admitted for Read+Write; a repo-tree or non-gunbc /tmp path is a located EffectOutsideGrant — the RED control for the extdeps.realization.artifact_store_fs construction wall."
+data artifact_store_scratch_grant_witness_note: String = "P-B discriminating witnesses for std.artifact_store_scratch_grant (docs/plans/effect-namespace-grants.md 6). A /tmp/gunbc_* store root Permits Read+Write; a repo-tree or non-gunbc /tmp path is a located std.access.Deny from EffectRequest — the RED control for the extdeps.realization.artifact_store_fs construction wall."
 
 data witness_scratch_root: String = "/tmp/gunbc_artifact_store_witness"
 data repo_tree_root: String = "/home/user/gunbc/dag"
 data non_gunbc_tmp_root: String = "/tmp/other_scratch"
 data gunbc_prefix_without_separator_root: String = "/tmp/gunbcsomethingelse"
 
-fn is_refused(a: EffectAdmission) -> Bool {
+fn is_refused(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => false
-    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+    Permit => false
+    Deny { refusal: refusal } => true
   }
 }
 
-fn is_admitted(a: EffectAdmission) -> Bool {
+fn is_admitted(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => true
-    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+    Permit => true
+    Deny { refusal: refusal } => false
   }
 }
 
@@ -55,8 +55,10 @@ test fn artifact_store_scratch_grant_refuses_gunbc_prefix_without_separator_hold
 
 test fn artifact_store_scratch_grant_refusal_is_located() -> Bool {
   match artifact_store_scratch_write_admissible(store_root: repo_tree_root) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
-      verb_eq(a: v, b: Write) && f == artifact_store_scratch_frame
-    Admitted { via_root: r } => false
+    Deny { refusal: refusal } =>
+      refusal.location.profile == "EffectRequest"
+        && refusal.location.subject == artifact_store_scratch_frame.name
+        && refusal.location.action == "write"
+    Permit => false
   }
 }

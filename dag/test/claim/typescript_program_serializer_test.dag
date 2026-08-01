@@ -93,3 +93,131 @@ test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
     && string_contains(s: src, pattern: "@ts-nocheck")
     && string_contains(s: src, pattern: "require('http')")
 }
+
+data operator_precedence_witness_note: String = "The printer's grouping proven by SERIALIZED TEXT, not by reading the table, because the defect these witnesses close was invisible in the model and visible only in the output. Each assertion is a whole-string equality, which is the strongest available discrimination here: a printer that stopped grouping reds the three grouping witnesses, and a printer that grouped indiscriminately reds the three bare witnesses, so neither direction of regression can pass. The two grouping shapes are the exact shapes found live in gunbc.roadmap_component on 2026-07-30 — a conditional and a disjunction as the right operand of a concatenation — rather than invented ones, so the RED is the real defect rather than a strawman."
+
+fn precedence_const_program(value: TsExpr) -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [],
+    statements: [ts_const(name: "x", value: value)],
+  }
+}
+
+fn precedence_stmt_program(expr: TsExpr) -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [],
+    statements: [ts_expr_stmt(expr: expr)],
+  }
+}
+
+test fn typescript_precedence_groups_conditional_under_concat() -> Bool {
+  let e = ts_binop(
+    left: ts_lit_str(value: "a"),
+    op: "+",
+    right: ts_cond(
+      test: ts_ident(name: "c"),
+      consequent: ts_lit_str(value: "y"),
+      alternate: ts_lit_str(value: "z")))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = 'a' + (c ? 'y' : 'z');"
+}
+
+test fn typescript_precedence_groups_disjunction_under_concat() -> Bool {
+  let e = ts_binop(
+    left: ts_lit_str(value: "a"),
+    op: "+",
+    right: ts_binop(
+      left: ts_ident(name: "b"),
+      op: "||",
+      right: ts_lit_str(value: "z")))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = 'a' + (b || 'z');"
+}
+
+test fn typescript_precedence_groups_nonassociative_right_nesting() -> Bool {
+  let e = ts_binop(
+    left: ts_ident(name: "a"),
+    op: "-",
+    right: ts_binop(left: ts_ident(name: "b"), op: "-", right: ts_ident(name: "c")))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a - (b - c);"
+}
+
+test fn typescript_precedence_leaves_assignment_conditional_bare() -> Bool {
+  let e = ts_binop(
+    left: ts_member(object: ts_ident(name: "el"), property: "title"),
+    op: "=",
+    right: ts_cond(
+      test: ts_ident(name: "c"),
+      consequent: ts_lit_str(value: "y"),
+      alternate: ts_lit_str(value: "z")))
+  serialize_typescript_program(p: precedence_stmt_program(expr: e)) == "el.title = c ? 'y' : 'z';"
+}
+
+test fn typescript_precedence_leaves_associative_chain_bare() -> Bool {
+  let e = ts_binop(
+    left: ts_ident(name: "a"),
+    op: "&&",
+    right: ts_binop(left: ts_ident(name: "b"), op: "&&", right: ts_ident(name: "c")))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a && b && c;"
+}
+
+test fn typescript_precedence_leaves_tighter_child_bare() -> Bool {
+  let e = ts_binop(
+    left: ts_binop(left: ts_ident(name: "a"), op: "===", right: ts_ident(name: "b")),
+    op: "&&",
+    right: ts_binop(left: ts_ident(name: "c"), op: "===", right: ts_ident(name: "d")))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a === b && c === d;"
+}
+
+data unrecognized_operator_note: String = "An operator the table does not know claims the tightest binding as a parent, so any COMPOUND operand under it is grouped — `b + c` here — while an atom is left bare, because an identifier has nothing to re-associate and parenthesizing it would be noise with no property behind it. The first version of this witness asserted `(a) ?? (b + c)` and was simply wrong about the printer; it is recorded because the correction is the interesting part. Over-parenthesizing is the safe direction for an unknown operator, but 'safe direction' is not a licence to group things that cannot be misgrouped."
+
+test fn typescript_precedence_groups_unrecognized_operator_operands() -> Bool {
+  let e = ts_binop(
+    left: ts_ident(name: "a"),
+    op: "??",
+    right: ts_binop(left: ts_ident(name: "b"), op: "+", right: ts_ident(name: "c")))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a ?? (b + c);"
+}
+
+test fn typescript_precedence_groups_unrecognized_operator_as_child() -> Bool {
+  let e = ts_binop(
+    left: ts_lit_str(value: "a"),
+    op: "+",
+    right: ts_binop(left: ts_ident(name: "b"), op: "??", right: ts_ident(name: "c")))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = 'a' + (b ?? c);"
+}
+
+data receiver_grouping_witness_note: String = "The receiver arm of the precedence family, added on a live silent defect (2026-08-01): ts_member over a `||` binop serialized as `a || [].forEach(cb)` — valid JavaScript that never runs the callback when `a` is truthy, discovered as an empty obligation ledger with zero console errors. The discriminating pair: an operator receiver GROUPS (member, index, and call each asserted); an atom receiver (call result, plain member chain) stays bare, so the fix cannot hide behind blanket parentheses. The RED is the exact live shape: the ungrouped spelling must not be what the printer emits."
+
+test fn typescript_receiver_binop_groups_under_member() -> Bool {
+  let e = ts_call(
+    callee: ts_member(
+      object: ts_binop(
+        left: ts_member(object: ts_ident(name: "attempt"), property: "segments"),
+        op: "||",
+        right: ts_array(elements: [])),
+      property: "forEach"),
+    args: [ts_ident(name: "cb")])
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = (attempt.segments || []).forEach(cb);"
+}
+
+test fn typescript_receiver_cond_groups_under_index() -> Bool {
+  let e = ts_index(
+    object: ts_cond(
+      test: ts_ident(name: "p"),
+      consequent: ts_ident(name: "xs"),
+      alternate: ts_ident(name: "ys")),
+    index: ts_lit_num(text: "0"))
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = (p ? xs : ys)[0];"
+}
+
+test fn typescript_receiver_atom_stays_bare() -> Bool {
+  let e = ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: ".row")]),
+      property: "forEach"),
+    args: [ts_ident(name: "cb")])
+  serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = document.querySelectorAll('.row').forEach(cb);"
+}

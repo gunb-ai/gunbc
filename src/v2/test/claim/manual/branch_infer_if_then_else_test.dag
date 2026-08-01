@@ -41,10 +41,11 @@ test fn branch_infer_bool_cond_accepts_holds() -> Bool {
   }
 }
 
-test fn branch_infer_arm_mismatch_red_holds() -> Bool {
+data branch_infer_underived_arm_ruling_note: String = "The else arm is the bare dag_token_ident token-class atom, not a literal with a modeled type. After the self-grounding wall it cannot participate in an arm-type comparison: inference must refuse infer_grounding_not_derived before claiming a mismatch. The discriminating mismatch RED remains covered by branch_infer_test using two genuinely derived operand types."
+
+test fn branch_infer_underived_arm_refuses_before_mismatch_holds() -> Bool {
   match infer(tree: branch_infer_arm_mismatch_body()) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^infer_branch_arm_type_mismatch
+    Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
   }
 }
-

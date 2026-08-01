@@ -12,7 +12,10 @@ import extdeps.render.ansi {
   ansi_escape,
   ansi_carriage_return,
   ansi_line_feed,
+  ansi_horizontal_tab,
   ansi_erase_entire_line,
+  ansi_control_is_content_admissible,
+  ansi_text_contains_cursor_control,
 }
 import extdeps.render.terminal {
   DynamicLineState,
@@ -75,7 +78,7 @@ fn terminal_control_scan() -> TerminalControlScan {
       escape_refuses: true
     },
     f: (acc, control) => {
-      let failure = if acc.first_failure >= 0 || rendered_control_refuses(rendered: concat("forged", control)) {
+      let failure = if acc.first_failure >= 0 || ansi_control_is_content_admissible(c: control) || rendered_control_refuses(rendered: concat("forged", control)) {
         acc.first_failure
       } else {
         acc.next_index
@@ -95,6 +98,61 @@ fn terminal_control_scan() -> TerminalControlScan {
     carriage_return_refuses: rendered_control_refuses(rendered: concat("forged", ansi_carriage_return)),
     line_feed_refuses: rendered_control_refuses(rendered: concat("forged", ansi_line_feed)),
     escape_refuses: rendered_control_refuses(rendered: concat("forged", ansi_escape))
+  }
+}
+
+data content_admissible_scan_note: String = "The roster fold previously asserted that EVERY one of the 65 C0/C1 members refuses, and that assertion is what encoded the defect: LF and TAB are roster members, so a multi-line diagnostic was refused and the srv1 ServiceNotReady refusal rendered as a complaint about cursor-control bytes instead of itself. The fold now skips exactly the two content-admissible members and still requires refusal for the other 63, so the wall against smuggled overwrite/erase payloads is unchanged in strength — only its extent is corrected. The admissions are asserted POSITIVELY below rather than merely un-asserted, and the discriminating RED is line-feed-on-an-open-line: a regression to blanket-allow greens the admissions but reds that control."
+
+fn admissible_control_is_projected(rendered: String) -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Append,
+    capability: addressable(),
+    rendered: rendered
+  ) {
+    TerminalWriteProjected { bytes: b, next: n } =>
+      b == concat(rendered, ansi_line_feed) && n == DynamicLineClosed
+    TerminalWriteRefused { cause: _ } => false
+  }
+}
+
+fn line_feed_on_open_line_refuses() -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Overwrite,
+    capability: addressable(),
+    rendered: concat("first", concat(ansi_line_feed, "second"))
+  ) {
+    TerminalWriteProjected { bytes: _, next: _ } => false
+    TerminalWriteRefused { cause: c } =>
+      c == "rendered text cannot contain a line feed on a write that leaves the dynamic line open"
+  }
+}
+
+test fn w_multiline_diagnostic_is_admitted_on_a_closing_write() -> Bool {
+  admissible_control_is_projected(
+    rendered: concat("ServiceNotReady unit=gunbc-roadmap.service", concat(ansi_line_feed, "   Active: active (running)"))
+  ) &&
+  admissible_control_is_projected(rendered: concat("col", concat(ansi_horizontal_tab, "value"))) &&
+  admissible_control_is_projected(
+    rendered: concat("a", concat(ansi_line_feed, concat(ansi_horizontal_tab, "b")))
+  )
+}
+
+test fn w_line_feed_refused_only_where_the_line_stays_open() -> Bool {
+  line_feed_on_open_line_refuses() &&
+  admissible_control_is_projected(rendered: concat("closed", concat(ansi_line_feed, "write")))
+}
+
+test fn w_tab_admitted_even_on_an_open_line() -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Overwrite,
+    capability: addressable(),
+    rendered: concat("col", concat(ansi_horizontal_tab, "value"))
+  ) {
+    TerminalWriteProjected { bytes: _, next: n } => n == DynamicLineOpen
+    TerminalWriteRefused { cause: _ } => false
   }
 }
 
@@ -188,12 +246,15 @@ test fn w_clear_with_text_refuses() -> Bool {
 test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
   let scan = terminal_control_scan()
   scan.carriage_return_refuses &&
-  scan.line_feed_refuses &&
+  !scan.line_feed_refuses &&
   scan.escape_refuses &&
   ansi_c0_controls.count() == 33 &&
   ansi_c1_controls.count() == 32 &&
   scan.next_index == 65 &&
-  scan.first_failure == -1
+  scan.first_failure == -1 &&
+  ansi_text_contains_cursor_control(text: from_code_point(cp: 128))
+    && ansi_text_contains_cursor_control(text: from_code_point(cp: 159))
+    && !ansi_text_contains_cursor_control(text: "\\u{0080}")
 }
 
 test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {

@@ -6,49 +6,63 @@ import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
-import gunbc.site.mark { render_mark }
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
-  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
+  RoadmapNode, RoadmapEdge, RoadmapNodeId,
+  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, is_top_level,
   SectionElement, Prose, Group, SectionGroup,
-  NodeSizing, Unsized, Sized,
-  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
-  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
 }
-import gunbc.roadmap_status {
-  RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
-  TicketFields, TicketUpdate, line_ticket,
-  item_superseded_by, item_is_done, signoff_accepts, signoff_by,
-}
+import gunbc.roadmap_status { line_ticket }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
-  declared_roadmap_nodes, active_roadmap_nodes, accepted_roadmap_node_ids,
+  accepted_roadmap_node_ids,
+  ClosingContractTaskPair, closing_contract_task_pairs, closing_contract_family_claim,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
+  theme_toggle_label_prefix, theme_toggle_auto_value,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
-  WorkflowLamp, workflow_lamps_v0, workflow_lamp_key, workflow_lamp_label,
-  workflow_lamp_initial_state,
-  workflow_controls_class, workflow_strip_class, workflow_lamp_class,
-  workflow_lamp_indicator_class, workflow_lamp_label_class,
-  workflow_lamp_data_attribute, workflow_observation_data_attribute,
-  workflow_lamp_label_data_attribute,
-  workflow_progress_stages,
-  workflow_progress_stage_key, workflow_progress_stage_label,
-  workflow_progress_class, workflow_stage_class, workflow_activity_class,
-  workflow_stage_data_attribute, workflow_segment_state_data_attribute,
+  workflow_controls_class,
   dashboard_instance_class, dashboard_instance_label_class,
+  node_activity_class, activity_summary_class, activity_detail_class,
+  activity_ledger_class, activity_obligation_class,
+  activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
 }
-import gunbc.roadmap_workflow_stage { WorkflowSegmentKind }
-import gunbc.client_observation_state { client_observation_state_key }
-import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted }
+import gunbc.roadmap_presentation {
+  WorkRowView, work_row_view, row_headline,
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
+  work_lifecycle, work_lifecycle_key,
+  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
+  scheduling_dependency_line,
+  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, CompletedWork, ActivityUnobservable,
+  ActivityAttention, activity_attention_key, activity_arm_key, activity_summary_line,
+  ActivityEvidenceRow,
+  ActionView, WorkAction, WorkActionKind, DispatchAction, ClearSessionAction,
+  SupportingFact,
+  DisclosureView, NoDisclosure, TicketDisclosure, LegacyBodyDisclosure,
+  DisclosureField, DisclosureNote,
+  work_scheduling_key, row_is_active_work,
+  activity_view_from_progress,
+  activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, activity_disclosure_label,
+  ProgramProgressView,
+  DailyWorkspaceView, daily_workspace_view,
+  ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
+  observation_impact_view, workspace_covers_row_activity,
+  lifecycle_chip_renders,
+  WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
+  WorkBandEntry, BandRow, BandFamily,
+}
+import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
+}
+import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
 
 fn roadmap_page_max_depth() -> Int { 12 }
 
-data finish_line_stylesheet_debt_note: String = "DECLARED SCAFFOLD, counted not silent (2026-07-28): this section's markup is the finish-line projection, but gunbc.roadmap_style still carries the retired three-gate/brick rules (.three-gate-progress, .gate-row, .gate-bar, .bar-fill, ul.bricks, li.brick, .brick-state) and carries no rule for the .finish-line-* classes emitted here — so the section ships structurally correct and visually unstyled, and those rules are unreferenced. The styling pass was deliberately NOT bundled: test.claim.design_register_lift_parity_witness pins roadmap_css_lift_parity_digest, and every re-pin on that row is derived BY EXECUTION from the emitted stylesheet (never chosen), which this change's authoring environment cannot produce. Landing a hand-guessed digest would be the fabricated-output failure DESIGN §5 forbids, and landing a moved stylesheet against a stale pin would knowingly red the corpus. DISSOLVE-ON: one styling pass in an environment that can build the seed — delete the seven gate/brick rules, add the .finish-line-* rules on the same tokened/typed grain (the width_brick_state and radius_5/height_bar dimension tokens lose their last consumers with them), then re-pin roadmap_css_lift_parity_digest from the executed emission with the derivation receipt, exactly as every prior re-pin note on that row records."
+data finish_line_placement_note: String = "The finish-line block is REFERENCE prose, not operational attention (A1 of the presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / leads with the frontier and carries only the one-line program strip (program_progress_markup_of, the ProgramProgressView consumer); the four claims render on /roadmap, where the strategic argument lives. The 2026-07-28 stylesheet-debt scaffold that shipped this section unstyled dissolved in the same pass: the gate/brick rules are deleted, .finish-line-* rules exist on the tokened grain, and roadmap_css_lift_parity_digest was re-pinned by execution (see the A1 re-pin note in test.claim.design_register_lift_parity_witness). The count line under the heading is the LOCAL denominator — accepted finish lines over the four — never the global roadmap population, which belonged to a different question (review: the section visually implied a denominator of four while reporting an unrelated global one)."
 
 fn finish_line_state_class(accepted: Bool) -> String {
   if accepted { "accepted" } else { "active" }
@@ -64,11 +78,12 @@ fn finish_line_row(spec: V1FinishLineSpec, accepted_ids: List<RoadmapNodeId>) ->
   ])
 }
 
-fn roadmap_counts_label() -> String {
+fn finish_line_local_count_label(accepted_ids: List<RoadmapNodeId>) -> String {
   join([
-    to_string(count(declared_roadmap_nodes())), " declared · ",
-    to_string(count(accepted_roadmap_node_ids())), " accepted · ",
-    to_string(count(active_roadmap_nodes())), " active",
+    to_string(v1_finish_lines_accepted_count(accepted: accepted_ids)),
+    " of ",
+    to_string(count(v1_exit_finish_lines())),
+    " complete",
   ], "")
 }
 
@@ -76,7 +91,7 @@ fn finish_line_progress_markup() -> Fragment {
   let accepted_ids = accepted_roadmap_node_ids()
   el_class("section", "finish-line-progress", [
     el("h2", [ txt("v1 exit: four finish lines") ]),
-    el_class("p", "finish-line-counts", [ txt(roadmap_counts_label()) ]),
+    el_class("p", "finish-line-counts", [ txt(finish_line_local_count_label(accepted_ids: accepted_ids)) ]),
     el_class("ul", "finish-lines",
       map(v1_exit_finish_lines(), s => finish_line_row(spec: s, accepted_ids: accepted_ids))),
   ])
@@ -91,96 +106,40 @@ fn dashboard_instance_banner() -> Fragment {
 }
 
 
-data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. It renders with an empty label: the text is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. With no JS the control is a blank button that does nothing, which is honest — there is no sound to mute either."
+data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. The former empty-label rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require blankness — a blank button has no visible content and no accessible name, which is a defect, not honesty. The TWO TOGGLES SHIP DIFFERENT AMOUNTS OF STATE, and the asymmetry is the honesty boundary, not an inconsistency (A1 reconciliation, operator feedback 2026-08-01): the theme control ships 'theme · auto' because at parse time the document carries no data-theme and prefers-color-scheme governs — which is the DEFINITION of auto, true for every visitor until the client program applies a stored choice; the sound control ships only its NAME because its state has no parse-time truth — the preference lives in this browser's storage (unreadable at serve), and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated claim for someone. The client program repaints both from storage on load, exactly as before."
 
 fn sound_toggle_control() -> Fragment {
   el_attrs("button", [
     attr(name: "class", value: sound_toggle_class ),
     attr(name: "type", value: "button" ),
-  ], [])
+  ], [ txt("sound") ])
 }
 
 fn theme_toggle_control() -> Fragment {
   el_attrs("button", [
     attr(name: "class", value: theme_toggle_class ),
     attr(name: "type", value: "button" ),
-  ], [])
+  ], [ txt(join([theme_toggle_label_prefix, theme_toggle_auto_value], "")) ])
 }
 
-fn roadmap_header(title: String) -> Fragment {
-  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]), sound_toggle_control(), theme_toggle_control() ])
+data roadmap_wordmark_note: String = "A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name lives in the wordmark, so the two never restate each other."
+
+fn roadmap_header(page: String) -> Fragment {
+  el("header", [
+    el_class("span", "wordmark", [ txt("gunbc") ]),
+    el("h1", [ txt(page) ]),
+    sound_toggle_control(),
+    theme_toggle_control(),
+  ])
 }
 
-fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {
-  if item_superseded_by(item: rn.line) == "" {
-    if signoff_accepts(s: rn.signoff) {
-      "done"
-    } else {
-      if item_is_done(item: rn.line, merged: merged) {
-        "review"
-      } else {
-        "open"
-      }
-    }
-  } else {
-    "superseded"
-  }
+data page_status_vocab_note: String = "The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to gunbc.roadmap_presentation as its single authority (operator blocker 1, 2026-08-01: the old renderer independently re-decided open/review/done/superseded beside the seam). The key set is unchanged, so the altitude machinery and the styling grain consume the same four words."
+
+fn node_lifecycle_key(rn: RoadmapNode, merged: List<Int>) -> String {
+  work_lifecycle_key(l: work_lifecycle(rn: rn, merged: merged))
 }
 
-fn intricacy_label(i: Intricacy) -> String {
-  match i {
-    IntricacyLow => "i:low"
-    IntricacyMedium => "i:med"
-    IntricacyHigh => "i:high"
-  }
-}
-
-fn volume_label(v: Volume) -> String {
-  match v {
-    VolumeSmall => "v:small"
-    VolumeMedium => "v:med"
-    VolumeLarge => "v:large"
-  }
-}
-
-fn sizing_label(s: NodeSizing) -> String {
-  match s {
-    Unsized => ""
-    Sized { intricacy, volume, repo, acceptance } =>
-      join([intricacy_label(i: intricacy), " ", volume_label(v: volume), " ", repo], "")
-  }
-}
-
-fn line_title(line: RoadmapItem) -> String {
-  match line {
-    DerivableLine { prs, title, description } => title
-    AuthoredLine { done, content } => content
-    PlainLine { content } => content
-    SupersededLine { by: _, content } => content
-    TicketLine { done: _, ticket } => join(["**", ticket.headline, "** — ", ticket.brief], "")
-  }
-}
-
-fn title_nodes(line: RoadmapItem) -> List<Fragment> {
-  markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: line_title(line: line)))
-}
-
-fn line_lead(line: RoadmapItem) -> String {
-  let full = line_title(line: line)
-  let dash_parts = split(s: full, delimiter: " — ")
-  if count(dash_parts) > 1 {
-    first(dash_parts).value
-  } else {
-    let dot_parts = split(s: full, delimiter: ". ")
-    if count(dot_parts) > 1 { first(dot_parts).value } else { full }
-  }
-}
-
-fn lead_nodes(line: RoadmapItem) -> List<Fragment> {
-  markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: line_lead(line: line)))
-}
-
-data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: everything before the first ' — ' (falling back to the first '. ', then the whole title). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary delimiter earlier or splitting its content, while the body remains available behind the disclosure."
+data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: the seam's row_headline (the ticket's typed headline; for legacy lines the named lead residue inside gunbc.roadmap_presentation). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary delimiter earlier or splitting its content, while the body remains available behind the disclosure."
 
 fn roadmap_lead_budget_chars() -> Int { 300 }
 
@@ -191,7 +150,7 @@ type LeadBudgetViolation {
 
 fn lead_budget_violations(nodes: List<RoadmapNode>) -> List<LeadBudgetViolation> {
   fold(nodes, init: [], f: (acc, rn) => {
-    let n = line_lead(line: rn.line).length()
+    let n = row_headline(line: rn.line).length()
     if n > roadmap_lead_budget_chars() {
       concat(acc, [LeadBudgetViolation { node: rn.node as String, lead_chars: n }])
     } else {
@@ -239,74 +198,80 @@ fn inline_md_nodes(text: String) -> List<Fragment> {
   markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: text))
 }
 
-fn ticket_field_row(label: String, value: String) -> List<Fragment> {
-  if value == "" {
-    []
-  } else {
-    [ el_class("div", "ticket-field", concat(
-        [ el_class("span", "ticket-field-label", [ txt(label) ]) ],
-        [ el_class("span", "ticket-field-value", inline_md_nodes(text: value)) ])) ]
-  }
+fn disclosure_field_row(f: DisclosureField) -> Fragment {
+  el_class("div", "ticket-field", concat(
+    [ el_class("span", "ticket-field-label", [ txt(f.label) ]) ],
+    [ el_class("span", "ticket-field-value", inline_md_nodes(text: f.value)) ]))
 }
 
-fn ticket_update_row(u: TicketUpdate) -> Fragment {
+fn disclosure_update_row(u: DisclosureNote) -> Fragment {
   el_class("div", "ticket-update", concat(
     [ el_class("span", "ticket-update-date", [ txt(u.on) ]) ],
     [ el_class("span", "ticket-update-note", inline_md_nodes(text: u.note)) ]))
 }
 
-fn ticket_updates_block(updates: List<TicketUpdate>) -> List<Fragment> {
+fn disclosure_updates_block(updates: List<DisclosureNote>) -> List<Fragment> {
   if count(updates) == 0 {
     []
   } else {
     [ el_class("div", "ticket-updates", concat(
         [ el_class("div", "ticket-updates-head", [ txt("updates") ]) ],
-        map(updates, u => ticket_update_row(u: u)))) ]
+        map(updates, u => disclosure_update_row(u: u)))) ]
   }
 }
 
-fn ticket_body_nodes(t: TicketFields, carriers: List<Pointer>) -> List<Fragment> {
-  concat(
-    [ el_class("p", "ticket-brief", inline_md_nodes(text: t.brief)) ],
-    concat(
-      concat(ticket_field_row(label: "displaced cost", value: t.displaced_cost),
-        concat(ticket_field_row(label: "current state", value: t.current_state),
-          concat(ticket_field_row(label: "first slice", value: t.first_slice),
-            concat(ticket_field_row(label: "red control", value: t.red_control),
-              concat(ticket_field_row(label: "out of scope", value: t.out_of_scope),
-                ticket_field_row(label: "hand-back", value: t.handback)))))),
+fn disclosure_body_nodes(d: DisclosureView) -> List<Fragment> {
+  match d {
+    NoDisclosure => []
+    TicketDisclosure { brief, fields, updates } =>
       concat(
-        ticket_field_row(label: "verified", value: join([t.authored_on, " · last verified ", t.last_verified_on], "")),
-        ticket_updates_block(updates: t.updates))))
-}
-
-fn item_body_nodes(rn: RoadmapNode) -> List<Fragment> {
-  match line_ticket(item: rn.line) {
-    Present { value: t } => ticket_body_nodes(t: t, carriers: rn.carriers)
-    Absent => title_nodes(line: rn.line)
+        [ el_class("p", "ticket-brief", inline_md_nodes(text: brief)) ],
+        concat(
+          map(fields, f => disclosure_field_row(f: f)),
+          disclosure_updates_block(updates: updates)))
+    LegacyBodyDisclosure { content } =>
+      markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
   }
 }
 
-fn item_is_ticket(rn: RoadmapNode) -> Bool {
-  match line_ticket(item: rn.line) {
-    Present { value: _ } => true
-    Absent => false
+data item_facts_disclosure_note: String = "Supporting facts live in the disclosure, not the head row (A1 of the presentation recon, operator-signed 2026-08-01): the head line had grown to ~7 simultaneous inline facts — owner, sizing codes, carrier links, dependencies — wrapping arbitrarily under the title, which is the half-console-half-product voice fork the recon named. The head carries the row's PRIMARY facts only plus the actuator; owner/sizing/carriers are supporting facts behind the same disclosure that already held the body. A row with supporting facts but no body still discloses (summary label 'facts'), so no fact is dropped — only demoted. AT A2 this renderer reads the DECIDED view alone: supporting facts arrive as WorkRowView.supporting_facts rows (label/value/href), the body as WorkRowView.disclosure — the RoadmapNode/TicketFields reads that used to live here moved behind the seam."
+
+fn supporting_fact_node(f: SupportingFact) -> Fragment {
+  if f.href == "" {
+    el_class("span", f.label, [ txt(f.value) ])
+  } else {
+    el_attrs("a", [ attr(name: "href", value: join([github_blob_base, f.href], "") ) ], [ txt(f.value) ])
   }
 }
 
-fn item_detail_block(rn: RoadmapNode) -> List<Fragment> {
-  if line_lead(line: rn.line) == line_title(line: rn.line) {
+fn view_supporting_facts(view: WorkRowView) -> List<Fragment> {
+  if count(view.supporting_facts) == 0 {
     []
   } else {
-    let is_ticket = item_is_ticket(rn: rn)
+    [ el_class("div", "item-facts", map(view.supporting_facts, f => supporting_fact_node(f: f))) ]
+  }
+}
+
+fn view_detail_block(view: WorkRowView) -> List<Fragment> {
+  let facts = view_supporting_facts(view: view)
+  let body = disclosure_body_nodes(d: view.disclosure)
+  if count(facts) == 0 && count(body) == 0 {
+    []
+  } else {
+    let is_ticket = match view.disclosure {
+      TicketDisclosure { brief: _, fields: _, updates: _ } => true
+      NoDisclosure => false
+      LegacyBodyDisclosure { content: _ } => false
+    }
+    let label = if is_ticket { "ticket" } else { if count(body) == 0 { "facts" } else { "brief" } }
     [ el_attrs("details", [
         attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ),
       ], [
         el("summary", [
           el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
-          txt(if is_ticket { "ticket" } else { "brief" }),
+          txt(label),
         ]),
-        el_class("div", "item-body", item_body_nodes(rn: rn)),
+        el_class("div", "item-body", concat(facts, body)),
       ]) ]
   }
 }
@@ -315,17 +280,6 @@ data github_blob_base_note: String = "The per-surface link projection (remodel W
 
 data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 
-fn pointer_link(p: Pointer) -> Fragment {
-  Element {
-    tag: "a",
-    attributes: [ attr(name: "href", value: join([github_blob_base, p.path], "") ) ],
-    children: [ txt(p.label) ],
-  }
-}
-
-fn carrier_links(carriers: List<Pointer>) -> List<Fragment> {
-  map(carriers, p => pointer_link(p: p))
-}
 
 fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
   nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
@@ -334,108 +288,42 @@ fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Roadm
   })
 }
 
-fn owner_badge(rn: RoadmapNode) -> List<Fragment> {
-  if rn.owner == "" {
-    []
-  } else {
-    [ el_class("span", "owner", [ txt(concat("@", rn.owner)) ]) ]
-  }
-}
-
-fn sizing_badge(rn: RoadmapNode) -> List<Fragment> {
-  let label = sizing_label(s: rn.sizing)
-  if label == "" {
-    []
-  } else {
-    [ el_class("span", "sizing", [ txt(label) ]) ]
-  }
-}
 
 data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review node; only signoff-Done and authored Superseded rows hide it. This deliberately preserves manual out-of-order dispatch for blocked and unsized rows: spawn_frontier.ready governs automatic belt reconciliation and page grouping, not the manual POST admission contract. belt_dispatch_node currently refuses signoff-Done but does not consult Ready, so the page must not claim otherwise. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
-fn superseded_badge(rn: RoadmapNode) -> List<Fragment> {
-  let by = item_superseded_by(item: rn.line)
-  if by == "" {
+fn superseded_badge_of(view: WorkRowView) -> List<Fragment> {
+  if view.superseded_by == "" {
     []
   } else {
-    [ el_class("span", "superseded-by", [ txt(concat("→ ", by)) ]) ]
+    [ el_class("span", "superseded-by", [ txt(concat("→ ", view.superseded_by)) ]) ]
   }
 }
 
-fn dispatch_button_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> {
-  if dispatchable {
-    [ el_attrs("button", [
-        attr(name: "class", value: "dispatch-btn" ),
-        attr(name: "type", value: "button" ),
-        attr(name: "data-node", value: rn.node as String ),
-      ], [ txt("dispatch") ]) ]
-  } else {
-    []
+fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
+  let primary = match view.action.primary_action {
+    Present { value: a } => [a]
+    Absent => []
   }
+  concat(primary, view.action.secondary_actions) |> filter(a => match a.kind {
+    DispatchAction => true
+    ClearSessionAction => false
+  })
 }
 
-fn node_exposes_manual_dispatch(rn: RoadmapNode, merged: List<Int>) -> Bool {
-  let status = node_status_symbol(rn: rn, merged: merged)
-  !(status == "done" || status == "superseded")
+fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
+  map(view_dispatch_actions(view: view), a =>
+    el_attrs("button", [
+      attr(name: "class", value: "dispatch-btn" ),
+      attr(name: "type", value: "button" ),
+      attr(name: "data-node", value: view.node_id ),
+    ], [ txt("dispatch") ]))
 }
 
-fn workflow_lamp_node(lamp: WorkflowLamp) -> Fragment {
-  let key = workflow_lamp_key(lamp: lamp)
-  let label = workflow_lamp_label(lamp: lamp)
-  let observation = client_observation_state_key(
-    state: workflow_lamp_initial_state(lamp: lamp))
-  el_attrs("span", [
-    attr(name: "class", value: workflow_lamp_class),
-    attr(name: workflow_lamp_data_attribute, value: key),
-    attr(name: workflow_observation_data_attribute, value: observation),
-    attr(name: workflow_lamp_label_data_attribute, value: label),
-    attr(name: "role", value: "status"),
-    attr(name: "aria-label", value: join([label, ": ", observation], "")),
-  ], [
-    el_class("span", workflow_lamp_indicator_class, []),
-    el_class("span", workflow_lamp_label_class, [ txt(label) ]),
-  ])
-}
+data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
 
-fn workflow_strip_node() -> Fragment {
-  el_attrs("span", [
-    attr(name: "class", value: workflow_strip_class),
-    attr(name: "role", value: "group"),
-    attr(name: "aria-label", value: "workflow observations"),
-  ], map(workflow_lamps_v0, lamp => workflow_lamp_node(lamp: lamp)))
-}
-
-fn workflow_progress_stage_node(stage: WorkflowSegmentKind) -> Fragment {
-  let key = workflow_progress_stage_key(stage: stage)
-  let label = workflow_progress_stage_label(stage: stage)
-  el_attrs("span", [
-    attr(name: "class", value: workflow_stage_class),
-    attr(name: workflow_stage_data_attribute, value: key),
-    attr(name: workflow_segment_state_data_attribute, value: "pending"),
-    attr(name: "role", value: "status"),
-    attr(name: "aria-label", value: join([label, ": pending"], "")),
-  ], [txt(label)])
-}
-
-fn workflow_progress_node() -> Fragment {
-  el_attrs("span", [
-    attr(name: "class", value: workflow_progress_class),
-    attr(name: "hidden", value: ""),
-    attr(name: "role", value: "group"),
-    attr(name: "aria-label", value: "attempt workflow"),
-  ], concat(
-    map(
-      workflow_progress_stages,
-      stage => workflow_progress_stage_node(stage: stage),
-    ),
-    [el_class("span", workflow_activity_class, [txt("waiting")])],
-  ))
-}
-
-fn workflow_controls_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> {
-  [ el_class("div", workflow_controls_class, concat(
-      [ workflow_progress_node(), workflow_strip_node() ],
-      dispatch_button_nodes(rn: rn, dispatchable: dispatchable))) ]
+fn workflow_controls_nodes(view: WorkRowView) -> List<Fragment> {
+  [ el_class("div", workflow_controls_class,
+      dispatch_button_nodes(view: view)) ]
 }
 
 fn dispatch_client_script() -> Fragment {
@@ -490,53 +378,125 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
   collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
-data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion. That final wrapper is always present, carrying the workflow observation strip plus the optional dispatch button, so done/superseded rows remain observable and dynamic process evidence plus stop/clear/unavailable cleanup stay inside the existing grid cell. The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its lamp or optional control."
+data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass (operator feedback 2026-08-01): the flat row list, the head-line composition, and the visual style of this module are ONE PROVISIONAL RENDERER, not product ontology. What A1 fixed is which claims render and at what altitude (operational before narrative, local denominators, supporting facts demoted, routine chrome quieted); it deliberately did NOT choose the workspace's interaction model. The named misses carried forward to the presentation-seam slice (A2: WorkRowView/DailyWorkspaceView/ObservationImpactView, roadmap_page becomes serialize-only): the row's one purpose-specific supporting line (why-now / what-it-unlocks — deferred because no typed fact carries it yet, and truncating ticket prose by punctuation is exactly the heuristic class the seam exists to kill); the observation-refusal altitude split (one cause narrated once, not once per channel); availability-vs-priority on the dispatch control; family-once row grouping; routine-state collapse (open/ticket/idle lamps). Witnesses over this module assert per-claim semantics, never element order or adjacency — pinning the accidental composition would harden this renderer into the model."
 
-fn dependency_badge(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<Fragment> {
-  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
-  if count(parents) > 1 {
+data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions."
+
+fn dependency_line_nodes(view: WorkRowView) -> List<Fragment> {
+  match scheduling_dependency_line(s: view.scheduling) {
+    Present { value: line } => [ el_class("span", "dependencies", [ txt(line) ]) ]
+    Absent => []
+  }
+}
+
+data render_work_row_note: String = "The view-only row renderer (operator blocker 1, 2026-08-01): render_work_row and its helpers receive WorkRowView ALONE — no RoadmapNode, no RoadmapItem, no merged list, no frontier edges, no signoff or sizing constructors. Every fact they paint (status chip text, headline, superseded pointer, dependency line, dispatch action, supporting facts, disclosure body, activity region) arrives already decided by gunbc.roadmap_presentation; what remains here is serialization: markdown-inline expansion, class assembly, element nesting. The tree structure (children, depth fuel) stays outside the row renderer because parent/child is a graph fact about the PAGE, not a presentation fact about one row."
+
+data server_activity_realization_note: String = "The SERVER realization of the activity region — the same semantic DOM the emitted client paints from the decided /workflow.json view (node-activity container with arm/attention data, one summary line via activity_summary_line, the obligation ledger and evidence rows behind the activity disclosure, the located reason on the refused arm; anomalous or refused opens the disclosure — the attention rule's server half). Two realizations, ONE deciding module; the parity witness holds their semantic regions and labels equal (operator blocker 7). A NoActiveWork view renders NOTHING, which is why a served page whose rows carry no observed attempt still ships zero workflow furniture."
+
+fn activity_obligation_node(s: WorkflowSegment) -> Fragment {
+  let state = workflow_segment_state_key(state: s.state)
+  el_attrs("div", [
+    attr(name: "class", value: activity_obligation_class ),
+    attr(name: "data-state", value: state ),
+  ], [ txt(join([
+    workflow_segment_kind_label(kind: s.kind), activity_state_sep, state,
+    if s.detail == "" { "" } else { join([activity_detail_sep, s.detail], "") },
+  ], "")) ])
+}
+
+fn activity_evidence_row_node(row: ActivityEvidenceRow) -> Fragment {
+  el_class("div", activity_evidence_row_class, [ txt(join([row.label, activity_evidence_kv_sep, row.value], "")) ])
+}
+
+fn activity_detail_nodes(obligations: List<WorkflowSegment>, evidence: List<ActivityEvidenceRow>, located_reason: String, open: Bool) -> Fragment {
+  el_attrs("details",
+    concat(
+      [ attr(name: "class", value: activity_detail_class ) ],
+      if open { [ attr(name: "open", value: "" ) ] } else { [] }),
     [
-      el_class(
-        "span",
-        "dependencies",
-        [ txt(concat("requires all: ", join(map(parents, p => p as String), ", "))) ]),
-    ]
+      el("summary", [ txt(activity_disclosure_label) ]),
+      el_class("div", activity_ledger_class, map(obligations, s => activity_obligation_node(s: s))),
+      el_class("div", activity_evidence_class, concat(
+        map(evidence, row => activity_evidence_row_node(row: row)),
+        if located_reason == "" { [] } else {
+          [ el_class("div", activity_located_reason_class, [ txt(located_reason) ]) ]
+        })),
+    ])
+}
+
+fn activity_container(a: ActivityView, attention: String, children: List<Fragment>) -> Fragment {
+  el_attrs("div", concat(
+    [
+      attr(name: "class", value: node_activity_class ),
+      attr(name: "data-arm", value: activity_arm_key(a: a) ),
+    ],
+    if attention == "" { [] } else { [ attr(name: "data-attention", value: attention ) ] }),
+    concat([ el_class("span", activity_summary_class, [ txt(activity_summary_line(a: a)) ]) ], children))
+}
+
+fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
+  match a {
+    NoActiveWork => []
+    ActivityUnobservable { reason: _ } => [ activity_container(a: a, attention: "", children: []) ]
+    ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
+      let key = activity_attention_key(a: attention)
+      [ activity_container(a: a, attention: key, children: [
+          activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous"),
+        ]) ]
+    }
+    ActiveWorkRefused { summary: _, located_reason, evidence } =>
+      [ activity_container(a: a, attention: "", children: [
+          activity_detail_nodes(obligations: [], evidence: evidence, located_reason: located_reason, open: true),
+        ]) ]
+    CompletedWork { outcome: _, evidence } =>
+      [ activity_container(a: a, attention: "", children: [
+          activity_detail_nodes(obligations: [], evidence: evidence, located_reason: "", open: false),
+        ]) ]
+  }
+}
+
+fn status_chip_nodes(view: WorkRowView) -> List<Fragment> {
+  if lifecycle_chip_renders(l: view.lifecycle) {
+    let status = work_lifecycle_key(l: view.lifecycle)
+    [ el_class("span", concat("status status-", status), [ txt(status) ]) ]
   } else {
     []
   }
 }
 
-fn node_head_row(rn: RoadmapNode, edges: List<RoadmapEdge>, merged: List<Int>, dispatchable: Bool) -> Fragment {
-  let status = node_status_symbol(rn: rn, merged: merged)
+fn render_work_row_head(view: WorkRowView) -> Fragment {
   el_class("div", "node-head", concat(
-    [
-      el_class("span", concat("status status-", status), [ txt(status) ]),
-      el_class("span", node_mid_class, concat(
-        concat(
-          [ el_class("span", "title", lead_nodes(line: rn.line)) ],
-          concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
-        ),
-        concat(
-          concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
-          dependency_badge(rn: rn, edges: edges)))),
-    ],
-    workflow_controls_nodes(rn: rn, dispatchable: dispatchable)))
+    concat(
+      status_chip_nodes(view: view),
+      [ el_class("span", node_mid_class, concat(
+          concat(
+            [ el_class("span", "title", inline_md_nodes(text: view.headline)) ],
+            superseded_badge_of(view: view),
+          ),
+          dependency_line_nodes(view: view))) ]),
+    workflow_controls_nodes(view: view)))
 }
 
-fn node_li_attributes(rn: RoadmapNode, status: String) -> List<Attribute> {
+fn render_work_row(view: WorkRowView) -> List<Fragment> {
+  concat(
+    [ render_work_row_head(view: view) ],
+    concat(activity_region_nodes(a: view.activity), view_detail_block(view: view)))
+}
+
+fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
   [
-    attr(name: "class", value: concat("node node-", status)),
-    attr(name: "data-node", value: rn.node as String),
+    attr(name: "class", value: concat("node node-", work_lifecycle_key(l: view.lifecycle))),
+    attr(name: "data-node", value: view.node_id),
   ]
 }
 
+fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> WorkRowView {
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork)
+}
+
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> Fragment {
-  let status = node_status_symbol(rn: rn, merged: merged)
-  let dispatchable = node_exposes_manual_dispatch(rn: rn, merged: merged)
-  let head = concat(
-    [ node_head_row(rn: rn, edges: edges, merged: merged, dispatchable: dispatchable) ],
-    item_detail_block(rn: rn),
-  )
+  let view = node_work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged)
+  let head = render_work_row(view: view)
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
   let child_block = if count(kids) == 0 {
     []
@@ -553,7 +513,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   }
   Element {
     tag: "li",
-    attributes: node_li_attributes(rn: rn, status: status),
+    attributes: node_li_attributes(view: view),
     children: concat(head, child_block),
   }
 }
@@ -599,7 +559,7 @@ fn altitude_section(cls: String, title_nodes: List<Fragment>, statuses: List<Str
 }
 
 fn group_statuses(g: SectionGroup, merged: List<Int>) -> List<String> {
-  map(g.nodes, rn => node_status_symbol(rn: rn, merged: merged))
+  map(g.nodes, rn => node_lifecycle_key(rn: rn, merged: merged))
 }
 
 fn section_statuses(s: RoadmapSection, merged: List<Int>) -> List<String> {
@@ -618,59 +578,190 @@ fn section_markup(s: RoadmapSection, merged: List<Int>) -> Fragment {
     body: body)
 }
 
-fn frontier_flat_node_li(rn: RoadmapNode, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
-  let status = node_status_symbol(rn: rn, merged: merged)
+data daily_workspace_composition_note: String = "The workspace is rendered from ONE DailyWorkspaceView (operator blocker 6): active work bands ABOVE the ready queue and never folds itself away (a flat section — the attention rule says work in flight owns the operator's attention, so it gets no altitude fold to hide behind); the scheduling bands keep the frontier vocabulary and the altitude machinery. The workspace observation banner narrates a channel-level refusal ONCE, and rows the impact covers render without their per-row unobservable line (workspace_covers_row_activity — the row's typed state is unchanged, only the duplicate narration is suppressed). The program strip is the ProgramProgressView consumer: its ready-obligation count is the causal link between the program claim and the queue below it."
+
+fn workspace_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragment {
+  let body = if workspace_covers_row_activity(observation: observation, a: view.activity) {
+    concat([ render_work_row_head(view: view) ], view_detail_block(view: view))
+  } else {
+    render_work_row(view: view)
+  }
   Element {
     tag: "li",
-    attributes: node_li_attributes(rn: rn, status: status),
-    children: concat(
-      [ node_head_row(
-          rn: rn,
-          edges: edges,
-          merged: merged,
-          dispatchable: node_exposes_manual_dispatch(rn: rn, merged: merged)) ],
-      item_detail_block(rn: rn)),
+    attributes: node_li_attributes(view: view),
+    children: body,
   }
 }
 
-fn frontier_bucket_ul(items: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
-  el("ul", map(items, rn => frontier_flat_node_li(rn: rn, edges: edges, merged: merged)))
+fn workspace_rows_ul(rows: List<WorkRowView>, observation: ObservationImpactView) -> Fragment {
+  el("ul", map(rows, v => workspace_row_li(view: v, observation: observation)))
 }
 
-fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
-  altitude_section(
-    cls: concat("frontier-bucket frontier-", cls),
-    title_nodes: [ el("h2", [ txt(label) ]) ],
-    statuses: map(items, rn => node_status_symbol(rn: rn, merged: merged)),
-    body: [ frontier_bucket_ul(items: items, edges: edges, merged: merged) ])
-}
-
-fn roadmap_frontier_markup(frontier: SpawnFrontier, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
-  el_class("section", "roadmap-frontier", [
-    frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, edges: edges, merged: merged),
-    frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, edges: edges, merged: merged),
-    frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, edges: edges, merged: merged),
-    frontier_bucket_markup(label: "Superseded", cls: "superseded", items: frontier.superseded, edges: edges, merged: merged),
+fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -> Fragment {
+  el_class("li", "family-group", [
+    el_class("div", "family-head", [
+      el_class("span", "family-claim", [ txt(family.claim) ]),
+      el_class("span", "family-count", [ txt(concat(to_string(count(family.rows)), " nodes")) ]),
+    ]),
+    el_class("ul", "family-rows", map(family.rows, v => workspace_row_li(view: v, observation: observation))),
   ])
 }
 
-fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>) -> Fragment {
-  let frontier = spawn_frontier(doc: doc, merged: merged)
+fn band_entry_li(entry: WorkBandEntry, observation: ObservationImpactView) -> Fragment {
+  match entry {
+    BandRow { row } => workspace_row_li(view: row, observation: observation)
+    BandFamily { family } => family_group_li(family: family, observation: observation)
+  }
+}
+
+fn band_entry_statuses(entry: WorkBandEntry) -> List<String> {
+  match entry {
+    BandRow { row } => [ work_lifecycle_key(l: row.lifecycle) ]
+    BandFamily { family } => map(family.rows, v => work_lifecycle_key(l: v.lifecycle))
+  }
+}
+
+fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> Fragment {
+  el("ul", map(entries, e => band_entry_li(entry: e, observation: observation)))
+}
+
+fn workspace_band(label: String, cls: String, entries: List<WorkBandEntry>, observation: ObservationImpactView) -> List<Fragment> {
+  if count(entries) == 0 && cls == "active" {
+    []
+  } else {
+    [ altitude_section(
+        cls: concat("frontier-bucket frontier-", cls),
+        title_nodes: [ el("h2", [ txt(label) ]) ],
+        statuses: fold(entries, init: [], f: (acc, e) => concat(acc, band_entry_statuses(entry: e))),
+        body: [ workspace_entries_ul(entries: entries, observation: observation) ]) ]
+  }
+}
+
+fn workspace_active_band(rows: List<WorkRowView>, observation: ObservationImpactView) -> List<Fragment> {
+  if count(rows) == 0 {
+    []
+  } else {
+    [ el_class("section", "frontier-bucket frontier-active", [
+        el("h2", [ txt("Active") ]),
+        workspace_rows_ul(rows: rows, observation: observation),
+      ]) ]
+  }
+}
+
+fn workspace_observation_banner(observation: ObservationImpactView) -> List<Fragment> {
+  match observation {
+    ObservationsNominal => []
+    WorkspaceObservationImpact { summary, located_reason } =>
+      [ el_class("section", "workspace-observation", [
+          el_class("span", "workspace-observation-summary", [ txt(summary) ]),
+          el_class("span", "workspace-observation-reason", [ txt(located_reason) ]),
+        ]) ]
+  }
+}
+
+fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
+  el_class("section", "roadmap-frontier", concat(
+    workspace_active_band(rows: ws.active, observation: ws.observation),
+    concat(workspace_band(label: "Ready", cls: "ready", entries: ws.ready, observation: ws.observation),
+      concat(workspace_band(label: "Upcoming", cls: "upcoming", entries: ws.upcoming, observation: ws.observation),
+        concat(workspace_band(label: "Done", cls: "done", entries: ws.done, observation: ws.observation),
+          workspace_band(label: "Superseded", cls: "superseded", entries: ws.superseded, observation: ws.observation))))))
+}
+
+fn v1_exit_program_progress_view(ready_count: Int) -> ProgramProgressView {
+  let accepted_ids = accepted_roadmap_node_ids()
+  ProgramProgressView {
+    name: "v1 exit",
+    completed: v1_finish_lines_accepted_count(accepted: accepted_ids),
+    total: count(v1_exit_finish_lines()),
+    ready_obligation_count: ready_count,
+  }
+}
+
+fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
+  el_class("section", "program-progress", [
+    el_class("span", "program-progress-name", [ txt(v.name) ]),
+    el_class("span", "program-progress-count", [
+      txt(join([
+        to_string(v.completed), " of ", to_string(v.total), " finish lines complete",
+        " · ", to_string(v.ready_obligation_count), " ready now",
+      ], "")),
+    ]),
+  ])
+}
+
+fn daily_attempt_progress_for(node_id: String, attempts: List<WorkflowAttemptProgress>) -> WorkflowAttemptProgress? {
+  fold(attempts, init: none, f: (acc, p) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if p.node_id == node_id { Present { value: p } } else { none }
+  })
+}
+
+fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> ActivityView {
+  match attempts_refused {
+    Present { value: reason } => ActivityUnobservable { reason: reason }
+    Absent =>
+      match daily_attempt_progress_for(node_id: node_id, attempts: attempts) {
+        Present { value: p } => activity_view_from_progress(progress: p)
+        Absent => NoActiveWork
+      }
+  }
+}
+
+data closing_contract_family_wiring_note: String = "The live family facts: one WorkFamilyDecl for the closing-contract family (claim = the authority's closing_contract_family_claim, stated once) and one member fact per generator pair, each carrying the gated node's typed headline as the row subject. Fixtures construct their own decls/members, so the grouping stays witnessable without live counts."
+
+fn closing_contract_family_id() -> String { "closing-contract" }
+
+fn live_work_family_decls() -> List<WorkFamilyDecl> {
+  [ WorkFamilyDecl { id: closing_contract_family_id(), claim: closing_contract_family_claim } ]
+}
+
+fn live_work_family_members() -> List<WorkFamilyMemberFact> {
+  closing_contract_task_pairs() |> map(p => WorkFamilyMemberFact {
+    family_id: closing_contract_family_id(),
+    task_node: p.task.node as String,
+    subject: p.subject,
+  })
+}
+
+fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> DailyWorkspaceView {
+  let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
+  let observation = observation_impact_view(workflow_refused: attempts_refused)
+  let rows = map(nodes, rn => work_row_view(
+    rn: rn, nodes: nodes, edges: edges, merged: merged,
+    activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused)))
+  let ready_count = count(rows |> filter(r =>
+    !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
+  daily_workspace_view(
+    rows: rows,
+    program: Present { value: v1_exit_program_progress_view(ready_count: ready_count) },
+    observation: observation,
+    families: live_work_family_decls(),
+    members: live_work_family_members())
+}
+
+fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
+  let ws = daily_workspace_view_of(doc: doc, merged: merged, attempts: attempts, attempts_refused: attempts_refused)
+  let program_strip = match ws.program {
+    Present { value: v } => [ program_progress_markup_of(v: v) ]
+    Absent => []
+  }
   Element {
     tag: "html",
-    attributes: [],
+    attributes: [ attr(name: "lang", value: "en" ) ],
     children: [
       el("head", [
         Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
         el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — daily workspace") ]),
       ]),
       el("body", [
-        roadmap_header(title: "gunbc — daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, [
-          roadmap_frontier_markup(frontier: frontier, edges: edges, merged: merged),
-        ])),
+        roadmap_header(page: "daily workspace"),
+        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
+          workspace_observation_banner(observation: ws.observation),
+          [ workspace_markup(ws: ws) ])))),
         dispatch_client_script(),
       ]),
     ],
@@ -682,7 +773,7 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
   let main_children = concat(main_prefix, concat(lead, secs))
   let body_base = [
-    roadmap_header(title: "gunbc — roadmap"),
+    roadmap_header(page: "roadmap"),
     el_class("main", "roadmap", main_children),
   ]
   let body_children = if list_length(main_children) == 0 {
@@ -692,10 +783,11 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
   }
   Element {
     tag: "html",
-    attributes: [],
+    attributes: [ attr(name: "lang", value: "en" ) ],
     children: [
       el("head", [
         Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
         el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — roadmap") ]),
       ]),
@@ -733,16 +825,23 @@ fn roadmap_page_for_authority() -> Fragment {
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [])
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none)
 }
 
-fn roadmap_daily_workspace_page_for_authority() -> Fragment {
+data daily_page_observed_note: String = "The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation."
+
+fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
   roadmap_daily_workspace_page_impl(
     doc: roadmap_authority(),
     merged: authored_merged_prs(),
     main_prefix: [
       dashboard_instance_banner(),
-      finish_line_progress_markup(),
     ],
+    attempts: attempts,
+    attempts_refused: attempts_refused,
   )
+}
+
+fn roadmap_daily_workspace_page_for_authority() -> Fragment {
+  roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: none)
 }

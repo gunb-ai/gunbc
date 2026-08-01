@@ -6,6 +6,8 @@ import gunbc.roadmap_document {
   project_roadmap_to_markdown,
 }
 import std.types { ContentHash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
@@ -29,7 +31,7 @@ import gunbc.roadmap_model {
   section_group,
   section_prose,
 }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
   RoadmapFocus,
   NoFocus,
@@ -69,6 +71,12 @@ fn nid(s: String) -> RoadmapNodeId { s }
 fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvidence, as_expected: Bool) -> Signoff {
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
+
+data namespace_kernel_authority_amendment_note: String = "THE KERNEL BAR AS FIRST WRITTEN DEADLOCKED ITS OWN SUCCESSOR, and this amendment is the fix (operator ruling, 2026-08-01). The recut landed namespace-binding-kernel with a red_control ending 'no second place in the compiler makes that same decision' and a handback demanding 'evidence that nothing else decides the same question'. That bar cannot be met while the bootstrap seed keeps its own hand-written none/one/many mirror inside the v1 adapter, and that mirror cannot be deleted until generic emission carries the canonical carrier with its required bounds. But namespace-reference-derived-closure DEPENDS on the kernel. So on the day the recut merged, the next step was already unstartable for a reason that had nothing to do with what the next step needs: deriving candidate populations does not require the seed mirror to be gone, it requires the canonical decision to EXIST and be callable.\n\nTHE CUT IS AUTHORITY VERSUS RETIREMENT. Owning the canonical decision and removing every rival implementation of it are separate achievements with separate evidence, and fusing them made an acceptance bar that no amount of correct kernel work could satisfy. The kernel now owns being the one canonical authority; namespace-legacy-choice-retirement owns deleting the older mechanisms, and the seed mirror is named there as one of its rows. A new node was deliberately NOT minted: that node already reads 'delete every other way of deciding what a name means' and already inventories every remaining place that decides, so the mirror is a row it should always have carried, and minting a sibling would have been a second home for one concept.\n\nTHE ADAPTER IS NOT THEREBY BLESSED. It remains a declared scaffold with its dissolution trigger on its own carrier, counted and visible; moving WHERE its retirement is tracked does not lower what is owed. What changes is only that a temporary bootstrap realization no longer gates work that does not depend on it.\n\nTWO ACCEPTANCE SENTENCES WERE ALSO WRONG AND ARE CORRECTED HERE. The red_control said 'a malformed name refuses', but this boundary accepts occurrence identities and derives no name spelling at all, so it named a check no implementation executes — it now reads malformed occurrence TRANSPORT. And the bar now states the two refusals that distinguish a malformed supplied population from a real verdict: a candidate handed in the wrong role refuses distinctly from one that is absent, and the same declaration supplied twice refuses as malformed rather than counting as two. Only two DISTINCT declaration identities are ambiguity. Collapsing either of those into an ordinary verdict would let a defective candidate producer read as a legitimate naming answer, which is the state-space conflation this whole lane exists to remove."
+
+data five_minute_ci_gate_program_note: String = "PROGRAM BOUNDARY, NOT A SINGLE PR (operator dispatch K, 2026-08-01; sequence revision eager-boar-610, 2026-08-01). Product contract, verbatim: an ordinary source edit reaches a required CI verdict in five minutes without recomputing any semantic fact whose inputs did not change. Six sub-lanes plus an explicit operator sequence — (1) finish #7522 warm-merge-admission with net wall receipt; (2) merge #7599 native bundle slice; (3) immediately cut over bounded production witness population to native execution kind (#7599 owner); (4) continue #7534 as materialization substrate under module-grain (hierarchy: module parse/type/interface → resolved entry → native bundle; no default CI savings until ordinary invocations consume it); (5) union CLOSED per #7533 → per-entry-assembly narrow lane; (6) this parent registration. Native-at-small-scale is SETTLED at branch head 2f9e780e6 (#7599 in-flight executing slice, dispositive at small scale per witness receipts; banking trigger = #7599 merge); open question is operational migration rate with equivalence/fallback/identity/memory fail-closed. Staged expectations (not flat 30–35min): Stage A modest admission saving only; Stage B first order-of-magnitude witness reduction after production native cutover; Stage C five-minute gate when all conjunction in docs/plans/five-minute-ci-gate-design.md holds. Dispositions: entry-graph-union CLOSED; retention PARKED (#7581). See docs/plans/five-minute-ci-gate-design.md."
+
+data namespace_node_recut_note: String = "THE BROAD NAMESPACE NODE WAS TOO COARSE TO CLOSE HONESTLY, and the recut is the fix (operator ruling, 2026-07-31). namespace-canonical-binding previously combined two separable things in one boundary: working out which declarations a name can see, and calling one decision function on them. A check proving only the none/one/many decision could therefore have marked the whole node accepted while candidate derivation, reference-derived dependency closure, and the production changeover all remained unbuilt — an acceptance hazard, and the exact shape of rung inflation DESIGN 4b forbids, where a carrier named for the top rung occupies the bottom one.\\n\\nThree prerequisites now stand in front of it. namespace-binding-kernel owns the decision alone, on a candidate population SUPPLIED to it. namespace-reference-derived-closure owns structural exposure, authored order, the candidate index, exact reference-to-declaration binding, and the derived dependency edges. namespace-ambiguity-discharge settles the genuinely-many cases from real compilation. namespace-canonical-binding KEEPS ITS DURABLE IDENTITY and is now the final production changeover only, so historical links resolve and no identity is reused.\\n\\nWhy the split falls exactly there: dependency edges are a PROJECTION OF THE BINDING, not a second authored statement. A program that instead authored the missing edges by hand reached 400 of 771 files at roughly one import per CI floor before it was stopped; the unresolved population was evidence that binding and module discovery are coupled at the wrong boundary, not a backlog to grind down.\\n\\nTHE CHANGEOVER AND ITS SUCCESSOR ARE DISJOINT, and an earlier revision of this recut broke that (review 45649). It retitled namespace-canonical-binding as 'switch the whole compiler over' with a boundary reading 'every place that resolves a name', which swallowed namespace-bound-only-consumers underneath it — that node's own boundary is type checking, call lookup, and argument-count checks reading the decided answer. Overlapping boundaries are the §2 redundancy this document exists to remove, and they are worse on a roadmap than in code: completing the parent would already entail most of the child, so either the child can never be honestly accepted or the parent was silently read narrower than it was written. The cut is PRODUCER versus READER. The changeover node owns the sites that WORK OUT what a name refers to, and the deletion of the search-everything fallback behind them. Its successor owns the READERS of that answer and their obligation to stop on unresolved or ambiguous. Neither entails the other, and each can be accepted on its own evidence.\\n\\nONE EDGE WAS DELIBERATELY NOT CHANGED. pderive-source-slot-binding still depends on namespace-canonical-binding, which now means it waits for the whole production changeover. It plausibly needs only occurrence transport plus the binding kernel, but that is unproven: the dependency moves only once the focused P-derive consumer demonstrates it can operate on an exact supplied candidate population. Loosening it on the strength of the argument alone would be asserting a fact nobody has measured."
 
 data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
 
@@ -225,9 +233,18 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
   )
 }
 
+data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINATOR, authored only after the first P1 carrier made the node's whole completion condition executable. The validation is deliberately RED: its closed capability population is the roadmap node's own bar, and this first slice supplies only the bounded candidate-generation model check. Missing behavior is derived set difference, never a hand-maintained progress count; duplicate passing rows cannot erase it, and a false row remains missing. The contract therefore cannot green on zero progress and cannot confuse a modeled carrier with an executed proof kernel. It is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots. Each later P1 slice adds an executing scenario check without weakening the aggregate. When the final capability greens, that same change removes the expect-red enrollment and promotes the witness to ordinary discovery ratchet."
+
+fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag" as FilePath,
+    function: "witness_p1_proof_kernel_acceptance_contract_holds" as NonEmptyStr,
+  )
+}
+
 data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
 
-data v1_lane_binding_survey_note: String = "TWO OF SEVEN STARTABLE ROOTS ARE BINDABLE, and the other five are the finding. A binding names the validation that CLOSES a node, so it can only be authored when that validation exists. Surveying the v1 deletion lane's startable roots against the tree: v1-materialization-kernel wants cold-start, warm-reuse, corruption and eviction demonstrated, and the materialization witnesses present assert scaffold dispositions rather than kernel behaviour; v1-test-hygiene-producer-retirement wants identical-behaviour-then-deletion, which no witness states; v1-hand-queue-drain wants a product-reachability census that does not exist; pderive-typesafe-nullary-reflection's unrepresentability claim has no witness carrying it; and caret-parse-smoke-seed-growth-justification declares no red control at all, being a justification row.\n\nSo those five stay ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses on them with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make the lane look dispatchable would produce exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The real prerequisite for those five is that their acceptance witness is written as part of their first slice; the contract follows the witness, never precedes it."
+data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT CLOSES A NODE, so it can only be authored once that validation exists. A node without one stays ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make a lane look dispatchable produces exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The closing validation is written as part of the node's first slice; the contract follows the witness, never precedes it.\n\nTHE ROSTER IS NOT TRANSCRIBED HERE. This row previously carried a hand survey — 'two of six startable roots are bindable' plus the four names and why each lacked a validation — and it rotted exactly as a hand-maintained count must: two of the four it named (v1-test-hygiene-producer-retirement, pderive-typesafe-nullary-reflection) were accepted while the sentence still listed them as unbound, and the leading count was edited twice by unrelated changes. startable_nodes_missing_closing_contract() computes the same set from the nodes themselves, so read it there and delete nothing by hand. What stays here is the RULE, which does not change when the roster does.\n\nOne bound node was removed rather than added by this correction: see v1_test_migration_unbound_note. A contract whose validation cannot fail on zero progress is worse than no contract, because it reports done over undone work."
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -238,14 +255,7 @@ fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContr
 
 data v2_emitter_producer_provenance_contract_note: String = "The validation is this node's red control stated almost verbatim. The ticket demands that 'a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write', and witness_restored_binding_without_executed_receipt_does_not_authorize_reds asserts exactly that: a restored binding without an executed receipt does not authorize an emitter-produced claim. It is chosen over the suite's other twenty-six claims because it is the one that fails if the unrepresentability itself lapses, rather than one that checks a roster stayed in step."
 
-fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/manual/test_migration_debt_test.dag" as FilePath,
-    function: "test_migration_delete_guard_holds" as NonEmptyStr,
-  )
-}
-
-data v1_test_migration_contract_note: String = "test_migration_delete_guard_holds is this node's red control verbatim — 'any old test file with nothing covering it keeps deletion blocked'. The guard is the deletion wall itself rather than a report about it, so Verify runs the thing that would actually stop an unsafe deletion. NOTE ON ITS HOME: the witness lives under test/claim/manual/, excluded from per-PR discovery at dir grain. That does not weaken the contract — a WorkItemExecutionContract invokes its validation DIRECTLY through the claim runner rather than through discovery, so the exclusion governs the corpus cadence and not this call. It does mean the guard's own regressions are caught by Verify on dispatch rather than by the floor, which is worth knowing when the node is worked."
+data v1_test_migration_unbound_note: String = "v1-test-migration IS DELIBERATELY UNBOUND, and rebinding it to test_migration_delete_guard_holds would restore a false green. That binding existed and was removed here after reading what the guard actually computes.\n\nThe guard is DIFF-SCOPED. cli_run.rs test_migration_delete_guard_uncovered_deletes_inner resolves a (base, head) pair, returns an empty violation list when base_rev == head_rev, returns an empty list again when neither rev resolves and GUNBC_CI_DIFF_BASE is unset, and otherwise inspects only the v1 test paths DELETED between those revs. Violations are empty whenever a change deletes no uncovered legacy test file, so the guard answers true. Measured on the tree that carried it: the guard passes today while test_migration_debt_live_module_count() is 81, so a dispatched agent could do no migration work at all and Verify would still go green. A validation that cannot fail on zero progress cannot close a node (DESIGN 5 — a wrong answer must be loud, and 'done' asserted over undone work is exactly the silent wrong answer).\n\nThe guard is KEPT, unchanged, as what it actually is: a per-change deletion wall, wired through test_migration_delete_guard_holds in the debt witness module, refusing an unsafe deletion in the diff that attempts it. That role is correct and load-bearing. It simply does not authorize completion.\n\nThe node's own bar — 'the per-file coverage mapping with nothing unmatched' — needs a closing validation at the grain of legacy test BEHAVIOR, not modules: an admitted typed disposition for every discovered legacy test function, with unclassified as the derived set difference reaching zero. The module count is a trend metric that overstates debt by construction, because classification is exact-stem filename matching (chosen fail-closed after fuzzy matching wrongly reported an unrelated witness as covering `pipeline`), so a real witness under a different name still reads as debt. Until that behavioral disposition graph exists, this node is honestly ClosingContractMissing and appears in startable_nodes_missing_closing_contract, which is where a node whose completion nothing can check belongs."
 
 fn with_execution(rn: RoadmapNode, e: WorkItemExecutionContract) -> RoadmapNode {
   RoadmapNode {
@@ -370,28 +380,29 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
   RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
 }
 
-type SeedGrowthJustification {
-  reason: String
-  owning_dissolution_lane: RoadmapNodeId
-  trigger: String
-  current_boundary: String
-}
-
 fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification {
   SeedGrowthJustification {
+    hand_authored_declarations: [
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "handle_run_with_options",
+        field: WholeDeclaration
+      },
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "capture_scoped_run_stderr",
+        field: WholeDeclaration
+      },
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "replay_scoped_run_stderr",
+        field: WholeDeclaration
+      }
+    ],
     reason: "Showing progress while a command runs has to reach the point where the old runner starts a program. It needs to know which piece of code was chosen, hold back error output until it can be shown in the right order, and report exactly one ending — and the rules for all of that live in the substrate, not in Rust.",
     owning_dissolution_lane: nid(s: "v1-hand-queue-drain"),
     trigger: "Move this reach-through into a described operation, then hollow out the corresponding part of the command-line tool so generated code does the work; the hand-written bridge is deleted at that point.",
     current_boundary: "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs",
-  }
-}
-
-fn caret_parse_smoke_seed_growth_justification() -> SeedGrowthJustification {
-  SeedGrowthJustification {
-    reason: "This old hand-written parser test predates a later change that added fields to a structure it builds. It was updated only enough to keep compiling — no new behaviour — but it is still a hand-written Rust file, so it needs to be counted rather than forgotten.",
-    owning_dissolution_lane: nid(s: "v1-zero-hand-maintained-rust"),
-    trigger: "Either regenerate this test from a description, or delete it once equivalent coverage exists that would still catch the same bug; then remove this row.",
-    current_boundary: "src/v1/stage0/tests/caret_parse_smoke.rs",
   }
 }
 
@@ -419,32 +430,8 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   )
 }
 
-fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
-  fields(
-    headline: "Regenerate or delete one leftover hand-written parser test",
-    boundary: concat(
-      "Exactly one hand-written file is kept for now: ",
-      concat(j.current_boundary, ". This adds no new test behaviour and no second hand-written file."),
-    ),
-    displaced_cost: concat("Why it is still here: ", j.reason),
-    first_slice: concat("Do what the owning item's plan says: ", j.trigger),
-    red_control: concat(
-      "If the file stays hand-written without exactly one item owned by ",
-      concat(
-        j.owning_dissolution_lane as String,
-        " tracking it, or if a second file joins it, this is refused.",
-      ),
-    ),
-    out_of_scope: "No changes to what the test checks, to the parser, or to other hand-written files; no separate written-down list.",
-    handback: concat(
-      "Show the file regenerated or deleted, with equivalent coverage in place if its behaviour moved, then remove this row from ",
-      j.owning_dissolution_lane as String,
-    ),
-  )
-}
-
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
-  [
+  concat([
     active_sized(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
@@ -528,6 +515,40 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
       )
     ),
+    active_sized(
+      identity: "rn_026DCFC306A7B44B061483AA71",
+      id: "2-scm-p0-landing-spine",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Make submit → landed the default source-control journey",
+        boundary: "Model one submitted change through result finding, permission checks, committing, independent read-back, and compatibility projection. The normal user sees only landed, one concrete choice, or a plain reason the change could not land; synchronization and unfinished investigation stay inside the system.",
+        displaced_cost: "Without the complete spine, each later solver or storage slice can leak its own vocabulary and repair ritual into the interface. This fixes the product boundary before the proof kernel and write transport make it expensive to change.",
+        first_slice: "Carry the proposal contract, full-claim P−1 readiness receipts, all seven semantic closure receipts, zero/one/many/unclosed result space, admission, transition, projection status, 50-agent/10-overlap stress profile, and timestamp non-authority through one executing scenario corpus.",
+        red_control: "Removing any closure receipt leaves the operation running inside the system; blocking evidence does not become a user question; both displayed answers resume automatically; unauthorized, self-amending, exhausted-bound, and permanent-effect cases retain typed refusals and plain explanations; a stale target retries internally; projection failure after a committed and independently read-back transition stays landed; primary messages contain neither internal theory words nor manual Git repair commands; an ordinary Git compatibility projection remains attached.",
+        out_of_scope: "No P1 proof kernel, source parser or edit lens, effect transport, command-line product, hosted service, writable Mercurial/Pijul target, or claim that a modeled transition has executed.",
+        handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
+      )
+    ),
+    with_execution(active_sized(
+      identity: "rn_D33CBEADA91C3E8C10D8515CC4",
+      id: "2-scm-p1-proof-kernel",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "Prove one bounded reconciliation rule works for directly authored changes",
+        boundary: "Model one public bounded fold that composes directly authored transformations over a declared decidable program fragment. Domains contribute facts, claims, procedures, invariants, and checkable certificates as data; the kernel never grows feature-pair branches and every refusal stays typed, located, and counted.",
+        displaced_cost: "Without one general fold, every new invariant or overlapping feature adds another pairwise case, hides order dependence, and lets pairwise agreement masquerade as n-way safety. That cost compounds across every later authoring and write realization.",
+        first_slice: "Declare the bounded fragment and carry occurrence-ID deduplication, context validity and transport, commuting squares, batch-partition invariance, grounded frame-preserving deltas, n-way invariants, order honesty, and all seven semantic closure certificates through one executing scenario corpus. Adding an invariant as data must change a later outcome without editing the fold.",
+        red_control: "Two observations of one occurrence enter once while distinct occurrence IDs never collapse; invalid or untransportable context refuses; pairwise-commuting transformations that fail together do not pass as n-way safe; changing batch partitions cannot change the result; ungrounded or out-of-frame deltas refuse; non-commuting order and unsupported order claims stay explicit; removing any of the seven closure certificates leaves the result unclosed; adding an invariant requires no feature-pair kernel arm.",
+        out_of_scope: "No source parser, quotient-delta edit lens, effect transport, executed target transition, writable SCM realization, command-line product, hosted service, arbitrary synthesis, unbounded proof search, or P2/P3 roadmap node.",
+        handback: "Return the modeled bounded fragment, one public reconciliation fold, data-driven invariant and certificate carriers, the executing discriminating scenario corpus, the closing validation bound and green, and the exact P2 capture and P3 effect work still absent."
+      )
+    ), e: scm_p1_proof_kernel_execution_contract()),
 
     active(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -544,19 +565,64 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The working mechanism plus a test that two same-named things in different places really do stay apart."
       )
     ),
+    active(
+      identity: "rn_KFQ7I41NISIGTPGPWND9NDJEML",
+      id: "namespace-binding-kernel",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "One canonical decision authority, handed the candidates rather than finding them",
+        boundary: "Given a list of things a name could refer to, decide: none, exactly one, or more than one. Checking that what it was handed is well formed and of a kind that could match. NOT working out which declarations are in view — that is the next step. Owns the canonical decision itself; does NOT own removing the older mechanisms that still decide it their own way.",
+        displaced_cost: "Several lookup mechanisms exist today and they can disagree about the same name, which is how a program silently ends up meaning something other than what was written. Separating the decision from the search makes the decision reviewable on its own.",
+        first_slice: "Validate what was handed in, then call the one decision function exactly once on a candidate list supplied from outside.",
+        red_control: "Malformed occurrence transport refuses; a declaration of the wrong kind is excluded; a candidate given in the wrong role refuses, distinctly from one that is absent; the same declaration supplied twice refuses as a malformed population rather than counting as two; and supplied lists of nothing, one thing, and two distinct things give unresolved, resolved, and ambiguous respectively.",
+        out_of_scope: "Does not work out which declarations are visible, does not order them by where they were written, does not build an index, and does not claim the wider naming work is finished. Does not require the older deciding mechanisms to be gone — that is the retirement node's job, and holding it here would block the next step on work the next step does not need.",
+        handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
+      )
+    ),
+    active_large(
+      identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
+      id: "namespace-reference-derived-closure",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Work out what each name can see, and let that be what a file depends on",
+        boundary: "From where a name is written, work outward to every declaration actually in view — including ordinary neighbours in the same file — respecting where things were written relative to each other. Then record, for each name, exactly which declaration answered it, and derive what each file depends on from those answers.",
+        displaced_cost: "What a file depends on is currently written out by hand as a separate statement, so it can disagree with what the file actually refers to. Hundreds of files were patched by hand to keep those two in step, which is work that should never have existed: what a file depends on is a consequence of what it refers to, not a second thing to maintain.",
+        first_slice: "One ordinary production file: work out what each name in it can see, bind each name, and derive the file's dependencies from those bindings alone.",
+        red_control: "A neighbour in the same file is in view; something inside a different branch of a decision is not; something written further down is not; the same name written twice in genuinely different places stays ambiguous; repeated mentions of one thing collapse to a single dependency; and nothing depends on an unrelated file happening to be loaded at the same time.",
+        out_of_scope: "No hand-written dependency statements, no falling back to searching everything that happens to be loaded, no mass edits across the repository, and no throwing away which particular name produced which dependency.",
+        handback: "The derived dependencies for one real file, matching what was written by hand, with each of the red controls actually run."
+      )
+    ),
+    active(
+      identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
+      id: "namespace-ambiguity-discharge",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Settle the names that genuinely could mean two things",
+        boundary: "Using the real answers from the step before — not a count taken by searching text — go through every name that genuinely has more than one candidate and either refuse it on purpose or say which one is meant, by renaming or by writing it out in full.",
+        displaced_cost: "Counting these by searching for text gives a number that is wrong in both directions, so it cannot tell anyone how much work is left or whether it is finished.",
+        first_slice: "Produce the real list from actual compilation, then settle the first genuine group.",
+        red_control: "Every genuinely ambiguous name is either deliberately refusing or explicitly spelled out, and no rule is added that quietly prefers one candidate over another.",
+        out_of_scope: "No preference rule, no nearest-match, and no sizing the work from a text search.",
+        handback: "The real list, the settled groups, and proof that no tie-breaking rule was introduced."
+      )
+    ),
     active_large(
       identity: "rn_KH24WPK0FFKWHK5J0QM40AYMZZ",
       id: "namespace-canonical-binding",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "Have exactly one rule decide what every name refers to",
-        boundary: "Work out the candidates by looking outward from where the name was written, then call one shared decision function once. Not several mechanisms racing to answer.",
-        displaced_cost: "Several lookup mechanisms exist today and they can disagree about the same name, which is how a program silently ends up meaning something other than what was written.",
-        first_slice: "Route type names, value names, and function calls through the one decision function.",
-        red_control: "No candidates means unresolved and two equally good candidates means ambiguous — neither quietly picks one.",
-        out_of_scope: "No configuration switch between old and new behaviour, no retrying with a different rule when the first answer is unwelcome.",
-        handback: "Worked examples of the unique, unresolved, ambiguous, and duplicate cases, all actually run."
+        headline: "Make name lookup itself produce that one answer, and delete the old way",
+        boundary: "The places that WORK OUT what a name refers to — type names, value names, and calls — produce their answer from the mechanisms built in the earlier steps, and the old habit of searching everything currently loaded is deleted rather than left beside them. This is the changeover of name lookup itself. What the rest of the compiler then does with that answer is the next step, not this one.",
+        displaced_cost: "Until the old lookup is deleted the new mechanism is only advisory: both run, they can disagree, and the compiler can still quietly mean something other than what was written.",
+        first_slice: "Make one real lookup site produce its answer from the new mechanism, and delete the search-everything fallback behind it.",
+        red_control: "Expectations recorded before the changeover now invert; the search-everything path provably does not run; and no candidates still means unresolved while two candidates still means ambiguous.",
+        out_of_scope: "Does not migrate the readers of that answer — type checking, call lookup, and argument-count checks are the next step. No configuration switch between old and new behaviour, no retrying with a different rule when the first answer is unwelcome, and no keeping the old path alive for compatibility.",
+        handback: "The changed lookup sites, the deleted fallback, the inverted expectations, and proof the old path did not run."
       )
     ),
     active(
@@ -596,10 +662,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
         headline: "Delete every other way of deciding what a name means",
-        boundary: "Once all ordinary consumers use the one rule, remove the older mechanisms: name-string matching, walking up the parent chain, the global pool of bare names, and the import retry.",
+        boundary: "Once all ordinary consumers use the one rule, remove the older mechanisms: name-string matching, walking up the parent chain, the global pool of bare names, the import retry, and the hand-written seed mirror that counts none/one/many for itself inside the bootstrap compiler. Owning that last one HERE, rather than in the node that defines the canonical decision, is deliberate — see namespace_kernel_authority_amendment_note.",
         displaced_cost: "Leaving them in place means one name can still get different answers from different code paths.",
         first_slice: "Inventory every remaining place that decides what a name refers to, and remove one complete family.",
-        red_control: "The inventory refuses anything it cannot classify and must reach zero before this closes.",
+        red_control: "The inventory refuses anything it cannot classify and must reach zero before this closes; the seed mirror is one of its rows and is not closed by anything upstream of it.",
         out_of_scope: "Code that merely stores where things are written, without choosing meanings, stays.",
         handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       )
@@ -767,6 +833,142 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     )
     ),
 
+    active_large(
+      identity: "rn_8QK2M5F7V3N9P1R4T6W0X2Y5Z8A",
+      id: "five-minute-ci-gate",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Reach a required CI verdict in five minutes without redundant semantic work",
+        boundary: "An ordinary source edit reaches a required CI verdict in five minutes without recomputing any semantic fact whose inputs did not change. Six sub-lanes plus operator sequence: (1) #7522 warm-merge-admission net receipt; (2) merge #7599 native bundle slice; (3) bounded production cutover to native execution kind; (4) #7534 materialization substrate (module→entry→bundle hierarchy); (5) union closed → per-entry assembly lane; (6) this registration. Native-at-small-scale settled (#7599); open question is operational migration rate. Staged expectations A/B/C in design note — five-minute gate is Stage C conjunction, not today's wall clock.",
+        displaced_cost: "Today witness bodies are still interpreted and materialization is recomputed across phases — confidence is bought with time the product boundary forbids.",
+        first_slice: "Register sequence, staged expectations, and #7599 in-flight disposition in authority; land no implementation under the parent id.",
+        red_control: "A sub-lane that widens to whole-corpus work, silently falls through from an incomplete materialization artifact to cold recompute, or claims the five-minute envelope without Stage C fleet receipts refuses rather than greens.",
+        out_of_scope: "No single PR closes the parent; placement/build-flake cap-first work, tokenizer escape scan, and closed entry-graph-union stay outside.",
+        handback: "Sequence graph, staged expectations, six sub-lane rows, and design note in docs/plans/five-minute-ci-gate-design.md."
+      )
+    ),
+    active(
+      identity: "rn_1H4J6L8N0P2Q5S7U9V1W3X6Y8Z0B",
+      id: "warm-merge-admission",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Admit merges from warm stamped receipts, not cold recomputation",
+        boundary: "NEXT (sequence step 1, #7522 in flight): fold resolve and materialization receipt gates into merge admission so the pull-request path stamps once and admits from warm receipts. Operator expectation: probable net recovery ~1–1.5 min (not ~3 min) — final-head run decides; not transcribed as receipt until measured.",
+        displaced_cost: "Merge admission and the floor tail currently pay separate cold paths for facts already fixed when the run started.",
+        first_slice: "Finish #7522 with real net wall receipt and stage profile.",
+        red_control: "A stale base-tree or stale gate-roster receipt blocks merge; a missing or invalid receipt refuses rather than widening to a full rerun.",
+        out_of_scope: "No change to main-push cold controls or the falsifier cadence.",
+        handback: "One admission path with discriminating stale-base, stale-roster, and fresh controls executed."
+      )
+    ),
+    active_large(
+      identity: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C",
+      id: "native-selected-witness-bundle",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Migrate the production selected witness set onto native bundle execution",
+        boundary: "IN-FLIGHT (sequence step 2, #7599 open PR, head 2f9e780e6): executing slice — SelectedWitnessPlan, content-addressed bundle identity, one-process direct calls, interpreter equivalence oracle, typed refusals. 25/25 witness PASS executed at branch head (still-wolf-404, srv remote ctrl-build, 2026-08-01). Native-at-small-scale dispositive at small scale; banking trigger = #7599 merge. Timing ratio (~3ms native / ~20ms interpreted / ~457ms warm-cargo) claimed-not-verified — reported in #7599 PR body at 2f9e780e6; verification trigger = merge + fleet rerun. NEXT (sequence step 3, #7599 owner): immediately cut over a bounded production witness population — not another broad interpreted-path optimization. Open operational question: migration rate with equivalence, fallback, artifact identity, and memory fail-closed.",
+        displaced_cost: "Running selected witnesses interpreted still pays per-row interpreter tax documented in ci-floor-child-spawn-attribution.",
+        first_slice: "Merge #7599 once controls clear; then enroll bounded production cutover with counted interpreted-fallback rows.",
+        red_control: "A provenance gap in selection refuses rather than widening to the whole corpus; stale compiler identity, missing native realization, or uncounted fallback refuses.",
+        out_of_scope: "No change to the scheduled falsifier's whole-corpus cold control; no claim that #7599 slice alone closes the five-minute gate.",
+        handback: "#7599 merge receipt; production cutover receipts with native-vs-interpreted attribution and fallback counts trending to zero."
+      )
+    ),
+    active_large(
+      identity: "rn_4K7M9O1Q3S5T8V1W3X4Y7Z9A1B3E",
+      id: "module-grain-materialization",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Recompute only the edited module and its semantic dependents",
+        boundary: "NEXT (sequence step 4, #7534 continues): shared materialization substrate — hierarchy module parse/type/interface → resolved entry → selected native witness bundle. No default CI savings credited until ordinary invocations consume hits. FIRST RUNG: exact-tree cross-process cache (#7534, opt-in) — verified serve, not default CI activation.",
+        displaced_cost: "Cross-entry typed-module work is repeated today even when module inputs are byte-identical across entries in one process.",
+        first_slice: "Continue #7534 provider; land module-grain typed memo with byte-identical cached-vs-cold oracle on a representative edit.",
+        red_control: "A cache hit with divergent corpus or emit fingerprints refuses; incomplete materialization artifacts refuse rather than falling through to cold recompute.",
+        out_of_scope: "Not pre-index lookup before corpus-scale index construction.",
+        handback: "Module-grain key authority, exact-tree provider receipts, and cached-vs-cold oracle green on the edit cone."
+      )
+    ),
+    active(
+      identity: "rn_5L8N0P2R4T6U9W2X4Y8Z0A2B4C6D",
+      id: "pre-index-materialization-lookup",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Probe materialization before corpus-scale index construction",
+        boundary: "NEXT: a small persistent manifest lets a warm materialization hit occur before building the shared entry index and source-loading closure — serve and dashboard currently construct the index first and only then discover the cache.",
+        displaced_cost: "Warm hits that still pay corpus index construction reproduce the measured startup outage on real dashboard entries.",
+        first_slice: "Record on the actual dashboard entry: cold and warm time-to-listener-bind, time before cache probe, time in index construction, and time in provider validation — then land manifest lookup ahead of index build.",
+        red_control: "A warm hit that still builds the full corpus index on the serve path refuses as a regression; manifest mismatch refuses rather than silently rebuilding.",
+        out_of_scope: "Not the exact-tree provider itself; not module-grain keys.",
+        handback: "Dashboard timing receipt and manifest-first serve path with warm-hit control."
+      )
+    ),
+    active_large(
+      identity: "rn_6M9N1Q3S5U7W0X2Y4Z6A8B0C2D4E",
+      id: "phased-single-process-ci",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Share one initialized substrate across regen, floor, and admission",
+        boundary: "NEXT: regen, floor, and admission run in one initialized process with phase boundaries and separate verdicts — regen still gates floor. NOT flattening into ordinary batches; duplicate prelude work is the target.",
+        displaced_cost: "Each phase currently cold-starts its own substrate — paying resolve, index construction, and discovery more than once per pull request.",
+        first_slice: "Model phase boundaries with separate verdict stamps on one shared materialization provider; measure prelude duplication on a representative PR.",
+        red_control: "A phase that silently reruns full discovery or resolve when the prior phase already fixed those facts refuses as a regression.",
+        out_of_scope: "Not removing regen-before-floor ordering; not merging verdict semantics.",
+        handback: "Phased walk plan with shared substrate receipts and prelude-duplication attribution."
+      )
+    ),
+    active_large(
+      identity: "rn_7N0O2R4T6V8X1Y5Z7A9B1C3D5E6F",
+      id: "per-entry-assembly-decomposition",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Decompose per-entry assembly after the shared-typecheck hypothesis closed",
+        boundary: "NEXT (sequence step 5, narrow lane): after #7533 closed entry-graph-union on zero repeated typecheck misses, attribute and reduce per-entry assembly/reconcile work — the remaining compiler term on the floor path.",
+        displaced_cost: "Assembly and reconcile rows still scale with entry count even when typecheck is already shared across entries in one index.",
+        first_slice: "Measure per-entry assembly attribution against one shared environment; report repeated assembly compute / total assembly compute before any implementation.",
+        red_control: "Attribution must reconcile on one exclusive basis and must not infer computation from closure membership alone.",
+        out_of_scope: "No union-graph construction — that hypothesis is closed.",
+        handback: "Repeated-assembly attribution receipt; implementation proposal only if the receipt justifies one."
+      )
+    ),
+
+    active_small(
+      identity: "rn_2K8HXQ4MZV7NC3B6WD9YFT5J1E",
+      id: "frontend-escape-scan-construction",
+      owner: "ci-cost",
+      path: "docs/plans/inner-cost-lanes-scoping.md",
+      t: fields(
+        headline: "Stop re-walking the string to read one character",
+        boundary: "One function in the tokenizer still reads a string by counting from the start each time, while the rest of its file was already moved onto a pre-decoded form. Move it too, and collect its result into one buffer instead of a list of one-character pieces.",
+        displaced_cost: "For text that is entirely plain ASCII this costs one allocation per character. For text containing any non-ASCII character at all, reading position N costs N steps and asking how long the string is re-counts the whole thing, on every pass — so the work grows with the square of the literal's length, and a single accented character anywhere flips the whole literal onto that path.",
+        first_slice: "Move the one function onto the pre-decoded form its own file already builds, and replace its accumulator with a single buffer.",
+        red_control: "Identical output over the corpus is the equivalence half and is satisfied by changing nothing, so it does not stand alone: a long literal mixing non-ASCII text with escapes must separate the two implementations by cost, and a deliberately wrong escape decode must change the output.",
+        out_of_scope: "No general cursor or token-builder abstraction is introduced here. That generalization is worth what a second measured instance says it is worth, and the audit that would find one has not run.",
+        handback: "The migrated function, the cost separation on the discriminating literal, and the corpus showing identical tokens."
+      )
+    ),
+    active_large(
+      identity: "rn_9WD4YB1TQK6RXA0PJM7N5GHVC2",
+      id: "entry-graph-union-construction",
+      owner: "ci-cost",
+      path: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md",
+      t: fields(
+        headline: "Repeated typecheck attribution adjudicated — union construction no-go at N≤50",
+        boundary: "CLOSED (operator adjudication 2026-08-01, PR #7533). Slice 1 (#7483) eliminated loading as the union-graph target. Slice 2 measured per-entry typecheck attribution against one shared typed cache at N≤50 across disjoint production windows: decision_ratio=0 at every cell — the existing typed cache already enforces once-per-content-key, so a union/shared typed-computation graph is not justified by this hypothesis. Do not begin union construction. Per-entry assembly decomposition is a separate hypothesis with a new denominator.",
+        displaced_cost: "Across six entries sharing one index, typecheck_compute grew 2.86x while the fixed loading row grew only 1.08x; selected closures repeat membership 35.9–38.4x by module count and 43.0–49.3x by bytes. Slice 2 converted that membership duplication into a decision ratio and found zero repeated typecheck compute at every measured cell — the priced benefit of union construction is absent at N≤50.",
+        first_slice: "Delivered: slice-2 attribution matrix, controls in docs/plans/entry-graph-union-slice2-typecheck-attribution.md §C–F, operator no-go verdict §F.",
+        red_control: "Satisfied by execution: attribution reconciles on exclusive (entry,module_key) basis without inferring computation from closure membership; reorder preserves distinct-compute set; decision_ratio=0 at every measured N≤50 cell (perfect_sharing_yields_zero_decision_ratio).",
+        out_of_scope: "No union graph implementation, no eviction redesign, and no forking of the entry-closure memo already in flight — sharing more while holding more live collides with retention.",
+        handback: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md §F verdict plus committed measurement receipts under docs/plans/receipts/entry-graph-union-slice2/; no implementation proposal (no-go)."
+      )
+    ),
     active_small(
       identity: "rn_6JR237TB4G7T9S52M93JCP3PK7",
       id: "placement-live-roster-preflight",
@@ -855,7 +1057,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "Every result says which generator made it and how far it got, as two separate facts. Claiming the new generator made something, without the evidence that it did, has to be impossible to write down.",
         displaced_cost: "Right now everything is made by the old generator, and the count we track reads as if the new one made it. We are measuring the wrong thing, so we cannot tell how far along we are.",
         first_slice: "Relabel the existing rows as made by the old generator, and replace the single count with separate counts per generator in the same change.",
-        red_control: "Where a file sits is not evidence of what made it: a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write down rather than caught afterwards. All six existing rows are recorded as made by the old generator, because that is what made them. Taking the old generator away proves nothing at this step, because nothing the new generator made exists yet — that check belongs to the two steps below, where there is finally something to compare.",
+        red_control: "Where a file sits is not evidence of what made it: a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write down rather than caught afterwards. Every row in the frontier roster is recorded as made by the old generator, because that is what made them — stated without a count on purpose, since the roster grows and a transcribed number goes stale (it read 'six' while the live roster held twenty-seven). Taking the old generator away proves nothing at this step, because nothing the new generator made exists yet — that check belongs to the two steps below, where there is finally something to compare.",
         out_of_scope: "Nothing changes which generator makes it here, and no check gets loosened to keep a number looking good.",
         handback: "The relabelled list, the retired count, and a demonstration that recording a result as made by the new generator, with no receipt from the run that made it, is refused outright rather than accepted and corrected later."
       )
@@ -922,16 +1124,31 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_3KTM8Q5VXB2NRJ7HDW9FZ0CPGA",
+      id: "v1-rust-source-observation",
+      owner: "self-host",
+      path: "dag/gunbc/stage0_rust_host_observation.dag",
+      t: fields(
+        headline: "See the hand-written files as they actually are, from the host",
+        boundary: "The set of tracked Rust files is read from the repository itself at a known revision, not transcribed. Reading it can fail, and when it does it says so rather than returning a shorter list.",
+        displaced_cost: "Every count of what is left to move was previously taken from whichever files someone had looked at. That understates, silently, and it understated twice here -- so no schedule built on it could be trusted.",
+        first_slice: "Read the tracked set live and refuse, with a reason, when the read does not succeed.",
+        red_control: "A read that fails must not come back as an empty or partial set. Discovery and classification are separate axes and are checked separately: finding every tracked file is one question, and every found file carrying a disposition is a different one, so a roster that is complete but unclassified fails the second while passing the first.",
+        out_of_scope: "Deciding what each file's fate should be, and the product-reachability question, both belong downstream. This node only makes the population honest.",
+        handback: "The live observation, its typed refusals, and a count that comes from enumerating the tracked set rather than from inspection."
+      )
+    ),
+    active(
       identity: "rn_M5WCJ1GDZVJ67JXQN2NBPJKB58",
       id: "v1-honest-frontier",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
         headline: "Keep an honest list of what still depends on the old compiler",
-        boundary: "Every module is either generated by the new compiler or explicitly kept on the old one with a reason and a plan to move.",
+        boundary: "Every module is either generated by the new compiler or explicitly kept on the old one with a reason and a plan to move. Two separate questions, kept separate: whether the list found every module, and whether every module it found has been decided. A complete list of undecided modules and a decided list that missed modules are different failures and are reported differently.",
         displaced_cost: "Turns a vague sense of 'mostly done' into a finite, countable list someone can work through.",
         first_slice: "Rebuild the list and close out one remaining family.",
-        red_control: "An unlisted module, an unlisted dependency, or a listed test that never actually runs makes the list red.",
+        red_control: "An unlisted module, an unlisted dependency, or a listed test that never actually runs makes the list red. So does a list whose totals are asserted rather than derived from the observed set, since that is how a frontier drifts without anyone editing it.",
         out_of_scope: "Not claiming everything must be generated — some parts legitimately stay.",
         handback: "The complete list, the reasons, and one family migrated."
       )
@@ -942,13 +1159,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/witness-realization-plan.md",
       t: fields(
-        headline: "Compute things once and reuse the result",
-        boundary: "Tests and the compiler share one store keyed by what went into the result, with a size limit and a clear answer when something is missing.",
-        displaced_cost: "Everything is currently recomputed from scratch on every run, and the one-off caches that exist do not help each other.",
-        first_slice: "Serve one family of tests from the shared store.",
+        headline: "Make exact prior results reusable across invocations",
+        boundary: "Iteration-speed and runtime infrastructure: exact input identity selects a bounded materialized result that can be served after restart without compiling. The v1 exit is one consumer of this kernel, not the kernel's parent purpose.",
+        displaced_cost: "Repeated invocations currently rebuild results that an exact identity could safely serve; product iteration, tests, and the v1 exit all pay that recomputation independently.",
+        first_slice: "Bind one exact-tree invocation hit to a restart-stable serve path and demonstrate that the hit serves without compiling.",
         red_control: "Wrong content, a missing entry, and a full store each refuse rather than quietly falling back to recomputing.",
-        out_of_scope: "No cache keyed on 'does a file exist', and no store that grows without limit.",
-        handback: "Cold-start, warm-reuse, corruption, and eviction all demonstrated."
+        out_of_scope: "No cache keyed on 'does a file exist', no store that grows without limit, and no framing that makes v1 deletion the infrastructure's sole purpose.",
+        handback: "Cold-start, exact-tree warm reuse across restart without compilation, corruption, and eviction all demonstrated."
       )
     ),
     active_large(
@@ -991,14 +1208,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "Move the hand-written files the shipping tools still depend on. Anything that genuinely has to stay gets an explicit reason.",
         displaced_cost: "The main command-line tool is itself one of these files, so 'the products still build' is not something we can honestly claim until this is done.",
         first_slice: "Move the next complete family and run it.",
-        red_control: "A file the products reach that has no stated reason to remain blocks progress.",
+        red_control: "A file the products reach that has no stated reason to remain blocks progress. The count of what remains is derived by enumerating the observed tracked set, never by counting the files someone happened to touch -- an inspection-based count understates and has done so twice. A file whose only consumer is a test is not product-reachable and must not be counted as if moving it shortened this queue.",
         out_of_scope: "No hitting the number by baking Rust into templates.",
         handback: "The shorter queue, the replacements running, and the reasons for whatever stays."
       )
     ),
-    with_execution(
-      e: v1_test_migration_execution_contract(),
-      rn: active(
+    active(
       identity: "rn_0X0GRWB1KQ6KR0SAK1HDKEDGPR",
       id: "v1-test-migration",
       owner: "self-host",
@@ -1009,10 +1224,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         displaced_cost: "A guard that stays quiet is not the same as coverage; without this, deletion silently drops real protection.",
         first_slice: "Match one old test file to the checks that cover it now.",
         red_control: "Any old test file with nothing covering it keeps deletion blocked.",
-        out_of_scope: "No line-by-line rewriting of the old tests.",
+        out_of_scope: "No line-by-line rewriting of the old tests. Adding a new test written only in Rust, with no authority the substrate owns, is out of bounds here: it grows the very population this node exists to drain, so it counts against the finish line rather than toward it.",
         handback: "The per-file coverage mapping with nothing unmatched."
       )
-    )
     ),
     active_small(
       identity: "rn_HZJEM68DT207HQH449FPR3VZPA",
@@ -1060,6 +1274,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_7QVX2K4M9NBTR6HDJ0FZ8SWCPE",
+      id: "v1-interpreter-primitive-roster",
+      owner: "self-host",
+      path: "dag/gunbc/v1_interpreter_primitive_surface.dag",
+      t: fields(
+        headline: "Make the interpreter's primitive surface enumerable",
+        boundary: "Every interpreter dispatch arm -- free call, method, guard-predicated bridge, native special and the one service carve-out -- has one interpreter-local identity, dispatch form and authored spelling, enumerable independently of semantic primitive identity. Adding or deleting an implementation arm without changing the roster refuses.",
+        displaced_cost: "The interpreter's primitive surface had no roster anywhere, so nobody could ask which primitives it provides. That blocks the primitive-identity join at its fifth surface, and it blocks sequencing v1 deletion honestly: you cannot show nothing still needs a capability you cannot enumerate.",
+        first_slice: "The roster is DERIVED FROM the dispatch. Each dispatch site in the seed expands its match arms and its roster rows from one macro token list, so the two cannot disagree; the sites that are not match arms at all stay declared, counted, each naming its own dissolution trigger. This node is mechanically preventive for the sites it covers and is explicitly NOT claimed as structural: the invalid state is unwritable within a site, but a whole new dispatch site can still be added in Rust without anyone noticing. Closing that is a separate node -- v1-interpreter-primitive-dispatch-authority -- which inverts the direction; this one is complete at the narrower bar and is accepted against it rather than being held open until the inversion lands.",
+        red_control: "A dispatch arm added without a roster row, and a roster row with no arm, must both be unwritable rather than caught afterwards. A spelling reached by two different arms within one form is unreachable code and has to be named rather than silently accepted. A roster that cannot represent an arm carrying no semantic primitive identity fails this node outright, because that population is exactly what the identity join must discover.",
+        out_of_scope: "Which semantic primitive each arm realizes belongs to the primitive-identity join, not here, and no row may carry an identity field. Generating the dispatch from the roster belongs to v1-interpreter-primitive-dispatch-authority. So does any claim that the Rust-side primitive denominator is closed: this node cannot make that claim and must not be read as making it.",
+        handback: "The roster; three derived denominators -- dispatch sites, distinct arm identities, distinct authored spellings -- rather than one conflated count; row-grain enumeration provenance, since a row's provenance is a fact about that row and not about its dispatch form; a reconciliation of every quoted dispatch line in the seed file into either a row or a named non-primitive residue; a typed disposition for the Rust the scaffold adds, naming every symbol and the exact deletion condition; and witnesses asserting exact values rather than lower bounds, with a discriminating red for each detector."
+      )
+    ),
+    active(
+      identity: "rn_5PWQ9J3XZM8TKB2NHR6VD0FCAS",
+      id: "v1-interpreter-primitive-dispatch-authority",
+      owner: "self-host",
+      path: "dag/gunbc/v1_interpreter_primitive_surface.dag",
+      t: fields(
+        headline: "Let the model, not the Rust, decide what primitives exist",
+        boundary: "Invert the roster. Today the Rust dispatch is the authority and the roster is derived from it; here the roster becomes the authority and the interpreter's local arm identity and spelling/form lookup are GENERATED from it, leaving hand Rust to supply only the handler bodies behind an exhaustive match. The semantic question of which primitive an arm realizes stays a separate join and does not move here.",
+        displaced_cost: "While the denominator lives in Rust, 'which primitives does the interpreter provide' can only be answered by reading Rust, and a new dispatch site added there is invisible to every consumer that asks. That keeps interpreter deletion a judgment call instead of a derived population, and it leaves the primitive-identity join reading a surface that can grow behind its back.",
+        first_slice: "Generate the arm identity and the spelling/form lookup from the roster, and make the Rust handler match exhaustive over the generated identity, so the compiler refuses the mismatch instead of a checker reporting it.",
+        red_control: "A roster row with no Rust handler must fail COMPILATION, not a test. A Rust handler that is not reachable through a generated arm identity must not be addable as another string-dispatch path. Editing alias order or an authored spelling must not change an arm identity. One spelling under two different forms must stay representable. An accepted shape or arity is either modeled on the roster or typed as unknown -- never guessed. And no Rust-only spelling denominator may remain anywhere: if one does, this node is not done.",
+        out_of_scope: "Semantic primitive identity, which stays with the identity join. Deleting the interpreter, which is downstream. Any widening of what counts as a primitive: this node changes who decides, not the population.",
+        handback: "The generated identity and lookup; the exhaustive handler match with its compile-time refusal demonstrated by a red control; deletion of the R0 macro authorities, the roster functions and the interpreter_dispatch_arm_rows self-reading bridge; a stated disposition for each of the two declared R0 residual rows -- either moved into the authority or retained with its own independently justified non-primitive reason; and the hand-Rust line delta the inversion removes."
+      )
+    ),
+    active(
       identity: "rn_J4Q81A4BJ8TXN6ZE4481RMB3Y9",
       id: "v1-interpreter-quarantine",
       owner: "self-host",
@@ -1103,13 +1347,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Not the repository-wide hand-written-Rust goal, and no deleting generated code.",
         handback: "The builds, the product runs, and the list of anything deliberately kept."
       )
-    ),
-    active_small(
-      identity: "rn_VK5TWKCDCMR1G8PQY0GK9TKSRR",
-      id: "caret-parse-smoke-seed-growth-justification",
-      owner: "self-host",
-      path: "dag/gunbc/v1_deletion_plan.dag",
-      t: caret_parse_smoke_seed_growth_fields(j: caret_parse_smoke_seed_growth_justification())
     ),
     active_large(
       identity: "rn_RSBHA36N72JKQ0NAVKJ5AV153R",
@@ -1349,13 +1586,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",
       t: fields(
-        headline: "Model pinned tool identity and its refresh policy",
-        boundary: "A carrier exists in which a mechanical tool declares an exact version and content digest, selection is either an authored pin or a tracked channel, and execution never resolves a moving reference; existing tool rows are untouched by this row.",
+        headline: "Model pinned dependency identity as a dimension over subjects",
+        boundary: "A carrier exists in which a dependency declares an exact version and content digest, selection is either an authored pin or a tracked channel, and execution never resolves a moving reference; pinning is a dimension parameterized by its subject rather than a property of any one subject kind, and existing rows are untouched by this row.",
         displaced_cost: "Supplies the vocabulary the resolver collapse needs; per-host binary variance is removed when consumers migrate onto it, not by this row.",
-        first_slice: "Land a ToolPin carrier alongside CliTool with an exact version identity, an expected content digest, and a selection policy; CliTool and SourceGitHubRelease are unchanged until their real upstream digests are sourced.",
-        red_control: "A range-only or digest-less pin refuses; a pin whose currency cannot be established refuses rather than being admitted on a caller's assertion or a coincidental digest match.",
+        first_slice: "Land a generic Pin<Subject> carrier owning the pinning dimension, plus one per-subject instantiation binding it to CliTool; the subject is carried by value, never re-spelled as a name string. Existing rows are unchanged until their real upstream digests are sourced.",
+        red_control: "A range-only or digest-less pin refuses; a pin whose currency cannot be established refuses rather than being admitted on a caller's assertion or a coincidental digest match; and a structurally different second subject instantiates the dimension with zero edits to it, so the genericity is proven by a second consumer rather than asserted.",
         out_of_scope: "No consumer migrates in this row; the model lands before any resolver reads it.",
-        handback: "Return the pin carrier, the refresh-policy arms, and the refusing controls."
+        handback: "Return the generic pin carrier, one subject instantiation, the refresh-policy arms, the refusing controls, and the second-subject composition proof."
       )
     ),
     active_large(
@@ -1367,10 +1604,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Ensure tools through one membership reconcile",
         boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; every forked PATH resolver collapses onto it and is deleted.",
         displaced_cost: "Deletes four forked resolvers and the fail-open bare-name arm that surfaces as an opaque spawn error.",
-        first_slice: "Surface observe_tool's per-argv result as a named per-tool observed identity and re-express toolchain_identity as the derived fold over those rows; only then instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it. The reconcile cannot be written before that naming: toolchain_identity is an aggregate over every build argv, so comparing one per-tool pin against it is a grain mismatch, not a reconcile (review 44388).",
-        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses; a reconcile attempted against the aggregate toolchain_identity rather than a per-tool observed identity refuses as a grain mismatch.",
+        first_slice: "The per-tool observed identity is NAMED as of #7444, so instantiate membership_reconcile with the tool bundle and expose the typed readiness decision in .dag. Live integrity admission is gated on toolchain-rust-hermetic: observe_tool_identity currently fingerprints host-specific executable bytes and version output, so authoring that value as a corpus Pin before hermetic provisioning would invert the dependency and fail across hosts. Until provisioning supplies a stable expected identity, retain the rustfmt host-effect realization through one declared per-tool UnpinnedFrontier row with a reason and migration trigger; it is never a default, zero rows refuses, multiple rows refuses, and a supplied mismatching pin cannot fall back to it. Every observed value is read through observed_tool_identity rather than re-derived beside observe_tool_identity, and its ObservedToolIdentityMissing and ObservedToolIdentityDuplicate arms refuse distinctly, located and counted. This first slice is explicitly witness-consumed rather than production-gating: the retained shell cannot call the decision until a host observation transport supplies ResolvedBuildContext, and it must not fabricate one. The original grain finding remains owned by extdeps.pin pin_observed_grain_prerequisite_note.",
+        red_control: "An undeclared unpinned tool or a digest-mismatched pin refuses before spawn, never after; a declared UnpinnedFrontier row is explicit migration state, not integrity admission; teardown of an Ensured system tool refuses; a reconcile that reads the derived aggregate toolchain_identity instead of a per-tool observed identity refuses as a grain mismatch; and an ObservedToolIdentityMissing or ObservedToolIdentityDuplicate answer refuses, counted and located, rather than falling through to a rerun or a match failure.",
         out_of_scope: "No new reconcile spine; a forked reconcile means the genericity bought nothing.",
-        handback: "Return the instantiation, the migrated call sites, and the deleted resolvers."
+        handback: "First-slice handback: the instantiation, closed declared frontier, and executing decision witnesses, with the absence of a live ResolvedBuildContext consumer stated plainly. The row remains active until hermetic provisioning permits the final handback: migrated call sites and deleted forked resolvers."
       )
     ),
     active(
@@ -1420,16 +1657,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the declared floor, the startup assertion, and the undeclared-dependency control."
       )
     ),
-  ]
+  ], guarantee_ladder_nodes())
 }
 
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
-  [
+  concat([
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
+    edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
+    edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
+    edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
 
-    edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
+    edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
+    edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
+    edge(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
     edge(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers"),
     edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
@@ -1446,6 +1689,16 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping"),
     edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
 
+    edge(child: "warm-merge-admission", parent: "five-minute-ci-gate"),
+    edge(child: "native-selected-witness-bundle", parent: "five-minute-ci-gate"),
+    edge(child: "native-selected-witness-bundle", parent: "warm-merge-admission"),
+    edge(child: "module-grain-materialization", parent: "five-minute-ci-gate"),
+    edge(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate"),
+    edge(child: "phased-single-process-ci", parent: "five-minute-ci-gate"),
+    edge(child: "per-entry-assembly-decomposition", parent: "five-minute-ci-gate"),
+    edge(child: "pre-index-materialization-lookup", parent: "module-grain-materialization"),
+    edge(child: "per-entry-assembly-decomposition", parent: "module-grain-materialization"),
+
     edge(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer"),
     edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
     edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
@@ -1458,6 +1711,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt"),
     edge(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap"),
     edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
+    edge(child: "v1-honest-frontier", parent: "v1-rust-source-observation"),
+    edge(child: "v1-hand-queue-drain", parent: "v1-honest-frontier"),
     edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),
     edge(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point"),
     edge(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point"),
@@ -1466,12 +1721,13 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover"),
     edge(child: "v1-emitter-delete", parent: "v1-emitter-quarantine"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-interpreter-primitive-dispatch-authority", parent: "v1-interpreter-primitive-roster"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-interpreter-primitive-dispatch-authority"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
     edge(child: "v1-interpreter-delete", parent: "v1-emitter-delete"),
     edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
     edge(child: "v1-products-v1-free", parent: "v1-hand-queue-drain"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free"),
-    edge(child: "v1-zero-hand-maintained-rust", parent: "caret-parse-smoke-seed-growth-justification"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
@@ -1497,12 +1753,18 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
     edge(child: "toolchain-residue-zero", parent: "toolchain-rust-hermetic"),
     edge(child: "toolchain-system-floor", parent: "toolchain-single-resolver"),
-  ]
+  ], guarantee_ladder_edges())
 }
 
 data criteria_digest_reword_note: String = "Both digests below moved on 2026-07-29 because every row was rewritten in plain language, and the digest covers the brief, the pass/fail test, and what gets handed back. Worth being blunt about the limit this exposes: the digest cannot tell a rewording from a genuine change to the bar — it only knows the words moved. Nothing about what these two rows had to prove changed, and the evidence each names is the same run and the same files as before, so re-pinning is correct here. But that judgement was a person's, not the mechanism's, and a reviewer should treat any digest change as a prompt to re-read the row rather than as a formality. This is the same gap roadmap_acceptance_receipt_note already names: until a row's pass/fail test points at the test that discharges it, the link between words and evidence is asserted rather than derived."
 
-data scm_prerequisite_acceptance_note: String = "The operator explicitly advanced the source-intent lane to R1 after merging the Git, Mercurial, Pijul, and claim-indexed-evidence slices. These receipts preserve those four declared prerequisite facts and their executed handbacks; R1 depends on all four in declared_roadmap_edges. Replacing the rows with R1 would erase accepted history and violate roadmap_acceptance_receipt_note."
+data entry_graph_union_construction_acceptance_note: String = "CLOSED NO-GO (operator adjudication 2026-08-01). Slice 2 PR #7533 delivered the repeated-typecheck attribution receipt slice 1 required before any union implementation. decision_ratio=0 at every measured cell at N≤50 — priced benefit absent. Digest 4442f95272011c70 derived by execution via node_criteria_digest on this tree after amending boundary/red_control/handback to record the verdict. Red control names perfect_sharing_yields_zero_decision_ratio as the discriminating decision-quantity witness; sibling controls in slice-2 receipt §C execute in the same test modules."
+
+data namespace_binding_kernel_acceptance_note: String = "STATUS RECONCILIATION, NOT NEW WORK (operator ruling 2026-08-01). PR #7508 merged the supplied-candidate binding kernel, so the IMPLEMENTATION dependency for namespace-reference-derived-closure was resolved, but no acceptance receipt existed — leaving the roadmap saying its own prerequisite was unaccepted while the code depended on it. Two different truths for the same fact, which is exactly what node_is_startable reads, so P2a was being worked on while not honestly startable under the roadmap's own definition. The digest 2eba4715cdef42eb is the POST-#7530 value: #7530 rewrote this node's boundary, red_control and out_of_scope to cut authority from retirement, and roadmap_criteria_digest covers brief plus red_control plus handback, so the pre-amendment digest is stale by construction. It was DERIVED BY EXECUTION rather than transcribed — node_criteria_digest was run against the live node on this tree, not copied from a prior receipt or computed by hand. The red control names the malformed-transport refusal because that is the first arm #7530's amended row requires; the sibling arms (absent versus wrong-role identity distinct, duplicate supplied identity refused, wrong-category excluded, zero/one/two giving unbound/bound/ambiguous, exact declaration identity surviving, canonical fold invoked once) all execute in the same witness module and were green on the exact-head run that merged #7508."
+
+data scm_prerequisite_acceptance_note: String = "The operator explicitly accepted the three independent R0 models and the separate P−1 evidence carrier, then accepted R1 after merging its three-realization compatibility extraction, and accepted P0 after its layered landing spine and twenty-two executing journey witnesses landed. R1 depends only on the three R0 receipts; P0 consumes both accepted R1 and accepted P−1. These receipts preserve every prerequisite and handback as durable facts. Replacing accepted rows with their child would erase history and violate roadmap_acceptance_receipt_note."
+
+data scm_p0_acceptance_evidence_note: String = "P0 acceptance maps the roadmap clauses through test.claim.source_integration_landing_spine_witness witness_p0_roadmap_acceptance_contract_holds: all seven removed closure receipts stay machine-owned; evidence support/challenge/neither/conflict and terminal blocking do not become a preference question; both material alternatives resume by structural position; authorization, self-amendment, exhausted-bound, and permanent-effect failures keep their typed internal refusal and plain terminal projection; stale-parent work retries internally; a committed independently read-back transition stays Landed through projection failure; the audience projection excludes internal theory and manual Git-repair vocabulary; and the successful path retains its ordinary Git compatibility receipt. The same aggregate executes the explicit 50-agent/10-overlap/30-minute stress profile and timestamp non-authority. Handback remains bounded exactly at P0: gunbc.source_integration_landing_spine names the absent P1 proof kernel, P2 capture/edit lens, and P3 effect transport; none is claimed or activated by this receipt."
 
 fn chash(s: String) -> ContentHash { s }
 
@@ -1583,6 +1845,46 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       accepted_on: "2026-07-29",
     },
     RoadmapAcceptanceReceipt {
+      node: nid(s: "2-scm-compatibility-shape"),
+      criteria_digest: chash(s: "f023bb4e862d9e27"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.scm_compatibility_shape_witness",
+        witness_fn: "witness_r1_acceptance_contract_holds",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/gunbc/scm_compatibility_shape.dag",
+        further_artifacts: [
+          "dag/gunbc/scm_compatibility/git.dag",
+          "dag/gunbc/scm_compatibility/mercurial.dag",
+          "dag/gunbc/scm_compatibility/pijul.dag",
+          "dag/test/claim/scm_compatibility_shape_witness_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "2-scm-p0-landing-spine"),
+      criteria_digest: chash(s: "9d3aa951e0f5ffa3"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.source_integration_landing_spine_witness",
+        witness_fn: "witness_p0_roadmap_acceptance_contract_holds",
+        executed_on: "2026-08-01",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/gunbc/source_integration_landing_spine.dag",
+        further_artifacts: [
+          "dag/gunbc/native_scm_interaction_contract.dag",
+          "dag/test/claim/source_integration_landing_spine_witness_test.dag",
+          "dag/test/claim/native_scm_interaction_contract_witness_test.dag",
+          "dag/gunbc/scm_compatibility_shape.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-08-01",
+    },
+    RoadmapAcceptanceReceipt {
       node: nid(s: "namespace-occurrence-transport"),
       criteria_digest: chash(s: "d76cf14b12dbf4bf"),
       red_control: RedControlExecuted {
@@ -1599,6 +1901,43 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-28",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "namespace-binding-kernel"),
+      criteria_digest: chash(s: "2eba4715cdef42eb"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.occurrence_binding_resolve_witness_test",
+        witness_fn: "occurrence_binding_resolve_malformed_transport_refuses_holds",
+        executed_on: "2026-08-01",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/std/occurrence_binding_resolve.dag",
+        further_artifacts: [
+          "dag/test/claim/occurrence_binding_resolve_witness_test.dag",
+          "src/v1/04_occurrence_binding.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-08-01",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "entry-graph-union-construction"),
+      criteria_digest: chash(s: "4442f95272011c70"),
+      red_control: RedControlExecuted {
+        witness_module: "v1-compiler.cli_run.repeated_typecheck_attribution_arithmetic",
+        witness_fn: "perfect_sharing_yields_zero_decision_ratio",
+        executed_on: "2026-08-01",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md",
+        further_artifacts: [
+          "docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json",
+          "src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs",
+          "src/v1/tests/src/union_resolve_receipts_test.rs",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-08-01",
     },
     RoadmapAcceptanceReceipt {
       node: nid(s: "pderive-typesafe-nullary-reflection"),
@@ -1671,6 +2010,115 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
   declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
 }
 
+data closing_contract_task_projection_boundary_note: String = "The derived tasks are added at the PROJECTION, not to active_roadmap_nodes. Folding them into the active set reded witness_active_set_is_declared_minus_accepted and witness_accepted_parent_discharges_active_dependency, and those witnesses are right: 'active = declared minus accepted' is a law about the AUTHORITY, and a derived projection row is not a declared deliverable. Keeping the law intact is also what makes the derivation safe — the authority stays exactly what someone authored, and the frontier view is a function of it."
+
+fn projected_roadmap_nodes() -> List<RoadmapNode> {
+  concat(active_roadmap_nodes(), closing_contract_task_nodes())
+}
+
+fn projected_roadmap_edges() -> List<RoadmapEdge> {
+  concat(active_roadmap_edges(), closing_contract_task_edges())
+}
+
+data closing_contract_task_naming_correction_note: String = "THESE ARE CLOSING-CONTRACT TASKS, NOT ACCEPTANCE TASKS, and the earlier name caused a real category error. The projection computes active AND ExecutionContractUnspecified AND every-prerequisite-accepted, which is the set of nodes whose completion nothing can yet CHECK. Authoring that check is contract work. Acceptance is a separate, later, operator act on work already done and verified.\n\nThe old name made those two look like one state, and a node can be in any of several: blocked on unaccepted prerequisites; missing a closing contract; dispatchable; implemented but verification-red; implemented and green, awaiting operator acceptance; accepted. v2-emitter-producer-provenance is the specimen that exposed it — it is BOUND, so it never appears in this projection, while what it actually needs is acceptance of landed work. A projection named for acceptance that structurally cannot surface the thing needing acceptance is misnamed, so it was renamed to startable_nodes_missing_closing_contract.\n\nKNOWN GAP, recorded rather than papered over: a derived task is itself built with ExecutionContractUnspecified, and dispatch refuses an unspecified contract. So the belt cannot dispatch these rows — the target waits on a contract, and the contract-authoring row has no contract of its own. Manual child spawning works around it; end-to-end dispatch does not. Closing it wants ONE parameterized ClosingContractAuthoring kind whose completion predicate is reusable across every target (target now carries exactly one contract, with at least one validation, every referenced validation resolves, a planted failure shows the validation can reject, and the contract names the same target identity) rather than ten bespoke meta-witnesses. Not landed here; this note is its trigger."
+
+data closing_contract_task_derivation_note: String = "CLOSING-CONTRACT TASKS ARE DERIVED, NOT AUTHORED (operator ruling 2026-07-29: 'you shouldn't need to manually maintain that stuff — the relationship should be inferred from one side or the other'). The first cut hand-wrote four acceptance nodes and four edges, and one had to be hand-removed within minutes because pderive-typesafe-nullary-reflection was already accepted: a new prerequisite on completed work retroactively un-satisfies it, which witness_accepted_parents_precede_dependents caught. That is the hand-maintained-count failure this repository refuses everywhere else — two things that must be kept in step, drifting the moment either side moves.\n\nThe relationship is a FUNCTION of the node: startable (every prerequisite accepted) AND unbound (ExecutionContractUnspecified) means its closing validation does not exist, so authoring that validation is the work that unblocks it. Nothing else needs saying. An accepted node leaves the active set and its task disappears; a node that gains a contract stops being unbound and its task disappears; a node whose prerequisite lands becomes startable and its task appears. No cleanup step exists because there is nothing to clean.\n\nThe frontier is deliberately STARTABLE-only rather than every unbound node. A terminus like v1-zero-hand-maintained-rust is unbound too, but surfacing a closing-contract task for work whose prerequisites are years out is noise that would bury the four rows that matter today.\n\nOn identity: a derived row takes a deterministic id from its target rather than a minted one, and that is consistent with the identity law rather than an exception to it. The law governs declared DELIVERABLES, which must survive rename and reordering. A closing-contract task is a projection of a frontier state — it has no history to preserve, it exists exactly while its target lacks a contract, and if the target's slug changes it is honestly a different task."
+
+fn node_is_startable(n: RoadmapNode) -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  all(
+    roadmap_parent_ids(edges: declared_roadmap_edges(), node: n.node),
+    p => accepted |> any(a => a == (p as String)),
+  )
+}
+
+data node_closing_validation_defork_note: String = "This used to answer the binding question locally, and its answer differed from the verifier's: any ExecutionContract counted as bound here, while an empty validation list counted as UNBOUND in gunbc.roadmap_verify and refused in gunbc.roadmap_dispatch_environment. It now reads the single authority, so a node bound to a contract that closes nothing keeps its acceptance task instead of vanishing from the frontier while remaining unverifiable."
+
+fn node_lacks_closing_validation(n: RoadmapNode) -> Bool {
+  !contract_has_closing_validation(contract: n.execution)
+}
+
+fn ticket_headline_of(n: RoadmapNode) -> String {
+  match line_ticket(item: n.line) {
+    Present { value: t } => t.headline
+    Absent => n.node as String
+  }
+}
+
+fn ticket_red_control_of(n: RoadmapNode) -> String {
+  match line_ticket(item: n.line) {
+    Present { value: t } => t.red_control
+    Absent => "the node states no red control"
+  }
+}
+
+data roadmap_identity_prefix_is_cosmetic_note: String = "DO NOT 'FIX' 2-scm-compatibility-shape's rnfx_ IDENTITY PREFIX. It reads as a test-fixture prefix where every other declared node uses rn_, and that asymmetry is real but it is COSMETIC: no witness asserts any prefix, and roadmap_node_identity_law constrains what may not be an identity INPUT (slug, title, criteria digest, containment position, dependency neighbourhood, declaration order, file position), never the alphabet of the minted value.\n\nRewriting it would be the actual violation. The law's whole persistence argument is that an identity must survive edits, reordering, regeneration and independent branches; mutating a live identity for tidiness is precisely the churn it exists to forbid, and it would silently break anything holding the old value. The prefix carries no meaning to any mechanism, so the honest disposition is to leave it and record why — which is what this row is for. A prefix convention worth enforcing would be enforced at MINT time by construction, not by editing identities already in the graph."
+
+fn startable_nodes_missing_closing_contract() -> List<RoadmapNode> {
+  let accepted = accepted_roadmap_node_ids()
+  declared_roadmap_nodes()
+    |> filter(n => !(accepted |> any(a => a == n.node)))
+    |> filter(n => node_lacks_closing_validation(n: n))
+    |> filter(n => node_is_startable(n: n))
+}
+
+fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
+  RoadmapNode {
+    identity: concat(n.identity as String, "-closing-contract") as RoadmapNodeIdentity,
+    node: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
+    line: TicketLine {
+      done: false,
+      ticket: fields(
+        headline: concat("Write the closing check for: ", ticket_headline_of(n: n)),
+        boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
+        displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
+        first_slice: "Write the check and prove each refusal arm fires on a planted input.",
+        red_control: concat("The check must fail when the condition fails: ", ticket_red_control_of(n: n)),
+        out_of_scope: "Write the statement of done; do not do the work it gates.",
+        handback: "Return the executable check, each arm firing on a planted input, and the gated node bound to it."
+      ),
+    },
+    carriers: n.carriers,
+    sizing: Sized {
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      repo: "gunbc",
+      acceptance: ManualAcceptance,
+    },
+    execution: ExecutionContractUnspecified,
+    owner: n.owner,
+    signoff: Unsigned,
+  }
+}
+
+data closing_contract_family_claim_note: String = "The family claim, stated once (presentation family-once grouping): every closing-contract task shares this claim, and each generated ticket's fused headline ('Write the closing check for: X') repeats it per row. The pair surface below exposes the DISCRIMINATING SUBJECT (the gated node's own typed ticket headline) beside each generated task so a projection can state the claim once and never recover the subject by parsing the fused headline. The generated ticket itself is unchanged — ROADMAP.md rendering and dispatch briefs keep the full self-contained headline."
+
+data closing_contract_family_claim: String = "Write the closing check — one executable done-condition for each gated node below"
+
+type ClosingContractTaskPair {
+  task: RoadmapNode
+  subject: String
+}
+
+fn closing_contract_task_pairs() -> List<ClosingContractTaskPair> {
+  startable_nodes_missing_closing_contract() |> map(n => ClosingContractTaskPair {
+    task: closing_contract_task_for(n: n),
+    subject: ticket_headline_of(n: n),
+  })
+}
+
+fn closing_contract_task_nodes() -> List<RoadmapNode> {
+  closing_contract_task_pairs() |> map(p => p.task)
+}
+
+fn closing_contract_task_edges() -> List<RoadmapEdge> {
+  startable_nodes_missing_closing_contract()
+    |> map(n => RoadmapEdge {
+      child: n.node,
+      parent: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
+    })
+}
+
 fn active_roadmap_edges() -> List<RoadmapEdge> {
   let accepted = accepted_roadmap_node_ids()
   declared_roadmap_edges() |> filter(e =>
@@ -1682,15 +2130,15 @@ fn preamble() -> List<MarkdownBlock> {
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [SCM product strategy and post-prerequisite lanes](docs/plans/dag-scm-product-strategy.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
 }
 
-data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It is set to the v1 exit lane because that is the sustained effort under way (the v1 → v2 emitter exit plan); the other lanes remain real work, they are simply not on the page while this one is being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
+data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It selects the v1 exit lane (the sustained effort under way — the v1 → v2 emitter exit plan) and the compiler-guarantee lane (the DESIGN 4b climb backlog: unstaffed by design, on the page so its nodes stay visible for dispatch — keeping it visible is a focus-selection fact, a typed policy in this row, never an out-of-mechanism section); the other lanes remain real work, they are simply not on the page while these are being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the v1 → v2 emitter exit lane",
-  owners: ["self-host"],
+  label: "the v1 deletion lane + the guarantee-ladder climbs",
+  owners: ["self-host", "compiler-guarantee"],
 }
 
 fn active_section() -> RoadmapSection {
@@ -1712,14 +2160,14 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: concat(
       [
-        section_prose(content: "The graph has ten lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three independent SCM R0 models and P−1 evidence carrier are landed prerequisites; R1 compatibility-shape extraction is the active SCM slice, while semantic-kernel and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+        section_prose(content: "The graph has eleven lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       ],
       concat(
         if focus_is_active(focus: focus) {
           [section_prose(content: focus_notice(
             focus: focus,
-            nodes: active_roadmap_nodes(),
-            edges: active_roadmap_edges(),
+            nodes: projected_roadmap_nodes(),
+            edges: projected_roadmap_edges(),
           ))]
         } else {
           []
@@ -1729,13 +2177,13 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
             label: "",
             nodes: focus_visible_nodes(
               focus: focus,
-              nodes: active_roadmap_nodes(),
-              edges: active_roadmap_edges(),
+              nodes: projected_roadmap_nodes(),
+              edges: projected_roadmap_edges(),
             ),
             edges: focus_visible_edges(
               focus: focus,
-              nodes: active_roadmap_nodes(),
-              edges: active_roadmap_edges(),
+              nodes: projected_roadmap_nodes(),
+              edges: projected_roadmap_edges(),
             )
           ),
         ],
@@ -1743,6 +2191,675 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
     ),
   }
 }
+
+data guarantee_ladder_lane_note: String = "STATE vs WORK, and IN-GRAPH vs BESIDE-IT. Rung STATE has one authority — the guarantee claims carrier (ladder-claims-carrier node), its dispositions DERIVED from execution receipts and EMITTED by ladder-census-emitters — never a ticket; a climb node names its target transition and lets the census/carrier say where the class stands today (the 2026-07-31 operator verdict on gunbc#7489 caught headlines transcribing rungs, the third rung-inflation catch in this lane's own artifacts). The WORK rows below are ordinary declared roadmap nodes under lane owner compiler-guarantee: the first cut rendered them from a section-local list beside the graph, which minted a second roadmap universe — uncounted, receipt-unreachable, invisible to the identity/endpoint/acyclicity witnesses and to active_roadmap_nodes() (same verdict; review 45356 independently flagged the owner-less rows the placement forced). Owner here is the LANE's identity, not an assignee: nodes are unbound until dispatch binds a session and a closing contract, exactly like every other lane. Page visibility is the typed focus policy in roadmap_focus_selection (the lane is selected so the unstaffed backlog stays on the page), and rendered-node containment is witnessed — see roadmap_rendered_containment_note. Post-merge verdict (2026-07-31, on the merged gunbc#7489): v2-phase-carriers split into five staged nodes (its identity is the registry's first tombstone, superseded by v2-self-grounding-frontier); floor-parse-formation-wall, floor-record-construction-wall, and the compiler-accepted-obligation-closure terminal added; baseline anchored to the merge commit; and the standing discipline that an OPEN PR is candidate evidence, never main's rung — tickets cite open work as 'open candidate', and the census states main's disposition separately. Spine verdict (2026-08-01, seventh pass): the ladder-measurement-schema node now precedes probes and carrier (the receipt protocol both meet through); the three merged P0 slices are recut at their actual grain with tombstoned identities (floor-call-shape-wall, floor-method-existence-wall, floor-inhabitance-wall each split into an ACCEPTED fragment node plus open siblings); the Accepted door is split mechanism/floor/extended (compiler-accepted-obligation-closure tombstoned) so the audit form lands with the carrier; exemption removal re-grounded on the two grounding nodes; emitters parallel with the baseline; the baseline a two-revision execution. Correction on the split (review 45918): the first extended-activation cut kept requires-all edges on one node while its prose promised class-by-class widening — the graph would have deferred every admission behind the slowest climb; recut as four per-class admission nodes (each ready the day its own climb lands) with accepted-extended-obligation-closure the terminal roster-completeness certification, where requires-all honestly belongs. Sequencing: everything outside the spine's first increment (schema, then probes + carrier) and the authorized parallel containment workstream WAITS."
+
+fn guarantee_ladder_nodes() -> List<RoadmapNode> {
+  [
+    active_sized(identity: "rn_RAVINFXPMNUT5RP5TAN2PXHATI", id: "ladder-measurement-schema",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "The guarantee measurement schema: evidence learns to identify its subject before anyone measures",
+        boundary: "The stable vocabulary only: GuaranteeClassId, GuaranteePathId, GuaranteeProbeId; GuaranteePath (subject_grain, acceptance_boundary, compile_mode, realization_target); GuaranteeMeasurementReceipt carrying class, path, probe, subject_revision, harness_revision, probe_set_digest, observed disposition. No stored rung, no claims about the compiler — only how a receipt names what it measured. This stage exists to break the probes-need-carrier-identities / carrier-needs-probe-receipts protocol cycle (operator spine verdict, 2026-08-01): probes and claims meet through this contract instead of each minting temporary string keys.",
+        displaced_cost: "Without it the probe child mints throwaway identifiers that immediately require migration, and two carriers of the same fact drift.",
+        first_slice: "The identity and receipt types, with a synthetic-receipt round-trip witness.",
+        red_control: "A receipt missing any identity component is unwritable (required fields, no Optional arms); a duplicate class id reds the registry witness.",
+        out_of_scope: "No probes, no dispositions, no rung derivation, no prevalence.",
+        handback: "The schema module path and the identity-registry witness receipt."
+      )
+    ),
+    active_sized(identity: "rn_T6JTXDKQBI6FDZ742FSGRZRQNA", id: "ladder-probe-corpus",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "The expecting-red probe corpus: the floor gap becomes a counted, continuously-measured number",
+        boundary: "One probe pair per floor class (deliberately-bad input expected to refuse; legitimate control expected to accept), enrolled as expecting-red rows via the known-red quarantine mechanism so today's fail-open state is measured, not asserted. Every currently-legitimate map/fold/filter/flat_map/service invocation form appears as a positive control so a future wall cannot green by refusing the language.",
+        displaced_cost: "Replaces anecdote (gunbc#7479's 500) with a counted deficit per class; each wall that lands flips its probes to regression controls loudly.",
+        first_slice: "MIGRATE, do not duplicate: the landed controls from gunbc#7484, #7519, and #7485 become the durable per-class probes (one probe pair per class/path, keyed by the measurement schema's identities — never a fresh test family beside each PR). Then the unwalled census classes: generic instantiation, field-through-generic, exhaustiveness-via-blocked-lookup, record completeness, cardinality seam, and the parser silent-separator pair (measured specimen, gunbc#7484 review trail 2026-07-31).",
+        red_control: "A probe that stops expecting red without its class's wall having landed is itself a red (greening is counted); the corpus reds if any probe pair loses its executing consumer.",
+        out_of_scope: "No compiler change; probes measure, walls land in the floor-wall nodes.",
+        handback: "Probe roster with per-class expected/actual disposition and the enrollment receipt."
+      )
+    ),
+    active_sized(identity: "rn_SJMVG3RD7JEGUGEKJPOWH567UY", id: "ladder-claims-carrier",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "The guarantee claims carrier: rung state becomes DERIVED from execution receipts, never stored",
+        boundary: "Four carriers, measurement separated from claim: GuaranteeRequirement (class identity, domain, harm, ceiling with typed reason, next_rung_trigger); GuaranteePath (subject_grain, acceptance_boundary, compile_mode, realization_target — one row per in-scope path, population derived from the census or completeness-witnessed); GuaranteeMeasurement (executed receipts naming their consumer); and GuaranteeDisposition DERIVED per path — Unmeasured | BelowFloor | FrontierAccepted | OnLadder | OutsideModeledGuarantee — folded by below-floor dominance, then frontier, then unmeasured, then MINIMUM rung across paths. No stored current_rung field exists, so a transcribed rung is unrepresentable; the five recovered vocabularies stay orthogonal, joined by class identity. Full shape: gap analysis sec 12 Stage 1b.",
+        displaced_cost: "Ends the per-conversation re-derivation of what the compiler guarantees (the operator performed the missing meta-lens by hand three times this month); grounds the enforcement-intent StandingIntent thread instead of minting beside it.",
+        first_slice: "The requirement/ceiling/measurement/disposition carriers over the measurement schema's identities (the schema stage precedes both this node and the probes — the protocol cycle is broken there, not here), with the floor-domain path rows populated from the probe receipts and the disposition fold proven over synthetic receipts first.",
+        red_control: "A synthetic measurement-less row folds to Unmeasured, never to a rung; deleting a probe receipt visibly demotes the derived disposition; a path population missing a census axis reds the completeness witness; a row below its ceiling with next_rung_trigger absent reds the stall check.",
+        out_of_scope: "No wall lands here; no DESIGN.md prose edit (the carrier projects); no prevalence run.",
+        handback: "Carrier module path, the disposition-derivation fn, and the per-domain path-row count."
+      )
+    ),
+    active_sized(identity: "rn_7ENRV3ZX3AGAOLITDWLUPROO2U", id: "guarantee-baseline-prevalence",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Baseline prevalence: the whole-corpus floor rerun bucketed by ladder position, before any wall lands",
+        boundary: "A TWO-REVISION execution, never 'run the baseline at commit X' (three-way ambiguous): the anchor's compiler artifacts (subject_revision: anchor_commit 6c6e2dcb8587d73350ac252f5b07a6b50d684485, the gunbc#7489 merge — pre-P0 main) run under today's content-addressed probe set and classifier (harness_revision + probe_set_digest per the measurement schema), outcomes translated into measurement receipts keyed to carrier class ids. Bucket every failure — statically-decidable-should-have-refused, runtime-value-dependent, external-boundary, resource-budget, capability-not-grounded, interpreter-defect. Replaces the carried-but-unverified historical figures (1454/149; the 66/40/6 histogram). Runs parallel with the census emitters, not ahead of them.",
+        displaced_cost: "Denominates the climbs in displaced cost (DESIGN 6) instead of elegance; the honest number for how many programs the gap admits today.",
+        first_slice: "The bucketing classifier over one batch's failures, validated by hand against ten cases.",
+        red_control: "Bucket counts reconcile to the total (no absorbed remainder); a failure the classifier cannot bucket is a typed Unknown row, never dropped.",
+        out_of_scope: "Fixing what it measures; the post-climb rerun (guarantee-residual-prevalence).",
+        handback: "The bucketed histogram keyed to carrier class ids, and the delta rows for the census."
+      )
+    ),
+    active_sized(identity: "rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK", id: "method-established-surface-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Method existence on established receiver surfaces — LANDED (gunbc#7484, merged 2026-08-01)",
+        boundary: "ACCEPTED fragment, recut from floor-method-existence-wall at its actual grain (operator spine verdict). An unresolved method on a kernel-profiled receiver refuses (MethodNotFound, blocking — the gunbc#7479 class, 0 files emitted); undecided receivers carry the rostered, occurrence-budgeted MethodExistenceUndecided/FrontierAdmitted frontier; map_keys/map_values bypasses routed through the one decision; one where-refinement receiver class peeled. What did NOT land stays on the sibling nodes: receiver-resolution residue, the general zero-resolution wall, resolve_builtin_call_type's unit_type fabrication.",
+        displaced_cost: "The compile gate stopped being quieter than the interpreter for every receiver with a complete declared surface.",
+        first_slice: "DONE — acceptance receipt: merged gunbc#7484; whole-tree 0 blocking; regen divergence 0; discriminating REDs enrolled.",
+        red_control: "method_existence_wall_witness (REDs + zero-diagnostic controls + frontier-key perturbation) — migrates to the probe corpus as this class's durable pair.",
+        out_of_scope: "Everything the sibling nodes own; the frontier's dissolution (primitive-realization-single-authority).",
+        handback: "Receipt recorded; residue on method-receiver-normalization and method-zero-resolution-general-wall."
+      )
+    ),
+    active_sized(identity: "rn_TMC5UFTYNMSBMS7FLXYIVQCSRE", id: "method-receiver-normalization",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Receiver normalization: the measured resolution residue becomes decidable receivers",
+        boundary: "The frontier's measured causes, repaired upstream so the wall can decide them: a lambda-parameter receiver whose type never propagates from the declared fn type it is bound under; a coproduct payload bound by destructuring typed as its variant name; the optional receiver whose cardinality drops before lookup; the brand-alias LEAF form the peel cannot reach (qualified-name leaf, measured and declared on the gunbc#7484 frontier roster). Each repair shrinks the roster in both directions — correct calls resolve, bogus methods refuse.",
+        displaced_cost: "Every roster row this discharges converts an admitted-by-key site into a decided one; the frontier ratchet only shrinks.",
+        first_slice: "The lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in (10 of 13 measured residue sites).",
+        red_control: "Discharged roster rows delete with their occurrence budgets; the frontier count falls monotonically; positive controls stay green.",
+        out_of_scope: "The zero-resolution general wall (next node); ambiguity.",
+        handback: "Roster rows discharged, the receiver families now decidable, probe receipts."
+      )
+    ),
+    active_sized(identity: "rn_M25FZG43IT6MSBIWBQBONOUSZM", id: "method-zero-resolution-general-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Zero-resolution refuses generally: enumeration over the union of admissible sources",
+        boundary: "Absence is decided by enumerating the union of current admissible sources — no identity join required (the join gates only the more-than-one wall). Delete the resolve_builtin_call_type Absent-to-unit_type fabrication; every call whose callee resolves nowhere refuses with name and locus on every compile/emit path.",
+        displaced_cost: "Closes the callable-existence class fully: the last fabricated-success arm at the call seam dies.",
+        first_slice: "The resolve_builtin_call_type arm becomes a typed refusal, census-adjudicated corpus-wide.",
+        red_control: "Probe: a call to a nowhere-defined fn refuses at compile; controls: every corpus builtin and user call still resolves.",
+        out_of_scope: "Ambiguity (identity join's dependent); dispatch-tier unification.",
+        handback: "The deleted arm, census delta, probe flip receipt."
+      )
+    ),
+    active_sized(identity: "rn_42Z3Z646SNDZBMVXYDU7RSL4JA", id: "method-call-shape-seam",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Argument labels at the method/pipe seam: the call-shape judgment reaches method dispatch",
+        boundary: "The direct-call label/surplus wall (landed, gunbc#7519) covers the sig-resolved ExprCall branch only; method-pipe argument binding routes through its own inference arms. Mirror the same two runtime-refused classes there, reusing the landed judgment rather than minting a second relation.",
+        displaced_cost: "A mislabeled method argument silently binding positionally is the same interest-bearing harm as the direct-call case.",
+        first_slice: "Label membership at method-call argument positions, probe-paired.",
+        red_control: "Probe: mislabeled method arg refuses; controls: every corpus pipe/method form compiles.",
+        out_of_scope: "Method existence (sibling lane); duplicate/missing (parity-pair node).",
+        handback: "The seam's judgment site and probe receipts."
+      )
+    ),
+    active_sized(identity: "rn_EDXPW53NQMZVLEPYNYH6X4VNKM", id: "call-label-and-surplus-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Unknown labels and surplus positionals refuse at the direct-call seam — LANDED (gunbc#7519, merged 2026-07-31)",
+        boundary: "ACCEPTED fragment, recut from floor-call-shape-wall at its actual grain (operator spine verdict). CallArgumentNameUnknown + CallPositionalSurplus blocking, exemption-free, mirroring call_function_inner's two refused classes (underscore idiom included); census refused 28 live parameter-rename fossils, all fixed; the silent emit-path reorder retired for Accepted programs. What did NOT land stays on the sibling nodes: missing/duplicate, signature-resolution coverage, the method seam.",
+        displaced_cost: "The mislabeled call that computed the wrong thing silently on the emission path is unwritable in an Accepted program at this seam.",
+        first_slice: "DONE — acceptance receipt: merged gunbc#7519; pre/post probe pair; suite green; regen divergence 0.",
+        red_control: "ct_call_shape_wall_witness_test — migrates to the probe corpus as this class's durable pair.",
+        out_of_scope: "Everything the sibling nodes own.",
+        handback: "Receipt recorded; residue on call-missing-and-duplicate-wall and call-signature-resolution-coverage."
+      )
+    ),
+    active_sized(identity: "rn_EXUHLON5V24YU7Z4XLJFWEZO33", id: "call-missing-and-duplicate-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Missing and duplicate arguments: the interpreter-first parity pair",
+        boundary: "The interpreter itself does not refuse these today — a missing required arg decays to NoSuchVariable at read (or silence if unread); a duplicate label silently overwrites in bindings.insert — so a compile-only wall would diverge the authorities the other way. Land the refusals in call_function_inner FIRST (default-value-aware: param_node_default_value legitimately fills omissions), then mirror at the compile seam, keeping the two authorities in lockstep exactly as the label/surplus pair did.",
+        displaced_cost: "A missing argument surfacing as NoSuchVariable inside the body blames the wrong site; a duplicate silently taking the last value is unlocatable.",
+        first_slice: "The interpreter's duplicate-label refusal (no default interaction, cheapest half), then compile mirror, probe-paired.",
+        red_control: "Probes: duplicate label and missing non-default arg refuse on both authorities; controls: defaulted omissions and every corpus form stay green.",
+        out_of_scope: "Label membership (landed sibling); the method seam.",
+        handback: "Both authorities' refusal sites, census delta, probe receipts."
+      )
+    ),
+    active_sized(identity: "rn_GVLXWYYRQV47WTJLSSIFX7FLFM", id: "call-signature-resolution-coverage",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Signature-resolution coverage: the sig-unresolved fallthrough stops being a blind spot",
+        boundary: "A call whose callee resolves NO signature bypasses every call-shape judgment (measured: 3 label fossils invisible to the landed wall in dag_collect, found only by grep). Either the callee resolves and is judged, or the failure to resolve is itself a typed, counted fact — never a silent fallthrough to the method bridge. Rides the namespace lane's resolution coverage; this node owns the call-shape consequence.",
+        displaced_cost: "The wall's own measured blind spot: correctness there currently rests on grep.",
+        first_slice: "Count the fallthrough (typed, per-module) so the blind spot has a size before it has a fix.",
+        red_control: "The dag_collect specimen class reds if reintroduced once coverage lands; fallthrough count monotonically falls.",
+        out_of_scope: "The resolution mechanism itself (namespace lane).",
+        handback: "Fallthrough census, then the coverage receipt."
+      )
+    ),
+    active_sized(identity: "rn_4ELCVV2EIHCBGHMOG6T4IZEMT3", id: "declared-conformance-ground-fragment",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Declared conformance for the ground fragment — LANDED (gunbc#7484, merged 2026-08-01)",
+        boundary: "ACCEPTED fragment, recut from floor-inhabitance-wall at its actual grain (operator spine verdict). fn returns (both arms, plus early returns stopping at lambda boundaries) and data annotations refuse non-conforming producers where BOTH sides are ground: kernel scalars, or Required non-keyed element collections of them — positive establishment, the four measured representation classes never guessed at. The counted unjudged advisory was EXCLUDED in final review scope: everything wider is byte-for-byte main behavior (silent), stated here so the fragment is never read as the class.",
+        displaced_cost: "fn f() -> Int returning a string — the probe-3 specimen — refuses located instead of surfacing at the first consumer.",
+        first_slice: "DONE — acceptance receipt: merged gunbc#7484; discriminating controls run against the prior binary.",
+        red_control: "declared_type_conformance_witness — migrates to the probe corpus as this class's durable pair.",
+        out_of_scope: "Everything the sibling nodes own; generic instantiation (record-construction lane).",
+        handback: "Receipt recorded; residue on declared-conformance-grounding and declared-conformance-general-wall."
+      )
+    ),
+    active_sized(identity: "rn_WGRZFAYJ5EDVPNEQ42UAK7TD6D", id: "declared-conformance-grounding",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Conformance grounding: the four representation classes stop being unjudgeable",
+        boundary: "The measured false-positive classes that cap the ground fragment, each a §3 grounding defect not a checker defect: brand aliases unpeeled to their base; optionality living in two representations (return_cardinality vs the nominal Optional coproduct); anonymous record literals never grounded against their expected nominal; declaration-vs-body expansion depth. Ground each so the conformance relation widens class by class — the ground-fragment gate exists only because these are unjudgeable today.",
+        displaced_cost: "Each grounded class moves thousands of silent declarations into the judged set (measured: the expansion-depth class alone was half the 3005-row frontier).",
+        first_slice: "The brand-alias peel at conformance positions (the relation the method wall already built, second consumer).",
+        red_control: "Per class: previously-unjudgeable correct code stays green AND a same-shape violation refuses — decidable in both directions or not claimed.",
+        out_of_scope: "The general wall flip (next node); argument-position adjudication (its own node).",
+        handback: "Classes grounded, frontier delta per class, probe receipts."
+      )
+    ),
+    active_sized(identity: "rn_E6PQ6WQR2J7SLMGBR62P3ECKGY", id: "declared-conformance-general-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "The general conformance wall: every grounded declared type constrains its producer",
+        boundary: "As grounding lands per class, the conformance judgment widens to full return/data coverage — the gate dissolving into the relation until every grounded declared type refuses non-inhabiting producers, with whatever residue remains typed and counted, never silent.",
+        displaced_cost: "Completes the keystone: a declared type is a contract everywhere, not per-fragment.",
+        first_slice: "Widen to the first grounded class corpus-wide, census-adjudicated.",
+        red_control: "The probe corpus's return/data pairs per class; corpus stays green as each class widens.",
+        out_of_scope: "Argument positions (exemption lane); generic instantiation (record-construction lane).",
+        handback: "The widened relation, residue census, probe receipts."
+      )
+    ),
+    active_sized(identity: "rn_EAOINVVBM732ZXS42ELVZAUPQV", id: "argument-type-compatibility-grounding",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Argument-type compatibility grounding: adjudicate what the exemption papers over",
+        boundary: "module_skips_direct_call_arg_check exempts v2.*/v1.compiler.* from the argument TYPE judgment because of representation-gap false positives — the same four classes the conformance lane grounds, at the argument seam, plus the unlocated historical '104 TypeMismatch false positives' (no receipt found by two audits; adjudicate or refute it by measurement). Ground the argument-position relation so the exemption's reason dissolves.",
+        displaced_cost: "The compiler's own sources are currently un-judged at every argument position — the largest single acceptance hole by module count.",
+        first_slice: "Measure: run the check exemption-free in census mode, bucket every red by representation class.",
+        red_control: "Each grounded class's argument-position probe pair; corpus reds adjudicated never exempted.",
+        out_of_scope: "Deleting the exemption (its own node, gated on this one and conformance grounding).",
+        handback: "The bucketed census, classes grounded, the 104-claim disposition."
+      )
+    ),
+    active_sized(identity: "rn_VEY66GYMNYZ24LWJQJGZGCFLRI", id: "floor-exhaustiveness-refusal",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "ExhaustivenessUnknown refuses: the PatternLookupBlocked silent arm closes",
+        boundary: "lookup_variant_in_type and lookup_field_in_variant answer PatternLookupBlocked with diagnostics: [] — exhaustiveness-not-established passing as success-adjacent. Split the verdict three ways (Exhaustive | NonExhaustive | ExhaustivenessUnknown) and refuse Unknown into any accepted executable artifact.",
+        displaced_cost: "Closes the fallback-arm shape the census names for blocked lookups — exhaustiveness-not-established passing as success-adjacent; the measured disposition lives in the carrier, not this ticket.",
+        first_slice: "The typed Unknown verdict plus the refusal, probe-paired with a blocked-lookup fixture.",
+        red_control: "Probe: match whose coproduct lookup is blocked refuses as exhaustiveness-not-established; control: every resolved exhaustive match compiles.",
+        out_of_scope: "PatternDynamic (already diagnoses); exhaustiveness algorithm changes for resolved types.",
+        handback: "The verdict type, the two closed arms, probe flip receipt."
+      )
+    ),
+    active_sized(identity: "rn_P64CH3KXIZGL43SFS5DNJX52EQ", id: "floor-generic-field-constraint-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Field access through an unconstrained generic refuses: delete the field_of_type_var fabrication",
+        boundary: "field_of_type_var answers a field projection on a bare type variable by fabricating the field type — compile-time plausible output where no fact exists (the census's field-through-generic class). The wall: field projection on a type parameter with no field-carrying bound refuses with the parameter, field name, and locus; concrete receivers and parameters whose bound carries the field stay green.",
+        displaced_cost: "A fabricated field type flows into inference and surfaces as a downstream mismatch or a wrong runtime value far from its cause; a located refusal moves the diagnosis to the projection site.",
+        first_slice: "The refusal on the bare-parameter case with the concrete-receiver control green.",
+        red_control: "The probe corpus's field-through-generic pair flips exactly when this lands; concrete-receiver and bounded-parameter controls never refuse.",
+        out_of_scope: "A bounds/constraint language for generics (only the no-bound fabrication closes); where-refinement semantics.",
+        handback: "The deleted fabrication arm, the refusal variant, the probe flip receipt."
+      )
+    ),
+    active_sized(identity: "rn_KPPUUSOXKTMKVJWBCW4G74ZP6A", id: "floor-method-ambiguity-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Method ambiguity refuses: more than one resolution is a located error once primitive identity defines sameness",
+        boundary: "The method-existence wall closes cardinality zero; this closes more-than-one — two distinct primitive identities (or a primitive and a user fn) resolving for one receiver/method pair refuse with both candidates named. Gated on primitive-identity-join because ambiguity is decidable only when sameness is: the length/count/size dispatch aliases make one method look like three today (the gunbc#7484 measured fork), so an ambiguity check before the join would refuse legitimate corpus or silently pick.",
+        displaced_cost: "The silent-first-hit dispatch class: today arm order decides which of two candidates runs — an unstated tiebreak the census cannot even measure until sameness is defined.",
+        first_slice: "The exactly-one check over the joined collection-algebra family, with the alias-reconciled controls green.",
+        red_control: "A planted duplicate registration for one receiver/method pair refuses naming both candidates; every reconciled corpus call still resolves exactly-one.",
+        out_of_scope: "Overload semantics by design (that would be a model change, not a tiebreak); the zero-resolution half (its own node).",
+        handback: "The refusal variant, the duplicate-probe receipt, the exactly-one derivation site."
+      )
+    ),
+    active_sized(identity: "rn_LOVW74OSEOKAJHINOV2BVHPNCE", id: "cardinality-vertical-slice",
+      owner: "compiler-guarantee",
+      path: "docs/plans/cardinality-refinement.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "The operator's seam, end to end: a 0..n producer cannot feed a 1..n consumer",
+        boundary: "One path, not a census: bare List = 0..inf, literal [] = 0..0, nonempty literal = n..n; map preserves, filter floors to 0, concat adds; the interval is an interface fact in InterfaceSummary's contract slot, actual-within-required enforced at function boundaries with a located seam refusal. The seam direction (2026-07-04) and candidate lattice exist; the in-tree fold-propagation rows are manual value-level specimens — binding-level propagation starts here. Construction-wall first candidate: type Refined<B> sole_constructor plus deleting refined_vacuous_stub_pack's forged rejection arm, which is why the sole-constructor completeness audit is a declared prerequisite edge.",
+        displaced_cost: "The canonical motivating specimen — simple, structural, explainable without compiler expertise; the first differentiating class an outside reader can verify.",
+        first_slice: "The seam check on explicit intervals (no inference): producer-admits-zero into consumer-requires-nonempty refuses; proven-nonempty control compiles.",
+        red_control: "The census's cardinality probe pair, plus filter-then-require-nonempty refusing unless a stronger proof intervenes.",
+        out_of_scope: "The unwritable-seam construction wall beyond the first candidate; general refinement predicates (undecidable, permanently); width/overflow axes beyond the slice.",
+        handback: "The lattice fragment landed, the seam judgment site, both probe receipts."
+      )
+    ),
+    active_sized(identity: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ", id: "v2-self-grounding-frontier",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "v2 self-grounding slice — LANDED (gunbc#7485, merged; acceptance receipt recorded 2026-08-01)",
+        boundary: "ACCEPTED against its handback (operator spine verdict): exact self-evidence left solve_constraints' generic arm; underived facts are typed, located, counted GroundingNotDerived diagnostics inside an accepted InferredTree — the FrontierAccepted disposition's live specimen. Identity admission reads the authored declared-inhabitant roster, never caller-supplied candidates. The documented residue is the NEXT node's whole scope: Translate can still swallow the refusal and proceed.",
+        displaced_cost: "Silent self-certification became a counted frontier: the deficit ranks for fixing instead of reading as green.",
+        first_slice: "DONE — acceptance receipt: gunbc#7485 merged with the self-grounding and identity-admission witnesses enrolled.",
+        red_control: "The claims carrier's v2 self-grounding path flips BelowFloor-to-FrontierAccepted exactly here; the identity path refuses caller-supplied candidate sets.",
+        out_of_scope: "Translate propagation; carrier completeness; target realization (each its own node downstream).",
+        handback: "The merged receipts and the frontier diagnostic counts by class."
+      )
+    ),
+    active_sized(identity: "rn_R34TEJZQSFSFZPHUPA3QLNDXYY", id: "v2-translate-underived-refusal",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Translate propagates the refusal: an underived fact cannot be swallowed downstream",
+        boundary: "ACTIVE — the containment workstream, authorized to run parallel with the spine (operator spine verdict 2026-08-01: not another optional wall; it closes the one documented fail-open the merged frontier split created). gunbc#7485 records that Translate can swallow the new GroundingNotDerived rejection and continue — the frontier diagnostic exists but the emission path proceeds. Make Translate refuse or thread the typed frontier so Eval and Translate agree: compile-time refusal on both is the class minimum. The per-path grain is exactly why the carrier models paths separately.",
+        displaced_cost: "Closes the path split where the same underived fact refuses in one phase and ships in another — the subject-grain failure mode measured on the call-shape class.",
+        first_slice: "Translate refusing the existing frontier diagnostic, probe-paired with an underived-generic fixture.",
+        red_control: "A source tree with an underived fact refuses translation naming the fact; every derived corpus module still translates.",
+        out_of_scope: "New derivation rules; realization.",
+        handback: "The refusal arm, probe flip, per-path disposition receipts."
+      )
+    ),
+    active_sized(identity: "rn_33MD6AG25ANERCNTXHLLCWSRAA", id: "v2-inferred-tree-completeness",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "InferredTree carries only derived facts: the all-derived carrier lands",
+        boundary: "Separate source and inferred carriers so candidate-equals-source is not even well-typed as a grounding proof: every fact on the inferred carrier traces to a derivation or the node refuses. Branch/Match/Loop (the three real inference paths) migrate first; the validate_then_compile door and its lens roster stay. A well-formed node with no derived facts cannot inhabit the carrier.",
+        displaced_cost: "InferredTree becomes a trustworthy proof boundary; every lens consuming it stops reading facts that were never derived; the self-host frontier stops reading greener than it is.",
+        first_slice: "The carrier split with the three real inference paths migrated.",
+        red_control: "A well-formed node with no derived facts cannot inhabit the inferred carrier (type-invalid, not lens-caught); the carrier's v2 disposition climbs exactly here.",
+        out_of_scope: "Derivation rules beyond the three behaviors (next node); realization.",
+        handback: "The carrier types, the migrated arm list, the disposition climb receipt."
+      )
+    ),
+    active_sized(identity: "rn_XYRCAJC6YWM4CU774LOSFYDJ4U", id: "v2-node-kind-derivation-coverage",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Every node kind derives or refuses: the generic acceptance arm deletes",
+        boundary: "The remaining derivation rules beyond Branch/Match/Loop: each v2 node kind either derives into the inferred carrier or its acceptance is a typed compile refusal — the generic accept-anything arm deletes. Coverage is counted per kind, so the frontier shrinks to zero or to named FrontierAccepted rows each carrying a trigger.",
+        displaced_cost: "The last self-certification residue: any kind without a rule is currently accepted on well-formedness alone, which is the recovered defect class in its most general form.",
+        first_slice: "The per-kind coverage census (derived | refused | frontier), then the highest-count kind's rule.",
+        red_control: "A kind with neither rule nor refusal reds the coverage census; deleting the generic arm keeps the whole-tree compile green.",
+        out_of_scope: "Realization; new language behaviors.",
+        handback: "The per-kind coverage table and the deleted-arm commit."
+      )
+    ),
+    active_sized(identity: "rn_223FAUHF5IVK24UVR6PPYSXQCI", id: "v2-target-realization-gate",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Realization per target: an operation cannot compile for T without exactly one realization",
+        boundary: "The realized carrier adds target realization: every executable operation in a program accepted for target T has exactly one compatible realization row for T, refused target-relatively otherwise. gunbc#7485 explicitly leaves this open; it consumes the primitive-identity join (realization rows are its per-target facts) and the derivation-coverage node (a realized tree is derived-then-realized, never source-then-realized).",
+        displaced_cost: "The gunbc#7479 shape at its root: a costed-but-unrealized primitive currently compiles and fails at dispatch; the gate moves that to a located target-relative refusal.",
+        first_slice: "The gate over the collection-algebra family for the interpreter target, probe-paired.",
+        red_control: "A costed-but-unrealized primitive refuses for the target naming the missing row; every realized corpus call still compiles.",
+        out_of_scope: "New targets; deleting seed dispatch.",
+        handback: "The gate site, the per-target refusal variant, probe flip receipt."
+      )
+    ),
+    active_sized(identity: "rn_VNYPK344GM56QEWP34G7VCG4OA", id: "floor-parse-formation-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Parse formation refuses: a dropped separator cannot silently change the program",
+        boundary: "Two slices, one wall. Safety: a missing list separator refuses at parse instead of parsing as element juxtaposition (the measured below-floor census row — a dropped comma silently changes list arity). Completeness: a block after a bare identifier in if-condition position parses as the block it is, closing the measured false refusal (expected-RParen on legitimate input). Probe-paired via the corpus's parser pair; grammar-owned, no host parser (census queue items 6-7).",
+        displaced_cost: "The separator specimen survived regen, whole-corpus compile, fixed-point verify, and a 15-case matrix; only a human diff read caught it (review 45347).",
+        first_slice: "The separator refusal with legitimate-list controls green.",
+        red_control: "The separator probe flips exactly when the refusal lands; the if-block fixture parses correctly; every legitimate list in corpus still parses.",
+        out_of_scope: "Grammar redesign; lookahead classes the census does not name.",
+        handback: "The two closed defects, probe flips, corpus parse receipt."
+      )
+    ),
+    active_sized(identity: "rn_ILWLG34LVL5SAS6QPN5GZDPMFY", id: "floor-record-construction-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Record construction refuses: missing required fields, bad defaults, ungrounded nominal literals",
+        boundary: "A record literal missing a required field refuses at compile with the field named; defaults apply only where declared; a literal claiming a nominal type it does not ground refuses. Owns the census's record-completeness class — the declared-conformance chain owns return, data, and generic instantiation, not this. Probe-paired via the corpus's record-completeness pair. Motivating specimen: HandAuthoredDocBind's primary_work construction wall currently rests on record-completeness enforcement that is itself unmeasured.",
+        displaced_cost: "A construction wall anywhere in the corpus is only as strong as required-field enforcement; this node is what makes primary_work-style walls load-bearing rather than declared.",
+        first_slice: "Missing-required-field refusal, probe-paired.",
+        red_control: "A record literal minus one required field refuses naming it; every corpus record literal compiles.",
+        out_of_scope: "Row polymorphism; invocation default semantics (call-shape owns those).",
+        handback: "The judgment site, probe flip, corpus receipt."
+      )
+    ),
+    active_sized(identity: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH", id: "accepted-obligation-door-mechanism",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "The acceptance door as mechanism: audit first, blocking later",
+        boundary: "Split from the monolithic closure node (operator spine verdict: a door gated on the whole program delays the most important new mechanism until nearly done). This node lands the MECHANISM only, depending on the carrier alone: read every Required guarantee path, derive the missing/unmeasured/frontier/no-live-consumer census, run audit-mode and expecting-red — it reports, it does not yet block, and it never claims the open classes closed. The recovered P0.0 meta-guarantee gets its executable form here.",
+        displaced_cost: "The every-Required-path-has-a-live-pre-Accepted-consumer relation becomes executable years before the last wall lands.",
+        first_slice: "The closure fold over carrier rows with a synthetic Required-path-without-consumer RED.",
+        red_control: "A Required path with no live consumer counts; a FrontierAccepted path admitted into Accepted counts; the audit totals reconcile with the carrier's row population.",
+        out_of_scope: "Blocking (the two activation nodes); new walls.",
+        handback: "The door site, the audit census, the RED receipts."
+      )
+    ),
+    active_sized(identity: "rn_5FUBPPKWUGPBAYADIIIR3LDZKQ", id: "accepted-floor-obligation-closure",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Floor activation: the ordinary compiler floor flips to blocking",
+        boundary: "The door mechanism flips from audit to refusal over the FLOOR domain only — names, call shape, conformance, fields, exhaustiveness, parse formation, record construction, the exemption gone: acceptance refuses when a floor class or path is Unmeasured, BelowFloor, FrontierAccepted, or lacks its live consumer.",
+        displaced_cost: "Below-baseline safety regressions become unshippable — the floor stops depending on review vigilance.",
+        first_slice: "Census-first over the floor domain (count, then flip), whole-tree green at flip.",
+        red_control: "The mechanism's audit census reads zero over the floor domain before the flip; a planted floor violation refuses after it.",
+        out_of_scope: "Extended domains (next node).",
+        handback: "The flip receipt and the zero-census reading.",
+      )
+    ),
+    active_sized(identity: "rn_FAF4MACL7ZXJMZ3GX6DJIR4E5S", id: "extended-admission-cardinality",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Cardinality joins the contract: the seam class flips to Required-blocking",
+        boundary: "Admit the cardinality-seam class into the door's blocking Required set — one class, one flip (per-class admission nodes replace the monolithic extended activation, review 45918: an admission becomes ready the day its OWN climb lands instead of every extended class waiting on the slowest). After the flip, acceptance refuses a program whose cardinality judgment is Unmeasured, BelowFloor, FrontierAccepted, or consumer-less.",
+        displaced_cost: "The first differentiating class stops being observability and becomes contract.",
+        first_slice: "The Required-roster row plus the planted possibly-empty-into-nonempty violation refusing at acceptance.",
+        red_control: "The planted seam violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The climb itself (cardinality-vertical-slice); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
+    active_sized(identity: "rn_7OIWVA5MTJIGEEJOBPJOKJTEQ2", id: "extended-admission-ambiguity",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Method ambiguity joins the contract",
+        boundary: "Admit the method-ambiguity class into the door's blocking Required set once its wall lands (per-class admission, review 45918). After the flip, a program with a more-than-one-resolution judgment left Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
+        displaced_cost: "The silent-first-hit dispatch class becomes contract, not census.",
+        first_slice: "The Required-roster row plus the planted two-candidate violation refusing at acceptance.",
+        red_control: "The planted ambiguous-dispatch violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The wall itself (floor-method-ambiguity-wall); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
+    active_sized(identity: "rn_QXI4FCLYEUMTP66BKPEGYLNPLV", id: "extended-admission-v2-realization",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Target realization joins the contract",
+        boundary: "Admit the target-relative realization class into the door's blocking Required set once its gate lands (per-class admission, review 45918). After the flip, a program accepted for target T with a realization judgment left Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
+        displaced_cost: "The costed-but-unrealized dispatch failure class becomes contract.",
+        first_slice: "The Required-roster row plus the planted unrealized-operation violation refusing at acceptance.",
+        red_control: "The planted unrealized-for-T violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The gate itself (v2-target-realization-gate); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
+    active_sized(identity: "rn_VAKMHRHJ64DJLMKHHSEKTXYLNP", id: "extended-admission-v2-translate",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Translate containment joins the contract",
+        boundary: "Admit the Translate-containment class into the door's blocking Required set once the refusal lands (per-class admission, review 45918). After the flip, a program whose underived-fact judgment is Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
+        displaced_cost: "The documented Translate fail-open, once closed, stays closed by contract rather than vigilance.",
+        first_slice: "The Required-roster row plus the planted swallowed-refusal violation refusing at acceptance.",
+        red_control: "The planted underived-fact violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The containment itself (v2-translate-underived-refusal); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
+    active_sized(identity: "rn_DOFYQJV7FMMCLMNWGE4EUDJSOY", id: "accepted-extended-obligation-closure",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Extended closure: the full contract roster certified complete",
+        boundary: "The terminal certification over the per-class admissions (recut per review 45918 — requires-all belongs HERE, on the completion receipt, never on the admission work, which is per-class and ready as each climb lands): every extended admission receipt present, the door's Required roster equal to the declared extended set — nothing climbed-but-unadmitted, nothing admitted-but-unclimbed — the full recovered P0.0 contract in force.",
+        displaced_cost: "The thesis promise — if it compiles, declared intent is sound inside the modeled system — becomes the shipping contract.",
+        first_slice: "The roster-completeness fold over admission receipts with a planted climbed-but-unadmitted RED.",
+        red_control: "A climbed-but-unadmitted class reds the roster check; an admitted-but-unclimbed row reds it; whole-tree stays green.",
+        out_of_scope: "New admissions (the per-class nodes own them); new walls.",
+        handback: "The contract roster receipt handed to residual prevalence.",
+      )
+    ),
+    active_sized(identity: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A", id: "primitive-identity-join",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "One primitive identity: definition, per-target realization, and cost as three facts on one key",
+        boundary: "PrimitiveDefinition (identity + PrimitiveSemanticContract), PrimitiveInvocationSurface, PrimitiveRealization per RealizationTarget, PrimitiveCostFact, and PrimitiveTraversalOrderFact — five separate carriers joined by PrimitiveIdentity, never one mega-row. TERMINAL acceptance: every primitive-bearing surface across all five authorities (registry, PrimitiveContract rows, algebra templates, interpreter dispatch, emit handlers) joins exactly one identity; population-wide join and realization refusals are the closing contract. D0 is a first slice only — not the closing contract. Namespace supplies declaration identity; this node supplies semantic primitive identity across invocation and realization.",
+        displaced_cost: "Proves the determinism denominator is open (#7532 honest rung) and begins closing it: four surfaces feed primitive_surface_census_derived at runtime; mutation control is CLOSED on AlgebraTemplate and EmitHandler, PARTIAL on BuiltinRegistry and PrimitiveContractRow (parallel hand rosters — primitive_d0_derived_surface_drift_audit_note), NOT DISCOVERED on InterpreterDispatch. fold_list spelling fork and index_by registry+algebra dual absence are named specimens proving the denominator is not closed. Unlocks method ambiguity wall and D1 determinism consumption through PrimitiveIdentity rather than raw symbol.",
+        first_slice: "D0 first slice (NOT closing contract): std.primitive_identity carriers; primitive_surface_census_derived from four authorities; primitive_interpreter_dispatch_measurement_rows (MeasurementOnly) for specimens; refusal predicate machinery; slice witness receipt. Denominator NOT closed — interpreter blind until interpreter-primitive-roster lands.",
+        red_control: "TERMINAL (population-wide): every derived census row joins exactly one PrimitiveIdentity; surfaces joining two identities refuse; realizations naming unknown primitives refuse; duplicate semantic definitions refuse. D0 SLICE ONLY: derived census exceeds specimen count; four named specimen findings (map_keys five-surface join, fold_list spelling fork, fold_list registry gap, index_by registry+algebra gap); planted missing-identity and unknown-realization RED controls — these witnesses do not substitute for terminal acceptance.",
+        out_of_scope: "D1 determinism gate consumption (child determinism-denominator-closure); deleting v1 seed dispatch tables; namespace declaration identity.",
+        handback: "D0: std.primitive_identity carriers, primitive_surface_census_derived, measurement specimen rows, refusal predicates, slice witness receipt. TERMINAL (after interpreter-primitive-roster): population-wide join closure across all five surfaces."
+      )
+    ),
+    active_sized(identity: "rn_DETERMINISM_DENOMINATOR_CLOSURE", id: "determinism-denominator-closure",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Determinism denominator closure: every primitive carries one traversal-order classification",
+        boundary: "v2.std.determinism and v2.lens.determinism consume std.primitive_identity: every PrimitiveDefinition carries exactly one PrimitiveTraversalOrderFact, unclassified refuses, HostUnspecifiedOrder derives a determinism root, aliases resolve through PrimitiveIdentity not raw symbol. Adding a new invokable primitive realization without a traversal-order fact reds before any caller uses it.",
+        displaced_cost: "Dissolves the interim two-root registry (#7532) into a closed denominator — the gate can tell an alias from a distinct operation, and keys/values false-positive class is eliminated by identity not spelling.",
+        first_slice: "Wire determinism_compile_gate to PrimitiveTraversalOrderFact over the primitive_identity census rather than determinism_root_registry symbol matching.",
+        red_control: "A new primitive realization without traversal-order fact refuses at gate enrollment before corpus reach; map_keys and map_values classify HostUnspecifiedOrder through identity; generic keys/values symbols do not false-positive unrelated functions.",
+        out_of_scope: "D0 census and join carriers (parent primitive-identity-join); deleting v1 seed dispatch.",
+        handback: "Identity-keyed determinism classification, closed denominator receipt, deleted interim symbol registry."
+      )
+    ),
+    active_sized(identity: "rn_INTERPRETER_PRIMITIVE_ROSTER", id: "interpreter-primitive-roster",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Interpreter primitive roster: the fifth surface becomes readable from .dag",
+        boundary: "Land interpreter-primitive-roster across all six v1_interpreter dispatch sites (eval_builtin_inner, eval_algebra_method_inner, eval_call, try_v2_std_collection_map_primitive_grounding, try_parse_table_memo_dispatch, eval_method_call lookup short-circuit — 158 arms / 169 spellings). clever-crab-111 macro authority: eval_builtin_inner arms expand from interpreter_free_call_arm_spellings with construction wall (arm without roster entry unwritable). primitive_surface_census_derived absorbs InterpreterDispatch instead of primitive_interpreter_dispatch_measurement_rows. Prerequisite for primitive-identity-join terminal acceptance.",
+        displaced_cost: "Closes the fifth blind spot in D1 mutation control across all six dispatch sites. Dissolves MeasurementOnly specimen rows into derived surfaces.",
+        first_slice: "Roster authority for six sites; eval_builtin_inner via interpreter_free_call_arm_spellings macro; primitive_surface_census_derived absorbs interpreter dispatch; measurement rows deleted.",
+        red_control: "A new dispatch arm without a roster row refuses; a roster row without a matching arm refuses; fold_list via eval_call intercept and lookup dual-realization join through derived census.",
+        out_of_scope: "D0 slice carriers and four-surface derivation (parent primitive-identity-join first slice); deleting seed dispatch implementation.",
+        handback: "Modeled interpreter roster authority, derived fifth surface on primitive_surface_census_derived, deleted measurement scaffold."
+      )
+    ),
+    active_sized(identity: "rn_JPU4RUV5DNELDCZI4JUQGWHICM", id: "compiler-source-exemption-removal",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Delete module_skips_direct_call_arg_check: the compiler stops authoring itself under weaker checks",
+        boundary: "Gated on the two GROUNDING nodes, not the label wall (dependency corrected per the operator spine verdict: the exemption skips the argument TYPE judgment, whose false positives are representation gaps — labels never gated it, and gunbc#7519's wall already runs exemption-free). Once argument-type-compatibility grounding and declared-conformance grounding land, re-run exemption-free, repair relation or source per the bucketed census, then delete. Its deletion is the terminal Tier-1 acceptance named by the doc-graph bind on this lane's analysis.",
+        displaced_cost: "The dimension contract's one named escape hatch (enforced universally — no escape hatch, no wrapper functions); v1 currently admits unsound v2 source that v2 then self-certifies, and v1 deletion would not retroactively prove it.",
+        first_slice: "The fresh adjudication run with its failure classification, before any relation change.",
+        red_control: "After deletion, a planted arg-type mismatch inside a v2.* module refuses exactly like user source; the whole-tree compile stays green.",
+        out_of_scope: "Loosening the compatibility relation to make the number small; any new exemption.",
+        handback: "The classification table, relation fixes landed, the deletion commit."
+      )
+    ),
+    active_sized(identity: "rn_JLPYDWJUCGBUPQ734NGPEQLMWI", id: "unforgeable-construction-capability",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "The capability audit: sole_constructor completeness, then seal the proof-carriers",
+        boundary: "The language ALREADY has a construction wall: sole_constructor rejects cross-module construction with SoleConstructorViolation and carries a sealed-record specimen (post-merge review of gunbc#7486 refuted this node's earlier premise that no private/sealed/opaque capability exists). What is UNVERIFIED is its completeness: generic carriers (does type Refined<B> sole_constructor hold across instantiation?), every construction form (literals, casts like as TransportScript, coproduct variants, default values), and behavior under module_skips_direct_call_arg_check. Audit by falsification first; extend sole_constructor or ground the reference-grant algebra (the parked visibility-grants design) only where the audit reds.",
+        displaced_cost: "Every capability-kind ceiling resolves together — either sole_constructor suffices (cheap: seal Refined, delete the stub-pack forge arm) or its named gaps price the visibility-grants work honestly instead of by assumption.",
+        first_slice: "The falsification matrix on ONE carrier: type Refined<B> sole_constructor with cross-module forge probes per construction form, incl. inside v2.* modules; delete refined_vacuous_stub_pack's forged rejection arm if the wall holds.",
+        red_control: "Refined authored outside the sealing module refuses at compile in every probed form; refine remains the only inhabitation path; a probe form that does NOT refuse is a counted audit finding, never silently absorbed.",
+        out_of_scope: "Publish-verb storage visibility (its own parked lane); retrofitting every brand in one motion; new language syntax before the audit reds.",
+        handback: "The completeness matrix (form x module-context x verdict), the sealed-Refined receipt or the named counterexamples, and the roster of classes whose ceiling reason flips."
+      )
+    ),
+    active_sized(identity: "rn_ITD5F26B5RMK7FMDMO6Q7ZQDFA", id: "ladder-census-emitters",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Emit the ladder: per-class rung state renders to ROADMAP.md and the served roadmap page from the carrier",
+        boundary: "A projection from the guarantee carrier's derived dispositions to (a) a generated ROADMAP.md state table and (b) a roadmap-page panel via the existing ServedRoute machinery — one authority, two projections, drift-gated like DESIGN.md and ROADMAP.md today. The gunb.ai site inherits it through the site-subsumption lane's rule that every shown intricacy derives from a real repo fact.",
+        displaced_cost: "The operator reads ladder position without asking; the state table cannot rot because it is emitted, and a hand-edit is a drift refusal.",
+        first_slice: "The md projection: domain-grouped class table (derived disposition, ceiling with reason, next trigger) generated into ROADMAP.md, drift-gated.",
+        red_control: "Hand-editing the emitted table reds the drift gate; a carrier row change not reflected in the projection reds the fixed-point witness.",
+        out_of_scope: "New dashboard routes beyond the existing roadmap page; site cutover work.",
+        handback: "The projection function, both render receipts, the drift-gate enrollment."
+      )
+    ),
+    active_sized(identity: "rn_JR4ID3YDMYNBN7Q74WNCOHYIUQ", id: "guarantee-residual-prevalence",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Residual prevalence: the post-climb rerun that prices what remains",
+        boundary: "The baseline's bucketing classifier re-run after the declared climbs land, diffed against the anchored baseline: per-class delta receipts showing which buckets each wall emptied, and the residual histogram pricing the next round (DESIGN 6 displaced-cost denomination). Depends on the acceptance-closure door alone — every required climb, ambiguity and the cardinality seam included, now flows through that door (review 45545) — so a partial rerun cannot masquerade as the residual.",
+        displaced_cost: "Turns each wall's landing into a measured before/after instead of an assumed win; the residual table is the priced backlog for the next design round.",
+        first_slice: "The diff projection over one class (method existence) with its wall's before/after receipts.",
+        red_control: "Bucket counts reconcile to the total; a class whose wall landed but whose bucket did not shrink is a counted finding, never smoothed over.",
+        out_of_scope: "Fixing what it measures; new climbs (they enter as new declared nodes keyed to the same carrier).",
+        handback: "The before/after histograms and the residual class table."
+      )
+    ),
+  ]
+}
+
+fn guarantee_ladder_edges() -> List<RoadmapEdge> {
+  [
+    edge(child: "ladder-probe-corpus", parent: "ladder-measurement-schema"),
+    edge(child: "ladder-claims-carrier", parent: "ladder-measurement-schema"),
+    edge(child: "ladder-claims-carrier", parent: "ladder-probe-corpus"),
+    edge(child: "guarantee-baseline-prevalence", parent: "ladder-probe-corpus"),
+    edge(child: "guarantee-baseline-prevalence", parent: "ladder-claims-carrier"),
+    edge(child: "ladder-census-emitters", parent: "ladder-claims-carrier"),
+    edge(child: "call-missing-and-duplicate-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "call-signature-resolution-coverage", parent: "guarantee-baseline-prevalence"),
+    edge(child: "method-receiver-normalization", parent: "guarantee-baseline-prevalence"),
+    edge(child: "declared-conformance-grounding", parent: "guarantee-baseline-prevalence"),
+    edge(child: "argument-type-compatibility-grounding", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-exhaustiveness-refusal", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-generic-field-constraint-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-parse-formation-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-record-construction-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "method-zero-resolution-general-wall", parent: "method-receiver-normalization"),
+    edge(child: "method-call-shape-seam", parent: "method-established-surface-wall"),
+    edge(child: "declared-conformance-general-wall", parent: "declared-conformance-grounding"),
+    edge(child: "floor-method-ambiguity-wall", parent: "primitive-identity-join"),
+    edge(child: "floor-method-ambiguity-wall", parent: "method-zero-resolution-general-wall"),
+    edge(child: "compiler-source-exemption-removal", parent: "argument-type-compatibility-grounding"),
+    edge(child: "compiler-source-exemption-removal", parent: "declared-conformance-grounding"),
+    edge(child: "cardinality-vertical-slice", parent: "ladder-claims-carrier"),
+    edge(child: "cardinality-vertical-slice", parent: "unforgeable-construction-capability"),
+    edge(child: "v2-translate-underived-refusal", parent: "v2-self-grounding-frontier"),
+    edge(child: "v2-inferred-tree-completeness", parent: "v2-translate-underived-refusal"),
+    edge(child: "v2-node-kind-derivation-coverage", parent: "v2-inferred-tree-completeness"),
+    edge(child: "v2-target-realization-gate", parent: "v2-node-kind-derivation-coverage"),
+    edge(child: "v2-target-realization-gate", parent: "primitive-identity-join"),
+    edge(child: "determinism-denominator-closure", parent: "primitive-identity-join"),
+    edge(child: "primitive-identity-join", parent: "interpreter-primitive-roster"),
+    edge(child: "accepted-obligation-door-mechanism", parent: "ladder-claims-carrier"),
+    edge(child: "accepted-floor-obligation-closure", parent: "accepted-obligation-door-mechanism"),
+    edge(child: "accepted-floor-obligation-closure", parent: "call-missing-and-duplicate-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "call-signature-resolution-coverage"),
+    edge(child: "accepted-floor-obligation-closure", parent: "method-zero-resolution-general-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "method-call-shape-seam"),
+    edge(child: "accepted-floor-obligation-closure", parent: "declared-conformance-general-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "compiler-source-exemption-removal"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-exhaustiveness-refusal"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-generic-field-constraint-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-parse-formation-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-record-construction-wall"),
+    edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
+    edge(child: "extended-admission-ambiguity", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-ambiguity", parent: "floor-method-ambiguity-wall"),
+    edge(child: "extended-admission-v2-realization", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-v2-realization", parent: "v2-target-realization-gate"),
+    edge(child: "extended-admission-v2-translate", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-v2-translate", parent: "v2-translate-underived-refusal"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-cardinality"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-ambiguity"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-realization"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-translate"),
+    edge(child: "guarantee-residual-prevalence", parent: "accepted-extended-obligation-closure"),
+  ]
+}
+
 
 fn roadmap_authority() -> RoadmapDocument {
   RoadmapDocument {

@@ -39,6 +39,7 @@ lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 sha2 = "0.10"
+toml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
 # Thread CPU-time clock (CLOCK_THREAD_CPUTIME_ID) for the fast-lane eval budget: the
 # budget bounds COMPUTE, not wall, so a witness inflated by cold-I/O reads or governor
@@ -134,6 +135,14 @@ name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"
 
 [[bin]]
+name = "measure_selected_closure_overlap"
+path = "src/bin/measure_selected_closure_overlap.rs"
+
+[[bin]]
+name = "measure_repeated_typecheck_attribution"
+path = "src/bin/measure_repeated_typecheck_attribution.rs"
+
+[[bin]]
 name = "resolution_divergence_census"
 path = "src/bin/resolution_divergence_census.rs"
 
@@ -194,6 +203,16 @@ path = "src/bin/floor_skip_discovery_witness.rs"
 [[bin]]
 name = "regen_floor_skip_witness"
 path = "src/bin/regen_floor_skip_witness.rs"
+
+# Affected-set selection-control skip witness. Declared explicitly for the same reason every
+# other witness here is: edition-2021 autodiscovery WOULD find src/bin/*.rs (cargo metadata
+# lists this target with or without this block, and CI's --bin build has been green
+# throughout), but an undeclared target is invisible to a reader of the manifest and would
+# vanish if autobins were ever turned off. Consistency with the roster above, not a fix
+# (review 44778 read the omission as a build break; it was not).
+[[bin]]
+name = "selection_control_skip_witness"
+path = "src/bin/selection_control_skip_witness.rs"
 
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real

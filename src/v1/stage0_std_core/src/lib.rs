@@ -33,6 +33,9 @@ pub mod std_currency;
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_roster_frontier.rs"]
+pub mod std_roster_frontier;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_disposition.rs"]
 pub mod std_disposition;
 #[rustfmt::skip]

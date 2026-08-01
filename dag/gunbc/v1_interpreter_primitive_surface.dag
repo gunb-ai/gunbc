@@ -1,0 +1,229 @@
+module gunbc.v1_interpreter_primitive_surface
+
+data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
+
+type InterpreterDispatchForm
+  = FreeCall
+  | MethodCall
+  | ServiceDispatch
+  | NativeSpecial
+  | UnknownForm { label: NonEmptyStr }
+
+type InterpreterPrimitiveArmId {
+  identity: NonEmptyStr
+}
+
+type ArmEnumeration
+  = DerivedFromDispatch
+  | DeclaredHere { dissolve_on: NonEmptyStr }
+
+type InterpreterPrimitiveDispatchArm {
+  arm: InterpreterPrimitiveArmId
+  form: InterpreterDispatchForm
+  authored_spelling: NonEmptyStr
+  realization_module: NonEmptyStr
+  dispatch_symbol: NonEmptyStr
+  enumeration: ArmEnumeration
+}
+
+type ShapeDerivability
+  = ShapeNotDerivableFromDispatch
+  | ShapeDerivedFromDispatch
+
+fn v1_interpreter_arm_shape_derivability() -> ShapeDerivability {
+  ShapeNotDerivableFromDispatch
+}
+
+fn decode_dispatch_form(label: String) -> InterpreterDispatchForm {
+  match label {
+    "FreeCall" => FreeCall
+    "MethodCall" => MethodCall
+    "NativeSpecial" => NativeSpecial
+    "ServiceDispatch" => ServiceDispatch
+    _ => UnknownForm { label: label }
+  }
+}
+
+fn form_is_unknown(form: InterpreterDispatchForm) -> Bool {
+  match form {
+    UnknownForm { label: _ } => true
+    FreeCall => false
+    MethodCall => false
+    NativeSpecial => false
+    ServiceDispatch => false
+  }
+}
+
+fn v1_interpreter_derived_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  interpreter_dispatch_arm_rows()
+    |> map(r => InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: r.arm_identity },
+      form: decode_dispatch_form(label: r.dispatch_form),
+      authored_spelling: r.authored_spelling,
+      realization_module: "v1_interpreter",
+      dispatch_symbol: r.dispatch_symbol,
+      enumeration: DerivedFromDispatch,
+    })
+}
+
+fn v1_interpreter_free_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  v1_interpreter_derived_arms() |> filter(r => r.form == FreeCall)
+}
+
+fn v1_interpreter_method_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  v1_interpreter_derived_arms() |> filter(r => r.form == MethodCall)
+}
+
+fn v1_interpreter_unknown_form_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  v1_interpreter_derived_arms() |> filter(r => form_is_unknown(form: r.form))
+}
+
+fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  [
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "method_call_short_circuit.lookup" },
+      form: MethodCall,
+      authored_spelling: "lookup",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_method_call",
+      enumeration: DeclaredHere {
+        dissolve_on: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.",
+      },
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "service_dispatch.Filesystem.Read" },
+      form: ServiceDispatch,
+      authored_spelling: "Filesystem.Read",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_service_call",
+      enumeration: DeclaredHere {
+        dissolve_on: "the hermetic checkout carve-out in eval_service_call is the interpreter's only service-name dispatch of its own; every other service operation resolves against ctx.service_ops from the declared .dag corpus. This row dissolves when the carve-out does.",
+      },
+    },
+  ]
+}
+
+fn v1_interpreter_primitive_arms() -> List<InterpreterPrimitiveDispatchArm> {
+  v1_interpreter_derived_arms() |> concat(v1_interpreter_declared_arms())
+}
+
+fn distinct_strings(xs: List<String>) -> List<String> {
+  xs |> fold(init: [], f: (acc, x) => if acc |> any(y => y == x) { acc } else { acc |> concat([x]) })
+}
+
+fn v1_interpreter_derived_arm_count() -> Int {
+  count(v1_interpreter_derived_arms())
+}
+
+fn v1_interpreter_declared_arm_count() -> Int {
+  count(v1_interpreter_declared_arms())
+}
+
+fn v1_interpreter_row_count() -> Int {
+  count(v1_interpreter_primitive_arms())
+}
+
+fn dispatch_site_count() -> Int {
+  count(distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.dispatch_symbol)))
+}
+
+fn distinct_arm_identity_count() -> Int {
+  count(distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.arm.identity)))
+}
+
+fn authored_spelling_count() -> Int {
+  count(distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.authored_spelling)))
+}
+
+fn spelling_arm_identities(rows: List<InterpreterPrimitiveDispatchArm>, spelling: String) -> List<String> {
+  rows |> filter(r => r.authored_spelling == spelling) |> map(r => r.arm.identity)
+}
+
+fn form_has_no_shadowed_spelling(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  rows |> all(r =>
+    count(
+      spelling_arm_identities(rows: rows, spelling: r.authored_spelling)
+        |> filter(id => id != r.arm.identity)) == 0)
+}
+
+fn shadowed_spellings(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+  let shadowed = rows
+    |> filter(r =>
+      count(
+        spelling_arm_identities(rows: rows, spelling: r.authored_spelling)
+          |> filter(id => id != r.arm.identity)) > 0)
+    |> map(r => r.authored_spelling)
+  distinct_strings(xs: shadowed)
+}
+
+fn row_key(row: InterpreterPrimitiveDispatchArm) -> String {
+  row.dispatch_symbol
+    |> concat(":")
+    |> concat(row.arm.identity)
+    |> concat(":")
+    |> concat(row.authored_spelling)
+}
+
+fn duplicate_row_keys(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+  let dupes = rows
+    |> filter(r =>
+      count(rows |> filter(o =>
+        o.authored_spelling == r.authored_spelling
+          && o.arm.identity == r.arm.identity
+          && o.dispatch_symbol == r.dispatch_symbol)) > 1)
+    |> map(r => row_key(row: r))
+  distinct_strings(xs: dupes)
+}
+
+fn v1_interpreter_cross_form_spellings() -> List<String> {
+  let rows = v1_interpreter_primitive_arms()
+  let cross = rows
+    |> filter(r =>
+      count(rows |> filter(o => o.authored_spelling == r.authored_spelling && o.form != r.form)) > 0)
+    |> map(r => r.authored_spelling)
+  distinct_strings(xs: cross)
+}
+
+data v1_interpreter_primitive_surface_authority_note: String = "THE V1 INTERPRETER'S PRIMITIVE DISPATCH SURFACE, MADE ENUMERABLE. Before this carrier the surface had no roster anywhere: its only authority was string match arms inside the hand-maintained seed src/v1/stage0/src/v1_interpreter.rs, so 'which primitives does the interpreter provide' was a question no consumer could ask. That is why it was the fifth surface the primitive-identity census could not read, and why v1 deletion could not be sequenced honestly: you cannot show that nothing still needs a capability you cannot enumerate.\n\nTHE SURFACE IS SEVEN DISPATCH SYMBOLS. Measured against the tree rather than assumed: eval_builtin_inner; eval_algebra_method_inner; eval_call, which carries TWO separate mechanisms -- nine guard-predicated v4 std bridge families AND a native fold intercept -- both running BEFORE the free-call dispatch, which is why fold_list and the bridge names never reach the builtin registry; try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; a lookup short-circuit inside eval_method_call; and the Filesystem.Read hermetic carve-out in eval_service_call. dispatch_site_count derives that 7 from the rows rather than restating it, so this sentence cannot drift from the roster. AN EARLIER REVISION OF THIS NOTE SAID SIX SITES and modelled eval_call as the fold intercept alone, omitting all twelve bridge spellings; the omission was caught in review, and it is recorded here rather than quietly corrected because it is the precise failure this carrier exists to prevent -- a denominator asserted from the sites someone happened to read.\n\nFIVE OF THE SEVEN SITES ARE NOW DERIVED, NOT TRANSCRIBED. eval_builtin_inner, eval_algebra_method_inner, eval_call's bridge families, eval_call's native intercept, the map grounding and the parse-table memo each expand their dispatch AND their roster row from one macro token list, so an arm without a row and a row without an arm are both unwritable rather than reconciled afterwards (DESIGN.md 5, construction over validation). No live-tree scan of Rust source is involved and none is wanted: a regex interpreting hand-written match arms would leave the denominator in Rust while adding a second thing that can be wrong.\n\nTHE RESIDUE IS CHECKABLE BY GREP, WHICH IS THE POINT. Every primitive dispatch arm in v1_interpreter.rs now carries the token form `arm \"identity\" { \"spelling\" } =>`. What remains in the file as a BARE quoted match arm is exactly 39 lines and none of it is primitive dispatch: 12 in match_pattern (pattern kinds), 5 each in map_shell_outputs, map_file_outputs and dispatch_rest, 3 each in resolve_auth and expectation_from_declared_arg, 2 each in dispatch_file and rest_tls_posture_interp_disposition, and 2 nested INSIDE arm bodies (a tree-name mapping) rather than being arms themselves. Those dispatch on HTTP methods, TLS postures, auth kinds, output channels and pattern kinds -- transport and value vocabulary, not primitive names. So 'is there an unenumerated primitive arm' is answerable by looking for a bare quoted arm outside that named list, which is a far stronger position than the line-count reconciliation an earlier revision relied on.\n\nSERVICE OPERATIONS ARE NOT ARMS, and that is a finding rather than an omission. eval_service_call resolves Service.Op against ctx.service_ops, which is built from the DECLARED .dag corpus, so that population is already enumerable as data and is deliberately outside this roster's denominator. The interpreter contributes exactly one service-name dispatch of its own -- the Filesystem.Read hermetic checkout carve-out -- plus transport realizations, which dispatch on transport and HTTP method values rather than on primitive names. Only the carve-out is a row here.\n\nROWS CARRY THE ARM'S OWN FACTS ONLY. There is deliberately no primitive-identity field, not even an optional one: an arm that joins to no known primitive must remain representable, because that population is exactly what a primitive-identity join needs to discover. A roster whose shape forbade recording an unjoined arm would be complete by construction and useless as a denominator. This carrier answers WHICH ARMS EXIST; which primitive each one realizes belongs to the join.\n\nONE ROW PER (SITE, ARM IDENTITY, SPELLING); ALIASES SHARE AN ARM IDENTITY. length, count and size are one arm under three rows, so they cannot disagree by construction. duplicate_row_keys asserts that triple is unique across the whole surface. A spelling appearing under two different arm identities at the SAME site is unreachable code, because the earlier arm always wins. A spelling appearing at two different SITES is two genuine implementations: lookup is the live specimen, dispatched both by the eval_method_call short-circuit and by the algebra arm the short-circuit shadows."
+
+data arm_accepted_shape_gap_note: String = "ARITY IS NOT DERIVABLE FROM THIS DISPATCH, and ShapeDerivability is a coproduct rather than an Int so that the gap is representable instead of guessed. Arm bodies reach for positional.first(), positional.as_slice() patterns, and byte-vector coercions, so nothing structural in the arm states how many arguments it accepts. Any number written here would be a hand transcription that rots silently the first time a body changes, which is the decorative-roster failure this carrier exists to avoid. A typed absence is countable; a fabricated arity is not. DISSOLVE-ON: the R1 step where each arm list carries an explicit parameter spec beside each body, at which point arity expands from the same tokens as the spelling and ShapeDerivedFromDispatch becomes the honest answer."
+
+data derived_versus_declared_note: String = "WHICH ROWS ARE REAL BY CONSTRUCTION, AND WHY PROVENANCE SITS ON THE ROW RATHER THAN ON THE FORM. Enumeration provenance is a fact about how a PARTICULAR row was obtained, not about its dispatch form: MethodCall rows are derived from eval_algebra_method_inner's tokens while the MethodCall lookup short-circuit is declared, and NativeSpecial rows are derived while ServiceDispatch is declared. An earlier revision derived provenance from the form, which would have reported the short-circuit row as derived and hidden exactly the staleness the field exists to expose. So ArmEnumeration is a field, DeclaredHere carries the row's OWN dissolution trigger, and v1_interpreter_declared_arm_count counts the frontier rather than describing it.\n\nThe two declared rows are the two sites that are not match arms at all: eval_method_call's lookup short-circuit is an if-guard, and eval_service_call's Filesystem.Read carve-out dispatches on a service name. Each row states what would have to change for it to dissolve, and every_declared_row_names_its_own_dissolution_trigger executes over the rows rather than trusting this prose. Absence from a declared row is NOT evidence that an arm does not exist. The owning roadmap row is v1-interpreter-primitive-roster, and v1-interpreter-quarantine depends on it."
+
+data shadowed_spelling_semantics_note: String = "WHAT form_has_no_shadowed_spelling ACTUALLY DECIDES. A spelling reached by more than one ARM IDENTITY within one dispatch site is unreachable code, because the earlier arm always wins the match. Alias spellings are deliberately NOT this: they share one arm identity, which is precisely why length, count and size cannot disagree with each other. A spelling appearing at two different SITES is a third thing again and is not a defect at all -- it is two genuine implementations of one name, which v1_interpreter_cross_form_spellings derives and a primitive-identity join must reconcile rather than assume away. Twenty spellings are in that class today; lookup, map_insert and empty_map are the load-bearing specimens. Two shadows are live and both are recorded as exact expectations rather than tolerated: the two inert-lens bridges shadow their eval_builtin_inner namesakes, and method_call_short_circuit.lookup shadows method_call.lookup. Those witnesses assert an exact set, so a NEW shadow reds this file."
+
+type SeedScaffoldDisposition {
+  scaffold: NonEmptyStr
+  realization_module: NonEmptyStr
+  carried_symbols: List<NonEmptyStr>
+  net_added_lines: Int
+  target_roadmap_node: NonEmptyStr
+  deletion_condition: NonEmptyStr
+}
+
+fn v1_interpreter_roster_seed_scaffold() -> SeedScaffoldDisposition {
+  SeedScaffoldDisposition {
+    scaffold: "v1_interpreter_dispatch_token_authority",
+    realization_module: "v1_interpreter",
+    carried_symbols: [
+      "v1_builtin_arms",
+      "v1_algebra_method_arms",
+      "v1_bridge_family_arms",
+      "v1_native_intercept_arms",
+      "v1_map_grounding_arms",
+      "v1_parse_table_arms",
+      "v1_builtin_arm_spellings",
+      "v1_algebra_arm_spellings",
+      "v1_bridge_arm_spellings",
+      "v1_native_intercept_arm_spellings",
+      "v1_map_grounding_arm_spellings",
+      "v1_parse_table_arm_spellings",
+      "interpreter_dispatch_arm_rows",
+    ],
+    net_added_lines: 178,
+    target_roadmap_node: "v1-interpreter-primitive-dispatch-authority",
+    deletion_condition: "R1: the .dag roster generates the interpreter's local dispatch identity and lookup, rather than the dispatch generating the roster. At that point the six macro authorities and the six roster functions are all deleted, the interpreter_dispatch_arm_rows bridge arm is deleted with them, and the declared rows in this carrier delete too because the denominator no longer lives in Rust. The whole scaffold is deleted unconditionally and earlier if v1-interpreter-delete lands first, since the file goes with it. Neither trigger is speculative: both are roadmap rows with edges already in the authority.",
+  }
+}
+
+data added_hand_rust_accounting_note: String = "WHAT THIS ADDED TO THE SEED, STATED PLAINLY RATHER THAN IMPLIED AWAY. v1_interpreter.rs grew from 12,167 to 12,345 lines: net +178. That number is the honest one and it is a NET of two opposite movements. Added: six macro_rules authorities, six roster functions, and one dispatch arm (interpreter_dispatch_arm_rows). Removed: nine byte-identical is_v4_*_bridge_call predicates, which collapsed into one parameterized is_v4_bridge_family, and nine hand-written *_BRIDGE_FNS const lists, which now expand from the same tokens as the dispatch they guard. Roughly 1,150 lines of existing arm bodies moved verbatim and are neither added nor removed.\n\nSO THIS CHANGE DOES NOT SHRINK THE HAND-RUST CENSUS AND MUST NOT BE COUNTED AS IF IT DID. What it buys is twofold. First, the precondition for shrinking it: v1_interpreter.rs is hand-maintained, is absent from gunbc.stage0_emit_model generated_stage0_files, and cannot be retired until what it provides can be enumerated -- which is why v1-interpreter-quarantine now depends on v1-interpreter-primitive-dispatch-authority, the node that inverts the roster; the enumeration this file lands (v1-interpreter-primitive-roster) is that node's own prerequisite. Second, a real DESIGN.md 3 defect is gone: every bridge name used to be written twice, once in the const the guard tested and once in the arm that dispatched it, with nothing to say when the two disagreed.\n\nThe added Rust is a declared scaffold with a typed disposition rather than a note: v1_interpreter_roster_seed_scaffold names every symbol it carries, the net line count, the owning roadmap node, and the exact deletion condition."

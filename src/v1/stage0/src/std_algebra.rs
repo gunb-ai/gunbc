@@ -129,7 +129,7 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FieldOfFractions<R> {
+pub struct FieldOfFractions<R: Clone> {
     pub num: R,
     pub denom: R,
     pub _phantom: std::marker::PhantomData<R>,
@@ -814,6 +814,15 @@ pub fn pointwise_power_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     })])
 }
 
+pub fn algebra_count_length_name_fork_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "count and length sit on the same template rows as the SAME operation, and that is a §3 nicknaming fork being RECORDED rather than introduced (review 45499 raised it, correctly, as a smell). The fork's authority is the interpreter, which dispatches length, count and size to one native arm — three names, one concept, and that arm predates this change. What was inconsistent was the declared surface: the templates listed only length, so a String receiver piped into count resolved at runtime while having no declared row, which the method-existence wall exposed the moment it began proving absence from the template roster. Reconciling the declaration to the runtime is the honest direction, because the runtime is what programs actually meet; inventing a distinct meaning for count to justify two rows would be the fabrication, and dropping the row would have left a working call refused. So the row is added and the fork is named here rather than silently propagated. Dissolve-on: feature:collection-size-single-spelling — one name for this operation across the interpreter arm, the templates, and the corpus, a corpus-wide rename touching every call site, which belongs on its own lane rather than inside a P0 live-system fix. THE TRIGGER IS NAMED RATHER THAN DESCRIBED because a deferral whose condition is only prose cannot be looked up, counted, or closed by anyone but its author — the asymmetry review 45759 caught beside unresolved_method_frontier, which cites feature:primitive-realization-single-authority and is therefore findable. The closing condition is decidable and stated: the interpreter's length/count/size arm dispatches one spelling, these two template rows carry that spelling only, and no other spelling resolves. Until then the count is the measure: three accepted spellings in the interpreter arm, two on these rows, one concept.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
@@ -837,6 +846,16 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         }),
         Rc::new(AlgebraFieldTemplate {
             name: "length".to_string(),
+            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            }),
+            size_effect: None,
+            cost_shape: None,
+            callback_element_position: None,
+        }),
+        Rc::new(AlgebraFieldTemplate {
+            name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
@@ -1523,28 +1542,29 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: None,
             callback_element_position: None,
         }),
+        Rc::new(AlgebraFieldTemplate {
+            name: "count".to_string(),
+            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            }),
+            size_effect: None,
+            cost_shape: None,
+            callback_element_position: None,
+        }),
     ])
 }
 
 pub fn algebra_method_template_name(name: String) -> bool {
     {
         let mut __found = false;
-        for p in Rc::new(vec![
-            AlgebraProfile::OrderedRingProfile,
-            AlgebraProfile::ApproximateFieldProfile,
-            AlgebraProfile::BooleanAlgebraProfile,
-            AlgebraProfile::BooleanAlgebraCollectionProfile,
-            AlgebraProfile::PointwisePowerCollectionProfile,
-            AlgebraProfile::FreeMonoidScalarProfile,
-            AlgebraProfile::FreeMonoidCollectionProfile,
-            AlgebraProfile::PartialFunctionProfile,
-        ])
-        .iter()
-        .cloned()
-        {
+        for profile in all_algebra_profiles().iter().cloned() {
             if {
                 let mut __found = false;
-                for t in algebra_templates_for_profile(p.clone()).iter().cloned() {
+                for t in algebra_templates_for_profile(profile.clone())
+                    .iter()
+                    .cloned()
+                {
                     if (t.name.clone() == name.clone()) {
                         __found = true;
                         break;
@@ -1584,6 +1604,43 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
         AlgebraProfile::FreeMonoidCollectionProfile => Rc::new(vec!["T".to_string()]),
         AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
     }
+}
+
+pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
+    Rc::new(vec![
+        AlgebraProfile::OrderedRingProfile,
+        AlgebraProfile::ApproximateFieldProfile,
+        AlgebraProfile::BooleanAlgebraProfile,
+        AlgebraProfile::BooleanAlgebraCollectionProfile,
+        AlgebraProfile::PointwisePowerCollectionProfile,
+        AlgebraProfile::FreeMonoidScalarProfile,
+        AlgebraProfile::FreeMonoidCollectionProfile,
+        AlgebraProfile::PartialFunctionProfile,
+    ])
+}
+
+pub fn all_algebra_field_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for profile in all_algebra_profiles().iter().cloned() {
+            __result.extend(
+                (*algebra_templates_for_profile(profile.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn all_algebra_template_names() -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for template in all_algebra_field_templates().iter().cloned() {
+            __result.push(template.name.clone());
+        }
+        __result
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

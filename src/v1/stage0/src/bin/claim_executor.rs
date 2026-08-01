@@ -15,7 +15,7 @@ use v1_compiler::cli_run::{
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
-    top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
+    top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
     TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
@@ -156,6 +156,238 @@ fn read_floor_batch_budget_tighten_ms() -> Result<Option<u128>, String> {
     }
 }
 
+/// RED-control fault injection for the compile-clean leg clamp
+/// (`gunbc_ci_compile_clean_clamp_note`): lowers the COMPUTED clamp (min), never
+/// raises — the same posture as `GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`.
+fn read_compile_clean_budget_tighten_ms() -> Result<Option<u128>, String> {
+    match std::env::var("GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS") {
+        Ok(t) => match t.parse::<u128>() {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => Err(format!(
+                "claim_executor: GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS must parse as milliseconds, got {t:?} (fail-closed)"
+            )),
+        },
+        Err(_) => Ok(None),
+    }
+}
+
+/// The compile-clean leg's clamp constants (authority `gunbc.ci_spec.gunbc_ci_compile_clean_clamp`
+/// + `gunbc_ci_compile_clean_clamp_note`, projected through the floor plan like the batch clamp
+/// lists). Read fail-closed at arm time; returns (overhead_ms, per_unit_ms).
+fn read_compile_clean_clamp(plan_ctx: &InterpContext) -> Result<(u128, u128), String> {
+    let overhead_s = match run_value(plan_ctx, "gunbc_ci_compile_clean_clamp_overhead_seconds") {
+        Ok(Value::Int(v)) if v > 0 => v as u128,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: gunbc_ci_compile_clean_clamp_overhead_seconds must be a positive Int, got {other:?} (fail-closed)"
+            ))
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: plan schedules the compile-clean gate but gunbc_ci_compile_clean_clamp_overhead_seconds is unavailable (fail-closed): {msg}"
+            ))
+        }
+    };
+    let rate_ms = match run_value(plan_ctx, "gunbc_ci_compile_clean_clamp_rate_per_unit_ms") {
+        Ok(Value::Int(v)) if v >= 0 => v as u128,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: gunbc_ci_compile_clean_clamp_rate_per_unit_ms must be a non-negative Int, got {other:?} (fail-closed)"
+            ))
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: plan schedules the compile-clean gate but gunbc_ci_compile_clean_clamp_rate_per_unit_ms is unavailable (fail-closed): {msg}"
+            ))
+        }
+    };
+    Ok((overhead_s * 1000, rate_ms))
+}
+
+/// Clamp verdict for the compile-clean leg (prelude coverage follow-up (a), first slice —
+/// authority `gunbc_ci_compile_clean_clamp_note`). Runs POST-WALK so it covers both the eager
+/// and the lazy install path. Returns true when the walk must red (OverBudget). Admission
+/// grain only: the compile receipt's ok is untouched (the signed admission/verdict split).
+/// Also writes `target/floor-compile-clean-wall-receipt.txt` (mirrors the batch-wall body):
+/// Unbudgeted when no clamp params were read, WithinBudget/OverBudget otherwise.
+fn enforce_floor_compile_clean_clamp(
+    clamp: Option<(u128, u128)>,
+    tighten_ms: Option<u128>,
+) -> bool {
+    let Some((wall_ms, units, _rows, subject)) =
+        v1_compiler::cli_run::floor_compile_clean_cost_snapshot()
+    else {
+        // Skipped / refused / never-armed legs record no cost — nothing to clamp; the
+        // gate's own receipt consumption already carries those arms loudly.
+        return false;
+    };
+    let mut body = String::new();
+    body.push_str(&format!("compile_clean_wall_ms={wall_ms}\n"));
+    body.push_str(&format!("compile_clean_units={units}\n"));
+    body.push_str(&format!("compile_clean_scope={subject}\n"));
+    let mut over = false;
+    match clamp {
+        None => {
+            body.push_str("compile_clean_verdict=Unbudgeted\n");
+        }
+        Some((overhead_ms, rate_ms)) => {
+            let mut clamp_ms = overhead_ms + units * rate_ms;
+            if let Some(t) = tighten_ms {
+                clamp_ms = clamp_ms.min(t);
+            }
+            let verdict = if wall_ms > clamp_ms {
+                over = true;
+                "OverBudget"
+            } else {
+                "WithinBudget"
+            };
+            body.push_str(&format!("compile_clean_clamp_ms={clamp_ms}\n"));
+            body.push_str(&format!("compile_clean_verdict={verdict}\n"));
+            if over {
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FLOOR-COMPILE-CLEAN-OVER-BUDGET wall_ms={wall_ms} clamp_ms={clamp_ms} units={units} scope={subject}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_compile_clean_clamp; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_compile_clean_clamp_note — a refusal,                                  never a widen)"
+                        ),
+                        sgr::ERROR
+                    )
+                );
+            }
+        }
+    }
+    let path = std::path::Path::new("target").join("floor-compile-clean-wall-receipt.txt");
+    if let Err(e) =
+        std::fs::create_dir_all("target").and_then(|_| std::fs::write(&path, body.as_bytes()))
+    {
+        eprintln!(
+            "claim_executor: failed to write compile-clean wall receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return true;
+    }
+    eprintln!(
+        "[receipt] floor compile-clean wall: wall_ms={wall_ms} units={units} scope={subject} (receipt: {})",
+        path.display()
+    );
+    over
+}
+
+/// Drift comparison for the compile-clean cost rows (pass + per-module typecheck walls)
+/// against `dag/gunbc/compile_clean_cost_basis.tsv` — the counted growth-detector half of
+/// the family margin ruling, sharing the witness row-cost model wholesale: same basis
+/// schema and parser (key = first two columns, here kind/subject), same host-class and
+/// zero-basis refusals, same 2× authority `witness_row_cost_exceeds_basis`, same
+/// three-valued verdict with BasisAbsent counted loudly (an unseeded basis must never
+/// read as no-drift — the #7475 lesson). Runs on every floor walk that produced a cost
+/// snapshot: the leg's row identities are stable (unlike the affected-set-selected
+/// witness rows that keep witness drift on the falsifier cadence).
+fn write_compile_clean_cost_drift_receipt_at(
+    base: &std::path::Path,
+    basis_path: &std::path::Path,
+    source_roots: &[String],
+) -> bool {
+    let Some((wall_ms, _units, module_rows, subject)) =
+        v1_compiler::cli_run::floor_compile_clean_cost_snapshot()
+    else {
+        return true; // no leg, no rows — nothing to compare, nothing to hide
+    };
+    let entry = "dag/gunbc/witness_row_cost.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(v) => v,
+        Err(m) => {
+            eprintln!(
+                "claim_executor: failed to resolve {entry} for compile-clean drift comparator (fail-closed):\n{m}"
+            );
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let mut basis: std::collections::HashMap<(String, String), WitnessRowCostBasisRow> =
+        std::collections::HashMap::new();
+    if let Ok(text) = std::fs::read_to_string(basis_path) {
+        for line in text.lines().skip(1) {
+            match parse_witness_row_cost_basis_line(line) {
+                Ok(None) => {}
+                Ok(Some((key, row))) => {
+                    basis.insert(key, row);
+                }
+                Err(msg) => {
+                    eprintln!("claim_executor: compile-clean basis: {msg}");
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "claim_executor: compile-clean cost basis file missing at {} — every row records BasisAbsent",
+            basis_path.display()
+        );
+    }
+
+    let mut rows: Vec<(String, String, u128)> = vec![("pass".to_string(), subject, wall_ms)];
+    for (module, ms) in &module_rows {
+        rows.push(("module_typecheck".to_string(), module.clone(), *ms as u128));
+    }
+
+    let mut body =
+        String::from("kind\tsubject\tobserved_wall_ms\tbasis_wall_ms\tverdict\trun_ref\n");
+    let mut drift_count = 0usize;
+    let mut basis_absent_count = 0usize;
+    for (kind, subj, observed) in &rows {
+        match basis.get(&(kind.clone(), subj.clone())) {
+            None => {
+                basis_absent_count += 1;
+                body.push_str(&format!("{kind}\t{subj}\t{observed}\t\tBasisAbsent\t\n"));
+            }
+            Some(b) => {
+                let exceeds = match witness_row_cost_exceeds_basis_via_authority(
+                    &ctx,
+                    *observed,
+                    b.eval_ms_basis,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
+                        );
+                        return false;
+                    }
+                };
+                let verdict = if exceeds {
+                    drift_count += 1;
+                    "DriftExceeded"
+                } else {
+                    "WithinBasis"
+                };
+                body.push_str(&format!(
+                    "{kind}\t{subj}\t{observed}\t{}\t{verdict}\t{}\n",
+                    b.eval_ms_basis, b.run_ref
+                ));
+            }
+        }
+    }
+    eprintln!(
+        "[compile-clean-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+    );
+    for line in body.lines() {
+        eprintln!("[compile-clean-cost-drift] {line}");
+    }
+    let path = base.join("floor-compile-clean-cost-drift-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write compile-clean cost drift receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        path.display()
+    );
+    true
+}
+
 /// Runtime per-batch unit count for the derived clamp: a discovery aggregate result contributes
 /// its post-selection witness count (`corpus_witnesses`); every single-claim gate row contributes 1.
 fn batch_runtime_unit_count(results: &[ClaimResult]) -> u128 {
@@ -255,13 +487,81 @@ fn resolve_floor_batch_stop_policy(
     }
 }
 
+/// The residency class a runnable declares (`std.realization_schedule`
+/// `RunnableMemoryClass`). A structural marker, not a quantity — the operator ruling
+/// that retired predicted-peak byte constants stands, and this carries only the
+/// Negligible/Substantial fact co-residence structure keys on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ParsedMemoryClass {
+    Negligible,
+    Substantial,
+}
+
+/// THE WHOLE PROFILE, retained. `std.realization_schedule.RunnableResourceProfile`
+/// declares four facts; the parser used to keep two — `heavy_whole_tree_resolve` (as
+/// `use_walk_memo`) and `execution_mode` — and drop `spawns_host_compiler` and the
+/// memory class at parse time. That was invisible while only the ordinary batch path
+/// consumed profiles, because the ordinary path happens to need exactly the two that
+/// survived. It stops being invisible the moment ONE executor serves both populations:
+/// a shared `run_stage` cannot enforce a stage's declared resource contract against
+/// facts the parse threw away, so the arm-time validator could wall the heavy-resolve
+/// case and nothing else (review 2026-07-30, naming this the run_stage prerequisite).
+///
+/// Retained as a unit rather than as four sibling fields on the runnable so that adding
+/// a fifth profile fact is one edit here, not a fifth thing to remember to thread.
+/// Whether the plan actually DESCRIBED this runnable's resources, or the parse supplied
+/// fail-closed values because no profile was present. Hermetic is genuinely conservative
+/// for effects, but `heavy_whole_tree_resolve: false`, `spawns_host_compiler: false` and
+/// `memory: Negligible` are OPTIMISTIC assertions about work nobody described — and once
+/// a profileless ClaimRef becomes the same SingleClaim variant an explicitly-profiled one
+/// does, the stage validator cannot tell "declared Negligible" from "nothing declared"
+/// (review 2026-07-31). A pure but whole-tree-heavy ClaimRef would enter a stage looking
+/// negligible. Absence is therefore its own state, and stages refuse it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ParsedProfileProvenance {
+    Declared,
+    Undeclared,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct ParsedRunnableProfile {
+    provenance: ParsedProfileProvenance,
+    heavy_whole_tree_resolve: bool,
+    spawns_host_compiler: bool,
+    memory: ParsedMemoryClass,
+    execution_mode: ExecutionMode,
+}
+
+impl ParsedRunnableProfile {
+    /// The fail-closed profile for a runnable that declares none (`ClaimRef`, which
+    /// carries no profile field at all). Mirrors
+    /// `runnable_resource_profile_negligible`: Hermetic envelope, no host compiler, no
+    /// heavy resolve. An undeclared runnable that actually needs live effects refuses
+    /// loudly at the effect boundary rather than silently dispatching them.
+    fn undeclared() -> Self {
+        ParsedRunnableProfile {
+            provenance: ParsedProfileProvenance::Undeclared,
+            heavy_whole_tree_resolve: false,
+            spawns_host_compiler: false,
+            memory: ParsedMemoryClass::Negligible,
+            execution_mode: ExecutionMode::Hermetic,
+        }
+    }
+
+    /// True when this runnable is heavier than the negligible-admission class stages are
+    /// currently sized for — either it spawns a host compiler or it declares substantial
+    /// residency. Read by the stage admissibility validator.
+    fn is_substantial_or_spawns_compiler(&self) -> bool {
+        self.spawns_host_compiler || matches!(self.memory, ParsedMemoryClass::Substantial)
+    }
+}
+
 #[derive(Clone)]
 enum Runnable {
     SingleClaim {
         entry: String,
         function: String,
-        use_walk_memo: bool,
-        execution_mode: ExecutionMode,
+        profile: ParsedRunnableProfile,
     },
     DiscoveryBatch {
         source_roots: Vec<String>,
@@ -415,16 +715,96 @@ fn str_field(
     }
 }
 
+/// Parse the whole `RunnableResourceProfile`. An ABSENT profile field yields the
+/// fail-closed undeclared profile; a profile that EXISTS but omits a field is a
+/// REFUSAL, not a default — the `node_frontier_selection` precedent, so a stale plan
+/// must redeclare its semantics rather than inherit them silently. `execution_mode`
+/// keeps its own parser because its absent-vs-malformed split is already stated there.
+fn parsed_runnable_profile_from_field(
+    profile: Option<&Value>,
+    owner: &str,
+    ctx: &InterpContext,
+) -> Result<ParsedRunnableProfile, String> {
+    let execution_mode = execution_mode_from_profile_field(profile, owner, ctx)?;
+    let fields = match profile {
+        Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+        // No profile at all: every axis takes its fail-closed value. execution_mode
+        // above has already resolved to Hermetic for the same reason.
+        _ => return Ok(ParsedRunnableProfile::undeclared()),
+    };
+    let heavy_whole_tree_resolve = match ctx.field(fields, "heavy_whole_tree_resolve") {
+        Some(Value::Bool(b)) => *b,
+        Some(other) => {
+            return Err(format!(
+                "{owner}.profile.heavy_whole_tree_resolve must be a Bool, got {}",
+                ctx.format_value(other)
+            ))
+        }
+        None => {
+            return Err(format!(
+                "{owner}.profile omits `heavy_whole_tree_resolve` — a profile that exists \
+                 declares every axis; a stale plan redeclares rather than inheriting"
+            ))
+        }
+    };
+    let spawns_host_compiler = match ctx.field(fields, "spawns_host_compiler") {
+        Some(Value::Bool(b)) => *b,
+        Some(other) => {
+            return Err(format!(
+                "{owner}.profile.spawns_host_compiler must be a Bool, got {}",
+                ctx.format_value(other)
+            ))
+        }
+        None => {
+            return Err(format!(
+                "{owner}.profile omits `spawns_host_compiler` — a profile that exists \
+                 declares every axis; a stale plan redeclares rather than inheriting"
+            ))
+        }
+    };
+    let memory = match ctx.field(fields, "memory") {
+        Some(Value::Variant { variant_name, .. })
+            if ctx.sym_eq(*variant_name, "RunnableMemoryNegligible") =>
+        {
+            ParsedMemoryClass::Negligible
+        }
+        Some(Value::Variant { variant_name, .. })
+            if ctx.sym_eq(*variant_name, "RunnableMemorySubstantial") =>
+        {
+            ParsedMemoryClass::Substantial
+        }
+        Some(other) => {
+            return Err(format!(
+                "{owner}.profile.memory must be RunnableMemoryNegligible or \
+                 RunnableMemorySubstantial, got {}",
+                ctx.format_value(other)
+            ))
+        }
+        None => {
+            return Err(format!(
+                "{owner}.profile omits `memory` — a profile that exists declares every \
+                 axis; a stale plan redeclares rather than inheriting"
+            ))
+        }
+    };
+    Ok(ParsedRunnableProfile {
+        provenance: ParsedProfileProvenance::Declared,
+        heavy_whole_tree_resolve,
+        spawns_host_compiler,
+        memory,
+        execution_mode,
+    })
+}
+
 fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, String> {
     match value {
         Value::Record { type_name, fields } if ctx.sym_eq(*type_name, "ClaimRef") => {
             Ok(Runnable::SingleClaim {
                 entry: str_field(fields, "entry", "ClaimRef", ctx)?,
                 function: str_field(fields, "function", "ClaimRef", ctx)?,
-                use_walk_memo: false,
-                // ClaimRef carries no profile: fail-closed envelope (see
-                // execution_mode_from_profile_field).
-                execution_mode: ExecutionMode::Hermetic,
+                // ClaimRef carries no profile at all: fail-closed on every axis
+                // (ParsedRunnableProfile::undeclared).
+                profile: ParsedRunnableProfile::undeclared(),
             })
         }
         Value::Variant {
@@ -434,24 +814,13 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
         } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => {
             let entry = str_field(fields, "entry", "RunnableSingleClaim", ctx)?;
             let function = str_field(fields, "function", "RunnableSingleClaim", ctx)?;
-            let profile = ctx.field(fields, "profile");
-            let use_walk_memo = match profile {
-                Some(Value::Record { fields: pf, .. })
-                | Some(Value::Variant { fields: pf, .. }) => {
-                    matches!(
-                        ctx.field(pf, "heavy_whole_tree_resolve"),
-                        Some(Value::Bool(true))
-                    )
-                }
-                _ => false,
-            };
-            let execution_mode =
-                execution_mode_from_profile_field(profile, "RunnableSingleClaim", ctx)?;
+            let profile_value = ctx.field(fields, "profile");
+            let profile =
+                parsed_runnable_profile_from_field(profile_value, "RunnableSingleClaim", ctx)?;
             Ok(Runnable::SingleClaim {
                 entry,
                 function,
-                use_walk_memo,
-                execution_mode,
+                profile,
             })
         }
         Value::Variant {
@@ -571,8 +940,143 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
+/// The parsed form of `std.realization_schedule.WalkPlan` — the ONE plan shape every
+/// plan function returns (see `walk_plan_note` on the carrier). Two populations with
+/// different ordering laws: `batches` are the ordinary floor under the walk's
+/// `FloorBatchStopPolicy`; `on_success_stages` run only after the ordinary floor
+/// completed AND its receipts wrote, each stage a barrier, always fail-fast between
+/// stages regardless of the ordinary stop policy.
+struct ParsedWalkPlan {
+    batches: Vec<Vec<Runnable>>,
+    finalization: Option<FloorFinalization>,
+    on_success_stages: Vec<Vec<Runnable>>,
+}
+
+/// Parse the plan-carried finalization VALUE (walk_finalization_note). The executor
+/// never selects finalization by a plan function's spelling, and — since the carrier
+/// became `WalkPlan<F>` — it does not need to care which instantiation produced the
+/// value either: ONE parser reads both. An unrecognized shape is a hard error, and that
+/// refusal is load-bearing rather than belt-and-braces: the plan function's declared
+/// return type does NOT bound what its body returns (the typechecker does not check
+/// return position), so this parser and the enrolled value witnesses are what actually
+/// stop a plan from carrying the wrong finalization family.
+///
+/// `Nat` reaches the interpreter as a native `Int` (the numeric tower is grounded), so
+/// a negative value cannot arrive from a well-typed plan; it is still refused rather
+/// than carried into a count comparison it could only lose.
+fn finalization_from_value(
+    v: &Value,
+    ctx: &InterpContext,
+) -> Result<Option<FloorFinalization>, String> {
+    // The two inhabitants have DIFFERENT runtime shapes, and that is a consequence of
+    // the carrier split rather than an accident to paper over: FloorFinalization is a
+    // standalone record in gunbc.ci_materialization (Value::Record), while
+    // NoFinalizationDeclared is the nullary variant of std's NoWalkFinalization sum
+    // (Value::Variant). Both are matched by TYPE NAME — never by "has a field called
+    // declared_resolve_count", which would admit any record that happened to carry one.
+    let floor_from_fields =
+        |fields: &[(v1_compiler::v1_interpreter::Symbol, Value)]| -> Result<i64, String> {
+            match ctx.field(fields, "declared_resolve_count") {
+                Some(Value::Int(n)) if *n >= 0 => Ok(*n),
+                Some(Value::Int(n)) => Err(format!(
+                    "FloorFinalization.declared_resolve_count is Nat, got {n}"
+                )),
+                other => Err(format!(
+                    "FloorFinalization.declared_resolve_count must be a Nat, got {other:?}"
+                )),
+            }
+        };
+    match v {
+        Value::Record {
+            type_name, fields, ..
+        } if ctx.sym_eq(*type_name, "FloorFinalization") => Ok(Some(FloorFinalization {
+            declared_resolve_count: floor_from_fields(fields)?,
+        })),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if ctx.sym_eq(*variant_name, "NoFinalizationDeclared") {
+                Ok(None)
+            } else if ctx.sym_eq(*variant_name, "FloorFinalization") {
+                // Retained because the same declaration can reach the interpreter as a
+                // record OR as a variant depending on how it was constructed; refusing
+                // one spelling of a value the model does admit would be a false wall.
+                Ok(Some(FloorFinalization {
+                    declared_resolve_count: floor_from_fields(fields)?,
+                }))
+            } else {
+                Err(
+                    "unknown variant (expected NoFinalizationDeclared or FloorFinalization)"
+                        .to_string(),
+                )
+            }
+        }
+        other => Err(format!(
+            "must be a NoFinalizationDeclared or FloorFinalization value, got {}",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+/// Strict WalkPlan parser. Deliberately NO fallback from a failed record parse to a
+/// bare-`List<List<Runnable>>` reading: that fallback would let a malformed plan run
+/// with its success stages silently dropped — the silent-widen arm §5 forbids. A plan
+/// with no postconditions declares `on_success_stages: []`; it never omits the field.
+fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPlan, String> {
+    let fields = match plan {
+        Value::Record { fields, .. } => fields,
+        Value::Variant { fields, .. } => fields,
+        other => {
+            return Err(format!(
+                "expected a WalkPlan record {{ batches, finalization, on_success_stages }}, \
+                 got {} — every plan function returns WalkPlan<F> (std.realization_schedule \
+                 walk_plan_note); there is deliberately no bare-list fallback",
+                ctx.format_value(other)
+            ))
+        }
+    };
+    let batches_val = ctx
+        .field(fields, "batches")
+        .ok_or_else(|| "WalkPlan missing field `batches`".to_string())?;
+    let stages_val = ctx.field(fields, "on_success_stages").ok_or_else(|| {
+        "WalkPlan missing field `on_success_stages` — a plan with no postconditions \
+         declares an empty list, never omits the field"
+            .to_string()
+    })?;
+    let finalization_val = ctx.field(fields, "finalization").ok_or_else(|| {
+        "WalkPlan missing field `finalization` — a plan with no finalization declares \
+         NoFinalizationDeclared, never omits the field"
+            .to_string()
+    })?;
+    Ok(ParsedWalkPlan {
+        batches: batches_from_plan(batches_val, ctx)
+            .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
+        finalization: finalization_from_value(finalization_val, ctx)
+            .map_err(|msg| format!("WalkPlan.finalization: {msg}"))?,
+        on_success_stages: batches_from_plan(stages_val, ctx)
+            .map_err(|msg| format!("WalkPlan.on_success_stages: {msg}"))?,
+    })
+}
+
+/// A discovery claim's subject is a scanned corpus, not one declaration. Naming that
+/// explicitly keeps a reader from parsing a blank `entry` as "unknown" when the truth is
+/// "not one entry" — the state-space conflation this field exists to avoid.
+const DISCOVERY_AGGREGATE_ENTRY: &str = "<discovery corpus — many entries>";
+
 struct ClaimResult {
     function: String,
+    /// The entry file this claim was declared in. Carried rather than looked up: a
+    /// function name is NOT a declaration identity (review 2026-07-31), and two fixture or
+    /// production modules may lawfully spell a function the same way. Recovering it by
+    /// searching a stage's runnables for a matching function name would reproduce exactly
+    /// the ambiguity that makes the name insufficient in the first place.
+    ///
+    /// Sites with no single declaring entry say so explicitly rather than passing an empty
+    /// string — a discovery aggregate spans a corpus, and a blank field would read as
+    /// "unknown" when the truth is "not one entry".
+    entry: String,
     ok: bool,
     detail: String,
     /// Wall-clock eval time for this single claim (0 for discovery aggregate).
@@ -588,6 +1092,23 @@ struct ClaimResult {
     corpus_witnesses: usize,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
     witness_row_costs: Vec<(String, String, u128, u128, u128, String, String)>,
+    /// Set only when this row was killed at a budget, carrying the pair that explains it.
+    ///
+    /// `ok`/`detail` are a lossy flattening of `ClaimOutcome`, so without this the batch's
+    /// failure mode has to be recovered by substring-matching `detail` — which is what
+    /// `falsifier_failure_mode` did, and its fallback arm is `WitnessRed`, so a reworded
+    /// message silently demoted a budget refusal to a witness failure. This keeps the fact
+    /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
+    /// not a second authority: nothing sets it except the `TimedOut` arm below.
+    budget_refusal: Option<BudgetRefusal>,
+}
+
+/// The pair explaining a budget kill, kept alongside the flattened `ok`/`detail`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BudgetRefusal {
+    elapsed_ms: u64,
+    budget_ms: u64,
+    kind: BudgetKind,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -643,9 +1164,10 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
             Runnable::SingleClaim {
                 entry,
                 function,
-                use_walk_memo,
-                execution_mode,
+                profile,
             } => {
+                let use_walk_memo = &profile.heavy_whole_tree_resolve;
+                let execution_mode = &profile.execution_mode;
                 let unit_key = (entry.clone(), *execution_mode);
                 if let Some(&idx) = entry_to_unit.get(&unit_key) {
                     if let BatchUnit::SharedClaims {
@@ -694,6 +1216,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
 
 fn claim_result_for_outcome(
     function: String,
+    entry: String,
     outcome: ClaimOutcome,
     wall_nanos: u128,
     resolve_nanos: u128,
@@ -701,6 +1224,7 @@ fn claim_result_for_outcome(
     match outcome {
         ClaimOutcome::Pass => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: true,
             detail: String::new(),
             wall_nanos,
@@ -709,9 +1233,11 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: false,
             detail: "returned Bool(false)".to_string(),
             wall_nanos,
@@ -720,9 +1246,11 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: false,
             detail: format!("returned `{}`, not Bool", got),
             wall_nanos,
@@ -731,9 +1259,11 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
+            entry: entry.clone(),
             ok: false,
             detail: format!("runtime error: {}", message),
             wall_nanos,
@@ -742,6 +1272,38 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
+        },
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => ClaimResult {
+            function,
+            entry: entry.clone(),
+            ok: false,
+            // The detail still names the budget in prose for the human reading a log, but
+            // `budget_refusal` beside it is what classification reads — so the mode no
+            // longer depends on this wording. "ceiling" is deliberate: the row was killed
+            // AT the budget, so elapsed bounds the cost, it does not measure it.
+            detail: format!(
+                "killed at its {} budget: {}ms elapsed > {}ms budget (elapsed is a ceiling, \
+                 not a completed duration)",
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: Some(BudgetRefusal {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            }),
         },
     }
 }
@@ -756,6 +1318,9 @@ fn run_batch_unit(
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
             function,
+            // An unmapped node never bound to a declaration, so there is no entry to
+            // name. Said explicitly rather than blanked.
+            entry: "<unmapped node — no declaring entry>".to_string(),
             ok: false,
             detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
                 .to_string(),
@@ -765,6 +1330,7 @@ fn run_batch_unit(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -837,6 +1403,7 @@ fn run_shared_entry_claims(
                 .iter()
                 .map(|function| ClaimResult {
                     function: function.clone(),
+                    entry: entry.to_string(),
                     ok: false,
                     detail: format!("resolve failed for {}: {}", entry, msg),
                     wall_nanos: 0,
@@ -845,6 +1412,7 @@ fn run_shared_entry_claims(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 })
                 .collect();
         }
@@ -868,7 +1436,7 @@ fn run_shared_entry_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
         })
         .collect()
 }
@@ -896,6 +1464,7 @@ fn run_memo_shared_claims(
                     .iter()
                     .map(|function| ClaimResult {
                         function: function.clone(),
+                        entry: entry.to_string(),
                         ok: false,
                         detail: format!("resolve failed for {}: {}", entry, msg),
                         wall_nanos: 0,
@@ -904,6 +1473,7 @@ fn run_memo_shared_claims(
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
                         witness_row_costs: Vec::new(),
+                        budget_refusal: None,
                     })
                     .collect();
             }
@@ -937,7 +1507,7 @@ fn run_memo_shared_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
         })
         .collect()
 }
@@ -1289,6 +1859,34 @@ fn read_schedule_witness_entry_paths(
     }
 }
 
+/// The first budget kill among this discovery batch's witnesses, if any.
+///
+/// Discovery is the falsifier path — it is where the incident that motivated the typed
+/// `TimedOut` actually lives (`resolution_divergence_silent_pick_gate_keystone_holds` is a
+/// discovery row). A discovery batch flattens N witness outcomes into one `ok`/`detail`
+/// pair, so without lifting the refusal out of `witness_outcomes` the batch would carry
+/// `budget_refusal: None`, miss the structural path in `batch_failure_mode_and_detail`, and
+/// fall back to substring-matching a detail string that no longer contains the old budget
+/// prose — reporting `WitnessRed` for a budget kill on the exact path this change exists to
+/// fix (review 45220).
+fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal> {
+    summary
+        .witness_outcomes
+        .iter()
+        .find_map(|w| match w.outcome {
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => Some(BudgetRefusal {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            }),
+            _ => None,
+        })
+}
+
 fn discovery_claim_result(
     function: String,
     ok: bool,
@@ -1302,6 +1900,7 @@ fn discovery_claim_result(
     match projected {
         Ok(witness_row_costs) => ClaimResult {
             function,
+            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
             ok,
             detail,
             wall_nanos: 0,
@@ -1310,6 +1909,7 @@ fn discovery_claim_result(
             corpus_eval_nanos: summary.total_measured_nanos,
             corpus_witnesses: summary.total,
             witness_row_costs,
+            budget_refusal: discovery_budget_refusal(summary),
         },
         Err(msg) => {
             eprintln!("[witness-row-cost] refused: {msg}");
@@ -1324,6 +1924,7 @@ fn discovery_claim_result(
             };
             ClaimResult {
                 function,
+                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                 ok: false,
                 detail,
                 wall_nanos: 0,
@@ -1332,6 +1933,11 @@ fn discovery_claim_result(
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
                 witness_row_costs: Vec::new(),
+                // Same rule as the detail above: a receipt refusal ADDS a cause, it does not
+                // erase the one already established. A batch that blew its budget and then
+                // failed to project its receipt is still a budget kill, and dropping that
+                // here would hand it back to the substring classifier.
+                budget_refusal: discovery_budget_refusal(summary),
             }
         }
     }
@@ -1412,6 +2018,53 @@ fn run_discovery_batch_node(
                 ms(st.assembly_emit_info),
                 ms(st.reconcile_assembly),
             );
+            // Both halves come from the SAME per-entry spans here (`total_resolve_nanos`
+            // and `total_stage_nanos` are accumulated entry by entry at the same two call
+            // sites), so the discovery corpus can be partitioned against its own parent
+            // rather than the thread-local account, which would see only the pump thread.
+            {
+                let span_rows: Vec<(String, u64, u128, v1_compiler::cli_run::ResolveStageNanos)> = {
+                    let mut by_entry: std::collections::HashMap<
+                        String,
+                        (u64, u128, v1_compiler::cli_run::ResolveStageNanos),
+                    > = std::collections::HashMap::new();
+                    for r in &summary.entry_resolve_receipts {
+                        let slot = by_entry.entry(r.entry.clone()).or_default();
+                        slot.0 += 1;
+                        slot.1 += r.resolve_nanos;
+                        slot.2.accumulate(&r.stage_nanos);
+                    }
+                    let mut rows: Vec<(
+                        String,
+                        u64,
+                        u128,
+                        v1_compiler::cli_run::ResolveStageNanos,
+                    )> = by_entry
+                        .into_iter()
+                        .map(|(k, (n, ns, st))| (k, n, ns, st))
+                        .collect();
+                    rows.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+                    rows
+                };
+                let partition = v1_compiler::cli_run::exclusive_cost_partition_from(
+                    st,
+                    "summed_per_entry_discovery_resolve_span_nanos",
+                    summary.total_resolve_nanos,
+                    summary.entry_resolve_receipts.len() as u64,
+                    0,
+                    span_rows,
+                );
+                eprintln!(
+                    "[cost-partition] {}",
+                    v1_compiler::cli_run::render_exclusive_cost_partition_json(
+                        &partition,
+                        &[(
+                            "witness_eval_measured_nanos",
+                            summary.total_measured_nanos as u128
+                        )],
+                    )
+                );
+            }
             let projected = project_witness_cost_receipt(&source_roots, &summary);
             match &projected {
                 Ok(rows) => {
@@ -1486,6 +2139,7 @@ fn run_discovery_batch_node(
                 );
                 ClaimResult {
                     function: format!("{label} (expect_red still-red OK)"),
+                    entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: true,
                     detail: String::new(),
                     wall_nanos: 0,
@@ -1494,10 +2148,12 @@ fn run_discovery_batch_node(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 }
             } else {
                 ClaimResult {
                     function: label,
+                    entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: false,
                     detail: format!("discovery corpus failed: {msg}"),
                     wall_nanos: 0,
@@ -1506,6 +2162,7 @@ fn run_discovery_batch_node(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 }
             }
         }
@@ -1516,7 +2173,7 @@ fn eval_plan_in_ctx(
     plan_ctx: &InterpContext,
     plan_entry: &str,
     plan_function: &str,
-) -> Result<Vec<Vec<Runnable>>, String> {
+) -> Result<ParsedWalkPlan, String> {
     set_phase(FloorPhase::Gate, &format!("{plan_entry}::{plan_function}"));
     let plan_value = run_value(plan_ctx, plan_function).map_err(|msg| {
         format!(
@@ -1524,20 +2181,33 @@ fn eval_plan_in_ctx(
             plan_entry, plan_function, msg
         )
     })?;
-    let batches = batches_from_plan(&plan_value, plan_ctx)
-        .map_err(|msg| format!("malformed plan value: {}", msg))?;
-    Ok(batches)
+    walk_plan_from_plan(&plan_value, plan_ctx)
+        .map_err(|msg| format!("malformed plan value ({plan_function}): {msg}"))
 }
 
 fn eval_plan(
     source_roots: &[String],
     plan_entry: &str,
     plan_function: &str,
-) -> Result<Vec<Vec<Runnable>>, String> {
+) -> Result<ParsedWalkPlan, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
     eval_plan_in_ctx(&plan_ctx, plan_entry, plan_function)
+}
+
+/// An infrastructure fault the walk observed directly, kept as data.
+///
+/// The walk KNOWS a claim thread panicked — `handle.join()` returned `Err`. That fact used
+/// to survive only as the rendered line `"batch=N infra=thread_panic"`, which
+/// `falsifier_failure_mode` then recovered by matching its own `"infra="` prefix: a typed
+/// fact formatted into prose and grepped back out, the same round-trip the budget refusal
+/// used to make. The panic PAYLOAD is genuinely lost (`Err(_)` discards it), but *that a
+/// thread panicked* is not lost — so the classification reads this, and the rendered line
+/// goes back to being for humans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InfraFault {
+    ClaimThreadPanicked { batch_index: usize },
 }
 
 struct WalkOutcome {
@@ -1545,6 +2215,8 @@ struct WalkOutcome {
     batches_run: usize,
     /// Failed claim details collected across the walk (for typed terminal classification).
     failure_details: Vec<String>,
+    /// Infra faults observed structurally, never re-derived from `failure_details` text.
+    infra_faults: Vec<InfraFault>,
 }
 
 /// Render a floor phase-completion line through the single-authority observation
@@ -1992,6 +2664,14 @@ struct BatchRecord {
     unit_count: u128,
     /// Flattened results from all units in this batch (order: unit by unit).
     results: Vec<ClaimResult>,
+    /// Heartbeat label for this batch — carried so the component receipt names the
+    /// component the same way the progress lines did.
+    label: String,
+    /// The batch's node-frontier selection role, the STRUCTURAL identity the component
+    /// receipt keys on (`gunbc.floor_component_receipt` role note): the affected-set
+    /// cold control is the `predict_only` component, never "batch 1" — indices shift
+    /// when a `gunbc_falsifier_batches` enrollment flag flips.
+    selection_tag: &'static str,
 }
 
 /// Materialization-ladder receipt: how many entry resolves this floor run actually
@@ -2002,6 +2682,298 @@ struct BatchRecord {
 /// Consumed by the ci.yml resolve-receipt gate emitted from dag/gunbc/ci_materialization.dag.
 /// Returns false on a write error — the walk fails closed at the point of
 /// failure rather than relying only on the downstream missing-file gate.
+/// The batch's node-frontier selection role, as the tag vocabulary
+/// `gunbc.floor_component_receipt.floor_component_selection_of_tag` admits.
+/// Two or more DISTINCT selections in one batch returns `"ambiguous"`, which that
+/// function refuses — the role would not identify a unique component, and a silently
+/// picked first one is exactly the kind of guess the receipt exists to remove.
+fn batch_selection_tag(batch: &[Runnable]) -> &'static str {
+    let mut seen: Vec<&'static str> = Vec::new();
+    for r in batch {
+        if let Runnable::DiscoveryBatch {
+            node_frontier_selection,
+            ..
+        } = r
+        {
+            let tag = match node_frontier_selection {
+                NodeFrontierSelectionMode::Off => "off",
+                NodeFrontierSelectionMode::Applied => "applied",
+                NodeFrontierSelectionMode::PredictOnly => "predict_only",
+            };
+            if !seen.contains(&tag) {
+                seen.push(tag);
+            }
+        }
+    }
+    match seen.len() {
+        0 => "off",
+        1 => seen[0],
+        _ => "ambiguous",
+    }
+}
+
+/// One batch's failure MODE and detail — the seed's existing `falsifier_failure_mode`
+/// vocabulary verbatim, with `"none"` for a clean batch. This function deliberately
+/// makes NO judgment: the mode-to-`ObservationOutcome` mapping lives in
+/// `gunbc.floor_component_receipt.floor_component_outcome_of_failure_mode`, under a
+/// witness, and refuses an unmodelled mode. An earlier version of this mapped the mode
+/// to an outcome tag here with a `_ => "failed"` arm, which would have absorbed a newly
+/// added mode into `failed` with no diagnostic — a silent widen (DESIGN §5).
+fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
+    let details: Vec<String> = rec
+        .results
+        .iter()
+        .filter(|r| !r.ok)
+        .map(|r| format!("fn={} detail={}", r.function, r.detail))
+        .collect();
+    if details.is_empty() {
+        return ("none", "no failures recorded".to_string());
+    }
+    let joined = details.join(" | ");
+    // Read the budget refusal off the VALUE, never off the prose. `falsifier_failure_mode`
+    // recovers "BudgetExceeded" by substring-matching the message the seed had already
+    // formatted from the typed pair — one fact in two representations, the second guessed
+    // back from the first — and its fallback arm is "WitnessRed", so rewording an error
+    // silently demoted a budget refusal to a witness failure (two different remedies:
+    // re-basis a dated ceiling vs. fix the witness). A structurally-known refusal wins
+    // outright; the string classifier stays only for the paths that still arrive as
+    // RuntimeError prose (interpreter-raised budgets, infra strings) and dissolves as
+    // those are typed at their own seams.
+    if rec.results.iter().any(|r| r.budget_refusal.is_some()) {
+        return (
+            "BudgetExceeded",
+            joined.chars().take(600).collect::<String>(),
+        );
+    }
+    (
+        falsifier_failure_mode(&details),
+        joined.chars().take(600).collect::<String>(),
+    )
+}
+
+fn batch_witness_count(rec: &BatchRecord) -> u128 {
+    let corpus: u128 = rec.results.iter().map(|r| r.corpus_witnesses as u128).sum();
+    if corpus > 0 {
+        corpus
+    } else {
+        rec.results.len() as u128
+    }
+}
+
+/// Write the floor's per-component receipt, the machine-readable state
+/// `.github/workflows/falsifier-alert.yml` reads instead of inferring one hardcoded
+/// causal story from the overall workflow conclusion. Authority for shape and content
+/// is `gunbc.floor_component_receipt`; this only transports primitives across the seed
+/// boundary, exactly as `render_phase_concluded_line` does for progress lines. Returns
+/// false on any refusal or write failure so the walk fails closed — a receipt that
+/// silently did not appear is the blindness the alert defect was made of.
+fn write_floor_component_receipt_at(
+    base: &std::path::Path,
+    source_roots: &[String],
+    batch_records: &[BatchRecord],
+    total_batches: usize,
+) -> bool {
+    let Some(entry) = source_roots
+        .iter()
+        .map(|r| Path::new(r).join("gunbc/floor_component_receipt.dag"))
+        .find(|p| p.exists())
+        .map(|p| p.to_string_lossy().into_owned())
+    else {
+        eprintln!(
+            "claim_executor: floor component receipt REFUSED — gunbc/floor_component_receipt.dag \
+             not found under any source root {source_roots:?}"
+        );
+        return false;
+    };
+    let (graph, indices) = match resolve_entry_graph_shared(source_roots, &entry) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("claim_executor: floor component receipt REFUSED — resolve {entry}: {e}");
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let run_id = std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string());
+
+    let mut rows: Vec<Value> = Vec::new();
+    for rec in batch_records {
+        let (failure_mode, detail) = batch_failure_mode_and_detail(rec);
+        match floor_component_row_value(
+            &ctx,
+            &run_id,
+            rec.batch_index as i64 + 1,
+            &rec.label,
+            rec.selection_tag,
+            batch_witness_count(rec) as i64,
+            failure_mode,
+            &detail,
+            (rec.wall_nanos / 1_000_000) as i64,
+        ) {
+            Some(v) => rows.push(v),
+            None => return false,
+        }
+    }
+    // Batches the stop policy never reached are Skipped with their cause — a named
+    // state, never an absent row the alert would have to guess about.
+    for bi in batch_records.len()..total_batches {
+        match floor_component_row_value(
+            &ctx,
+            &run_id,
+            bi as i64 + 1,
+            "not reached",
+            "off",
+            0,
+            "not_reached",
+            "batch not reached — an earlier batch failed under the stop policy",
+            0,
+        ) {
+            Some(v) => rows.push(v),
+            None => return false,
+        }
+    }
+
+    let doc = match run_in_context_with_args(
+        &ctx,
+        "floor_component_receipt_document",
+        &[
+            (Some("run_id".to_string()), Value::Str(run_id.clone())),
+            (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
+        ],
+        false,
+    ) {
+        Ok(Value::Str(s)) => s,
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — \
+                 floor_component_receipt_document returned {other:?}, not Str"
+            );
+            return false;
+        }
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — \
+                 floor_component_receipt_document eval: {e}"
+            );
+            return false;
+        }
+    };
+
+    let path = base.join("floor-component-receipt.json");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::write(&path, doc) {
+        Ok(()) => {
+            eprintln!(
+                "[receipt] floor component receipt: {} component(s) ({})",
+                total_batches,
+                path.display()
+            );
+            true
+        }
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — write {}: {e}",
+                path.display()
+            );
+            false
+        }
+    }
+}
+
+/// One `FloorComponentRow`, built by the `.dag` authority from primitives. `None` is a
+/// refusal the caller propagates: the only way the constructor returns absent is an
+/// outcome or selection tag outside its vocabulary, which is a defect in this seed's
+/// mapping and must stop the line rather than drop a component from the receipt.
+#[allow(clippy::too_many_arguments)]
+fn floor_component_row_value(
+    ctx: &InterpContext,
+    run_id: &str,
+    index: i64,
+    label: &str,
+    selection_tag: &str,
+    witnesses: i64,
+    failure_mode: &str,
+    detail: &str,
+    wall_ms: i64,
+) -> Option<Value> {
+    // The duration crosses as the std.measure carrier, not a bare scalar: `millisecond`
+    // is called across the boundary so the constructor stays the single authority. A
+    // `Value::Record { type_name: "Millisecond", .. }` built here would fork it, and a
+    // bare `wall_ms: Nat` parameter would be the flat-scalar unit the standing
+    // unit-modeling hold forbids (`floor_component_receipt_unit_surface_note`).
+    let wall = match run_in_context_with_args(
+        ctx,
+        "millisecond",
+        &[(Some("count".to_string()), Value::Int(wall_ms))],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — millisecond(count: {wall_ms}) \
+                 eval for batch {index}: {e}"
+            );
+            return None;
+        }
+    };
+    let constructor = "floor_component_row_of_failure_mode";
+    let args: Vec<(Option<String>, Value)> = vec![
+        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("index".to_string()), Value::Int(index)),
+        (Some("label".to_string()), Value::Str(label.to_string())),
+        (
+            Some("selection_tag".to_string()),
+            Value::Str(selection_tag.to_string()),
+        ),
+        (Some("witnesses".to_string()), Value::Int(witnesses)),
+        (
+            Some("failure_mode".to_string()),
+            Value::Str(failure_mode.to_string()),
+        ),
+        (Some("detail".to_string()), Value::Str(detail.to_string())),
+        (Some("wall".to_string()), wall),
+    ];
+    let out = run_in_context_with_args(ctx, constructor, &args, false);
+    match out {
+        Ok(Value::Variant {
+            ref variant_name,
+            ref fields,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => fields
+            .iter()
+            .find(|(n, _)| ctx.sym_eq(*n, "value"))
+            .map(|(_, v)| v.clone())
+            .or_else(|| {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     Present row without a `value` field (batch {index})"
+                );
+                None
+            }),
+        Ok(Value::Null) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned \
+                 absent for batch {index}: selection_tag={selection_tag:?} \
+                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
+            );
+            None
+        }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned {other:?} for batch {index}"
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} eval for batch {index}: {e}"
+            );
+            None
+        }
+    }
+}
+
 fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
     write_resolve_receipt_at(std::path::Path::new("target"), batch_records)
 }
@@ -2057,8 +3029,12 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
     true
 }
 
-fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
-    write_gate_warm_cost_receipt_at(std::path::Path::new("target"), batch_records)
+fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
+    write_gate_warm_cost_receipt_at(
+        std::path::Path::new("target"),
+        batch_records,
+        emit_full_tsv_log,
+    )
 }
 
 /// Per-gate warm-cost TSV (D2 placement probe, ci-two-tier-placement-redesign §9.1): one row per
@@ -2073,7 +3049,11 @@ fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
 /// probe reads a WARM run's rows; run cold-then-warm on >=2 hosts and the roster records value +
 /// host basis. Fail-closed on a write error (shares target/ with the gated receipts, so a write
 /// failure here is the same disk fault that fails them); never a verdict term.
-fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+fn write_gate_warm_cost_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    emit_full_tsv_log: bool,
+) -> bool {
     let mut body =
         String::from("gate\tbatch\teval_ms\tresolve_ms\twarm_ms\twitnesses\ts_per_witness_us\n");
     for rec in batch_records {
@@ -2100,11 +3080,13 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
             }
         }
     }
-    // Mirror the TSV into the log (prefixed, grep-collectable) so the placement probe can lift
-    // it from get_job_logs on a fleet run without an artifact-upload step — the file stays for
-    // future .dag consumers (Piece 1 roster fill).
-    for line in body.lines() {
-        eprintln!("[gate-warm-cost] {line}");
+    // The falsifier cadence mirrors the TSV into the log (prefixed, grep-collectable) so the
+    // placement probe can lift it from get_job_logs without an artifact-upload step. Per-PR
+    // runs keep only the summary below; the complete file remains available on every cadence.
+    if emit_full_tsv_log {
+        for line in body.lines() {
+            eprintln!("[gate-warm-cost] {line}");
+        }
     }
     let path = base.join("floor-gate-warm-cost-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
@@ -2127,13 +3109,18 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
 /// requires before per-row placement is admissible. The complete machine-readable record is
 /// the TSV file; rendered streams may project a subset later (W2 ruling: one record, two
 /// projections). Fail-closed on write error.
-fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
-    write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
+fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
+    write_witness_row_cost_receipt_at(
+        std::path::Path::new("target"),
+        batch_records,
+        emit_full_tsv_log,
+    )
 }
 
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
+    emit_full_tsv_log: bool,
 ) -> bool {
     let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
     let mut row_count = 0usize;
@@ -2152,8 +3139,13 @@ fn write_witness_row_cost_receipt_at(
             }
         }
     }
-    for line in body.lines() {
-        eprintln!("[witness-row-cost] {line}");
+    // Task #20's falsifier reproduction protocol consumes these grep-collectable lines. The
+    // per-PR floor keeps the identical TSV file plus the summary below without duplicating the
+    // full body on stderr.
+    if emit_full_tsv_log {
+        for line in body.lines() {
+            eprintln!("[witness-row-cost] {line}");
+        }
     }
     let path = base.join("floor-witness-row-cost-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
@@ -2371,6 +3363,234 @@ fn write_witness_row_cost_drift_receipt_at(
     true
 }
 
+/// ONE stage's own receipt, written before the next stage begins. The aggregate receipt
+/// below cannot substitute for it: written only after the whole sequence, it does not
+/// exist for stage N while stage N+1 is running, and a process death between the two
+/// loses every stage that had in fact completed. Per-stage, the disk state answers
+/// "which stages ran, and what did each cost" at any instant.
+///
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `std.types` `path_segment_is_safe`,
+/// the single law for "safe as ONE path segment"). This mirrors that predicate clause for
+/// clause because the executor is the Rust seed and cannot call the `.dag` surface at the
+/// point it observes the environment. It is a REALIZATION of that authority, not a second
+/// rule: if the two ever disagree, the `.dag` predicate is right and this is the defect.
+/// dissolve-on: the executor's env observation running as a modeled effect, at which point
+/// the branding constructor `gunbc.merge_admission.walk_attempt_id` is the only gate and
+/// this function deletes.
+fn walk_attempt_id_segment_is_safe(raw: &str) -> bool {
+    !(raw.is_empty()
+        || raw == "."
+        || raw == ".."
+        || raw.contains('/')
+        || raw.contains('\\')
+        || raw.contains('\n')
+        || raw.contains('\r')
+        || raw.contains('\0'))
+}
+
+/// Observe the walk-attempt identity, per `gunbc.merge_admission`
+/// `merge_admission_attempt_scope_note`: derived from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT +
+/// GITHUB_JOB on GitHub, or supplied explicitly as GUNBC_WALK_ATTEMPT_ID off it.
+///
+/// REFUSES rather than defaulting. The ruling names the exact failure this prevents: "never
+/// a silent constant like a bare local, which would make every local run one attempt and
+/// the wrong-attempt refusal unreachable off CI". A default here would not be a convenience,
+/// it would disable the identity check everywhere except GitHub — the absorbing fallback in
+/// its purest form, since nothing would ever report that identity had been fabricated.
+///
+/// GUNBC_WALK_ATTEMPT_ID is NOT an escape hatch: it supplies a required input that the
+/// environment did not, and a value that fails the segment law still refuses. There is no
+/// value of it that makes a refusal not fire.
+fn observe_walk_attempt_id() -> Result<String, String> {
+    compose_walk_attempt_id(
+        &std::env::var("GUNBC_WALK_ATTEMPT_ID").unwrap_or_default(),
+        &std::env::var("GITHUB_RUN_ID").unwrap_or_default(),
+        &std::env::var("GITHUB_RUN_ATTEMPT").unwrap_or_default(),
+        &std::env::var("GITHUB_JOB").unwrap_or_default(),
+    )
+}
+
+/// The PURE half, split from the observation above for the same reason
+/// `gunbc.merge_admission_produce` splits them ("Pure composition of the walk-attempt
+/// identity from its parts; the ENV OBSERVATION lives with the wet entry"). It is also what
+/// makes the refusals reachable by a test: process env is global, so a test that set it
+/// would race every other test in the binary, and a rule that can only be exercised by a
+/// racing test is a rule nobody checks.
+fn compose_walk_attempt_id(
+    explicit: &str,
+    run_id: &str,
+    run_attempt: &str,
+    job: &str,
+) -> Result<String, String> {
+    if !explicit.trim().is_empty() {
+        return if walk_attempt_id_segment_is_safe(explicit) {
+            Ok(explicit.to_string())
+        } else {
+            Err(format!(
+                "GUNBC_WALK_ATTEMPT_ID={explicit:?} is not a safe path segment (std.types path_segment_is_safe: non-empty, not `.`/`..`, no `/` `\\` CR LF NUL)"
+            ))
+        };
+    }
+    if run_id.is_empty() || run_attempt.is_empty() || job.is_empty() {
+        return Err(
+            "no walk-attempt identity: GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT/GITHUB_JOB are not all \
+             present and GUNBC_WALK_ATTEMPT_ID was not supplied. On-success stages write \
+             attempt-scoped receipts, so an unidentified walk refuses here rather than \
+             stamping a receipt no consumer could tell apart from another run's"
+                .to_string(),
+        );
+    }
+    let composed = format!("{run_id}-{run_attempt}-{job}");
+    if walk_attempt_id_segment_is_safe(&composed) {
+        Ok(composed)
+    } else {
+        Err(format!(
+            "composed walk-attempt identity {composed:?} is not a safe path segment (std.types path_segment_is_safe)"
+        ))
+    }
+}
+
+fn write_on_success_stage_receipt(
+    stage_index: usize,
+    passed: bool,
+    run: &StageRun,
+    declared_stage_count: usize,
+    attempt_id: &str,
+    plan_site: &str,
+) -> bool {
+    let mut resolves: u64 = 0;
+    for r in &run.results {
+        if r.resolve_nanos > 0 {
+            resolves += 1;
+        }
+    }
+    let mut body = String::new();
+    // IDENTITY FIRST, IN THE PAYLOAD. `gunbc.merge_admission`
+    // `merge_admission_attempt_scope_note`: "the receipt carries the walk-attempt identity
+    // in the PAYLOAD, not just the path ... path identity alone is not enough, because a
+    // misrouted read must fail on the content too". A receipt from another attempt is not
+    // stale-or-fresh, it is NOT THE SUBJECT, and a consumer that reads this file by path
+    // must be able to discover that from the bytes it just read.
+    body.push_str(&format!("attempt_id={attempt_id}\n"));
+    // The plan site completes the subject location: attempt says WHICH RUN, plan site says
+    // WHICH PLAN within it, entry+function on each row say WHICH DECLARATION.
+    body.push_str(&format!("plan_site={plan_site}\n"));
+    body.push_str(&format!("stage_index={}\n", stage_index + 1));
+    body.push_str(&format!("stage_count={declared_stage_count}\n"));
+    body.push_str(&format!(
+        "outcome={}\n",
+        if passed { "passed" } else { "failed" }
+    ));
+    body.push_str(&format!("claims={}\n", run.results.len()));
+    body.push_str(&format!("unit_count={}\n", run.unit_count));
+    body.push_str(&format!("resolves={resolves}\n"));
+    body.push_str(&format!("wall_ms={}\n", run.wall_nanos / 1_000_000));
+    // Recorded rather than omitted so a future DECLARED stage clamp shows up as a value
+    // change here instead of a new field a reader has to notice.
+    body.push_str(&format!(
+        "clamp_ms={}\n",
+        match run.clamp_ms {
+            Some(ms) => ms.to_string(),
+            None => "none".to_string(),
+        }
+    ));
+    // ENTRY BEFORE FUNCTION: the pair is the declaration identity, and the entry is the
+    // discriminating half. A row keyed on function alone cannot tell two modules that
+    // lawfully spell a claim the same way apart (review 2026-07-31).
+    for r in &run.results {
+        body.push_str(&format!(
+            "claim\t{}\t{}\t{}\t{}\n",
+            r.entry,
+            r.function,
+            if r.ok { "passed" } else { "failed" },
+            r.wall_nanos / 1_000_000
+        ));
+    }
+    // Path scoping is HYGIENE, not the wall — the same ruling is explicit that "correctness
+    // never depends on cleaning a shared path". It earns its keep by keeping two attempts on
+    // one reused workspace (self-hosted runners do reuse `target/`) from overwriting each
+    // other's evidence; the payload check above is what makes a misroute detectable.
+    let base = std::path::Path::new("target").join(format!("floor-attempt-{attempt_id}"));
+    let base = base.as_path();
+    let path = base.join(format!("on-success-stage-{}-receipt.tsv", stage_index + 1));
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write on-success stage {} receipt {}: {e} — stage fails closed here",
+            stage_index + 1,
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] on-success stage {}: {} claim(s), {} resolve(s), {}ms (receipt: {})",
+        stage_index + 1,
+        run.results.len(),
+        resolves,
+        run.wall_nanos / 1_000_000,
+        path.display()
+    );
+    true
+}
+
+/// The on-success stage receipt — a SEPARATE receipt class from the ordinary floor
+/// receipts, by lifecycle (ruling 2026-07-30): stages run only after the ordinary
+/// receipts finalized, so their resolves and walls are not part of the population
+/// `ci_floor_declared_resolve_count` measures, and folding them in would re-open the
+/// count-collision this separation exists to close. On a skip (ordinary floor failed)
+/// the receipt still writes, LOUDLY, with skipped=ordinary_floor_failed and zero
+/// stages run — a typed diagnostic, never an admission artifact.
+fn write_on_success_receipt(
+    stage_rows: &[(usize, bool)],
+    resolves_total: u64,
+    skipped_ordinary_failed: bool,
+    declared_stage_count: usize,
+    attempt_id: &str,
+    plan_site: &str,
+) -> bool {
+    let mut body = String::new();
+    // SAME IDENTITY DISCIPLINE AS THE PER-STAGE RECEIPTS, and it was missing here while
+    // the PR describing this work claimed receipt identity was closed (review
+    // 2026-07-31). The aggregate is part of the same evidence population — it answers
+    // "how much of the declared sequence ran", and that answer is worthless unless it is
+    // attributable to an attempt. A reused worktree would otherwise retain a prior
+    // attempt's aggregate when the current floor fails before stages ever start.
+    body.push_str(&format!("attempt_id={attempt_id}\n"));
+    body.push_str(&format!("plan_site={plan_site}\n"));
+    if skipped_ordinary_failed {
+        body.push_str("skipped=ordinary_floor_failed\n");
+    }
+    body.push_str(&format!(
+        "on_success_stages_declared={declared_stage_count}\n"
+    ));
+    body.push_str(&format!("on_success_stages_run={}\n", stage_rows.len()));
+    body.push_str(&format!("on_success_resolves_total={resolves_total}\n"));
+    for (stage_index, passed) in stage_rows {
+        body.push_str(&format!(
+            "on_success_stage_{}={}\n",
+            stage_index + 1,
+            if *passed { "passed" } else { "failed" }
+        ));
+    }
+    let base = std::path::Path::new("target").join(format!("floor-attempt-{attempt_id}"));
+    let base = base.as_path();
+    let path = base.join("on-success-receipt.txt");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write on-success receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] on-success stages: {} of {} run, {} resolve(s) (receipt: {})",
+        stage_rows.len(),
+        declared_stage_count,
+        resolves_total,
+        path.display()
+    );
+    true
+}
+
 fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
@@ -2405,21 +3625,26 @@ fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord
     true
 }
 
-/// The materialization demand receipt at the eval-frame grain: process-wide
-/// ledger totals accumulated by every InterpContext on Drop (threads included),
-/// written once at walk end. Determinism, as measured (2026-07-10, 5 receipts):
-/// unkeyed_calls is corpus-deterministic (identical across schedules, machines,
-/// and debug/release); keyed/distinct/duplicated jitter a few counts because
-/// they sum PER-CTX numbers and witness→ctx grouping is a thread-pool accident
-/// — so counts disclose, they do not pin, until the frame grain is structural.
-/// wasted_ms lines are observational and must never gate. The derived ci.yml
-/// gate fails closed on a missing/malformed file or zeroed keyed_calls (a
-/// floor that evaluated nothing is a lie, so disabling the trace cannot
-/// silently green the gate). Returns false on a write error — the walk fails
-/// closed here, not only at the downstream missing-file gate.
-fn write_materialization_receipt() -> bool {
-    let t = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
-    let body = format!(
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
+/// `gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_note`):
+/// harvests the on-success-stage eval population into
+/// `target/floor-attempt-<attempt_id>/floor-on-success-materialization-receipt.txt`
+/// after `stage_memo` drops; ordinary-floor harvest stays in `write_materialization_receipt`. Receipt shape and
+/// path are modeled in `.dag`; the fs write + process-accumulator boundary are
+/// executor realization until claim_executor self-emits.
+fn materialization_receipt_body(
+    t: &v1_compiler::v1_interpreter::EvalRecomputeTotals,
+    attempt_id: Option<&str>,
+    plan_site: Option<&str>,
+) -> String {
+    let mut body = String::new();
+    if let Some(attempt_id) = attempt_id {
+        body.push_str(&format!("attempt_id={attempt_id}\n"));
+    }
+    if let Some(plan_site) = plan_site {
+        body.push_str(&format!("plan_site={plan_site}\n"));
+    }
+    body.push_str(&format!(
         "keyed_calls={}\nunkeyed_calls={}\noverflow_calls={}\ndistinct_keys={}\nduplicated_keys={}\nsingle_site_keys={}\nmulti_site_keys={}\nwasted_ms_total={}\nwasted_ms_single_site={}\nwasted_ms_multi_site={}\nmemo_hits={}\nmemo_misses={}\nmemo_overflow={}\n",
         t.keyed_calls,
         t.unkeyed_calls,
@@ -2434,17 +3659,40 @@ fn write_materialization_receipt() -> bool {
         t.memo_hits,
         t.memo_misses,
         t.memo_overflow
-    );
-    let path = std::path::Path::new("target/floor-materialization-receipt.txt");
-    if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
+    ));
+    body
+}
+
+/// The materialization demand receipt at the eval-frame grain: process-wide
+/// ledger totals accumulated by every InterpContext on Drop (threads included).
+/// Determinism, as measured (2026-07-10, 5 receipts): unkeyed_calls is
+/// corpus-deterministic (identical across schedules, machines, and debug/release);
+/// keyed/distinct/duplicated jitter a few counts because they sum PER-CTX numbers
+/// and witness→ctx grouping is a thread-pool accident — so counts disclose, they
+/// do not pin, until the frame grain is structural. wasted_ms lines are
+/// observational and must never gate. The derived ci.yml gate fails closed on a
+/// missing/malformed file or zeroed keyed_calls (a floor that evaluated nothing
+/// is a lie, so disabling the trace cannot silently green the gate). Returns
+/// false on a write error — the walk fails closed here, not only at the
+/// downstream missing-file gate.
+fn write_materialization_receipt_at(
+    path: &std::path::Path,
+    population: &str,
+    attempt_id: Option<&str>,
+    plan_site: Option<&str>,
+) -> bool {
+    let t = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+    let body = materialization_receipt_body(&t, attempt_id, plan_site);
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    if let Err(e) = std::fs::create_dir_all(parent).and_then(|_| std::fs::write(path, &body)) {
         eprintln!(
-            "claim_executor: failed to write materialization receipt {}: {e} — walk fails closed here (and the gate downstream fails closed on the missing file)",
+            "claim_executor: failed to write {population} materialization receipt {}: {e} — walk fails closed here",
             path.display()
         );
         return false;
     }
     eprintln!(
-        "[receipt] floor materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} memo_hits={} memo_misses={} (receipt: {})",
+        "[receipt] {population} materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} memo_hits={} memo_misses={} (receipt: {})",
         t.keyed_calls,
         t.unkeyed_calls,
         t.duplicated_keys,
@@ -2456,6 +3704,27 @@ fn write_materialization_receipt() -> bool {
         path.display()
     );
     true
+}
+
+/// Ordinary-floor materialization disclosure (gates via `FloorFinalization`).
+fn write_materialization_receipt() -> bool {
+    write_materialization_receipt_at(
+        std::path::Path::new("target/floor-materialization-receipt.txt"),
+        "floor",
+        None,
+        None,
+    )
+}
+
+/// On-success-stage materialization disclosure — a SEPARATE population from the
+/// ordinary floor receipt, harvested after `stage_memo` drops. Attempt-scoped
+/// like the other on-success receipts so a reused worktree cannot retain a
+/// prior attempt's success population when the current floor fails before stages.
+fn write_on_success_materialization_receipt(attempt_id: &str, plan_site: &str) -> bool {
+    let path = std::path::Path::new("target")
+        .join(format!("floor-attempt-{attempt_id}"))
+        .join("floor-on-success-materialization-receipt.txt");
+    write_materialization_receipt_at(&path, "on-success floor", Some(attempt_id), Some(plan_site))
 }
 
 /// Emit a fractal post-walk tree to stderr when GUNBC_FLOOR_GANTT=1.
@@ -2552,12 +3821,11 @@ fn memo_path_entry_keys(
         .iter()
         .flatten()
         .filter_map(|r| match r {
-            Runnable::SingleClaim {
-                entry,
-                use_walk_memo: true,
-                execution_mode,
-                ..
-            } if !entry.is_empty() => Some((entry.clone(), *execution_mode)),
+            Runnable::SingleClaim { entry, profile, .. }
+                if profile.heavy_whole_tree_resolve && !entry.is_empty() =>
+            {
+                Some((entry.clone(), profile.execution_mode))
+            }
             _ => None,
         })
         .collect()
@@ -2606,21 +3874,548 @@ fn batch_unit_lane(
     }
 }
 
+/// Arm-time admissibility of the success-stage population. Called immediately after
+/// the plan parses, BEFORE the governor arms and before any ordinary batch runs: a
+/// plan-shape error is knowable at parse time, and discovering it after a 20-30 minute
+/// floor would spend the whole walk to report something the parse already had in hand.
+///
+/// Stages admit `RunnableSingleClaim` only. A discovery batch has no defined green-only
+/// meaning, and — until stages execute through the ordinary unit-lane partition — a
+/// Substantial or host-compiler-spawning claim would run outside governor admission and
+/// batch clamps, so those profiles refuse here rather than running through a weaker
+/// route (the executor gap is named on `std.realization_schedule.walk_plan_note`).
+fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<String> {
+    let mut refusals = Vec::new();
+    for (si, stage) in stages.iter().enumerate() {
+        for runnable in stage {
+            match runnable {
+                Runnable::SingleClaim {
+                    entry,
+                    function,
+                    profile,
+                } => {
+                    if entry.trim().is_empty() || function.trim().is_empty() {
+                        refusals.push(format!(
+                            "on-success stage {} declares a claim with an empty entry or function",
+                            si + 1
+                        ));
+                    }
+                    // THE PROFILE WALL. Two distinct classes refuse, for two distinct
+                    // reasons; neither is the reason an earlier draft of this function
+                    // gave, and the correction matters because it changed the code.
+                    //
+                    // (1) HEAVY WHOLE-TREE RESOLVE still refuses, and the claim that
+                    // run_stage made this safe was WRONG (review 2026-07-31). The
+                    // reasoning was "stages now go through the same lane partition, so a
+                    // heavy claim takes the memo lane exactly as it would in a batch."
+                    // The partition is shared; the ADMISSION is not. `batch_unit_lane`
+                    // routes a heavy unit — and every unit sharing its entry — to
+                    // UnitLane::Memo, and the memo lane runs through
+                    // `run_memo_shared_claims`, which takes no governor and acquires no
+                    // AdmittedSlot. Only `run_batch_unit`, on the spawned lane, does
+                    // (the single acquire_blocking site in this file). So a heavy stage
+                    // claim would resolve and evaluate on the main thread, unadmitted,
+                    // while spawned units hold slots — exactly the unbounded stacking
+                    // the governor exists to prevent.
+                    //
+                    // Wrapping the memo call in an ordinary slot would NOT be the fix
+                    // either: the slot would release while the resolved InterpContext
+                    // stays resident in `stage_memo` for every later stage.
+                    //
+                    // AND THE OBVIOUS REPAIR — hold an AdmittedSlot for the memoized
+                    // context's lifetime, released on drop — DEADLOCKS. An earlier draft
+                    // of this comment named exactly that as "the real fix", which
+                    // understated it in the same direction as the mistake above
+                    // (operator review 2026-07-31, probed against `decide_admission`).
+                    // `AdmittedSlot` is a CONCURRENCY slot, not a memory reservation:
+                    // it increments `active`, which is compared against `target_width`.
+                    // A resident hold pins `active >= 1` forever, so the progress floor
+                    // (`active == 0` admits unconditionally) never fires and every later
+                    // admission returns Hold(WindowFull). `target_width` only grows in
+                    // `note_completion`, which needs a completion, which needs an
+                    // admission — nothing breaks the cycle. This is not a corner case:
+                    // the runner starts at `target_width=1`. A resident hold that also
+                    // skips `note_first_cost_paid` leaves `undigested > 0`, which holds
+                    // admissions even after width grows.
+                    //
+                    // So the dissolve-on is NOT "a lease" as a standalone change. It is
+                    // SPLITTING the governor's single `active` counter into two
+                    // resources — an execution slot (paced, width-bounded) and a
+                    // resident memory reservation (counted against the memory budget,
+                    // NOT against width) — after which a lease is expressible. That
+                    // touches the path standing between the floor and the exit-137 OOM
+                    // kills, so it is its own work with its own receipt, not a step
+                    // inside a feature lane. Until then this refuses.
+                    // (0) NO PROFILE AT ALL refuses first: the values below would be the
+                    // parse's fail-closed fillers, not the plan's statements, and reading
+                    // a wall off invented facts is worse than having no wall.
+                    if matches!(profile.provenance, ParsedProfileProvenance::Undeclared) {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} carries no resource profile — \
+                             stages admit only claims whose resources the plan declared; \
+                             an absent profile is not a negligible one",
+                            si + 1,
+                            function
+                        ));
+                    }
+                    if profile.heavy_whole_tree_resolve {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} declares a heavy whole-tree resolve — \
+                             the memo lane it would take runs unadmitted (no AdmittedSlot), so \
+                             it refuses rather than resolving a whole tree outside governor \
+                             admission; dissolves on a resident lease tied to the memoized \
+                             context's lifetime",
+                            si + 1,
+                            function
+                        ));
+                    }
+                    // (2) HOST-COMPILER OR SUBSTANTIAL RESIDENCY refuses because stages
+                    // carry no declared cost clamp — `gunbc_ci_floor_batch_clamp_params`
+                    // indexes the ORDINARY batches — so such a claim would run unclamped
+                    // until the outer workflow timeout. This wall is newly expressible:
+                    // the parse used to discard both facts.
+                    if profile.is_substantial_or_spawns_compiler() {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} declares spawns_host_compiler={} \
+                             memory={:?} — stages carry no declared cost clamp, so a \
+                             host-compiler or substantial-residency claim refuses rather \
+                             than running unclamped",
+                            si + 1,
+                            function,
+                            profile.spawns_host_compiler,
+                            profile.memory
+                        ));
+                    }
+                }
+                Runnable::DiscoveryBatch { .. } => refusals.push(format!(
+                    "on-success stage {} contains a RunnableDiscoveryBatch — stages admit single \
+                     claims only; a discovery batch has no defined green-only meaning",
+                    si + 1
+                )),
+            }
+        }
+    }
+    refusals
+}
+
+/// The floor plan's finalization laws, carried in the PARSED PLAN VALUE
+/// (`WalkPlan.finalization`, authority `gunbc.ci_materialization.FloorFinalization`)
+/// and enforced INSIDE the walk as ordinary-floor finalization (ruling 2026-07-30).
+/// These were two GitHub shell steps — the resolve-receipt gate and the
+/// materialization-receipt gate — which ran AFTER the floor step, so a receipt-law
+/// violation could red the job after admission had already stamped. In here, a
+/// violation is an ordinary-floor failure and blocks every on-success stage.
+///
+/// BOTH laws are intrinsic: inhabiting `FloorFinalization` obligates the resolve count
+/// AND materialization disclosure. The disclosure Bool that used to sit beside the
+/// count is gone — it was a writable bypass whose `false` arm skipped the
+/// materialization check while the success line still reported that disclosure held
+/// (review 2026-07-30). A plan DECLARES that it carries these laws by returning
+/// `WalkPlan<FloorFinalization>` where regen/falsifier/plan-artifact return
+/// `WalkPlan<NoWalkFinalization>` — a declaration, not a guarantee: the typechecker
+/// does not check return position, so the value is what decides, and the enrolled
+/// witnesses in v2.test.claim.ci_floor_plan_witness are what check the value.
+struct FloorFinalization {
+    declared_resolve_count: i64,
+}
+
+/// Validate the floor's finalization laws against the walk's own records. Returns the
+/// list of typed refusals (empty = contract satisfied). The receipt FILES keep being
+/// written by the walk — they are observability — this validates the laws the deleted
+/// shell steps used to re-derive from those files.
+///
+/// `plan_site` is the `<entry>::<function>` the value was read from, so a refusal
+/// locates the field it actually consumed rather than always pointing at the
+/// production authority — the fixture and any future plan declare their own counts.
+fn validate_floor_finalization(
+    fin: &FloorFinalization,
+    plan_site: &str,
+    batch_records: &[BatchRecord],
+) -> Vec<String> {
+    let mut refusals = Vec::new();
+    // Law 1 — the declared cold-resolve count (gunbc.ci_materialization
+    // ci_floor_resolve_receipt_note): resolves_total is recomputed from the SAME rule
+    // write_resolve_receipt_at uses, never re-parsed from the file we just wrote.
+    let mut resolves_total: u64 = 0;
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_nanos > 0 {
+                resolves_total += 1;
+            }
+        }
+    }
+    if resolves_total as i64 != fin.declared_resolve_count {
+        refusals.push(format!(
+            "floor resolve count {} differs from declared {}: duplicate-computation debt \
+             changed - update the count this plan declared, at \
+             {plan_site} WalkPlan.finalization.declared_resolve_count \
+             (the production floor projects it from gunbc.ci_materialization \
+             ci_floor_declared_resolve_count; a fixture or another plan declares its own)",
+            resolves_total, fin.declared_resolve_count
+        ));
+    }
+    // Law 2 — materialization disclosure (ci_floor_materialization_receipt_note):
+    // receipt exists, keyed/unkeyed/duplicated parse, keyed nonzero. Read from the
+    // file because the accumulator is process-global and already harvested into it.
+    // Unconditional: disclosure is intrinsic to FloorFinalization, so there is no
+    // early return that could skip this law while the caller reports it held.
+    let path = std::path::Path::new("target/floor-materialization-receipt.txt");
+    match std::fs::read_to_string(path) {
+        Err(_) => refusals.push("floor materialization receipt missing - fail closed".to_string()),
+        Ok(body) => {
+            let field = |key: &str| -> Option<u64> {
+                body.lines()
+                    .find_map(|l| l.strip_prefix(key))
+                    .and_then(|v| v.trim().parse::<u64>().ok())
+            };
+            match (
+                field("keyed_calls="),
+                field("unkeyed_calls="),
+                field("duplicated_keys="),
+            ) {
+                (Some(k), Some(_u), Some(_d)) => {
+                    if k == 0 {
+                        refusals.push(
+                            "floor evaluated zero keyed calls - ledger disabled or floor empty - \
+                             fail closed"
+                                .to_string(),
+                        );
+                    }
+                }
+                _ => refusals
+                    .push("floor materialization receipt malformed - fail closed".to_string()),
+            }
+        }
+    }
+    refusals
+}
+
+/// THE CONCURRENCY PRIMITIVE, extracted so the contract is reachable by a test.
+///
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `std.realization_schedule`
+/// `walk_plan_run_stage_claim_executor_seed_deferral`). This function, `join_units`,
+/// `run_stage`, `batch_unit_lane`, the stage receipt writers, and the walk-attempt
+/// observation are all covered by that row: the executor is the seed that runs before any
+/// `.dag` walk exists, so the code deciding how a walk executes cannot itself be a walk.
+/// dissolve-on: executor scheduling expressed as a `.dag` walk over `WalkPlan` (lane
+/// selection, admission, receipt emission as modeled effects), gated behind the
+/// witness-realization lane.
+///
+/// THE CONTRACT, stated at the strength `walk_plan_note` actually carries: DISTINCT
+/// SPAWNED resolve groups MAY overlap, subject to governor admission. Same-entry groups,
+/// memo-lane units, main-thread units, and width-constrained spawned units may execute
+/// serially, and NO SIBLING ORDER IS GUARANTEED. An earlier version of this comment said
+/// members "run concurrently" — the stronger promise the carrier retracted (review
+/// 2026-07-31), and one the executor would violate every time grouping, memo placement,
+/// or a width-1 governor legitimately withdrew overlap.
+///
+/// The absence of a guaranteed order is what stage occupants actually depend on, and it
+/// is why anything sequential must be one claim whose body sequences its steps, or two
+/// singleton stages. While the spawn and the join were inlined in the batch loop, even
+/// that weaker property was checkable only by reading the code, and the first attempt at
+/// success stages promised the stronger one while executing serially. Split out, the two
+/// halves each get a latch control: spawned peers really can overlap, and the join really
+/// does wait for all of them.
+///
+/// The join half is what makes the stage BARRIER real. Stage N+1 cannot begin early
+/// because `run_walk`'s stage loop is sequential by construction — each iteration takes
+/// `&mut stage_memo`, so two iterations cannot overlap — which reduces "stage N+1 waits
+/// for every stage-N member" to "this join returns only after every member completed".
+fn spawn_units(
+    work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>>,
+) -> Vec<thread::JoinHandle<Vec<ClaimResult>>> {
+    work.into_iter()
+        .map(|w| thread::spawn(move || w()))
+        .collect()
+}
+
+/// Join every spawned unit, returning its results and whether any thread panicked. A
+/// panic is collected rather than propagated so the caller can still close its
+/// host-effect group and report the fault as infra rather than as a claim verdict.
+fn join_units(handles: Vec<thread::JoinHandle<Vec<ClaimResult>>>) -> (Vec<ClaimResult>, bool) {
+    let mut results = Vec::new();
+    let mut panicked = false;
+    for handle in handles {
+        match handle.join() {
+            Ok(unit_results) => results.extend(unit_results),
+            Err(_) => panicked = true,
+        }
+    }
+    (results, panicked)
+}
+
+/// Which of the walk's two populations a stage belongs to. It selects LABELS only —
+/// the execution path below is byte-identical for both, which is the entire point of
+/// the extraction (`std.realization_schedule.walk_plan_note`). Ordering and failure
+/// policy live in the callers, where the two populations genuinely differ.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StagePopulation {
+    OrdinaryBatch,
+    OnSuccessStage,
+}
+
+impl StagePopulation {
+    /// Prose label used in progress lines and PASS/FAIL prefixes.
+    fn label(self) -> &'static str {
+        match self {
+            StagePopulation::OrdinaryBatch => "batch",
+            StagePopulation::OnSuccessStage => "on-success stage",
+        }
+    }
+
+    /// Hyphenated form for phase names, which carry no spaces.
+    fn phase_slug(self) -> &'static str {
+        match self {
+            StagePopulation::OrdinaryBatch => "batch",
+            StagePopulation::OnSuccessStage => "on-success-stage",
+        }
+    }
+}
+
+/// What one stage produced. Verdicts are deliberately NOT classified here: the caller
+/// decides what a failure means, because that is precisely where the two populations
+/// differ (`FloorBatchStopPolicy` for the ordinary floor, unconditional fail-fast
+/// between stages).
+struct StageRun {
+    results: Vec<ClaimResult>,
+    /// The heartbeat label this stage armed the feed with. Returned rather than
+    /// recomputed by the caller: one derivation, one call.
+    label: String,
+    wall_nanos: u128,
+    /// Runtime unit count the clamp used (discovery witnesses + gate rows).
+    unit_count: u128,
+    /// The derived clamp actually computed, or None when the plan declares no clamp
+    /// params for this population.
+    clamp_ms: Option<u128>,
+    /// A worker thread panicked — an infra fault, distinct from a claim verdict.
+    thread_panicked: bool,
+    /// The stage exceeded its derived clamp. Already printed as a typed refusal.
+    over_budget: bool,
+}
+
+/// ONE stage of a walk, and the SINGLE execution path both populations share.
+///
+/// Groups the runnables into resolve-units, partitions them across the unit lanes
+/// (`batch_unit_lane`), spawns the eligible ones — where `run_batch_unit` takes a
+/// governor slot for the unit's lifetime — runs the memo and main-thread lanes on this
+/// thread while the spawned ones work, joins everything, and applies the derived cost
+/// clamp. It returns only once every member has finished, so the barrier is structural
+/// rather than a convention each caller has to remember.
+///
+/// It deliberately does NOT print PASS/FAIL, classify failures, or write receipts.
+/// Folding either population's ordering law in here would put one population's policy
+/// inside the other's executor, which is the fork this extraction exists to close.
+#[allow(clippy::too_many_arguments)]
+fn run_stage(
+    source_roots: &[String],
+    stage: &[Runnable],
+    population: StagePopulation,
+    index: usize,
+    feed_index: u64,
+    memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
+    governor: &Arc<MemoryGovernor>,
+    fast_lane_eval_budget_ms: Option<u64>,
+    falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
+    clamp_params: Option<(u128, u128)>,
+    budget_tighten_ms: Option<u128>,
+) -> StageRun {
+    let units = group_batch_units(stage);
+    // Arm the observation heartbeat feed at stage-enter: discovery leaves entry_total
+    // pending (filled when the roster's entry-group count is known); SingleClaim arms
+    // immediately with the claim count. Never a fabricated 0-of-0.
+    let label = batch_heartbeat_label(stage);
+    let entry_total = if stage
+        .iter()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+    {
+        None
+    } else if stage.is_empty() {
+        None
+    } else {
+        Some(stage.len() as u64)
+    };
+    heartbeat_feed_enter_batch(feed_index, &label, entry_total);
+    eprintln!(
+        "claim_executor: {} {} — {} node(s) in {} resolve-group(s), governor target_width={}",
+        population.label(),
+        index + 1,
+        stage.len(),
+        units.len(),
+        governor.current_target_width()
+    );
+    let stage_start = Instant::now();
+    // Partition units into lanes (decision table: `batch_unit_lane`): memo and Discovery
+    // units stay on the main thread; others spawn.
+    let mut memo_units: Vec<BatchUnit> = Vec::new();
+    let mut main_thread_units: Vec<BatchUnit> = Vec::new();
+    let mut thread_units: Vec<BatchUnit> = Vec::new();
+    for unit in units {
+        match batch_unit_lane(&unit, memo, memo_path_entries) {
+            UnitLane::Memo => memo_units.push(unit),
+            UnitLane::MainThread => main_thread_units.push(unit),
+            UnitLane::Spawned => thread_units.push(unit),
+        }
+    }
+    // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/`[shell]`
+    // trace lines stream to stderr from the worker threads INSIDE the group, while the
+    // scannable PASS/FAIL summary is deferred to AFTER the group closes (the caller
+    // prints it) so it stays outside the collapsed section. GitHub Actions renders this
+    // as a collapsible `::group::`; a plain terminal as a header. Threads cannot
+    // interleave group markers (one open/close on the main thread spans the whole
+    // stage), so it is sound under parallel unit threads.
+    let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
+    if grouped {
+        set_phase(
+            FloorPhase::HostEffect,
+            &format!("{}-{}-host-effects", population.phase_slug(), index + 1),
+        );
+        v1_compiler::v1_interpreter::group_begin(&format!(
+            "{} {} host-effects",
+            population.label(),
+            index + 1
+        ));
+    }
+    let spawned: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = thread_units
+        .into_iter()
+        .map(|unit| {
+            let roots = source_roots.to_vec();
+            let unit_governor = governor.clone();
+            let wet_budgets = falsifier_self_host_wet_budgets.clone();
+            let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
+                run_batch_unit(
+                    roots,
+                    unit,
+                    unit_governor,
+                    fast_lane_eval_budget_ms,
+                    wet_budgets,
+                )
+            });
+            boxed
+        })
+        .collect();
+    let handles = spawn_units(spawned);
+    // Run memo units on the main thread while spawned threads are working.
+    let mut memo_results: Vec<ClaimResult> = Vec::new();
+    for unit in memo_units {
+        if let BatchUnit::SharedClaims {
+            entry,
+            functions,
+            execution_mode,
+            ..
+        } = unit
+        {
+            let results =
+                run_memo_shared_claims(source_roots, &entry, &functions, execution_mode, memo);
+            memo_results.extend(results);
+        }
+    }
+    // Discovery pumps on the main thread (see the partition above): the pump's
+    // `process_shared_index` is this thread's — the one the eager compile-clean receipt
+    // install warmed — so the corpus reads the gate's typed store.
+    for unit in main_thread_units {
+        memo_results.extend(run_batch_unit(
+            source_roots.to_vec(),
+            unit,
+            governor.clone(),
+            fast_lane_eval_budget_ms,
+            falsifier_self_host_wet_budgets.clone(),
+        ));
+    }
+    // Collect all results before returning — the caller's PASS/FAIL prints must land
+    // after `group_end`, and a thread panic still has to close the group.
+    let mut results: Vec<ClaimResult> = memo_results;
+    let (joined, thread_panicked) = join_units(handles);
+    results.extend(joined);
+    if grouped {
+        v1_compiler::v1_interpreter::group_end();
+    }
+    // SingleClaim path: discovery advances the feed via `index_schedule_entry_completed`;
+    // gate stages have no schedule retention, so each claim result is the per-entry tick.
+    if !stage
+        .iter()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
+    {
+        for _ in &results {
+            heartbeat_feed_entry_completed();
+        }
+    }
+    let wall_nanos = stage_start.elapsed().as_nanos();
+    // THE COST WALL (Piece 3 derived clamp): the per-stage clamp is overhead + runtime
+    // unit count * rate, computed HERE where the affected-set-selected count is known
+    // (the schedule holds one opaque discovery runnable; the count is runtime).
+    // Over-clamp is a typed, located refusal that reds the walk; it never widens (no
+    // rerun, no scope change, no cap raise). Witness verdicts inside the stage stand as
+    // evaluated — the clamp is an admission/scheduling fact, not a verdict term. A
+    // population whose plan declares no clamp params gets None and is not clamped;
+    // nothing is fabricated for it.
+    let unit_count = batch_runtime_unit_count(&results);
+    let clamp_ms: Option<u128> = clamp_params.map(|(overhead_ms, rate_ms)| {
+        let mut clamp = overhead_ms + unit_count * rate_ms;
+        if let Some(t) = budget_tighten_ms {
+            clamp = clamp.min(t);
+        }
+        clamp
+    });
+    let mut over_budget = false;
+    if let Some(clamp) = clamp_ms {
+        let wall_ms = wall_nanos / 1_000_000;
+        if wall_ms > clamp {
+            over_budget = true;
+            println!(
+                "{}",
+                paint(
+                    &format!(
+                        "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                        population.phase_slug(),
+                        index + 1,
+                        wall_ms,
+                        clamp,
+                        unit_count,
+                        index
+                    ),
+                    sgr::ERROR
+                )
+            );
+        }
+    }
+    StageRun {
+        results,
+        label,
+        wall_nanos,
+        unit_count,
+        clamp_ms,
+        thread_panicked,
+        over_budget,
+    }
+}
+
 fn run_walk(
     source_roots: &[String],
+    plan_site: &str,
     batches: &[Vec<Runnable>],
+    on_success_stages: &[Vec<Runnable>],
+    floor_finalization: Option<&FloorFinalization>,
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
     batch_clamp_params: Option<&[(u128, u128)]>,
     budget_tighten_ms: Option<u128>,
-    emit_witness_row_cost_drift: bool,
+    falsifier_cadence: bool,
     witness_row_cost_basis_path: &Path,
+    // The observed walk-attempt identity. `None` is legitimate ONLY for a plan with no
+    // on-success stages: nothing writes an attempt-scoped receipt, so nothing needs the
+    // identity. With stages present the arm-time check has already refused an unidentified
+    // walk, so `None` here is unreachable — and the stage loop still treats it as a typed
+    // refusal rather than unwrapping, because "unreachable by an invariant elsewhere" is
+    // the assumption that stops being true when someone adds a second caller.
+    walk_attempt_id: Option<&str>,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
     let mut failure_details: Vec<String> = Vec::new();
+    let mut infra_faults: Vec<InfraFault> = Vec::new();
     let walk_start = Instant::now();
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
@@ -2636,129 +4431,29 @@ fn run_walk(
     let memo_path_entries = memo_path_entry_keys(batches);
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
-        let units = group_batch_units(batch);
-        // Arm the observation heartbeat feed at batch-enter: discovery leaves
-        // entry_total pending (filled when the roster's entry-group count is known);
-        // SingleClaim arms immediately with the claim count. Never a fabricated 0-of-0.
-        let label = batch_heartbeat_label(batch);
-        let entry_total = if batch
-            .iter()
-            .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
-        {
-            None
-        } else if batch.is_empty() {
-            None
-        } else {
-            Some(batch.len() as u64)
-        };
-        heartbeat_feed_enter_batch(bi as u64, &label, entry_total);
-        eprintln!(
-            "claim_executor: batch {} — {} node(s) in {} resolve-group(s), governor target_width={}",
-            bi + 1,
-            batch.len(),
-            units.len(),
-            governor.current_target_width()
+        let StageRun {
+            results: batch_results,
+            label,
+            wall_nanos: batch_wall_nanos,
+            unit_count: batch_unit_count,
+            clamp_ms: batch_clamp_ms,
+            thread_panicked,
+            over_budget,
+        } = run_stage(
+            source_roots,
+            batch,
+            StagePopulation::OrdinaryBatch,
+            bi,
+            bi as u64,
+            &mut walk_memo,
+            &memo_path_entries,
+            governor,
+            fast_lane_eval_budget_ms,
+            &falsifier_self_host_wet_budgets,
+            batch_clamp_params.and_then(|p| p.get(bi)).copied(),
+            budget_tighten_ms,
         );
-        let batch_start = Instant::now();
-        // Partition units into lanes (decision table: `batch_unit_lane`): memo and
-        // Discovery units stay on the main thread; others spawn.
-        let mut memo_units: Vec<BatchUnit> = Vec::new();
-        let mut main_thread_units: Vec<BatchUnit> = Vec::new();
-        let mut thread_units: Vec<BatchUnit> = Vec::new();
-        for unit in units {
-            match batch_unit_lane(&unit, &walk_memo, &memo_path_entries) {
-                UnitLane::Memo => memo_units.push(unit),
-                UnitLane::MainThread => main_thread_units.push(unit),
-                UnitLane::Spawned => thread_units.push(unit),
-            }
-        }
-        // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/
-        // `[shell]` trace lines stream to stderr from the worker threads INSIDE the
-        // group, while the scannable PASS/FAIL summary is deferred to AFTER the group
-        // closes (below) so it stays outside the collapsed section. GitHub Actions
-        // renders this as a collapsible `::group::`; a plain terminal as a header.
-        // Threads can't interleave group markers (one open/close on the main thread
-        // spans the whole batch), so it is sound under parallel unit threads.
-        let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
-        if grouped {
-            set_phase(
-                FloorPhase::HostEffect,
-                &format!("batch-{}-host-effects", bi + 1),
-            );
-            v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
-        }
-        let handles: Vec<_> = thread_units
-            .into_iter()
-            .map(|unit| {
-                let roots = source_roots.to_vec();
-                let unit_governor = governor.clone();
-                let wet_budgets = falsifier_self_host_wet_budgets.clone();
-                thread::spawn(move || {
-                    run_batch_unit(
-                        roots,
-                        unit,
-                        unit_governor,
-                        fast_lane_eval_budget_ms,
-                        wet_budgets,
-                    )
-                })
-            })
-            .collect();
-        // Run memo units on the main thread while spawned threads are working.
-        let mut memo_results: Vec<ClaimResult> = Vec::new();
-        for unit in memo_units {
-            if let BatchUnit::SharedClaims {
-                entry,
-                functions,
-                execution_mode,
-                ..
-            } = unit
-            {
-                let results = run_memo_shared_claims(
-                    source_roots,
-                    &entry,
-                    &functions,
-                    execution_mode,
-                    &mut walk_memo,
-                );
-                memo_results.extend(results);
-            }
-        }
-        // Discovery pumps on the main thread (see the partition above): the pump's
-        // `process_shared_index` is this thread's — the one the eager compile-clean
-        // receipt install warmed — so the corpus reads the gate's typed store.
-        for unit in main_thread_units {
-            memo_results.extend(run_batch_unit(
-                source_roots.to_vec(),
-                unit,
-                governor.clone(),
-                fast_lane_eval_budget_ms,
-                falsifier_self_host_wet_budgets.clone(),
-            ));
-        }
-        // Collect all results before printing any PASS/FAIL — the prints must land
-        // after `group_end`, and a thread panic still has to close the group.
-        let mut batch_results: Vec<ClaimResult> = memo_results;
-        let mut thread_panicked = false;
-        for handle in handles {
-            match handle.join() {
-                Ok(results) => batch_results.extend(results),
-                Err(_) => thread_panicked = true,
-            }
-        }
-        if grouped {
-            v1_compiler::v1_interpreter::group_end();
-        }
         for result in &batch_results {
-            // SingleClaim path: discovery advances the feed via
-            // `index_schedule_entry_completed`; gate batches have no schedule
-            // retention, so each claim result is the per-entry completed tick.
-            if !batch
-                .iter()
-                .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
-            {
-                heartbeat_feed_entry_completed();
-            }
             if result.ok {
                 println!(
                     "{}",
@@ -2798,45 +4493,15 @@ fn run_walk(
                 )
             );
             failure_details.push(format!("batch={} infra=thread_panic", bi + 1));
+            infra_faults.push(InfraFault::ClaimThreadPanicked {
+                batch_index: bi + 1,
+            });
             any_failed = true;
         }
-        let batch_wall_nanos = batch_start.elapsed().as_nanos();
-        // THE COST WALL (Piece 3 derived clamp): the per-batch clamp is overhead + runtime unit
-        // count * rate, computed HERE where the affected-set-selected count is known (the schedule
-        // holds one opaque discovery runnable; the count is runtime). Over-clamp is a typed, located
-        // refusal that reds the walk; it never widens (no rerun, no scope change, no cap raise).
-        // Witness verdicts inside the batch stand as evaluated (the clamp is an admission/scheduling
-        // fact, not a verdict term — carrier note has the ruling split).
-        let batch_unit_count = batch_runtime_unit_count(&batch_results);
-        let batch_clamp_ms: Option<u128> =
-            batch_clamp_params
-                .and_then(|p| p.get(bi))
-                .map(|&(overhead_ms, rate_ms)| {
-                    let mut clamp = overhead_ms + batch_unit_count * rate_ms;
-                    if let Some(t) = budget_tighten_ms {
-                        clamp = clamp.min(t);
-                    }
-                    clamp
-                });
-        if let Some(clamp_ms) = batch_clamp_ms {
-            let wall_ms = batch_wall_nanos / 1_000_000;
-            if wall_ms > clamp_ms {
-                println!(
-                    "{}",
-                    paint(
-                        &format!(
-                            "✗ FLOOR-BATCH-OVER-BUDGET batch={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
-                            bi + 1,
-                            wall_ms,
-                            clamp_ms,
-                            batch_unit_count,
-                            bi
-                        ),
-                        sgr::ERROR
-                    )
-                );
-                any_failed = true;
-            }
+        // The clamp refusal itself printed inside `run_stage`; the verdict term belongs
+        // to the ordinary floor, so it is applied here where that failure state lives.
+        if over_budget {
+            any_failed = true;
         }
         batch_records.push(BatchRecord {
             batch_index: bi,
@@ -2844,20 +4509,44 @@ fn run_walk(
             clamp_ms: batch_clamp_ms,
             unit_count: batch_unit_count,
             results: batch_results,
+            label: label.clone(),
+            selection_tag: batch_selection_tag(batch),
         });
+        // LOCAL, not aggregate. This used to test the cumulative `any_failed`, so under
+        // FullLedger every batch after the first failure was announced as "batch N had
+        // failures" whether or not it had any — the same local-versus-aggregate
+        // conflation that made the falsifier alert misattribute green components
+        // (review 2026-07-31). The stop DECISION is still the walk's, because
+        // StopBeforeDependents must halt on any prior failure; only the message is local.
+        let this_batch_failed = thread_panicked
+            || over_budget
+            || batch_records
+                .last()
+                .map(|r| r.results.iter().any(|x| !x.ok))
+                .unwrap_or(false);
         if any_failed {
             match stop_policy {
                 FloorBatchStopPolicy::StopBeforeDependents => {
                     eprintln!(
-                        "claim_executor: batch {} had failures — stopping before dependent batches",
-                        bi + 1
+                        "claim_executor: stopping before dependent batches (batch {} {})",
+                        bi + 1,
+                        if this_batch_failed {
+                            "failed"
+                        } else {
+                            "green; an earlier batch failed"
+                        }
                     );
                     break;
                 }
                 FloorBatchStopPolicy::FullLedger => {
                     eprintln!(
-                        "claim_executor: batch {} had failures — continuing (FullLedger stop policy)",
-                        bi + 1
+                        "claim_executor: continuing (FullLedger stop policy) — batch {} {}",
+                        bi + 1,
+                        if this_batch_failed {
+                            "failed"
+                        } else {
+                            "green; an earlier batch failed"
+                        }
                     );
                 }
             }
@@ -2867,9 +4556,10 @@ fn run_walk(
     emit_gantt(&batch_records, total_wall_nanos);
     let resolve_receipt_ok = write_resolve_receipt(&batch_records);
     let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
-    let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records);
-    let witness_row_cost_receipt_ok = write_witness_row_cost_receipt(&batch_records);
-    let witness_row_cost_drift_receipt_ok = if emit_witness_row_cost_drift {
+    let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
+    let witness_row_cost_receipt_ok =
+        write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
+    let witness_row_cost_drift_receipt_ok = if falsifier_cadence {
         write_witness_row_cost_drift_receipt_at(
             std::path::Path::new("target"),
             &batch_records,
@@ -2879,20 +4569,276 @@ fn run_walk(
     } else {
         true
     };
+    // Written on EVERY exit path, red included — a red run is precisely when the
+    // alert needs to know which component failed (gunbc.floor_component_receipt).
+    let floor_component_receipt_ok = write_floor_component_receipt_at(
+        std::path::Path::new("target"),
+        source_roots,
+        &batch_records,
+        batches.len(),
+    );
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
     let materialization_receipt_ok = write_materialization_receipt();
+    // Ordinary-floor verdict INCLUDING receipt construction: a receipt-write failure
+    // is an ordinary-floor failure, so success stages are gated on the whole floor
+    // contract this process owns, not just the batch verdicts (ruling 2026-07-30).
+    // #7467's per-component receipt joins the ordinary verdict: its construction or
+    // write failure is an ORDINARY-FLOOR failure and must therefore block admission,
+    // not merely red the walk after a stamp. Preserved explicitly through the rebase
+    // because dropping it would reopen the ordering defect this branch exists to close.
+    let mut ordinary_failed = any_failed
+        || !resolve_receipt_ok
+        || !batch_wall_receipt_ok
+        || !gate_warm_cost_receipt_ok
+        || !witness_row_cost_receipt_ok
+        || !witness_row_cost_drift_receipt_ok
+        || !floor_component_receipt_ok
+        || !materialization_receipt_ok;
+    // Floor finalization laws (the in-executor form of the deleted resolve/
+    // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
+    // on-success stages, so a violation blocks admission instead of post-dating it.
+    if let Some(fin) = floor_finalization {
+        let refusals = validate_floor_finalization(fin, plan_site, &batch_records);
+        if refusals.is_empty() {
+            if !ordinary_failed {
+                eprintln!(
+                    "claim_executor: floor contract finalized — resolve count matches declared {} \
+                     and materialization disclosure holds",
+                    fin.declared_resolve_count
+                );
+            }
+        } else {
+            ordinary_failed = true;
+            for msg in refusals {
+                eprintln!("claim_executor: FLOOR-FINALIZATION-REFUSED: {msg}");
+                failure_details.push(format!("floor finalization refused: {msg}"));
+            }
+        }
+    }
+    // On-success stages: run only on a fully-green ordinary floor; each stage is a
+    // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
+    // is an ordinary-floor policy and never applies between stages. Members run through
+    // `run_stage`, the SAME executor the ordinary batches use — same unit grouping, same
+    // lane partition, same CLAMP MECHANISM, same per-lane admission rule. Three of those
+    // are deliberately weaker than an earlier draft's wording (review 2026-07-31). NOT
+    // "same governor admission": admission is PER-LANE, and only the spawned lane acquires
+    // a slot. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
+    // deliberately pass None and stay inside a narrow admissible profile instead — the
+    // mechanism is shared, the parameters are not. And NOT "concurrent exactly as the
+    // contract says": the contract promises only that distinct spawned groups MAY overlap.
+    // The two
+    // populations differ here only in ordering and failure policy, which is the whole
+    // claim of the extraction. Their memo contexts drop AFTER
+    // write_materialization_receipt above, so stage materialization is structurally NOT
+    // folded into the floor receipt. A second attempt-scoped receipt harvests the stage
+    // population after stage_memo drops.
+    let mut on_success_failed = false;
+    if !on_success_stages.is_empty() {
+        if ordinary_failed {
+            eprintln!(
+                "claim_executor: ordinary floor failed — {} on-success stage(s) NOT run \
+                 (green-only by construction)",
+                on_success_stages.len()
+            );
+            // The skip receipt is still attempt-scoped: "the ordinary floor failed so no
+            // stage ran" is an answer about THIS attempt, and an unattributable copy of it
+            // in a reused worktree is indistinguishable from a prior attempt's.
+            match walk_attempt_id {
+                Some(attempt) => {
+                    let _ = write_on_success_receipt(
+                        &[],
+                        0,
+                        true,
+                        on_success_stages.len(),
+                        attempt,
+                        plan_site,
+                    );
+                }
+                None => eprintln!(
+                    "claim_executor: on-success skip receipt NOT written — no walk-attempt \
+                     identity (arm-time observation should have refused this walk)"
+                ),
+            }
+        } else {
+            let mut stage_rows: Vec<(usize, bool)> = Vec::new();
+            let mut stage_resolves: u64 = 0;
+            let mut stage_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
+                std::collections::HashMap::new();
+            // The stage population's own memo-path set. The stage memo is SEPARATE from
+            // `walk_memo` by lifecycle, not by accident: stage contexts must drop after
+            // `write_materialization_receipt` above so stage materialization is
+            // structurally not folded into the floor receipt. One entry shared by several
+            // stages still resolves once, within that separate map.
+            let stage_memo_path_entries = memo_path_entry_keys(on_success_stages);
+            for (si, stage) in on_success_stages.iter().enumerate() {
+                let run = run_stage(
+                    source_roots,
+                    stage,
+                    StagePopulation::OnSuccessStage,
+                    si,
+                    (batches.len() + si) as u64,
+                    &mut stage_memo,
+                    &stage_memo_path_entries,
+                    governor,
+                    fast_lane_eval_budget_ms,
+                    &falsifier_self_host_wet_budgets,
+                    // Stages declare no clamp params: `gunbc_ci_floor_batch_clamp_params`
+                    // indexes the ORDINARY batches, and reusing an ordinary batch's
+                    // overhead/rate for a stage would fabricate a budget nobody declared.
+                    // The arm-time validator refuses the profiles that would need one.
+                    None,
+                    budget_tighten_ms,
+                );
+                // A supplied clamp must have teeth. Stages pass None today (see the
+                // call above), so this is currently unreachable — it is wired now so that
+                // adding a declared stage clamp is a one-line change rather than a
+                // one-line change plus remembering this fold, which is exactly the kind of
+                // omission the ordinary path's own clamp handling had to be corrected for.
+                let mut stage_failed = run.thread_panicked || run.over_budget;
+                if run.over_budget {
+                    failure_details.push(format!(
+                        "on-success stage {} exceeded its declared clamp",
+                        si + 1
+                    ));
+                }
+                if run.thread_panicked {
+                    println!(
+                        "{}",
+                        paint(
+                            &format!(
+                                "✗ FAIL [on-success stage {}] <claim thread panicked>",
+                                si + 1
+                            ),
+                            sgr::ERROR
+                        )
+                    );
+                    failure_details.push(format!("on-success stage {} infra=thread_panic", si + 1));
+                    infra_faults.push(InfraFault::ClaimThreadPanicked {
+                        batch_index: batches.len() + si + 1,
+                    });
+                }
+                for r in &run.results {
+                    if r.resolve_nanos > 0 {
+                        stage_resolves += 1;
+                    }
+                    if r.ok {
+                        println!(
+                            "{}",
+                            paint(
+                                &format!("✓ PASS [on-success stage {}] {}", si + 1, r.function),
+                                sgr::SUCCESS
+                            )
+                        );
+                    } else {
+                        stage_failed = true;
+                        println!(
+                            "{}",
+                            paint(
+                                &format!(
+                                    "✗ FAIL [on-success stage {}] {} ({})",
+                                    si + 1,
+                                    r.function,
+                                    r.detail
+                                ),
+                                sgr::ERROR
+                            )
+                        );
+                        failure_details.push(format!(
+                            "on-success stage {} fn={} detail={}",
+                            si + 1,
+                            r.function,
+                            r.detail
+                        ));
+                    }
+                }
+                stage_rows.push((si, !stage_failed));
+                // THIS stage's receipt, written BEFORE the next stage begins. The
+                // aggregate receipt below cannot substitute: written only after the whole
+                // sequence, it does not exist for stage N while stage N+1 runs, and a
+                // process death between the two loses every stage that had in fact
+                // completed. A receipt that cannot be written is itself a stage failure.
+                let receipt_written = match walk_attempt_id {
+                    Some(attempt) => write_on_success_stage_receipt(
+                        si,
+                        !stage_failed,
+                        &run,
+                        on_success_stages.len(),
+                        attempt,
+                        plan_site,
+                    ),
+                    None => {
+                        eprintln!(
+                            "claim_executor: on-success stage {} has no walk-attempt identity — \
+                             refusing to write an unidentifiable receipt (arm-time observation \
+                             should have refused this walk already; reaching here means a caller \
+                             ran stages without observing identity)",
+                            si + 1
+                        );
+                        false
+                    }
+                };
+                if !receipt_written {
+                    stage_failed = true;
+                    failure_details
+                        .push(format!("on-success stage {} receipt write failed", si + 1));
+                    if let Some(last) = stage_rows.last_mut() {
+                        last.1 = false;
+                    }
+                }
+                if stage_failed {
+                    on_success_failed = true;
+                    eprintln!(
+                        "claim_executor: on-success stage {} failed — remaining stage(s) NOT run \
+                         (stages are fail-fast regardless of the ordinary stop policy)",
+                        si + 1
+                    );
+                    break;
+                }
+            }
+            drop(stage_memo);
+            let materialization_written = match walk_attempt_id {
+                Some(attempt) => write_on_success_materialization_receipt(attempt, plan_site),
+                None => {
+                    eprintln!(
+                        "claim_executor: on-success materialization receipt has no walk-attempt \
+                         identity — refusing to write an unidentifiable receipt"
+                    );
+                    false
+                }
+            };
+            if !materialization_written {
+                on_success_failed = true;
+                failure_details.push("on-success materialization receipt write failed".to_string());
+            }
+            let aggregate_written = match walk_attempt_id {
+                Some(attempt) => write_on_success_receipt(
+                    &stage_rows,
+                    stage_resolves,
+                    false,
+                    on_success_stages.len(),
+                    attempt,
+                    plan_site,
+                ),
+                None => {
+                    eprintln!(
+                        "claim_executor: on-success aggregate receipt has no walk-attempt \
+                         identity — refusing to write an unattributable receipt"
+                    );
+                    false
+                }
+            };
+            if !aggregate_written {
+                on_success_failed = true;
+            }
+        }
+    }
     WalkOutcome {
-        any_failed: any_failed
-            || !resolve_receipt_ok
-            || !batch_wall_receipt_ok
-            || !gate_warm_cost_receipt_ok
-            || !witness_row_cost_receipt_ok
-            || !witness_row_cost_drift_receipt_ok
-            || !materialization_receipt_ok,
+        any_failed: ordinary_failed || on_success_failed,
         batches_run,
         failure_details,
+        infra_faults,
     }
 }
 
@@ -2970,9 +4916,9 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
 /// plan functions whose schedule is a floor walk and therefore subject to arm-time
 /// `FloorBudgetBelowMinimumFootprint` refusal in claim_executor.
 const FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS: &[&str] = &[
-    "gunbc_ci_floor_batches",
-    "gunbc_ci_plan_artifact_batches",
-    "gunbc_falsifier_batches",
+    "gunbc_ci_floor_plan",
+    "gunbc_ci_plan_artifact_plan",
+    "gunbc_falsifier_plan",
 ];
 
 fn plan_requires_floor_arm_time_budget_refusal(plan_function: &str) -> bool {
@@ -2984,13 +4930,16 @@ fn run_perturb_check(
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<ExitCode, ExitCode> {
-    let batches = match eval_plan(source_roots, plan_entry, plan_function) {
+    let walk_plan = match eval_plan(source_roots, plan_entry, plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: --perturb-check: {msg}");
             return Err(ExitCode::from(2));
         }
     };
+    // --perturb-check exercises the ordinary gating batch only; success stages are
+    // out of its subject (they cannot run when the planted gate fails, by construction).
+    let batches = walk_plan.batches;
     if batches.len() < 2 {
         eprintln!(
             "claim_executor: --perturb-check needs a plan with >= 2 batches to witness the \
@@ -3044,8 +4993,7 @@ fn run_perturb_check(
                     Runnable::SingleClaim {
                         entry,
                         function,
-                        use_walk_memo,
-                        execution_mode,
+                        profile,
                     } => Runnable::SingleClaim {
                         entry: if entry.is_empty() {
                             entry.clone()
@@ -3055,8 +5003,7 @@ fn run_perturb_check(
                                 .into_owned()
                         },
                         function: function.clone(),
-                        use_walk_memo: *use_walk_memo,
-                        execution_mode: *execution_mode,
+                        profile: *profile,
                     },
                     Runnable::DiscoveryBatch {
                         source_roots: roots,
@@ -3088,7 +5035,10 @@ fn run_perturb_check(
     // serial, matching the prior fixed width-1 semantics.
     let outcome = run_walk(
         &[temp_root],
+        &format!("{plan_entry}::{plan_function} (perturb re-walk)"),
         &remapped,
+        &[],
+        None,
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
         FalsifierSelfHostWetBudgets::default(),
@@ -3097,6 +5047,9 @@ fn run_perturb_check(
         None,
         false,
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        // The perturb re-walk passes `&[]` for stages, so no attempt-scoped receipt is
+        // written and no identity is owed.
+        None,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -3294,13 +5247,45 @@ fn run() -> Result<ExitCode, ExitCode> {
     phase_mark("plan resolve");
 
     let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
-    let batches = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
+    let walk_plan = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: {msg}");
             return Err(ExitCode::from(1));
         }
     };
+    let batches = walk_plan.batches;
+    let on_success_stages = walk_plan.on_success_stages;
+    // Plan-shape validation BEFORE the governor arms and before any batch runs.
+    {
+        let refusals = validate_on_success_stage_admissibility(&on_success_stages);
+        if !refusals.is_empty() {
+            for msg in &refusals {
+                eprintln!("claim_executor: ON-SUCCESS-STAGE-REFUSED: {msg}");
+            }
+            return Err(ExitCode::from(1));
+        }
+    }
+    // Walk-attempt identity, observed at the SAME altitude and for the same reason as the
+    // shape refusal above: a walk that cannot identify itself cannot write a receipt anyone
+    // can attribute, and that is knowable now rather than after a 20-30 minute floor. Only
+    // demanded when stages exist — a plan with no on-success stages writes no attempt-scoped
+    // receipt, so requiring identity of it would be a refusal with no subject.
+    let walk_attempt_id: Option<String> = if on_success_stages.is_empty() {
+        None
+    } else {
+        match observe_walk_attempt_id() {
+            Ok(id) => Some(id),
+            Err(msg) => {
+                eprintln!("claim_executor: ON-SUCCESS-STAGE-REFUSED: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    };
+    // Floor finalization is carried BY the plan value (walk_finalization_note) — the
+    // name-keyed read this replaces was the same seed-roster convention the carrier
+    // was built to remove, reintroduced and then caught in review.
+    let floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
@@ -3327,7 +5312,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_batches" {
+    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
         FalsifierSelfHostWetBudgets {
             wall_budget_ms: match read_positive_budget_ms(
                 &plan_ctx,
@@ -3428,8 +5413,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
     // carries its own receipt budgets, so neither reads these lists.
-    let batch_clamp_params: Option<Vec<(u128, u128)>> = if plan_function == "gunbc_ci_floor_batches"
-    {
+    let batch_clamp_params: Option<Vec<(u128, u128)>> = if plan_function == "gunbc_ci_floor_plan" {
         match read_floor_batch_clamp_params(&plan_ctx, batches.len()) {
             Ok(v) => Some(v),
             Err(msg) => {
@@ -3441,6 +5425,29 @@ fn run() -> Result<ExitCode, ExitCode> {
         None
     };
     let budget_tighten_ms: Option<u128> = match read_floor_batch_budget_tighten_ms() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
+    // Compile-clean leg clamp constants (prelude coverage follow-up (a)): read for the
+    // two plan shapes that arm the compile-clean gate, at the same fail-closed arm point
+    // as the batch clamps; enforcement runs post-walk where the leg's cost snapshot exists.
+    let compile_clean_clamp: Option<(u128, u128)> = if plan_function == "gunbc_ci_floor_plan"
+        || plan_function == "gunbc_ci_plan_artifact_plan"
+    {
+        match read_compile_clean_clamp(&plan_ctx) {
+            Ok(v) => Some(v),
+            Err(msg) => {
+                eprintln!("{msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    } else {
+        None
+    };
+    let compile_clean_tighten_ms: Option<u128> = match read_compile_clean_budget_tighten_ms() {
         Ok(v) => v,
         Err(msg) => {
             eprintln!("{msg}");
@@ -3483,11 +5490,9 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
     // in-run whole-tree compile receipt, so these plans must arm the lazy install.
-    // `gunbc_ci_plan_artifact_batches` is batch 1 of the floor schedule (the docs-only
+    // `gunbc_ci_plan_artifact_plan` is batch 1 of the floor schedule (the docs-only
     // shortcut) — same gate node, same receipt dependency.
-    if plan_function == "gunbc_ci_floor_batches"
-        || plan_function == "gunbc_ci_plan_artifact_batches"
-    {
+    if plan_function == "gunbc_ci_floor_plan" || plan_function == "gunbc_ci_plan_artifact_plan" {
         enable_floor_compile_clean_lazy_install(&source_roots);
         // Eager install on the MAIN thread (lever 1, PR #6766): the receipt compile
         // rides this thread's `process_shared_index` — the same thread-local universe
@@ -3504,15 +5509,19 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let outcome = run_walk(
         &source_roots,
+        &format!("{plan_entry}::{plan_function}"),
         &batches,
+        &on_success_stages,
+        floor_finalization.as_ref(),
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
         batch_stop_policy,
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
-        plan_function == "gunbc_falsifier_batches",
+        plan_function == "gunbc_falsifier_plan",
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        walk_attempt_id.as_deref(),
     );
     // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
     // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
@@ -3545,11 +5554,24 @@ fn run() -> Result<ExitCode, ExitCode> {
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
     emit_cgroup_measurement("floor adaptive-width");
+    // Compile-clean leg cost gates (prelude coverage follow-up (a)): the enforced clamp
+    // and the counted basis drift, both over the leg's cost snapshot. Post-walk so both
+    // the eager and the lazy install path are covered; no snapshot (skipped/refused leg)
+    // means nothing to clamp and nothing to compare.
+    let compile_clean_over_budget =
+        enforce_floor_compile_clean_clamp(compile_clean_clamp, compile_clean_tighten_ms);
+    let compile_clean_drift_receipt_ok = write_compile_clean_cost_drift_receipt_at(
+        std::path::Path::new("target"),
+        std::path::Path::new("dag/gunbc/compile_clean_cost_basis.tsv"),
+        &source_roots,
+    );
     v1_compiler::v1_interpreter::group_end();
     if outcome.any_failed {
-        emit_falsifier_failure_class(&outcome.failure_details);
+        emit_falsifier_failure_class(&outcome.failure_details, &outcome.infra_faults);
     }
-    floor_terminal_fast_exit(walk_exit_code(outcome.any_failed))
+    floor_terminal_fast_exit(walk_exit_code(
+        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok,
+    ))
 }
 
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
@@ -3564,9 +5586,24 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     }) {
         "BudgetExceeded"
     } else if details.iter().any(|d| {
-        d.contains("infra=")
-            || d.contains("thread_panic")
-            || d.contains("Resource temporarily unavailable")
+        // THIS LIST IS A FORK, and that is the defect — not the individual substrings.
+        //
+        // `gunbc.ci_failure_class` already models this properly: `InfraSignature` is a
+        // closed sum whose match text is DERIVED from cited upstream authorities —
+        // `errno_strerror(EAGAIN)`, `spawn_outcome_log_fragment(SpawnFailed)`, the sccache
+        // fragments, `runner_lifecycle_log_fragment(ShutdownReceived)` — each carrying an
+        // `infra_signature_origin` naming where the text comes from. That authority has no
+        // production consumer today (`classify_failure_reason` is reached only by witness
+        // tests), while this hand-typed list is the one that actually runs.
+        //
+        // So the fix is to make this consume `gunbc.ci_failure_class`, not to hand-edit the
+        // fork. An earlier revision of this change deleted the "failed to spawn" arm on the
+        // grounds that no producer reachable from THIS input emits it — the interpreter's
+        // spawn failure says "failed to execute". That evidence was about this surface only;
+        // the model declares `ProcessSpawnFailure` a live signature whose site is the build
+        // log. Editing one side of a fork on surface-local evidence widens the divergence
+        // instead of closing it, so the arm is restored and the fork is recorded here.
+        d.contains("Resource temporarily unavailable")
             || d.contains("failed to spawn")
             || d.contains("sccache")
     }) {
@@ -3574,6 +5611,18 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     } else {
         "WitnessRed"
     }
+}
+
+/// Classification with the walk's structurally-observed faults taking precedence.
+///
+/// An observed `InfraFault` settles the mode outright: the walk saw the panic, so nothing
+/// downstream needs to infer it from rendered text. The string path below it remains for
+/// genuinely external message text only.
+fn falsifier_failure_mode_with_faults(details: &[String], faults: &[InfraFault]) -> &'static str {
+    if !faults.is_empty() {
+        return "Infra";
+    }
+    falsifier_failure_mode(details)
 }
 
 /// Projection of a failure mode into the `gunbc.ci_failure_class` vocabulary. `Structural`
@@ -3595,9 +5644,9 @@ fn ci_failure_class_arm(mode: &str) -> String {
     }
 }
 
-fn emit_falsifier_failure_class(details: &[String]) {
+fn emit_falsifier_failure_class(details: &[String], faults: &[InfraFault]) {
     let joined = details.join(" | ");
-    let mode = falsifier_failure_mode(details);
+    let mode = falsifier_failure_mode_with_faults(details, faults);
     eprintln!("[falsifier-failure-class] mode={mode}");
     if details.is_empty() {
         eprintln!("[falsifier-failure-class] detail=<receipt/write failure or empty ledger>");
@@ -3661,6 +5710,125 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Process-wide eval-recompute totals are shared across every test in this
+    // binary. Tests that drain or assert on the accumulator must serialize so
+    // one cannot steal another's totals (DESIGN §5 hermetic discriminating tests).
+    static PROCESS_EVAL_RECOMPUTE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_process_eval_recompute_test_lock<F: FnOnce()>(f: F) {
+        let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match prior_trace {
+            Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
+            None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
+        }
+        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    fn with_workspace_root_current_dir<F: FnOnce()>(root: &std::path::Path, f: F) {
+        let prior_cwd = std::env::current_dir().ok();
+        std::env::set_current_dir(root).expect("chdir to workspace root for receipt paths");
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        if let Some(cwd) = prior_cwd {
+            let _ = std::env::set_current_dir(cwd);
+        }
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    fn finalization_record(resolve_counts: &[u64]) -> BatchRecord {
+        BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 0,
+            label: "finalization-fixture".to_string(),
+            selection_tag: "fixture",
+            results: resolve_counts
+                .iter()
+                .map(|n| ClaimResult {
+                    function: "fixture".to_string(),
+                    entry: "fixture.dag".to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: *n as u128,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                })
+                .collect(),
+        }
+    }
+
+    /// The `<entry>::<function>` a refusal locates itself at — the same shape the
+    /// production caller passes.
+    const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
+
+    // Floor finalization law 1 (in-executor form of the deleted resolve-receipt gate
+    // step): the count is recomputed from batch records by the same nonzero-
+    // resolve_nanos rule the receipt writer uses. Declared-vs-actual mismatch refuses
+    // in BOTH directions; match passes. The materialization arm is exercised through
+    // the missing-file refusal (no target/ receipt exists under cargo test), which
+    // also pins that law 2 cannot silently pass when the receipt is absent.
+    #[test]
+    fn floor_finalization_refuses_on_resolve_count_mismatch_both_directions() {
+        let fin = FloorFinalization {
+            declared_resolve_count: 1,
+        };
+        let over = [finalization_record(&[5, 7])];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &over);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("floor resolve count 2 differs from declared 1")),
+            "over-count must refuse: {refusals:?}"
+        );
+        let under = [finalization_record(&[])];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &under);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("floor resolve count 0 differs from declared 1")),
+            "under-count must refuse: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_matching_count_leaves_only_the_materialization_arm() {
+        let fin = FloorFinalization {
+            declared_resolve_count: 2,
+        };
+        let records = [finalization_record(&[3, 0, 9])];
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        // resolve law satisfied (two nonzero-resolve results); under cargo test no
+        // materialization receipt file exists, so exactly the missing-receipt refusal
+        // remains — proving law 2 fails closed on absence rather than passing.
+        assert!(
+            !refusals.iter().any(|m| m.contains("differs from declared")),
+            "resolve law must be satisfied: {refusals:?}"
+        );
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("floor materialization receipt missing")),
+            "absent receipt must refuse, never pass: {refusals:?}"
+        );
+    }
 
     // D2 wiring pin: the fast-exit consumes exactly this mapping, so the terminal
     // process code stays behavior-identical to the ExitCode return it replaced.
@@ -3762,6 +5930,73 @@ mod tests {
         ));
     }
 
+    fn batch_record_for_test(results: Vec<ClaimResult>) -> BatchRecord {
+        BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: results.len() as u128,
+            results,
+            label: "batch-under-test".to_string(),
+            selection_tag: "off",
+        }
+    }
+
+    /// A budget kill must classify as BudgetExceeded from the VALUE, not from the message.
+    ///
+    /// RED control: the detail string here deliberately contains none of the substrings
+    /// `falsifier_failure_mode` looks for, so under the old string-sniffing path this row
+    /// would fall through to the `else` arm and report `WitnessRed` — silently swapping
+    /// "re-basis a dated ceiling" for "fix the witness". Passing proves the mode is read
+    /// off `budget_refusal`, so message wording can change without moving the class.
+    #[test]
+    fn budget_kill_classifies_structurally_not_by_message_text() {
+        let timed_out = ClaimResult {
+            function: "some_witness".to_string(),
+            entry: "some_witness_test.dag".to_string(),
+            ok: false,
+            detail: "wording that mentions no budget phrase at all".to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: Some(BudgetRefusal {
+                elapsed_ms: 900_001,
+                budget_ms: 900_000,
+                kind: BudgetKind::Wall,
+            }),
+        };
+        // Sanity: the string classifier alone really would misclassify this detail.
+        assert_eq!(
+            falsifier_failure_mode(&[timed_out.detail.clone()]),
+            "WitnessRed",
+            "control is only meaningful if the string path would get this wrong"
+        );
+
+        let rec = batch_record_for_test(vec![timed_out]);
+        let (mode, _detail) = batch_failure_mode_and_detail(&rec);
+        assert_eq!(mode, "BudgetExceeded");
+
+        // And an ordinary witness red must NOT be dragged into BudgetExceeded.
+        let plain = ClaimResult {
+            function: "other_witness".to_string(),
+            entry: "other_witness_test.dag".to_string(),
+            ok: false,
+            detail: "returned Bool(false)".to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+        };
+        let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
+        assert_eq!(mode, "WitnessRed");
+    }
+
     #[test]
     fn falsifier_failure_mode_classifies_three_arms() {
         assert_eq!(
@@ -3782,12 +6017,38 @@ mod tests {
             ]),
             "BudgetExceeded"
         );
+        // The walk's own infra fact is now read STRUCTURALLY, not grepped out of the line
+        // the walk itself formatted. Both directions are asserted so the move from text to
+        // value is proven rather than assumed: the same text alone no longer classifies as
+        // Infra, and the observed fault classifies as Infra regardless of the text.
+        let panic_text: Vec<String> = vec![
+            "batch=2 infra=thread_panic".into(),
+            "batch=1 fn=x detail=stale digest".into(),
+        ];
         assert_eq!(
-            falsifier_failure_mode(&[
-                "batch=2 infra=thread_panic".into(),
-                "batch=1 fn=x detail=stale digest".into()
-            ]),
+            falsifier_failure_mode(&panic_text),
+            "WitnessRed",
+            "the rendered line is for humans now — it must not carry the classification"
+        );
+        assert_eq!(
+            falsifier_failure_mode_with_faults(
+                &panic_text,
+                &[InfraFault::ClaimThreadPanicked { batch_index: 2 }]
+            ),
             "Infra"
+        );
+        assert_eq!(
+            falsifier_failure_mode_with_faults(
+                &["batch=1 fn=x detail=nothing resembling infra".into()],
+                &[InfraFault::ClaimThreadPanicked { batch_index: 1 }]
+            ),
+            "Infra",
+            "an observed fault settles the mode even when no text hints at it"
+        );
+        // And no fault means no Infra, whatever the prose says.
+        assert_eq!(
+            falsifier_failure_mode_with_faults(&panic_text, &[]),
+            "WitnessRed"
         );
         assert_eq!(
             falsifier_failure_mode(&[
@@ -3954,6 +6215,8 @@ mod tests {
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 3,
                 results: Vec::new(),
+                label: "batch-0".to_string(),
+                selection_tag: "off",
             },
             BatchRecord {
                 batch_index: 1,
@@ -3961,6 +6224,8 @@ mod tests {
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 0,
                 results: Vec::new(),
+                label: "batch-1".to_string(),
+                selection_tag: "off",
             },
         ];
         assert!(write_batch_wall_receipt_at(&base, &clamped_records));
@@ -3978,6 +6243,8 @@ mod tests {
             clamp_ms: None,
             unit_count: 0,
             results: Vec::new(),
+            label: "batch-0".to_string(),
+            selection_tag: "off",
         }];
         assert!(write_batch_wall_receipt_at(&base, &unbudgeted_records));
         let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
@@ -3996,14 +6263,24 @@ mod tests {
         let cheap = |f: &str| Runnable::SingleClaim {
             entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
             function: f.to_string(),
-            use_walk_memo: false,
-            execution_mode: ExecutionMode::Wet,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
         };
         let heavy = Runnable::SingleClaim {
             entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
             function: "dag_compile_clean_gate_passes".to_string(),
-            use_walk_memo: true,
-            execution_mode: ExecutionMode::Wet,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: true,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
         };
         let batches = vec![
             vec![
@@ -4046,15 +6323,25 @@ mod tests {
         let batches = vec![vec![Runnable::SingleClaim {
             entry: "dag/x.dag".to_string(),
             function: "f".to_string(),
-            use_walk_memo: true,
-            execution_mode: ExecutionMode::Wet,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: true,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
         }]];
         let keys = memo_path_entry_keys(&batches);
         let hermetic_units = group_batch_units(&[Runnable::SingleClaim {
             entry: "dag/x.dag".to_string(),
             function: "g".to_string(),
-            use_walk_memo: false,
-            execution_mode: ExecutionMode::Hermetic,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Hermetic,
+            },
         }]);
         let empty_memo = std::collections::HashMap::new();
         assert_eq!(
@@ -4742,42 +7029,183 @@ mod tests {
 
     // The materialization-receipt chain by execution: a real entry resolves, a
     // claim evaluates on its InterpContext, and the ctx Drop absorbs ledger
-    // totals into the process accumulator. The env latch is process-global and
-    // sticky (OnceLock), so under plain `cargo test` sibling tests in this
-    // binary share it and their ctx drops may also absorb — every assertion
-    // here is therefore monotone under concurrent absorbs (siblings can only
-    // ADD totals; nothing here asserts the accumulator is empty). Drain-once
-    // is Option::take by construction, not asserted through the shared global.
+    // totals into the process accumulator. Serialized via
+    // PROCESS_EVAL_RECOMPUTE_TEST_LOCK so no sibling test can drain or pollute
+    // the accumulator mid-assertion.
     #[test]
     fn materialization_receipt_totals_absorb_on_ctx_drop() {
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+        with_process_eval_recompute_test_lock(|| {
+            let root = workspace_root();
+            let roots = vec![
+                root.join("src/v2").to_string_lossy().into_owned(),
+                root.join("dag").to_string_lossy().into_owned(),
+            ];
+            let entry = root
+                .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                .to_string_lossy()
+                .into_owned();
+            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            {
+                let (graph, indices) =
+                    resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
+                // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+                // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+                let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+                let outcome = run_claim(&ctx, "single_pure_demand_is_accepted_recompute");
+                assert!(
+                    matches!(outcome, ClaimOutcome::Pass),
+                    "claim must pass for the receipt to be meaningful"
+                );
+            }
+            let totals = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            assert!(
+                totals.keyed_calls > 0,
+                "ctx Drop must absorb ledger totals into the process accumulator"
+            );
+        });
+    }
+
+    fn parse_materialization_receipt_field(body: &str, key: &str) -> Option<u64> {
+        body.lines()
+            .find_map(|line| line.strip_prefix(key))
+            .and_then(|v| v.trim().parse::<u64>().ok())
+    }
+
+    fn run_walk_materialization_fixture(
+        roots: &[String],
+        on_success_stages: &[Vec<Runnable>],
+    ) -> WalkOutcome {
         let root = workspace_root();
-        let roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
-        ];
-        let entry = root
-            .join("dag/test/claim/materialization_ladder_witness_test.dag")
+        let ordinary_entry = root
+            .join("src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag")
             .to_string_lossy()
             .into_owned();
-        let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
-        {
-            let (graph, indices) =
-                resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
-            // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
-            // the hermetic envelope is exact; a service call sneaking in refuses loudly.
-            let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-            let outcome = run_claim(&ctx, "single_pure_demand_is_accepted_recompute");
-            assert!(
-                matches!(outcome, ClaimOutcome::Pass),
-                "claim must pass for the receipt to be meaningful"
-            );
-        }
-        let totals = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
-        assert!(
-            totals.keyed_calls > 0,
-            "ctx Drop must absorb ledger totals into the process accumulator"
-        );
+        let ordinary_batch = vec![vec![Runnable::SingleClaim {
+            entry: ordinary_entry,
+            function: "falsifier_green_control_holds".to_string(),
+            profile: ParsedRunnableProfile::undeclared(),
+        }]];
+        const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
+        let walk_attempt_id = if on_success_stages.is_empty() {
+            None
+        } else {
+            Some(TEST_ATTEMPT_ID)
+        };
+        run_walk(
+            roots,
+            "test::on_success_materialization_fixture",
+            &ordinary_batch,
+            on_success_stages,
+            None,
+            &Arc::new(MemoryGovernor::from_environment(1)),
+            None,
+            FalsifierSelfHostWetBudgets::default(),
+            FloorBatchStopPolicy::StopBeforeDependents,
+            None,
+            None,
+            false,
+            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+            walk_attempt_id,
+        )
+    }
+
+    // Discriminating control (DESIGN §5): post-floor pure demand must appear in the
+    // on-success materialization receipt and NOT in the ordinary-floor receipt, which
+    // is harvested before stages run. Population separation is asserted within ONE
+    // staged walk (ordinary receipt is written before on_success_stages in the same
+    // run_walk — no cross-run keyed_calls equality that parallel siblings could
+    // perturb, review 45766). PROCESS_EVAL_RECOMPUTE_TEST_LOCK serializes the
+    // trace-enabled receipt tests and restores trace env/cache afterward (review
+    // 45737, review 45756).
+    #[test]
+    fn on_success_materialization_receipt_separates_from_ordinary_floor() {
+        with_process_eval_recompute_test_lock(|| {
+            let root = workspace_root();
+            with_workspace_root_current_dir(&root, || {
+                let roots = vec![
+                    root.join("src/v2").to_string_lossy().into_owned(),
+                    root.join("dag").to_string_lossy().into_owned(),
+                ];
+                const TEST_ATTEMPT_ID: &str = "materialization-receipt-test";
+                let success_receipt = root
+                    .join("target")
+                    .join(format!("floor-attempt-{TEST_ATTEMPT_ID}"))
+                    .join("floor-on-success-materialization-receipt.txt");
+                let ordinary_receipt = root.join("target/floor-materialization-receipt.txt");
+                let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+
+                let run_fixture = |on_success_stages: &[Vec<Runnable>]| {
+                    let _ = std::fs::remove_file(&success_receipt);
+                    let _ = std::fs::remove_file(&ordinary_receipt);
+                    let outcome = run_walk_materialization_fixture(&roots, on_success_stages);
+                    assert!(
+                        !outcome.any_failed,
+                        "walk must pass: {:?}",
+                        outcome.failure_details
+                    );
+                    outcome
+                };
+
+                // RED: no on-success stages => no success-stage materialization receipt.
+                run_fixture(&[]);
+                assert!(
+                    !success_receipt.exists(),
+                    "empty on_success_stages must not write a success materialization receipt"
+                );
+
+                // GREEN: one walk — ordinary receipt harvested before stages; success
+                // receipt harvested after stage_memo drops in the same run_walk.
+                let stage_entry = root
+                    .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                    .to_string_lossy()
+                    .into_owned();
+                let success_stage = vec![vec![Runnable::SingleClaim {
+                    entry: stage_entry,
+                    function: "single_pure_demand_is_accepted_recompute".to_string(),
+                    profile: ParsedRunnableProfile {
+                        provenance: ParsedProfileProvenance::Declared,
+                        heavy_whole_tree_resolve: false,
+                        spawns_host_compiler: false,
+                        memory: ParsedMemoryClass::Negligible,
+                        execution_mode: ExecutionMode::Hermetic,
+                    },
+                }]];
+                run_fixture(&success_stage);
+
+                let ordinary_body =
+                    std::fs::read_to_string(&ordinary_receipt).expect("ordinary receipt");
+                let ordinary_keyed =
+                    parse_materialization_receipt_field(&ordinary_body, "keyed_calls=")
+                        .expect("keyed_calls");
+                let success_body = std::fs::read_to_string(&success_receipt)
+                    .expect("on-success materialization receipt");
+                let success_keyed =
+                    parse_materialization_receipt_field(&success_body, "keyed_calls=").unwrap();
+
+                assert!(
+                    success_body.starts_with(&format!(
+                        "attempt_id={TEST_ATTEMPT_ID}\nplan_site=test::on_success_materialization_fixture\n"
+                    )),
+                    "success receipt must carry attempt and plan identity in the payload"
+                );
+                assert!(
+                    ordinary_keyed > 0,
+                    "ordinary-floor walk must record pure demand in the ordinary receipt"
+                );
+                assert!(
+                    success_keyed > 0,
+                    "on-success stage pure demand must be counted in the success receipt"
+                );
+                assert!(
+                    parse_materialization_receipt_field(&success_body, "memo_hits=").is_some()
+                        && parse_materialization_receipt_field(&success_body, "memo_misses=")
+                            .is_some()
+                        && parse_materialization_receipt_field(&success_body, "duplicated_keys=")
+                            .is_some(),
+                    "success receipt must carry the same field set as the ordinary receipt"
+                );
+            });
+        });
     }
 
     // The eval-frame memo by execution: the same pure claim evaluated twice on
@@ -4785,61 +7213,68 @@ mod tests {
     // equivalence oracle at the value grain — and (b) record verified hits, so
     // "the cache worked" is a counted fact, never an assumption. Assertions
     // are per-ctx (eval_call_memo_counters), immune to test-process sharing.
+    // Serialized on PROCESS_EVAL_RECOMPUTE_TEST_LOCK: ctx Drop absorbs ledger
+    // totals into the process accumulator when trace is on, so this test must
+    // not overlap materialization-receipt walks (review 45737).
     #[test]
     fn eval_call_memo_serves_verified_hits_with_identical_values() {
-        // Every ledger-touching test must set the trace var BEFORE its first
-        // eval: the enablement latch is process-wide and initialized once, so
-        // whichever test evaluates first fixes it for every sibling (this
-        // exact ordering red-failed the receipt test when this test ran
-        // first without the var).
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
-        let root = workspace_root();
-        let roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
-        ];
-        let entry = root
-            .join("dag/test/claim/materialization_ladder_witness_test.dag")
-            .to_string_lossy()
-            .into_owned();
-        let (graph, indices) =
-            resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
-        // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
-        // the hermetic envelope is exact; a service call sneaking in refuses loudly.
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-        let first = run_value(
-            &ctx,
-            "cross_frame_duplicate_discharged_by_covering_provider",
-        )
-        .expect("first evaluation");
-        let (_, misses_after_first, _) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
-        let second = run_value(
-            &ctx,
-            "cross_frame_duplicate_discharged_by_covering_provider",
-        )
-        .expect("second evaluation");
-        assert!(
-            first == second,
-            "memo-served evaluation must equal the recomputed one"
-        );
-        let (hits, misses, overflow) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
-        assert!(
-            hits > 0,
-            "second identical evaluation must serve verified hits from the eval memo"
-        );
-        assert!(
-            misses >= misses_after_first,
-            "miss counter is monotone (counted, never reset)"
-        );
-        assert_eq!(overflow, 0, "tiny workload must not hit the entry cap");
+        with_process_eval_recompute_test_lock(|| {
+            let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+            let root = workspace_root();
+            let roots = vec![
+                root.join("src/v2").to_string_lossy().into_owned(),
+                root.join("dag").to_string_lossy().into_owned(),
+            ];
+            let entry = root
+                .join("dag/test/claim/materialization_ladder_witness_test.dag")
+                .to_string_lossy()
+                .into_owned();
+            let (graph, indices) =
+                resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
+            // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+            // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+            let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let first = run_value(
+                &ctx,
+                "cross_frame_duplicate_discharged_by_covering_provider",
+            )
+            .expect("first evaluation");
+            let (_, misses_after_first, _) =
+                v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+            let second = run_value(
+                &ctx,
+                "cross_frame_duplicate_discharged_by_covering_provider",
+            )
+            .expect("second evaluation");
+            assert!(
+                first == second,
+                "memo-served evaluation must equal the recomputed one"
+            );
+            let (hits, misses, overflow) =
+                v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+            assert!(
+                hits > 0,
+                "second identical evaluation must serve verified hits from the eval memo"
+            );
+            assert!(
+                misses >= misses_after_first,
+                "miss counter is monotone (counted, never reset)"
+            );
+            assert_eq!(overflow, 0, "tiny workload must not hit the entry cap");
+        });
     }
 
     fn single(entry: &str, function: &str) -> Runnable {
         Runnable::SingleClaim {
             entry: entry.to_string(),
             function: function.to_string(),
-            use_walk_memo: false,
-            execution_mode: ExecutionMode::Hermetic,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Hermetic,
+            },
         }
     }
 
@@ -5169,6 +7604,52 @@ mod tests {
         );
     }
 
+    /// The committed basis file must actually load. A basis that parses to zero rows
+    /// pins `drift_exceeded` at 0 by construction and reports it as "no drift" — the
+    /// state this file spent its whole life in (`basis_absent=5344` on run 30550328673),
+    /// where the loud missing-file diagnostic never fired because the file *existed* and
+    /// was merely empty of data. So this asserts the artifact is non-vacuous, not that
+    /// the parser works in the abstract.
+    #[test]
+    fn committed_witness_row_cost_basis_loads_and_excludes_the_censored_row() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join("dag/gunbc/witness_row_cost_basis.tsv");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("basis file unreadable at {}: {e}", path.display()));
+
+        let mut loaded = 0usize;
+        for line in text.lines().skip(1) {
+            match parse_witness_row_cost_basis_line(line) {
+                Ok(Some(_)) => loaded += 1,
+                Ok(None) => {}
+                // A refused row is silently skipped by the loader, so a malformed commit
+                // would degrade to BasisAbsent instead of failing. Catch it here instead.
+                Err(msg) => panic!("committed basis row refused by the loader: {msg}"),
+            }
+        }
+        assert!(
+            loaded >= 1000,
+            "committed basis loaded only {loaded} row(s) — a near-empty basis reports \
+             drift_exceeded=0 by construction, never by measurement"
+        );
+
+        // The corpus's most expensive row was KILLED at its 900000ms deadline, so its
+        // recorded 900794ms is a censored measurement, not a completed one. Seeding it
+        // would pin it WithinBasis below ~1.8M ms under the 2x comparator and enshrine a
+        // deadline ceiling as normal cost. It must stay BasisAbsent — the honest third
+        // state — until ClaimOutcome::TimedOut can distinguish killed from completed.
+        for line in text.lines() {
+            if line.trim_start().starts_with('#') {
+                continue;
+            }
+            assert!(
+                !line.contains("resolution_divergence_silent_pick_gate_keystone_holds"),
+                "censored (deadline-killed) row must not be seeded as a basis: {line}"
+            );
+        }
+    }
+
     #[test]
     fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
         // RED control for review 43284: wrong/missing host_class must refuse, never load.
@@ -5198,6 +7679,91 @@ mod tests {
         let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
             .expect_err("zero eval must refuse");
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
+    }
+
+    /// Discovery is THE falsifier path — `resolution_divergence_silent_pick_gate_keystone_holds`
+    /// is a discovery row — so a budget kill there must classify structurally like any other.
+    ///
+    /// RED control for review 45220, which caught this as a live regression: a discovery batch
+    /// flattens N witness outcomes into one `ok`/`detail`, and this result previously hardcoded
+    /// `budget_refusal: None`. Combined with the new detail wording (which deliberately contains
+    /// none of `falsifier_failure_mode`'s substrings), a budget kill on the primary path fell
+    /// through to `WitnessRed` — the exact misclassification this change exists to remove, in
+    /// new prose. The assertion below on the string classifier keeps the control non-vacuous.
+    #[test]
+    fn discovery_budget_kill_classifies_structurally_on_the_falsifier_path() {
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let killed_detail =
+            "1 of 1 discovery witness(es) failed: fn=silent_pick killed at its wall budget: \
+             900001ms elapsed > 900000ms budget";
+        assert_eq!(
+            falsifier_failure_mode(&[killed_detail.to_string()]),
+            "WitnessRed",
+            "control is only meaningful if the string path would misclassify this detail"
+        );
+
+        let summary_with = |outcome: ClaimOutcome| DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
+            failures: vec![killed_detail.into()],
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag"
+                    .into(),
+                module_path: "test.claim.resolution_divergence_silent_pick_gate".into(),
+                function: "resolution_divergence_silent_pick_gate_keystone_holds".into(),
+                outcome,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+        };
+        let killed = ClaimOutcome::TimedOut {
+            elapsed_ms: 900_001,
+            budget_ms: 900_000,
+            kind: BudgetKind::Wall,
+        };
+
+        // Both arms: the receipt projection may succeed or refuse, and a receipt refusal must
+        // ADD a cause rather than erase the budget kill already established.
+        for projected in [
+            Ok(Vec::new()),
+            Err("[witness-row-cost] REFUSED: missing measured resolve parent".to_string()),
+        ] {
+            let result = discovery_claim_result(
+                "discovery-corpus".into(),
+                false,
+                killed_detail.to_string(),
+                &summary_with(killed.clone()),
+                projected,
+            );
+            assert!(
+                result.budget_refusal.is_some(),
+                "discovery batch must lift the budget kill out of witness_outcomes"
+            );
+            let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![result]));
+            assert_eq!(mode, "BudgetExceeded");
+        }
+
+        // And a discovery batch with an ordinary red must NOT be dragged into BudgetExceeded.
+        let result = discovery_claim_result(
+            "discovery-corpus".into(),
+            false,
+            "red".into(),
+            &summary_with(ClaimOutcome::Fail),
+            Ok(Vec::new()),
+        );
+        assert!(result.budget_refusal.is_none());
     }
 
     #[test]
@@ -5249,6 +7815,208 @@ mod tests {
             result.detail.contains("witness row-cost receipt refused"),
             "receipt refusal must also be present, got: {}",
             result.detail
+        );
+    }
+
+    fn latch_result(function: &str) -> ClaimResult {
+        ClaimResult {
+            function: function.to_string(),
+            entry: "latch_fixture.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+        }
+    }
+
+    /// LATCH, not timing. Each member increments a shared counter, then waits on a
+    /// condvar until the counter reaches 2 — which can only happen if the OTHER member
+    /// is already running. Under a serial executor the first member waits forever for a
+    /// peer that has not been started, so the bounded wait expires and `observed_peer`
+    /// stays false. The bound is a deadlock detector, never the assertion: the assertion
+    /// is that each member SAW the other, which no amount of slowness can fake and no
+    /// amount of speed can satisfy serially.
+    #[test]
+    fn stage_members_actually_overlap() {
+        use std::sync::{Arc, Condvar, Mutex};
+
+        let state = Arc::new((Mutex::new(0usize), Condvar::new()));
+        let observed_peer = Arc::new(Mutex::new(vec![false, false]));
+
+        let work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = (0..2)
+            .map(|i| {
+                let state = state.clone();
+                let observed = observed_peer.clone();
+                let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
+                    let (lock, cvar) = &*state;
+                    let mut count = lock.lock().unwrap();
+                    *count += 1;
+                    cvar.notify_all();
+                    let mut saw_peer = *count == 2;
+                    while !saw_peer {
+                        let (guard, timeout) = cvar
+                            .wait_timeout(count, std::time::Duration::from_secs(10))
+                            .unwrap();
+                        count = guard;
+                        saw_peer = *count == 2;
+                        if timeout.timed_out() {
+                            break;
+                        }
+                    }
+                    observed.lock().unwrap()[i] = saw_peer;
+                    vec![latch_result(&format!("member-{i}"))]
+                });
+                boxed
+            })
+            .collect();
+
+        let (results, panicked) = join_units(spawn_units(work));
+        assert!(!panicked, "no member should panic");
+        assert_eq!(results.len(), 2, "both members must report");
+        let observed = observed_peer.lock().unwrap();
+        assert!(
+            observed[0] && observed[1],
+            "each member must observe the other running concurrently; \
+             serial execution leaves one or both false: {observed:?}"
+        );
+    }
+
+    /// The other half of the barrier: the join returns only after EVERY member finished.
+    /// The slow member sets a flag last; if `join_units` returned early, the flag would
+    /// still be false when the assertion runs, and the result count would be short.
+    /// Together with the stage loop's sequential `&mut stage_memo` borrow, this is what
+    /// makes "stage N+1 cannot begin before every stage-N member completed" true.
+    #[test]
+    fn join_waits_for_every_member_before_returning() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let finished = Arc::new(AtomicUsize::new(0));
+        let members = 4usize;
+        let work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = (0..members)
+            .map(|i| {
+                let finished = finished.clone();
+                let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
+                    // Staggered so at least one member is still running well after the
+                    // others have returned — the case an early join would expose.
+                    std::thread::sleep(std::time::Duration::from_millis(20 * (i as u64 + 1)));
+                    finished.fetch_add(1, Ordering::SeqCst);
+                    vec![latch_result(&format!("member-{i}"))]
+                });
+                boxed
+            })
+            .collect();
+
+        let (results, panicked) = join_units(spawn_units(work));
+        assert!(!panicked);
+        assert_eq!(
+            finished.load(Ordering::SeqCst),
+            members,
+            "join must not return before every member completed"
+        );
+        assert_eq!(
+            results.len(),
+            members,
+            "every member's results must be collected"
+        );
+    }
+
+    /// A panicking member is collected as an INFRA fault, not silently dropped and not
+    /// propagated: the caller still needs to close its host-effect group and report the
+    /// fault distinctly from a claim verdict. The surviving members' results still come
+    /// back, so one bad unit does not erase the stage's evidence.
+    #[test]
+    fn join_reports_a_panicking_member_without_losing_the_others() {
+        let work: Vec<Box<dyn FnOnce() -> Vec<ClaimResult> + Send>> = vec![
+            Box::new(|| vec![latch_result("ok-member")]),
+            Box::new(|| panic!("member exploded")),
+        ];
+        let (results, panicked) = join_units(spawn_units(work));
+        assert!(panicked, "a panicking member must be reported");
+        assert_eq!(
+            results.len(),
+            1,
+            "the surviving member's results must still be collected"
+        );
+    }
+
+    // ---- walk-attempt identity ----
+    //
+    // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
+    // not merely as "not equal to the good value". The positive controls exist so the
+    // negatives are discriminating: a `compose_walk_attempt_id` that refused everything
+    // would pass every Err assertion and fail these.
+
+    #[test]
+    fn attempt_identity_composes_from_the_github_triple() {
+        assert_eq!(
+            compose_walk_attempt_id("", "30654655022", "1", "ci").unwrap(),
+            "30654655022-1-ci"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_prefers_the_explicit_value() {
+        assert_eq!(
+            compose_walk_attempt_id("local-probe-7", "30654655022", "1", "ci").unwrap(),
+            "local-probe-7",
+            "an explicitly supplied identity must win over the ambient GitHub triple"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_refuses_rather_than_defaulting_when_absent() {
+        // THE load-bearing control. The ruling forbids "a silent constant like a bare
+        // local, which would make every local run one attempt and the wrong-attempt
+        // refusal unreachable off CI". If someone ever adds a default, this reds.
+        let refusal = compose_walk_attempt_id("", "", "", "")
+            .expect_err("an unidentified walk must refuse, never default");
+        assert!(
+            refusal.contains("GUNBC_WALK_ATTEMPT_ID"),
+            "the refusal must name the input that would satisfy it, got: {refusal}"
+        );
+    }
+
+    #[test]
+    fn attempt_identity_refuses_a_partial_github_triple() {
+        // A partial triple is the shape a non-`ci` job or a changed workflow produces.
+        // Composing from it would silently collide two jobs of one run onto one identity.
+        for (run_id, attempt, job) in [
+            ("30654655022", "1", ""),
+            ("30654655022", "", "ci"),
+            ("", "1", "ci"),
+        ] {
+            assert!(
+                compose_walk_attempt_id("", run_id, attempt, job).is_err(),
+                "partial triple ({run_id:?},{attempt:?},{job:?}) must refuse"
+            );
+        }
+    }
+
+    #[test]
+    fn attempt_identity_refuses_every_unsafe_path_segment() {
+        // Mirrors `std.types.path_segment_is_safe` clause for clause. `..` and `/` are the
+        // escapes that would let a receipt be written outside its attempt directory; CR and
+        // LF are the ones that would split the line-oriented receipt written under that
+        // name, so two lines could be forged from one field.
+        for bad in ["", ".", "..", "a/b", "a\\b", "a\nb", "a\rb", "a\0b"] {
+            assert!(
+                compose_walk_attempt_id(bad, "run", "1", "ci").is_err() || bad.trim().is_empty(),
+                "unsafe explicit segment {bad:?} must refuse"
+            );
+            assert!(
+                !walk_attempt_id_segment_is_safe(bad),
+                "segment {bad:?} must not be considered safe"
+            );
+        }
+        assert!(
+            walk_attempt_id_segment_is_safe("30654655022-1-ci"),
+            "a real composed identity must be accepted — else the negatives above prove nothing"
         );
     }
 }

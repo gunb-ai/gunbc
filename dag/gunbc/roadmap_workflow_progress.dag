@@ -3,6 +3,7 @@ module gunbc.roadmap_workflow_progress
 import std.types { String, Int, Bool, List }
 import extdeps.languages.json.emit {
   JsonValue,
+  JsonKeyValue,
   json_string,
   json_int,
   json_array,
@@ -68,6 +69,12 @@ import gunbc.workflow_reconcile {
   workflow_reconcile_report,
   workflow_reconcile_status_key,
 }
+import gunbc.roadmap_validation_oracle {
+  ValidationReceiptDecode,
+  ValidationReceiptDecoded,
+  ValidationReceiptUndecodable,
+  validation_receipt_decode,
+}
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
   WorkerProcessUnobserved,
@@ -90,6 +97,8 @@ type WorkflowAttemptEvidence {
   provider_events_error: String
   process: WorkerProcessEvidence
   validation_summary: String
+  validation_receipt_readable: Bool
+  validation_receipt: String
 }
 
 type WorkflowAttemptProgress {
@@ -98,6 +107,7 @@ type WorkflowAttemptProgress {
   branch: String
   admission_receipt: String
   provider: ProviderExecutionState
+  process: WorkerProcessEvidence
   validation_summary: String
   segments: List<WorkflowSegment>
   reconciliation: WorkflowReconcileReport
@@ -298,10 +308,50 @@ fn provider_workflow_segment(
   }
 }
 
+data verification_segment_receipt_note: String = "Verify moves on ITS OWN receipt and on nothing else. The lamp used to be hardcoded pending, which was honest while no producer existed but stopped being honest the moment one did. What it must never become is a projection of the Agent obligation: a provider that completed has produced a diff, not a verified one, and painting Verify from provider completion would fabricate the very fact the receipt exists to establish. So the receipt's ABSENCE is still pending — the same answer as before — and only a decodable receipt moves the lamp. The three verdicts land on three different segment states because they mean three different things to whoever reads the row: a pass satisfies the obligation, a failure is the subject's problem, and a refusal is the mechanism declining to answer, which is not a red and must not be shown as one. An undecodable document is refused rather than ignored, because a receipt this reader cannot decode at the attempt's own path is a fact about that attempt, not an absence."
+
+fn verification_receipt_segment(receipt: String) -> WorkflowSegment {
+  match validation_receipt_decode(receipt: receipt) {
+    ValidationReceiptUndecodable { reason } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: reason,
+      }
+    ValidationReceiptDecoded { verdict_key } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: if verdict_key == "not_run" {
+          WorkflowSegmentPending
+        } else if verdict_key == "passed" {
+          WorkflowSegmentComplete
+        } else if verdict_key == "failed" {
+          WorkflowSegmentFailed
+        } else {
+          WorkflowSegmentRefused
+        },
+        detail: if verdict_key == "not_run" {
+          "the declared validation has not run yet; this pending state is read from the attempt's own receipt rather than inferred from its absence"
+        } else {
+          join([
+            "declared validation ",
+            verdict_key,
+            " against the oracle pinned at dispatch",
+          ], "")
+        },
+      }
+  }
+}
+
 fn verification_segment(
   provider: ProviderExecutionState,
   validation_summary: String,
+  validation_receipt_readable: Bool,
+  validation_receipt: String,
 ) -> WorkflowSegment {
+  if validation_receipt_readable && trim(validation_receipt) != "" {
+    verification_receipt_segment(receipt: validation_receipt)
+  } else {
   match provider {
     ProviderCompleted { activity: _ } =>
       WorkflowSegment {
@@ -334,6 +384,7 @@ fn verification_segment(
         state: WorkflowSegmentPending,
         detail: "waits for a terminal agent event",
       }
+  }
   }
 }
 
@@ -380,6 +431,8 @@ fn workflow_segment_from_evidence(
       verification_segment(
         provider: provider,
         validation_summary: evidence.validation_summary,
+        validation_receipt_readable: evidence.validation_receipt_readable,
+        validation_receipt: evidence.validation_receipt,
       )
     PublicationWorkflowSegment =>
       WorkflowSegment {
@@ -524,6 +577,7 @@ fn workflow_attempt_progress(
     branch: evidence.branch,
     admission_receipt: evidence.admission_receipt,
     provider: provider,
+    process: evidence.process,
     validation_summary: evidence.validation_summary,
     segments: segments,
     reconciliation: workflow_attempt_reconciliation(
@@ -555,10 +609,12 @@ fn workflow_segment_json_value(segment: WorkflowSegment) -> JsonValue {
   ])
 }
 
-fn workflow_attempt_progress_json_value(
+data progress_json_members_note: String = "Split so a composing consumer can EXTEND the attempt object without re-stating these members or pattern-matching the built JsonValue back open: the belt appends the decided presentation ('activity', from gunbc.roadmap_presentation) to this same object, and progress cannot import presentation without a cycle — the member list is the composition seam."
+
+fn workflow_attempt_progress_json_members(
   progress: WorkflowAttemptProgress,
-) -> JsonValue {
-  json_object(members: [
+) -> List<JsonKeyValue> {
+  [
     json_kv(key: "node_id", value: json_string(s: progress.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: progress.attempt_key)),
     json_kv(key: "branch", value: json_string(s: progress.branch)),
@@ -619,5 +675,13 @@ fn workflow_attempt_progress_json_value(
         segment => workflow_segment_json_value(segment: segment),
       )),
     ),
-  ])
+  ]
+}
+
+fn workflow_attempt_progress_json_value(
+  progress: WorkflowAttemptProgress,
+) -> JsonValue {
+  json_object(members: workflow_attempt_progress_json_members(
+    progress: progress,
+  ))
 }

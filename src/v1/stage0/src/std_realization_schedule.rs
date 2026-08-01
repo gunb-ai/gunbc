@@ -2,7 +2,9 @@
 // Source module: std.realization_schedule
 
 use self::CostBasis::*;
+use self::NoWalkFinalization::*;
 use self::NodeFrontierSelection::*;
+use self::OnSuccessRunnableDisposition::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
 use self::WitnessKind::*;
@@ -308,6 +310,100 @@ pub enum Runnable {
     },
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OnSuccessRunnableDisposition {
+    OnSuccessRunnableAdmitted,
+    OnSuccessDiscoveryRefused,
+    OnSuccessKernelRefused,
+    OnSuccessHeavyResolveRefused,
+    OnSuccessHostCompilerRefused,
+    OnSuccessSubstantialRefused,
+}
+
+pub fn on_success_runnable_disposition_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The single modeled admission authority for a Runnable authored into WalkPlan.on_success_stages. Discovery and kernel workloads have no defined green-only meaning. A whole-tree resolve takes the unadmitted memo lane and leaves its context resident across later stages; host-compiler spawn and substantial residency refuse because success stages declare no resource clamp. A modeled RunnableSingleClaim always carries its full profile — absence or malformation is the strict executor parser's boundary, not a second disposition arm here. The seed executor mirrors this decision until it consumes the v2 model directly; when stage capabilities grow, this function is the one authority that changes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunnableDisposition {
+    match (*runnable.clone()).clone() {
+        Runnable::RunnableDiscoveryBatch { .. } => {
+            OnSuccessRunnableDisposition::OnSuccessDiscoveryRefused
+        }
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => OnSuccessRunnableDisposition::OnSuccessKernelRefused,
+        Runnable::RunnableSingleClaim { profile, .. } => {
+            if profile.heavy_whole_tree_resolve.clone() {
+                OnSuccessRunnableDisposition::OnSuccessHeavyResolveRefused
+            } else {
+                if profile.spawns_host_compiler.clone() {
+                    OnSuccessRunnableDisposition::OnSuccessHostCompilerRefused
+                } else {
+                    match profile.memory.clone() {
+                        RunnableMemoryClass::RunnableMemoryNegligible => {
+                            OnSuccessRunnableDisposition::OnSuccessRunnableAdmitted
+                        }
+                        RunnableMemoryClass::RunnableMemorySubstantial => {
+                            OnSuccessRunnableDisposition::OnSuccessSubstantialRefused
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn walk_plan_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — ELIGIBLE INDEPENDENT RESOLVE GROUPS within a stage MAY overlap, subject to resource admission — no sibling ordering is guaranteed, so anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. The contract is deliberately weaker than \"members run concurrently\" (review 2026-07-31), because the executor can legitimately withdraw overlap without breaking anything: same-entry same-mode claims are COMBINED into one resolve group and run serially within it; memo-lane and discovery units run on the main thread; and at governor width 1 two spawned threads exist while only one claim body is admitted at a time. Promising wall-time concurrency would make grouping, memo placement, and the governor into contract violations when they are the design. What the admission occupants actually need is the absence of a guaranteed order, and that is what is stated. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).\n\nWHAT THE EXECUTOR PROVIDES, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). THE THREE GAPS THIS NOTE USED TO NAME ARE CLOSED. Both populations now run through ONE executor, `run_stage`: same unit grouping, same lane partition (`batch_unit_lane`), same derived cost clamp. ADMISSION IS PER-LANE, NOT UNIVERSAL, and this note states it precisely because an earlier draft's {same governor admission} shorthand was read as a property of every unit and used to justify deleting a real refusal (review 2026-07-31): `run_batch_unit` takes an `AdmittedSlot` for the unit's lifetime, and `run_batch_unit` is reached on the SPAWNED lane only. Memo-lane and main-thread units run UNADMITTED. That is why a heavy-whole-tree-resolve claim is refused admission to an on-success stage rather than merely admitted narrowly — it would route to the memo lane, where no slot governs it, and its context stays resident in `stage_memo` across later stages, so wrapping the call in an ordinary slot would not bound it either. Members within a stage may therefore OVERLAP subject to that per-lane admission, which is the weaker contract stated above and NOT the {members run concurrently} claim earlier drafts made; each stage writes ITS OWN receipt before the next begins, so a process death mid-sequence no longer erases the record of stages that had in fact completed; and the callers differ only in ordering and failure policy, which is the one real difference between the two populations.\n\nWHAT MAKES THAT CHECKABLE RATHER THAN ASSERTED. The concurrency contract was unreachable by a test while spawn-and-join sat inlined in the batch loop, which is exactly how the first attempt promised concurrency while executing serially. `spawn_units`/`join_units` are split out so a LATCH can reach them: each member increments a shared counter and waits until it observes the other, which a serial executor cannot satisfy because the first member waits for a peer that was never started. The bound on that wait is a deadlock detector, never the assertion. Proven discriminating by mutation — making `spawn_units` run each unit inline turns the overlap control RED with the exact serial signature [false, true] and leaves the join and panic controls green. The stage BARRIER is the join half plus a structural fact: `run_walk`'s stage loop takes `&mut stage_memo` per iteration, so two iterations cannot overlap, and the claim that stage N+1 waits for every stage-N member reduces to the claim that the join returns only after every member completed, which the second control pins.\n\nWHAT STILL REFUSES — the TOTAL account, replacing a paragraph that had gone self-contradictory (review 2026-07-31). The prior text asserted that the arm-time validator no longer refuses a heavy-whole-tree-resolve claim, which was true of one revision and false of the one before AND after it; the restored refusal was described elsewhere in this same note, so the canonical carrier stated both. A partial list is how that happened, so this is written as a closed enumeration rather than as commentary on what changed.\n\nAn on-success stage refuses, at arm time:\n  - an UNDECLARED resource profile — the values would be the parse's fail-closed fillers rather than the plan's statements, and a wall read off invented facts is worse than no wall;\n  - `heavy_whole_tree_resolve` — such a unit takes the memo lane, which is UNADMITTED, and its resolved context stays resident in the stage memo across every later stage;\n  - `spawns_host_compiler`;\n  - SUBSTANTIAL residency — the last two because stages supply no clamp parameters (`gunbc_ci_floor_batch_clamp_params` indexes the ORDINARY batches), so such a claim would run unclamped;\n  - a DISCOVERY runnable — it has no defined green-only meaning.\n\nAll four profile restrictions are conditional on mechanisms stages do not yet have, and each names a DIFFERENT trigger; they do not dissolve together. `spawns_host_compiler` and substantial residency dissolve on stages carrying declared clamp parameters. `heavy_whole_tree_resolve` dissolves on a context-lifetime resident reservation — and that reservation is NOT expressible today, which is the part an earlier draft of this sentence got wrong by naming the lease alone as its trigger. An `AdmittedSlot` is a CONCURRENCY slot: holding one for a memoized context's lifetime pins the active count, so the zero-active progress floor never fires, every later admission holds on a full window, and the width that would relieve it grows only on a completion that can no longer happen. The real trigger is therefore TWO steps in order: split execution-slot accounting from resident-reservation accounting, THEN take a context-lifetime reservation against the second. The undeclared-profile refusal has no dissolution — it is the fail-closed floor.\n\nEvery plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn walk_plan_run_stage_claim_executor_seed_deferral() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, and the walk-attempt observation are HAND-RUST in `claim_executor.rs`: the executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.\n\nWHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.\n\nMIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, and receipt emission expressed as modeled effects rather than as `std::thread` plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, since a `.dag`-expressed executor needs native witness execution to run at all. Until then the honest statement is that these are seed-retained by necessity with a named trigger, which is exactly what a self-host frontier row is for.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn walk_finalization_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan { batches: floor_batches, finalization: NoWalkFinalization, .. }` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.\n\nWHAT THE PARAMETERIZATION DOES AND DOES NOT BUY, measured rather than assumed — and the measurement contradicted the intent, so the intent is not what gets written down. The review that requested this asked for a construction wall: the floor's return type should REJECT the empty policy. It does not, today. Probed by execution 2026-07-30: replacing the floor's finalization with NoFinalizationDeclared {} while the signature still reads WalkPlan<FloorFinalization> TYPECHECKS, and fails only later, at the first field access, as a runtime error. A narrower probe isolates the general defect — the typechecker does not check a function's declared return type against its body at all (`fn f() -> Int { \"not an int\" }` typechecks; so does a mismatched generic instantiation), nor a `data` declaration's annotation against its value, while ARGUMENT position is checked and refuses correctly. So this is a §5 WALL-AFTER-GROUNDING, not a wall now: the class is decidable, the single authority it waits on is return-position typechecking, and until that lands the enforcement is honestly VALIDATION — the enrolled witness floor_plan_projects_the_declared_resolve_count_authority (v2.test.claim.ci_floor_plan_witness) reds when the floor stops projecting the declared count, with a forked-count RED control beside it. Saying the signature walls it would be the same overclaim this note's own history is a record of. dissolve-on: return-position type enforcement in the typechecker, at which point the signature becomes the wall and the witness becomes redundant.\n\nLANGUAGE-LAYER FINDING recorded rather than absorbed (§5 workaround rule): a one-variant sum cannot be spelled `type T = OneVariant` — that production is the type-ALIAS form, and the compiler reads OneVariant as an unresolved type name (probed by execution). The nullary variant therefore has to be spelled `= NoFinalizationDeclared {}`, an empty record variant. That is position-dependent meaning for the same syntax (`= A | B` makes A a variant; `= A` makes A an alias target), and it belongs in the grammar-consolidation lane, not in a silent respelling.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NoWalkFinalization {
+    NoFinalizationDeclared,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WalkPlan<F: Clone> {
+    pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub finalization: F,
+    pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub _phantom: std::marker::PhantomData<F>,
+}
+
 pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
     match sel.clone() {
         NodeFrontierSelection::SelectionApplied => true,
@@ -572,3 +668,17 @@ pub struct SelectionOff;
 pub struct SelectionApplied;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SelectionPredictOnly;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessRunnableAdmitted;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessDiscoveryRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessKernelRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessHeavyResolveRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessHostCompilerRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessSubstantialRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NoFinalizationDeclared;

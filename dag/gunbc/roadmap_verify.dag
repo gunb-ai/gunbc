@@ -1,0 +1,556 @@
+module gunbc.roadmap_verify
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract,
+  ExecutionContractUnspecified,
+  ExecutionContract,
+  ValidationOperation,
+  ModeledValidationCommand,
+  validation_operation_command,
+  modeled_validation_command_wire,
+  ContractClosure,
+  ContractDeclaresNoValidation,
+  ContractClosesNothing,
+  ContractCloses,
+  contract_closure,
+}
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardProvisionTransport,
+  DashboardLocalProvision,
+  DashboardSshProvision,
+  srv1_lab_dashboard_instance,
+  srv2_lab_dashboard_instance,
+}
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.roadmap_belt_actuate {
+  BeltNodeLookup,
+  NodeFound,
+  NodeMissing,
+  belt_lookup_node,
+}
+import gunbc.roadmap_dispatch_actuator {
+  dispatch_attempt_verification_path_for_instance,
+}
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.json.emit {
+  JsonValue,
+  serialize_json,
+  json_string,
+  json_int,
+  json_object,
+  json_kv,
+}
+
+data verification_producer_note: String = "THE SEGMENT THAT WAS DECLARED AND NEVER GROUNDED. roadmap_attempt_workflow_stage_note states it plainly: Environment, Workspace and Agent are grounded execution facts while Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. This is Verification's producer.\\n\\nWhy it matters more than the ordering suggests: without it a dispatch ends at 'agent turn completed' and a human goes and checks by hand, which is the loop the belt exists to close. The page renders a desired obligation identically to a grounded one, so an unimplemented stage reads as a stalled one — the operator sees a row stuck on Agent and cannot tell whether the work is incomplete or the mechanism is.\\n\\nTHE CASE THAT PROVED IT, 2026-07-30. The first srv2 dispatch spent a full provider turn to report that its node was 'already implemented in ancestor commit f67a0c644ea; no new edits were needed'. That conclusion is exactly what this node's declared validation decides, deterministically, in one command, with no provider involved. An agent was spent discovering something a claim run establishes."
+
+data verification_two_operations_note: String = "THE FIRST CUT WAS A USEFUL VERIFIER LIBRARY WEARING THE PRODUCER'S NAME, and it was wrong about both the HOST and the SUBJECT.\\n\\nWRONG HOST. verify_node called belt_exec, which is gunbc.WitnessBin.Run — a local process — and never consulted instance.provision_transport. srv1_lab's transport is DashboardSshProvision on srv1, so selecting that instance changed the repo paths and the executable resolution the command was built from and did NOT change which machine ran it. Verifying an srv1 instance executed on srv2, against srv1's paths, from srv2's filesystem. The failure mode is not a refusal: the paths do not exist on srv2, so the validation fails, and it fails in a way that reads exactly like the work being incomplete.\\n\\nWRONG SUBJECT. It verified instance.repo_root — the base clone the instance provisions from — which is the one tree an agent's attempt is guaranteed NOT to have touched. An attempt lives in its own worktree on its own branch at its own revision; running the node's validation against the base answers a question about the starting point and reports it as though it were about the work. There was no attempt identity anywhere in the module, no revision, no receipt, and nothing that could transition into Publication.\\n\\nSO THERE ARE TWO OPERATIONS, because there were always two questions. verify_base_before_dispatch asks whether the obligation ALREADY holds — a pre-dispatch check against the base tree, which is exactly the tree it should read, and whose answer decides whether spending a provider is warranted. verify_attempt asks whether the agent's work holds, which is a question about a worktree at a revision, and which is the one that produces evidence. The first cut collapsed them and got the second one's host and subject from the first one's assumptions.\\n\\nOnly the second persists a receipt. A pre-dispatch check is a decision input and produces no evidence about work that has not happened yet; manufacturing a receipt for it would put a verification record in the attempt state directory before the attempt existed."
+
+type VerificationOutcome
+  = VerificationUnbound {
+      node_id: String,
+    }
+  | VerificationPassed {
+      node_id: String,
+      validations_run: Int,
+    }
+  | VerificationFailed {
+      node_id: String,
+      label: NonEmptyStr,
+      detail: String,
+    }
+  | VerificationRefused {
+      node_id: String,
+      label: NonEmptyStr,
+      reason: String,
+    }
+  | VerificationNodeNotFound {
+      node_id: String,
+    }
+
+data verification_outcome_arms_note: String = "FIVE ARMS BECAUSE FIVE REMEDIES. Unbound means the node names no validation — nothing failed, there is simply nothing to run, and the fix is to author a contract; this is the state most of the board is in and collapsing it into a failure would report fifty imaginary regressions. Failed means the validation ran and answered no: the work is genuinely incomplete. Refused means it could not run at all — a missing binary, an unrealized capability, a transport that did not deliver the command — which is an environment problem and never evidence about the work. Passed carries the count so a contract that silently lost its validations cannot report success from an empty list. NotFound is a caller error, distinct from every state of a real node.\\n\\nThe pair that must never merge is Failed and Refused. A refusal reported as a failure sends someone to debug code that was never executed, and it is the exact shape of the fabricated verdicts this repository keeps finding. It is also precisely what the wrong-host defect produced: a validation running on the wrong machine against paths that do not exist there fails, and reads as incomplete work.\\n\\nAn empty validations list is Unbound rather than Passed for the same reason: zero checks passing is not a green result. That decision no longer lives here — it is gunbc.roadmap_execution_contract's contract_closure, because two other modules were deciding it too and one of them disagreed."
+
+data verification_transport_note: String = "VERIFICATION RUNS WHERE THE INSTANCE LIVES, which is the defect this function exists to close. The routing is the same one gunbc.roadmap_dashboard_instance_apply already performs for every provisioning step — match the transport, run locally or over SSH — and the verifier simply was not doing it.\\n\\nThe workdir is threaded rather than assumed. A local run gets it from env -C through WitnessBin.Run's own workdir parameter; an SSH run has no workdir channel, so the argv is prefixed with env -C explicitly. Both forms are the same intent and neither invents a default: the caller says which tree, because the whole point of the split above is that the tree differs between the two operations.\\n\\nTHE EXIT CODE IS PRESERVED, unlike DashboardExecResult which reduces execution to a success Bool and carries a declared scaffold marker saying so. A receipt whose exit field could only say pass or fail would lose the distinction between a validation that answered no and a runner that could not start, which is the same Failed-versus-Refused collapse the arms above exist to prevent. This module keeps its own result carrier for that reason rather than widening the scaffolded one, and the host that actually ran the process is part of it — derived from the TRANSPORT rather than from host_identity, because host_identity is what the old code would have reported while executing somewhere else."
+
+type VerificationExec
+  = VerificationExecRan {
+      exit_code: Int,
+      stdout: String,
+      stderr: String,
+    }
+  | VerificationExecTransportRefused {
+      reason: String,
+    }
+
+fn verification_execution_host(instance: HostDashboardInstance) -> NonEmptyStr {
+  match instance.provision_transport {
+    DashboardLocalProvision => instance.host_identity
+    DashboardSshProvision { host } => host
+  }
+}
+
+fn verification_exec(
+  instance: HostDashboardInstance,
+  workdir: FilePath,
+  command: ModeledValidationCommand,
+) -> VerificationExec {
+  match instance.provision_transport {
+    DashboardLocalProvision => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: workdir,
+        bin_path: command.program,
+        args: command.args,
+        expect: OutcomeIsData,
+      )
+      VerificationExecRan {
+        exit_code: result.exit_code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }
+    }
+    DashboardSshProvision { host } =>
+      match typed_argv_exec_over_ssh(
+        host: host,
+        argv: concat(
+          ["/usr/bin/env", "-C", workdir as String, command.program as String],
+          command.args,
+        ),
+      ) {
+        TypedArgvExecConverged { result } =>
+          VerificationExecRan {
+            exit_code: result.exit_code,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
+        TypedArgvExecRefused { reason } =>
+          VerificationExecTransportRefused { reason: reason }
+      }
+  }
+}
+
+fn verification_run_one(
+  node_id: String,
+  instance: HostDashboardInstance,
+  workdir: FilePath,
+  validation: ValidationOperation,
+) -> VerificationOutcome {
+  match validation_operation_command(
+    validation: validation,
+    environment: instance.execution_environment,
+  ) {
+    Absent =>
+      VerificationRefused {
+        node_id: node_id,
+        label: "unrealized-capability" as NonEmptyStr,
+        reason: "the instance environment realizes no executable for this validation's capability",
+      }
+    Present { value: cmd } =>
+      match verification_exec(instance: instance, workdir: workdir, command: cmd) {
+        VerificationExecTransportRefused { reason } =>
+          VerificationRefused {
+            node_id: node_id,
+            label: cmd.label,
+            reason: join([
+              "transport to ",
+              verification_execution_host(instance: instance) as String,
+              " refused: ",
+              reason,
+            ], ""),
+          }
+        VerificationExecRan { exit_code, stdout: _, stderr } =>
+          if exit_code == 0 {
+            VerificationPassed { node_id: node_id, validations_run: 1 }
+          } else {
+            VerificationFailed {
+              node_id: node_id,
+              label: cmd.label,
+              detail: join([
+                "validation exited ",
+                to_string(exit_code),
+                " on ",
+                verification_execution_host(instance: instance) as String,
+                ": ",
+                stderr,
+              ], ""),
+            }
+          }
+      }
+  }
+}
+
+data verification_short_circuit_note: String = "The fold SHORT-CIRCUITS on the first non-passing outcome, mirroring belt_exec_all's sequencing rule. Continuing after a failure would run later validations against a tree the first one already reported broken, and the resulting outcome would name whichever check happened to be last rather than the one that actually decided. The count in the passed arm accumulates only across validations that genuinely ran and passed."
+
+fn verification_fold(
+  node_id: String,
+  instance: HostDashboardInstance,
+  workdir: FilePath,
+  validations: List<ValidationOperation>,
+) -> VerificationOutcome {
+  fold(
+    validations,
+    init: VerificationPassed { node_id: node_id, validations_run: 0 },
+    f: fn(acc, validation) {
+      match acc {
+        VerificationPassed { node_id: n, validations_run: ran } =>
+          match verification_run_one(
+            node_id: n,
+            instance: instance,
+            workdir: workdir,
+            validation: validation,
+          ) {
+            VerificationPassed { node_id: _, validations_run: _ } =>
+              VerificationPassed { node_id: n, validations_run: ran + 1 }
+            other => other
+          }
+        other => other
+      }
+    },
+  )
+}
+
+fn verify_contract(
+  node_id: String,
+  instance: HostDashboardInstance,
+  workdir: FilePath,
+  contract: WorkItemExecutionContract,
+) -> VerificationOutcome {
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation => VerificationUnbound { node_id: node_id }
+    ContractClosesNothing => VerificationUnbound { node_id: node_id }
+    ContractCloses { validations } =>
+      verification_fold(
+        node_id: node_id,
+        instance: instance,
+        workdir: workdir,
+        validations: validations,
+      )
+  }
+}
+
+data verify_base_note: String = "THE PRE-DISPATCH CHECK, and the base clone is the RIGHT subject for it. This asks whether the node's obligation already holds before any agent is spent, so the tree it should read is precisely the one the instance provisions from — instance.repo_root. What made the first cut wrong was not reading the base; it was reading the base while claiming to verify an attempt.\\n\\nVERIFY FIRST, DISPATCH ONLY ON FAILURE, and the ordering is the point rather than an optimization. A node's contract already names the validation that decides whether its obligation holds; running it is a pure host effect with a deterministic answer. Dispatching a provider to reach the same conclusion costs a turn, introduces nondeterminism into a question that has none, and produces prose where a verdict was available.\\n\\nSo an agent becomes conditional. Verification passing means the obligation is already satisfied and the correct next action is acceptance, not work — which is precisely the state most of the current board is in, since the roadmap's problem is missing receipts rather than missing implementations. Verification failing is what makes an agent worth spending.\\n\\nThis also inverts what a green result MEANS. Under agent-always, a completed turn says a provider believes it is done; under verify-first, a pass says the declared control actually held when executed. The second is evidence and the first is testimony."
+
+fn verify_base_before_dispatch(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+) -> VerificationOutcome {
+  verify_contract(
+    node_id: node.node as String,
+    instance: instance,
+    workdir: instance.repo_root,
+    contract: node.execution,
+  )
+}
+
+fn verify_base_node_id(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> VerificationOutcome {
+  match belt_lookup_node(node_id: node_id) {
+    NodeMissing => VerificationNodeNotFound { node_id: node_id }
+    NodeFound { node: node } =>
+      verify_base_before_dispatch(instance: instance, node: node)
+  }
+}
+
+data verification_receipt_note: String = "WHAT A VERIFICATION IS EVIDENCE OF, stated as fields rather than left implicit. An outcome alone says pass or fail; it does not say WHICH tree, at WHICH revision, on WHICH machine, running WHICH realized command. Those are exactly the four facts the wrong-host and wrong-subject defects turned out to be about, and none of them was recoverable from the value the first cut returned — which is why a verification that ran on the wrong machine against the wrong tree produced an outcome indistinguishable from a correct one.\\n\\nThe attempt key binds the receipt to the work rather than to the node. A node is verified many times across many attempts; a receipt naming only the node cannot say which attempt it describes, and a Publication transition needs to know that its evidence belongs to the revision it is about to publish.\\n\\nThe realized command is stored as its wire form rather than as the ValidationOperation, because the operation is the DECLARATION and the argv is what actually ran. They differ by the capability realization, which is a per-instance fact — the same GunbcClaimValidation resolves to a different executable on an instance with a different environment, and a receipt that recorded only the declaration could not distinguish a validation that ran from one that resolved to a different binary.\\n\\nExit is a coproduct rather than an Int because 'the process did not run' has no exit code, and zero is a wrong answer for it in the most dangerous direction."
+
+type VerificationExit
+  = ExitObserved { code: Int }
+  | ExitNotObserved { reason: String }
+
+type VerificationReceipt {
+  node_id: String
+  attempt_key: String
+  host: NonEmptyStr
+  worktree: FilePath
+  revision: NonEmptyStr
+  validation_label: NonEmptyStr
+  command_wire: String
+  exit: VerificationExit
+  evidence: String
+}
+
+fn verification_receipt_json(receipt: VerificationReceipt) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-verification-receipt/v1")),
+    json_kv(key: "node_id", value: json_string(s: receipt.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: receipt.attempt_key)),
+    json_kv(key: "host", value: json_string(s: receipt.host as String)),
+    json_kv(key: "worktree", value: json_string(s: receipt.worktree as String)),
+    json_kv(key: "revision", value: json_string(s: receipt.revision as String)),
+    json_kv(key: "validation_label", value: json_string(s: receipt.validation_label as String)),
+    json_kv(key: "command", value: json_string(s: receipt.command_wire)),
+    json_kv(
+      key: "exit",
+      value: match receipt.exit {
+        ExitObserved { code } => json_int(n: code)
+        ExitNotObserved { reason: _ } => json_int(n: 0 - 1)
+      },
+    ),
+    json_kv(
+      key: "exit_state",
+      value: match receipt.exit {
+        ExitObserved { code: _ } => json_string(s: "observed")
+        ExitNotObserved { reason } => json_string(s: join(["not-observed: ", reason], ""))
+      },
+    ),
+    json_kv(key: "evidence", value: json_string(s: receipt.evidence)),
+  ]))
+}
+
+data attempt_verification_note: String = "THE OPERATION THE FIRST CUT DID NOT HAVE. It takes the attempt's identity, its worktree and its revision as arguments rather than deriving them from the instance, because they are facts about the WORK and not about the deployment — the same instance verifies many attempts, each in its own tree at its own revision.\\n\\nIt runs through the instance transport, so an srv1 attempt is verified on srv1. It runs in the attempt's worktree, so what it reads is what the agent produced. And it returns a receipt alongside the outcome, so the answer carries the four facts that make it checkable rather than merely reportable.\\n\\nThe single-validation shape is deliberate at this stage. A contract with several validations needs a receipt per validation to stay honest — one receipt naming one command cannot describe three runs — and folding several into one record is the summarization that loses the located detail. So this verifies the contract's FIRST closing validation and names it; the multi-validation receipt set is the next slice, and stating that here is cheaper than shipping a receipt whose command field describes one of the three things that ran."
+
+type AttemptVerification
+  = AttemptVerified {
+      outcome: VerificationOutcome,
+      receipt: VerificationReceipt,
+    }
+  | AttemptVerificationUnbound {
+      node_id: String,
+      reason: String,
+    }
+
+fn first_closing_validation(
+  contract: WorkItemExecutionContract,
+) -> ValidationOperation? {
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation => none
+    ContractClosesNothing => none
+    ContractCloses { validations } => first(validations)
+  }
+}
+
+fn verify_attempt(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+  worktree: FilePath,
+  revision: NonEmptyStr,
+) -> AttemptVerification {
+  let node_id = node.node as String
+  match first_closing_validation(contract: node.execution) {
+    Absent =>
+      AttemptVerificationUnbound {
+        node_id: node_id,
+        reason: "the node declares no closing validation, so an attempt against it cannot be verified; author a contract before dispatching",
+      }
+    Present { value: validation } =>
+      match validation_operation_command(
+        validation: validation,
+        environment: instance.execution_environment,
+      ) {
+        Absent =>
+          AttemptVerified {
+            outcome: VerificationRefused {
+              node_id: node_id,
+              label: "unrealized-capability" as NonEmptyStr,
+              reason: "the instance environment realizes no executable for this validation's capability",
+            },
+            receipt: VerificationReceipt {
+              node_id: node_id,
+              attempt_key: attempt_key,
+              host: verification_execution_host(instance: instance),
+              worktree: worktree,
+              revision: revision,
+              validation_label: "unrealized-capability" as NonEmptyStr,
+              command_wire: "",
+              exit: ExitNotObserved {
+                reason: "no host realization for the validation's capability, so no command was built",
+              },
+              evidence: "",
+            },
+          }
+        Present { value: cmd } =>
+          match verification_exec(
+            instance: instance,
+            workdir: worktree,
+            command: cmd,
+          ) {
+            VerificationExecTransportRefused { reason } =>
+              AttemptVerified {
+                outcome: VerificationRefused {
+                  node_id: node_id,
+                  label: cmd.label,
+                  reason: join([
+                    "transport to ",
+                    verification_execution_host(instance: instance) as String,
+                    " refused: ",
+                    reason,
+                  ], ""),
+                },
+                receipt: VerificationReceipt {
+                  node_id: node_id,
+                  attempt_key: attempt_key,
+                  host: verification_execution_host(instance: instance),
+                  worktree: worktree,
+                  revision: revision,
+                  validation_label: cmd.label,
+                  command_wire: modeled_validation_command_wire(command: cmd),
+                  exit: ExitNotObserved { reason: reason },
+                  evidence: "",
+                },
+              }
+            VerificationExecRan { exit_code, stdout, stderr } =>
+              AttemptVerified {
+                outcome: if exit_code == 0 {
+                  VerificationPassed { node_id: node_id, validations_run: 1 }
+                } else {
+                  VerificationFailed {
+                    node_id: node_id,
+                    label: cmd.label,
+                    detail: join([
+                      "validation exited ",
+                      to_string(exit_code),
+                      " on ",
+                      verification_execution_host(instance: instance) as String,
+                      ": ",
+                      stderr,
+                    ], ""),
+                  }
+                },
+                receipt: VerificationReceipt {
+                  node_id: node_id,
+                  attempt_key: attempt_key,
+                  host: verification_execution_host(instance: instance),
+                  worktree: worktree,
+                  revision: revision,
+                  validation_label: cmd.label,
+                  command_wire: modeled_validation_command_wire(command: cmd),
+                  exit: ExitObserved { code: exit_code },
+                  evidence: join([trim(stdout), trim(stderr)], " "),
+                },
+              }
+          }
+      }
+  }
+}
+
+data receipt_persistence_note: String = "PERSISTING THE RECEIPT IS A HOST EFFECT AND IT OBEYS THE SAME TRANSPORT THE VERIFICATION DID. The attempt state directory lives on the instance's machine, so writing the receipt with a local Filesystem.Write is correct exactly when the instance is locally provisioned and wrong in the same way the old verifier was wrong when it is not — it would put an srv1 attempt's evidence on srv2's disk, under a path that describes srv1, and report success.\\n\\nSo the remote arm REFUSES rather than writing locally, and the refusal is typed and carries the transport it could not use. This is a real gap and it is named as one: gunbc.WitnessBin.Run and the SSH argv path both move a COMMAND, and neither moves file CONTENT, so a remote receipt needs a content-carrying transport that does not exist here yet. The argv allowlist in gunbc.typed_argv_exec deliberately excludes the braces and quotes a JSON document is made of, which is why smuggling the write through an echo argv is not available and should not be.\\n\\nDISSOLVES ON a transport-routed write — the same seam gunbc.roadmap_dashboard_instance_apply's dashboard_copy_to_target_atomically already crosses for staged files via scp. Until then a remote attempt's verification returns its outcome and its receipt as VALUES, which are complete and checkable, and refuses only the persistence step. Note that gunbc.roadmap_belt_actuate's attempt-state initialization writes through the same local Filesystem.Write with the same latent assumption; this row does not fix that, and does not hide it either."
+
+type VerificationReceiptPersistence
+  = ReceiptPersisted { path: String }
+  | ReceiptPersistRefused { reason: String }
+
+fn persist_verification_receipt(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  receipt: VerificationReceipt,
+) -> VerificationReceiptPersistence {
+  match instance.provision_transport {
+    DashboardSshProvision { host } =>
+      ReceiptPersistRefused {
+        reason: join([
+          "instance is provisioned over ssh to ",
+          host as String,
+          ", and no content-carrying transport is bound here; the receipt is returned as a value and not written",
+        ], ""),
+      }
+    DashboardLocalProvision => {
+      let path = dispatch_attempt_verification_path_for_instance(
+        instance: instance,
+        node_id: node.node,
+        attempt_key: receipt.attempt_key,
+      )
+      let write = Filesystem.Write(
+        path: path,
+        content: verification_receipt_json(receipt: receipt),
+      )
+      if write.success {
+        ReceiptPersisted { path: path }
+      } else {
+        ReceiptPersistRefused {
+          reason: join(["verification receipt write failed: ", write.error], ""),
+        }
+      }
+    }
+  }
+}
+
+data verification_dispatch_disposition_note: String = "WHAT THE BELT SHOULD DO NEXT, derived from the outcome rather than decided at the call site. A pass means the obligation holds and the right next action is ACCEPTANCE — not another agent, and not silence. A failure is the only state where spending a provider is justified, because there is now a specific thing to fix. Unbound needs a contract authored before any of this applies, which is work of a different kind and belongs to the acceptance tasks the frontier already derives.\\n\\nA refusal dispatches NOTHING. The environment could not run the check, so nothing is known about the work, and sending an agent at that point asks it to fix code on the strength of a broken toolchain — the failure mode where a provider dutifully edits something in response to evidence that never existed. The wrong-host defect made this arm load-bearing rather than theoretical: a transport that cannot reach srv1 now lands here instead of arriving as a failure that looks like incomplete work."
+
+type VerifiedDispatchDisposition
+  = ReadyForAcceptance { node_id: String, validations_run: Int }
+  | DispatchWarranted { node_id: String, because: String }
+  | ContractNeededFirst { node_id: String }
+  | EnvironmentBlocked { node_id: String, reason: String }
+
+fn dispatch_disposition_for(outcome: VerificationOutcome) -> VerifiedDispatchDisposition {
+  match outcome {
+    VerificationPassed { node_id, validations_run } =>
+      ReadyForAcceptance { node_id: node_id, validations_run: validations_run }
+    VerificationFailed { node_id, label, detail } =>
+      DispatchWarranted {
+        node_id: node_id,
+        because: join([label as String, " failed: ", detail], ""),
+      }
+    VerificationUnbound { node_id } => ContractNeededFirst { node_id: node_id }
+    VerificationRefused { node_id, label: _, reason } =>
+      EnvironmentBlocked { node_id: node_id, reason: reason }
+    VerificationNodeNotFound { node_id } =>
+      EnvironmentBlocked {
+        node_id: node_id,
+        reason: "node id is not declared in the roadmap authority",
+      }
+  }
+}
+
+fn verification_outcome_label(outcome: VerificationOutcome) -> String {
+  match outcome {
+    VerificationUnbound { node_id: _ } => "unbound"
+    VerificationPassed { node_id: _, validations_run: _ } => "passed"
+    VerificationFailed { node_id: _, label: _, detail: _ } => "failed"
+    VerificationRefused { node_id: _, label: _, reason: _ } => "refused"
+    VerificationNodeNotFound { node_id: _ } => "node-not-found"
+  }
+}
+
+data wet_entry_return_type_note: String = "A func RETURNS ProcessExit, and both wet entries returned VerificationOutcome. That is not a style point: a func is the boundary where a .dag value becomes a process result, and the runner reads an exit status there. Returning a domain coproduct means the boundary has no exit code to report, so every outcome — passed, failed, refused — leaves the process indistinguishable from every other.\\n\\nThe mapping is deliberate about which states are failures OF THE PROCESS. A passing validation exits success. A failing one exits failure, because the verifier's job is to report that the obligation does not hold and a caller scripting against it needs a nonzero status. A REFUSAL also exits failure, and carries its reason: nothing was learned, and exiting success on 'the check could not run' is the absorbing fallback in its purest form — a green process standing for an unanswered question.\\n\\nUnbound exits failure too. It is not a defect in the work, but it IS a defect in the request: the caller asked to verify a node that declares nothing to verify, and answering that with success would report a green verification of nothing."
+
+fn verification_process_exit(outcome: VerificationOutcome) -> ProcessExit {
+  match outcome {
+    VerificationPassed { node_id: _, validations_run: _ } => ExitSuccess
+    VerificationFailed { node_id, label, detail } =>
+      exit_failure(reason: join([
+        node_id, ": ", label as String, " failed: ", detail,
+      ], ""))
+    VerificationRefused { node_id, label, reason } =>
+      exit_failure(reason: join([
+        node_id, ": ", label as String, " could not run: ", reason,
+      ], ""))
+    VerificationUnbound { node_id } =>
+      exit_failure(reason: join([
+        node_id, ": no closing validation is declared, so there is nothing to verify",
+      ], ""))
+    VerificationNodeNotFound { node_id } =>
+      exit_failure(reason: join([
+        node_id, ": node id is not declared in the roadmap authority",
+      ], ""))
+  }
+}
+
+func verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
+  verification_process_exit(
+    outcome: verify_base_node_id(
+      instance: srv2_lab_dashboard_instance(),
+      node_id: node_id,
+    ),
+  )
+}
+
+func verify_srv1_lab_base_wet(node_id: String) -> ProcessExit {
+  verification_process_exit(
+    outcome: verify_base_node_id(
+      instance: srv1_lab_dashboard_instance(),
+      node_id: node_id,
+    ),
+  )
+}

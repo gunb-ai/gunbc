@@ -2,6 +2,7 @@ module gunbc.ci_materialization
 
 
 import std.types { Bool, Int, List, String }
+import std.nat { Nat }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_ladder {
@@ -169,15 +170,16 @@ data ci_floor_resolve_receipt_note: String = "The counted cold-resolve receipt o
 
 data ci_floor_resolve_receipt_path: String = "target/floor-resolve-receipt.txt"
 
-data ci_floor_declared_resolve_count: Int = 1
+data ci_floor_declared_resolve_count: Nat = 1
 
-data ci_floor_resolve_receipt_gate_shell_emit_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_materialization",
-    decl_name: "ci_floor_resolve_receipt_gate_script",
-    field: WholeDeclaration
-  }
+data floor_finalization_note: String = "The CI floor's post-batch contract, and it lives HERE rather than in std.realization_schedule because it is a fact about THIS floor's duplicate-computation budget, not about walks in general (review 2026-07-30): the generic carrier takes it as a type parameter, so gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> and every other plan returns WalkPlan<NoWalkFinalization>. WHAT THAT BUYS, narrowly: the signature DECLARES which finalization family each plan intends, and the std-level coproduct fork is gone. It is NOT a construction wall today — probed by execution, the typechecker does not check a declared return type against the body, so a plan can still return the wrong family and typecheck. Until return-position and annotated-data checking are grounded, the enrolled value witnesses and the executor's parser are the wall; the witnesses dissolve when that checking lands (std.realization_schedule walk_finalization_note carries the probe and the dissolve-on).
+
+TWO LAWS, ONE FIELD. Materialization disclosure was briefly a `require_materialization_disclosure: Bool` beside the count, and that Bool was a writable bypass with a lie attached: the executor returned before checking the materialization receipt when it was false, while its success message — unconditional on the Bool — still reported that disclosure held. One consumer exists and it requires disclosure, so the `false` state was pre-authored for nobody. Disclosure is now INTRINSIC to the type: inhabiting FloorFinalization is what obligates both laws. A future consumer that genuinely needs resolve-count validation alone introduces its own finalization type when it exists, rather than being pre-authored as a bypass here (§5 — the state a check can be satisfied by editing away is the state that should not be writable).
+
+declared_resolve_count is Nat, not Int: a negative declared count has no meaning, and making it unrepresentable is cheaper than guaranteeing it mismatches later."
+
+type FloorFinalization {
+  declared_resolve_count: Nat
 }
 
 data ci_sccache_provider_shell_injection_dissolution_trigger: Disposition = Scaffold {
@@ -193,67 +195,25 @@ data ci_floor_materialization_receipt_note: String = "Increment 1 of INFERRED ma
 
 data ci_floor_materialization_receipt_path: String = "target/floor-materialization-receipt.txt"
 
-data ci_floor_materialization_receipt_gate_shell_emit_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
+data ci_floor_on_success_materialization_receipt_path: String = "target/floor-attempt-<attempt_id>/floor-on-success-materialization-receipt.txt"
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_note: String = "§7 seed-retained HAND-RUST bridge (#7499 blocker 6, src/v1/stage0/src/bin/claim_executor.rs): the ordinary materialization receipt is harvested before on_success_stages run; a second receipt at ci_floor_on_success_materialization_receipt_path (attempt-scoped like the other on-success receipts, with attempt_id= and plan_site= in the payload) captures the stage population after stage_memo drops, with the same keyed/unkeyed/duplicated/memo fields. Reason: the process-wide accumulator and fs write at the walk boundary are executor realization — not yet expressible as substrate behavior inside claim_executor. Checkable receipt: ci_floor_on_success_materialization_receipt_claim_executor_seed_deferral + receipt_plan_anchor + roadmap_lane_anchor (witness ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag); behavioral cross-check: on_success_materialization_receipt_separates_from_ordinary_floor in claim_executor.rs (PROCESS_EVAL_RECOMPUTE_TEST_LOCK)."
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_deferral: String = "🟡 dissolve-on: write_on_success_materialization_receipt / materialization_receipt_body / write_materialization_receipt_at harvest arms in src/v1/stage0/src/bin/claim_executor.rs — process-wide accumulator take plus fs write at the run_walk boundary, bundled with the other on-success receipt writers. Counted interim HAND-Rust growth (#7499 blocker 6), NOT a census shrink (review 45752). DISSOLVES WHEN claim_executor walk scheduling and receipt emission are expressed as modeled .dag effects rather than std::thread plus std::fs — the same executor-cutover seam named by walk_plan_run_stage_claim_executor_seed_deferral (std.realization_schedule). Gated on witness-realization P4 executor cutover; not an indefinite seed exemption."
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_receipt_plan_anchor: String = "docs/plans/witness-realization-plan.md#p4--realize-v0-the-memory-packed-scheduler"
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_roadmap_lane_anchor: String = "ROADMAP.md — Compute things once and reuse the result (authority docs/plans/witness-realization-plan.md)"
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_witness_entry: String = "dag/test/claim/ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag"
+
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.ci_materialization",
-    decl_name: "ci_floor_materialization_receipt_gate_script",
+    decl_name: "ci_floor_on_success_materialization_receipt_path",
     field: WholeDeclaration
   }
-}
-
-fn ci_floor_materialization_receipt_gate_script() -> String {
-  let missing = concat(
-    concat("if ! test -f ", ci_floor_materialization_receipt_path),
-    "; then echo \"floor materialization receipt missing - fail closed\"; exit 1; fi\n"
-  )
-  let read_keyed = concat(
-    concat("k=$(sed -n 's/^keyed_calls=//p' ", ci_floor_materialization_receipt_path),
-    ")\n"
-  )
-  let read_unkeyed = concat(
-    concat("u=$(sed -n 's/^unkeyed_calls=//p' ", ci_floor_materialization_receipt_path),
-    ")\n"
-  )
-  let read_duplicated = concat(
-    concat("d=$(sed -n 's/^duplicated_keys=//p' ", ci_floor_materialization_receipt_path),
-    ")\n"
-  )
-  let malformed = "if test -z \"$k\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\nif test -z \"$u\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\nif test -z \"$d\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\n"
-  let keyed_nonzero = "if test \"$k\" -eq 0; then echo \"floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed\"; exit 1; fi\n"
-  let ok_line = "echo \"floor materialization receipt: keyed=$k unkeyed=$u duplicated=$d (disclosure gate; count pins retracted 2026-07-10 — schedule-jittered per-ctx grain + diff-dependent affected-set denominator; walls forward: unkeyed==0 on closure identity, duplicated on structural frame grain)\""
-  concat(
-    concat(concat(missing, read_keyed), concat(read_unkeyed, read_duplicated)),
-    concat(concat(malformed, keyed_nonzero), ok_line)
-  )
-}
-
-fn ci_floor_resolve_receipt_gate_script() -> String {
-  concat(
-    concat(
-      concat(
-        concat("if ! test -f ", ci_floor_resolve_receipt_path),
-        concat("; then echo \"floor resolve receipt missing - fail closed\"; exit 1; fi\n", "n=$(sed -n 's/^resolves_total=//p' ")
-      ),
-      concat(
-        concat(ci_floor_resolve_receipt_path, ")\n"),
-        "if test -z \"$n\"; then echo \"floor resolve receipt malformed - fail closed\"; exit 1; fi\n"
-      )
-    ),
-    concat(
-      concat(
-        concat("if test \"$n\" -ne ", to_string(ci_floor_declared_resolve_count)),
-        concat("; then echo \"floor resolve count $n differs from declared ", to_string(ci_floor_declared_resolve_count))
-      ),
-      concat(
-        ": duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)\"; exit 1; fi\n",
-        concat(
-          concat("echo \"floor resolve count $n matches declared ", to_string(ci_floor_declared_resolve_count)),
-          " (declared cold-resolve receipt)\""
-        )
-      )
-    )
-  )
 }
 
 data ci_sccache_provider_skip_is_counted_note: String = "The skip arm is LOUD and COUNTED, not silent (§5: a degradation must be a typed, located, countable diagnostic so its frequency is observable and prioritizable). This guard was a bare `if` with no else until 2026-07-24 — when the daemon was down the release build simply ran uncached, and the deficit's frequency was zero by construction, so it never ranked for fixing (shell→dag census §4.I lists it as an absorbing fallback). It is NOT yet a refusal: STEP 2 of the srvN build-cache design flips this to fail-closed, and that flip is operator-sequenced AFTER a live T4 read-back proves P1b provisioning converges on srv1/srv2/srv4 — refusing before then would red the whole fleet, which is why the interim is loudness rather than a wall. The receipt line names the host, so a single misconfigured runner is attributable rather than fleet-wide noise."

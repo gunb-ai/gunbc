@@ -1,0 +1,413 @@
+module gunbc.bmc_fan_projection
+
+import extdeps.bmc.capability { BmcFirmwareVersion }
+import extdeps.bmc.types {
+  BmcFanAggregatedControllerTopology,
+  BmcFanCurve,
+  BmcFanCurveStep,
+  BmcFanPolicyObservation,
+  bmc_fan_controller_shape_aggregated_topology,
+}
+import extdeps.boards.types { BaseboardModel }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.measure {
+  celsius,
+  percent,
+  positive_celsius_delta,
+  positive_measure_count,
+}
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
+  LinuxFilePublicationProtocolUnsynchronized,
+  LinuxSynchronizedRenameReplacePublication,
+}
+import product.placement_supply { HostIdentity }
+import std.state_durability {
+  NoDurabilityCommitBarrier,
+  StateDurabilityAdmission,
+  StateDurabilityBoundary,
+  StateDurabilityCapability,
+  StateDurabilityCapabilityVersion,
+  StateDurabilityEvidence,
+  StatePerturbationGeneration,
+  StateRealizationIdentity,
+  SynchronizedCommit,
+}
+import std.types { Bool, List, NonEmptyStr }
+
+type BmcFanProjectionApplyRefusalCause
+  = BmcFanProjectionBoardMismatch
+  | BmcFanProjectionFirmwareMismatch
+  | BmcFanProjectionCurveMismatch
+  | BmcFanProjectionConfigPathMismatch
+  | BmcFanProjectionControllerServiceMismatch
+
+type BmcFanProjectionApplySuitability
+  = BmcFanProjectionApplySuitable
+  | BmcFanProjectionApplyRefused {
+      cause: BmcFanProjectionApplyRefusalCause,
+    }
+
+type BmcFanProjectionLiveDigestRefusalCause {
+  observed: Digest
+  expected: Digest
+}
+
+type BmcFanProjectionLiveDigestSuitability
+  = BmcFanProjectionLiveDigestMatches
+  | BmcFanProjectionLiveDigestRefused {
+      cause: BmcFanProjectionLiveDigestRefusalCause,
+    }
+
+type BmcFanProjectionTopologyRefusalCause
+  = BmcFanProjectionAggregatedTopologyAbsent
+  | BmcFanProjectionEntryNameMismatch
+  | BmcFanProjectionTachInputsMismatch
+
+type BmcFanProjectionTopologySuitability
+  = BmcFanProjectionTopologyMatches
+  | BmcFanProjectionTopologyRefused {
+      cause: BmcFanProjectionTopologyRefusalCause,
+    }
+
+type BmcFanPolicyDriftCause
+  = BmcFanPolicyCurveDrift
+  | BmcFanPolicyTopologyDrift {
+      cause: BmcFanProjectionTopologyRefusalCause,
+    }
+  | BmcFanPolicyDigestDrift {
+      cause: BmcFanProjectionLiveDigestRefusalCause,
+    }
+
+type BmcFanPolicyDriftAssessment
+  = BmcFanPolicyConverged
+  | BmcFanPolicyDrifted { cause: BmcFanPolicyDriftCause }
+
+type BmcFanConfigReadbackSubject {
+  config_path: NonEmptyStr
+}
+
+type BmcFanDurabilityAdmission =
+  StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>
+
+type BmcFanDurabilityEvidence =
+  StateDurabilityEvidence<HostIdentity, BmcFanConfigReadbackSubject>
+
+type BmcFanPolicyProjectionCapability {
+  board: BaseboardModel
+  firmware: BmcFirmwareVersion
+  projected_curve: BmcFanCurve
+  projected_config_digest: Digest
+  config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  controller_zone_path: NonEmptyStr
+  aggregate_fan_pid_entry: NonEmptyStr
+  realization: StateRealizationIdentity
+  durability_capability_version: StateDurabilityCapabilityVersion
+  publication_protocol: LinuxFilePublicationProtocol
+  durability_boundaries: List<StateDurabilityBoundary>
+  required_tach_inputs: List<NonEmptyStr>
+}
+
+type BmcAdmittedConfigDigest
+  = AdmittedConfigDigestKnown { digest: Digest }
+  | AdmittedConfigDigestUnavailable
+
+type BmcProjectedConfigDigest
+  = ProjectedConfigDigestKnown { digest: Digest }
+  | ProjectedConfigDigestUnavailable
+
+data altrad8ud_openbmc_322_swampd_config_asrr_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
+
+data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "f559aff7f3455011e951bed1eac52e8cbe7a724b772fe6ece1d8545ff47cb5bc"
+
+type BmcProjectedConfigContentIdentity {
+  realization_id: NonEmptyStr
+  config_path: NonEmptyStr
+  projected_curve: BmcFanCurve
+  projected_config_sha256_hex: NonEmptyStr
+}
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps: List<BmcFanCurveStep> = [
+  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
+  BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
+  BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+]
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve: BmcFanCurve = BmcFanCurve {
+  control_sensor: "TEMP_SOC",
+  steps: altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps,
+  minimum_duty: percent(30),
+  sensor_unavailable_duty: percent(75),
+  zone_failsafe_duty: percent(30),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+}
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity: BmcProjectedConfigContentIdentity = BmcProjectedConfigContentIdentity {
+  realization_id: altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id,
+  config_path: altrad8ud_openbmc_322_swampd_config_asrr_path,
+  projected_curve: altrad8ud_openbmc_322_fleet_quiet_projected_config_curve,
+  projected_config_sha256_hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
+}
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying altrad8ud_openbmc_322_fleet_quiet_projected_config_curve (the srv3 2.07.00 vendor stock aggressive curve) through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated BMC SSH 2026-07-30: the jq realization was run on srv4's pre-onboarding base config with the stock aggressive desired params, the resulting canonical bytes were written to srv4 by staged same-filesystem atomic rename, and the live config-asrr.json digest read back equal to this hex. Unlike the earlier lazy row (whose hex was the raw onboarding file, idempotent only in structure), this hex IS the realization's own output — the realization reproduces the cited digest byte-for-byte. altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity is the immutable content identity binding realization, config path, probed curve bytes, and cited sha256 hex; bmc_fan_projected_config_digest admits that hex only when every input matches that row exactly. Live intent curves must be witnessed against the frozen probed curve before projection can qualify new bytes."
+
+data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: Digest = sha256_digest(
+  hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
+)
+
+fn bmc_fan_projected_config_digest_sha256_hex(
+  curve: BmcFanCurve,
+  intent_curve: BmcFanCurve,
+  realization: StateRealizationIdentity,
+  config_path: NonEmptyStr,
+  content_identity: BmcProjectedConfigContentIdentity,
+) -> NonEmptyStr? {
+  if curve == intent_curve
+    && curve == content_identity.projected_curve
+    && realization.realization_id == content_identity.realization_id
+    && config_path == content_identity.config_path {
+    Present { value: content_identity.projected_config_sha256_hex }
+  } else {
+    none
+  }
+}
+
+fn bmc_fan_projected_config_digest(
+  curve: BmcFanCurve,
+  intent_curve: BmcFanCurve,
+  realization: StateRealizationIdentity,
+  config_path: NonEmptyStr,
+  content_identity: BmcProjectedConfigContentIdentity,
+) -> BmcProjectedConfigDigest {
+  match bmc_fan_projected_config_digest_sha256_hex(
+    curve: curve,
+    intent_curve: intent_curve,
+    realization: realization,
+    config_path: config_path,
+    content_identity: content_identity,
+  ) {
+    Present { value: hex } =>
+      ProjectedConfigDigestKnown {
+        digest: sha256_digest(hex: hex),
+      }
+    Absent => ProjectedConfigDigestUnavailable
+  }
+}
+
+data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
+  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+)
+
+fn bmc_fan_admitted_config_digest(
+  curve: BmcFanCurve,
+  intent_curve: BmcFanCurve,
+  projected_config_digest: Digest?,
+) -> BmcAdmittedConfigDigest {
+  if curve == intent_curve {
+    match projected_config_digest {
+      Present { value: digest } => AdmittedConfigDigestKnown { digest: digest }
+      Absent => AdmittedConfigDigestUnavailable
+    }
+  } else {
+    AdmittedConfigDigestUnavailable
+  }
+}
+
+fn bmc_fan_policy_projection_capability(
+  board: BaseboardModel,
+  firmware: BmcFirmwareVersion,
+  projected_curve: BmcFanCurve,
+  projected_config_digest: Digest,
+  config_path: NonEmptyStr,
+  controller_service: NonEmptyStr,
+  controller_zone_path: NonEmptyStr,
+  aggregate_fan_pid_entry: NonEmptyStr,
+  realization: StateRealizationIdentity,
+  durability_capability_version: StateDurabilityCapabilityVersion,
+  publication_protocol: LinuxFilePublicationProtocol,
+  durability_boundaries: List<StateDurabilityBoundary>,
+  required_tach_inputs: List<NonEmptyStr>,
+) -> BmcFanPolicyProjectionCapability {
+  BmcFanPolicyProjectionCapability {
+    board: board,
+    firmware: firmware,
+    projected_curve: projected_curve,
+    projected_config_digest: projected_config_digest,
+    config_path: config_path,
+    controller_service: controller_service,
+    controller_zone_path: controller_zone_path,
+    aggregate_fan_pid_entry: aggregate_fan_pid_entry,
+    realization: realization,
+    durability_capability_version: durability_capability_version,
+    publication_protocol: publication_protocol,
+    durability_boundaries: durability_boundaries,
+    required_tach_inputs: required_tach_inputs,
+  }
+}
+
+fn bmc_fan_policy_projection_apply_suitability(
+  capability: BmcFanPolicyProjectionCapability,
+  board: BaseboardModel,
+  desired_curve: BmcFanCurve,
+  observation: BmcFanPolicyObservation,
+) -> BmcFanProjectionApplySuitability {
+  if capability.board != board {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
+  } else if capability.firmware != observation.firmware {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionFirmwareMismatch }
+  } else if capability.projected_curve != desired_curve {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionCurveMismatch }
+  } else if capability.config_path != observation.board_config_path {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionConfigPathMismatch }
+  } else if capability.controller_service != observation.controller_service {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionControllerServiceMismatch }
+  } else {
+    BmcFanProjectionApplySuitable
+  }
+}
+
+fn bmc_fan_policy_projection_live_digest_suitability(
+  capability: BmcFanPolicyProjectionCapability,
+  observation: BmcFanPolicyObservation,
+) -> BmcFanProjectionLiveDigestSuitability {
+  if observation.active_config_digest == capability.projected_config_digest {
+    BmcFanProjectionLiveDigestMatches
+  } else {
+    BmcFanProjectionLiveDigestRefused {
+      cause: BmcFanProjectionLiveDigestRefusalCause {
+        observed: observation.active_config_digest,
+        expected: capability.projected_config_digest,
+      },
+    }
+  }
+}
+
+fn bmc_fan_projection_live_digest_refusal_reason(
+  cause: BmcFanProjectionLiveDigestRefusalCause,
+) -> String {
+  "bmc fan live canonical config digest does not equal the admitted digest"
+}
+
+fn bmc_fan_policy_projection_topology_suitability(
+  capability: BmcFanPolicyProjectionCapability,
+  observation: BmcFanPolicyObservation,
+) -> BmcFanProjectionTopologySuitability {
+  match bmc_fan_controller_shape_aggregated_topology(
+    shape: observation.controller_shape,
+  ) {
+    Present {
+      value: BmcFanAggregatedControllerTopology {
+        entry_name: entry_name,
+        tach_inputs: tach_inputs,
+      },
+    } =>
+      if entry_name != capability.aggregate_fan_pid_entry {
+        BmcFanProjectionTopologyRefused {
+          cause: BmcFanProjectionEntryNameMismatch,
+        }
+      } else if tach_inputs != capability.required_tach_inputs {
+        BmcFanProjectionTopologyRefused {
+          cause: BmcFanProjectionTachInputsMismatch,
+        }
+      } else {
+        BmcFanProjectionTopologyMatches
+      }
+    Absent =>
+      BmcFanProjectionTopologyRefused {
+        cause: BmcFanProjectionAggregatedTopologyAbsent,
+      }
+  }
+}
+
+fn bmc_fan_policy_drift_assessment(
+  desired_curve: BmcFanCurve,
+  observation: BmcFanPolicyObservation,
+  projection: BmcFanPolicyProjectionCapability,
+) -> BmcFanPolicyDriftAssessment {
+  if observation.curve != desired_curve {
+    BmcFanPolicyDrifted { cause: BmcFanPolicyCurveDrift }
+  } else {
+    match bmc_fan_policy_projection_topology_suitability(
+      capability: projection,
+      observation: observation,
+    ) {
+      BmcFanProjectionTopologyRefused { cause: cause } =>
+        BmcFanPolicyDrifted {
+          cause: BmcFanPolicyTopologyDrift { cause: cause },
+        }
+      BmcFanProjectionTopologyMatches =>
+        match bmc_fan_policy_projection_live_digest_suitability(
+          capability: projection,
+          observation: observation,
+        ) {
+          BmcFanProjectionLiveDigestRefused { cause: cause } =>
+            BmcFanPolicyDrifted {
+              cause: BmcFanPolicyDigestDrift { cause: cause },
+            }
+          BmcFanProjectionLiveDigestMatches => BmcFanPolicyConverged
+        }
+    }
+  }
+}
+
+fn bmc_fan_state_durability_capability(
+  realization: StateRealizationIdentity,
+  capability_version: StateDurabilityCapabilityVersion,
+  boundaries: List<StateDurabilityBoundary>,
+  publication_protocol: LinuxFilePublicationProtocol,
+) -> StateDurabilityCapability {
+  StateDurabilityCapability {
+    realization: realization,
+    capability_version: capability_version,
+    supported_boundaries: boundaries,
+    commit_barrier: match publication_protocol {
+      LinuxSynchronizedRenameReplacePublication => SynchronizedCommit
+      LinuxFilePublicationProtocolUnsynchronized {
+        stage_in_target_directory: _,
+        staged_content_validated: _,
+        replacement: _,
+        synchronization: _,
+      } => NoDurabilityCommitBarrier
+    },
+  }
+}
+
+fn bmc_fan_policy_projection_durability_capability(
+  capability: BmcFanPolicyProjectionCapability,
+) -> StateDurabilityCapability {
+  bmc_fan_state_durability_capability(
+    realization: capability.realization,
+    capability_version: capability.durability_capability_version,
+    boundaries: capability.durability_boundaries,
+    publication_protocol: capability.publication_protocol,
+  )
+}
+
+fn bmc_fan_policy_projection_durability_admission(
+  host: HostIdentity,
+  capability: BmcFanPolicyProjectionCapability,
+  perturbation_generation: StatePerturbationGeneration,
+) -> BmcFanDurabilityAdmission {
+  StateDurabilityAdmission {
+    target: host,
+    desired_state_digest: capability.projected_config_digest,
+    realization: capability.realization,
+    capability_version: capability.durability_capability_version,
+    perturbation_generation: perturbation_generation,
+    readback_subject: BmcFanConfigReadbackSubject {
+      config_path: capability.config_path,
+    },
+  }
+}
+
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, a BmcProjectedConfigContentIdentity row binding probed curve bytes to cited sha256 hex, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_projected_config_digest derives the digest only when curve, intent curve, realization, config path, and content_identity match exactly; it never reads observation. bmc_fan_admitted_config_digest takes the intent curve and an optional caller-supplied projection-derived digest at the reconcile site; it returns AdmittedConfigDigestUnavailable when the curve is not the modeled intent curve or the digest is absent. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the projection-derived admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."

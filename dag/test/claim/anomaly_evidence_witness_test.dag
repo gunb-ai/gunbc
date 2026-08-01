@@ -8,19 +8,67 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data anomaly_evidence_witness_note: String = "Composition slice 4: anomaly evidence is a SURFACE, not a tooltip. The loud band's located reason (step: detail, or the wire reason) renders as the first line of the row's disclosure — persistent and inspectable in the DOM — while the title attribute stays a convenience channel, never the only carrier. The predicate below defines what 'is a surface' means mechanically; the RED feeds it the title-only shape (yesterday's program) and it must refuse."
 
-data reason_surface_predicate_note: String = "A client program carries the reason surface exactly when it: upserts the .disclosure-reason element (query, create-if-absent, insert after the summary so it is the disclosure's first line), writes the computed why into its textContent, and falls closed to a true statement when the wire carried no located reason — never an empty line that reads as fine. The insertion is gated on the loud band, so routine answers never grow evidence chrome."
+data reason_surface_roster_note: String = "THE PREDICATE HAD ONE SUBJECT AND THE CORPUS GREW THREE MORE, which is how a rule stays stated and stops being enforced. Slice 4 established 'a located reason is a surface' and checked it against the dispatch answer. The row then acquired the workflow strip, whose failed and refused segments carry a detail from /workflow.json, and the click's own catch arm — and both wrote their reason to a title attribute only, which is precisely the shape anomaly_reason_red_on_title_only plants as the RED. The witness was green the whole time because it was asked about one producer.\\n\\nSo the roster is now named explicitly and each producer is asserted separately. That is the difference between a rule and a check on a rule: a check whose subject set is a single hand-picked site cannot notice the second site, and the second site is where the defect actually landed. A new refusal surface that writes only a tooltip has to green THIS file to merge, and it cannot.\\n\\nreason_is_a_disclosure_surface no longer scans for one inline insertion, because there is no longer one — the upsert is a single emitted helper the producers share. That is the point: the predicate now asks whether a shared surface EXISTS and whether each producer reaches it, rather than pattern-matching one caller's inlined copy, which is what made it un-reusable and therefore un-reused.\\n\\nTHIS IS VALIDATION, NOT A CONSTRUCTION WALL, and the difference is worth stating rather than letting a green witness imply more than it proves (DESIGN section 5). A scan over emitted text concedes that the bad state is writable: nothing stops a fifth producer from assigning a reason to a title attribute, it only stops that producer from doing so WITHOUT this file going red, and only for producers this roster names. The construction shape exists and is not cheap: a located reason would have to be a typed value whose only sink is the surface, so that assigning one to a title is a type error rather than a missing assertion. Every producer here builds its reason as untyped JavaScript text through ts_binop, so that carrier does not exist yet and minting it is a real design rather than a follow-up edit. dissolve-on: feature:located-reason-carrier — a reason is a value with one sink, and this predicate becomes redundant with the type."
 
-fn reason_is_a_disclosure_surface(js: String) -> Bool {
-  string_contains(s: js, pattern: "band === 'loud' && dt")
-    && string_contains(s: js, pattern: "dt.querySelector('.disclosure-reason')")
+fn reason_surface_helper_exists(js: String) -> Bool {
+  string_contains(s: js, pattern: "const gunbcReasonSurface = (dt, source, text) =>")
+    && string_contains(s: js, pattern: "dt.querySelector('.disclosure-reason[data-reason-source=\"' + source + '\"]')")
     && string_contains(s: js, pattern: "document.createElement('div')")
     && string_contains(s: js, pattern: "rl.className = 'disclosure-reason'")
+    && string_contains(s: js, pattern: "rl.setAttribute('data-reason-source', source)")
     && string_contains(s: js, pattern: "sm.insertAdjacentElement('afterend', rl)")
-    && string_contains(s: js, pattern: "rl.textContent = why || 'belt fault — no located reason on the wire'")
+    && string_contains(s: js, pattern: "rl.textContent = text")
+}
+
+fn producer_reaches_the_surface(js: String, source_arg: String) -> Bool {
+  string_contains(s: js, pattern: join(["gunbcReasonSurface(", source_arg], ""))
+}
+
+fn reason_is_a_disclosure_surface(js: String) -> Bool {
+  reason_surface_helper_exists(js: js)
 }
 
 test fn anomaly_reason_is_a_surface() -> Bool {
   return reason_is_a_disclosure_surface(js: dispatch_client_js_source())
+}
+
+data empty_text_removes_the_line_note: String = "Passing empty text REMOVES that producer's line rather than writing an empty one, and the distinction is not cosmetic. A blank .disclosure-reason is a visible element asserting nothing, which reads as a row that has been inspected and found fine — the fabricated-plausible-output shape at the presentation layer. Removal is also what makes the surface safe to drive from the two-second workflow poll: a segment that stops refusing must stop claiming the row is unwell, and it must do that without touching the dispatch producer's line."
+
+test fn anomaly_reason_empty_text_removes_the_line() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "if (!text) {   rl && rl.remove();")
+}
+
+data producer_roster_note: String = "The three producers that must reach the surface, asserted one by one so a regression names which one regressed. The dispatch answer writes under the 'dispatch' source on the loud band and clears it otherwise; the catch arm writes under the same source, because an unreadable answer and a loud answer are the same row's dispatch verdict; each workflow segment writes under its own 'workflow:<kind>' source, so a row refused at Verify and refused at dispatch shows both lines instead of one silently overwriting the other."
+
+test fn anomaly_dispatch_answer_reaches_the_surface() -> Bool {
+  return producer_reaches_the_surface(
+    js: dispatch_client_js_source(),
+    source_arg: "dt, 'dispatch', band === 'loud' ?")
+}
+
+test fn anomaly_unreadable_answer_reaches_the_surface() -> Bool {
+  let js = dispatch_client_js_source()
+  return producer_reaches_the_surface(js: js, source_arg: "gunbcRowDisclosure(b), 'dispatch', why")
+    && string_contains(s: js, pattern: "const why = 'no readable answer from the dispatch route: ' + e;")
+}
+
+test fn anomaly_unreadable_answer_does_not_name_the_network() -> Bool {
+  return !string_contains(s: dispatch_client_js_source(), pattern: "'network error'")
+}
+
+test fn anomaly_workflow_segment_reaches_the_surface() -> Bool {
+  return producer_reaches_the_surface(
+    js: dispatch_client_js_source(),
+    source_arg: "gunbcRowDisclosure(act), 'workflow:' + seg.kind, bad ? seg.short_label + ' · ' + seg.state + ' — ' + sd : ''")
+}
+
+data workflow_segment_fallback_note: String = "A refused segment whose wire detail is empty still gets a true line rather than a bare label — the same fall-closed phrasing the dispatch band uses, shared as one row rather than spelled twice."
+
+test fn anomaly_workflow_segment_falls_closed_on_empty_detail() -> Bool {
+  return string_contains(
+    s: dispatch_client_js_source(),
+    pattern: "const sd = seg.detail || 'no located reason on the wire';")
 }
 
 data title_only_red_note: String = "The planted RED: a loud fixture whose reason exists ONLY in the title channel — the exact fragment the live program also carries for the convenience channel, with no disclosure-reason machinery around it — must fail the surface predicate. The fixture is the real title assignment's shape, so the discrimination is the predicate refusing the tooltip-only world, not a strawman string."
@@ -28,6 +76,31 @@ data title_only_red_note: String = "The planted RED: a loud fixture whose reason
 test fn anomaly_reason_red_on_title_only() -> Bool {
   let title_only = "const why = j.step ? j.step + ': ' + d : j.reason || ''; b.title = why ? base + ' — ' + why : base;"
   return !reason_is_a_disclosure_surface(js: title_only)
+}
+
+data producer_red_note: String = "The second planted RED, and it is the one the old file could not express: a program that DOES carry the shared surface but never routes a producer into it. This is the exact world that shipped — a correct mechanism sitting beside a caller that writes a tooltip instead — so the fixture is the helper's own text with no call site, and every producer assertion must refuse it."
+
+fn helper_without_producers_fixture() -> String {
+  join([
+    "const gunbcReasonSurface = (dt, source, text) => {   if (!dt) {   return; }",
+    "  let rl = dt.querySelector('.disclosure-reason[data-reason-source=\"' + source + '\"]');",
+    "  if (!text) {   rl && rl.remove();",
+    "  return; }",
+    "  if (!rl) {   rl = document.createElement('div');",
+    "  rl.className = 'disclosure-reason';",
+    "  rl.setAttribute('data-reason-source', source);",
+    "  const sm = dt.querySelector('summary');",
+    "  sm && sm.insertAdjacentElement('afterend', rl); }",
+    "  rl.textContent = text; };",
+    "  stage.title = seg.detail;",
+  ], "\n")
+}
+
+test fn anomaly_producer_red_on_surface_without_callers() -> Bool {
+  let fixture = helper_without_producers_fixture()
+  return reason_surface_helper_exists(js: fixture)
+    && !producer_reaches_the_surface(js: fixture, source_arg: "wdt, 'workflow:' + seg.kind")
+    && !producer_reaches_the_surface(js: fixture, source_arg: "dt, 'dispatch', band === 'loud' ?")
 }
 
 test fn anomaly_title_stays_a_convenience() -> Bool {
@@ -38,4 +111,46 @@ test fn anomaly_title_stays_a_convenience() -> Bool {
 
 test fn anomaly_reason_surface_is_styled() -> Bool {
   return string_contains(s: roadmap_css(), pattern: ".disclosure-reason { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-2) var(--space-0) var(--space-2) }")
+}
+
+data accessible_name_note: String = "The accessible name is the THIRD reason channel and it was silently broken, which is why it is pinned here rather than left to the markup witnesses. `seg.label + ': ' + seg.state + (seg.detail ? ' — ' + seg.detail : '')` was emitted without the group, so it parsed as `(label + state + detail) ? ' — ' + detail : ''` — always true, since a concatenation is never the empty string — and a screen reader was told the detail alone with no label and no state. The model always said the right thing; the printer dropped the group (extdeps.languages.typescript.program.ts_operator_precedence_note). Asserting the parenthesized text here means the row's accessible name cannot silently lose its subject again."
+
+data ledger_row_text_first_note: String = "Re-pointed at A2: the stage chips carried label+state in an aria-label because their visible face was a compressed chip; the activity ledger row IS its accessible name — one text node carrying label, state, and detail, readable by any client without attribute decoding. The class this guards (an obligation's state never lives in border style or attributes alone) is unchanged; the carrier moved from attribute to content."
+
+test fn anomaly_stage_accessible_name_keeps_label_and_state() -> Bool {
+  return string_contains(
+    s: dispatch_client_js_source(),
+    pattern: "ob.textContent = seg.label + ' · ' + seg.state + (seg.detail ? ' — ' + seg.detail : '')")
+}
+
+test fn anomaly_workflow_refusal_reason_survives_concatenation() -> Bool {
+  return string_contains(
+    s: dispatch_client_js_source(),
+    pattern: "const why = 'workflow observation refused: ' + (wj.reason || 'no located reason on the wire');")
+}
+
+data absent_reason_phrase_single_authority_note: String = "One phrase, one row. 'the wire carried no reason' was spelled two ways at four sites — 'no located reason on the wire' in the dispatch band, 'no reason on the wire' in the sessions, attempts, and workflow observation banners — for one fact, which is the nickname §3 forbids at the smallest possible scale. It is worth fixing at this scale precisely because it is small: a phrase that means the same thing should not tell the operator it might not, and four literals is where a fifth comes from. This witness pins that no site spells it independently."
+
+test fn anomaly_absent_reason_phrase_has_one_spelling() -> Bool {
+  let js = dispatch_client_js_source()
+  return !string_contains(s: js, pattern: "'no reason on the wire'")
+    && string_contains(s: js, pattern: "'no located reason on the wire'")
+}
+
+data cleanup_producer_note: String = "The cleanup chip is the fourth row-scoped producer: a refused or failed teardown is a verdict about THIS work item, so its reason belongs on the same surface as the dispatch and workflow verdicts rather than in a chip tooltip. It carries its own source so a row that is simultaneously refused at cleanup and refused at Verify shows both."
+
+test fn anomaly_cleanup_refusal_reaches_the_surface() -> Bool {
+  let js = dispatch_client_js_source()
+  return producer_reaches_the_surface(
+      js: js,
+      source_arg: "gunbcRowDisclosure(cc), 'cleanup', action + ' refused — ' + ccWhy")
+    && producer_reaches_the_surface(
+      js: js,
+      source_arg: "gunbcRowDisclosure(cc), 'cleanup', action + ' failed — ' + ccWhy")
+}
+
+test fn anomaly_instance_label_keeps_both_halves() -> Bool {
+  return string_contains(
+    s: dispatch_client_js_source(),
+    pattern: "il.title = 'host ' + (ij.host_identity || 'unknown') + ' · repo ' + (ij.repo_root || 'unknown');")
 }
