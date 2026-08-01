@@ -80,6 +80,7 @@ pub mod std_syntax;
 pub mod std_termination;
 pub mod std_trait_derive_shape;
 pub mod std_types;
+pub mod std_unicode_types;
 pub mod usv_pilot_v2_std_algebra;
 pub mod usv_pilot_v2_std_collection;
 pub mod usv_pilot_v2_std_node;

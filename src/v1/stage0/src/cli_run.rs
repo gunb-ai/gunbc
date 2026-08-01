@@ -416,8 +416,8 @@ fn resolve_process_workspace_root() -> PathBuf {
 /// Authority: modeled by `gunbc.cli_run_repo_grant` (`cli_run_repo_path_admissible`);
 /// witness: `dag/test/claim/cli_run_repo_grant_witness_test.dag`.
 /// 🟡 dissolve-on: HAND-RUST gate retires when cli_run.rs Chunk F lands
-/// (docs/plans/cli-run-reconcile-defork.md) — refusal becomes `EffectOutsideGrant` from the
-/// single grant row, not a parallel string check.
+/// (docs/plans/cli-run-reconcile-defork.md) — refusal becomes the located
+/// `std.access.AccessDecision::Deny` from the single grant policy, not a parallel string check.
 fn repo_relative_path(path: &Path) -> Result<String, String> {
     let ws = process_workspace_root();
     path.strip_prefix(&ws)

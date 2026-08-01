@@ -14,7 +14,7 @@ import gunbc.cli_run_repo_grant {
 }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool, String }
-import std.effect_grant { EffectAdmission, Admitted, EffectOutsideGrant }
+import std.access { Permit, Deny }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -27,15 +27,15 @@ data fixture_absolute_outside: String = "/etc/passwd"
 
 fn dag_admits(rel: String) -> Bool {
   match cli_run_repo_write_admissible(rel: rel) {
-    Admitted { via_root: r } => true
-    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+    Permit => true
+    Deny { refusal: refusal } => false
   }
 }
 
 fn dag_refuses(rel: String) -> Bool {
   match cli_run_repo_write_admissible(rel: rel) {
-    Admitted { via_root: r } => false
-    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+    Permit => false
+    Deny { refusal: refusal } => true
   }
 }
 
@@ -55,8 +55,8 @@ test fn cli_run_repo_grant_dissolve_trigger_names_chunk_f() -> Bool {
 test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool {
   dag_admits(rel: fixture_contained_rel)
     && match cli_run_repo_read_admissible(rel: fixture_contained_rel) {
-      Admitted { via_root: r } => true
-      EffectOutsideGrant { verb: v, target: t, frame: f } => false
+      Permit => true
+      Deny { refusal: refusal } => false
     }
 }
 

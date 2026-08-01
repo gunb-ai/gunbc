@@ -5,16 +5,18 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { String, Bool, Int, List }
 import std.content_hash { ContentHash }
+import std.access { Permit, Deny }
 import std.effect_grant {
   Verb, Write, Read,
   NamespacePosition,
-  Admitted, EffectOutsideGrant,
 }
+import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame }
 import std.disposition { Disposition, Terminal }
 import std.artifact_store_scratch_grant {
   artifact_store_scratch_read_admissible,
   artifact_store_scratch_write_admissible,
+  artifact_store_scratch_frame,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -52,9 +54,12 @@ type ArtifactFsListResult
 
 func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> ArtifactFsPutResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
-      ArtifactFsPutRefused { verb: v, target: t, frame: f }
-    Admitted { via_root: r } => {
+    Deny { refusal: refusal } => ArtifactFsPutRefused {
+      verb: Write,
+      target: absolute_path_position(path: store_root),
+      frame: artifact_store_scratch_frame,
+    }
+    Permit => {
       let path = artifact_fs_path(store_root: store_root, key: key)
       let w = Filesystem.Write(path: path, content: payload)
       if w.success {
@@ -67,9 +72,12 @@ func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> A
 
 func artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
-      ArtifactFsRefused { verb: v, target: t, frame: f }
-    Admitted { via_root: _ } => {
+    Deny { refusal: refusal } => ArtifactFsRefused {
+      verb: Read,
+      target: absolute_path_position(path: store_root),
+      frame: artifact_store_scratch_frame,
+    }
+    Permit => {
       let path = artifact_fs_path(store_root: store_root, key: key)
       let read_out = Filesystem.Read(path: path)
       if read_out.success {
@@ -82,9 +90,12 @@ func artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
 
 func artifact_fs_delete(store_root: String, key: ContentHash) -> ArtifactFsDeleteResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
-      ArtifactFsDeleteRefused { verb: v, target: t, frame: f }
-    Admitted { via_root: r } => {
+    Deny { refusal: refusal } => ArtifactFsDeleteRefused {
+      verb: Write,
+      target: absolute_path_position(path: store_root),
+      frame: artifact_store_scratch_frame,
+    }
+    Permit => {
       let path = artifact_fs_path(store_root: store_root, key: key)
       let d = Filesystem.Delete(path: path)
       if d.success {
@@ -97,9 +108,12 @@ func artifact_fs_delete(store_root: String, key: ContentHash) -> ArtifactFsDelet
 
 func artifact_fs_list(store_root: String) -> ArtifactFsListResult {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } =>
-      ArtifactFsListRefused { verb: v, target: t, frame: f }
-    Admitted { via_root: r } => {
+    Deny { refusal: refusal } => ArtifactFsListRefused {
+      verb: Read,
+      target: absolute_path_position(path: store_root),
+      frame: artifact_store_scratch_frame,
+    }
+    Permit => {
       let l = Filesystem.List(path: store_root)
       if l.success {
         if l.entries == "" {
