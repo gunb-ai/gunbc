@@ -34937,6 +34937,52 @@ mod peel_alias_fixpoint_termination {
         // termination + name preservation are not.
         let _ = is_fixpoint;
     }
+
+    #[test]
+    fn peel_refusals_reach_compile_result_through_inference_consumers() {
+        let source = r#"module peel_consumer_probe
+
+type FieldAlias<T> = FieldMissing<T>
+type RecordAlias<T> = RecordMissing<T>
+
+fn field_probe(x: FieldAlias<Int>) -> Int {
+  x.value
+}
+
+fn record_probe() -> Int {
+  let x = RecordAlias { value: 1 }
+  1
+}
+"#;
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                crate::v1_compiler_compile::SourceFile {
+                    path: "peel_consumer_probe.dag".to_string(),
+                    content: source.to_string(),
+                },
+            )]),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        let unresolved_subjects: Vec<String> = result
+            .diagnostics
+            .iter()
+            .filter_map(|d| match &*d.diagnostic {
+                crate::v1_std_core::CompilerDiagnostic::UnresolvedType { name, .. } => {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        for diagnostic in result.diagnostics.iter() {
+            eprintln!(
+                "diagnostic={:?} message={}",
+                diagnostic.diagnostic,
+                crate::v1_std_core::diagnostic_to_message(diagnostic.diagnostic.clone())
+            );
+        }
+        eprintln!("unresolved_subjects={unresolved_subjects:?}");
+        assert!(!unresolved_subjects.is_empty());
+    }
 }
 
 #[cfg(test)]
