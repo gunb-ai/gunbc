@@ -138,6 +138,10 @@ fn compile_clean_cold_control_step() -> Step {
   }
 }
 
+data falsifier_native_cache_cold_plan_function: String = "gunbc_falsifier_native_cache_cold_plan"
+
+data falsifier_native_cache_cold_plan_function_note: String = "The naming authority for this step's plan function, added because its ABSENCE is what broke the falsifier for two days. Every other plan-function consumer derived from a constant (floor_plan_function / plan_artifact_plan_function / regen_floor_plan_function in gunbc.ci_spec, falsifier_plan_function above), so the 2026-07-30 WalkPlan rename reached all four automatically. This step alone passed an inline string literal, derived from nothing, and was left behind returning a bare List<List<Runnable>> that the executor's strict parser then refused on every run that reached it. The constant is the construction fix (§5): a rename of the function now cannot silently skip this consumer, where a prose census could only ask the next author to count correctly. Full receipt in v2.workflow.ci_floor_plan walk_plan_uniformity_note."
+
 data gunbc_falsifier_native_cache_cold_control_timeout_minutes: Int = 30
 
 data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): the nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1, which makes emit_host_run_transport_cached ignore every .native_ready marker — the full emit+cargo+run chain runs cold on the falsifier cadence while the main falsifier_step's run of the same batch stays warm (the warm-rate receipt the per-PR enrollment decision reads). Widen-to-more-checking control arm, not an escape hatch: the env can only force the transport to do MORE work, never skip it. Mirrors compile_clean_cold_control_step."
@@ -148,7 +152,7 @@ fn native_cache_cold_control_invoke() -> String {
     claim_executor_run_plan_shell(
       source_roots: witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: "gunbc_falsifier_native_cache_cold_batches",
+      plan_function: falsifier_native_cache_cold_plan_function,
       notice_title: Absent,
       rooted: false
     )

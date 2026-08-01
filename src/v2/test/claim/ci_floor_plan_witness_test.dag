@@ -10,6 +10,7 @@ import v2.workflow.ci_floor_plan {
   gunbc_ci_regen_floor_plan,
   gunbc_ci_plan_artifact_plan,
   gunbc_falsifier_plan,
+  gunbc_falsifier_native_cache_cold_plan,
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
   corpus_witness_entries, execution_witness_entries,
@@ -703,4 +704,10 @@ test fn plan_artifact_plan_carries_no_finalization() -> Bool {
 
 test fn falsifier_plan_carries_no_finalization() -> Bool {
   plan_carries_no_finalization(plan: gunbc_falsifier_plan())
+}
+
+data falsifier_native_cache_cold_plan_row_note: String = "The FIFTH plan function, absent from this roster until 2026-08-01 — and its absence is the point. walk_plan_uniformity_note names these rows as the enforcement for the WalkPlan shape precisely because the typechecker does not check a declared return type against a body, so a plan function missing from THIS roster has no enforcement at all. gunbc_falsifier_native_cache_cold_plan was missed by the #7470 rename, kept returning a bare List<List<Runnable>>, and the executor's strict parser refused it on all 8 falsifier runs that reached the native-cache cold control step. Nothing here could red on that, because the roster counted four. This row closes the enforcement gap at the same grain as its siblings; the construction half (the falsifier_native_cache_cold_plan_function naming constant) is what stops the next rename from recreating it."
+
+test fn falsifier_native_cache_cold_plan_carries_no_finalization() -> Bool {
+  plan_carries_no_finalization(plan: gunbc_falsifier_native_cache_cold_plan())
 }
