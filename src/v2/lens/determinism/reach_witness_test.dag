@@ -45,6 +45,18 @@ fn map_keys_call_fixture() -> Node {
   det_call(callee: ^map_keys, arg: det_atom(id: ^emit_export_map))
 }
 
+fn keys_call_fixture() -> Node {
+  det_call(callee: ^keys, arg: det_atom(id: ^emit_export_map))
+}
+
+fn values_call_fixture() -> Node {
+  det_call(callee: ^values, arg: det_atom(id: ^emit_export_map))
+}
+
+fn map_values_call_fixture() -> Node {
+  det_call(callee: ^map_values, arg: det_atom(id: ^emit_export_map))
+}
+
 fn sorted_map_keys_call_fixture() -> Node {
   det_call(callee: ^sorted_map_keys, arg: det_atom(id: ^emit_export_map))
 }
@@ -82,6 +94,18 @@ test fn determinism_flags_map_keys_reach() -> Bool {
   witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: map_keys_call_fixture()))
 }
 
+test fn determinism_flags_keys_reach() -> Bool {
+  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: keys_call_fixture()))
+}
+
+test fn determinism_flags_values_reach() -> Bool {
+  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: values_call_fixture()))
+}
+
+test fn determinism_flags_map_values_reach() -> Bool {
+  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: map_values_call_fixture()))
+}
+
 test fn determinism_holds_sorted_map_keys_sibling() -> Bool {
   witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: sorted_map_keys_call_fixture()))
 }
@@ -114,6 +138,18 @@ fn gate_accepts(o: Outcome<Witness<Node>>) -> Bool {
 
 test fn determinism_gate_rejects_map_keys_reach() -> Bool {
   gate_rejects(o: determinism_compile_gate(node: map_keys_call_fixture()))
+}
+
+test fn determinism_gate_rejects_keys_reach() -> Bool {
+  gate_rejects(o: determinism_compile_gate(node: keys_call_fixture()))
+}
+
+test fn determinism_gate_rejects_values_reach() -> Bool {
+  gate_rejects(o: determinism_compile_gate(node: values_call_fixture()))
+}
+
+test fn determinism_gate_rejects_map_values_reach() -> Bool {
+  gate_rejects(o: determinism_compile_gate(node: map_values_call_fixture()))
 }
 
 test fn determinism_gate_accepts_clean_tree() -> Bool {
