@@ -2750,6 +2750,136 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     }
 }
 
+thread_local! {
+    /// Dynamically scoped witness frames. The .dag carrier owns their contents;
+    /// this stack is only the v1 seed realization of the evaluation boundary.
+    /// A frame is pushed immediately before its subject closure and removed on
+    /// both returned/refused paths, so replay bindings cannot become ambient.
+    static WITNESS_EVALUATION_FRAMES: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
+}
+
+const WITNESS_EVALUATION_MODULE: &str = "v2.std.witness_evaluation";
+
+fn witness_evaluation_diagnostic_value(
+    ctx: &InterpContext,
+    call_node: &Rc<Node>,
+    error: &InterpError,
+) -> Value {
+    let at = format!("{}:{}", call_node.span.file, call_node.span.start);
+    let locus = Value::Variant {
+        type_name: ctx.sym("Locus"),
+        variant_name: ctx.sym("PortLocus"),
+        fields: Rc::new(vec![(
+            ctx.sym("anchor"),
+            Value::Record {
+                type_name: ctx.sym("LocusAnchor"),
+                fields: Rc::new(vec![(ctx.sym("at"), Value::Str(at))]),
+            },
+        )]),
+    };
+    let correction = Value::Variant {
+        type_name: ctx.sym("Correction"),
+        variant_name: ctx.sym("Unavailable"),
+        fields: Rc::new(vec![(
+            ctx.sym("reason"),
+            Value::Variant {
+                type_name: ctx.sym("NoCorrectionReason"),
+                variant_name: ctx.sym("ExternalContractUnknown"),
+                fields: Rc::new(vec![]),
+            },
+        )]),
+    };
+    Value::Record {
+        type_name: ctx.sym("Diagnostic"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("at"), locus),
+            (ctx.sym("correction"), correction),
+            (ctx.sym("reason"), Value::Str(error.to_string())),
+        ])),
+    }
+}
+
+fn witness_evaluation_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    field: &str,
+    value: Value,
+) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("WitnessEvaluation"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![(ctx.sym(field), value)]),
+    }
+}
+
+fn current_witness_evaluation_frame() -> Option<Value> {
+    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+}
+
+fn try_witness_evaluation_dispatch(
+    ctx: &InterpContext,
+    call_node: &Rc<Node>,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> Option<InterpResult<Value>> {
+    let is_authority = ctx
+        .item_registry
+        .get(&fn_node.name)
+        .is_some_and(|info| info.module_name == WITNESS_EVALUATION_MODULE);
+    if !is_authority {
+        return None;
+    }
+    match fn_node.name.as_str() {
+        "witness_evaluation_frame_active" => Some(Ok(Value::Bool(
+            WITNESS_EVALUATION_FRAMES.with(|frames| !frames.borrow().is_empty()),
+        ))),
+        "witness_diagnostic_rendered_reason" => {
+            let diagnostic = args.first().map(|(_, value)| value);
+            let rendered = match diagnostic {
+                Some(Value::Record { fields, .. }) => ctx.field(fields, "reason").cloned(),
+                _ => None,
+            };
+            Some(rendered.ok_or_else(|| InterpError::TypeError {
+                msg: "witness diagnostic is malformed".to_string(),
+            }))
+        }
+        "evaluate_in_witness_frame" => {
+            let argument = |name: &str, position: usize| {
+                args.iter()
+                    .find(|(label, _)| label.as_deref() == Some(name))
+                    .or_else(|| args.get(position))
+                    .map(|(_, value)| value.clone())
+            };
+            let Some(frame) = argument("frame", 0) else {
+                return Some(Err(InterpError::TypeError {
+                    msg: "evaluate_in_witness_frame requires a frame".to_string(),
+                }));
+            };
+            let Some(subject) = argument("subject", 1) else {
+                return Some(Err(InterpError::TypeError {
+                    msg: "evaluate_in_witness_frame requires a subject".to_string(),
+                }));
+            };
+            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
+            let evaluated = apply_closure(&subject, &[Value::Bool(true)], env, ctx);
+            WITNESS_EVALUATION_FRAMES.with(|frames| {
+                let _ = frames.borrow_mut().pop();
+            });
+            Some(Ok(match evaluated {
+                Ok(value) => witness_evaluation_variant(ctx, "WitnessReturned", "value", value),
+                Err(error) => witness_evaluation_variant(
+                    ctx,
+                    "WitnessRefused",
+                    "diagnostic",
+                    witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                ),
+            }))
+        }
+        _ => None,
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -3359,6 +3489,10 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             }
         }
     };
+
+    if let Some(result) = try_witness_evaluation_dispatch(ctx, node, &fn_node, &args, env) {
+        return result;
+    }
 
     if let Some(result) = try_parse_table_memo_dispatch(ctx, &func_name, &fn_node, &args, env)? {
         return Ok(result);
@@ -7495,6 +7629,377 @@ fn rest_body_undecodable_value(ctx: &InterpContext, status: u16, cause: String) 
     )
 }
 
+#[derive(Clone)]
+enum RestBodyObservationHost {
+    Read(String),
+    ReadRefused(String),
+}
+
+#[derive(Clone)]
+enum RestExchangeObservationHost {
+    Response {
+        status: u16,
+        body: RestBodyObservationHost,
+    },
+    ExchangeRefused(String),
+}
+
+enum RestExchangeSelectionHost {
+    Real,
+    Replay(RestExchangeObservationHost),
+}
+
+fn rest_variant(ctx: &InterpContext, type_name: &str, variant_name: &str) -> Value {
+    Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(variant_name),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn rest_auth_identity_value(
+    auth: &AuthResolution,
+    basic_header: Option<&str>,
+    ctx: &InterpContext,
+) -> Value {
+    let secret_identity = match basic_header {
+        Some(header) => Some(("BasicCredentials".to_string(), header.to_string())),
+        None => match auth {
+            AuthResolution::Resolved { header, token } => Some((
+                if header == "Authorization" {
+                    "BearerToken".to_string()
+                } else {
+                    format!("HeaderToken:{}", header)
+                },
+                token.clone(),
+            )),
+            AuthResolution::NoAuthDeclared | AuthResolution::DeclaredButUnwired { .. } => None,
+        },
+    };
+    match secret_identity {
+        None => rest_variant(ctx, "RestAuthSensitiveIdentity", "RestUnauthenticated"),
+        Some((scheme, secret)) => {
+            // Only the hash crosses into the authored fixture carrier. The secret is
+            // never persisted in, or made displayable through, a replay identity.
+            let digest = format!(
+                "{:016x}",
+                value_hash_public(&Value::Str(format!("{}\0{}", scheme, secret)))
+            );
+            Value::Variant {
+                type_name: ctx.sym("RestAuthSensitiveIdentity"),
+                variant_name: ctx.sym("RestAuthenticated"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("scheme"), Value::Str(scheme)),
+                    (ctx.sym("digest"), Value::Str(digest)),
+                ])),
+            }
+        }
+    }
+}
+
+fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
+    let (scheme, locator) = if let Some(locator) = url.strip_prefix("https://") {
+        ("Https", locator)
+    } else if let Some(locator) = url.strip_prefix("http://") {
+        ("Http", locator)
+    } else {
+        return Err(InterpError::TypeError {
+            msg: format!("REST target is not an absolute HTTP(S) URI: {}", url),
+        });
+    };
+    Ok(Value::Record {
+        type_name: ctx.sym("Uri"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("scheme"), rest_variant(ctx, "UriScheme", scheme)),
+            (ctx.sym("locator"), Value::Str(locator.to_string())),
+        ])),
+    })
+}
+
+fn rest_bound_invocation_value(
+    service_node: &Rc<Node>,
+    op_node: &Rc<Node>,
+    method: &str,
+    url: &str,
+    param_env: &Rc<Env>,
+    auth: &AuthResolution,
+    basic_header: Option<&str>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let service = authored_name_at(ctx.si(), service_node.clone());
+    let operation = authored_name_at(ctx.si(), op_node.clone());
+    let at = operation_ref_value(&op_node.span.file, &service, &operation, ctx);
+    let input_digest =
+        crate::recorded_fixture::content_hash_service_inputs(op_node, param_env, ctx);
+    Ok(Value::Record {
+        type_name: ctx.sym("RestBoundOperationInvocation"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("at"), at),
+            (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
+            (ctx.sym("target"), rest_uri_value(url, ctx)?),
+            (ctx.sym("input_digest"), Value::Str(input_digest)),
+            (
+                ctx.sym("auth_identity"),
+                rest_auth_identity_value(auth, basic_header, ctx),
+            ),
+        ])),
+    })
+}
+
+fn rest_observation_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> InterpResult<RestExchangeObservationHost> {
+    let malformed = || InterpError::TypeError {
+        msg: "REST replay fixture carried a malformed RestExchangeObservation".to_string(),
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err(malformed());
+    };
+    match ctx.resolve(*variant_name).as_str() {
+        "RestExchangeRefused" => match ctx.field(fields, "cause") {
+            Some(Value::Str(cause)) if !cause.is_empty() => {
+                Ok(RestExchangeObservationHost::ExchangeRefused(cause.clone()))
+            }
+            _ => Err(malformed()),
+        },
+        "RestResponseObserved" => {
+            let status = match ctx.field(fields, "status") {
+                Some(Value::Int(status)) if (100..=599).contains(status) => *status as u16,
+                _ => return Err(malformed()),
+            };
+            let body = match ctx.field(fields, "body") {
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "RestBodyRead") => {
+                    match ctx.field(fields, "body") {
+                        Some(Value::Str(body)) => RestBodyObservationHost::Read(body.clone()),
+                        _ => return Err(malformed()),
+                    }
+                }
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "RestBodyReadRefused") => {
+                    match ctx.field(fields, "cause") {
+                        Some(Value::Str(cause)) if !cause.is_empty() => {
+                            RestBodyObservationHost::ReadRefused(cause.clone())
+                        }
+                        _ => return Err(malformed()),
+                    }
+                }
+                _ => return Err(malformed()),
+            };
+            Ok(RestExchangeObservationHost::Response { status, body })
+        }
+        _ => Err(malformed()),
+    }
+}
+
+fn rest_exchange_selection(
+    invocation: Value,
+    ctx: &InterpContext,
+) -> InterpResult<RestExchangeSelectionHost> {
+    let Some(frame) = current_witness_evaluation_frame() else {
+        return Ok(RestExchangeSelectionHost::Real);
+    };
+    let Value::Record { fields, .. } = frame else {
+        return Err(InterpError::TypeError {
+            msg: "witness evaluation frame is malformed".to_string(),
+        });
+    };
+    let envelope =
+        ctx.field(&fields, "envelope")
+            .cloned()
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "witness evaluation frame has no envelope".to_string(),
+            })?;
+    let fixtures = ctx
+        .field(&fields, "rest_fixtures")
+        .cloned()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "witness evaluation frame has no REST fixtures".to_string(),
+        })?;
+    let resolution = run_in_context_with_args(
+        ctx,
+        "rest_exchange_resolution",
+        &[
+            (Some("env".to_string()), envelope),
+            (Some("fixtures".to_string()), fixtures),
+            (Some("invocation".to_string()), invocation),
+        ],
+        false,
+    )?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = resolution
+    else {
+        return Err(InterpError::TypeError {
+            msg: "REST handler selection returned a malformed resolution".to_string(),
+        });
+    };
+    match ctx.resolve(variant_name).as_str() {
+        "RestRealExchangeRequired" => Ok(RestExchangeSelectionHost::Real),
+        "RestReplayExchangeFound" => {
+            let observation =
+                ctx.field(&fields, "observation")
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "REST replay resolution omitted its observation".to_string(),
+                    })?;
+            Ok(RestExchangeSelectionHost::Replay(
+                rest_observation_from_value(observation, ctx)?,
+            ))
+        }
+        "RestReplayExchangeAbsent" => Err(InterpError::TypeError {
+            msg: "missing exact REST replay fixture for bound invocation; real transport refused"
+                .to_string(),
+        }),
+        "RestReplayExchangeAmbiguous" => {
+            let count = match ctx.field(&fields, "count") {
+                Some(Value::Int(count)) => *count,
+                _ => 0,
+            };
+            Err(InterpError::TypeError {
+                msg: format!(
+                    "ambiguous exact REST replay fixture for bound invocation: {} matches; real transport refused",
+                    count
+                ),
+            })
+        }
+        "RestExchangeHandlerUncovered" => Err(InterpError::TypeError {
+            msg: "REST invocation is not covered by the witness frame; real transport refused"
+                .to_string(),
+        }),
+        other => Err(InterpError::TypeError {
+            msg: format!("unrecognized REST exchange resolution: {}", other),
+        }),
+    }
+}
+
+fn observe_rest_exchange(
+    selection: RestExchangeSelectionHost,
+    request: ureq::Request,
+    body_json: Option<serde_json::Value>,
+) -> RestExchangeObservationHost {
+    if let RestExchangeSelectionHost::Replay(observation) = selection {
+        return observation;
+    }
+    let response = if let Some(json) = body_json {
+        request
+            .set("Content-Type", "application/json")
+            .send_string(&json.to_string())
+    } else {
+        request.call()
+    };
+    match response {
+        Ok(response) => {
+            let status = response.status();
+            let body = response.into_string().map_or_else(
+                |error| RestBodyObservationHost::ReadRefused(error.to_string()),
+                RestBodyObservationHost::Read,
+            );
+            RestExchangeObservationHost::Response { status, body }
+        }
+        Err(ureq::Error::Status(status, response)) => {
+            let body = response.into_string().map_or_else(
+                |error| RestBodyObservationHost::ReadRefused(error.to_string()),
+                RestBodyObservationHost::Read,
+            );
+            RestExchangeObservationHost::Response { status, body }
+        }
+        Err(error) => RestExchangeObservationHost::ExchangeRefused(error.to_string()),
+    }
+}
+
+fn decide_rest_exchange(
+    observation: RestExchangeObservationHost,
+    op_node: &Rc<Node>,
+    response_format: &str,
+    outcome_field: Option<&str>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (status, body) = match observation {
+        RestExchangeObservationHost::ExchangeRefused(cause) => {
+            return match outcome_field {
+                Some(field) => Ok(attach_rest_outcome(
+                    None,
+                    op_node,
+                    field,
+                    rest_transport_refused_value(ctx, cause),
+                    ctx,
+                )),
+                None => Err(InterpError::TypeError {
+                    msg: format!("HTTP request failed: {}", cause),
+                }),
+            };
+        }
+        RestExchangeObservationHost::Response {
+            status,
+            body: RestBodyObservationHost::ReadRefused(cause),
+        } => {
+            return match outcome_field {
+                Some(field) => Ok(attach_rest_outcome(
+                    None,
+                    op_node,
+                    field,
+                    rest_body_undecodable_value(ctx, status, cause),
+                    ctx,
+                )),
+                None => Err(InterpError::TypeError {
+                    msg: format!("HTTP {} body unreadable: {}", status, cause),
+                }),
+            };
+        }
+        RestExchangeObservationHost::Response {
+            status,
+            body: RestBodyObservationHost::Read(body),
+        } => (status, body),
+    };
+    if !(200..300).contains(&status) {
+        if let Some(field) = outcome_field {
+            return Ok(attach_rest_outcome(
+                None,
+                op_node,
+                field,
+                rest_status_refused_value(ctx, status, body),
+                ctx,
+            ));
+        }
+    }
+    if status >= 400 {
+        return Err(InterpError::TypeError {
+            msg: format!("HTTP {}: {}", status, body),
+        });
+    }
+    let mapped = if response_format == "Text" {
+        map_response_to_value(&body, None, op_node, ctx)?
+    } else {
+        let json: serde_json::Value =
+            serde_json::from_str(&body).unwrap_or_else(|_| serde_json::Value::String(body));
+        map_response_to_value_json(&json, op_node, ctx)?
+    };
+    match outcome_field {
+        Some(field) => Ok(attach_rest_outcome(
+            Some(mapped),
+            op_node,
+            field,
+            rest_outcome_variant(ctx, "RestOk", vec![]),
+            ctx,
+        )),
+        None => Ok(mapped),
+    }
+}
+
 /// Project an observation into the operation's declared output record. On a
 /// non-success outcome the ordinary body-derived fields are deliberately Null:
 /// RestOutcome is the only inhabited branch and therefore the only fact a caller
@@ -7741,6 +8246,7 @@ fn dispatch_rest(
     // present `auth_basic` with a non-record shape, a missing username/password field, or a
     // non-Str credential value is a typed refusal, never an unauthenticated send or a
     // stringified-debug header.
+    let mut basic_auth_header: Option<String> = None;
     if let Some(basic_node) = find_property(
         transport.properties.clone(),
         "auth_basic".to_string(),
@@ -7775,6 +8281,7 @@ fn dispatch_rest(
         match (username, password) {
             (Some(u), Some(p)) => {
                 let header_val = rest_basic_auth_header_value(&u, &p);
+                basic_auth_header = Some(header_val.clone());
                 request = request.set("Authorization", &header_val);
             }
             _ => {
@@ -7793,110 +8300,29 @@ fn dispatch_rest(
         request = request.query(name, val);
     }
 
-    let response = if let Some(json) = body_json {
-        request
-            .set("Content-Type", "application/json")
-            .send_string(&json.to_string())
-    } else {
-        request.call()
-    };
-
+    // Bind replay identity to the HTTP client's fully realized target, including
+    // its encoded query string, rather than the pre-query service/path join.
+    let realized_target = request.url().to_string();
+    let invocation = rest_bound_invocation_value(
+        service_node,
+        op_node,
+        &method,
+        &realized_target,
+        param_env,
+        &auth,
+        basic_auth_header.as_deref(),
+        ctx,
+    )?;
+    let selection = rest_exchange_selection(invocation, ctx)?;
+    let observation = observe_rest_exchange(selection, request, body_json);
     let outcome_field = rest_outcome_output_field(op_node, ctx);
-
-    match response {
-        Ok(resp) => {
-            let status = resp.status();
-            let body = match resp.into_string() {
-                Ok(body) => body,
-                Err(error) => {
-                    if let Some(field) = outcome_field.as_deref() {
-                        return Ok(attach_rest_outcome(
-                            None,
-                            op_node,
-                            field,
-                            rest_body_undecodable_value(ctx, status, error.to_string()),
-                            ctx,
-                        ));
-                    }
-                    String::new()
-                }
-            };
-            if !(200..300).contains(&status) {
-                if let Some(field) = outcome_field.as_deref() {
-                    return Ok(attach_rest_outcome(
-                        None,
-                        op_node,
-                        field,
-                        rest_status_refused_value(ctx, status, body),
-                        ctx,
-                    ));
-                }
-            }
-            if status >= 400 {
-                return Err(InterpError::TypeError {
-                    msg: format!("HTTP {}: {}", status, body),
-                });
-            }
-            let mapped = if response_format == "Text" {
-                map_response_to_value(&body, None, op_node, ctx)?
-            } else {
-                let json: serde_json::Value =
-                    serde_json::from_str(&body).unwrap_or_else(|_| serde_json::Value::String(body));
-                map_response_to_value_json(&json, op_node, ctx)?
-            };
-            match outcome_field.as_deref() {
-                Some(field) => Ok(attach_rest_outcome(
-                    Some(mapped),
-                    op_node,
-                    field,
-                    rest_outcome_variant(ctx, "RestOk", vec![]),
-                    ctx,
-                )),
-                None => Ok(mapped),
-            }
-        }
-        Err(ureq::Error::Status(status, resp)) => {
-            let body = match resp.into_string() {
-                Ok(body) => body,
-                Err(error) => {
-                    if let Some(field) = outcome_field.as_deref() {
-                        return Ok(attach_rest_outcome(
-                            None,
-                            op_node,
-                            field,
-                            rest_body_undecodable_value(ctx, status, error.to_string()),
-                            ctx,
-                        ));
-                    }
-                    String::new()
-                }
-            };
-            if let Some(field) = outcome_field.as_deref() {
-                return Ok(attach_rest_outcome(
-                    None,
-                    op_node,
-                    field,
-                    rest_status_refused_value(ctx, status, body),
-                    ctx,
-                ));
-            }
-            Err(InterpError::TypeError {
-                msg: format!("HTTP {}: {}", status, body),
-            })
-        }
-        Err(e) => match outcome_field.as_deref() {
-            Some(field) => Ok(attach_rest_outcome(
-                None,
-                op_node,
-                field,
-                rest_transport_refused_value(ctx, e.to_string()),
-                ctx,
-            )),
-            None => Err(InterpError::TypeError {
-                msg: format!("HTTP request failed: {}", e),
-            }),
-        },
-    }
+    decide_rest_exchange(
+        observation,
+        op_node,
+        &response_format,
+        outcome_field.as_deref(),
+        ctx,
+    )
 }
 
 pub fn resolve_auth(

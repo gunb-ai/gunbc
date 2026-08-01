@@ -1,10 +1,13 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod, FermiDepth, NonEmptyStr, HttpStatus, Bool, String }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List, ContentHash }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
+import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, UriScheme, Http, Https, File, Ftp, Javascript, Data, Vbscript, Mailto }
+import v2.std.operation_argv { OperationRef }
+import v2.std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -68,5 +71,213 @@ fn rest_outcome_transported(outcome: RestOutcome) -> Bool {
     RestStatusRefused { status: _, body: _ } => true
     RestBodyUndecodable { status: _, cause: _ } => true
     RestTransportRefused { cause: _ } => false
+  }
+}
+
+data rest_exchange_observation_note: String = "THE HTTP CLIENT BOUNDARY REPORTS FACTS AND DECIDES NO OPERATION POLICY. RestResponseObserved says a status arrived and then says separately whether its body was readable; RestExchangeRefused says no response arrived, so no status can be fabricated. The operation-facing RestOutcome above is downstream: the same dispatch_rest fold consumes this carrier whether a real HTTP handler or an exact fixture replay produced it. A replay arm that returned the operation's final output would sit one layer too high and could green while dispatch_rest was broken - the defect in mock_response and the retired recorded-value fixture seam."
+
+type RestBodyObservation
+  = RestBodyRead { body: String }
+  | RestBodyReadRefused { cause: NonEmptyStr }
+
+type RestExchangeObservation
+  = RestResponseObserved { status: HttpStatus, body: RestBodyObservation }
+  | RestExchangeRefused { cause: NonEmptyStr }
+
+type RestAuthSensitiveIdentity
+  = RestUnauthenticated
+  | RestAuthenticated { scheme: NonEmptyStr, digest: ContentHash }
+
+data rest_bound_invocation_note: String = "REST needs a specialization of v2.std.operation_argv.BoundOperationInvocation rather than pretending its shell-only binding list is enough. OperationRef remains the declaration identity authority. The specialization adds the HTTP method, fully realized URI target, the digest of every declared input, and an auth-sensitive digest whose preimage never enters the fixture. Together those facts make a replay exact: a fixture for another operation, path/query/body input, method, target, or credential identity cannot satisfy this invocation. Query and body values are already in the declared-input digest; constants are fixed by OperationRef."
+
+type RestBoundOperationInvocation {
+  at: OperationRef
+  method: HttpMethod
+  target: Uri
+  input_digest: ContentHash
+  auth_identity: RestAuthSensitiveIdentity
+}
+
+type RestExchangeFixture {
+  store: NonEmptyStr
+  invocation: RestBoundOperationInvocation
+  observation: RestExchangeObservation
+}
+
+type RestFixtureScan {
+  count: Int
+  observation: RestExchangeObservation?
+}
+
+type RestFixtureLookup
+  = RestFixtureFound { observation: RestExchangeObservation }
+  | RestFixtureAbsent { invocation: RestBoundOperationInvocation }
+  | RestFixtureAmbiguous { invocation: RestBoundOperationInvocation, count: Int }
+
+fn rest_http_method_eq(a: HttpMethod, b: HttpMethod) -> Bool {
+  match a {
+    GET => match b { GET => true, _ => false }
+    POST => match b { POST => true, _ => false }
+    PUT => match b { PUT => true, _ => false }
+    PATCH => match b { PATCH => true, _ => false }
+    DELETE => match b { DELETE => true, _ => false }
+    HEAD => match b { HEAD => true, _ => false }
+    OPTIONS => match b { OPTIONS => true, _ => false }
+  }
+}
+
+fn rest_uri_scheme_eq(a: UriScheme, b: UriScheme) -> Bool {
+  match a {
+    Http => match b { Http => true, _ => false }
+    Https => match b { Https => true, _ => false }
+    File => match b { File => true, _ => false }
+    Ftp => match b { Ftp => true, _ => false }
+    Javascript => match b { Javascript => true, _ => false }
+    Data => match b { Data => true, _ => false }
+    Vbscript => match b { Vbscript => true, _ => false }
+    Mailto => match b { Mailto => true, _ => false }
+  }
+}
+
+fn rest_uri_eq(a: Uri, b: Uri) -> Bool {
+  rest_uri_scheme_eq(a: a.scheme, b: b.scheme) && a.locator == b.locator
+}
+
+fn rest_operation_ref_eq(a: OperationRef, b: OperationRef) -> Bool {
+  a.path == b.path && a.service == b.service && a.operation == b.operation
+}
+
+fn rest_auth_identity_eq(a: RestAuthSensitiveIdentity, b: RestAuthSensitiveIdentity) -> Bool {
+  match a {
+    RestUnauthenticated => match b { RestUnauthenticated => true, _ => false }
+    RestAuthenticated { scheme: sa, digest: da } => match b {
+      RestAuthenticated { scheme: sb, digest: db } => sa == sb && da == db
+      RestUnauthenticated => false
+    }
+  }
+}
+
+fn rest_bound_invocation_eq(a: RestBoundOperationInvocation, b: RestBoundOperationInvocation) -> Bool {
+  rest_operation_ref_eq(a: a.at, b: b.at)
+    && rest_http_method_eq(a: a.method, b: b.method)
+    && rest_uri_eq(a: a.target, b: b.target)
+    && a.input_digest == b.input_digest
+    && rest_auth_identity_eq(a: a.auth_identity, b: b.auth_identity)
+}
+
+fn rest_fixture_scan(
+  fixtures: List<RestExchangeFixture>,
+  store: NonEmptyStr,
+  invocation: RestBoundOperationInvocation,
+  scan: RestFixtureScan,
+) -> RestFixtureScan {
+  if fixtures.count() == 0 {
+    scan
+  } else {
+    let fixture = fixtures.first()
+    let matches = fixture.store == store
+      && rest_bound_invocation_eq(a: fixture.invocation, b: invocation)
+    let next = if matches {
+      RestFixtureScan {
+        count: scan.count + 1,
+        observation: Present { value: fixture.observation },
+      }
+    } else {
+      scan
+    }
+    rest_fixture_scan(
+      fixtures: fixtures.skip(n: 1),
+      store: store,
+      invocation: invocation,
+      scan: next,
+    )
+  }
+}
+
+fn rest_exchange_fixture_lookup(
+  fixtures: List<RestExchangeFixture>,
+  store: NonEmptyStr,
+  invocation: RestBoundOperationInvocation,
+) -> RestFixtureLookup {
+  let scan = rest_fixture_scan(
+    fixtures: fixtures,
+    store: store,
+    invocation: invocation,
+    scan: RestFixtureScan { count: 0, observation: Absent },
+  )
+  if scan.count == 0 {
+    RestFixtureAbsent { invocation: invocation }
+  } else if scan.count == 1 {
+    match scan.observation {
+      Present { value } => RestFixtureFound { observation: value }
+      Absent => RestFixtureAbsent { invocation: invocation }
+    }
+  } else {
+    RestFixtureAmbiguous { invocation: invocation, count: scan.count }
+  }
+}
+
+fn rest_method_verb(method: HttpMethod) -> std.effect_grant.Verb {
+  match method {
+    GET => Read
+    HEAD => Read
+    OPTIONS => Read
+    POST => Write
+    PUT => Write
+    PATCH => Write
+    DELETE => Write
+  }
+}
+
+fn rest_operation_position(at: OperationRef) -> NamespacePosition {
+  NamespacePosition {
+    tree: ServiceOpTree { service: at.service },
+    path: [at.operation],
+  }
+}
+
+type RestHandlerSelection
+  = RestHandlerSelected { binding: HandlerBinding }
+  | RestHandlerUncovered { invocation: RestBoundOperationInvocation }
+
+fn rest_handler_selection(env: Envelope, invocation: RestBoundOperationInvocation) -> RestHandlerSelection {
+  match covering_grant(
+    env: env,
+    verb: rest_method_verb(method: invocation.method),
+    target: rest_operation_position(at: invocation.at),
+  ) {
+    CoveredBy { grant } => RestHandlerSelected { binding: grant.binding }
+    NoCoveringGrant { verb: _, target: _, frame: _ } => RestHandlerUncovered { invocation: invocation }
+  }
+}
+
+type RestExchangeResolution
+  = RestRealExchangeRequired
+  | RestReplayExchangeFound { observation: RestExchangeObservation }
+  | RestReplayExchangeAbsent { invocation: RestBoundOperationInvocation }
+  | RestReplayExchangeAmbiguous { invocation: RestBoundOperationInvocation, count: Int }
+  | RestExchangeHandlerUncovered { invocation: RestBoundOperationInvocation }
+
+data rest_exchange_resolution_note: String = "THE SINGLE HANDLER-BINDING AND LOOKUP DECISION. Runtime code asks this function what the frame's existing effect grant selected; it does not re-read Hermetic/Wet and does not implement its own first-match. RealTransport asks the host HTTP client for a RestExchangeObservation. Replay names a fixture store and reaches the three-valued exact-invocation lookup above. Missing, ambiguous and uncovered are distinct refusals, and none has a real-transport fallback arm."
+
+fn rest_exchange_resolution(
+  env: Envelope,
+  fixtures: List<RestExchangeFixture>,
+  invocation: RestBoundOperationInvocation,
+) -> RestExchangeResolution {
+  match rest_handler_selection(env: env, invocation: invocation) {
+    RestHandlerUncovered { invocation: i } => RestExchangeHandlerUncovered { invocation: i }
+    RestHandlerSelected { binding } => match binding {
+      RealTransport => RestRealExchangeRequired
+      Replay { fixture_store } => match rest_exchange_fixture_lookup(
+        fixtures: fixtures,
+        store: fixture_store as NonEmptyStr,
+        invocation: invocation,
+      ) {
+        RestFixtureFound { observation } => RestReplayExchangeFound { observation: observation }
+        RestFixtureAbsent { invocation: i } => RestReplayExchangeAbsent { invocation: i }
+        RestFixtureAmbiguous { invocation: i, count } => RestReplayExchangeAmbiguous { invocation: i, count: count }
+      }
+    }
   }
 }

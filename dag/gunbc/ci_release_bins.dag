@@ -33,7 +33,6 @@ data witness_declared_release_bins: List<String> = [
   "interp_recorded_fixture_witness",
   "v1_src_dag_parse",
   "auth_declared_but_unwired_witness",
-  "rest_outcome_witness",
   "bootstrap_witness",
   "dag_collect_fingerprint_witness",
   "diagnostics_witness",
