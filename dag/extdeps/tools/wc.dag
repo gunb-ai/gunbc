@@ -35,6 +35,14 @@ type FileByteCountRead
   = FileByteCountObserved { bytes: ByteSize }
   | FileByteCountUnavailable { reason: NonEmptyStr }
 
+type FileByteCountVerification
+  = FileByteCountMatches
+  | FileByteCountDiffers {
+      observed: ByteSize,
+      expected: ByteSize,
+    }
+  | FileByteCountVerificationUnavailable { reason: NonEmptyStr }
+
 fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
   let read = wc.ByteCount.File(path: path)
   if !read.success {
@@ -48,5 +56,16 @@ fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
       }
       Absent => FileByteCountUnavailable { reason: "wc byte count was not an integer" as NonEmptyStr }
     }
+  }
+}
+
+fn verify_file_byte_count(read: FileByteCountRead, expected: ByteSize) -> FileByteCountVerification {
+  match read {
+    FileByteCountObserved { bytes } => if bytes == expected {
+      FileByteCountMatches
+    } else {
+      FileByteCountDiffers { observed: bytes, expected: expected }
+    }
+    FileByteCountUnavailable { reason } => FileByteCountVerificationUnavailable { reason: reason }
   }
 }
