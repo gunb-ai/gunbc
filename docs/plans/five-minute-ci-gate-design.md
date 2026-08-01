@@ -1,27 +1,61 @@
 # Five-minute CI gate — program scoping
 
 Scoping only. No implementation lands from this note alone. Registers the
-operator-signed product boundary and six sub-lanes in `gunbc.roadmap_authority`
-so dispatch, witnesses, and receipts share one program identity.
+operator-signed product boundary, six sub-lanes, and the **dependency sequence**
+in `gunbc.roadmap_authority` so dispatch, witnesses, and receipts share one
+program identity.
 
 **Product boundary (verbatim):** an ordinary source edit reaches a required CI
 verdict in five minutes without recomputing any semantic fact whose inputs did
 not change.
 
 **This is a program, not a PR.** Each sub-lane is independently dispatchable;
-the parent carries the end-to-end contract only. Receipts stay on the sub-lane
-that owns them — the parent carries no stored rung or wall-clock field.
+the parent carries the end-to-end contract and the ordered sequence below.
+Receipts stay on the sub-lane that owns them — the parent carries no stored
+rung or wall-clock field.
+
+**Native witness execution — settled at small scale (#7599, open PR).** The
+program no longer debates whether moving semantic execution out of the
+interpreter works. **BANKED** executing slice (#7599): modeled `SelectedWitnessPlan`,
+content-addressed bundle identity, one-process direct calls, cold/warm receipts,
+interpreter equivalence per member, swapped-body divergence control, typed
+refusals (stale compiler identity, missing native realization, missing red
+evidence, invalid process counts, fallback use). **Open question (operational):**
+how rapidly can the production selected set migrate onto that native execution
+kind while keeping equivalence, fallback, artifact identity, and memory
+fail-closed? Next major CI slice after #7599 merges: **bounded production
+witness cutover** to the native execution kind (dispatched to the #7599 owner) —
+not another broad interpreted-path optimization.
 
 **Interpreter endgame (linked, not duplicated):** moving `cli_run`/interpreter
 helpers to `.dag` improves authority but does **not** make CI fast while the
 `.dag` is still interpreted. The win arrives when `.dag` is the source
-authority for a native, reusable realization — *authored in `.dag` → emitted
-once to native → content-addressed → reused → thin native CLI* — not
-*large hand-written Rust executor → large interpreted `.dag` executor*.
-`cli_run`'s end-state is a thin host adapter (parse invocation, open
-materialization provider, select generated plan/executor, perform host effects,
-render typed outcome). See [witness realization plan](witness-realization-plan.md)
+authority for a native, reusable realization. See [witness realization plan](witness-realization-plan.md)
 and `dag/gunbc/plans/cli_run_hollowing_plan.dag`.
+
+---
+
+## Operator sequence (dependency graph)
+
+Registered as roadmap edges where noted; order is binding for dispatch.
+
+| step | work | disposition |
+|---|---|---|
+| 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **NEXT** — probable net recovery ~1–1.5 min (not ~3 min); final-head run decides |
+| 2 | Merge **#7599** once controls and reviews clear | **BANKED** slice on open PR |
+| 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **NEXT** — #7599 owner; first major CI slice after merge |
+| 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **NEXT** under `module-grain-materialization` |
+| 5 | Union program **closed** per #7533; remaining assembly observation → `per-entry-assembly-decomposition` (narrow measured lane) | **CLOSED** / **NEXT** |
+| 6 | This program (`five-minute-ci-gate`) makes the five-minute objective and this graph explicit | this registration |
+
+**Materialization hierarchy** (step 4 feeds step 3, not a parallel fork):
+
+module parse / type / interface materializations → resolved entry materializations
+→ selected native witness bundle.
+
+Roadmap edges encoding sequence: `native-selected-witness-bundle` →
+`warm-merge-admission`; `pre-index-materialization-lookup` and
+`per-entry-assembly-decomposition` → `module-grain-materialization` (existing).
 
 ---
 
@@ -29,12 +63,12 @@ and `dag/gunbc/plans/cli_run_hollowing_plan.dag`.
 
 | id | role |
 |---|---|
-| `warm-merge-admission` | Stamp and admit merges from warm receipts — fold resolve/materialization receipt gates into merge admission so the PR path does not pay cold recomputation for facts already fixed for the run. **In flight:** #7522. |
-| `native-selected-witness-bundle` | Run only the witnesses the affected set selects, natively on the pooled floor — selection shrinks work; native execution avoids per-row process tax. Builds on #6879 partition kernel + #7029 shared runtime. |
-| `module-grain-materialization` | Module-grain semantic memo — editing one module recomputes only that module, semantically affected dependents, and the affected shard. **First rung:** exact-tree cross-process cache (#7534, opt-in) — not the final consumer and does not close dashboard startup (serve still builds the corpus index before the probe). |
-| `pre-index-materialization-lookup` | Warm manifest lookup before corpus-scale index construction — the serve/dashboard fix where index build currently precedes the cache probe. |
-| `phased-single-process-ci` | Regen, floor, and admission share one initialized substrate with phase boundaries and separate verdicts — regen still gates floor; **not** flattening into ordinary batches. |
-| `per-entry-assembly-decomposition` | Remaining compiler term after the shared-typecheck hypothesis closed — measurement first, owned by the slice-2 lane (#7533). |
+| `warm-merge-admission` | Stamp and admit merges from warm receipts — fold resolve/materialization receipt gates into merge admission. **NEXT:** #7522 in flight. |
+| `native-selected-witness-bundle` | **BANKED:** #7599 executing slice (plan, bundle identity, native one-process calls, interpreter oracle). **NEXT:** production cutover of bounded selected-witness population onto native execution kind. |
+| `module-grain-materialization` | Shared materialization substrate (#7534 continues). Hierarchy above; no default CI savings until ordinary invocations consume hits. **First rung:** exact-tree (#7534, opt-in). |
+| `pre-index-materialization-lookup` | Warm manifest lookup before corpus-scale index construction — serve/dashboard path. |
+| `phased-single-process-ci` | Regen, floor, and admission share one initialized substrate with separate verdict stamps. |
+| `per-entry-assembly-decomposition` | Narrow measured lane after #7533 closed union — assembly/reconcile attribution only. |
 
 ---
 
@@ -42,30 +76,40 @@ and `dag/gunbc/plans/cli_run_hollowing_plan.dag`.
 
 | subject | disposition |
 |---|---|
-| `entry-graph-union-construction` | **CLOSED** — slice 2 (#7533, candidate head): three disjoint N≤50 windows + reorder control, `decision_ratio = 0` repeated typecheck misses, order-stable. No union construction; redirect to `per-entry-assembly-decomposition`. Slice 1 banked as #7483. |
-| retention (M2) | **PARKED** unless a real M2-aware floor shows pressure. Dispatch J receipt (#7581): 842-entry whole-corpus batch 1, peak **6.27 GiB**, `schedule_evictions=2094`, `retention_unknown=0`, PASS at width 1. |
-| exact-tree materialization (#7534) | First rung inside `module-grain-materialization`; opt-in; explicitly does not close dashboard startup. |
+| `entry-graph-union-construction` | **CLOSED** — #7533: `decision_ratio = 0` repeated typecheck misses. Redirect to `per-entry-assembly-decomposition`. Slice 1 banked as #7483. |
+| retention (M2) | **PARKED** unless M2-aware floor shows pressure (#7581: 842 entries, peak 6.27 GiB, PASS width 1). |
+| exact-tree materialization (#7534) | Substrate under `module-grain-materialization`; opt-in; no default CI activation credited. |
 
 ---
 
-## Product budgets (targets, not achievements)
+## Staged expectations (not flat wall-clock claims)
 
-| envelope | target |
-|---|---|
-| normal affected PR, warm | p50 ≤ **5 min** |
-| broad/cold PR | p95 ≤ **10–15 min** |
-| falsifier / cold corpus cadence | ≤ **20–30 min** initially |
-| witness bodies (once native artifacts exist) | seconds, not minutes |
+**Stage A — after current safety/cost board lands:** modest direct reduction only
+(principally net admission saving from #7522); floor witness bodies still
+interpreted.
 
-**Honest current expectation** after the in-flight board: substantial PR ~30–35 min;
-broad/cold 35–45 min. Nothing currently in review provides the remaining 5–6×; it
-comes from native realization + module-grain materialization.
+**Stage B — after first production native-bundle cutover:** first plausible
+order-of-magnitude witness-execution reduction (gain depends on native-emittable
+share of the selected set + bundle construction cost).
+
+**Stage C — five-minute affected-PR gate defensible when ALL hold:**
+
+- most selected witnesses execute natively;
+- native artifacts hit across ordinary invocations;
+- unchanged modules do not reparse or re-typecheck;
+- cache lookup happens before corpus-scale index construction;
+- regen / floor / admission share one initialized substrate where safe;
+- interpreted fallback is counted and steadily approaches zero.
+
+Product budgets (Stage C targets): normal affected PR warm p50 ≤ **5 min**;
+broad/cold p95 ≤ **10–15 min**; falsifier cadence ≤ **20–30 min** initially.
 
 ---
 
-## Verified receipts (execution-backed in tree)
+## Verified receipts (execution-backed)
 
-Only figures verified in committed receipts or PR bodies are cited here.
+Only figures verified in committed receipts, PR test plans, or PR bodies are
+cited here.
 
 | receipt | source | what stands |
 |---|---|---|
@@ -74,29 +118,29 @@ Only figures verified in committed receipts or PR bodies are cited here.
 | M2 retention width-1 | #7581 PR body | peak 6.27 GiB, `schedule_evictions=2094`, 842 entries PASS |
 | child-spawn tax | [ci-floor-child-spawn-attribution](ci-floor-child-spawn-attribution.md) | single cold child 49.8s (CI) vs 47.2s pooled; 389s Pi spawned (8.2×) |
 | compile clean 3-root | [ci_floor_pi_srv_stretch TSV](../probes/ci_floor_pi_srv_stretch_2026-07-23.tsv) | 3m29s / 5.9GB standalone CLI compile |
+| native bundle slice (3-fn) | #7599 PR body · `native_selected_witness_bundle_test.dag` (20/20 on PR branch) | ~3 ms native direct vs ~20 ms interpreted vs ~457 ms warm `cargo run`; cold+warm host witness ~993 ms; swapped-body red ~977 ms |
 
 **Not verified in tree (omitted from authority):** #6663 158.2s→61.6s, #7029
-3m29s→2m19s, #7522 26m05s floor + 197.13s baseline — flag for operator receipt
-before transcribing.
+3m29s→2m19s, #7522 26m05s floor + 197.13s baseline, #7522 probable ~1–1.5 min
+net admission — flag for operator receipt before transcribing.
 
 ---
 
 ## Related work outside this program
 
-- **Placement chain** — host/job placement; separate lane owner `ci-placement`.
-- **Frontend escape scan** — tokenizer cost shape; landed Lane A from
-  `inner-cost-lanes-scoping.md`.
-- **Compile-wall / shard cold pass** — may compress the envelope once
-  materialization and selection are live; tracked in `compile-wall-endgame.md`.
+- **Placement / build-flake lane** — srv1 cache miss + placement crawl; **do not
+  raise step cap first** (cap lives in `gunbc.ci_spec`; measure after Arm A).
+- **Placement chain** — host/job placement; owner `ci-placement`.
+- **Frontend escape scan** — tokenizer cost; Lane A from `inner-cost-lanes-scoping.md`.
+- **Compile-wall / shard cold pass** — `compile-wall-endgame.md`.
 
 ---
 
 ## Dissolution trigger
 
 Delete this note when every sub-lane row is accepted or honestly retired and the
-program parent `five-minute-ci-gate` is accepted on fleet receipts showing a
-representative leaf `.dag` PR at ≤5 minutes wall with byte-identical verdicts vs a
-cold recompute control — or when the operator recuts the program.
+program parent `five-minute-ci-gate` is accepted on fleet receipts showing Stage C
+on a representative leaf `.dag` PR — or when the operator recuts the program.
 
 DESIGN refs: §1 (time is the value), §2 (one materialization kernel), §5 (refuse,
 never widen), §6 (displaced cost priced in receipts).

@@ -465,6 +465,7 @@ test fn witness_five_minute_ci_gate_program_chain_is_explicit() -> Bool {
     && !id_exists(id: "exact-tree-materialization")
     && edge_exists(child: "warm-merge-admission", parent: "five-minute-ci-gate")
     && edge_exists(child: "native-selected-witness-bundle", parent: "five-minute-ci-gate")
+    && edge_exists(child: "native-selected-witness-bundle", parent: "warm-merge-admission")
     && edge_exists(child: "module-grain-materialization", parent: "five-minute-ci-gate")
     && edge_exists(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate")
     && edge_exists(child: "phased-single-process-ci", parent: "five-minute-ci-gate")
