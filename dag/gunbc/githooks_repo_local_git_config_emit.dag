@@ -20,7 +20,7 @@ fn emit_install_binding_line(binding: RepoLocalGitConfigBinding) -> String {
 
 fn emit_repo_local_git_config_converge_shell() -> String {
   concat(
-    "# 🟡 dissolve-on: githooks_repo_local_git_config_emit_shell — generated hook shell for this runtime-absent site; DISSOLVES WHEN shell→intent bash grammar rows emit the converge block from reconcile_install_argv (DESIGN §4 one-grammar-both-directions).\n# Idempotent repository-local Git integration bindings (gunbc.repo_local_git_config).\n",
+    "# 🟡 dissolve-on: githooks_repo_local_git_config_emit_shell — generated hook shell for this runtime-absent site; DISSOLVES WHEN the orchestration-to-shell/bash-emit capability reads shell→intent grammar rows and emits the converge block from reconcile_install_argv (DESIGN §4 one-grammar-both-directions).\n# Idempotent repository-local Git integration bindings (gunbc.repo_local_git_config).\n",
     fold(
       desired_repo_local_git_config_bindings(),
       init: "",

@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+# 🟡 dissolve-on: githooks_repo_local_git_config_emit_shell — generated hook shell for this runtime-absent site; DISSOLVES WHEN the orchestration-to-shell/bash-emit capability reads shell→intent grammar rows and emits the converge block from reconcile_install_argv (DESIGN §4 one-grammar-both-directions).
 # Idempotent repository-local Git integration bindings (gunbc.repo_local_git_config).
 # repo-local git config: merge.generated-artifact.driver
 git config --local merge.generated-artifact.driver true
