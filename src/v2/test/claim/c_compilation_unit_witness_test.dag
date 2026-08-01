@@ -461,3 +461,7 @@ test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
 }
 
 
+
+data probe_backslash: CompilationUnitId = "a\\b" as CompilationUnitId
+data probe_quote: CompilationUnitId = "a\"b" as CompilationUnitId
+data probe_nul: CompilationUnitId = "a\u{0000}b" as CompilationUnitId
