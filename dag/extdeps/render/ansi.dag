@@ -2,6 +2,7 @@ module extdeps.render.ansi
 
 import std.symbols { SemanticColor }
 import std.types { Int, NonEmptyStr }
+import v2.std.algebra { list_map }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
