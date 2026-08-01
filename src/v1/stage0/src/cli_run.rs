@@ -7162,6 +7162,8 @@ pub struct RepeatedTypecheckAttributionMeasurement {
     pub selected_entries: Vec<String>,
     pub skipped_entries: Vec<String>,
     pub max_entries_applied: Option<usize>,
+    /// Zero-based index into the production roster before `--max-entries` truncation.
+    pub entry_offset_applied: Option<usize>,
     pub sum_closure_memberships: usize,
     pub union_modules: usize,
     pub membership_duplication_factor: Option<f64>,
@@ -7206,6 +7208,7 @@ impl RepeatedTypecheckAttributionRun {
         selected_entries: Vec<String>,
         skipped_entries: Vec<String>,
         max_entries_applied: Option<usize>,
+        entry_offset_applied: Option<usize>,
         sum_closure_memberships: usize,
         union_modules: usize,
     ) -> RepeatedTypecheckAttributionMeasurement {
@@ -7222,6 +7225,7 @@ impl RepeatedTypecheckAttributionRun {
             selected_entries,
             skipped_entries,
             max_entries_applied,
+            entry_offset_applied,
             sum_closure_memberships,
             union_modules,
             Vec::new(),
@@ -7238,6 +7242,7 @@ impl RepeatedTypecheckAttributionRun {
         selected_entries: Vec<String>,
         skipped_entries: Vec<String>,
         max_entries_applied: Option<usize>,
+        entry_offset_applied: Option<usize>,
         sum_closure_memberships: usize,
         union_modules: usize,
         fanout_by_module: Vec<(String, usize)>,
@@ -7342,6 +7347,7 @@ impl RepeatedTypecheckAttributionRun {
             selected_entries,
             skipped_entries,
             max_entries_applied,
+            entry_offset_applied,
             sum_closure_memberships,
             union_modules,
             membership_duplication_factor,
@@ -16742,6 +16748,7 @@ pub fn measure_repeated_typecheck_attribution(
     discovery_scope_dirs: &[String],
     explicit_entries: &[String],
     max_entries: Option<usize>,
+    entry_offset: Option<usize>,
 ) -> Result<RepeatedTypecheckAttributionMeasurement, String> {
     let rss_before = current_rss_bytes();
 
@@ -16779,6 +16786,25 @@ pub fn measure_repeated_typecheck_attribution(
     } else {
         explicit_entries.to_vec()
     };
+    if !explicit_entries.is_empty() && entry_offset.unwrap_or(0) > 0 {
+        return Err(
+            "repeated typecheck attribution: --entry-offset requires production selection \
+             (fail-closed)"
+                .to_string(),
+        );
+    }
+    let roster_len = selected_entries.len();
+    let offset = entry_offset.unwrap_or(0);
+    if offset > 0 {
+        if offset >= roster_len {
+            return Err(format!(
+                "repeated typecheck attribution: entry offset {offset} >= roster len \
+                 {roster_len} (fail-closed)"
+            ));
+        }
+        selected_entries = selected_entries[offset..].to_vec();
+    }
+    let entry_offset_applied = entry_offset.filter(|&o| o > 0);
     let pre_cap_len = selected_entries.len();
     if let Some(cap) = max_entries {
         selected_entries.truncate(cap);
@@ -16829,6 +16855,7 @@ pub fn measure_repeated_typecheck_attribution(
         selected_entries,
         skipped_entries,
         max_entries_applied,
+        entry_offset_applied,
         sum_closure_memberships,
         union_modules,
         fanout_by_module,
@@ -16858,6 +16885,11 @@ pub fn render_repeated_typecheck_attribution_json(
     out.push_str(&m.selected_count().to_string());
     out.push_str(",\"max_entries_applied\":");
     out.push_str(&match m.max_entries_applied {
+        Some(n) => n.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str(",\"entry_offset_applied\":");
+    out.push_str(&match m.entry_offset_applied {
         Some(n) => n.to_string(),
         None => "null".to_string(),
     });
