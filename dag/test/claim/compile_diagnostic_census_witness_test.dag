@@ -5,7 +5,6 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
-  census_rows,
   census_blocking_rows,
   census_advisory_rows,
   census_rows_of_class,
@@ -31,14 +30,19 @@ data clean_call_source: String = "module census_clean\nfn sub(a: Int, b: Int) ->
 data twice_mislabeled_call_source: String = "module census_mislabel_twice\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\nfn g() -> Int { sub(a: 1, cc: 2) }\n"
 
 test fn census_names_the_class_that_fired() -> Bool {
-  let rows = census_rows_of_class(c: census_of(source: mislabeled_call_source), wanted: "CallArgumentNameUnknown")
-  census_total_count(rows: rows) >= 1
+  match census_of(source: mislabeled_call_source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown")) >= 1
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 test fn census_reports_blocking_severity_as_data() -> Bool {
-  let c = census_of(source: mislabeled_call_source)
-  let blocking = census_blocking_rows(c: c) |> filter(r => (r.diagnostic_class as String) == "CallArgumentNameUnknown")
-  census_total_count(rows: blocking) >= 1
+  match census_of(source: mislabeled_call_source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: "CallArgumentNameUnknown")) >= 1
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 test fn census_clean_source_observes_zero_rows() -> Bool {
@@ -48,23 +52,39 @@ test fn census_clean_source_observes_zero_rows() -> Bool {
   }
 }
 
+fn mislabel_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
 test fn census_counts_occurrences_not_merely_presence() -> Bool {
-  let one = census_total_count(rows: census_rows_of_class(c: census_of(source: mislabeled_call_source), wanted: "CallArgumentNameUnknown"))
-  let two = census_total_count(rows: census_rows_of_class(c: census_of(source: twice_mislabeled_call_source), wanted: "CallArgumentNameUnknown"))
-  two > one
+  let one = mislabel_count(source: mislabeled_call_source)
+  let two = mislabel_count(source: twice_mislabeled_call_source)
+  one >= 1 && two > one
 }
 
 data where_refinement_source: String = "module census_advisory_probe\nimport std.types { String, NonEmptyStr }\nfn tighten(s: String) -> NonEmptyStr { s as NonEmptyStr }\n"
 
 test fn census_reports_advisory_severity_as_data() -> Bool {
-  let advisory = census_advisory_rows(c: census_of(source: where_refinement_source))
-  census_total_count(rows: advisory) >= 1
+  match census_of(source: where_refinement_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_advisory_rows(rows: rows)) >= 1
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 test fn census_not_runnable_is_not_an_empty_observation() -> Bool {
   let not_runnable = CensusNotRunnable { cause: "synthetic could-not-measure" as NonEmptyStr }
   let empty_observed = CensusObserved { rows: [] }
-  count(census_rows(c: not_runnable)) == 0
-    && count(census_rows(c: empty_observed)) == 0
-    && not_runnable != empty_observed
+  let cause_readable = match not_runnable {
+    CensusNotRunnable { cause: c } => (c as String) != ""
+    CensusObserved { rows: _ } => false
+  }
+  let observed_is_empty = match empty_observed {
+    CensusObserved { rows: rows } => count(rows) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+  not_runnable != empty_observed && cause_readable && observed_is_empty
 }

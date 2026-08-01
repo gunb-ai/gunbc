@@ -1,6 +1,8 @@
 module gunbc.compile_diagnostic_census
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data compile_diagnostic_census_charter_note: String = "THE PROBE OBSERVATION SURFACE for the v1 compile path (roadmap node ladder-probe-corpus; gap analysis sec 12 Stage 1a). The probe corpus needs to observe WHICH judgment a synthetic source provoked, not merely that something refused: the Stage-0 receipt vocabulary gunbc.guarantee_measurement carries RefusedTyped \{diagnostic_class, count} and AcceptedCounted \{diagnostic_class, count}, and neither is inhabitable from a Bool. Before this surface the only .dag-callable v1 compile was compile_dag_rust_emit_check, which counts diagnostics passing compile_clean_diagnostic_is_hard and returns false when that count is nonzero - so class identity, severity, and every advisory were discarded inside the host. Three things that costs, each measured on the tests this corpus migrates: a probe refusing for ANY hard reason (including a typo in the probe source itself) reads as the wall firing; demoting a landed wall from blocking to advisory turns its RED silently GREEN, because the filter IS the severity predicate; and a positive control cannot state zero-diagnostics-of-ANY-severity, which is the assertion codex review 45357 added after an advisory MethodExistenceUndecided passed unnoticed as a green control. MEASUREMENT ONLY: no arm here judges acceptance. The rows carry what the compile decided, severity included AS DATA, and callers filter."
 
@@ -9,6 +11,17 @@ data compile_diagnostic_census_grounding_note: String = "SECTION 3 - this is a P
 data compile_diagnostic_census_path_scope_note: String = "THE ONE PATH THIS SURFACE MEASURES, stated so a receipt cannot claim coverage it does not have (DESIGN 4b: a class's rung is the MINIMUM across its in-scope paths, and citing the strongest path while another stays silent is inflation). The census compiles a synthetic single-module source through the v1 pipeline to the Rust render target - the same compile path compile_dag_rust_emit_check takes - and reports the diagnostics that compile produced. In GuaranteePath axes that is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, compile_mode V1Pipeline. It observes NOTHING about the interpreter's disposition of the same program, nothing about other emission targets, and nothing about corpus-grain prevalence. A probe row keyed to a path this surface does not measure must not carry a receipt derived from it."
 
 data compile_diagnostic_census_not_runnable_note: String = "CensusNotRunnable is a separate arm and NOT an empty row list, because an empty census is byte-identical to a clean compile (DESIGN 5: top-as-answer conflated with top-as-ignorance is the absorbing fallback). Could-not-measure must never be readable as the subject passing: the probe layer maps this arm to guarantee_measurement ProbeObservation ProbeNotRunnable, whose observed_is_verdict is false, and it can do so without guessing precisely because the separation is preserved here at the host seam rather than reconstructed downstream. An infrastructural failure of the compile itself - a harness error, an unreadable module index, a panic caught at the boundary - lands here with its cause, never as a green census."
+
+data compile_diagnostic_census_hand_rust_dissolve_trigger: String = "dissolve-on for the HAND-RUST OBSERVATION SURFACE behind this vocabulary - cli_run compile_dag_diagnostic_census (the host census fold) and v1_interpreter compile_diagnostic_census_value (the substrate projection), together with the v1.compiler.infer_method builtin_function_registry row that types it. The registry row's own trigger is its sibling's, the PrimitiveDefinition identity join; THIS row covers the Rust surface itself, which that trigger does not reach. DISSOLVES WHEN the v1 compiler's diagnostic population is readable from the substrate without a host transport - either v2 self-hosting the pipeline far enough that a probe can call the modeled compile and read modeled diagnostics (the v1-exit lane's terminal state), or a floor-enrolled diagnostic lens subsuming the host projection the way compile_clean_diagnostic_policy names for its own census transport. It does NOT dissolve merely because the registry is replaced: the projection is the scaffold, the registry row is only its type declaration. WHY IT IS A SCAFFOLD AND NOT A PERMANENT SURFACE: everything it computes already exists inside the compiler - compile_clean_diagnostic_histogram_key names the variant and compile_clean_diagnostic_is_hard decides severity - so this adds NO judgment, only a substrate-visible projection of judgments the compiler already made. That is precisely the shape that dissolves when the substrate can read them directly. Receipt while it stands: the surface has exactly one class of consumer, the guarantee probe corpus, and its executing evidence is dag/test/claim/compile_diagnostic_census_witness_test.dag."
+
+data compile_diagnostic_census_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.compile_diagnostic_census",
+    decl_name: "compile_diagnostic_census_hand_rust_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}
 
 type CompileDiagnosticCensusRow {
   diagnostic_class: NonEmptyStr
@@ -21,25 +34,18 @@ type CompileDiagnosticCensus
   = CensusObserved { rows: List<CompileDiagnosticCensusRow> }
   | CensusNotRunnable { cause: NonEmptyStr }
 
-data census_projection_note: String = "Pure reads over an observed census, for callers that filter. None of them decides acceptance: census_blocking_rows and census_advisory_rows partition the SAME rows by the severity the host already reported, and census_total_count sums counts rather than rows so a class occurring twice is two occurrences. A NotRunnable census answers the empty projection here ONLY because these are row selectors; a caller asking whether the subject was accepted must match the coproduct itself, never read a zero out of these."
+data census_projection_note: String = "Pure reads over ROWS, never over the census. The selectors take List<CompileDiagnosticCensusRow>, so the only way to obtain rows is to MATCH the coproduct - which makes reading a row list out of a CensusNotRunnable structurally unwritable rather than warned against. An earlier cut exported census_rows(c: CompileDiagnosticCensus) answering [] on the NotRunnable arm, with a prose caution telling callers not to read a zero out of it. That was the fail-open this module exists to prevent, one layer up and in its own API: could-not-measure and observed-nothing became the same empty list at the export boundary, and a prose warning is validation standing exactly where construction was available (DESIGN 5; caught by codex review 46144). The caution deleted WITH the accessor rather than surviving beside it - a warning about a state that can no longer be written is dead text. None of these decides acceptance: blocking and advisory partition the SAME rows by the severity the host already reported, and census_total_count sums counts rather than rows so a class occurring twice is two occurrences."
 
-fn census_rows(c: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
-  match c {
-    CensusObserved { rows: rows } => rows
-    CensusNotRunnable { cause: _ } => []
-  }
+fn census_blocking_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => r.blocking)
 }
 
-fn census_blocking_rows(c: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
-  census_rows(c: c) |> filter(r => r.blocking)
+fn census_advisory_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => !r.blocking)
 }
 
-fn census_advisory_rows(c: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
-  census_rows(c: c) |> filter(r => !r.blocking)
-}
-
-fn census_rows_of_class(c: CompileDiagnosticCensus, wanted: String) -> List<CompileDiagnosticCensusRow> {
-  census_rows(c: c) |> filter(r => (r.diagnostic_class as String) == wanted)
+fn census_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => (r.diagnostic_class as String) == wanted)
 }
 
 fn census_total_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
