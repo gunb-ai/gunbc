@@ -22,7 +22,7 @@ data ci_heal_expected_head_input_expr: String = "\"${{ inputs.expected_healed_sh
 
 data ci_heal_revalidation_preflight_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ heal revalidation exact-head preflight emission was rejected; this marker is not valid workflow shell, so generated CI drift refuses rather than widening\n"
 
-data ci_heal_revalidation_preflight_note: String = "The workflow_dispatch ref is necessarily a moving branch/tag pointer, while expected_healed_sha is the immutable subject. Every ordinary checkout selects expected_healed_sha when present, then this preflight observes git.Core.HeadCommit through extdeps.git's argv shape and compares byte-for-byte before any witness can count. An absent input is an ordinary manual dispatch and does not claim heal revalidation. A present mismatch exits immediately: branch movement between dispatch and checkout is a refusal, never a flake whose run can authorize a different head. Control flow is v2.std.orchestration intent and bash is only the GitHub Actions foreign-executor realization."
+data ci_heal_revalidation_preflight_note: String = "Heal revalidation dispatches on the healed commit SHA (ref and expected_healed_sha), so github.sha and checkout should already name the immutable subject. This preflight still observes git.Core.HeadCommit through extdeps.git's argv shape and compares byte-for-byte before any witness can count — a second binding that refuses if checkout ever diverges from expected_healed_sha. An absent input is an ordinary manual dispatch and does not claim heal revalidation. Control flow is v2.std.orchestration intent and bash is only the GitHub Actions foreign-executor realization."
 
 fn ci_heal_revalidation_diag(text: String) -> PipelineStep {
   Do {
