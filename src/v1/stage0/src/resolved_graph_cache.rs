@@ -17,7 +17,6 @@ use crate::v1_std_core::{ErrorNode, NewlineIndex};
 use im::Vector;
 
 const FORMAT_VERSION: u32 = 2;
-const LEGACY_FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 
 /// Single-authority mirror of the modeled `SizeBounded` cap:
