@@ -26,8 +26,8 @@ import extdeps.git.ls_remote_advertisement {
   GitAdvertisedRefDecodeOutcome,
   GitAdvertisedRefsDecoded,
   git_decode_ls_remote_stdout_bytes,
-  advertised_ref_branch_name,
 }
+import extdeps.git { advertised_ref_branch_name }
 import extdeps.git.object_store { GitObjectFormatSha1, git_object_id_content_hash }
 
 data repository_remote_head_note: String = "Repository-bound remote-head observation. Consumes an admitted GitRepositoryBinding (worktree, remote URL, forge identity, credential binding) — not a free origin string — and routes through v2.std.operation_argv BoundOperationInvocation. Process observation and advertisement decoding are separate layers: gunbc.direct_process_observation classifies the process result; extdeps.git.ls_remote_advertisement decodes stdout bytes."

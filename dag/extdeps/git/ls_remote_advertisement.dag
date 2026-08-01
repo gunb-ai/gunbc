@@ -1,6 +1,7 @@
 module extdeps.git.ls_remote_advertisement
 
 import std.types { String, Int, List, NonEmptyStr, Bytes }
+import extdeps.git { advertised_ref_branch_name }
 import extdeps.git.object_store {
   GitObjectFormat,
   GitObjectFormatSha1,
@@ -11,9 +12,7 @@ import extdeps.git.object_store {
   git_decode_object_id_text,
 }
 
-data ls_remote_advertisement_authority_note: String = "Typed decoder for git ls-remote ref-advertisement output. Strict line framing, validated object ids through git_decode_object_id_text, full ref identity, located malformed-line refusal, duplicate-ref refusal. No cast from arbitrary text to CommitSha or NonEmptyStr — those brands are not construction-enforced in this corpus."
-
-data advertised_ref_heads_prefix: String = "refs/heads/"
+data ls_remote_advertisement_authority_note: String = "Typed decoder for git ls-remote ref-advertisement output. Strict line framing, validated object ids through git_decode_object_id_text, full ref identity, located malformed-line refusal, duplicate-ref refusal. Branch projection reuses extdeps.git.advertised_ref_branch_name. No cast from arbitrary text to CommitSha or NonEmptyStr — those brands are not construction-enforced in this corpus."
 
 type GitAdvertisedRef {
   object_id: GitObjectId
@@ -51,18 +50,6 @@ type GitAdvertisedRefFold {
   outcome: GitAdvertisedRefDecodeOutcome
 }
 
-fn advertised_ref_branch_name(ref_name: String) -> String {
-  if starts_with(s: ref_name, prefix: advertised_ref_heads_prefix) {
-    substring(
-      s: ref_name,
-      start: advertised_ref_heads_prefix.length(),
-      end: ref_name.length(),
-    )
-  } else {
-    ref_name
-  }
-}
-
 type GitAdvertisedRefLineFields {
   object_id_text: String
   ref_name: String
@@ -93,13 +80,13 @@ fn advertised_ref_line_field_step(acc: GitAdvertisedRefLineFields, part: String)
 
 type GitAdvertisedRefLineDecodeOutcome
   = GitAdvertisedRefLineDecoded { row: GitAdvertisedRef }
-  | GitAdvertisedRefLineMalformed { line_index: Int, line: String }
-  | GitAdvertisedRefObjectIdRefused {
+  | GitAdvertisedRefLineAtMalformed { line_index: Int, line: String }
+  | GitAdvertisedRefLineAtObjectIdRefused {
       line_index: Int,
       line: String,
       cause: GitObjectIdTextRefusal,
     }
-  | GitAdvertisedRefEmptyBranchProjection {
+  | GitAdvertisedRefLineAtEmptyBranchProjection {
       line_index: Int,
       ref_name: String,
     }
@@ -120,18 +107,18 @@ fn git_decode_advertised_ref_line(
     f: (acc, part) => advertised_ref_line_field_step(acc: acc, part: part),
   )
   if fields.field_count != 2 {
-    GitAdvertisedRefLineMalformed { line_index: line_index, line: line }
+    GitAdvertisedRefLineAtMalformed { line_index: line_index, line: line }
   } else if fields.object_id_text == "" || fields.ref_name == "" {
-    GitAdvertisedRefLineMalformed { line_index: line_index, line: line }
+    GitAdvertisedRefLineAtMalformed { line_index: line_index, line: line }
   } else if advertised_ref_branch_name(ref_name: fields.ref_name) == "" {
-    GitAdvertisedRefEmptyBranchProjection {
+    GitAdvertisedRefLineAtEmptyBranchProjection {
       line_index: line_index,
       ref_name: fields.ref_name,
     }
   } else {
     match git_decode_object_id_text(format: format, text: fields.object_id_text) {
       GitObjectIdTextRefused { cause } =>
-        GitAdvertisedRefObjectIdRefused {
+        GitAdvertisedRefLineAtObjectIdRefused {
           line_index: line_index,
           line: line,
           cause: cause,
@@ -163,7 +150,7 @@ fn git_advertised_ref_step(
     acc
   } else {
     match git_decode_advertised_ref_line(line: line, line_index: acc.index, format: format) {
-      GitAdvertisedRefLineMalformed { line_index, line: bad } =>
+      GitAdvertisedRefLineAtMalformed { line_index, line: bad } =>
         GitAdvertisedRefFold {
           refs: acc.refs,
           index: acc.index + 1,
@@ -171,7 +158,7 @@ fn git_advertised_ref_step(
           failed: true,
           outcome: GitAdvertisedRefLineMalformed { line_index: line_index, line: bad },
         }
-      GitAdvertisedRefObjectIdRefused { line_index, line: bad, cause } =>
+      GitAdvertisedRefLineAtObjectIdRefused { line_index, line: bad, cause } =>
         GitAdvertisedRefFold {
           refs: acc.refs,
           index: acc.index + 1,
@@ -183,7 +170,7 @@ fn git_advertised_ref_step(
             cause: cause,
           },
         }
-      GitAdvertisedRefEmptyBranchProjection { line_index, ref_name } =>
+      GitAdvertisedRefLineAtEmptyBranchProjection { line_index, ref_name } =>
         GitAdvertisedRefFold {
           refs: acc.refs,
           index: acc.index + 1,
