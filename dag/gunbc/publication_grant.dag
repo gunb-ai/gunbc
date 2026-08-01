@@ -93,20 +93,9 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/publication_placement_gate_test.dag"),
   public_file_publish_grant(path: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag"),
-  public_file_publish_grant(path: "dag/extdeps/github/workflows.dag"),
-  public_file_publish_grant(path: "dag/gunbc/heal_revalidation.dag"),
-  public_file_publish_grant(path: "dag/test/claim/heal_revalidation_integration_witness_test.dag"),
-  public_file_publish_grant(path: "dag/test/claim/heal_revalidation_witness_test.dag"),
-  public_file_publish_grant(path: "dag/test/claim/workflow_dispatch_input_witness_test.dag"),
-  public_file_publish_grant(path: "dag/tools/ci_heal_dispatch.dag"),
-  public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit.dag"),
-  public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit_test.dag"),
-  public_file_publish_grant(path: "dag/gunbc/source_integration_proof_kernel.dag"),
-  public_file_publish_grant(path: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag"),
-  public_file_publish_grant(path: "dag/test/claim/source_integration_proof_kernel_model_witness_test.dag"),
 ]
 
-data post_cutover_race_repair_note: String = "Repair row block (2026-08-01): these eleven paths (eight CI-heal/workflow paths, three source-integration proof-kernel paths from PR 7563) merged to main from branches cut BEFORE the placement gate landed (#7560), so main itself carried post-cutover Added paths with no publication decision and the gate refused every subsequent PR merge ref. Each is public CI/heal/workflow machinery; Publish World is the deliberate decision for all eleven. The race class dissolves when the placement gate becomes a required branch-protection check: a merge ref must then stamp its own added files before merging, so main can never re-enter this state."
+data post_cutover_race_repair_note: String = "Repair history (2026-08-01), kept because the race it records is still live. Eleven paths - eight CI-heal/workflow, three source-integration proof-kernel from PR 7563 - merged to main from branches cut BEFORE the placement gate landed (#7560), so main carried post-cutover Added paths with no publication decision and the gate refused every subsequent merge ref. Publish World is the deliberate decision for all eleven and each is granted exactly once in the list above.\\n\\nTHE REPAIR ITSELF THEN RE-RED MAIN, which is the part worth keeping. PR 7580 appended these eleven as a SECOND block while #7565 and its siblings had already granted them in place, so the roster carried 45 rows for 34 paths and the gate refused eleven FilePublishGrantMarkerRepeated violations - a duplicate-rows refusal in place of the missing-rows one. A grant is a set membership, not a log entry, so appending a repair block is only sound when the paths are known absent; the safe repair reconciles against what the roster already holds.\\n\\nThe race class dissolves when the placement gate becomes a required branch-protection check: a merge ref must then stamp its own added files before merging, so main can never re-enter this state."
 
 data public_publication_grant_roster: PublicPublicationGrantRoster = PublicPublicationGrantRoster {
   baseline: public_root_publish_baseline,
