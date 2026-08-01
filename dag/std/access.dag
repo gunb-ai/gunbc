@@ -1,22 +1,89 @@
 module std.access
 
+import std.types { String }
+
+data access_kernel_note: String = "The one authorization decision kernel. Domain-specific authorization surfaces are typed request profiles projected into AccessRequest; they do not mint a second admitted/refused sum. Context and evidence stay distinct because ambient circumstances are not proof, and proof is not the circumstance it supports. A denial always carries a typed cause at structured request coordinates: the former optional reason made an unlocated bare deny writable. AccessPolicy is the sole policy-to-decision seam and decision_meet is the sole conjunction over decisions."
+
+type AccessContext<C> {
+  value: C
+}
+
+type AccessEvidence<E> {
+  value: E
+}
+
+type AccessRequest<S, A, O, C, E> {
+  subject: S
+  action: A
+  object: O
+  context: AccessContext<C>
+  evidence: AccessEvidence<E>
+}
+
+type AccessRefusalCause
+  = AccessContextAbsent { context: String }
+  | AccessEvidenceAbsent { evidence: String }
+  | AccessEvidenceRejected { evidence: String, reason: String }
+  | AccessSubjectNotRecognized { subject: String }
+  | AccessActionNotGranted { action: String }
+  | AccessObjectNotGranted { object: String }
+  | AccessPolicyRefused { reason: String }
+
+type AccessRefusalLocation {
+  profile: String
+  subject: String
+  action: String
+  object: String
+}
+
+type AccessRefusal {
+  cause: AccessRefusalCause
+  location: AccessRefusalLocation
+}
+
 type AccessDecision
   = Permit
-  | Deny { reason: String? }
+  | Deny { refusal: AccessRefusal }
+
+fn access_policy_refusal(
+  profile: String,
+  subject: String,
+  action: String,
+  object: String,
+  reason: String,
+) -> AccessDecision {
+  Deny {
+    refusal: AccessRefusal {
+      cause: AccessPolicyRefused { reason: reason },
+      location: AccessRefusalLocation {
+        profile: profile,
+        subject: subject,
+        action: action,
+        object: object,
+      },
+    }
+  }
+}
+
+fn access_refusal_reason(refusal: AccessRefusal) -> String {
+  match refusal.cause {
+    AccessContextAbsent { context: context } => context
+    AccessEvidenceAbsent { evidence: evidence } => evidence
+    AccessEvidenceRejected { evidence: evidence, reason: reason } => reason
+    AccessSubjectNotRecognized { subject: subject } => subject
+    AccessActionNotGranted { action: action } => action
+    AccessObjectNotGranted { object: object } => object
+    AccessPolicyRefused { reason: reason } => reason
+  }
+}
 
 fn decision_meet(a: AccessDecision, b: AccessDecision) -> AccessDecision {
   match a {
-    Deny { reason: r } => Deny { reason: r }
+    Deny { refusal: refusal } => Deny { refusal: refusal }
     Permit => b
   }
 }
 
-type AccessRequest<S, A, O> {
-  subject: S
-  action: A
-  object: O
-}
-
-type AccessPolicy<S, A, O> {
-  decide: fn(AccessRequest<S, A, O>) -> AccessDecision
+type AccessPolicy<S, A, O, C, E> {
+  decide: fn(AccessRequest<S, A, O, C, E>) -> AccessDecision
 }
