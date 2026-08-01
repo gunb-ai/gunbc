@@ -20,9 +20,17 @@ import gunbc.econ.acquisition {
 }
 import std.currency { Usd }
 import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
+import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn acquisition_witness_floor_equals(f: AcquisitionCostForecast, expected: Nat) -> Bool {
+  match acquisition_forecast_cost_floor_micros(forecast: f) {
+    Present { value: v } => v == expected
+    Absent => false
+  }
+}
 
 data two_usd_per_click: MoneyOnce = MoneyOnce {
   amount: money_amount_micro(count: 2000000),
@@ -44,7 +52,7 @@ test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool {
       (f.composed_rate.converted == 1)
         && (f.composed_rate.cohort == 40)
         && (money_once_micros(q: f.entry_unit_cost) == 2000000)
-        && (acquisition_forecast_cost_floor_micros(forecast: f) == 80000000)
+        && acquisition_witness_floor_equals(f: f, expected: 80000000)
         && ((f.entry_stage_label as String) == "click")
         && ((f.outcome_stage_label as String) == "customer")
     AcquisitionForecastRefused { cause: _ } => false
@@ -65,8 +73,8 @@ test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool {
       (f.composed_rate.converted == 3)
         && (f.composed_rate.cohort == 7)
         && (money_once_micros(q: f.entry_unit_cost) == 1000000)
-        && (acquisition_forecast_cost_floor_micros(forecast: f) == 2333333)
-        && ((acquisition_forecast_cost_floor_micros(forecast: f) * f.composed_rate.converted) != (money_once_micros(q: f.entry_unit_cost) * f.composed_rate.cohort))
+        && acquisition_witness_floor_equals(f: f, expected: 2333333)
+        && ((2333333 * f.composed_rate.converted) != (money_once_micros(q: f.entry_unit_cost) * f.composed_rate.cohort))
     AcquisitionForecastRefused { cause: _ } => false
   }
 }
@@ -150,6 +158,20 @@ test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
     AcquisitionForecastRefused { cause: ConversionRateExceedsUnity { stage_label: l } } =>
       (l as String) == "lead"
     _ => false
+  }
+}
+
+data zero_converted_forecast_fixture: AcquisitionCostForecast = AcquisitionCostForecast {
+  entry_stage_label: "click",
+  outcome_stage_label: "customer",
+  composed_rate: ConversionRate { converted: 0, cohort: 1 },
+  entry_unit_cost: two_usd_per_click,
+}
+
+test fn w_red_floor_projection_refuses_hand_built_zero_converted_forecast() -> Bool {
+  match acquisition_forecast_cost_floor_micros(forecast: zero_converted_forecast_fixture) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 

@@ -11,7 +11,7 @@ type ConversionRate {
   cohort: Nat
 }
 
-data conversion_rate_note: String = "converted of cohort as an exact fraction -- 1 of 40 stays 1 over 40, never 0.025. Composition multiplies numerators and cohorts; nothing in the mechanism divides until a consumer explicitly asks for the floor projection, so the exact fraction is the authority and the floor is a declared lossy view."
+data conversion_rate_note: String = "converted of cohort as an exact fraction -- 1 of 40 stays 1 over 40, never 0.025. Composition multiplies numerators and cohorts; nothing in the mechanism divides until a consumer explicitly asks for the floor projection, so the exact fraction is the authority and the floor is a declared lossy view. Deliberately NOT a third scale on the std.measure Dimensionless unity authority (Percent, BasisPoint, per basis_point_dissolve_on): those are fixed-scale counts against an implicit denominator, and projecting a conversion rate onto ANY fixed scale loses the exactness this record exists to keep (1 of 3 has no exact basis-point image), so the Ratio-of-Scale unification that note names does not absorb this concept. It IS the exact-rational-pair shape; no std exact-rational carrier exists on main today (the FieldOfFractions grounding is an unmerged thread). dissolve-on: a std exact-rational carrier landing, onto which this record re-grounds instead of persisting as a local pair."
 
 type AcquisitionStageStep {
   stage_label: NonEmptyStr
@@ -43,7 +43,7 @@ type AcquisitionCostForecast {
   entry_unit_cost: MoneyOnce
 }
 
-data acquisition_forecast_distinctness_note: String = "AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be passed where an actual is required -- the distinction is structural, not a naming convention. Money stays on the std.measure MoneyOnce carrier (currency and micro denomination live there, never as bare scalars beside it), and the cost per outcome is DERIVED, never stored: the exact value is entry_unit_cost scaled by cohort over converted (both on the ConversionRate carrier, converted never zero by construction because a zero numerator refuses before composition). acquisition_forecast_cost_floor_micros below is the explicit lossy floor projection of that exact fraction."
+data acquisition_forecast_distinctness_note: String = "AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be passed where an actual is required -- the distinction is structural, not a naming convention. Money stays on the std.measure MoneyOnce carrier (currency and micro denomination live there, never as bare scalars beside it), and the cost per outcome is DERIVED, never stored: the exact value is entry_unit_cost scaled by cohort over converted on the ConversionRate carrier. Every forecast the derivation PRODUCES carries nonzero converted (a zero numerator refuses before composition), but the record itself remains publicly constructible with converted zero, so the floor projection below does not trust its caller: it is total by typed refusal, returning none on a zero converted rather than dividing."
 
 type AcquisitionForecastResult
   = AcquisitionForecastDerived { forecast: AcquisitionCostForecast }
@@ -134,6 +134,12 @@ fn derive_acquisition_cost_forecast(input: AcquisitionScenarioInput) -> Acquisit
   }
 }
 
-fn acquisition_forecast_cost_floor_micros(forecast: AcquisitionCostForecast) -> Nat {
-  (money_once_micros(q: forecast.entry_unit_cost) * forecast.composed_rate.cohort) / forecast.composed_rate.converted
+fn acquisition_forecast_cost_floor_micros(forecast: AcquisitionCostForecast) -> Nat? {
+  if forecast.composed_rate.converted == 0 {
+    none
+  } else {
+    Present {
+      value: (money_once_micros(q: forecast.entry_unit_cost) * forecast.composed_rate.cohort) / forecast.composed_rate.converted
+    }
+  }
 }
