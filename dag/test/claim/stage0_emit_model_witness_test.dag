@@ -1,8 +1,26 @@
 module test.claim.stage0_emit_model_witness
 
+import gunbc.stage0_emit_model {
+  generated_stage0_file_count,
+  is_generated_stage0_file,
+  stage0_module_emit_basename,
+  stage0_module_emit_filename
+}
+import gunbc.stage0_emit_plan {
+  HandMaintainedCandidate,
+  ParsedFromRegenSourceClosure,
+  Stage0SourceModuleIdentity,
+  V1SourceTree,
+  generated_stage0_files_from_plan_rows,
+  stage0_emission_plan_from_source,
+  stage0_generated_output_sets_agree
+}
+import std.types { List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_model.generated_stage0_files. Positives catch a missing generated basename (the #7258 drift class); negatives keep hand-maintained files out of the generated set. Floor: generated_stage0_file_count >= 101 (post-#7258 repaired length) so a silent list shrink reds. Host construction close: regen_stage0 reads this list via lens_string_list_data — Rust unit generated_stage0_files_read_from_dag_authority_not_rust_const refuses a reintroduced GENERATED_STAGE0_FILES const."
+data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_plan -> enrolled gunbc.stage0_emit_plan_generated projection. Positives catch missing derived basenames; negatives prove frontier-classified seed-retained files stay out. Floor catches a collapsed source supply. Regen's independent EmitResult agreement rejects both modeled-but-not-produced and produced-but-unmodeled paths."
 
 test fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "cli_run.rs") &&
@@ -28,4 +46,54 @@ test fn w_generated_file_count_floor_holds() -> Bool {
 test fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
   stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
+}
+
+fn fixture_source_identity(module_path: String, storage_path: String) -> Stage0SourceModuleIdentity {
+  Stage0SourceModuleIdentity {
+    module_path: module_path,
+    storage_path: storage_path,
+    source_tree: V1SourceTree,
+    provenance: ParsedFromRegenSourceClosure
+  }
+}
+
+data fixture_source_identities: List<Stage0SourceModuleIdentity> = [
+  fixture_source_identity(module_path: "std.algebra", storage_path: "src/v1/std/algebra.dag"),
+  fixture_source_identity(module_path: "v1.compiler.emit_rust", storage_path: "src/v1/compiler/emit_rust.dag")
+]
+
+fn fixture_generated_files(identities: List<Stage0SourceModuleIdentity>) -> List<String> {
+  generated_stage0_files_from_plan_rows(
+    rows: stage0_emission_plan_from_source(identities: identities)
+  )
+}
+
+test fn w_source_supply_baseline_exact_agreement() -> Bool {
+  let modeled = fixture_generated_files(identities: fixture_source_identities)
+  stage0_generated_output_sets_agree(modeled: modeled, observed: modeled)
+}
+
+test fn w_source_supply_missing_identity_red_control() -> Bool {
+  let observed = fixture_generated_files(identities: fixture_source_identities)
+  let modeled = fixture_generated_files(identities: [first(fixture_source_identities)])
+  !stage0_generated_output_sets_agree(modeled: modeled, observed: observed)
+}
+
+test fn w_source_supply_extra_identity_red_control() -> Bool {
+  let observed = fixture_generated_files(identities: fixture_source_identities)
+  let modeled = fixture_generated_files(identities: concat(
+    fixture_source_identities,
+    [fixture_source_identity(module_path: "std.logic", storage_path: "src/v1/std/logic.dag")]
+  ))
+  !stage0_generated_output_sets_agree(modeled: modeled, observed: observed)
+}
+
+test fn w_frontier_classifies_seed_retained_candidate() -> Bool {
+  let rows = stage0_emission_plan_from_source(identities: [
+    fixture_source_identity(module_path: "v1.interpreter", storage_path: "src/v1/99_interpreter.dag")
+  ])
+  rows |> any(row =>
+    row.produced.basename == "v1_interpreter.rs"
+      && match row.disposition { HandMaintainedCandidate => true  _ => false }
+  )
 }

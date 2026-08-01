@@ -4,16 +4,14 @@ import gunbc.stage0_emit_plan {
   generated_stage0_files_from_emission_plan,
   generated_stage0_paths_from_emission_plan
 }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.text { String }
+import std.types { List, String }
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
 }
 
 fn render_dag_string_list_items(xs: List<String>) -> String {
-  fold_list(xs, empty: "", cons: fn(acc, item) {
+  fold(xs, init: "", f: fn(acc, item) {
     let line = concat("  \"", escape_dag_string_body(s: item), "\"")
     if acc == "" { line } else { concat(acc, concat(",\n", line)) }
   })
@@ -36,4 +34,3 @@ fn expected_stage0_emit_plan_generated_dag() -> String {
     "\n"
   )
 }
-

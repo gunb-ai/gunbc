@@ -290,7 +290,7 @@ data rust_source_discovery_prefix_hints: List<String> = [
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.stage0_emit_model",
+  module_path: "gunbc.stage0_emit_plan_generated",
   decl_name: "generated_stage0_files",
   field: WholeDeclaration
 }

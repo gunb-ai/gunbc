@@ -46,7 +46,7 @@ test fn every_dispatch_site_is_enumerated() -> Bool {
 }
 
 test fn the_surface_is_almost_entirely_derived() -> Bool {
-  v1_interpreter_derived_arm_count() == 182 && v1_interpreter_declared_arm_count() == 2
+  v1_interpreter_derived_arm_count() == 183 && v1_interpreter_declared_arm_count() == 2
 }
 
 test fn derived_and_declared_partition_the_surface() -> Bool {
@@ -54,7 +54,7 @@ test fn derived_and_declared_partition_the_surface() -> Bool {
 }
 
 test fn the_three_denominators_are_derived_and_distinct() -> Bool {
-  dispatch_site_count() == 7 && distinct_arm_identity_count() == 173 && authored_spelling_count() == 160
+  dispatch_site_count() == 7 && distinct_arm_identity_count() == 174 && authored_spelling_count() == 161
 }
 
 test fn identities_are_fewer_than_rows_and_spellings_fewer_than_identities() -> Bool {
@@ -63,6 +63,11 @@ test fn identities_are_fewer_than_rows_and_spellings_fewer_than_identities() -> 
 
 test fn derived_surface_includes_its_own_reading_arm() -> Bool {
   v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+}
+
+test fn stage0_source_identity_supply_scaffold_is_enumerated() -> Bool {
+  v1_interpreter_free_call_arms()
+    |> any(r => r.authored_spelling == "stage0_emission_source_identities_host")
 }
 
 test fn every_derived_site_contributes_rows() -> Bool {

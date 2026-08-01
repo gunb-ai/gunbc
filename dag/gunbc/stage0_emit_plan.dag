@@ -1,9 +1,13 @@
 module gunbc.stage0_emit_plan
 
-import v2.compiler.self_host.frontier { hand_maintained_stage0_filenames }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.text { String }
+import gunbc.stage0_crate_layout_generated { generated_stage0_filenames }
+import extdeps.languages.rust.emit {
+  rust_qualified_module_mod_basename,
+  rust_qualified_module_mod_filename
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import std.types { List, String }
 
 type Stage0SourceTree
   = V1SourceTree
@@ -11,6 +15,7 @@ type Stage0SourceTree
 
 type Stage0SourceIdentityProvenance
   = ParsedFromRegenSourceClosure
+  | SourceIdentityUnavailable
 
 type Stage0SourceModuleIdentity {
   module_path: String
@@ -39,11 +44,23 @@ type Stage0EmissionPlanRow {
   canonical_repo_path: String
 }
 
+data stage0_projection_disposition_authority_note: String = "GeneratedProjection versus HandMaintainedCandidate derives from gunbc.stage0_crate_layout_generated.generated_stage0_filenames, the enrolled projection of v2.compiler.self_host.frontier seed-retained facts. This module never owns a second exclusion list."
+
 data stage0_source_identity_supply_scaffold_note: String = "DECLARED SCAFFOLD. stage0_emission_source_identities_host observes SOURCE only: the Rust seed walks gunbc.cli_run.regen_input_sources and parses every row through the source-authority-aligned module binding parser. It must never observe EmitResult or share the emit-output path. DISSOLVE-ON: generated_artifact_gate accepts a v2.compiler.source_authority.ModuleStorageIndex; then this host builtin and this scaffold carrier delete, and the same pure folds consume that index directly."
 
-// Native seed supply for the declared scaffold above. The Rust interpreter intercepts this
-// spelling before the body; the empty body keeps non-seed realizations explicit and fail-closed
-// (their exact-agreement witness cannot green over an empty expected population).
+data stage0_source_identity_non_seed_refusal_note: String = "The authored body is Empty deliberately: the native seed intercepts this scaffold spelling before evaluation; a realization without that declared host supply derives only the three compiler-support rows and fails the generated-count/exact-agreement walls. It never fabricates plausible source identities."
+
+data stage0_source_identity_supply_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.stage0_emit_plan",
+    decl_name: "stage0_emission_source_identities_host",
+    field: WholeDeclaration
+  }
+}
+
+data stage0_source_identity_supply_dissolution_trigger: String = "dissolve-on: generated_artifact_gate accepts a v2.compiler.source_authority.ModuleStorageIndex; then stage0_emission_source_identities_host and its Rust interpreter arm delete, and stage0_emission_plan_from_source consumes the supplied index projection directly."
+
 fn stage0_emission_source_identities_host() -> List<Stage0SourceModuleIdentity> {
   []
 }
@@ -92,7 +109,7 @@ fn stage0_produced_file_identities_from_source(
 }
 
 fn stage0_file_disposition(basename: String) -> Stage0ProjectionDisposition {
-  if hand_maintained_stage0_filenames() |> any(file => file == basename) {
+  if generated_stage0_filenames |> any(file => file == basename) {
     HandMaintainedCandidate
   } else {
     GeneratedProjection
@@ -118,8 +135,12 @@ fn stage0_emission_plan() -> List<Stage0EmissionPlanRow> {
   stage0_emission_plan_from_source(identities: stage0_emission_source_identities_host())
 }
 
+fn empty_stage0_string_list() -> List<String> {
+  []
+}
+
 fn generated_stage0_files_from_plan_rows(rows: List<Stage0EmissionPlanRow>) -> List<String> {
-  fold_list(rows, empty: [], cons: fn(acc, row) {
+  fold(rows, init: empty_stage0_string_list(), f: fn(acc, row) {
     match row.disposition {
       GeneratedProjection => concat(acc, [row.produced.basename])
       HandMaintainedCandidate => acc
@@ -128,7 +149,7 @@ fn generated_stage0_files_from_plan_rows(rows: List<Stage0EmissionPlanRow>) -> L
 }
 
 fn generated_stage0_paths_from_plan_rows(rows: List<Stage0EmissionPlanRow>) -> List<String> {
-  fold_list(rows, empty: [], cons: fn(acc, row) {
+  fold(rows, init: empty_stage0_string_list(), f: fn(acc, row) {
     match row.disposition {
       GeneratedProjection => concat(acc, [row.canonical_repo_path])
       HandMaintainedCandidate => acc
@@ -150,4 +171,3 @@ fn stage0_generated_output_sets_agree(
 ) -> Bool {
   (modeled |> sort_by(path => path)) == (observed |> sort_by(path => path))
 }
-

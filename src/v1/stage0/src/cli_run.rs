@@ -2951,16 +2951,29 @@ pub struct Stage0EmissionSourceIdentity {
     pub source_tree: &'static str,
 }
 
+thread_local! {
+    static STAGE0_EMISSION_SOURCE_IDENTITY_CACHE: RefCell<
+        std::collections::HashMap<PathBuf, Vec<Stage0EmissionSourceIdentity>>
+    > = RefCell::new(std::collections::HashMap::new());
+}
+
 pub fn stage0_emission_source_identities(
     workspace: &Path,
 ) -> Result<Vec<Stage0EmissionSourceIdentity>, String> {
+    if let Some(cached) =
+        STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| cache.borrow().get(workspace).cloned())
+    {
+        return Ok(cached);
+    }
     let mut identities = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
     for (storage_path, content) in regen_input_sources(workspace)? {
-        let parsed = parse_module_binding(Path::new(&storage_path), &content)?
-            .ok_or_else(|| format!(
-                "stage0 emission source identity missing module declaration: {storage_path}"
-            ))?;
+        let parsed =
+            parse_module_binding(Path::new(&storage_path), &content)?.ok_or_else(|| {
+                format!(
+                    "stage0 emission source identity missing module declaration: {storage_path}"
+                )
+            })?;
         if !seen.insert(parsed.module_path.clone()) {
             return Err(format!(
                 "stage0 emission source identity duplicated module: {}",
@@ -2982,6 +2995,11 @@ pub fn stage0_emission_source_identities(
             source_tree,
         });
     }
+    STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| {
+        cache
+            .borrow_mut()
+            .insert(workspace.to_path_buf(), identities.clone());
+    });
     Ok(identities)
 }
 
