@@ -1,0 +1,31 @@
+module test.claim.reference_derived_authored_source_gate_witness_test
+
+import v1.compiler.emit_rust {
+  reference_derived_candidate_spelled_in_module,
+}
+
+data reference_derived_authored_source_gate_witness_note: String = "Discriminating controls for reference_derived_candidate_spelled_in_module (the authored-source gate inside reference_derived_use_lines). GREEN: a name spelled in module source is admitted. RED: AuthoredTokenOrdinal-shaped over-collection against an http_path-like source that never mentions it is refused — the exact fabrication that previously emitted pub use crate::std_occurrence_binding_candidates::AuthoredTokenOrdinal from std.http_path with no .dag authority. Integration receipt (quiet-hawk): regen without hand-pinning std_http_path.rs on a tree that enrolls occurrence-binding candidates must leave AuthoredTokenOrdinal absent, and the generated stage0 crate must build green. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider machinery) — this text-presence gate is the conservative interim, not the destination."
+
+test fn authored_spelling_admits_candidate_holds() -> Bool {
+  reference_derived_candidate_spelled_in_module(
+    module_source: "type UrlPathToken = Segment | Slash\nfn join_path(parts: List<String>) -> String { parts }",
+    name: "UrlPathToken",
+  )
+}
+
+test fn unspelled_authored_token_ordinal_refused_holds() -> Bool {
+  !reference_derived_candidate_spelled_in_module(
+    module_source: "type UrlPathToken = Segment | Slash\nfn join_path(parts: List<String>) -> String { parts }",
+    name: "AuthoredTokenOrdinal",
+  )
+}
+
+test fn empty_module_source_refuses_all_holds() -> Bool {
+  !reference_derived_candidate_spelled_in_module(
+    module_source: "",
+    name: "AuthoredTokenOrdinal",
+  ) && !reference_derived_candidate_spelled_in_module(
+    module_source: "",
+    name: "UrlPathToken",
+  )
+}

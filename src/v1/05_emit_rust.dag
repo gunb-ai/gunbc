@@ -2705,7 +2705,7 @@ fn expand_variant_payload_struct_imports(names: List<String>, type_summaries: Ma
   )
 }
 
-data reference_derived_authored_source_gate_note: String = "reference_derived_use_lines synthesizes a use-line only when the candidate name appears in this module's authored source text (NewlineIndex char_codes). A name that enters the candidate set only via inferred/type-summary over-collection — never spelled in the module — must not become a pub use. Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use. UnlistedImportUse names are already spelled at the use site, so they pass; variant-parent enums that appear only via from_variant still require their parent spelling OR an authored variant ctor whose parent is harvested — parent-only imports without any authored spelling of parent or variant remain a separate gap, not this gate's subject."
+data reference_derived_authored_source_gate_note: String = "reference_derived_use_lines synthesizes a use-line only when the candidate name appears in this module's authored source text (NewlineIndex char_codes). A name that enters the candidate set only via inferred/type-summary over-collection — never spelled in the module — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable; variant-parent enums that appear only via from_variant still require their parent spelling OR an authored variant ctor whose parent is harvested — parent-only imports without any authored spelling of parent or variant remain a separate gap, not this gate's subject. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-presence gate is the conservative interim, not the destination."
 
 fn module_authored_source_text(module: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match map_get(source_indices, module.span.file) {
@@ -2715,7 +2715,7 @@ fn module_authored_source_text(module: Node, source_indices: Map<String, Newline
 }
 
 fn reference_derived_candidate_spelled_in_module(module_source: String, name: String) -> Bool {
-  module_source == "" || string_contains(s: module_source, pattern: name)
+  module_source != "" && string_contains(s: module_source, pattern: name)
 }
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
