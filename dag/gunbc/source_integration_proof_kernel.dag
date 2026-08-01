@@ -14,7 +14,7 @@ import gunbc.source_integration_landing_spine {
   LandingClosureCertificateKind,
 }
 
-data source_integration_proof_kernel_model_note: NonEmptyStr = "P1 FIRST-SLICE MODEL, not a claim that the proof kernel is complete. It composes with P0 by carrying LandingProposalContract and LandingReadyEvidenceReceipt directly: occurrence identity, reads/relies, modifies/frame, guarantees, authority, and admitted claim evidence are not re-declared here. The new fact is the bounded candidate-generation problem P0 deliberately left absent. Candidate space is constructed from a finite accepted-state seed plus directly authored transformations, witnessed context transports, declared canonicalizations, and finite recovery alternatives. Callers supply those generators and their bounds, never a supposedly exhaustive candidate list; generation closure is therefore an obligation the later public reconciliation fold must establish, not a Boolean callers may assert. Domain facts, procedures, invariants, and closure certificates remain data. Every model-admission failure is a typed, located, counted KernelRefusal. This carrier has no source parser/edit lens (P2), target effect/write transport (P3), primary-outcome projection, arbitrary synthesis, or unbounded search."
+data source_integration_proof_kernel_model_note: NonEmptyStr = "P1 FIRST-SLICE MODEL, not a claim that the proof kernel is complete. It composes with P0 by carrying LandingProposalContract and LandingReadyEvidenceReceipt directly: occurrence identity, reads/relies, modifies/frame, guarantees, authority, and admitted claim evidence are not re-declared here. The new fact is the bounded candidate-generation problem P0 deliberately left absent. Callers supply finite generators and bounds, never a supposedly exhaustive candidate list. One KernelCandidateGenerationFold starts from the accepted-state seed and derives the finite combination classes of directly authored transformations, witnessed context transports, declared canonicalizations, finite recovery alternatives, and scheduled inference procedures. The fold refuses before an expansion would cross candidate_classes; the schedule refuses when its round population crosses inference_rounds. Candidate-generation closure remains a separate certificate the later public reconciliation fold must establish: this slice proves bounded enumeration executes, not that the supplied generators are complete. Domain facts, procedures, invariants, and closure certificates remain data. Every model-admission failure is a typed, located, counted KernelRefusal, queried through kernel_refusal_occurrences rather than scenario-specific walkers. This carrier has no source parser/edit lens (P2), target effect/write transport (P3), primary-outcome projection, arbitrary synthesis, or unbounded search."
 
 type KernelFactValue = NonEmptyStr where brand("KernelFactValue")
 type KernelProcedureHandle = NonEmptyStr where brand("KernelProcedureHandle")
@@ -69,6 +69,11 @@ type KernelInferenceProcedure {
   produces: List<LandingFactHandle>
 }
 
+type KernelInferenceRound {
+  ordinal: PositiveInt
+  procedures: List<KernelProcedureHandle>
+}
+
 type KernelFiniteBounds {
   proposal_occurrences: PositiveInt
   facts: PositiveInt
@@ -89,6 +94,7 @@ type KernelCandidateGenerationSpec {
   canonicalizations: List<KernelCanonicalizationHandle>
   recovery_alternatives: List<KernelRecoveryAlternativeHandle>
   procedures: List<KernelInferenceProcedure>
+  inference_schedule: List<KernelInferenceRound>
   invariants: List<KernelInvariant>
   equivalence: LandingEquivalenceHandle
   bounds: KernelFiniteBounds
@@ -106,6 +112,8 @@ type KernelRefusalKind
   | KernelTransportBoundExceeded
   | KernelCanonicalizationBoundExceeded
   | KernelRecoveryBoundExceeded
+  | KernelInferenceRoundBoundExceeded
+  | KernelCandidateClassBoundExceeded
   | KernelEmptyProcedurePopulation
   | KernelEmptyInvariantPopulation
   | KernelEvidenceProposalMismatch
@@ -117,6 +125,39 @@ type KernelRefusal {
   locus: NonEmptyStr
   occurrences: Int
 }
+
+type KernelCandidateGenerator
+  = KernelTransformationGenerator {
+      occurrence: LandingProposalOccurrenceId,
+    }
+  | KernelContextTransportGenerator {
+      occurrence: LandingProposalOccurrenceId,
+      receipt: KernelContextTransportReceipt,
+    }
+  | KernelCanonicalizationGenerator {
+      identity: KernelCanonicalizationHandle,
+    }
+  | KernelRecoveryGenerator {
+      identity: KernelRecoveryAlternativeHandle,
+    }
+  | KernelInferenceGenerator {
+      round: PositiveInt,
+      procedure: KernelProcedureHandle,
+    }
+
+type KernelCandidateClass {
+  accepted_parent: LandingAcceptedStateHandle
+  generators: List<KernelCandidateGenerator>
+}
+
+type KernelCandidateGenerationFold
+  = KernelCandidateGenerationOpen {
+      candidates: List<KernelCandidateClass>,
+    }
+  | KernelCandidateGenerationRefused {
+      candidates: List<KernelCandidateClass>,
+      refusal: KernelRefusal,
+    }
 
 fn kernel_refusal(
   kind: KernelRefusalKind,
@@ -172,7 +213,85 @@ fn kernel_delta_refusals(
 
 type KernelCandidateGenerationAssessment {
   spec: KernelCandidateGenerationSpec
+  candidates: List<KernelCandidateClass>
   refusals: List<KernelRefusal>
+}
+
+fn kernel_candidate_generators(
+  spec: KernelCandidateGenerationSpec,
+) -> List<KernelCandidateGenerator> {
+  concat(
+    kernel_transformations(spec: spec) |> map(transformation =>
+      KernelTransformationGenerator {
+        occurrence: transformation.proposal.occurrence,
+      }
+    ),
+    concat(
+      spec.transports |> map(transport => KernelContextTransportGenerator {
+        occurrence: transport.occurrence,
+        receipt: transport.receipt,
+      }),
+      concat(
+        spec.canonicalizations |> map(identity =>
+          KernelCanonicalizationGenerator { identity: identity }
+        ),
+        concat(
+          spec.recovery_alternatives |> map(identity =>
+            KernelRecoveryGenerator { identity: identity }
+          ),
+          spec.inference_schedule |> flat_map(round =>
+            round.procedures |> map(procedure => KernelInferenceGenerator {
+              round: round.ordinal,
+              procedure: procedure,
+            })
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn kernel_candidate_generation_fold(
+  spec: KernelCandidateGenerationSpec,
+) -> KernelCandidateGenerationFold {
+  fold(
+    kernel_candidate_generators(spec: spec),
+    init: KernelCandidateGenerationOpen {
+      candidates: [KernelCandidateClass {
+        accepted_parent: spec.accepted_parent,
+        generators: [],
+      }],
+    },
+    f: fn(acc, generator) {
+      match acc {
+        KernelCandidateGenerationRefused { candidates, refusal } =>
+          KernelCandidateGenerationRefused {
+            candidates: candidates,
+            refusal: refusal,
+          }
+        KernelCandidateGenerationOpen { candidates } =>
+          let expanded = append(
+            candidates,
+            items: candidates |> map(candidate => KernelCandidateClass {
+              accepted_parent: candidate.accepted_parent,
+              generators: append(candidate.generators, items: [generator]),
+            }),
+          )
+          if count(expanded) > spec.bounds.candidate_classes {
+            KernelCandidateGenerationRefused {
+              candidates: candidates,
+              refusal: KernelRefusal {
+                kind: KernelCandidateClassBoundExceeded,
+                locus: "bounds.candidate_classes",
+                occurrences: count(expanded),
+              },
+            }
+          } else {
+            KernelCandidateGenerationOpen { candidates: expanded }
+          }
+      }
+    },
+  )
 }
 
 fn assess_bounded_candidate_generation(
@@ -239,17 +358,41 @@ fn assess_bounded_candidate_generation(
       )
     } else { [] },
   )
-  KernelCandidateGenerationAssessment {
-    spec: spec,
-    refusals: concat(
-      limit_refusals,
+  let inference_round_refusals = if count(spec.inference_schedule) > spec.bounds.inference_rounds {
+    kernel_refusal(
+      kind: KernelInferenceRoundBoundExceeded,
+      locus: "bounds.inference_rounds",
+      occurrences: count(spec.inference_schedule),
+    )
+  } else { [] }
+  let input_refusals = concat(
+    limit_refusals,
+    concat(
+      population_refusals,
       concat(
-        population_refusals,
+        inference_round_refusals,
         transformations |> flat_map(transformation =>
           kernel_delta_refusals(transformation: transformation)
         ),
       ),
     ),
+  )
+  let generation = if count(input_refusals) == 0 {
+    kernel_candidate_generation_fold(spec: spec)
+  } else {
+    KernelCandidateGenerationOpen { candidates: [] }
+  }
+  KernelCandidateGenerationAssessment {
+    spec: spec,
+    candidates: match generation {
+      KernelCandidateGenerationOpen { candidates } => candidates
+      KernelCandidateGenerationRefused { candidates, refusal: _ } => candidates
+    },
+    refusals: match generation {
+      KernelCandidateGenerationOpen { candidates: _ } => input_refusals
+      KernelCandidateGenerationRefused { candidates: _, refusal } =>
+        append(input_refusals, items: [refusal])
+    },
   }
 }
 
@@ -313,6 +456,8 @@ type KernelAcceptanceScenario
   = KernelAdmittedFiniteGenerationScenario
   | KernelProposalBoundRefusalScenario
   | KernelGroundingAndFrameRefusalScenario
+  | KernelInferenceRoundBoundRefusalScenario
+  | KernelCandidateClassBoundRefusalScenario
 
 type KernelAcceptanceAdmission
   = KernelAcceptanceEstablished { receipt: KernelAcceptanceReceipt }
@@ -321,34 +466,24 @@ type KernelAcceptanceAdmission
       failed_scenarios: List<KernelAcceptanceScenario>,
     }
 
-fn kernel_has_proposal_bound_refusal(
-  assessment: KernelCandidateGenerationAssessment,
-) -> Bool {
-  assessment.refusals |> any(refusal =>
-    refusal.kind == KernelProposalBoundExceeded
-      && refusal.locus == "bounds.proposal_occurrences"
-      && refusal.occurrences > 0
-  )
-}
-
-fn kernel_has_distinct_grounding_and_frame_refusals(
-  assessment: KernelCandidateGenerationAssessment,
-) -> Bool {
-  assessment.refusals |> any(refusal =>
-    refusal.kind == KernelDeltaOutsideFrame
-      && refusal.locus == "transformations.delta.scope"
-      && refusal.occurrences > 0
-  ) && assessment.refusals |> any(refusal =>
-    refusal.kind == KernelDeltaUngrounded
-      && refusal.locus == "transformations.delta.grounding_claim"
-      && refusal.occurrences > 0
-  )
+fn kernel_refusal_occurrences(
+  refusals: List<KernelRefusal>,
+  kind: KernelRefusalKind,
+  locus: NonEmptyStr,
+) -> Int {
+  fold(refusals, init: 0, f: fn(occurrences, refusal) {
+    if refusal.kind == kind && refusal.locus == locus {
+      occurrences + refusal.occurrences
+    } else { occurrences }
+  })
 }
 
 fn assess_bounded_candidate_generation_acceptance(
   admitted_spec: KernelCandidateGenerationSpec,
   proposal_bound_refusal_spec: KernelCandidateGenerationSpec,
   grounding_and_frame_refusal_spec: KernelCandidateGenerationSpec,
+  inference_round_refusal_spec: KernelCandidateGenerationSpec,
+  candidate_class_refusal_spec: KernelCandidateGenerationSpec,
 ) -> KernelAcceptanceAdmission {
   let admitted = assess_bounded_candidate_generation(spec: admitted_spec)
   let bound_refused = assess_bounded_candidate_generation(
@@ -357,19 +492,54 @@ fn assess_bounded_candidate_generation_acceptance(
   let delta_refused = assess_bounded_candidate_generation(
     spec: grounding_and_frame_refusal_spec,
   )
+  let inference_round_refused = assess_bounded_candidate_generation(
+    spec: inference_round_refusal_spec,
+  )
+  let candidate_class_refused = assess_bounded_candidate_generation(
+    spec: candidate_class_refusal_spec,
+  )
   let failed_scenarios = concat(
-    if kernel_candidate_generation_admitted(assessment: admitted) {
+    if kernel_candidate_generation_admitted(assessment: admitted)
+      && count(admitted.candidates) > 1 {
       []
     } else { [KernelAdmittedFiniteGenerationScenario] },
     concat(
-      if kernel_has_proposal_bound_refusal(assessment: bound_refused) {
+      if kernel_refusal_occurrences(
+        refusals: bound_refused.refusals,
+        kind: KernelProposalBoundExceeded,
+        locus: "bounds.proposal_occurrences",
+      ) > 0 {
         []
       } else { [KernelProposalBoundRefusalScenario] },
-      if kernel_has_distinct_grounding_and_frame_refusals(
-        assessment: delta_refused,
-      ) {
-        []
-      } else { [KernelGroundingAndFrameRefusalScenario] },
+      concat(
+        if kernel_refusal_occurrences(
+          refusals: delta_refused.refusals,
+          kind: KernelDeltaOutsideFrame,
+          locus: "transformations.delta.scope",
+        ) > 0 && kernel_refusal_occurrences(
+          refusals: delta_refused.refusals,
+          kind: KernelDeltaUngrounded,
+          locus: "transformations.delta.grounding_claim",
+        ) > 0 {
+          []
+        } else { [KernelGroundingAndFrameRefusalScenario] },
+        concat(
+          if kernel_refusal_occurrences(
+            refusals: inference_round_refused.refusals,
+            kind: KernelInferenceRoundBoundExceeded,
+            locus: "bounds.inference_rounds",
+          ) > 0 {
+            []
+          } else { [KernelInferenceRoundBoundRefusalScenario] },
+          if kernel_refusal_occurrences(
+            refusals: candidate_class_refused.refusals,
+            kind: KernelCandidateClassBoundExceeded,
+            locus: "bounds.candidate_classes",
+          ) > 0 {
+            []
+          } else { [KernelCandidateClassBoundRefusalScenario] },
+        ),
+      ),
     ),
   )
   if count(failed_scenarios) == 0 {

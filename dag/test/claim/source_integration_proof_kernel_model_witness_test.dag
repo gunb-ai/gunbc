@@ -14,6 +14,7 @@ import gunbc.source_integration_proof_kernel {
   KernelGroundedDelta,
   KernelDirectAuthoredTransformation,
   KernelInferenceProcedure,
+  KernelInferenceRound,
   KernelInvariant,
   KernelFiniteBounds,
   KernelCandidateGenerationSpec,
@@ -21,6 +22,8 @@ import gunbc.source_integration_proof_kernel {
   KernelProposalBoundExceeded,
   KernelDeltaOutsideFrame,
   KernelDeltaUngrounded,
+  KernelInferenceRoundBoundExceeded,
+  KernelCandidateClassBoundExceeded,
   KernelBoundedCandidateGenerationModeled,
   KernelAcceptanceAdmission,
   KernelAcceptanceEstablished,
@@ -29,6 +32,7 @@ import gunbc.source_integration_proof_kernel {
   assess_bounded_candidate_generation,
   assess_bounded_candidate_generation_acceptance,
   kernel_candidate_generation_admitted,
+  kernel_refusal_occurrences,
   kernel_required_acceptance_capabilities,
   kernel_missing_acceptance_capabilities,
   kernel_closing_frontier_count,
@@ -37,7 +41,7 @@ import gunbc.source_integration_proof_kernel {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the model that candidate generation starts from finite declared generators rather than a caller-supplied CandidateSet. They also prove the model's admission boundary is discriminating: exceeding a declared bound and writing an ungrounded/out-of-frame delta produce distinct typed, located, counted refusals. Acceptance is derived from those executed positive and negative scenarios into a sole-constructor receipt; callers cannot assert a passing Boolean or construct the receipt outside the proof-kernel module. The capability frontier is closed and derived by set difference, so duplicate admissions cannot erase missing work and a refused admission is missing like an absent one. This suite does not claim the public reconciliation fold exists; the separate quarantined acceptance witness stays red until every required capability has an executing receipt constructor."
+data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the candidate-generation fold from finite declared generators rather than a caller-supplied CandidateSet: one transformation plus one scheduled inference generator derives four combination classes from the accepted seed. Tightening inference_rounds or candidate_classes changes the disposition to a typed, located, counted refusal; proposal, grounding, and frame controls remain distinct. Acceptance is derived from those executed positive and negative scenarios into a sole-constructor receipt, so callers cannot assert a passing Boolean or construct the receipt outside the proof-kernel module. The capability frontier is closed and derived by set difference, so duplicate admissions cannot erase missing work and a refused admission is missing like an absent one. This suite does not claim generator completeness or the public reconciliation fold exists; those remain live capabilities in the separate quarantined closing witness."
 
 fn p1_transformation() -> KernelDirectAuthoredTransformation {
   KernelDirectAuthoredTransformation {
@@ -53,16 +57,28 @@ fn p1_transformation() -> KernelDirectAuthoredTransformation {
   }
 }
 
-fn p1_bounds(proposals: Int, facts: Int) -> KernelFiniteBounds {
+fn p1_bounds(
+  proposals: Int,
+  facts: Int,
+  inference_rounds: Int,
+  candidate_classes: Int,
+) -> KernelFiniteBounds {
   KernelFiniteBounds {
     proposal_occurrences: proposals,
     facts: facts,
     transports: 2,
     canonicalizations: 2,
     recovery_alternatives: 2,
-    inference_rounds: 4,
-    candidate_classes: 16,
+    inference_rounds: inference_rounds,
+    candidate_classes: candidate_classes,
   }
+}
+
+fn p1_inference_schedule() -> List<KernelInferenceRound> {
+  [KernelInferenceRound {
+    ordinal: 1,
+    procedures: ["apply-grounded-replacement"],
+  }]
 }
 
 fn p1_spec_with(
@@ -70,6 +86,9 @@ fn p1_spec_with(
   first_delta: List<KernelGroundedDelta>,
   proposal_bound: Int,
   fact_bound: Int,
+  inference_schedule: List<KernelInferenceRound>,
+  inference_round_bound: Int,
+  candidate_class_bound: Int,
 ) -> KernelCandidateGenerationSpec {
   let transformation = p1_transformation()
   KernelCandidateGenerationSpec {
@@ -93,13 +112,19 @@ fn p1_spec_with(
       consumes: ["worker-declaration-name"],
       produces: ["worker-declaration-name"],
     }],
+    inference_schedule: inference_schedule,
     invariants: [KernelInvariant {
       identity: "builds-after-rename",
       claims: [p0_builds_claim()],
       procedure: "apply-grounded-replacement",
     }],
     equivalence: "p1-exact-bounded-fact-equivalence",
-    bounds: p1_bounds(proposals: proposal_bound, facts: fact_bound),
+    bounds: p1_bounds(
+      proposals: proposal_bound,
+      facts: fact_bound,
+      inference_rounds: inference_round_bound,
+      candidate_classes: candidate_class_bound,
+    ),
   }
 }
 
@@ -109,6 +134,9 @@ fn p1_model_spec() -> KernelCandidateGenerationSpec {
     first_delta: p1_transformation().delta,
     proposal_bound: 2,
     fact_bound: 4,
+    inference_schedule: p1_inference_schedule(),
+    inference_round_bound: 4,
+    candidate_class_bound: 16,
   )
 }
 
@@ -119,7 +147,9 @@ test fn witness_candidate_generation_is_admitted_from_finite_generators() -> Boo
     && count(kernel_transformations(spec: spec)) == 1
     && count(spec.accepted_facts) == 1
     && count(spec.procedures) == 1
+    && count(spec.inference_schedule) == 1
     && count(spec.invariants) == 1
+    && count(assessment.candidates) == 4
     && spec.bounds.inference_rounds == 4
     && spec.bounds.candidate_classes == 16
 }
@@ -131,6 +161,9 @@ test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() ->
       first_delta: p1_transformation().delta,
       proposal_bound: 1,
       fact_bound: 8,
+      inference_schedule: p1_inference_schedule(),
+      inference_round_bound: 4,
+      candidate_class_bound: 16,
     ),
   )
   !kernel_candidate_generation_admitted(assessment: assessment)
@@ -171,6 +204,9 @@ test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
       }],
       proposal_bound: 2,
       fact_bound: 4,
+      inference_schedule: p1_inference_schedule(),
+      inference_round_bound: 4,
+      candidate_class_bound: 16,
     ),
   )
   !kernel_candidate_generation_admitted(assessment: assessment)
@@ -193,6 +229,9 @@ fn p1_bound_refusal_spec() -> KernelCandidateGenerationSpec {
     first_delta: p1_transformation().delta,
     proposal_bound: 1,
     fact_bound: 8,
+    inference_schedule: p1_inference_schedule(),
+    inference_round_bound: 4,
+    candidate_class_bound: 16,
   )
 }
 
@@ -218,7 +257,60 @@ fn p1_delta_refusal_spec() -> KernelCandidateGenerationSpec {
     }],
     proposal_bound: 2,
     fact_bound: 4,
+    inference_schedule: p1_inference_schedule(),
+    inference_round_bound: 4,
+    candidate_class_bound: 16,
   )
+}
+
+fn p1_inference_round_refusal_spec() -> KernelCandidateGenerationSpec {
+  p1_spec_with(
+    remaining: [],
+    first_delta: p1_transformation().delta,
+    proposal_bound: 2,
+    fact_bound: 4,
+    inference_schedule: append(
+      p1_inference_schedule(),
+      items: [KernelInferenceRound {
+        ordinal: 2,
+        procedures: ["apply-grounded-replacement"],
+      }],
+    ),
+    inference_round_bound: 1,
+    candidate_class_bound: 16,
+  )
+}
+
+fn p1_candidate_class_refusal_spec() -> KernelCandidateGenerationSpec {
+  p1_spec_with(
+    remaining: [],
+    first_delta: p1_transformation().delta,
+    proposal_bound: 2,
+    fact_bound: 4,
+    inference_schedule: p1_inference_schedule(),
+    inference_round_bound: 4,
+    candidate_class_bound: 2,
+  )
+}
+
+test fn witness_closure_bounds_change_generation_disposition() -> Bool {
+  let round_refused = assess_bounded_candidate_generation(
+    spec: p1_inference_round_refusal_spec(),
+  )
+  let class_refused = assess_bounded_candidate_generation(
+    spec: p1_candidate_class_refusal_spec(),
+  )
+  kernel_refusal_occurrences(
+    refusals: round_refused.refusals,
+    kind: KernelInferenceRoundBoundExceeded,
+    locus: "bounds.inference_rounds",
+  ) == 2
+    && kernel_refusal_occurrences(
+      refusals: class_refused.refusals,
+      kind: KernelCandidateClassBoundExceeded,
+      locus: "bounds.candidate_classes",
+    ) == 4
+    && count(class_refused.candidates) == 2
 }
 
 fn p1_first_slice_acceptance_admissions() -> List<KernelAcceptanceAdmission> {
@@ -226,6 +318,8 @@ fn p1_first_slice_acceptance_admissions() -> List<KernelAcceptanceAdmission> {
     admitted_spec: p1_model_spec(),
     proposal_bound_refusal_spec: p1_bound_refusal_spec(),
     grounding_and_frame_refusal_spec: p1_delta_refusal_spec(),
+    inference_round_refusal_spec: p1_inference_round_refusal_spec(),
+    candidate_class_refusal_spec: p1_candidate_class_refusal_spec(),
   )]
 }
 
@@ -249,6 +343,8 @@ test fn witness_failed_scenario_cannot_mint_acceptance_receipt() -> Bool {
     admitted_spec: p1_bound_refusal_spec(),
     proposal_bound_refusal_spec: p1_bound_refusal_spec(),
     grounding_and_frame_refusal_spec: p1_delta_refusal_spec(),
+    inference_round_refusal_spec: p1_inference_round_refusal_spec(),
+    candidate_class_refusal_spec: p1_candidate_class_refusal_spec(),
   )
   match refused {
     KernelAcceptanceRefused { capability, failed_scenarios } =>
