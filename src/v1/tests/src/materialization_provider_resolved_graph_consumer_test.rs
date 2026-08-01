@@ -184,6 +184,20 @@ fn stored_disk_probe_wrong_semantic_digest_refuses() {
 }
 
 #[test]
+fn incomplete_provider_outcome_maps_to_typed_refusal_message() {
+    let msg = v1_compiler::cli_run::provider_integrity_refusal_message_for_test(
+        ResolvedGraphProviderOutcome::RefusedIncomplete {
+            missing: vec!["compile_clean_diagnostic_union".to_string()],
+        },
+    )
+    .expect("incomplete must refuse");
+    assert!(
+        msg.contains("incomplete") && msg.contains("compile_clean_diagnostic_union"),
+        "typed incomplete refusal: {msg}"
+    );
+}
+
+#[test]
 fn synthetic_incomplete_parts_refuse_before_provider_hit() {
     reset_materialization_provider_ctx_for_test();
     let builds_before = materialization_provider_ctx_build_count_for_test();

@@ -40,7 +40,7 @@ use std::rc::Rc;
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context,
     resolve_closure_request_key_from_digests, resolve_entry_graph, resolve_entry_with_index,
-    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome,
+    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome, ResolvedGraphProviderOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
     build_valid_artifact_bytes, closure_content_digest, decode_count, derive_subject_digest,
@@ -696,6 +696,119 @@ fn two_processes_share_cache_without_torn_read() {
         CacheLookupResult::Hit(_) => {}
         other => panic!("expected cache hit after cross-process warm, got {other:?}"),
     }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn build_legacy_v1_probe_artifact(subject: &str) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"gunbgrpc");
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(subject.as_bytes());
+    bytes.extend_from_slice(&[0u8; 16]);
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes
+}
+
+/// Four-arm disposition matrix for the cross-process provider seam:
+/// complete v3 hit -> served; absent artifact -> cold compute; legacy v1 ->
+/// declared migration cold compute; incomplete provider verdict -> typed refusal
+/// with zero cold recompute.
+#[test]
+fn provider_disposition_four_arm_matrix() {
+    let dir = temp_dir("four-arm");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve fixture");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let v3_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("v3 bytes");
+
+    // Arm 2 — absent artifact: cold compute allowed.
+    let miss_dir = dir.join("miss-cache");
+    fs::create_dir_all(&miss_dir).expect("miss cache dir");
+    with_cache_env(&miss_dir, || {
+        let index = build_multi_entry_index(&roots);
+        let (g1, _) = resolve_entry_with_index(&index, &a).expect("cold resolve");
+        let (g2, _) = resolve_entry_with_index(&index, &a).expect("repeat resolve");
+        assert!(
+            std::rc::Rc::ptr_eq(&g1, &g2),
+            "repeat resolve must share memo after cold build"
+        );
+    });
+
+    // Arm 1 — complete v3 hit: served from disk; decode once on first install only.
+    let hit_dir = dir.join("hit-cache");
+    fs::create_dir_all(&hit_dir).expect("hit cache dir");
+    write_raw_artifact_for_test(&hit_dir, &subject, &v3_bytes).expect("v3 write");
+    with_cache_env(&hit_dir, || {
+        let decodes_before = decode_count();
+        let index = build_multi_entry_index(&roots);
+        let (g1, _) = resolve_entry_with_index(&index, &a).expect("v3 disk hit");
+        let index2 = build_multi_entry_index(&roots);
+        let (g2, _) = resolve_entry_with_index(&index2, &a).expect("v3 disk repeat");
+        assert!(
+            std::rc::Rc::ptr_eq(&g1, &g2),
+            "v3 disk hit must install into share"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before + 1,
+            "first v3 disk hit decodes once; repeat must not"
+        );
+    });
+
+    // Arm 3 — legacy v1 on disk: LegacyFormatMiss -> cold compute, no provider probe.
+    let legacy_dir = dir.join("legacy-cache");
+    fs::create_dir_all(&legacy_dir).expect("legacy cache dir");
+    write_raw_artifact_for_test(
+        &legacy_dir,
+        &subject,
+        &build_legacy_v1_probe_artifact(&subject),
+    )
+    .expect("legacy write");
+    match probe(&legacy_dir, &subject) {
+        CacheProbeResult::Hit(hit) => {
+            assert!(hit.parts.is_none(), "legacy v1 must not expose v3 parts");
+        }
+        other => panic!("legacy v1 must probe as Hit without parts: {other:?}"),
+    }
+    with_cache_env(&legacy_dir, || {
+        let decodes_before = decode_count();
+        let index = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&index, &a).expect("legacy must cold-rebuild");
+        assert_eq!(
+            decode_count(),
+            decodes_before,
+            "legacy format must not decode incomplete v1 artifact"
+        );
+    });
+
+    // Arm 4 — incomplete provider verdict: typed refusal, never cold widen.
+    let msg = v1_compiler::cli_run::provider_integrity_refusal_message_for_test(
+        ResolvedGraphProviderOutcome::RefusedIncomplete {
+            missing: vec!["compile_clean_diagnostic_union".to_string()],
+        },
+    )
+    .expect("incomplete must map to typed refusal");
+    assert!(
+        msg.contains("incomplete") && msg.contains("compile_clean_diagnostic_union"),
+        "incomplete refusal must name missing outputs: {msg}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }

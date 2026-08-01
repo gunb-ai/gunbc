@@ -10144,6 +10144,13 @@ fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> 
     }
 }
 
+#[doc(hidden)]
+pub fn provider_integrity_refusal_message_for_test(
+    outcome: ResolvedGraphProviderOutcome,
+) -> Option<String> {
+    provider_integrity_refusal_message(outcome)
+}
+
 fn install_cross_process_materialization_hit(
     index: &MultiEntryIndex,
     subject: &str,
