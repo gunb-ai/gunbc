@@ -1,0 +1,826 @@
+module gunbc.roadmap_forecast
+
+import std.types { EpochMs, NonEmptyStr }
+import std.measure {
+  Millisecond,
+  PositiveMeasureCount,
+  millisecond,
+  millisecond_count,
+}
+import std.graph { GraphEdge, CallGraph, graph_cycle_members }
+import std.algebra { FieldOfFractions }
+import extdeps.project_schedule.cpm_pert {
+  CriticalPathMethod,
+  ThreePointEstimateMethod,
+  ResourceCapacityLowerBoundMethod,
+  critical_path_method,
+  three_point_estimate_method,
+  resource_capacity_lower_bound_method,
+}
+import extdeps.github.pulls {
+  PullTimingObservation,
+  gunbc_pr_7393_timing,
+  gunbc_pr_7405_timing,
+  gunbc_pr_7429_timing,
+  gunbc_pr_7431_timing,
+  gunbc_pr_7441_timing,
+  gunbc_pr_7542_timing,
+}
+import gunbc.roadmap_model {
+  RoadmapNodeId,
+  RoadmapNode,
+  RoadmapEdge,
+  RoadmapAcceptanceReceipt,
+  Intricacy,
+  Volume,
+  NodeSizing,
+  Unsized,
+  Sized,
+  node_accepted,
+}
+import gunbc.roadmap_belt { BeltCapacity }
+import gunbc.roadmap_authority {
+  declared_roadmap_nodes,
+  active_roadmap_nodes,
+  active_roadmap_edges,
+  roadmap_acceptance_receipts,
+}
+
+data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
+
+data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. PR open-to-merge is one undecomposed observation: ReviewCycleCount and OperatorMergeLatencyAssumption remain named and visible, but ScenarioAdjustment is AdjustmentUnavailable until per-review duration and operator merge latency are separately observed. Neither is multiplied into or added onto the baseline. BeltCapacity is session-grain: under EndToEndBeltSlotOccupancyAssumption, each forecast node continuously occupies one belt slot across its modeled baseline interval, so capacity enters through ceil(total slot-time / cap). The output is explicitly conditional lower-bound projection, never a resource-leveled expected date. dissolve-on: separately grained review/merge observations, observed dispatch-to-release slot occupancy, and a grounded RCPSP resource-leveling slice replace the unavailable adjustment, declared occupancy assumption, and lower-bound-only projection; until then no consumer may read these bounds as observed labor or promised landing dates."
+
+data remaining_cost_relative_sizing_follow_on_note: String = "FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing: remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished dependency closure, bucketed relative to the historical plus active task population by a separately grounded order-of-magnitude or quantile policy. It must project from this module's TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative portfolio sizing and grounds one population-bucketing policy; then one fold derives the label without creating a second sizing authority."
+
+data critical_path_method_used: CriticalPathMethod = critical_path_method
+data three_point_estimate_method_used: ThreePointEstimateMethod = three_point_estimate_method
+data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod = resource_capacity_lower_bound_method
+
+type SizingCell {
+  intricacy: Intricacy
+  volume: Volume
+}
+
+fn sizing_cell_eq(a: SizingCell, b: SizingCell) -> Bool {
+  a.intricacy == b.intricacy && a.volume == b.volume
+}
+
+fn sizing_cell_of(sizing: NodeSizing) -> SizingCell? {
+  match sizing {
+    Unsized => Absent
+    Sized { intricacy, volume, repo: _, acceptance: _ } =>
+      Present { value: SizingCell { intricacy: intricacy, volume: volume } }
+  }
+}
+
+type AcceptedNodePullLink {
+  node: RoadmapNodeId
+  pull_number: Int
+}
+
+data accepted_node_pull_link_note: String = "The business join between a durable roadmap acceptance and its implementation/acceptance pull request. Pull wire shape and its normalized timing observations stay under the single extdeps.github.pulls authority; acceptance stays in gunbc.roadmap_authority. This list says only which PR delivered an accepted node. A PR open-to-merge interval is admitted as a calibration sample only when exactly one accepted node links to that PR; a shared delivery is reported once as BundledPullDelivery and excluded because the source does not allocate its elapsed time among node sizing cells."
+
+fn accepted_node_pull_links() -> List<AcceptedNodePullLink> {
+  [
+    AcceptedNodePullLink { node: "2-scm-git-upstream-model", pull_number: 7405 },
+    AcceptedNodePullLink { node: "2-scm-mercurial-upstream-model", pull_number: 7405 },
+    AcceptedNodePullLink { node: "2-scm-pijul-upstream-model", pull_number: 7405 },
+    AcceptedNodePullLink { node: "2-claim-indexed-evidence", pull_number: 7405 },
+    AcceptedNodePullLink { node: "2-scm-compatibility-shape", pull_number: 7431 },
+    AcceptedNodePullLink { node: "2-scm-p0-landing-spine", pull_number: 7542 },
+    AcceptedNodePullLink { node: "namespace-occurrence-transport", pull_number: 7393 },
+    AcceptedNodePullLink { node: "pderive-typesafe-nullary-reflection", pull_number: 7393 },
+    AcceptedNodePullLink { node: "pderive-static-supplemental-contract", pull_number: 7429 },
+    AcceptedNodePullLink { node: "v1-test-hygiene-producer-retirement", pull_number: 7441 },
+  ]
+}
+
+fn cited_pull_timings() -> List<PullTimingObservation> {
+  [
+    gunbc_pr_7393_timing,
+    gunbc_pr_7405_timing,
+    gunbc_pr_7429_timing,
+    gunbc_pr_7431_timing,
+    gunbc_pr_7441_timing,
+    gunbc_pr_7542_timing,
+  ]
+}
+
+type CycleTimeProvenance
+  = AcceptedRoadmapNodePullHistory
+  | DashboardWorkItemDispatchPullHistory
+
+data cycle_time_provenance_note: String = "AcceptedRoadmapNodePullHistory measures PR open -> merge for nodes whose roadmap acceptance receipt is valid. DashboardWorkItemDispatchPullHistory is reserved as a distinct future provenance arm because dispatch -> merge measures a different interval; this slice constructs no value in that arm and calibration admits only accepted-roadmap observations. The two populations therefore cannot blend silently."
+
+type CycleTimeObservation {
+  node: RoadmapNodeId
+  sizing_cell: SizingCell
+  pull_number: Int
+  cycle_time: Millisecond
+  accepted_on: NonEmptyStr
+  source_url: NonEmptyStr
+  provenance: CycleTimeProvenance
+}
+
+type CycleTimeHistoryRefusal
+  = HistoryNodeMissing { node: RoadmapNodeId }
+  | HistoryNodeDuplicate { node: RoadmapNodeId }
+  | HistoryAcceptanceMissing { node: RoadmapNodeId }
+  | HistoryAcceptanceDuplicate { node: RoadmapNodeId }
+  | HistoryNodeUnsized { node: RoadmapNodeId }
+  | HistoryPullMissing { node: RoadmapNodeId, pull_number: Int }
+  | HistoryPullDuplicate { node: RoadmapNodeId, pull_number: Int }
+  | HistoryPullNotMergedAfterOpen { node: RoadmapNodeId, pull_number: Int }
+
+type CycleTimePopulationExclusion
+  = BundledPullDelivery { pull_number: Int, nodes: List<RoadmapNodeId> }
+
+type CycleTimeObservationBuild
+  = CycleTimeObserved { observation: CycleTimeObservation }
+  | CycleTimePopulationExcluded { exclusion: CycleTimePopulationExclusion }
+  | CycleTimeHistoryRefused { refusal: CycleTimeHistoryRefusal }
+
+fn observation_for_link(
+  link: AcceptedNodePullLink,
+  nodes: List<RoadmapNode>,
+  receipts: List<RoadmapAcceptanceReceipt>,
+  pulls: List<PullTimingObservation>,
+  links: List<AcceptedNodePullLink>,
+) -> CycleTimeObservationBuild {
+  let bundled_links = links |> filter(candidate => candidate.pull_number == link.pull_number)
+  let matching_nodes = nodes |> filter(n => n.node == link.node)
+  if count(matching_nodes) == 0 {
+    return CycleTimeHistoryRefused { refusal: HistoryNodeMissing { node: link.node } }
+  }
+  if count(matching_nodes) != 1 {
+    return CycleTimeHistoryRefused { refusal: HistoryNodeDuplicate { node: link.node } }
+  }
+  let node = first(matching_nodes)
+  let matching_receipts = receipts |> filter(r => r.node == link.node)
+  if count(matching_receipts) == 0 {
+    return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
+  }
+  if count(matching_receipts) != 1 {
+    return CycleTimeHistoryRefused { refusal: HistoryAcceptanceDuplicate { node: link.node } }
+  }
+  if !node_accepted(receipts: receipts, rn: node) {
+    return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
+  }
+  let cell = match sizing_cell_of(sizing: node.sizing) {
+    Absent => return CycleTimeHistoryRefused { refusal: HistoryNodeUnsized { node: link.node } }
+    Present { value } => value
+  }
+  let matching_pulls = pulls |> filter(p => p.pull_number == link.pull_number)
+  if count(matching_pulls) == 0 {
+    return CycleTimeHistoryRefused {
+      refusal: HistoryPullMissing { node: link.node, pull_number: link.pull_number }
+    }
+  }
+  if count(matching_pulls) != 1 {
+    return CycleTimeHistoryRefused {
+      refusal: HistoryPullDuplicate { node: link.node, pull_number: link.pull_number }
+    }
+  }
+  let pull = first(matching_pulls)
+  if pull.merged_at <= pull.opened_at {
+    return CycleTimeHistoryRefused {
+      refusal: HistoryPullNotMergedAfterOpen { node: link.node, pull_number: link.pull_number }
+    }
+  }
+  if count(bundled_links) > 1 {
+    return CycleTimePopulationExcluded { exclusion: BundledPullDelivery {
+      pull_number: link.pull_number,
+      nodes: bundled_links |> map(candidate => candidate.node),
+    } }
+  }
+  let receipt = first(matching_receipts)
+  CycleTimeObserved {
+    observation: CycleTimeObservation {
+      node: link.node,
+      sizing_cell: cell,
+      pull_number: pull.pull_number,
+      cycle_time: millisecond(count: pull.merged_at - pull.opened_at),
+      accepted_on: receipt.accepted_on,
+      source_url: pull.source_url,
+      provenance: AcceptedRoadmapNodePullHistory,
+    }
+  }
+}
+
+fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
+  let nodes = declared_roadmap_nodes()
+  let receipts = roadmap_acceptance_receipts()
+  let pulls = cited_pull_timings()
+  let links = accepted_node_pull_links()
+  links |> map(link => observation_for_link(
+    link: link,
+    nodes: nodes,
+    receipts: receipts,
+    pulls: pulls,
+    links: links,
+  ))
+}
+
+fn accepted_cycle_time_observations(builds: List<CycleTimeObservationBuild>) -> List<CycleTimeObservation> {
+  builds |> flat_map(b => match b {
+    CycleTimeObserved { observation } => [observation]
+    CycleTimePopulationExcluded { exclusion: _ } => []
+    CycleTimeHistoryRefused { refusal: _ } => []
+  })
+}
+
+fn cycle_time_history_refusals(builds: List<CycleTimeObservationBuild>) -> List<CycleTimeHistoryRefusal> {
+  builds |> flat_map(b => match b {
+    CycleTimeObserved { observation: _ } => []
+    CycleTimePopulationExcluded { exclusion: _ } => []
+    CycleTimeHistoryRefused { refusal } => [refusal]
+  })
+}
+
+fn cycle_time_population_exclusions(builds: List<CycleTimeObservationBuild>) -> List<CycleTimePopulationExclusion> {
+  builds
+    |> flat_map(b => match b {
+      CycleTimeObserved { observation: _ } => []
+      CycleTimePopulationExcluded { exclusion } => [exclusion]
+      CycleTimeHistoryRefused { refusal: _ } => []
+    })
+    |> fold(init: [], f: (acc, exclusion) => match exclusion {
+      BundledPullDelivery { pull_number, nodes: _ } =>
+        if any(acc, existing => match existing {
+          BundledPullDelivery { pull_number: existing_pull, nodes: _ } => existing_pull == pull_number
+        }) { acc } else { concat(acc, [exclusion]) }
+    })
+}
+
+type CycleTimeInterval {
+  minimum: Millisecond
+  median: Millisecond
+  maximum: Millisecond
+  sample_count: Int
+}
+
+type CalibrationResult
+  = Calibrated { interval: CycleTimeInterval }
+  | CalibrationRefusedNoSample { cell: SizingCell }
+
+fn int_at(sorted: List<Int>, index: Int) -> Int {
+  first(sorted |> skip(n: index))
+}
+
+fn median_int(sorted: List<Int>) -> Int {
+  let n = count(sorted)
+  if (n % 2) == 1 {
+    int_at(sorted: sorted, index: n / 2)
+  } else {
+    (int_at(sorted: sorted, index: (n / 2) - 1) + int_at(sorted: sorted, index: n / 2)) / 2
+  }
+}
+
+fn calibrate_cell(cell: SizingCell, observations: List<CycleTimeObservation>) -> CalibrationResult {
+  let samples = observations
+    |> filter(o => o.provenance == AcceptedRoadmapNodePullHistory)
+    |> filter(o => sizing_cell_eq(a: o.sizing_cell, b: cell))
+    |> map(o => millisecond_count(m: o.cycle_time))
+    |> sort_by(n => n)
+  if count(samples) == 0 {
+    CalibrationRefusedNoSample { cell: cell }
+  } else {
+    Calibrated {
+      interval: CycleTimeInterval {
+        minimum: millisecond(count: first(samples)),
+        median: millisecond(count: median_int(sorted: samples)),
+        maximum: millisecond(count: first(reverse(samples))),
+        sample_count: count(samples),
+      }
+    }
+  }
+}
+
+type ForecastAnchorObservation { observed_at: EpochMs }
+
+type ReviewCycleCount { count: PositiveMeasureCount }
+
+type OperatorMergeLatencyAssumption { duration: Millisecond }
+
+type EndToEndBeltSlotOccupancyAssumption {}
+
+data end_to_end_belt_slot_occupancy_assumption: EndToEndBeltSlotOccupancyAssumption = EndToEndBeltSlotOccupancyAssumption {}
+
+type ScheduleForecastAssumptions {
+  worker_concurrency_cap: BeltCapacity
+  review_cycle_count: ReviewCycleCount
+  operator_merge_latency: OperatorMergeLatencyAssumption
+  belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption
+}
+
+type ScenarioAdjustmentUnavailableCause
+  = ReviewCycleDurationUnobserved { declared_count: PositiveMeasureCount }
+  | OperatorMergeLatencyUnobserved { declared_latency: Millisecond }
+
+type ScenarioAdjustment
+  = AdjustmentUnavailable { causes: List<ScenarioAdjustmentUnavailableCause> }
+
+fn scenario_adjustment(assumptions: ScheduleForecastAssumptions) -> ScenarioAdjustment {
+  AdjustmentUnavailable { causes: [
+    ReviewCycleDurationUnobserved { declared_count: assumptions.review_cycle_count.count },
+    OperatorMergeLatencyUnobserved { declared_latency: assumptions.operator_merge_latency.duration },
+  ] }
+}
+
+type ForecastInstant { epoch_ms: EpochMs }
+
+type ForecastLowerBoundInterval {
+  earliest: ForecastInstant
+  median: ForecastInstant
+  latest: ForecastInstant
+}
+
+type NodeScheduleForecast {
+  node: RoadmapNodeId
+  calibrated_cycle_time: CycleTimeInterval
+  landing_lower_bound: ForecastLowerBoundInterval
+}
+
+type DurationEstimateInterval {
+  minimum: Millisecond
+  median: Millisecond
+  maximum: Millisecond
+}
+
+type TotalWork { duration: DurationEstimateInterval }
+
+data total_work_semantics_note: String = "TotalWork is the capacity-independent sum of per-node calibrated open-to-merge baseline durations. It applies no review-cycle multiplier and adds no merge latency because both are already inseparable inside the observed interval. It is an absolute cycle-time cost, not an observation of labor hours. Only CapacityConstrainedMinimum interprets that sum as belt slot-time, and it structurally carries the occupancy assumption required for that interpretation."
+
+type CriticalPathMinimum { duration: DurationEstimateInterval }
+
+type CapacityConstrainedMinimum {
+  duration: DurationEstimateInterval
+  under_belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption
+}
+
+type ParallelismHeadroomInterval {
+  minimum: FieldOfFractions<Millisecond>
+  median: FieldOfFractions<Millisecond>
+  maximum: FieldOfFractions<Millisecond>
+}
+
+type ParallelismHeadroom { ratio: ParallelismHeadroomInterval }
+
+type ScheduleLowerBounds {
+  total_work: TotalWork
+  critical_path_minimum: CriticalPathMinimum
+  capacity_constrained_minimum: CapacityConstrainedMinimum
+  parallelism_headroom: ParallelismHeadroom
+}
+
+type ScheduleForecast {
+  anchor: ForecastAnchorObservation
+  assumptions: ScheduleForecastAssumptions
+  nodes: List<NodeScheduleForecast>
+  critical_path: List<RoadmapNodeId>
+  calibration_population_exclusions: List<CycleTimePopulationExclusion>
+  scenario_adjustment: ScenarioAdjustment
+  lower_bounds: ScheduleLowerBounds
+  completion_lower_bound: ForecastLowerBoundInterval
+}
+
+type CalibrationGap {
+  cell: SizingCell
+  nodes: List<RoadmapNodeId>
+}
+
+type ForecastRefusal
+  = ForecastGraphEmpty
+  | DependencyCycle { nodes: List<RoadmapNodeId> }
+  | DependencyEndpointUnknown { nodes: List<RoadmapNodeId> }
+  | NodeUnsized { nodes: List<RoadmapNodeId> }
+  | CycleTimeObservationNonPositive { nodes: List<RoadmapNodeId> }
+  | NoCalibrationSample {
+      gaps: List<CalibrationGap>,
+      population_exclusions: List<CycleTimePopulationExclusion>,
+      assumptions: ScheduleForecastAssumptions,
+      scenario_adjustment: ScenarioAdjustment,
+    }
+  | WorkerConcurrencyCapInvalid { declared_cap: Int }
+  | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
+  | ForecastBuildRefused { node: RoadmapNodeId }
+
+type ScheduleForecastResult
+  = ScheduleForecastKnown { forecast: ScheduleForecast }
+  | ScheduleForecastRefused { refusals: List<ForecastRefusal> }
+
+fn forecast_refusal_count(result: ScheduleForecastResult) -> Int {
+  match result {
+    ScheduleForecastKnown { forecast: _ } => 0
+    ScheduleForecastRefused { refusals } => count(refusals)
+  }
+}
+
+fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
+  match result {
+    ScheduleForecastKnown { forecast: _ } => 0
+    ScheduleForecastRefused { refusals } => refusals |> fold(init: 0, f: (acc, refusal) =>
+      acc + match refusal {
+        NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps)
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => 0
+        ForecastGraphEmpty => 0
+        DependencyCycle { nodes: _ } => 0
+        DependencyEndpointUnknown { nodes: _ } => 0
+        NodeUnsized { nodes: _ } => 0
+        CycleTimeObservationNonPositive { nodes: _ } => 0
+        CalibrationHistoryRefused { refusals: _ } => 0
+        ForecastBuildRefused { node: _ } => 0
+      }
+    )
+  }
+}
+
+fn unique_cells(cells: List<SizingCell>) -> List<SizingCell> {
+  cells |> fold(init: [], f: (acc, cell) =>
+    if any(acc, existing => sizing_cell_eq(a: existing, b: cell)) { acc }
+    else { concat(acc, [cell]) }
+  )
+}
+
+fn calibration_gaps(nodes: List<RoadmapNode>, observations: List<CycleTimeObservation>) -> List<CalibrationGap> {
+  let cells = unique_cells(cells: nodes |> flat_map(n => match sizing_cell_of(sizing: n.sizing) {
+    Absent => []
+    Present { value } => [value]
+  }))
+  cells |> flat_map(cell => match calibrate_cell(cell: cell, observations: observations) {
+    Calibrated { interval: _ } => []
+    CalibrationRefusedNoSample { cell: missing } => [CalibrationGap {
+      cell: missing,
+      nodes: nodes
+        |> filter(n => match sizing_cell_of(sizing: n.sizing) {
+          Absent => false
+          Present { value } => sizing_cell_eq(a: value, b: missing)
+        })
+        |> map(n => n.node),
+    }]
+  })
+}
+
+fn dependency_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> CallGraph {
+  CallGraph {
+    edges: edges |> map(e => GraphEdge { caller: e.child as String, callee: e.parent as String })
+  }
+}
+
+fn dependency_cycle_nodes(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<RoadmapNodeId> {
+  graph_cycle_members(
+    names: nodes |> map(n => n.node as String),
+    graph: dependency_graph(nodes: nodes, edges: edges),
+  ) |> map(n => n as RoadmapNodeId)
+}
+
+fn unknown_dependency_endpoints(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<RoadmapNodeId> {
+  let ids = nodes |> map(n => n.node)
+  concat(
+    edges |> filter(e => !any(ids, id => id == e.child)) |> map(e => e.child),
+    edges |> filter(e => !any(ids, id => id == e.parent)) |> map(e => e.parent),
+  ) |> fold(init: [], f: (acc, id) => if any(acc, existing => existing == id) { acc } else { concat(acc, [id]) })
+}
+
+type ForecastBound = EarliestBound | MedianBound | LatestBound
+
+fn interval_bound(interval: CycleTimeInterval, bound: ForecastBound) -> Int {
+  match bound {
+    EarliestBound => millisecond_count(m: interval.minimum)
+    MedianBound => millisecond_count(m: interval.median)
+    LatestBound => millisecond_count(m: interval.maximum)
+  }
+}
+
+fn baseline_node_duration(
+  interval: CycleTimeInterval,
+  bound: ForecastBound,
+) -> Millisecond {
+  millisecond(count: interval_bound(interval: interval, bound: bound))
+}
+
+type PathEstimate {
+  duration: Millisecond
+  path: List<RoadmapNodeId>
+}
+
+type PathEstimateResult
+  = PathEstimated { estimate: PathEstimate }
+  | PathEstimateUnknown { node: RoadmapNodeId }
+
+fn longer_path(a: PathEstimate, b: PathEstimate) -> PathEstimate {
+  if millisecond_count(m: b.duration) > millisecond_count(m: a.duration) { b } else { a }
+}
+
+fn path_to_node(
+  node: RoadmapNode,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  observations: List<CycleTimeObservation>,
+  bound: ForecastBound,
+) -> PathEstimateResult {
+  let cell = match sizing_cell_of(sizing: node.sizing) {
+    Absent => return PathEstimateUnknown { node: node.node }
+    Present { value } => value
+  }
+  let interval = match calibrate_cell(cell: cell, observations: observations) {
+    CalibrationRefusedNoSample { cell: _ } => return PathEstimateUnknown { node: node.node }
+    Calibrated { interval } => interval
+  }
+  let parent_ids = edges |> filter(e => e.child == node.node) |> map(e => e.parent)
+  let parent_estimates = parent_ids |> map(parent_id =>
+    match nodes |> filter(n => n.node == parent_id) |> first {
+      Absent => PathEstimateUnknown { node: parent_id }
+      Present { value: parent } => path_to_node(
+        node: parent,
+        nodes: nodes,
+        edges: edges,
+        observations: observations,
+        bound: bound,
+      )
+    }
+  )
+  let refused = parent_estimates |> filter(r => match r {
+    PathEstimated { estimate: _ } => false
+    PathEstimateUnknown { node: _ } => true
+  })
+  match first(refused) {
+    Present { value } => value
+    Absent => {
+      let parent_best = parent_estimates |> fold(
+        init: PathEstimate { duration: millisecond(count: 0), path: [] },
+        f: (best, result) => match result {
+          PathEstimated { estimate } => longer_path(a: best, b: estimate)
+          PathEstimateUnknown { node: _ } => best
+        },
+      )
+      PathEstimated { estimate: PathEstimate {
+        duration: millisecond(
+          count: millisecond_count(m: parent_best.duration) + millisecond_count(m: baseline_node_duration(
+            interval: interval,
+            bound: bound,
+          )),
+        ),
+        path: concat(parent_best.path, [node.node]),
+      } }
+    }
+  }
+}
+
+type NodeForecastBuild
+  = NodeForecastBuilt { forecast: NodeScheduleForecast, median_path: List<RoadmapNodeId> }
+  | NodeForecastBuildRefused { node: RoadmapNodeId }
+
+type CriticalPathChoice {
+  median_epoch_ms: EpochMs
+  path: List<RoadmapNodeId>
+}
+
+fn forecast_instant(anchor: ForecastAnchorObservation, duration: Millisecond) -> ForecastInstant {
+  ForecastInstant { epoch_ms: anchor.observed_at + millisecond_count(m: duration) }
+}
+
+fn build_node_forecast(
+  node: RoadmapNode,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  observations: List<CycleTimeObservation>,
+  anchor: ForecastAnchorObservation,
+) -> NodeForecastBuild {
+  let cell = match sizing_cell_of(sizing: node.sizing) {
+    Absent => return NodeForecastBuildRefused { node: node.node }
+    Present { value } => value
+  }
+  let calibrated = match calibrate_cell(cell: cell, observations: observations) {
+    CalibrationRefusedNoSample { cell: _ } => return NodeForecastBuildRefused { node: node.node }
+    Calibrated { interval } => interval
+  }
+  let earliest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: EarliestBound)
+  let median = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: MedianBound)
+  let latest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: LatestBound)
+  match earliest {
+    PathEstimateUnknown { node: _ } => NodeForecastBuildRefused { node: node.node }
+    PathEstimated { estimate: early } => match median {
+      PathEstimateUnknown { node: _ } => NodeForecastBuildRefused { node: node.node }
+      PathEstimated { estimate: middle } => match latest {
+        PathEstimateUnknown { node: _ } => NodeForecastBuildRefused { node: node.node }
+        PathEstimated { estimate: late } => NodeForecastBuilt {
+          forecast: NodeScheduleForecast {
+            node: node.node,
+            calibrated_cycle_time: calibrated,
+            landing_lower_bound: ForecastLowerBoundInterval {
+              earliest: forecast_instant(anchor: anchor, duration: early.duration),
+              median: forecast_instant(anchor: anchor, duration: middle.duration),
+              latest: forecast_instant(anchor: anchor, duration: late.duration),
+            },
+          },
+          median_path: middle.path,
+        }
+      }
+    }
+  }
+}
+
+fn dependency_completion_lower_bound(nodes: List<NodeScheduleForecast>, anchor: ForecastAnchorObservation) -> ForecastLowerBoundInterval {
+  nodes |> fold(
+    init: ForecastLowerBoundInterval {
+      earliest: ForecastInstant { epoch_ms: anchor.observed_at },
+      median: ForecastInstant { epoch_ms: anchor.observed_at },
+      latest: ForecastInstant { epoch_ms: anchor.observed_at },
+    },
+    f: (acc, node) => ForecastLowerBoundInterval {
+      earliest: ForecastInstant { epoch_ms: if node.landing_lower_bound.earliest.epoch_ms > acc.earliest.epoch_ms { node.landing_lower_bound.earliest.epoch_ms } else { acc.earliest.epoch_ms } },
+      median: ForecastInstant { epoch_ms: if node.landing_lower_bound.median.epoch_ms > acc.median.epoch_ms { node.landing_lower_bound.median.epoch_ms } else { acc.median.epoch_ms } },
+      latest: ForecastInstant { epoch_ms: if node.landing_lower_bound.latest.epoch_ms > acc.latest.epoch_ms { node.landing_lower_bound.latest.epoch_ms } else { acc.latest.epoch_ms } },
+    },
+  )
+}
+
+fn total_work_duration(
+  nodes: List<NodeScheduleForecast>,
+  bound: ForecastBound,
+) -> Millisecond {
+  let total = nodes |> fold(init: 0, f: (acc, node) =>
+    acc + millisecond_count(m: baseline_node_duration(
+      interval: node.calibrated_cycle_time,
+      bound: bound,
+    ))
+  )
+  millisecond(count: total)
+}
+
+fn total_work(
+  nodes: List<NodeScheduleForecast>,
+) -> TotalWork {
+  TotalWork { duration: DurationEstimateInterval {
+    minimum: total_work_duration(nodes: nodes, bound: EarliestBound),
+    median: total_work_duration(nodes: nodes, bound: MedianBound),
+    maximum: total_work_duration(nodes: nodes, bound: LatestBound),
+  } }
+}
+
+fn critical_path_minimum(
+  bound: ForecastLowerBoundInterval,
+  anchor: ForecastAnchorObservation,
+) -> CriticalPathMinimum {
+  CriticalPathMinimum { duration: DurationEstimateInterval {
+    minimum: millisecond(count: bound.earliest.epoch_ms - anchor.observed_at),
+    median: millisecond(count: bound.median.epoch_ms - anchor.observed_at),
+    maximum: millisecond(count: bound.latest.epoch_ms - anchor.observed_at),
+  } }
+}
+
+fn capacity_constrained_minimum(
+  total: TotalWork,
+  critical: CriticalPathMinimum,
+  worker_cap: Int,
+  belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption,
+) -> CapacityConstrainedMinimum {
+  CapacityConstrainedMinimum {
+    duration: DurationEstimateInterval {
+      minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
+      median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
+      maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
+    },
+    under_belt_slot_occupancy: belt_slot_occupancy,
+  }
+}
+
+fn completion_lower_bound_from_duration(
+  duration: DurationEstimateInterval,
+  anchor: ForecastAnchorObservation,
+) -> ForecastLowerBoundInterval {
+  ForecastLowerBoundInterval {
+    earliest: forecast_instant(anchor: anchor, duration: duration.minimum),
+    median: forecast_instant(anchor: anchor, duration: duration.median),
+    latest: forecast_instant(anchor: anchor, duration: duration.maximum),
+  }
+}
+
+fn parallelism_headroom(total: TotalWork, critical: CriticalPathMinimum) -> ParallelismHeadroom {
+  ParallelismHeadroom { ratio: ParallelismHeadroomInterval {
+    minimum: FieldOfFractions { num: total.duration.minimum, denom: critical.duration.minimum },
+    median: FieldOfFractions { num: total.duration.median, denom: critical.duration.median },
+    maximum: FieldOfFractions { num: total.duration.maximum, denom: critical.duration.maximum },
+  } }
+}
+
+fn schedule_forecast(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  observations: List<CycleTimeObservation>,
+  history_refusals: List<CycleTimeHistoryRefusal>,
+  population_exclusions: List<CycleTimePopulationExclusion>,
+  assumptions: ScheduleForecastAssumptions,
+  anchor: ForecastAnchorObservation,
+) -> ScheduleForecastResult {
+  let cycles = dependency_cycle_nodes(nodes: nodes, edges: edges)
+  let unknown_endpoints = unknown_dependency_endpoints(nodes: nodes, edges: edges)
+  let unsized = nodes |> filter(n => match n.sizing { Unsized => true Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => false }) |> map(n => n.node)
+  let non_positive_observation_nodes = observations
+    |> filter(observation => millisecond_count(m: observation.cycle_time) <= 0)
+    |> fold(init: [], f: (located, observation) =>
+      if any(located, node => node == observation.node) { located }
+      else { append(located, items: [observation.node]) }
+    )
+  let gaps = calibration_gaps(nodes: nodes, observations: observations)
+  let invalid_worker_cap = assumptions.worker_concurrency_cap.max_concurrent <= 0
+  let refusals = concat(
+    if count(nodes) == 0 { [ForecastGraphEmpty] } else { [] },
+    concat(
+      if count(cycles) > 0 { [DependencyCycle { nodes: cycles }] } else { [] },
+      concat(
+        if count(unknown_endpoints) > 0 { [DependencyEndpointUnknown { nodes: unknown_endpoints }] } else { [] },
+        concat(
+          if count(unsized) > 0 { [NodeUnsized { nodes: unsized }] } else { [] },
+          concat(
+            if count(non_positive_observation_nodes) > 0 { [CycleTimeObservationNonPositive { nodes: non_positive_observation_nodes }] } else { [] },
+            concat(
+              if count(gaps) > 0 { [NoCalibrationSample {
+              gaps: gaps,
+              population_exclusions: population_exclusions,
+              assumptions: assumptions,
+              scenario_adjustment: scenario_adjustment(assumptions: assumptions),
+              }] } else { [] },
+              concat(
+                if invalid_worker_cap { [WorkerConcurrencyCapInvalid { declared_cap: assumptions.worker_concurrency_cap.max_concurrent }] } else { [] },
+                if count(history_refusals) > 0 { [CalibrationHistoryRefused { refusals: history_refusals }] } else { [] },
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  if count(refusals) > 0 {
+    return ScheduleForecastRefused { refusals: refusals }
+  }
+  let builds = nodes |> map(node => build_node_forecast(
+    node: node,
+    nodes: nodes,
+    edges: edges,
+    observations: observations,
+    anchor: anchor,
+  ))
+  let build_refusals = builds |> flat_map(b => match b {
+    NodeForecastBuilt { forecast: _, median_path: _ } => []
+    NodeForecastBuildRefused { node } => [ForecastBuildRefused { node: node }]
+  })
+  if count(build_refusals) > 0 {
+    return ScheduleForecastRefused { refusals: build_refusals }
+  }
+  let forecasts = builds |> flat_map(b => match b {
+    NodeForecastBuilt { forecast, median_path: _ } => [forecast]
+    NodeForecastBuildRefused { node: _ } => []
+  })
+  let critical = builds |> fold(
+    init: CriticalPathChoice { median_epoch_ms: 0, path: [] },
+    f: (best, candidate) => match candidate {
+      NodeForecastBuildRefused { node: _ } => best
+      NodeForecastBuilt { forecast, median_path } =>
+        if forecast.landing_lower_bound.median.epoch_ms >= best.median_epoch_ms {
+          CriticalPathChoice { median_epoch_ms: forecast.landing_lower_bound.median.epoch_ms, path: median_path }
+        } else { best }
+    },
+  )
+  let dependency_bound = dependency_completion_lower_bound(nodes: forecasts, anchor: anchor)
+  let total = total_work(nodes: forecasts)
+  let critical_minimum = critical_path_minimum(bound: dependency_bound, anchor: anchor)
+  let capacity_minimum = capacity_constrained_minimum(
+    total: total,
+    critical: critical_minimum,
+    worker_cap: assumptions.worker_concurrency_cap.max_concurrent,
+    belt_slot_occupancy: assumptions.belt_slot_occupancy,
+  )
+  ScheduleForecastKnown { forecast: ScheduleForecast {
+    anchor: anchor,
+    assumptions: assumptions,
+    nodes: forecasts,
+    critical_path: critical.path,
+    calibration_population_exclusions: population_exclusions,
+    scenario_adjustment: scenario_adjustment(assumptions: assumptions),
+    lower_bounds: ScheduleLowerBounds {
+      total_work: total,
+      critical_path_minimum: critical_minimum,
+      capacity_constrained_minimum: capacity_minimum,
+      parallelism_headroom: parallelism_headroom(total: total, critical: critical_minimum),
+    },
+    completion_lower_bound: completion_lower_bound_from_duration(duration: capacity_minimum.duration, anchor: anchor),
+  } }
+}
+
+fn live_roadmap_schedule_forecast(
+  assumptions: ScheduleForecastAssumptions,
+  anchor: ForecastAnchorObservation,
+) -> ScheduleForecastResult {
+  let builds = roadmap_cycle_time_observation_builds()
+  schedule_forecast(
+    nodes: active_roadmap_nodes(),
+    edges: active_roadmap_edges(),
+    observations: accepted_cycle_time_observations(builds: builds),
+    history_refusals: cycle_time_history_refusals(builds: builds),
+    population_exclusions: cycle_time_population_exclusions(builds: builds),
+    assumptions: assumptions,
+    anchor: anchor,
+  )
+}
