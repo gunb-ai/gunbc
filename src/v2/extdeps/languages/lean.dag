@@ -37,6 +37,7 @@ import v2.std.compilers.lexing {
 }
 import v2.std.collection { Absent, List, Map, Optional, Present, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
+import extdeps.languages.lean.overflow { lean_upstream_fixed_width_overflow_returns_rule }
 import std.algebra { Cons, Empty }
 import std.integer {
   Signedness,
@@ -214,9 +215,9 @@ type LeanOverflowSemanticsAdmission
       reason: Symbol
     }
 
-data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9, msg_4683ea0a): authority src/v1/02_parse.dag parse_let — both arms omit skip_newlines before parse_expr after ExpectEq (typed EatConsumed and untyped EatUnchanged), so any let initializer continued on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline; parse_return is a suspected sibling (same parse_expr-after-keyword shape, not yet executed). skip_newlines is the pervasive idiom in 02_parse.dag; absence here is omission not grammar. CI reproduced on lean_overflow_semantics_witness_test.dag line 32 and lean.dag data decl line 215. Multiline generic record data is ordinary corpus-wide; multiline-ness alone and variant-vs-record RHS are refuted discriminators. Single-line initializers until v1 lane lands the parser fix. Dissolve-on: v1 parse_let and parse_return skip newlines after = / keyword, then restore multi-line witnesses."
+data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9, msg_4683ea0a): authority src/v1/02_parse.dag parse_let — both arms omit skip_newlines before parse_expr after ExpectEq (typed EatConsumed and untyped EatUnchanged), so any let initializer continued on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline; parse_return is a suspected sibling (same parse_expr-after-keyword shape, not yet executed). skip_newlines is the pervasive idiom in 02_parse.dag; absence here is omission not grammar. CI reproduced on lean_overflow_semantics_witness_note and lean_catalog_fixed_width_overflow. Multiline generic record data is ordinary corpus-wide; multiline-ness alone and variant-vs-record RHS are refuted discriminators. Single-line initializers until v1 lane lands the parser fix. Dissolve-on: v1 parse_let and parse_return skip newlines after = / keyword, then restore multi-line witnesses."
 
-data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
+data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: lean_upstream_fixed_width_overflow_returns_rule }
 
 fn lean_admit_fixed_width_overflow_semantics(
   semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
