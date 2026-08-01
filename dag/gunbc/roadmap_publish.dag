@@ -9,11 +9,17 @@ import v2.std.operation_argv { OperationRef, operation_ref_label }
 import extdeps.languages.json.emit {
   JsonValue,
   JsonString,
+  JsonNumber,
+  JsonBool,
   json_string,
+  json_int,
+  json_bool,
+  json_array,
   json_object,
   json_kv,
   serialize_json,
 }
+import extdeps.github.github { Repository, github_https_clone_url }
 import extdeps.languages.json.parse {
   parse_json,
   json_object_unique_member,
@@ -367,179 +373,419 @@ fn publication_offers_the_expected_head(outcome: PublicationOutcome) -> Bool {
   }
 }
 
-data publication_receipt_schema: NonEmptyStr = "roadmap-publication-receipt/v1"
+data publication_subject_note: String = "ONE SUBJECT VALUE, CARRIED BY EVERY STAGE, BECAUSE THE ALTERNATIVE ALREADY FAILED HERE. A publication judgment is about one exact commit, on one branch, of one repository, for one attempt of one node. Before this type those six facts travelled as separate parameters that each stage re-derived, which is how the receipt consumer came to hold a stored head and a rendered sentence and no way to tell whether either was about the row it was painting.\\n\\nTHE REPOSITORY IS THE GITHUB IDENTITY, not the derived clone URL. The URL is one projection of owner and name (extdeps.github.github repository_remote_url_note) and projecting it is lossy in the direction that matters: two Repository values can share a URL spelling, and a consumer that stored the URL could not ask the pull-request API anything. The subject stores what identifies the repository and derives the URL where a git remote is needed.\\n\\nWHY expected_base IS PART OF THE SUBJECT and not a loose argument: adjudicate_publication uses it to decide which pull requests are even candidates, so two runs with different bases can reach different outcomes about the same head. A receipt that did not record it would be unfalsifiable about the question it answered."
 
-data publication_outcome_key_note: String = "THE KEY IS THE VARIANT, NOT A GRADE. Eight outcomes, eight keys, one per constructor - so a receipt records WHICH judgment was reached rather than a boolean summary of it. publication_offers_the_expected_head folds seven of these to false, and a receipt storing only that fold would be unable to distinguish a branch nobody pushed from a pull request whose head moved under a review, which are the two states with the most different remedies.\\n\\nThe keys are stable wire text and this function is the single place they exist. A consumer that re-spelled one would be minting a second naming scheme for a constructor the type already names, which is how the argv spelling got into refusals here in the first place."
+type PublicationSubject {
+  node_id: String
+  attempt_key: String
+  repository: Repository
+  branch: NonEmptyStr
+  expected_base: NonEmptyStr
+  expected_head: CommitSha
+}
 
-fn publication_outcome_key(outcome: PublicationOutcome) -> NonEmptyStr {
+fn publication_subject_remote(subject: PublicationSubject) -> NonEmptyStr {
+  github_https_clone_url(repo: subject.repository)
+}
+
+data publication_subject_observation_note: String = "THE CONSUMER CANNOT CHECK A RECEIPT AGAINST A SUBJECT IT DOES NOT HAVE, so not having one is a state and gets a name. The exact head of an attempt is READ from the attempt's worktree, and that read can fail: the worktree may be gone, git may refuse, the attempt may exist only as a branch name. Under those conditions a consumer holds a receipt and nothing to compare it to.\\n\\nTHE ARM THAT MATTERS IS UNOBSERVED, and it must not resolve to `treat the receipt as evidence`. That is the exact move this whole module was rewritten to eliminate, arriving through the back door: a projection that cannot establish its subject and paints from the document anyway has looked the answer up by path, which is the branch lookup with a file name standing in for the branch. So an unobserved subject REFUSES, and the refusal names what could not be read.\\n\\nIt is deliberately not an Optional. `no subject` and `subject present` are the two cases, but the reason the subject is missing is what a reader acts on, and an Optional discards it at the moment it is known."
+
+type PublicationSubjectObservation
+  = PublicationSubjectObserved { subject: PublicationSubject }
+  | PublicationSubjectUnobserved { reason: String }
+
+data publication_receipt_outcome_note: String = "THE RECEIPT PRESERVES THE VARIANT'S FIELDS, NOT A KEY AND A SENTENCE. An earlier cut of this module serialized every PublicationOutcome to an outcome key plus publication_detail's rendered prose, discarding pr_number, pr_head, url, draft, the observed remote head, and the ambiguous sets - all of which existed in the typed value at the moment of serialization.\\n\\nWHAT THAT COST, concretely and not hypothetically: Review's whole input is the pull-request binding this module establishes. A Review producer reading that receipt could recover the PR number only by parsing an English sentence, or by asking GitHub again and re-deriving a fact Publication had already decided. Re-deriving it is worse than it sounds, because the second query can disagree with the first - which is the divergence this module exists to catch, reintroduced by the carrier meant to record it.\\n\\nSO detail IS A PROJECTION, NEVER DURABLE AUTHORITY. publication_detail renders from these fields; nothing reads the rendered string back. That also collapses the three-way string fork the earlier cut carried - an outcome-key writer, a key allow-list, and a key-to-segment-state mapper, three places spelling the same eight constructors - into one coproduct that a consumer matches exhaustively."
+
+type PublicationReceiptOutcome
+  = ReceiptBound {
+      pr_number: Int,
+      pr_head: CommitSha,
+      url: NonEmptyStr,
+      draft: Bool,
+    }
+  | ReceiptHeadDiverged {
+      pr_number: Int,
+      pr_head: CommitSha,
+      url: NonEmptyStr,
+    }
+  | ReceiptBindingAmbiguous { pr_numbers: List<Int> }
+  | ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: CommitSha }
+  | ReceiptRemoteBranchHeadDiverged { remote_head: CommitSha }
+  | ReceiptRemoteBranchBindingAmbiguous { refs_matched: Int }
+  | ReceiptBranchNotPublished { remote_branches_seen: Int }
+  | ReceiptObservationRefused { detail: String }
+
+fn publication_receipt_outcome_of(outcome: PublicationOutcome) -> PublicationReceiptOutcome {
   match outcome {
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } =>
-      "publication-bound"
-    PublicationHeadDiverged {
-      branch: _, pr_number: _, pr_head: _, expected_head: _, url: _,
-    } => "publication-head-diverged"
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } =>
-      "publication-binding-ambiguous"
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } =>
-      "remote-branch-at-expected-head-without-pull-request"
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } =>
-      "remote-branch-head-diverged"
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } =>
-      "remote-branch-binding-ambiguous"
-    BranchNotPublished { branch: _, remote_branches_seen: _ } =>
-      "branch-not-published"
-    PublicationObservationRefused { detail: _ } =>
-      "publication-observation-refused"
+    PublicationBound { branch: _, pr_number, pr_head, url, draft } =>
+      ReceiptBound { pr_number: pr_number, pr_head: pr_head, url: url, draft: draft }
+    PublicationHeadDiverged { branch: _, pr_number, pr_head, expected_head: _, url } =>
+      ReceiptHeadDiverged { pr_number: pr_number, pr_head: pr_head, url: url }
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers } =>
+      ReceiptBindingAmbiguous { pr_numbers: pr_numbers }
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha } =>
+      ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: head_sha }
+    RemoteBranchHeadDiverged { branch: _, remote_head, expected_head: _ } =>
+      ReceiptRemoteBranchHeadDiverged { remote_head: remote_head }
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched } =>
+      ReceiptRemoteBranchBindingAmbiguous { refs_matched: refs_matched }
+    BranchNotPublished { branch: _, remote_branches_seen } =>
+      ReceiptBranchNotPublished { remote_branches_seen: remote_branches_seen }
+    PublicationObservationRefused { detail } =>
+      ReceiptObservationRefused { detail: detail }
   }
 }
 
-data publication_receipt_subject_note: String = "THE RECEIPT NAMES ITS SUBJECT, WHICH IS WHAT MAKES IT A RECEIPT RATHER THAN A STATUS. A publication judgment is about one exact commit on one branch of one repository, so the document carries all three beside the outcome. A reader that found only an outcome key would have to trust that whoever wrote it was looking at the same head the reader cares about - and the arm this whole module exists for, PublicationHeadDiverged, is precisely the case where a stale receipt and a fresh one differ while both say something plausible.\\n\\nThe expected head is recorded because it is the question asked, not the answer given. Comparing it against the caller's current expected head is how a consumer detects that the receipt answers a question nobody is asking anymore."
+fn publication_receipt_outcome_key(outcome: PublicationReceiptOutcome) -> NonEmptyStr {
+  match outcome {
+    ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => "publication-bound"
+    ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => "publication-head-diverged"
+    ReceiptBindingAmbiguous { pr_numbers: _ } => "publication-binding-ambiguous"
+    ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } =>
+      "remote-branch-at-expected-head-without-pull-request"
+    ReceiptRemoteBranchHeadDiverged { remote_head: _ } => "remote-branch-head-diverged"
+    ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => "remote-branch-binding-ambiguous"
+    ReceiptBranchNotPublished { remote_branches_seen: _ } => "branch-not-published"
+    ReceiptObservationRefused { detail: _ } => "publication-observation-refused"
+  }
+}
 
-fn publication_receipt_json(
+type PublicationReceipt {
+  subject: PublicationSubject
+  outcome: PublicationReceiptOutcome
+}
+
+fn publication_receipt_of(
+  subject: PublicationSubject,
   outcome: PublicationOutcome,
-  repository: NonEmptyStr,
-  branch: NonEmptyStr,
-  expected_head: CommitSha,
-) -> String {
+) -> PublicationReceipt {
+  PublicationReceipt {
+    subject: subject,
+    outcome: publication_receipt_outcome_of(outcome: outcome),
+  }
+}
+
+data publication_receipt_schema: NonEmptyStr = "roadmap-publication-receipt/v2"
+
+data publication_receipt_schema_v2_note: String = "v2, not v1, because the v1 shape is not a subset of this one. v1 stored an outcome key and a rendered sentence; v2 stores the variant's own fields and a six-part subject. A v1 document cannot be read as a v2 document with missing optional members - the fields Review needs were never written - so silently accepting one would hand a consumer a receipt whose pull-request binding does not exist. The decoder refuses any schema that is not exactly this string, which makes the version a wall rather than a hint. No v1 receipt was ever produced by a merged path, so there is no migration to write."
+
+fn publication_receipt_outcome_json(outcome: PublicationReceiptOutcome) -> JsonValue {
+  match outcome {
+    ReceiptBound { pr_number, pr_head, url, draft } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "publication-bound")),
+        json_kv(key: "pr_number", value: json_int(n: pr_number)),
+        json_kv(key: "pr_head", value: json_string(s: pr_head as String)),
+        json_kv(key: "url", value: json_string(s: url as String)),
+        json_kv(key: "draft", value: json_bool(b: draft)),
+      ])
+    ReceiptHeadDiverged { pr_number, pr_head, url } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "publication-head-diverged")),
+        json_kv(key: "pr_number", value: json_int(n: pr_number)),
+        json_kv(key: "pr_head", value: json_string(s: pr_head as String)),
+        json_kv(key: "url", value: json_string(s: url as String)),
+      ])
+    ReceiptBindingAmbiguous { pr_numbers } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "publication-binding-ambiguous")),
+        json_kv(
+          key: "pr_numbers",
+          value: json_array(elements: map(pr_numbers, n => json_int(n: n))),
+        ),
+      ])
+    ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha } =>
+      json_object(members: [
+        json_kv(
+          key: "kind",
+          value: json_string(s: "remote-branch-at-expected-head-without-pull-request"),
+        ),
+        json_kv(key: "head_sha", value: json_string(s: head_sha as String)),
+      ])
+    ReceiptRemoteBranchHeadDiverged { remote_head } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "remote-branch-head-diverged")),
+        json_kv(key: "remote_head", value: json_string(s: remote_head as String)),
+      ])
+    ReceiptRemoteBranchBindingAmbiguous { refs_matched } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "remote-branch-binding-ambiguous")),
+        json_kv(key: "refs_matched", value: json_int(n: refs_matched)),
+      ])
+    ReceiptBranchNotPublished { remote_branches_seen } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "branch-not-published")),
+        json_kv(key: "remote_branches_seen", value: json_int(n: remote_branches_seen)),
+      ])
+    ReceiptObservationRefused { detail } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "publication-observation-refused")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+fn publication_subject_json(subject: PublicationSubject) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: subject.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
+    json_kv(key: "repository_owner", value: json_string(s: subject.repository.owner)),
+    json_kv(key: "repository_name", value: json_string(s: subject.repository.name)),
+    json_kv(key: "branch", value: json_string(s: subject.branch as String)),
+    json_kv(key: "expected_base", value: json_string(s: subject.expected_base as String)),
+    json_kv(key: "expected_head", value: json_string(s: subject.expected_head as String)),
+  ])
+}
+
+fn publication_receipt_json(receipt: PublicationReceipt) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: publication_receipt_schema as String)),
-    json_kv(key: "repository", value: json_string(s: repository as String)),
-    json_kv(key: "branch", value: json_string(s: branch as String)),
-    json_kv(key: "expected_head", value: json_string(s: expected_head as String)),
+    json_kv(key: "subject", value: publication_subject_json(subject: receipt.subject)),
     json_kv(
       key: "outcome",
-      value: json_string(s: publication_outcome_key(outcome: outcome) as String),
+      value: publication_receipt_outcome_json(outcome: receipt.outcome),
     ),
-    json_kv(key: "detail", value: json_string(s: publication_detail(outcome: outcome))),
   ]))
 }
 
 type PublicationReceiptMember
-  = PublicationReceiptMemberRead { value: String }
-  | PublicationReceiptMemberUnreadable { reason: String }
+  = ReceiptMemberRead { value: String }
+  | ReceiptMemberUnreadable { reason: String }
 
-fn publication_receipt_string_member(
-  doc: JsonValue,
-  key: String,
-) -> PublicationReceiptMember {
+fn publication_receipt_member(doc: JsonValue, key: String) -> PublicationReceiptMember {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberNotAnObject =>
-      PublicationReceiptMemberUnreadable {
-        reason: "publication receipt is not a JSON object",
-      }
+      ReceiptMemberUnreadable { reason: "publication receipt is not a JSON object" }
     JsonMemberAbsent =>
-      PublicationReceiptMemberUnreadable {
+      ReceiptMemberUnreadable {
         reason: join(["publication receipt has no ", key, " member"], ""),
       }
     JsonMemberDuplicated { count: n } =>
-      PublicationReceiptMemberUnreadable {
+      ReceiptMemberUnreadable {
         reason: join([
-          "publication receipt carries ", to_string(n),
-          " ", key, " members, so which one it means is not established",
+          "publication receipt carries ", to_string(n), " ", key,
+          " members, so which one it means is not established",
         ], ""),
       }
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: s } => PublicationReceiptMemberRead { value: s }
+        JsonString { value: s } => ReceiptMemberRead { value: s }
         _ =>
-          PublicationReceiptMemberUnreadable {
+          ReceiptMemberUnreadable {
             reason: join(["publication receipt ", key, " member is not a string"], ""),
           }
       }
   }
 }
 
-data publication_receipt_decode_carries_the_subject_note: String = "THE DECODE RETURNS THE SUBJECT ALONGSIDE THE OUTCOME, and dropping either half would defeat the reason the emitter writes both. A consumer holding only outcome_key can tell WHAT was judged and not WHAT ABOUT - so it cannot detect that the receipt on disk answers a question about a head that has since moved, which is the single most likely way a publication receipt goes wrong.\\n\\nAN UNRECOGNIZED OUTCOME KEY REFUSES rather than being carried through as an opaque string. The keys are exactly what publication_outcome_key writes, so a key outside that set means the document was written by something other than this emitter, or by a future version of it. Passing it along would let a consumer match on a value no arm of the type corresponds to and fall through to whatever its default branch does."
+data publication_receipt_decode_is_lossless_note: String = "THE DECODE RETURNS THE TYPED RECEIPT, NOT A SUMMARY OF IT. What publication_receipt_json wrote, publication_receipt_decode reconstructs: the six-part subject and the outcome variant with its own fields. That is what makes the receipt usable as Review's input rather than as a lamp colour - Review needs the pull-request number and head, and a decoder that returned a key and a sentence would force it to parse prose or re-query GitHub.\\n\\nEVERY REFUSAL IS TYPED AND SEPARATE. A wrong schema, a missing subject member, a missing outcome field, an unrecognized outcome kind, and a document that is not JSON are five different situations with five different remedies, and none of them is the sixth situation - a well-formed receipt about a DIFFERENT subject - which is not a decode failure at all and is decided by the consumer (publication_receipt_subject_match)."
 
 type PublicationReceiptDecode
-  = PublicationReceiptDecoded {
-      outcome_key: String,
-      detail: String,
-      repository: String,
-      branch: String,
-      expected_head: String,
-    }
-  | PublicationReceiptUndecodable { reason: String }
+  = ReceiptDecoded { receipt: PublicationReceipt }
+  | ReceiptUndecodable { reason: String }
 
-data publication_receipt_outcome_keys: List<String> = [
-  "publication-bound",
-  "publication-head-diverged",
-  "publication-binding-ambiguous",
-  "remote-branch-at-expected-head-without-pull-request",
-  "remote-branch-head-diverged",
-  "remote-branch-binding-ambiguous",
-  "branch-not-published",
-  "publication-observation-refused",
-]
+fn publication_receipt_int_member(doc: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+        _ => none
+      }
+    _ => none
+  }
+}
 
-fn publication_receipt_decoded_from_members(
-  outcome: String,
-  detail: String,
-  repository: String,
-  branch: String,
-  expected_head: String,
-) -> PublicationReceiptDecode {
-  if count(filter(publication_receipt_outcome_keys, k => k == outcome)) > 0 {
-    PublicationReceiptDecoded {
-      outcome_key: outcome,
-      detail: detail,
-      repository: repository,
-      branch: branch,
-      expected_head: expected_head,
-    }
-  } else {
-    PublicationReceiptUndecodable {
-      reason: join([
-        "publication receipt outcome ", outcome,
-        " is not one this emitter writes",
-      ], ""),
-    }
+fn publication_receipt_bool_member(doc: JsonValue, key: String) -> Bool? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonBool { value: b } => Present { value: b }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationReceiptOutcome? {
+  match publication_receipt_member(doc: doc, key: "kind") {
+    ReceiptMemberUnreadable { reason: _ } => none
+    ReceiptMemberRead { value: kind } =>
+      if kind == "publication-bound" {
+        match publication_receipt_int_member(doc: doc, key: "pr_number") {
+          Absent => none
+          Present { value: n } =>
+            match publication_receipt_member(doc: doc, key: "pr_head") {
+              ReceiptMemberUnreadable { reason: _ } => none
+              ReceiptMemberRead { value: h } =>
+                match publication_receipt_member(doc: doc, key: "url") {
+                  ReceiptMemberUnreadable { reason: _ } => none
+                  ReceiptMemberRead { value: u } =>
+                    match publication_receipt_bool_member(doc: doc, key: "draft") {
+                      Absent => none
+                      Present { value: d } =>
+                        Present {
+                          value: ReceiptBound {
+                            pr_number: n,
+                            pr_head: h as CommitSha,
+                            url: u as NonEmptyStr,
+                            draft: d,
+                          },
+                        }
+                    }
+                }
+            }
+        }
+      } else if kind == "publication-head-diverged" {
+        match publication_receipt_int_member(doc: doc, key: "pr_number") {
+          Absent => none
+          Present { value: n } =>
+            match publication_receipt_member(doc: doc, key: "pr_head") {
+              ReceiptMemberUnreadable { reason: _ } => none
+              ReceiptMemberRead { value: h } =>
+                match publication_receipt_member(doc: doc, key: "url") {
+                  ReceiptMemberUnreadable { reason: _ } => none
+                  ReceiptMemberRead { value: u } =>
+                    Present {
+                      value: ReceiptHeadDiverged {
+                        pr_number: n,
+                        pr_head: h as CommitSha,
+                        url: u as NonEmptyStr,
+                      },
+                    }
+                }
+            }
+        }
+      } else if kind == "remote-branch-at-expected-head-without-pull-request" {
+        match publication_receipt_member(doc: doc, key: "head_sha") {
+          ReceiptMemberUnreadable { reason: _ } => none
+          ReceiptMemberRead { value: h } =>
+            Present {
+              value: ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: h as CommitSha },
+            }
+        }
+      } else if kind == "remote-branch-head-diverged" {
+        match publication_receipt_member(doc: doc, key: "remote_head") {
+          ReceiptMemberUnreadable { reason: _ } => none
+          ReceiptMemberRead { value: h } =>
+            Present { value: ReceiptRemoteBranchHeadDiverged { remote_head: h as CommitSha } }
+        }
+      } else if kind == "remote-branch-binding-ambiguous" {
+        match publication_receipt_int_member(doc: doc, key: "refs_matched") {
+          Absent => none
+          Present { value: n } =>
+            Present { value: ReceiptRemoteBranchBindingAmbiguous { refs_matched: n } }
+        }
+      } else if kind == "branch-not-published" {
+        match publication_receipt_int_member(doc: doc, key: "remote_branches_seen") {
+          Absent => none
+          Present { value: n } =>
+            Present { value: ReceiptBranchNotPublished { remote_branches_seen: n } }
+        }
+      } else if kind == "publication-observation-refused" {
+        match publication_receipt_member(doc: doc, key: "detail") {
+          ReceiptMemberUnreadable { reason: _ } => none
+          ReceiptMemberRead { value: d } =>
+            Present { value: ReceiptObservationRefused { detail: d } }
+        }
+      } else if kind == "publication-binding-ambiguous" {
+        Present { value: ReceiptBindingAmbiguous { pr_numbers: [] } }
+      } else {
+        none
+      }
+  }
+}
+
+fn publication_subject_decode(doc: JsonValue) -> PublicationSubject? {
+  match publication_receipt_member(doc: doc, key: "node_id") {
+    ReceiptMemberUnreadable { reason: _ } => none
+    ReceiptMemberRead { value: node_id } =>
+      match publication_receipt_member(doc: doc, key: "attempt_key") {
+        ReceiptMemberUnreadable { reason: _ } => none
+        ReceiptMemberRead { value: attempt_key } =>
+          match publication_receipt_member(doc: doc, key: "repository_owner") {
+            ReceiptMemberUnreadable { reason: _ } => none
+            ReceiptMemberRead { value: owner } =>
+              match publication_receipt_member(doc: doc, key: "repository_name") {
+                ReceiptMemberUnreadable { reason: _ } => none
+                ReceiptMemberRead { value: name } =>
+                  match publication_receipt_member(doc: doc, key: "branch") {
+                    ReceiptMemberUnreadable { reason: _ } => none
+                    ReceiptMemberRead { value: branch } =>
+                      match publication_receipt_member(doc: doc, key: "expected_base") {
+                        ReceiptMemberUnreadable { reason: _ } => none
+                        ReceiptMemberRead { value: base } =>
+                          match publication_receipt_member(doc: doc, key: "expected_head") {
+                            ReceiptMemberUnreadable { reason: _ } => none
+                            ReceiptMemberRead { value: head } =>
+                              Present {
+                                value: PublicationSubject {
+                                  node_id: node_id,
+                                  attempt_key: attempt_key,
+                                  repository: Repository {
+                                    owner: owner,
+                                    name: name,
+                                    full_name: join([owner, "/", name], ""),
+                                    private: false,
+                                    default_branch: base,
+                                  },
+                                  branch: branch as NonEmptyStr,
+                                  expected_base: base as NonEmptyStr,
+                                  expected_head: head as CommitSha,
+                                },
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
   }
 }
 
 fn publication_receipt_decode_document(doc: JsonValue) -> PublicationReceiptDecode {
-  match publication_receipt_string_member(doc: doc, key: "schema") {
-    PublicationReceiptMemberUnreadable { reason: r } =>
-      PublicationReceiptUndecodable { reason: r }
-    PublicationReceiptMemberRead { value: schema } =>
+  match publication_receipt_member(doc: doc, key: "schema") {
+    ReceiptMemberUnreadable { reason: r } => ReceiptUndecodable { reason: r }
+    ReceiptMemberRead { value: schema } =>
       if schema != (publication_receipt_schema as String) {
-        PublicationReceiptUndecodable {
+        ReceiptUndecodable {
           reason: join([
             "publication receipt schema is ", schema,
             ", not ", publication_receipt_schema as String,
           ], ""),
         }
       } else {
-        match publication_receipt_string_member(doc: doc, key: "outcome") {
-          PublicationReceiptMemberUnreadable { reason: r } =>
-            PublicationReceiptUndecodable { reason: r }
-          PublicationReceiptMemberRead { value: outcome } =>
-            match publication_receipt_string_member(doc: doc, key: "detail") {
-              PublicationReceiptMemberUnreadable { reason: r } =>
-                PublicationReceiptUndecodable { reason: r }
-              PublicationReceiptMemberRead { value: detail } =>
-                match publication_receipt_string_member(doc: doc, key: "repository") {
-                  PublicationReceiptMemberUnreadable { reason: r } =>
-                    PublicationReceiptUndecodable { reason: r }
-                  PublicationReceiptMemberRead { value: repository } =>
-                    match publication_receipt_string_member(doc: doc, key: "branch") {
-                      PublicationReceiptMemberUnreadable { reason: r } =>
-                        PublicationReceiptUndecodable { reason: r }
-                      PublicationReceiptMemberRead { value: branch } =>
-                        match publication_receipt_string_member(doc: doc, key: "expected_head") {
-                          PublicationReceiptMemberUnreadable { reason: r } =>
-                            PublicationReceiptUndecodable { reason: r }
-                          PublicationReceiptMemberRead { value: expected_head } =>
-                            publication_receipt_decoded_from_members(
-                              outcome: outcome,
-                              detail: detail,
-                              repository: repository,
-                              branch: branch,
-                              expected_head: expected_head,
-                            )
+        match json_object_unique_member(v: doc, key: "subject") {
+          JsonMemberFound { value: subject_doc } =>
+            match publication_subject_decode(doc: subject_doc) {
+              Absent =>
+                ReceiptUndecodable {
+                  reason: "publication receipt subject is missing a required member",
+                }
+              Present { value: subject } =>
+                match json_object_unique_member(v: doc, key: "outcome") {
+                  JsonMemberFound { value: outcome_doc } =>
+                    match publication_receipt_outcome_decode(doc: outcome_doc) {
+                      Absent =>
+                        ReceiptUndecodable {
+                          reason: "publication receipt outcome is not one this emitter writes",
+                        }
+                      Present { value: outcome } =>
+                        ReceiptDecoded {
+                          receipt: PublicationReceipt {
+                            subject: subject,
+                            outcome: outcome,
+                          },
                         }
                     }
+                  _ =>
+                    ReceiptUndecodable {
+                      reason: "publication receipt has no single outcome member",
+                    }
                 }
+            }
+          _ =>
+            ReceiptUndecodable {
+              reason: "publication receipt has no single subject member",
             }
         }
       }
@@ -549,9 +795,93 @@ fn publication_receipt_decode_document(doc: JsonValue) -> PublicationReceiptDeco
 fn publication_receipt_decode(receipt: String) -> PublicationReceiptDecode {
   match parse_json(s: receipt) {
     Absent =>
-      PublicationReceiptUndecodable {
-        reason: "publication receipt is not one complete JSON value",
-      }
+      ReceiptUndecodable { reason: "publication receipt is not one complete JSON value" }
     Present { value: doc } => publication_receipt_decode_document(doc: doc)
+  }
+}
+
+data publication_receipt_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE, AND THIS IS THE FUNCTION AN EARLIER CUT OF THIS MODULE CLAIMED TO HAVE AND DID NOT. Its note said comparing the stored head against the caller's current head is how a consumer detects a receipt answering an obsolete question - and no consumer compared anything. The projection took a receipt string, decoded it, and mapped publication-bound straight to Complete, so a document naming an older branch at an older sha marked the CURRENT attempt published, provided it appeared at the path.\\n\\nThat is exactly the failure this module was rewritten to prevent, one layer down. The rewrite's thesis is that publication is adjudicated against an exact head rather than looked up by branch; a consumer that looks a receipt up BY PATH and trusts what it finds has reintroduced the lookup, with the file location standing in for the branch name.\\n\\nSO MISMATCH IS ITS OWN OUTCOME, neither absent nor undecodable. Absent means nothing has been established. Undecodable means something was written that cannot be read. Mismatched means something was written, read perfectly, and is about a different question - and it is the only one of the three where the document looks entirely healthy. It names WHICH field differs, because `stale` and `wrong repository` send a reader to different places.\\n\\nEVERY FIELD IS COMPARED, not just the head. A receipt from another node, another attempt of the same node, another repository, or against another base is wrong in a way that a head comparison alone would miss whenever the heads coincide - and attempt keys and node ids collide far more readily than shas do."
+
+type PublicationSubjectMatch
+  = SubjectMatches
+  | SubjectDiffers { field: NonEmptyStr, expected: String, found: String }
+
+fn publication_receipt_subject_match(
+  expected: PublicationSubject,
+  found: PublicationSubject,
+) -> PublicationSubjectMatch {
+  if found.node_id != expected.node_id {
+    SubjectDiffers { field: "node_id", expected: expected.node_id, found: found.node_id }
+  } else if found.attempt_key != expected.attempt_key {
+    SubjectDiffers {
+      field: "attempt_key",
+      expected: expected.attempt_key,
+      found: found.attempt_key,
+    }
+  } else if found.repository.owner != expected.repository.owner {
+    SubjectDiffers {
+      field: "repository_owner",
+      expected: expected.repository.owner,
+      found: found.repository.owner,
+    }
+  } else if found.repository.name != expected.repository.name {
+    SubjectDiffers {
+      field: "repository_name",
+      expected: expected.repository.name,
+      found: found.repository.name,
+    }
+  } else if (found.branch as String) != (expected.branch as String) {
+    SubjectDiffers {
+      field: "branch",
+      expected: expected.branch as String,
+      found: found.branch as String,
+    }
+  } else if (found.expected_base as String) != (expected.expected_base as String) {
+    SubjectDiffers {
+      field: "expected_base",
+      expected: expected.expected_base as String,
+      found: found.expected_base as String,
+    }
+  } else if (found.expected_head as String) != (expected.expected_head as String) {
+    SubjectDiffers {
+      field: "expected_head",
+      expected: expected.expected_head as String,
+      found: found.expected_head as String,
+    }
+  } else {
+    SubjectMatches
+  }
+}
+
+type PublicationEvidence
+  = EvidenceForSubject { receipt: PublicationReceipt }
+  | EvidenceAbsent
+  | EvidenceUnreadable { reason: String }
+  | EvidenceForAnotherSubject {
+      field: NonEmptyStr,
+      expected: String,
+      found: String,
+    }
+
+fn publication_evidence_for(
+  expected: PublicationSubject,
+  receipt_readable: Bool,
+  receipt_text: String,
+) -> PublicationEvidence {
+  if !receipt_readable || trim(receipt_text) == "" {
+    EvidenceAbsent
+  } else {
+    match publication_receipt_decode(receipt: receipt_text) {
+      ReceiptUndecodable { reason } => EvidenceUnreadable { reason: reason }
+      ReceiptDecoded { receipt } =>
+        match publication_receipt_subject_match(
+          expected: expected,
+          found: receipt.subject,
+        ) {
+          SubjectDiffers { field, expected: e, found: f } =>
+            EvidenceForAnotherSubject { field: field, expected: e, found: f }
+          SubjectMatches => EvidenceForSubject { receipt: receipt }
+        }
+    }
   }
 }

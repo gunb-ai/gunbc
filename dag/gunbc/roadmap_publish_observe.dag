@@ -13,8 +13,10 @@ import gunbc.roadmap_publish {
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure,
   RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
-  PullRequestObservation, PullRequestsRead,
+  PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
   PublicationOutcome,
+  PublicationSubject,
+  publication_subject_remote,
   adjudicate_publication,
 }
 import extdeps.github.github { Repository, github_https_clone_url }
@@ -94,33 +96,65 @@ fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
   )
 }
 
-data pull_observation_transport_bound_note: String = "ONE ARM OF PullRequestObservation IS REACHABLE FROM THIS TRANSPORT AND ONE IS NOT, and saying so is the point of this note rather than an apology for it. github.Pulls.List declares its outputs for the 200 case, so a successful read builds PullRequestsRead here. A non-2xx does NOT arrive as a value: the REST dispatch raises, so control never returns to this function and PullRequestsUnreadable cannot be constructed from a failed call - only by a caller that already holds one.\\n\\nThat asymmetry against the remote-branch half above is not incidental. git.Core.LsRemoteHeads declares exit_code and stderr as outputs, so its failure IS a value; the REST path has no equivalent, which is exactly the response-table realization tracked as its own lane. Until that lands, the honest statement is that this function observes success and dies on failure, and the refusal arm remains witness-constructible rather than transport-reachable. It is NOT dressed up by wrapping the call in a fabricated refusal that no failure would ever produce.\\n\\nWhy the arm still exists in the type: a caller CAN hold a refusal - a prior read that failed, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it would push the ignorance-as-answer conflation back into every other producer."
+data pull_observation_transport_bound_note: String = "THE FAILURE PATH IS CLOSED ON THE SIDE THAT IS DECIDABLE HERE AND OPEN ON THE SIDE THAT IS NOT, and the boundary between them is stated rather than blurred.\\n\\nCLOSED: NO CREDENTIAL. A publication read without a usable token is not a failed read, it is a read that must not be attempted. Sending an empty bearer token produces a 401 whose only content is that we sent nothing, so calling in order to discover what we already know converts a decidable local fact into a transport failure - and the REST path turns transport failures into raises, so the decidable fact would arrive as the least tractable kind of event. PublicationCredential makes the fact a value before the call, and the arm is reachable in a hermetic witness by construction. This is the failure mode a fresh host actually hits.\\n\\nOPEN: NON-2XX FROM A REAL CALL. github.Pulls.List declares 200/401/404/422/5xx, and the realization honours only 200. dispatch_rest in the v1 seed returns Err(InterpError::TypeError) for any status at or above 400, so control never returns to this function and PullRequestsUnreadable cannot be constructed from a failed call - only by a caller that already holds one. That is a REALIZATION gap, not a modeling gap: the response table is declared and the handler ignores it.\\n\\nWHY IT IS NOT CLOSED HERE. Two moves would close it and both are worse than the gap. Realizing the response table is a v1 seed change, which is the direction the seed is supposed to shrink in and does not belong inside a publication slice. Reading pull requests through a second operation whose failure IS a value - a gh CLI shell op beside the REST op - forks one dependency operation once per transport, which is the exact N-transport fork DESIGN 3 names; the corpus has no gh model today and this lane must not be the reason it gains a forked one.\\n\\nSo the residual is one class, named: a non-2xx pull-request read raises instead of refusing. Dissolve-on: the REST response-table realization, after which observe_pull_requests matches the declared statuses and this note's OPEN half deletes.\\n\\nWhy the arm still exists in the type: a caller CAN hold a refusal - an absent credential, a prior read that failed, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it through one transport would push the ignorance-as-answer conflation back into every other producer."
 
-fn observe_pull_requests(auth_token: Secret, repo: Repository) -> PullRequestObservation {
-  let result = github.Pulls.List(
-    auth_token: auth_token,
-    owner: repo.owner,
-    repo: repo.name,
-  )
-  PullRequestsRead { pulls: result.pulls }
+type PublicationCredential
+  = PublicationCredentialPresent { token: Secret }
+  | PublicationCredentialAbsent { reason: String }
+
+fn observe_pull_requests(
+  credential: PublicationCredential,
+  repo: Repository,
+) -> PullRequestObservation {
+  match credential {
+    PublicationCredentialAbsent { reason } =>
+      PullRequestsUnreadable {
+        detail: join([
+          "the pull requests of ",
+          repo.full_name,
+          " were not read because no usable credential was available: ",
+          reason,
+        ], ""),
+      }
+    PublicationCredentialPresent { token } => {
+      let result = github.Pulls.List(
+        auth_token: token,
+        owner: repo.owner,
+        repo: repo.name,
+      )
+      PullRequestsRead { pulls: result.pulls }
+    }
+  }
 }
 
-data repository_bound_observation_note: String = "BOTH READS NAME THE SAME REPOSITORY BY CONSTRUCTION, WHICH IS THE WHOLE REASON THIS FUNCTION EXISTS RATHER THAN TWO CALLS AT A CALL SITE. The remote is projected from the same Repository that supplies owner and name to the pull-request read, so there is no arrangement of arguments in which the ref advertisement and the pull request list describe different repositories.\\n\\nThe alternative that this deliberately forecloses is reading refs from the local alias `origin` while reading pull requests from an owner/name pair. Those two reads are only COINCIDENTALLY about one repository: `origin` is a fact about one checkout's configuration, and a checkout whose origin points elsewhere would produce a publication judgment that looks entirely ordinary and is about the wrong subject. Nothing in either result would reveal it. See repository_remote_url_note in extdeps.github.github for the projection and its citation.\\n\\nThis function calls the transport and adjudicates in one breath, which the observer note above otherwise warns against - so the boundary is stated: it performs no judgment of its own. It reads, and hands both observations to adjudicate_publication unchanged. Every arm of the result is decided there, over values, and remains reachable in a hermetic witness through that function directly."
+data repository_bound_observation_note: String = "BOTH READS NAME THE SAME REPOSITORY BY CONSTRUCTION, WHICH IS THE WHOLE REASON THIS FUNCTION EXISTS RATHER THAN TWO CALLS AT A CALL SITE. The remote is projected from the same Repository that supplies owner and name to the pull-request read, so there is no arrangement of arguments in which the ref advertisement and the pull request list describe different repositories.\\n\\nThe alternative that this deliberately forecloses is reading refs from the local alias `origin` while reading pull requests from an owner/name pair. Those two reads are only COINCIDENTALLY about one repository: `origin` is a fact about one checkout's configuration, and a checkout whose origin points elsewhere would produce a publication judgment that looks entirely ordinary and is about the wrong subject. Nothing in either result would reveal it. See repository_remote_url_note in extdeps.github.github for the projection and its citation.\\n\\nIT TAKES THE SUBJECT, NOT FOUR LOOSE FIELDS. The four arguments this function used to take are exactly four of PublicationSubject's six, so a caller could observe against one repository and one head while writing a receipt whose subject named others - and both values would look entirely ordinary. Taking the subject makes the observation and the receipt provably about the same question, because there is only one value.\\n\\nThis function calls the transport and adjudicates in one breath, which the observer note above otherwise warns against - so the boundary is stated: it performs no judgment of its own. It reads, and hands both observations to adjudicate_publication unchanged. Every arm of the result is decided there, over values, and remains reachable in a hermetic witness through that function directly."
 
-fn observe_publication_for_repository(
-  auth_token: Secret,
-  repo: Repository,
-  branch: NonEmptyStr,
-  expected_base: NonEmptyStr,
-  expected_head: CommitSha,
+fn observe_publication_for_subject(
+  credential: PublicationCredential,
+  subject: PublicationSubject,
 ) -> PublicationOutcome {
-  let remote = github_https_clone_url(repo: repo)
+  let remote = publication_subject_remote(subject: subject)
   adjudicate_publication(
-    pulls: observe_pull_requests(auth_token: auth_token, repo: repo),
+    pulls: observe_pull_requests(
+      credential: credential,
+      repo: subject.repository,
+    ),
     remotes: observe_remote_branches(remote: remote),
     remote: remote,
-    branch: branch,
-    expected_base: expected_base,
-    expected_head: expected_head,
+    branch: subject.branch,
+    expected_base: subject.expected_base,
+    expected_head: subject.expected_head,
   )
+}
+
+data gunbc_repository_single_authority_note: String = "ONE VALUE FOR THE REPOSITORY THIS PROJECT LIVES IN, because there were already three spellings of it and this lane would have made a fourth. gunbc.runner_host_deploy carries `org: gunb-ai`, gunbc.tools.review defaults a parameter to `owner: gunb-ai`, and gunbc.tools.review_codex declares `owner` and `repo` as separate data rows. Each is correct today and each can drift alone; none of them is a Repository, so none can be handed to github.Pulls.List or projected to a clone URL without re-pairing the two halves by hand.\\n\\nWHAT THIS DOES AND DOES NOT CLAIM: it is the authority for THIS lane, and the three sites above are not migrated here - that is a separate change touching deploy and review tooling, and folding it into a publication slice would bury it. What it does prevent is the publication lane adding a fourth. Dissolve-on: the three existing sites consume this value and their local spellings delete."
+
+fn gunbc_repository() -> Repository {
+  Repository {
+    owner: "gunb-ai",
+    name: "gunbc",
+    full_name: "gunb-ai/gunbc",
+    private: false,
+    default_branch: "main",
+  }
 }

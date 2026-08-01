@@ -6,6 +6,7 @@ import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
+import gunbc.roadmap_publish { PublicationSubjectUnobserved }
 import gunbc.roadmap_workflow_stage {
   workflow_segment_kind_key,
   workflow_segment_state_key,
@@ -664,6 +665,9 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: receipt != "",
     validation_receipt: receipt,
+    publication_subject: PublicationSubjectUnobserved {
+      reason: "publication is not the subject of these claims and this fixture establishes no head",
+    },
     publication_receipt_readable: false,
     publication_receipt: "",
   }

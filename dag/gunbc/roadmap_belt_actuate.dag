@@ -46,11 +46,11 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_oracle_revision_path_for_instance,
   dispatch_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_attempt_validation_receipt_path_for_instance,
+  dispatch_attempt_publication_receipt_path_for_instance,
   dispatch_current_attempt_oracle_identity_path_for_instance,
   dispatch_current_attempt_oracle_revision_path_for_instance,
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_current_attempt_validation_receipt_path_for_instance,
-  dispatch_current_attempt_publication_receipt_path_for_instance,
   dispatch_worktree_path_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
@@ -130,6 +130,25 @@ import gunbc.roadmap_execution_contract {
   modeled_validation_command_wire,
   execution_contract_validation_summary,
 }
+import gunbc.roadmap_publish {
+  PublicationSubject,
+  PublicationSubjectObservation,
+  PublicationSubjectObserved, PublicationSubjectUnobserved,
+  PublicationReceipt,
+  PublicationEvidence, EvidenceForSubject, EvidenceAbsent,
+  EvidenceUnreadable, EvidenceForAnotherSubject,
+  publication_evidence_for,
+  publication_receipt_of,
+  publication_receipt_json,
+  publication_receipt_outcome_key,
+}
+import gunbc.roadmap_publish_observe {
+  PublicationCredential,
+  PublicationCredentialPresent, PublicationCredentialAbsent,
+  observe_publication_for_subject,
+  gunbc_repository,
+}
+import extdeps.github.github { Repository }
 import gunbc.roadmap_validation_oracle {
   ValidationOracleRef,
   OracleObservation,
@@ -439,23 +458,60 @@ fn belt_oracle_observations_in_worktree(
     ))
 }
 
+data worktree_head_observation_note: String = "THE REVISION READ NOW CARRIES WHY IT FAILED, AND THE STRING PROJECTION SURVIVES AS A PROJECTION. belt_worktree_head_revision collapsed all three exec arms to the empty string, and its one consumer tested `== \\\"\\\"`, which was adequate exactly because the consumer's two branches took the same action either way.\\n\\nPublication cannot use it, and the reason is the point rather than an inconvenience. Publication is adjudicated against an EXACT HEAD; if the head cannot be read there is no subject, and a consumer with no subject cannot check a receipt against one. That state has to say what happened - git missing, git refused, worktree gone - because the operator's next action differs in each case, and because a Publication lamp that reads `unknown` must be able to prove it is not reading `unpublished`.\\n\\nSO THE TYPED OBSERVATION IS THE AUTHORITY AND THE STRING IS DERIVED FROM IT. Not a second reader: one exec, one decision function, and belt_worktree_head_revision becomes a two-line projection over it. Adding a parallel typed reader beside the string one would have been the fork this corpus keeps paying for.\\n\\nEMPTY STDOUT IS UNOBSERVED, NOT OBSERVED-AS-EMPTY. git rev-parse HEAD exits zero and prints nothing in cases this belt can reach - an unborn HEAD in a freshly created worktree is the ordinary one - so a zero exit is not by itself proof that a revision was read. Casting that empty string into a CommitSha would produce a subject whose head matches no commit and compares equal to any other empty head, which is the branded-empty defect empty_branch_projection_note describes on the ref side."
+
+type WorktreeHeadObservation
+  = WorktreeHeadObserved { revision: NonEmptyStr }
+  | WorktreeHeadUnobserved { reason: String }
+
+fn worktree_head_observation_of(outcome: BeltExecOutcome) -> WorktreeHeadObservation {
+  match outcome {
+    ExecOk { stdout } =>
+      if trim(stdout) == "" {
+        WorktreeHeadUnobserved {
+          reason: "git reported no revision for HEAD, which a worktree whose branch has no commit yet will do without failing",
+        }
+      } else {
+        WorktreeHeadObserved { revision: trim(stdout) as NonEmptyStr }
+      }
+    ExecFailed { program, exit_code, stderr } =>
+      WorktreeHeadUnobserved {
+        reason: join([
+          program, " could not read the worktree head (exit ", to_string(exit_code), "): ", stderr,
+        ], ""),
+      }
+    ExecRefused { program, reason } =>
+      WorktreeHeadUnobserved {
+        reason: join([program, " was not available to read the worktree head: ", reason], ""),
+      }
+  }
+}
+
+fn belt_worktree_head_observe(
+  instance: HostDashboardInstance,
+  worktree: String,
+) -> WorktreeHeadObservation {
+  worktree_head_observation_of(
+    outcome: belt_exec(
+      cmd: host_exec_argv(
+        program: dispatch_capability_program(
+          environment: instance.execution_environment,
+          cap: GitWorkspaceCapability,
+        ),
+        args: shape_git_rev_parse_head_args(),
+      ),
+      workdir: worktree,
+    ),
+  )
+}
+
 fn belt_worktree_head_revision(
   instance: HostDashboardInstance,
   worktree: String,
 ) -> String {
-  match belt_exec(
-    cmd: host_exec_argv(
-      program: dispatch_capability_program(
-        environment: instance.execution_environment,
-        cap: GitWorkspaceCapability,
-      ),
-      args: shape_git_rev_parse_head_args(),
-    ),
-    workdir: worktree,
-  ) {
-    ExecOk { stdout } => trim(stdout)
-    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
-    ExecRefused { program: _, reason: _ } => ""
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadObserved { revision } => revision as String
+    WorktreeHeadUnobserved { reason: _ } => ""
   }
 }
 
@@ -1882,6 +1938,39 @@ fn provider_event_projection_error(
   }
 }
 
+data belt_publication_receipt_read_note: String = "THE RECEIPT IS ADDRESSED BY HEAD, SO THERE IS NO PATH TO READ UNTIL THE HEAD IS KNOWN. That ordering is the point: the other receipts on this row live at one path per attempt and can be read before anything is decided, while a publication receipt is one per head, so the subject has to exist before the address does.\\n\\nTHE UNOBSERVED ARM RETURNS AN UNREADABLE READ AND THAT IS NOT A FABRICATED ABSENCE. publication_segment refuses on an unobserved subject before it consults the receipt at all, so this value never reaches a judgment; it exists because the evidence record carries a readable/content pair for every stage and this one has nothing to put in it. If the projection ever stopped refusing first, this would become a real answer - which is why the refusal there is matched on the subject rather than inferred from an empty string here."
+
+type BeltPublicationReceiptRead {
+  success: Bool
+  content: String
+}
+
+fn belt_publication_receipt_read(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  subject: PublicationSubjectObservation,
+) -> BeltPublicationReceiptRead {
+  match subject {
+    PublicationSubjectUnobserved { reason: _ } =>
+      BeltPublicationReceiptRead { success: false, content: "" }
+    PublicationSubjectObserved { subject: observed } => {
+      let read = Filesystem.Read(
+        path: dispatch_attempt_publication_receipt_path_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: attempt_key,
+          head_sha: observed.expected_head as String,
+        ),
+      )
+      BeltPublicationReceiptRead {
+        success: read.success,
+        content: read.content,
+      }
+    }
+  }
+}
+
 fn belt_workflow_progress_for_attempt_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -1916,6 +2005,9 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       validation_receipt_readable: false,
       validation_receipt: "",
+      publication_subject: PublicationSubjectUnobserved {
+        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
+      },
       publication_receipt_readable: false,
       publication_receipt: "",
     })
@@ -1944,11 +2036,27 @@ fn belt_workflow_progress_for_attempt_ref(
         node_id: node_id,
       ),
     )
-    let publication_receipt = Filesystem.Read(
-      path: dispatch_current_attempt_publication_receipt_path_for_instance(
-        instance: instance,
+    let publication_subject = belt_publication_subject_for(
+      node_id: attempt.node_id,
+      attempt_key: current_key,
+      branch: dispatch_branch_name(
         node_id: node_id,
+        attempt_key: current_key,
       ),
+      head: belt_worktree_head_observe(
+        instance: instance,
+        worktree: dispatch_worktree_path_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: current_key,
+        ),
+      ),
+    )
+    let publication_receipt = belt_publication_receipt_read(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: current_key,
+      subject: publication_subject,
     )
     workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
       node_id: attempt.node_id,
@@ -1981,6 +2089,7 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       validation_receipt_readable: validation_receipt.success,
       validation_receipt: validation_receipt.content,
+      publication_subject: publication_subject,
       publication_receipt_readable: publication_receipt.success,
       publication_receipt: publication_receipt.content,
     })
@@ -2854,5 +2963,191 @@ fn belt_dispatch_node_cli() -> ProcessExit {
           exit_failure(reason: serialize_json(v: belt_dispatch_result_json_value(r: r)))
         }
       }
+  }
+}
+
+data belt_publish_producer_note: String = "THE PRODUCER, WITHOUT WHICH THE PUBLICATION LAMP CANNOT MOVE. Every other piece of this lane existed before this function did - the observer, the adjudicator, the receipt format, the decoder, the path, the workflow projection - and none of them ever ran, because nothing wrote a receipt. A belt tick read an absent file and reported Pending forever, which is indistinguishable from a correct answer and is why the gap survived several reviews.\\n\\nTHE DECISION IS SEPARATED FROM THE THREE EFFECTS, for the same reason roadmap_publish is separated from roadmap_publish_observe. belt_publish_decide takes what the read found, what the observation concluded, and what the write reported, and returns the outcome; belt_publish_attempt_for_instance performs the read, the observation and the write and calls it. Every arm - already recorded, undecodable evidence, a receipt about another subject, an unwritable receipt - is therefore reachable in a hermetic witness from constructed values, which is the only way an arm that fires once a year gets proven at all.\\n\\nIT READS BEFORE WRITING, and an unreadable existing receipt REFUSES rather than being overwritten, because the belt must not destroy evidence it cannot see. The address is the difference from the verify producer: verification writes one receipt per attempt, publication writes one per head, so re-running against an already-recorded head is a no-op while a new head opens a new round.\\n\\nOBSERVATION FAILURE PERSISTS A REFUSED RECEIPT rather than aborting. Aborting before any receipt exists would leave the workflow showing an ordinary Pending, so an unavailable credential and a genuinely unpublished branch would look identical - the absence-versus-refusal collapse this whole lane exists to remove, reappearing at the outermost boundary. A refusal is a fact about an attempt and belongs on disk with the others."
+
+type BeltPublishOutcome
+  = PublishRecorded {
+      node_id: String,
+      head_sha: String,
+      outcome_key: String,
+    }
+  | PublishAlreadyRecorded { node_id: String, head_sha: String }
+  | PublishEvidenceUnreadable { node_id: String, detail: String }
+  | PublishWriteFailed { node_id: String, detail: String }
+  | PublishDeferred { node_id: String, reason: String }
+
+data belt_publication_subject_base_note: String = "expected_base IS main FOR THIS BELT, AND THAT IS A DEPLOYMENT FACT RATHER THAN A DEFAULT. adjudicate_publication uses the base to decide which pull requests are candidates at all, so two runs with different bases can reach different outcomes about one head; the value therefore belongs in the subject, gets recorded in the receipt, and gets compared when a consumer checks that receipt.\\n\\nWhat it must not become is a parameter nobody supplies. Threading it up through the belt would produce a call chain in which every caller passes the same literal, which is the spelling-repeated-N-times shape rather than one authority. When a roadmap node can target a base other than the repository's own default, this reads that fact from the node - and the receipt already records what was used, so the change is visible in the evidence rather than silent."
+
+fn belt_publication_subject_for(
+  node_id: String,
+  attempt_key: String,
+  branch: String,
+  head: WorktreeHeadObservation,
+) -> PublicationSubjectObservation {
+  match head {
+    WorktreeHeadUnobserved { reason } =>
+      PublicationSubjectUnobserved {
+        reason: join([
+          "publication is adjudicated against an exact head and this attempt has none: ",
+          reason,
+        ], ""),
+      }
+    WorktreeHeadObserved { revision } =>
+      if trim(branch) == "" {
+        PublicationSubjectUnobserved {
+          reason: "the attempt has no branch name, so there is nothing to look for on the remote",
+        }
+      } else {
+        PublicationSubjectObserved {
+          subject: PublicationSubject {
+            node_id: node_id,
+            attempt_key: attempt_key,
+            repository: gunbc_repository(),
+            branch: branch as NonEmptyStr,
+            expected_base: gunbc_repository().default_branch as NonEmptyStr,
+            expected_head: revision as CommitSha,
+          },
+        }
+      }
+  }
+}
+
+data belt_publish_gate_note: String = "THE GATE DECIDES WHETHER TO OBSERVE AT ALL, WHICH IS WHY IT IS PURE AND WHY IT RUNS FIRST. Three of the five outcomes are settled entirely by what is already on disk - the head is recorded, the record does not decode, the record is about someone else - and none of them should cost a network read or risk a write. Deciding them before the effect is what makes them reachable in a witness from constructed values; deciding them after would make the arms untestable and would perform a GitHub read to learn something the filesystem already said.\\n\\nA RECEIPT ABOUT ANOTHER SUBJECT AT THIS HEAD'S OWN ADDRESS IS NOT OVERWRITTEN. The address contains the head, so a mismatch here means something wrote a receipt for a different node, attempt, repository or base into this head's slot. That is unexplained state, and the belt's move on unexplained state is to stop rather than to correct it - overwriting would destroy the only evidence that it happened."
+
+type BeltPublishGate
+  = PublishProceed
+  | PublishHalted { outcome: BeltPublishOutcome }
+
+fn belt_publish_gate(
+  node_id: String,
+  subject: PublicationSubject,
+  existing_readable: Bool,
+  existing_text: String,
+) -> BeltPublishGate {
+  match publication_evidence_for(
+    expected: subject,
+    receipt_readable: existing_readable,
+    receipt_text: existing_text,
+  ) {
+    EvidenceAbsent => PublishProceed
+    EvidenceForSubject { receipt: _ } =>
+      PublishHalted {
+        outcome: PublishAlreadyRecorded {
+          node_id: node_id,
+          head_sha: subject.expected_head as String,
+        },
+      }
+    EvidenceUnreadable { reason } =>
+      PublishHalted {
+        outcome: PublishEvidenceUnreadable {
+          node_id: node_id,
+          detail: join([
+            "a publication receipt already exists at this head's own address and does not decode, so the belt refuses to replace evidence it cannot read: ",
+            reason,
+          ], ""),
+        },
+      }
+    EvidenceForAnotherSubject { field, expected, found } =>
+      PublishHalted {
+        outcome: PublishEvidenceUnreadable {
+          node_id: node_id,
+          detail: join([
+            "a publication receipt at this head's own address is about another subject (",
+            field as String, " expected ", expected, ", found ", found,
+            "), which the belt refuses to overwrite because the mismatch is itself evidence of a state nobody has explained",
+          ], ""),
+        },
+      }
+  }
+}
+
+fn belt_publish_write_outcome(
+  node_id: String,
+  subject: PublicationSubject,
+  receipt: PublicationReceipt,
+  write_success: Bool,
+  write_error: String,
+) -> BeltPublishOutcome {
+  if write_success {
+    PublishRecorded {
+      node_id: node_id,
+      head_sha: subject.expected_head as String,
+      outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+    }
+  } else {
+    PublishWriteFailed {
+      node_id: node_id,
+      detail: join([
+        "the publication receipt could not be written, so the judgment was reached and then lost: ",
+        write_error,
+      ], ""),
+    }
+  }
+}
+
+fn belt_publish_attempt_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  credential: PublicationCredential,
+) -> BeltPublishOutcome {
+  match belt_publication_subject_for(
+    node_id: node_id,
+    attempt_key: attempt_key,
+    branch: dispatch_branch_name(
+      node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+      attempt_key: attempt_key,
+    ),
+    head: belt_worktree_head_observe(
+      instance: instance,
+      worktree: dispatch_worktree_path_for_instance(
+        instance: instance,
+        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        attempt_key: attempt_key,
+      ),
+    ),
+  ) {
+    PublicationSubjectUnobserved { reason } =>
+      PublishDeferred { node_id: node_id, reason: reason }
+    PublicationSubjectObserved { subject } => {
+      let path = dispatch_attempt_publication_receipt_path_for_instance(
+        instance: instance,
+        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        attempt_key: attempt_key,
+        head_sha: subject.expected_head as String,
+      )
+      let existing = Filesystem.Read(path: path)
+      match belt_publish_gate(
+        node_id: node_id,
+        subject: subject,
+        existing_readable: existing.success,
+        existing_text: existing.content,
+      ) {
+        PublishHalted { outcome } => outcome
+        PublishProceed => {
+          let receipt = publication_receipt_of(
+            subject: subject,
+            outcome: observe_publication_for_subject(
+              credential: credential,
+              subject: subject,
+            ),
+          )
+          let write = Filesystem.Write(
+            path: path,
+            content: publication_receipt_json(receipt: receipt),
+          )
+          belt_publish_write_outcome(
+            node_id: node_id,
+            subject: subject,
+            receipt: receipt,
+            write_success: write.success,
+            write_error: write.error,
+          )
+        }
+      }
+    }
   }
 }
