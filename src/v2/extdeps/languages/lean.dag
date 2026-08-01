@@ -183,9 +183,9 @@ type LeanProofCheckSemantics<IRCarrier> {
   proof_irrelevance_for_propositions: Bool
 }
 
-data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. Honest rung: accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test) — not structural impossibility; catalog fixed widths route through the admission boundary. Platform word is LeanPlatformWord on the PointerWidth axis. Signedness is std.integer.Signedness, not LeanIntKind."
+data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. LeanAdmittedBitWidth is sole_constructor — cross-module forge is refused; honest rung is accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test), not structural impossibility. Catalog fixed widths match admission Accepted before constructing LeanIntegerScalar; refusal stops at LeanWidthAdmissionRefused, not LeanIntegerWidth. Platform word is LeanPlatformWord. Signedness is std.integer.Signedness."
 
-type LeanAdmittedBitWidth {
+type LeanAdmittedBitWidth sole_constructor {
   width: BitWidth
 }
 
@@ -195,11 +195,11 @@ type LeanBitWidthAdmission
 
 type LeanIntegerWidth
   = LeanFixedWidth { width: LeanAdmittedBitWidth }
-  | LeanFixedWidthAdmissionRefused { width: BitWidth }
   | LeanPlatformWord
 
 type LeanScalar
   = LeanIntegerScalar { signedness: Signedness, width: LeanIntegerWidth }
+  | LeanWidthAdmissionRefused { width: BitWidth }
   | BoolScalar
 
 type LeanPrimitiveFacts {
@@ -208,76 +208,99 @@ type LeanPrimitiveFacts {
   representation: Symbol
 }
 
-fn lean_catalog_fixed_width(count: Nat) -> LeanIntegerWidth {
+fn lean_primitive_facts_for_catalog_width(
+  surface_spelling: Symbol,
+  signedness: Signedness,
+  count: Nat,
+  representation: Symbol
+) -> LeanPrimitiveFacts {
   match lean_admit_bit_width(width: bit_width(count: count)) {
-    LeanBitWidthAccepted { width: admitted } => LeanFixedWidth { width: admitted }
-    LeanBitWidthRefused { width: refused } =>
-      LeanFixedWidthAdmissionRefused { width: refused }
+    LeanBitWidthAccepted { width: admitted } => LeanPrimitiveFacts {
+      surface_spelling: surface_spelling,
+      scalar: LeanIntegerScalar {
+        signedness: signedness,
+        width: LeanFixedWidth { width: admitted }
+      },
+      representation: representation
+    }
+    LeanBitWidthRefused { width: refused } => LeanPrimitiveFacts {
+      surface_spelling: surface_spelling,
+      scalar: LeanWidthAdmissionRefused { width: refused },
+      representation: representation
+    }
   }
 }
 
 fn lean_facts_int8() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_int8,
-    scalar: LeanIntegerScalar { signedness: Signed, width: lean_catalog_fixed_width(count: 8) },
+    signedness: Signed,
+    count: 8,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_int16() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_int16,
-    scalar: LeanIntegerScalar { signedness: Signed, width: lean_catalog_fixed_width(count: 16) },
+    signedness: Signed,
+    count: 16,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_int32() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_int32,
-    scalar: LeanIntegerScalar { signedness: Signed, width: lean_catalog_fixed_width(count: 32) },
+    signedness: Signed,
+    count: 32,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_int64() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_int64,
-    scalar: LeanIntegerScalar { signedness: Signed, width: lean_catalog_fixed_width(count: 64) },
+    signedness: Signed,
+    count: 64,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_uint8() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_uint8,
-    scalar: LeanIntegerScalar { signedness: Unsigned, width: lean_catalog_fixed_width(count: 8) },
+    signedness: Unsigned,
+    count: 8,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_uint16() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_uint16,
-    scalar: LeanIntegerScalar { signedness: Unsigned, width: lean_catalog_fixed_width(count: 16) },
+    signedness: Unsigned,
+    count: 16,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_uint32() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_uint32,
-    scalar: LeanIntegerScalar { signedness: Unsigned, width: lean_catalog_fixed_width(count: 32) },
+    signedness: Unsigned,
+    count: 32,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_uint64() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
+  lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_uint64,
-    scalar: LeanIntegerScalar { signedness: Unsigned, width: lean_catalog_fixed_width(count: 64) },
+    signedness: Unsigned,
+    count: 64,
     representation: ^lean_repr_fixed_precision_integer
-  }
+  )
 }
 
 fn lean_facts_usize() -> LeanPrimitiveFacts {
@@ -360,8 +383,6 @@ fn lean_admitted_bit_width_node(admitted: LeanAdmittedBitWidth) -> Node {
 fn lean_integer_width_node(width: LeanIntegerWidth) -> Node {
   match width {
     LeanFixedWidth { width: admitted } => lean_admitted_bit_width_node(admitted: admitted)
-    LeanFixedWidthAdmissionRefused { width: _ } =>
-      lean_inhabitant_atom(id: ^lean_tag_width_inadmissible)
     LeanPlatformWord => lean_platform_word_width_node()
   }
 }
@@ -386,6 +407,8 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
       ],
       occurrence_id: SyntheticOccurrence
 }
+    LeanWidthAdmissionRefused { width: _ } =>
+      lean_inhabitant_atom(id: ^lean_tag_width_inadmissible)
     BoolScalar => lean_inhabitant_atom(id: ^lean_tag_scalar_bool)
   }
 }
@@ -465,6 +488,20 @@ fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
   }
 }
 
+fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
+      } else {
+          v2.std.optional.Absent
+      }
+    }
+  }
+}
+
 fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactBundle {
   match facts.scalar {
     LeanIntegerScalar { signedness, width } => PrimitiveFactBundle {
@@ -478,6 +515,10 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
     BoolScalar => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_bool_spec_facts(facts: facts)
+    }
+    LeanWidthAdmissionRefused { width: _ } => PrimitiveFactBundle {
+      substrate_carrier: lean_primitive_facts_node(facts: facts),
+      spec_facts: lean_width_admission_refused_spec_facts(facts: facts)
     }
   }
 }
@@ -721,6 +762,11 @@ fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabita
       )
     }
     BoolScalar => AlgebraInhabitanceDecl {
+      algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: lean_bool_algebra_witness_node()
+    }
+    LeanWidthAdmissionRefused { width: _ } => AlgebraInhabitanceDecl {
       algebra: boolean_algebra_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: lean_bool_algebra_witness_node()

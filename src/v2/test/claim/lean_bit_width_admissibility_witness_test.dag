@@ -3,12 +3,11 @@ module v2.test.claim.lean_bit_width_admissibility_witness
 
 import v2.extdeps.languages.lean {
   lean_admit_bit_width,
-  lean_catalog_fixed_width,
+  lean_primitive_facts_for_catalog_width,
   LeanBitWidthAccepted,
   LeanBitWidthRefused,
-  LeanFixedWidth,
-  LeanFixedWidthAdmissionRefused,
-  LeanPlatformWord
+  LeanIntegerScalar,
+  LeanWidthAdmissionRefused
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -16,7 +15,7 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): LeanAdmittedBitWidth carries grounded BitWidth; lean_admit_bit_width is the admission boundary (Accepted | Refused). Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: lean_admit_bit_width(128) is Refused with the genuine width pinned."
+data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): lean_admit_bit_width is the admission boundary; LeanAdmittedBitWidth is sole_constructor. Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: width 128 refuses at admission and catalog construction yields LeanWidthAdmissionRefused, not LeanIntegerScalar."
 
 test fn lean_admit_accepts_catalog_fixed_widths() -> Bool {
   match lean_admit_bit_width(width: bit_width(count: 8)) {
@@ -49,10 +48,15 @@ test fn lean_admit_refuses_bits128() -> Bool {
   }
 }
 
-test fn lean_catalog_refuses_bits128_not_platform_word() -> Bool {
-  match lean_catalog_fixed_width(count: 128) {
-    LeanFixedWidthAdmissionRefused { width: refused } => bit_width_count(refused) == 128
-    LeanFixedWidth { width: _ } => false
-    LeanPlatformWord => false
+test fn lean_catalog_width_admission_refuses_bits128_not_integer_scalar() -> Bool {
+  match lean_primitive_facts_for_catalog_width(
+    surface_spelling: ^lean_surface_spelling_int32,
+    signedness: Signed,
+    count: 128,
+    representation: ^lean_repr_fixed_precision_integer
+  ).scalar {
+    LeanWidthAdmissionRefused { width: refused } => bit_width_count(refused) == 128
+    LeanIntegerScalar { signedness: _, width: _ } => false
+    _ => false
   }
 }
