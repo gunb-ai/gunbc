@@ -53,7 +53,7 @@ pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
 };
 pub use materialization_provider_consumer::{
-    serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
+    serve_resolved_graph_v2_disk_probe, serve_resolved_graph_v2_disk_probe_for_test,
     ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
@@ -62,7 +62,7 @@ use crate::resolved_graph_cache::{
     closure_content_digest, faithful_probe_unavailable_gap, lookup as cross_process_lookup,
     probe as cross_process_probe, resolved_graph_cache_root_from_env, subject_digest_for_closure,
     supports_faithful_probe, transform_content_digest, write as cross_process_write,
-    CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
+    CacheLookupResult, CacheProbeResult, CacheRejectReason, CachedResolvedGraph,
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
@@ -10120,41 +10120,64 @@ fn compile_clean_diags_from_resolved_stages(
     Rc::new(acc)
 }
 
-fn serve_resolved_graph_disk_hit_through_provider(
-    sources: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        Rc<im::Vector<Rc<ErrorNode>>>,
-    ),
-    String,
-> {
-    let closure_digest = closure_content_digest(sources);
-    let compiler_digest = transform_content_digest();
-    match serve_resolved_graph_v1_disk_probe(&closure_digest, &compiler_digest)? {
-        ResolvedGraphProviderOutcome::Hit => Err(
-            "resolved-graph-cache provider served disk hit but compile-clean diagnostic union is not installed from artifact"
-                .to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Err(format!(
-            "resolved-graph-cache provider refused incomplete disk hit: missing {missing:?}"
-        )),
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Err(
+fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
+    match outcome {
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Some(
             "resolved-graph-cache provider refused disk hit: wrong artifact key".to_string(),
         ),
-        ResolvedGraphProviderOutcome::Miss => Err(
-            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedKindMismatch => Err(
+        ResolvedGraphProviderOutcome::RefusedKindMismatch => Some(
             "resolved-graph-cache provider refused disk hit: kind mismatch".to_string(),
         ),
-        ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
+        ResolvedGraphProviderOutcome::RefusedWrongContent => Some(
             "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
         ),
-        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
+        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
+        ResolvedGraphProviderOutcome::Miss => Some(
+            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::Hit | ResolvedGraphProviderOutcome::RefusedIncomplete { .. } => {
+            None
+        }
+    }
+}
+
+fn install_cross_process_materialization_hit(
+    index: &MultiEntryIndex,
+    subject: &str,
+    cached: CachedResolvedGraph,
+    memo_share: ResolvedGraphMemoShare,
+) -> (
+    Rc<v1_compiler_compile::ResolvedGraph>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+    Rc<im::Vector<Rc<ErrorNode>>>,
+) {
+    if memo_share == ResolvedGraphMemoShare::Memoize {
+        index.resolved_graph_memo.borrow_mut().insert(
+            subject.clone(),
+            (
+                cached.graph.clone(),
+                cached.source_indices.clone(),
+                cached.compile_clean_diags.clone(),
+            ),
+        );
+    }
+    (
+        cached.graph,
+        cached.source_indices,
+        cached.compile_clean_diags,
+    )
+}
+
+fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
+    match reason {
+        CacheRejectReason::ContentDigestMismatch => {
+            "resolved-graph-cache refused poisoned artifact: content digest mismatch".to_string()
+        }
+        CacheRejectReason::BackendKeyMalformed => {
+            "resolved-graph-cache refused artifact: backend key malformed".to_string()
+        }
     }
 }
 

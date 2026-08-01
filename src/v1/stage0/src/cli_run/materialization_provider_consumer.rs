@@ -1,4 +1,6 @@
-use crate::resolved_graph_cache::{faithful_probe_unavailable_gap, supports_faithful_probe};
+use crate::resolved_graph_cache::{
+    faithful_probe_unavailable_gap, supports_faithful_probe, FaithfulResolvedGraphProbeParts,
+};
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -58,100 +60,67 @@ fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
     })
 }
 
-fn call_lookup_bool(ctx: &InterpContext, fn_name: &str, lookup: &Value) -> Result<bool, String> {
+fn lookup_fold_outcome(
+    ctx: &InterpContext,
+    lookup: &Value,
+) -> Result<ResolvedGraphProviderOutcome, String> {
     let args = [(Some("l".to_string()), lookup.clone())];
-    match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
-        Ok(Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "{fn_name} returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("{fn_name}: {e}")),
-    }
-}
-
-fn lookup_missing_outputs(ctx: &InterpContext, lookup: &Value) -> Result<Vec<String>, String> {
-    let args = [(Some("l".to_string()), lookup.clone())];
-    let missing = v1_interpreter::run_in_context_with_args(
+    let outcome = v1_interpreter::run_in_context_with_args(
         ctx,
-        "lookup_refused_incomplete_missing",
+        "provider_lookup_outcome_tag",
         &args,
         false,
     )
-    .map_err(|e| format!("lookup_refused_incomplete_missing: {e}"))?;
-    let Value::List(items) = missing else {
-        return Err(format!(
-            "lookup_refused_incomplete_missing returned `{}`, expected List",
-            ctx.format_value(&missing)
-        ));
-    };
-    Ok(items
-        .iter()
-        .map(|item| match item {
-            Value::Str(s) => Ok(s.clone()),
-            other => Err(format!(
-                "lookup_refused_incomplete_missing element `{}` is not String",
-                ctx.format_value(other)
-            )),
-        })
-        .collect::<Result<Vec<_>, _>>()?)
+    .map_err(|e| format!("provider_lookup_outcome_tag: {e}"))?;
+    match outcome {
+        Value::Str(tag) => match tag.as_str() {
+            "hit" => Ok(ResolvedGraphProviderOutcome::Hit),
+            "miss" => Ok(ResolvedGraphProviderOutcome::Miss),
+            "kind_mismatch" => Ok(ResolvedGraphProviderOutcome::RefusedKindMismatch),
+            "wrong_artifact" => Ok(ResolvedGraphProviderOutcome::RefusedWrongArtifact),
+            "wrong_content" => Ok(ResolvedGraphProviderOutcome::RefusedWrongContent),
+            "incomplete" => {
+                let missing = v1_interpreter::run_in_context_with_args(
+                    ctx,
+                    "lookup_refused_incomplete_missing",
+                    &args,
+                    false,
+                )
+                .map_err(|e| format!("lookup_refused_incomplete_missing: {e}"))?;
+                let Value::List(items) = missing else {
+                    return Err(format!(
+                        "lookup_refused_incomplete_missing returned `{}`, expected List",
+                        ctx.format_value(&missing)
+                    ));
+                };
+                let missing = items
+                    .iter()
+                    .map(|item| match item {
+                        Value::Str(s) => Ok(s.clone()),
+                        other => Err(format!(
+                            "lookup_refused_incomplete_missing element `{}` is not String",
+                            ctx.format_value(other)
+                        )),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ResolvedGraphProviderOutcome::RefusedIncomplete { missing })
+            }
+            other => Ok(ResolvedGraphProviderOutcome::LookupUnclassified {
+                label: other.to_string(),
+            }),
+        },
+        other => Err(format!(
+            "provider_lookup_outcome_tag returned `{}`, expected String tag",
+            ctx.format_value(&other)
+        )),
+    }
 }
 
-fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> Result<String, String> {
-    if call_lookup_bool(ctx, "lookup_is_hit", lookup)? {
-        return Ok("ProviderHit".to_string());
-    }
-    if call_lookup_bool(ctx, "lookup_is_miss", lookup)? {
-        return Ok("ProviderMiss".to_string());
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_kind_mismatch", lookup)? {
-        return Ok("ProviderRefusedKindMismatch".to_string());
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_wrong_artifact", lookup)? {
-        return Ok("ProviderRefusedWrongArtifact".to_string());
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", lookup)? {
-        return Ok("ProviderRefusedWrongContent".to_string());
-    }
-    let missing = lookup_missing_outputs(ctx, lookup)?;
-    if !missing.is_empty() {
-        return Ok(format!("ProviderRefusedIncomplete({missing:?})"));
-    }
-    Ok(format!("ProviderLookup({})", ctx.format_value(lookup)))
-}
-
-pub fn interpret_provider_lookup(
-    ctx: &InterpContext,
-    lookup: Value,
-) -> Result<ResolvedGraphProviderOutcome, String> {
-    if call_lookup_bool(ctx, "lookup_is_hit", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::Hit);
-    }
-    if call_lookup_bool(ctx, "lookup_is_miss", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::Miss);
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_kind_mismatch", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::RefusedKindMismatch);
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_wrong_artifact", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::RefusedWrongArtifact);
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::RefusedWrongContent);
-    }
-    let missing = lookup_missing_outputs(ctx, &lookup)?;
-    if !missing.is_empty() {
-        return Ok(ResolvedGraphProviderOutcome::RefusedIncomplete { missing });
-    }
-    Ok(ResolvedGraphProviderOutcome::LookupUnclassified {
-        label: lookup_outcome_label(ctx, &lookup)?,
-    })
-}
-
-fn serve_resolved_graph_v1_disk_probe_in_ctx(
+fn serve_resolved_graph_v2_disk_probe_in_ctx(
     ctx: &InterpContext,
     closure_digest: &str,
     compiler_digest: &str,
+    parts: &FaithfulResolvedGraphProbeParts,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
     let args = [
         (
@@ -162,20 +131,45 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
             Some("compiler_digest".to_string()),
             Value::Str(compiler_digest.to_string()),
         ),
+        (
+            Some("graph_digest".to_string()),
+            Value::Str(parts.graph_digest.clone()),
+        ),
+        (
+            Some("graph_bytes".to_string()),
+            Value::Int(parts.graph_bytes as i64),
+        ),
+        (
+            Some("indices_digest".to_string()),
+            Value::Str(parts.indices_digest.clone()),
+        ),
+        (
+            Some("indices_bytes".to_string()),
+            Value::Int(parts.indices_bytes as i64),
+        ),
+        (
+            Some("union_digest".to_string()),
+            Value::Str(parts.union_digest.clone()),
+        ),
+        (
+            Some("union_bytes".to_string()),
+            Value::Int(parts.union_bytes as i64),
+        ),
     ];
     let lookup = v1_interpreter::run_in_context_with_args(
         ctx,
-        "serve_resolved_graph_v1_disk_probe",
+        "serve_resolved_graph_v2_disk_probe",
         &args,
         false,
     )
-    .map_err(|e| format!("serve_resolved_graph_v1_disk_probe: {e}"))?;
-    interpret_provider_lookup(ctx, lookup)
+    .map_err(|e| format!("serve_resolved_graph_v2_disk_probe: {e}"))?;
+    lookup_fold_outcome(ctx, &lookup)
 }
 
-pub fn serve_resolved_graph_v1_disk_probe(
+pub fn serve_resolved_graph_v2_disk_probe(
     closure_digest: &str,
     compiler_digest: &str,
+    parts: &FaithfulResolvedGraphProbeParts,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
     if !supports_faithful_probe() {
         return Err(format!(
@@ -184,14 +178,15 @@ pub fn serve_resolved_graph_v1_disk_probe(
         ));
     }
     let ctx = materialization_provider_ctx()?;
-    serve_resolved_graph_v1_disk_probe_in_ctx(&ctx, closure_digest, compiler_digest)
+    serve_resolved_graph_v2_disk_probe_in_ctx(&ctx, closure_digest, compiler_digest, parts)
 }
 
-pub fn serve_resolved_graph_v1_disk_probe_for_test(
+pub fn serve_resolved_graph_v2_disk_probe_for_test(
     closure_digest: &str,
     compiler_digest: &str,
+    parts: &FaithfulResolvedGraphProbeParts,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    serve_resolved_graph_v1_disk_probe(closure_digest, compiler_digest)
+    serve_resolved_graph_v2_disk_probe(closure_digest, compiler_digest, parts)
 }
 
 #[doc(hidden)]

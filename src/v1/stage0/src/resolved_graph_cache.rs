@@ -13,9 +13,11 @@ use crate::v1_compiler_infer::{
 };
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
-use crate::v1_std_core::NewlineIndex;
+use crate::v1_std_core::{ErrorNode, NewlineIndex};
+use im::Vector;
 
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
+const LEGACY_FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 
 /// Single-authority mirror of the modeled `SizeBounded` cap:
@@ -44,11 +46,25 @@ pub enum CacheRejectReason {
     BackendKeyMalformed,
 }
 
+/// Per-output digests and byte sizes for a FORMAT_VERSION 2 artifact — the
+/// transport facts `std.materialization_provider` needs to build a faithful
+/// `ProbeFound` without decoding the resolved graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FaithfulResolvedGraphProbeParts {
+    pub graph_digest: Hash,
+    pub graph_bytes: u64,
+    pub indices_digest: Hash,
+    pub indices_bytes: u64,
+    pub union_digest: Hash,
+    pub union_bytes: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheProbeHit {
     pub format_version: u32,
     pub content_digest: Hash,
     pub payload_byte_count: u64,
+    pub parts: Option<FaithfulResolvedGraphProbeParts>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,12 +85,19 @@ pub enum CacheLookupResult {
 pub struct CachedResolvedGraph {
     pub graph: Rc<ResolvedGraph>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub compile_clean_diags: Rc<Vector<Rc<ErrorNode>>>,
     pub content_digest: Hash,
     pub payload_byte_count: u64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CachePayload {
+    graph: ResolvedGraph,
+    source_indices: HashMap<String, NewlineIndex>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct LegacyCachePayload {
     graph: ResolvedGraph,
     source_indices: HashMap<String, NewlineIndex>,
 }
@@ -105,6 +128,102 @@ fn encode_cache_payload(payload: &CachePayload) -> Result<Vec<u8>, String> {
         serde_json::to_value(payload).map_err(|e| format!("cache payload value encode: {e}"))?;
     serde_json::to_vec(&sort_json_value(value))
         .map_err(|e| format!("cache payload byte encode: {e}"))
+}
+
+fn tripartite_content_digest(
+    graph_digest: &Hash,
+    indices_digest: &Hash,
+    union_digest: &Hash,
+) -> Hash {
+    let mut acc = v1_rt::atom_identity_hash("materialization_provider.no_outputs".to_string());
+    acc = v1_rt::hash_combine(acc, graph_digest.clone());
+    acc = v1_rt::hash_combine(acc, indices_digest.clone());
+    acc = v1_rt::hash_combine(acc, union_digest.clone());
+    acc
+}
+
+fn encode_graph_part(graph: &ResolvedGraph) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(graph).map_err(|e| format!("cache graph encode failed: {e}"))
+}
+
+fn encode_source_indices_part(
+    source_indices: &HashMap<String, NewlineIndex>,
+) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(source_indices).map_err(|e| format!("cache indices encode failed: {e}"))
+}
+
+fn encode_compile_clean_union_part(
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+) -> Result<Vec<u8>, String> {
+    let plain: Vec<ErrorNode> = compile_clean_diags
+        .iter()
+        .map(|d| (**d).clone())
+        .collect();
+    serde_json::to_vec(&plain).map_err(|e| format!("cache union encode failed: {e}"))
+}
+
+fn pack_tripartite_payload(graph_bytes: &[u8], indices_bytes: &[u8], union_bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for part in [graph_bytes, indices_bytes, union_bytes] {
+        out.extend_from_slice(&(part.len() as u64).to_le_bytes());
+        out.extend_from_slice(part);
+    }
+    out
+}
+
+fn parse_tripartite_payload(payload: &[u8]) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), String> {
+    let mut off = 0;
+    let mut parts: Vec<Vec<u8>> = Vec::new();
+    for label in ["graph", "source_indices", "compile_clean_diagnostic_union"] {
+        if off + 8 > payload.len() {
+            return Err(format!(
+                "tripartite payload truncated before {label} length (off={off}, len={})",
+                payload.len()
+            ));
+        }
+        let len = u64::from_le_bytes(payload[off..off + 8].try_into().unwrap()) as usize;
+        off += 8;
+        if off + len > payload.len() {
+            return Err(format!(
+                "tripartite payload truncated in {label} body (need {len} bytes at off={off}, len={})",
+                payload.len()
+            ));
+        }
+        parts.push(payload[off..off + len].to_vec());
+        off += len;
+    }
+    Ok((parts[0].clone(), parts[1].clone(), parts[2].clone()))
+}
+
+fn faithful_parts_from_tripartite_payload(payload: &[u8]) -> Result<FaithfulResolvedGraphProbeParts, String> {
+    let (graph_bytes, indices_bytes, union_bytes) = parse_tripartite_payload(payload)?;
+    let graph_digest = v1_rt::bytes_identity_hash(&graph_bytes);
+    let indices_digest = v1_rt::bytes_identity_hash(&indices_bytes);
+    let union_digest = v1_rt::bytes_identity_hash(&union_bytes);
+    Ok(FaithfulResolvedGraphProbeParts {
+        graph_digest,
+        graph_bytes: graph_bytes.len() as u64,
+        indices_digest,
+        indices_bytes: indices_bytes.len() as u64,
+        union_digest,
+        union_bytes: union_bytes.len() as u64,
+    })
+}
+
+fn decode_graph_part(bytes: &[u8]) -> Result<ResolvedGraph, String> {
+    serde_json::from_slice(bytes).map_err(|e| format!("cache graph decode failed: {e}"))
+}
+
+fn decode_source_indices_part(bytes: &[u8]) -> Result<HashMap<String, NewlineIndex>, String> {
+    serde_json::from_slice(bytes).map_err(|e| format!("cache indices decode failed: {e}"))
+}
+
+fn decode_compile_clean_union_part(bytes: &[u8]) -> Result<Vector<Rc<ErrorNode>>, String> {
+    let plain: Vec<ErrorNode> =
+        serde_json::from_slice(bytes).map_err(|e| format!("cache union decode failed: {e}"))?;
+    Ok(Vector::from(
+        plain.into_iter().map(Rc::new).collect::<Vec<_>>(),
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -328,10 +447,32 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     };
     off += 16;
     let payload_len = u64::from_le_bytes(header[off..off + 8].try_into().unwrap());
+    let mut parts = None;
+    if version == FORMAT_VERSION {
+        let mut payload = vec![0u8; payload_len as usize];
+        if file.read_exact(&mut payload).is_err() {
+            return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+        match faithful_parts_from_tripartite_payload(&payload) {
+            Ok(parsed) => {
+                let computed = tripartite_content_digest(
+                    &parsed.graph_digest,
+                    &parsed.indices_digest,
+                    &parsed.union_digest,
+                );
+                if computed != stored_content_digest {
+                    return CacheProbeResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
+                }
+                parts = Some(parsed);
+            }
+            Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+        }
+    }
     CacheProbeResult::Hit(CacheProbeHit {
         format_version: version,
         content_digest: stored_content_digest,
         payload_byte_count: payload_len,
+        parts,
     })
 }
 
@@ -372,22 +513,36 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
         return CacheLookupResult::Miss;
     }
     let payload_bytes = &bytes[off..off + payload_len];
-    let computed = payload_content_digest(payload_bytes);
+    let (graph_bytes, indices_bytes, union_bytes) = match parse_tripartite_payload(payload_bytes) {
+        Ok(parts) => parts,
+        Err(_) => return CacheLookupResult::Miss,
+    };
+    let graph_digest = v1_rt::bytes_identity_hash(&graph_bytes);
+    let indices_digest = v1_rt::bytes_identity_hash(&indices_bytes);
+    let union_digest = v1_rt::bytes_identity_hash(&union_bytes);
+    let computed = tripartite_content_digest(&graph_digest, &indices_digest, &union_digest);
     if computed != stored_content_digest {
         return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
     }
-    let payload: CachePayload = match serde_json::from_slice(payload_bytes) {
-        Ok(p) => p,
+    let decoded_graph = match decode_graph_part(&graph_bytes) {
+        Ok(g) => g,
+        Err(_) => return CacheLookupResult::Miss,
+    };
+    let si_plain = match decode_source_indices_part(&indices_bytes) {
+        Ok(si) => si,
+        Err(_) => return CacheLookupResult::Miss,
+    };
+    let compile_clean_diags = match decode_compile_clean_union_part(&union_bytes) {
+        Ok(d) => d,
         Err(_) => return CacheLookupResult::Miss,
     };
     let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
-        payload
-            .source_indices
+        si_plain
             .into_iter()
             .map(|(k, v)| (k, Rc::new(v)))
             .collect(),
     );
-    let decoded = Rc::new(payload.graph);
+    let decoded = Rc::new(decoded_graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
     let modules =
         rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
@@ -402,6 +557,7 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     CacheLookupResult::Hit(CachedResolvedGraph {
         graph,
         source_indices,
+        compile_clean_diags: Rc::new(compile_clean_diags),
         content_digest: computed,
         payload_byte_count: payload_bytes.len() as u64,
     })
@@ -469,6 +625,7 @@ pub fn write(
     subject_digest: &str,
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
 ) -> Result<CacheWriteOutcome, String> {
     if !v1_rt::is_hash_digest(subject_digest) {
         return Err("subject_digest must be a 16-char hex hash".to_string());
@@ -485,13 +642,14 @@ pub fn write(
         .iter()
         .map(|(k, v)| (k.clone(), (**v).clone()))
         .collect();
-    let payload = CachePayload {
-        graph: graph.clone(),
-        source_indices: si_plain,
-    };
-    let payload_bytes =
-        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
-    let content_digest = payload_content_digest(&payload_bytes);
+    let graph_bytes = encode_graph_part(graph)?;
+    let indices_bytes = encode_source_indices_part(&si_plain)?;
+    let union_bytes = encode_compile_clean_union_part(compile_clean_diags)?;
+    let graph_digest = v1_rt::bytes_identity_hash(&graph_bytes);
+    let indices_digest = v1_rt::bytes_identity_hash(&indices_bytes);
+    let union_digest = v1_rt::bytes_identity_hash(&union_bytes);
+    let content_digest = tripartite_content_digest(&graph_digest, &indices_digest, &union_digest);
+    let payload_bytes = pack_tripartite_payload(&graph_bytes, &indices_bytes, &union_bytes);
 
     reclaim_stale_temp(&final_path);
     let temp_path = unique_temp_path(&final_path);
@@ -549,17 +707,20 @@ pub fn build_valid_artifact_bytes(
     subject_digest: &str,
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
 ) -> Result<Vec<u8>, String> {
     let si_plain: HashMap<String, NewlineIndex> = source_indices
         .iter()
         .map(|(k, v)| (k.clone(), (**v).clone()))
         .collect();
-    let payload = CachePayload {
-        graph: graph.clone(),
-        source_indices: si_plain,
-    };
-    let payload_bytes = encode_cache_payload(&payload)?;
-    let content_digest = payload_content_digest(&payload_bytes);
+    let graph_bytes = encode_graph_part(graph)?;
+    let indices_bytes = encode_source_indices_part(&si_plain)?;
+    let union_bytes = encode_compile_clean_union_part(compile_clean_diags)?;
+    let graph_digest = v1_rt::bytes_identity_hash(&graph_bytes);
+    let indices_digest = v1_rt::bytes_identity_hash(&indices_bytes);
+    let union_digest = v1_rt::bytes_identity_hash(&union_bytes);
+    let content_digest = tripartite_content_digest(&graph_digest, &indices_digest, &union_digest);
+    let payload_bytes = pack_tripartite_payload(&graph_bytes, &indices_bytes, &union_bytes);
     let mut bytes = Vec::new();
     bytes.extend_from_slice(MAGIC);
     bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
@@ -608,6 +769,7 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
             emit_graph_info: decoded.emit_graph_info.clone(),
         }),
         source_indices,
+        compile_clean_diags: Rc::new(Vector::new()),
         content_digest: payload_content_digest(bytes),
         payload_byte_count: bytes.len() as u64,
     })
