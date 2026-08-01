@@ -1,11 +1,21 @@
-# Node/subtree visibility grants — two verbs in the effect-grant algebra, not a parallel mechanism
+# Node/subtree visibility — retired carrier experiment; capabilities remain open
 
-Status: DRAFT for operator review (2026-07-21, session gentle-otter-138). Origin: private/public
+Status: **SUPERSEDED AS AN IMPLEMENTATION PLAN (operator ruling 2026-08-01).** The carrier-specific
+`Reference` / `Publish` / `AudienceScopeTree` / `std.visibility_grant` design below is retained as
+historical rationale and must not be implemented. Those carriers and their carrier-only witnesses
+were deleted when their only consumer, the Stage 0 placement gate, dissolved; authorization
+admission now projects typed request profiles into `std.access`. This retires the representation,
+not publication or reference control as product capabilities. No replacement publication ontology
+has been selected; every concrete replacement shape below is an unapproved historical proposal and
+requires operator design review before implementation. Reference-edge admission is a separate
+deferred capability awaiting a concrete consumer, not part of the publication rollback.
+
+Historical origin (2026-07-21, session gentle-otter-138): private/public
 toggling over the containment tree — motivated generically by (a) hiding implementation-internal
 declarations from cross-container reference, and (b) partitioning a source tree across storage
 roots of differing audience, a need any project with a public mirror and a private overlay has,
-and which forge-style per-subtree visibility toggles are a known point of prior art for. No code
-lands from this doc. It rides `docs/plans/effect-namespace-grants.md` (owned silent-ibex-417) and
+and which forge-style per-subtree visibility toggles are a known point of prior art for. The
+superseded plan rode `docs/plans/effect-namespace-grants.md` (owned silent-ibex-417) and
 `docs/plans/namespace-resolution-design.md` (the containment-tree authority), both cited, not
 duplicated.
 
@@ -266,8 +276,8 @@ metadata once made public.
 
 **Content-hash stubs are named as a distinct, later, explicitly-opted-in mode for integrity-
 continuity use cases** (e.g., proving a locally-resolved private node matches what a hypothetical
-public build would have content-addressed, without exposing its bytes) — never the default, never
-built in Stage 0/1 (§6), and requiring its own per-node opt-in the same way `Declared` requires
+public build would have content-addressed, without exposing its bytes) — never the default, not
+built in P-C (§6), and requiring its own per-node opt-in the same way `Declared` requires
 opting a node into `Reference`/`Publish` at all. The default for every node, declared or
 `LegacyOpen`, is plain absence. Stating this now, even though the stub mode is not built, is the
 explicit decision the brief asks for: the axis has a named default and a named (unbuilt)
@@ -276,8 +286,9 @@ alternative, not an open question.
 ## 6. Staging
 
 Mirrors `effect-namespace-grants.md`'s own phase discipline — each green-by-execution with REDs,
-under-scope counted and never silent. `Reference` (§3) and `Publish` (§4) share P-A/P-B shape;
-listed together, noting where they diverge.
+under-scope counted and never silent. P-B records the deleted experiment. The former P-C text is
+retained only as a rejected-as-selected proposal; no live publication-enforcement threshold or
+replacement ontology is chosen here.
 
 - **P-A (model, no behavior change):** `Verb::Reference` and `Verb::Publish` added to
   `std/effect_grant.dag`; `NodeVisibility`/`VisibilityStatus` modeled for both, including the
@@ -285,29 +296,24 @@ listed together, noting where they diverge.
   (referrer/audience outside every grant → typed refusal; container-internal referrer → admitted
   with no grant; ancestor-narrower child → `PublishAncestorNarrower`; closure gap →
   `PublishClosureGap`). No storage or resolver wiring yet.
-- **P-B (first enforcement seam, Stage 0 — file granularity):** two git storage roots (public +
-  private overlay), file-grain `Publish` declaration. A push-time guard wall computes
-  `VisibilityPlacementMismatch` (§4) and a public-to-private dangling-reference check (Rule 1,
-  degenerate to file grain). The resolver's `.` projection path calls `Reference`'s `visible_from`
-  when the projected child leaves the referrer's ancestor chain (unchanged from the prior draft);
-  refusal is `NameNotVisible`. For `Reference` this is a zero-behavior-change landing by
-  construction: every node is `LegacyOpen` until an author explicitly declares one, and
-  `LegacyOpen`'s undeclared default stays unconditional resolvability. `Publish` is **not**
-  zero-behavior-change the same way (§10 Q5 names this explicitly) — its undeclared default is
-  narrowest-storage-root (§4/§8), which would exclude every currently-public file the instant the
-  guard goes live unless the landing step itself stamps the existing corpus. So P-B's `Publish`
-  half lands with a one-time bulk migration as part of the same change: every file already
-  committed to the public root is declared `Publish { audience: World }` explicitly (not left
-  `LegacyOpen`) at cutover, so the narrowest-default rule only ever bites *new* undeclared content
-  added after P-B lands, never retroactively excludes what was already public. That migration step
-  is what makes "today's all-public-repo content stays public" true; it is a one-time cost, not an
-  ongoing one, and is the concrete answer to Q5's workflow-cost concern (new files need an explicit
-  grant going forward; existing ones do not need one retroactively).
-- **P-C (Stage 1 — the composed-graph wall):** Rules 1–2 run as compile-time refusals over the
-  **composed** graph (both storage roots mounted, the §2 multi-root precedent), not just the
-  push-time file check — turning "the public repo happened to not dangle" into "the public repo
-  cannot dangle." Gated on P-B landing and on whichever dev/CI context can afford to mount the
-  private root (§7 states the resulting enforcement-strength split explicitly).
+- **P-B (Stage 0 per-file placement gate — DELETED, operator ruling 2026-08-01):** the fixed-
+  cutover roster was a dual representation of Git's post-cutover path population: every row was
+  the same `Publish World` value over a pathname Git already derived. It therefore carried no
+  publication information Git lacked. Four repair rounds in one day repeatedly redded fleet CI as
+  concurrent workers reconstructed the same list and raced identical rows. More importantly, the
+  whole checkout was already public: a required CI check after a branch was pushed could admit or
+  refuse `main`, but the objects had already reached public storage, so this was never a
+  confidentiality wall. Its Added/Copied/Renamed census also ignored modifications, authorizing all
+  future bytes at a grandfathered pathname without a content identity. The roster, cutover, gate,
+  tests, and floor enrollment were deleted; new public files require no stamp. The subtree-default
+  experiment retained on closed PR #7588 is a seed for the later re-land, not a Stage 0 gate.
+- **P-C (UNSELECTED historical proposal — operator correction 2026-08-01):** the prior draft
+  hardened a keyed subtree `PublicationPolicy`, `PublicProjectionPlan`, sole-publisher realization,
+  and most-specific-rule resolution into a restoration bar. The operator did not select those
+  shapes. Publication remains required, but its replacement ontology awaits design review. A
+  required GitHub CI check runs after pushed objects enter the public repository, so it may protect
+  merge integrity but cannot itself be a confidentiality wall. Any future confidentiality boundary
+  must act before unauthorized bytes reach public storage; that constraint does not choose how.
 - **P-D (Stage 2 — node granularity):** rides the module-identity many-to-many storage-binding
   thread (`module-identity-storage-binding-design.md`) so one file can carry nodes of different
   `Publish` grants; the public tree becomes a **generated projection** rather than a hand-
@@ -331,27 +337,17 @@ listed together, noting where they diverge.
 
 ## 7. The grant-row-location question, treated explicitly
 
-A private subtree's own `Publish` grant row is itself content in that private subtree — Rule 2
-applies recursively to the marker, not just the code it marks. Consequence: **the public-repo-only
-guard (P-B) can only enforce what it can see** — its own declared markers, plus a dangling-
-reference check against what the public tree references. It cannot see a private node's grant row
-to know Rule 1/Rule 2 hold *from the private side*, because that row does not exist in its
-mount. **The composed-root wall (P-C) is where completeness actually lives** — enforcement
-strength is proportional to how much of the tree a given check can mount, which is inherent to a
-genuinely split-storage system, not a gap in this design. This is acceptable **provided the
-asymmetry is never mistaken for completeness**: P-B's guard must report exactly what it checked
-(own markers + dangling references), never claim the full Rule 1/Rule 2 closure it cannot see —
-a check that silently under-reports its own coverage is the DESIGN §5 absorbing-fallback trap
-("everything is affected" and "I could not compute what is affected" are different states) read
-at the coverage-claim level instead of the answer level. Concretely: P-B's refusal type and P-C's
-refusal type stay **distinct** (`PublishGuardLocalViolation` vs. `PublishClosureGap`/
-`PublishAncestorNarrower`), so a reader of a refusal always knows which mount produced it and
-therefore how complete that check was entitled to be.
+A private subtree's policy is itself private content. The deleted public-repo-only P-B gate could
+never inspect that authority, which is one more reason it could not claim confidentiality. **The
+composed-root wall (P-C) is where completeness actually lives:** the authoritative context derives
+the audience projection before the sole publisher writes it. Coverage receipts must name the
+source revision, policy version, projection digest, destination, and actually written ref; they
+must not collapse "everything is publishable" with "the private authority was unavailable."
 
 ## 8. Fail-closed discipline (DESIGN §5, restated for this doc's two verbs)
 
 - Every refusal is typed and located (`NameNotVisible`, `VisibilityPlacementMismatch`,
-  `PublishClosureGap`, `PublishAncestorNarrower`, `PublishGuardLocalViolation`) and counted —
+  `PublishClosureGap`, `PublishAncestorNarrower`) and counted —
   no bucket is a silent catch-all.
 - No escape-hatch toggle: nothing "proceeds as if the refusal had not fired." An author who wants
   a node visible changes its `Grant` row (the single authority), never a flag that bypasses the
@@ -399,12 +395,10 @@ therefore how complete that check was entitled to be.
 4. **`Reference`'s `LegacyOpen` dissolve-on** — left open-ended (per-node opt-in only) rather than
    a scheduled bulk migration; confirm vs. an operator-set target date for corpus-wide
    default-private.
-5. **`Publish` frontier default (§4/§8)** — this doc picks "undeclared defaults to narrowest
-   storage root" as the fail-closed choice. Confirm, since it is a behavior change the moment
-   Stage 0 lands (today, *everything* is in the one public repo; after P-B, undeclared new content
-   defaults private-until-marked) — a decision with real workflow cost (every new public file
-   needs an explicit grant) that the operator should rule on knowingly rather than inherit from
-   this doc's §5 fail-closed default.
+5. **Publication replacement ontology** — OPEN pending operator design review. The earlier
+   `PublicationPolicy` default, subtree precedence, derived projection, and sole-publisher proposal
+   was not selected. The only fixed facts are that publication remains required, the deleted Stage
+   0 public-path roster does not return, and confidentiality must bind before public storage.
 6. **`VisibilityScope` retirement** — once the `AudienceScopeTree` projection lands (§1.4), does
    `std.cache_interface.VisibilityScope` get deleted in favor of the shared tree, or kept as the
    cache lane's local name projected from it? Either is consistent with §3 (below-boundary
@@ -412,9 +406,10 @@ therefore how complete that check was entitled to be.
 
 ## 11. Publication capability profile + locked realizations; sequencing decision (operator, 2026-07-25)
 
-This section owns the publication/locked-realization extension that was first captured in the SCM
-seed. It is design-only until Stage 0 lands; the source-intent integration plan consumes this
-interface but does not define its secrecy semantics.
+This section retains the publication/locked-realization capability axes first captured in the SCM
+seed. It selects no publication replacement ontology; implementation awaits operator design review.
+The source-intent integration plan consumes the eventual reviewed interface but does not define its
+secrecy semantics.
 
 `Publish` is not a boolean and its refinements are **not a total ladder**. They form a product of
 independently declared capabilities:
@@ -507,9 +502,8 @@ The intended locked-realization uses, in order, remain: EE features in one artif
 no `ee/` source fork), embargoed fixes (release a key rather than a new artifact), per-client
 subtrees, then PII-bearing material where the conditional erase contract can actually be met.
 
-None of this changes Stage 0/P-B, §5's absence default, or the opt-in hash-stub mode.
-**Sequencing decision:** visibility ships first, implemented as this document's grant model and
-realized over Git public/private roots (P-B). The identical interface is later carried by the
-source-intent SCM—ROADMAP §2 group “SCM — source-intent integration, visibility-first,” active row
-`2-scm-visibility-stage0`. Node/subtree remains the publication grain where the grant model derives
+None of this changes P-B's deletion, §5's absence default, or the opt-in hash-stub mode.
+**Sequencing decision:** publication enforcement waits for P-C's authoritative private/public
+composition and derived projection. The interface is carried by the source-intent SCM—ROADMAP §2
+group “SCM — source-intent integration, visibility-first.” Node/subtree remains the publication grain where the grant model derives
 it; it is not a universal integration/conflict grain.

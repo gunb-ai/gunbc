@@ -2,6 +2,7 @@ module tools.dag_compile_clean_shard_totality_transport
 
 import extdeps.shell
 import extdeps.git
+import extdeps.git.inspect
 import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
 import std.types { String, Bool, List }
 
@@ -16,7 +17,7 @@ fn live_dag_entry_glob_seed() -> LiveDagEntryGlobResult {
 }
 
 fn run_live_dag_entry_glob() -> LiveDagEntryGlobResult {
-  let toplevel = git.Core.Toplevel()
+  let toplevel = git.Inspect.Toplevel()
   fold(
     compile_clean_partition_boundary().entry_roots,
     init: live_dag_entry_glob_seed(),

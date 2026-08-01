@@ -4,8 +4,12 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentDependencyStep,
   deployment_spec_srv1,
+  deployment_spec_srv1_green,
+  deployment_slot_spec,
+  deployment_route_spec,
   deployment_plan_listen_port,
 }
+import std.types { String }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
@@ -47,6 +51,110 @@ import gunbc.live_deploy.readiness {
 }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.tailscale.serve {
+  ServeRootMount,
+  tailscale_serve_proxy_url,
+  tailscale_serve_status_json_argv,
+  tailscale_serve_status_proxy_targets,
+}
+import extdeps.tailscale.serve
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+
+type BlueGreenSlotSelection
+  = BlueGreenSlotsSelected { active: DeploymentSpec, idle: DeploymentSpec }
+  | BlueGreenSlotSelectionRefused { reason: String }
+
+type TailscaleServeStatusRead
+  = TailscaleServeStatusObserved { json: String }
+  | TailscaleServeStatusReadRefused { reason: String }
+
+fn srv1_blue_green_slot_selection(status_json: String) -> BlueGreenSlotSelection {
+  let blue = deployment_spec_srv1()
+  let green = deployment_spec_srv1_green()
+  let proxies = tailscale_serve_status_proxy_targets(status_json: status_json, mount: ServeRootMount)
+  let blue_proxy = tailscale_serve_proxy_url(endpoint: blue.names.tailscale_serve_endpoint)
+  let green_proxy = tailscale_serve_proxy_url(endpoint: green.names.tailscale_serve_endpoint)
+  let blue_hits = count(filter(proxies, p => p == blue_proxy))
+  let green_hits = count(filter(proxies, p => p == green_proxy))
+  if count(proxies) != 1 {
+    BlueGreenSlotSelectionRefused {
+      reason: concat("blue/green cutover refused: root Tailscale Serve endpoint did not carry exactly one Proxy; observed-count=", to_string(count(proxies)))
+    }
+  } else if blue_hits == 1 && green_hits == 0 {
+    BlueGreenSlotsSelected { active: blue, idle: green }
+  } else if green_hits == 1 && blue_hits == 0 {
+    BlueGreenSlotsSelected { active: green, idle: blue }
+  } else {
+    BlueGreenSlotSelectionRefused {
+      reason: "blue/green cutover refused: root Tailscale Serve Proxy names neither declared srv1 slot"
+    }
+  }
+}
+
+fn tailscale_serve_status_read(transport: HostEffectTransport) -> TailscaleServeStatusRead {
+  let argv = concat(["tailscale"], tailscale_serve_status_json_argv())
+  match transport {
+    LocalShell => {
+      let result = tailscale.Serve.StatusJson()
+      TailscaleServeStatusObserved { json: result.stdout }
+    }
+    SshShell { ssh_host } =>
+      match typed_argv_exec_over_ssh(host: ssh_host, argv: argv) {
+        TypedArgvExecConverged { result } =>
+          if result.success {
+            TailscaleServeStatusObserved { json: result.stdout }
+          } else {
+            TailscaleServeStatusReadRefused { reason: concat("tailscale serve status --json over ssh failed: ", result.stderr) }
+          }
+        TypedArgvExecRefused { reason } => TailscaleServeStatusReadRefused { reason: reason }
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      TailscaleServeStatusReadRefused { reason: "blue/green slot observation refused EmitArtifactThenThinRun transport" }
+  }
+}
+
+data blue_green_cutover_order_note: String = "Operator-signed 2026-08-01: straight to blue/green, no socket-activation interim. Tailscale's currently routed root Proxy selects active and idle from the two declared HostDashboardInstance slots. The candidate mutation is the slot footprint only; its existing readiness path polls /healthz until the digest proves it serves THIS source tree and then performs the deeper roadmap asset readback. Only after both converge does the route-only spec replay the scoped root endpoint toward the candidate. Old-slot teardown is also route-free, because `off` addresses endpoint identity rather than backend and would otherwise remove the route just installed. Every pre-flip refusal returns before route mutation, leaving the old process mapped and serving; post-flip teardown failure leaves the new process mapped, so absence is not a failure arm."
+
+fn live_deploy_blue_green_cutover_with_selection(
+  selection: BlueGreenSlotSelection,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match selection {
+    BlueGreenSlotSelectionRefused { reason } =>
+      NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
+    BlueGreenSlotsSelected { active, idle } => {
+      let candidate = live_deploy_apply_via_transport(
+        spec: deployment_slot_spec(spec: idle),
+        transport: transport,
+        access: access,
+      )
+      if !reconciliation_converged(r: candidate) {
+        candidate
+      } else {
+        let flip = live_deploy_apply_mutation_via_transport(
+          spec: deployment_route_spec(spec: idle),
+          transport: transport,
+          access: access,
+        )
+        if !reconciliation_converged(r: flip) {
+          flip
+        } else {
+          let teardown = live_deploy_retract_via_transport(
+            spec: deployment_slot_spec(spec: active),
+            transport: transport,
+            access: access,
+          )
+          if reconciliation_converged(r: teardown) { flip } else { teardown }
+        }
+      }
+    }
+  }
+}
 
 fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
   HostEffectIntent {
@@ -91,7 +199,7 @@ fn live_deploy_fold(
     fixture_host: fixture_host
   )
   match gate {
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       live_deploy_mutation_denied(
         target: target,
         effect: effect,
@@ -275,7 +383,7 @@ fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<Host
           },
           applied: intent,
         }
-      Deny { reason: _ } =>
+      Deny { refusal: _ } =>
         NotConverged {
           reason: deploy_access_decision_reason(d: gate),
           applied: HostEffectIntent {
@@ -295,11 +403,16 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
 }
 
 fn live_deploy_apply_srv1_with_access(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_via_transport(
-    spec: deployment_spec_srv1(),
-    transport: access.transport,
-    access: access
-  )
+  match tailscale_serve_status_read(transport: access.transport) {
+    TailscaleServeStatusReadRefused { reason } =>
+      NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
+    TailscaleServeStatusObserved { json } =>
+      live_deploy_blue_green_cutover_with_selection(
+        selection: srv1_blue_green_slot_selection(status_json: json),
+        transport: access.transport,
+        access: access,
+      )
+  }
 }
 
 fn live_deploy_retract_srv1_with_access(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {

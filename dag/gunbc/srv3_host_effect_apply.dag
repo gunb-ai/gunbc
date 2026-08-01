@@ -16,7 +16,7 @@ fn srv3_seeded_install_media_toolchain_unprivileged_fixture_denied() -> Bool {
     access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
     actor: deploy_access_unprivileged_fixture_actor(),
   ) {
-    Deny { reason: _ } => true
+    Deny { refusal: _ } => true
     Permit => false
   }
 }

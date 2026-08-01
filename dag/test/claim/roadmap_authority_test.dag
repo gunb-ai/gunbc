@@ -1,6 +1,6 @@
 module test.claim.roadmap_authority
 
-import std.types { ContentHash }
+import std.types { ContentHash, String }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
 import gunbc.roadmap_authority {
   roadmap_authority_for,
@@ -32,6 +32,9 @@ import gunbc.v1_deletion_plan {
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   ExecutionContract,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  CargoFmtValidation,
   WorkItemExecutionContract,
   dispatch_required_capabilities,
   execution_capability_label,
@@ -526,12 +529,12 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
     && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
 }
 
-data scm_prerequisite_witness_focus_note: String = "The accepted SCM sequence is checked against the authority rather than the focused markdown projection. Once P0 is accepted there is deliberately no active SCM slice to render: P1 and later work remain parked until an operator authors or activates them. Carrier-path checks stay over the declared node population so accepting a node cannot erase its authority link."
+data scm_prerequisite_witness_focus_note: String = "The accepted SCM sequence is checked against the authority rather than inferred from the focused markdown projection. P0 acceptance leaves the prerequisite spine as declared history; the operator-authored P1 node is the one active SCM slice and depends directly on P0. P2 and P3 remain absent rather than being implied by P1 activation. Carrier-path checks stay over the declared node population so accepting a node cannot erase its authority link."
 
-test fn witness_accepted_scm_sequence_has_no_active_slice() -> Bool {
+test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
   let accepted = accepted_roadmap_node_ids()
   node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
-    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 6
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 7
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
     && id_exists(id: "2-scm-git-upstream-model")
     && id_exists(id: "2-scm-mercurial-upstream-model")
@@ -539,18 +542,35 @@ test fn witness_accepted_scm_sequence_has_no_active_slice() -> Bool {
     && id_exists(id: "2-claim-indexed-evidence")
     && id_exists(id: "2-scm-compatibility-shape")
     && id_exists(id: "2-scm-p0-landing-spine")
+    && id_exists(id: "2-scm-p1-proof-kernel")
     && !active_id_exists(id: "2-scm-git-upstream-model")
     && !active_id_exists(id: "2-scm-mercurial-upstream-model")
     && !active_id_exists(id: "2-scm-pijul-upstream-model")
     && !active_id_exists(id: "2-claim-indexed-evidence")
     && !active_id_exists(id: "2-scm-compatibility-shape")
     && !active_id_exists(id: "2-scm-p0-landing-spine")
+    && active_id_exists(id: "2-scm-p1-proof-kernel")
     && (accepted |> any(id => id == "2-scm-git-upstream-model"))
     && (accepted |> any(id => id == "2-scm-mercurial-upstream-model"))
     && (accepted |> any(id => id == "2-scm-pijul-upstream-model"))
     && (accepted |> any(id => id == "2-claim-indexed-evidence"))
     && (accepted |> any(id => id == "2-scm-compatibility-shape"))
     && (accepted |> any(id => id == "2-scm-p0-landing-spine"))
+    && !(accepted |> any(id => id == "2-scm-p1-proof-kernel"))
+    && edge_exists(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine")
+    && match bound_execution_contract_for(id: "2-scm-p1-proof-kernel") {
+      ExecutionContractUnspecified => false
+      ExecutionContract { validations, extra_capabilities } =>
+        count(validations) == 1
+          && count(extra_capabilities) == 0
+          && validations |> any(validation => match validation {
+            GunbcClaimValidation { entry, function } =>
+              (entry as String) == "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag"
+                && function == "witness_p1_proof_kernel_acceptance_contract_holds"
+            CargoTestValidation { filter: _ } => false
+            CargoFmtValidation => false
+          })
+    }
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
 }

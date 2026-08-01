@@ -1,6 +1,11 @@
 name: ci
 on:
   workflow_dispatch:
+    inputs:
+      expected_healed_sha:
+        description: Immutable healed commit required by an auto-heal revalidation run
+        required: false
+        type: string
   push:
     branches: [main]
   pull_request:
@@ -19,12 +24,29 @@ env:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 75
+    timeout-minutes: 80
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Isolate toolchain dirs
         run: |
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
@@ -80,7 +102,7 @@ jobs:
         run: |
           # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
           "$CARGO_BIN" 'check' '-p' 'v1-compiler-tests' '--tests'
-        timeout-minutes: 5
+        timeout-minutes: 10
       - name: Build release bins (claim_executor + gunbc)
         run: |
           # 🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
@@ -123,6 +145,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
@@ -182,6 +221,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
@@ -239,11 +295,31 @@ jobs:
     needs: [ci]
     timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    concurrency:
+      group: srv1-dashboard-deploy
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:
@@ -269,6 +345,7 @@ jobs:
     if: github.event_name == 'pull_request'
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Checkout triggering branch head (heal pushes the regeneration back to this branch)
         uses: actions/checkout@v5
@@ -294,7 +371,7 @@ jobs:
           git config user.email gunbc-ci-auto-heal@users.noreply.github.com
           if ! git merge --no-edit "$BUILT_FROM"; then
           CONFLICTS="$(git diff --name-only --diff-filter=U)"
-          AUTHORED_CONFLICTS="$(git diff --name-only --diff-filter=U -- . ':(exclude).github/workflows/ci.yml' ':(exclude).github/workflows/falsifier.yml' ':(exclude).gitignore' ':(exclude)ROADMAP.md' ':(exclude)DESIGN.md' ':(exclude).githooks/pre-push' ':(exclude).githooks/pre-commit' ':(exclude)dag/gunbc/stage0_crate_layout_generated.dag' ':(exclude)src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs' ':(exclude)dag/gunbc/stage0_crate_partition_generated.dag' ':(exclude).github/live-deploy-srv1-apply.sh' ':(exclude).github/live-deploy-srv1-retract.sh' ':(exclude)docs/plans/idea-machine.md' ':(exclude)docs/plans/algebraic-rewrite-optimization.md' ':(exclude)docs/plans/dag-v2-defork-audit.md' ':(exclude)docs/plans/v2-self-hosting.md' ':(exclude)docs/plans/m5-fixture-store-consolidation.md' ':(exclude)docs/plans/model-realization-fork.md' ':(exclude)docs/plans/value-null-split.md' ':(exclude)docs/plans/ci-merge-freshness.md' ':(exclude)docs/plans/seed-debt-bundle-item-2.md' ':(exclude)docs/plans/axiom-syllogism-lens.md' ':(exclude)docs/plans/invert-hand-maintained.md' ':(exclude)docs/plans/fail-closed-lockdown.md' ':(exclude)docs/plans/format-model-reconciliation.md' ':(exclude)docs/plans/regime2-shared-emission-fold.md' ':(exclude)docs/plans/shell-emission-model.md' ':(exclude)docs/plans/construction-justification-rule.md' ':(exclude)docs/plans/emission-ingestion-inverse.md' ':(exclude)docs/plans/testgen-oracle.md' ':(exclude)docs/plans/disposition-carrier.md' ':(exclude)docs/plans/fold-ergonomics.md' ':(exclude)docs/plans/m4-universal-hermetic-corpus.md' ':(exclude)docs/plans/wiring-liveness-preflight.md' ':(exclude)docs/plans/interpreter-kernel-d.md' ':(exclude)docs/plans/inert-layer-lens.md' ':(exclude)docs/plans/compile-clean-forcecheck.md' ':(exclude)docs/plans/expressibility-frontier.md' ':(exclude)docs/plans/p1-where-clause-lowering.md' ':(exclude)docs/plans/intent-linearity-design-draft.md' ':(exclude)docs/plans/solve-higher-order-design.md' ':(exclude)docs/plans/language-target-self-host-frontier.md' ':(exclude)docs/plans/self-applying-lenses.md' ':(exclude)docs/plans/budget-tree.md' ':(exclude)docs/plans/cardinality-refinement.md' ':(exclude)docs/plans/compute-envelope-model.md' ':(exclude)docs/plans/input-envelope-roadmap.md' ':(exclude)docs/plans/ci-selection-vs-scheduling.md' ':(exclude)docs/plans/ci-process-end-to-end.md' ':(exclude)docs/plans/ci-oom-reclassification.md' ':(exclude)docs/plans/bounded-input-cost-envelope-scheduling.md' ':(exclude)docs/plans/ci-humming.md' ':(exclude)docs/plans/edge-b-rust-dag-provenance-brief.md' ':(exclude)docs/plans/resolver-type-name-collision-wall.md' ':(exclude)docs/plans/realization-measurement-loop.md' ':(exclude)docs/plans/host-effect-orchestration.md' ':(exclude)docs/plans/ci-floor-fractal-gantt.md' ':(exclude)docs/plans/resolver-pathology-profile-receipt.md' ':(exclude)docs/plans/representation-minimization.md' ':(exclude)docs/plans/reference-grounding-migration.md' ':(exclude)docs/plans/typescript-gap-census.md' ':(exclude)docs/plans/cli-run-hollowing-plan.md' ':(exclude)docs/plans/fleet-acceptance-criteria.md' ':(exclude)docs/plans/structural-quadratic-wall-coverage-audit.md' ':(exclude)docs/plans/ci-performance-tanking-evidence.md')"
+          AUTHORED_CONFLICTS="$(git diff --name-only --diff-filter=U -- . ':(exclude).github/workflows/ci.yml' ':(exclude).github/workflows/falsifier.yml' ':(exclude).gitignore' ':(exclude)ROADMAP.md' ':(exclude)DESIGN.md' ':(exclude).githooks/pre-push' ':(exclude).githooks/pre-commit' ':(exclude)dag/gunbc/stage0_crate_layout_generated.dag' ':(exclude)src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs' ':(exclude)dag/gunbc/stage0_crate_partition_generated.dag' ':(exclude).github/live-deploy-srv1-apply.sh' ':(exclude).github/live-deploy-srv1-retract.sh' ':(exclude)docs/plans/idea-machine.md' ':(exclude)docs/plans/algebraic-rewrite-optimization.md' ':(exclude)docs/plans/dag-v2-defork-audit.md' ':(exclude)docs/plans/v2-self-hosting.md' ':(exclude)docs/plans/m5-fixture-store-consolidation.md' ':(exclude)docs/plans/model-realization-fork.md' ':(exclude)docs/plans/value-null-split.md' ':(exclude)docs/plans/ci-merge-freshness.md' ':(exclude)docs/plans/seed-debt-bundle-item-2.md' ':(exclude)docs/plans/axiom-syllogism-lens.md' ':(exclude)docs/plans/invert-hand-maintained.md' ':(exclude)docs/plans/fail-closed-lockdown.md' ':(exclude)docs/plans/format-model-reconciliation.md' ':(exclude)docs/plans/regime2-shared-emission-fold.md' ':(exclude)docs/plans/shell-emission-model.md' ':(exclude)docs/plans/construction-justification-rule.md' ':(exclude)docs/plans/emission-ingestion-inverse.md' ':(exclude)docs/plans/testgen-oracle.md' ':(exclude)docs/plans/disposition-carrier.md' ':(exclude)docs/plans/fold-ergonomics.md' ':(exclude)docs/plans/m4-universal-hermetic-corpus.md' ':(exclude)docs/plans/wiring-liveness-preflight.md' ':(exclude)docs/plans/interpreter-kernel-d.md' ':(exclude)docs/plans/inert-layer-lens.md' ':(exclude)docs/plans/compile-clean-forcecheck.md' ':(exclude)docs/plans/expressibility-frontier.md' ':(exclude)docs/plans/p1-where-clause-lowering.md' ':(exclude)docs/plans/intent-linearity-design-draft.md' ':(exclude)docs/plans/solve-higher-order-design.md' ':(exclude)docs/plans/language-target-self-host-frontier.md' ':(exclude)docs/plans/self-applying-lenses.md' ':(exclude)docs/plans/budget-tree.md' ':(exclude)docs/plans/cardinality-refinement.md' ':(exclude)docs/plans/compute-envelope-model.md' ':(exclude)docs/plans/input-envelope-roadmap.md' ':(exclude)docs/plans/ci-selection-vs-scheduling.md' ':(exclude)docs/plans/ci-process-end-to-end.md' ':(exclude)docs/plans/ci-oom-reclassification.md' ':(exclude)docs/plans/bounded-input-cost-envelope-scheduling.md' ':(exclude)docs/plans/ci-humming.md' ':(exclude)docs/plans/edge-b-rust-dag-provenance-brief.md' ':(exclude)docs/plans/resolver-type-name-collision-wall.md' ':(exclude)docs/plans/realization-measurement-loop.md' ':(exclude)docs/plans/host-effect-orchestration.md' ':(exclude)docs/plans/ci-floor-fractal-gantt.md' ':(exclude)docs/plans/resolver-pathology-profile-receipt.md' ':(exclude)docs/plans/representation-minimization.md' ':(exclude)docs/plans/reference-grounding-migration.md' ':(exclude)docs/plans/typescript-gap-census.md' ':(exclude)docs/plans/cli-run-hollowing-plan.md' ':(exclude)docs/plans/fleet-acceptance-criteria.md' ':(exclude)docs/plans/structural-quadratic-wall-coverage-audit.md' ':(exclude)docs/plans/ci-performance-tanking-evidence.md' ':(exclude)docs/plans/extdeps-modeling-preflight.md')"
           if [ -n "$AUTHORED_CONFLICTS" ]; then
           echo "heal refused: binary/source revision skew, and the remedy CONFLICTS in authored files" >&2
           echo "  conflicting paths:" >&2
@@ -409,11 +486,26 @@ jobs:
           if [ -e "docs/plans/fleet-acceptance-criteria.md" ]; then git add "docs/plans/fleet-acceptance-criteria.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/fleet-acceptance-criteria.md"; fi
           if [ -e "docs/plans/structural-quadratic-wall-coverage-audit.md" ]; then git add "docs/plans/structural-quadratic-wall-coverage-audit.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/structural-quadratic-wall-coverage-audit.md"; fi
           if [ -e "docs/plans/ci-performance-tanking-evidence.md" ]; then git add "docs/plans/ci-performance-tanking-evidence.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-performance-tanking-evidence.md"; fi
+          if [ -e "docs/plans/extdeps-modeling-preflight.md" ]; then git add "docs/plans/extdeps-modeling-preflight.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/extdeps-modeling-preflight.md"; fi
+          PRIOR_HEAD=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
-            echo "chore-heal: no generated-artifact drift on this tree; nothing to commit"
+            echo "HealNoChange head=$PRIOR_HEAD"
+            exit 0
           else
+            CHANGED_ARTIFACTS=$(git diff --cached --name-only)
             git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            HEALED_HEAD=$(git rev-parse HEAD)
             git push origin HEAD:${{ github.head_ref || github.ref_name }}
-            echo "chore-heal: pushed regenerated generated artifacts to the triggering branch"
+            echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
+            ROOT=$(git rev-parse --show-toplevel)
+            if ! GUNBC_HEALED_HEAD="$HEALED_HEAD" GUNBC_HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/ci_heal_dispatch.dag --function main
+            then
+            echo "::error::HealDispatchRefused healed_head=$HEALED_HEAD cause=CreateWorkflowDispatchFailed" >&2
+            exit 1
+            fi
+            echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
+            exit 1
           fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         timeout-minutes: 5

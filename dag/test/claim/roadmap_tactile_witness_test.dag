@@ -42,8 +42,6 @@ import gunbc.roadmap_component {
   dispatch_client_js_source, sound_toggle_class,
   dispatch_class_requested, dispatch_class_ok,
   dispatch_ack_prefix, dispatch_ack_word,
-  dispatch_session_chip_prefix,
-  dispatch_caption_present_word,
   sound_toggle_label_on, sound_toggle_label_off,
 }
 import gunbc.roadmap_page { roadmap_header, roadmap_page_for_authority }
@@ -263,9 +261,8 @@ test fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
 test fn witness_button_reports_dispatch_acceptance() -> Bool {
   let source = js()
   string_contains(s: source, pattern: concat(dispatch_ack_prefix, dispatch_ack_word))
-    && string_contains(
-      s: source,
-      pattern: join([dispatch_session_chip_prefix, dispatch_caption_present_word], ""))
+    && string_contains(s: source, pattern: "sfx.line")
+    && !string_contains(s: source, pattern: "session · present")
     && !string_contains(s: source, pattern: "session · spawned")
 }
 
@@ -287,15 +284,17 @@ fn header_has_sound_toggle(h: Fragment) -> Bool {
 }
 
 test fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
-  header_has_sound_toggle(h: roadmap_header(title: "gunbc — roadmap"))
-    && header_has_sound_toggle(h: roadmap_header(title: "gunbc — daily workspace"))
+  header_has_sound_toggle(h: roadmap_header(page: "roadmap"))
+    && header_has_sound_toggle(h: roadmap_header(page: "daily workspace"))
 }
+
+data sound_toggle_name_vs_state_note: String = "Amended at A1 (presentation recon, 2026-08-01): the markup ships the control's NAME ('sound') so the button has visible content and an accessible name before the client program runs — the former empty-button pin enshrined blankness as the wire contract, which was the defect, not the honesty. The claim that MATTERS is unchanged and still asserted: the markup never ships a STATE label (sound_toggle_label_on), because the state lives in this browser's storage and only the client program may paint it."
 
 test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() -> Bool {
   match try_serialize_html_source(node: roadmap_page_for_authority()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: join(["<button class=\"", sound_toggle_class, "\" type=\"button\"></button>"], ""))
+      string_contains(s: h, pattern: join(["<button class=\"", sound_toggle_class, "\" type=\"button\">sound</button>"], ""))
         && !string_contains(s: h, pattern: sound_toggle_label_on)
   }
 }

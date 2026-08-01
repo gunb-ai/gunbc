@@ -39,6 +39,7 @@ lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 sha2 = "0.10"
+toml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
 # Thread CPU-time clock (CLOCK_THREAD_CPUTIME_ID) for the fast-lane eval budget: the
 # budget bounds COMPUTE, not wall, so a witness inflated by cold-I/O reads or governor
@@ -136,6 +137,10 @@ path = "src/bin/measure_whole_tree_resolve.rs"
 [[bin]]
 name = "measure_selected_closure_overlap"
 path = "src/bin/measure_selected_closure_overlap.rs"
+
+[[bin]]
+name = "measure_repeated_typecheck_attribution"
+path = "src/bin/measure_repeated_typecheck_attribution.rs"
 
 [[bin]]
 name = "resolution_divergence_census"

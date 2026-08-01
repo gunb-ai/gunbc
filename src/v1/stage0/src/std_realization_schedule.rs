@@ -397,7 +397,7 @@ pub enum NoWalkFinalization {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WalkPlan<F> {
+pub struct WalkPlan<F: Clone> {
     pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
     pub finalization: F,
     pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,

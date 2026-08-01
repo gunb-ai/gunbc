@@ -4,6 +4,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
@@ -75,7 +76,7 @@ fn nic_emitted_crate_builds(root: String, gunbc_bin: String, provider_source: St
 }
 
 fn nic_behavioral_receipt_holds() -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
 
