@@ -16,7 +16,14 @@ import gunbc.roadmap_publish {
   adjudicate_publication,
   publication_detail,
   publication_offers_the_expected_head,
+  publication_outcome_key,
+  publication_receipt_json,
+  publication_receipt_decode,
+  publication_receipt_schema,
+  PublicationReceiptDecode,
+  PublicationReceiptDecoded, PublicationReceiptUndecodable,
 }
+import extdeps.github.github { Repository, github_https_clone_url }
 
 data witness_scope_note: String = "What is claimed is the ADJUDICATION, not the fetch. adjudicate_publication is pure and total over observations the caller already holds, so every arm is reachable with no network and no token.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls or git. A change that broke the reads while leaving the adjudication intact would keep these green. What the coproduct inputs buy is that a broken read is now REPRESENTABLE — the caller reports it and the refusal arm is exercised here — where an earlier cut could only raise."
 
@@ -376,4 +383,148 @@ test fn the_bound_detail_distinguishes_draft_from_ready() -> Bool {
   string_contains(s: as_draft, pattern: "draft pull request #22")
     && !string_contains(s: as_ready, pattern: "draft")
     && string_contains(s: as_ready, pattern: "pull request #22")
+}
+
+data receipt_witness_scope_note: String = "What is claimed here is the RECEIPT ROUND TRIP - that what publication_receipt_json writes, publication_receipt_decode reads back with the same outcome AND the same subject, and that a document this emitter did not write refuses rather than decoding to something plausible.\\n\\nThe discriminating pair is deliberate: two receipts that differ ONLY in expected_head must decode to different subjects. A receipt format that dropped the subject would pass every positive claim above and fail that one, which is why it is here rather than left to inspection."
+
+data fixture_repository: Repository = Repository {
+  owner: "gunb-ai",
+  name: "gunbc",
+  full_name: "gunb-ai/gunbc",
+  private: false,
+  default_branch: "main",
+}
+
+fn receipt_for(outcome: PublicationOutcome, head: CommitSha) -> String {
+  publication_receipt_json(
+    outcome: outcome,
+    repository: github_https_clone_url(repo: fixture_repository),
+    branch: fixture_branch,
+    expected_head: head,
+  )
+}
+
+fn bound_outcome() -> PublicationOutcome {
+  adjudicate_with(
+    pulls: one_pull(sha: fixture_expected, draft: false),
+    remotes: remotes_deliberately_unreadable(),
+  )
+}
+
+fn diverged_outcome() -> PublicationOutcome {
+  adjudicate_with(
+    pulls: one_pull(sha: fixture_older, draft: false),
+    remotes: remotes_deliberately_unreadable(),
+  )
+}
+
+test fn the_clone_url_names_the_repository_not_a_local_alias() -> Bool {
+  let url = github_https_clone_url(repo: fixture_repository) as String
+  url == "https://github.com/gunb-ai/gunbc.git" && url != "origin"
+}
+
+test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
+  match publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  ) {
+    PublicationReceiptUndecodable { reason: _ } => false
+    PublicationReceiptDecoded {
+      outcome_key, detail: _, repository, branch, expected_head,
+    } =>
+      outcome_key == (publication_outcome_key(outcome: bound_outcome()) as String)
+        && repository == "https://github.com/gunb-ai/gunbc.git"
+        && branch == (fixture_branch as String)
+        && expected_head == (fixture_expected as String)
+  }
+}
+
+test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
+  let asked_about_expected = publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  let asked_about_older = publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_older),
+  )
+  match asked_about_expected {
+    PublicationReceiptUndecodable { reason: _ } => false
+    PublicationReceiptDecoded {
+      outcome_key: k1, detail: _, repository: _, branch: _, expected_head: h1,
+    } =>
+      match asked_about_older {
+        PublicationReceiptUndecodable { reason: _ } => false
+        PublicationReceiptDecoded {
+          outcome_key: k2, detail: _, repository: _, branch: _, expected_head: h2,
+        } => k1 == k2 && h1 != h2
+      }
+  }
+}
+
+test fn a_receipt_distinguishes_bound_from_head_diverged() -> Bool {
+  let bound = publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  let diverged = publication_receipt_decode(
+    receipt: receipt_for(outcome: diverged_outcome(), head: fixture_expected),
+  )
+  match bound {
+    PublicationReceiptUndecodable { reason: _ } => false
+    PublicationReceiptDecoded {
+      outcome_key: k1, detail: _, repository: _, branch: _, expected_head: _,
+    } =>
+      match diverged {
+        PublicationReceiptUndecodable { reason: _ } => false
+        PublicationReceiptDecoded {
+          outcome_key: k2, detail: _, repository: _, branch: _, expected_head: _,
+        } =>
+          k1 == "publication-bound"
+            && k2 == "publication-head-diverged"
+            && k1 != k2
+      }
+  }
+}
+
+test fn a_foreign_schema_refuses_rather_than_decoding() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"outcome\": \"publication-bound\", \"detail\": \"d\", \"repository\": \"r\", \"branch\": \"b\", \"expected_head\": \"h\"\}",
+  ) {
+    PublicationReceiptDecoded {
+      outcome_key: _, detail: _, repository: _, branch: _, expected_head: _,
+    } => false
+    PublicationReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: publication_receipt_schema as String)
+  }
+}
+
+test fn an_outcome_key_this_emitter_never_writes_refuses() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v1\", \"outcome\": \"published-ok\", \"detail\": \"d\", \"repository\": \"r\", \"branch\": \"b\", \"expected_head\": \"h\"\}",
+  ) {
+    PublicationReceiptDecoded {
+      outcome_key: _, detail: _, repository: _, branch: _, expected_head: _,
+    } => false
+    PublicationReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: "published-ok")
+  }
+}
+
+test fn a_receipt_missing_its_subject_refuses() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v1\", \"outcome\": \"publication-bound\", \"detail\": \"d\"\}",
+  ) {
+    PublicationReceiptDecoded {
+      outcome_key: _, detail: _, repository: _, branch: _, expected_head: _,
+    } => false
+    PublicationReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: "repository")
+  }
+}
+
+test fn a_receipt_that_is_not_json_refuses() -> Bool {
+  match publication_receipt_decode(receipt: "not a receipt") {
+    PublicationReceiptDecoded {
+      outcome_key: _, detail: _, repository: _, branch: _, expected_head: _,
+    } => false
+    PublicationReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: "complete JSON value")
+  }
 }
