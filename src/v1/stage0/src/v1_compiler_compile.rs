@@ -2356,7 +2356,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 module_inputs: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
-                occurrence_allocator: Rc::new(OccurrenceIdAllocator { next_id: 1 }),
+                occurrence_allocator: occurrence_id_allocator_initial(),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let parsed = parse_with_table_in_occurrence_scope(
