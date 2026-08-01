@@ -420,7 +420,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "parse_stage0_cargo_manifest_bins".to_string(),
-            type_variable_node("rust_source_host_observation".to_string()),
+            type_variable_node("cargo_manifest_bin_parse".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

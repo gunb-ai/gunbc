@@ -1,6 +1,7 @@
 module gunbc.stage0_rust_host_observation
 
 import extdeps.git
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.roadmap_authority { SeedGrowthJustification }
 import gunbc.roadmap_model { RoadmapNodeId }
@@ -14,10 +15,9 @@ import gunbc.stage0_cargo_manifest {
 import std.content_hash { content_hash_atom }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.types { GitRef }
+import std.types { GitRef, String }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.text { String }
 
 data stage0_rust_host_observation_note: String = "Rust-source OBSERVATION prerequisite only; lifecycle totality remains downstream in gunbc.stage0_rust_source_lifecycle_scaffold / v1-honest-frontier. extdeps.git owns the Git operation shapes. This module supplies repository policy (HEAD versus gunbc_merge_target_ref), filters the exact revision-addressed path population, normalizes authored Cargo target paths, hashes the exact manifest text through std.content_hash, and joins those facts. The temporary Rust seed owns only TOML decoding into CargoManifestBinParse plus its interpreter projection. CargoBin is a source role and cannot satisfy a maintenance disposition."
 
@@ -52,8 +52,11 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
 
 fn rust_paths_from_nul(raw: String) -> List<String> {
   filter(
-    xs: split(s: raw, delimiter: "\0"),
-    f: fn(path) { path != "" && ends_with(s: path, suffix: ".rs") }
+    xs: split(s: raw, delimiter: from_code_point(0)),
+    predicate: fn(path) {
+      let n = string_length(s: path)
+      n >= 3 && substring(s: path, start: n - 3, end: n) == ".rs"
+    }
   )
 }
 
@@ -77,7 +80,7 @@ fn normalize_cargo_bin_repo_path(package_root: String, authored_path: String) ->
   } else {
     let segments = filter(
       xs: split(s: authored_path, delimiter: "/"),
-      f: fn(segment) { segment != "" && segment != "." }
+      predicate: fn(segment) { segment != "" && segment != "." }
     )
     let normalized = join(segments, "/")
     if normalized == "" {
@@ -122,18 +125,25 @@ fn observe_stage0_rust_sources(
   package_root: String,
   base_ref: String
 ) -> RustSourceHostObservation {
-  let head = git.Core.HeadCommit()
+  let head = git.Core.HeadCommit(expect: OutcomeIsData)
   if !head.success || (head.sha as String) == "" {
     GitObservationRefused { detail: "git.Core.HeadCommit refused or returned an empty revision" }
   } else {
     let revision = head.sha as String
-    let baseline = git.Core.MergeBase(left: revision as GitRef, right: base_ref as GitRef)
+    let baseline = git.Core.MergeBase(
+      left: revision as GitRef,
+      right: base_ref as GitRef,
+      expect: OutcomeIsData
+    )
     if !baseline.success || (baseline.sha as String) == "" {
       GitObservationRefused {
         detail: git_refusal_detail(operation: "git.Core.MergeBase", stderr: baseline.stderr)
       }
     } else {
-      let current_tree = git.Core.ListTreePathsAtRevision(ref: revision as GitRef)
+      let current_tree = git.Core.ListTreePathsAtRevision(
+        ref: revision as GitRef,
+        expect: OutcomeIsData
+      )
       if !current_tree.success {
         GitObservationRefused {
           detail: git_refusal_detail(
@@ -142,7 +152,10 @@ fn observe_stage0_rust_sources(
           )
         }
       } else {
-        let prior_tree = git.Core.ListTreePathsAtRevision(ref: baseline.sha as GitRef)
+        let prior_tree = git.Core.ListTreePathsAtRevision(
+          ref: baseline.sha as GitRef,
+          expect: OutcomeIsData
+        )
         if !prior_tree.success {
           GitObservationRefused {
             detail: git_refusal_detail(
@@ -151,7 +164,11 @@ fn observe_stage0_rust_sources(
             )
           }
         } else {
-          let manifest = git.Core.Show(ref: revision as GitRef, path: manifest_repo_path)
+          let manifest = git.Core.Show(
+            ref: revision as GitRef,
+            path: manifest_repo_path,
+            expect: OutcomeIsData
+          )
           if !manifest.success {
             RustManifestReadRefused {
               detail: git_refusal_detail(operation: "git.Core.Show(manifest)", stderr: manifest.stderr)
