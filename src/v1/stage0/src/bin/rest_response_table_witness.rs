@@ -418,6 +418,27 @@ fn malformed_error_body_refuses_inhabitance(idx: &ModuleIndex) -> Result<(), Str
     }
 }
 
+fn wrong_field_type_refuses_inhabitance(idx: &ModuleIndex) -> Result<(), String> {
+    let port = serve_canned("401 Unauthorized", r#"{"message":true}"#)?;
+    let src = table_source(port);
+    match run_probe(idx, &src, "probe_detail", REST_RESPONSE_TABLE_AUTHORITY)? {
+        Err(InterpError::TypeError { msg }) => {
+            if !msg.contains("does not inhabit") || !msg.contains("String") {
+                return Err(format!("expected String inhabitance refusal, got: {msg}"));
+            }
+            Ok(())
+        }
+        Err(InterpError::RestResponseRefused { .. }) => Err(
+            "wrong field type must not produce typed RestResponseRefused without inhabiting ErrorShape"
+                .to_string(),
+        ),
+        Err(other) => Err(format!("expected TypeError inhabitance refusal, got {other:?}")),
+        Ok(v) => Err(format!(
+            "REGRESSION: wrong-type 401 body returned data {v:?} instead of refusing"
+        )),
+    }
+}
+
 type WitnessCase = (&'static str, fn(&ModuleIndex) -> Result<(), String>);
 
 const CASES: &[WitnessCase] = &[
@@ -428,6 +449,10 @@ const CASES: &[WitnessCase] = &[
     (
         "response_table_without_rest_authority_refuses",
         response_table_without_rest_authority_refuses,
+    ),
+    (
+        "wrong_field_type_refuses_inhabitance",
+        wrong_field_type_refuses_inhabitance,
     ),
     (
         "malformed_error_body_refuses_inhabitance",

@@ -26,15 +26,16 @@ use crate::v1_std_core::{
     block_stmts, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, find_property, find_property_string, foreach_body, foreach_collection,
-    foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
-    is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand,
-    CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
-    StringPart, UnaryOpKind, VarBindingKind,
+    field_init_node_value, field_node_type_expr, find_property, find_property_string, foreach_body,
+    foreach_collection, foreach_variable_at, if_condition, if_else_branch, if_then_branch,
+    index_base, index_expr, inferred_to_node, is_file_transport, is_rest_transport,
+    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    param_node_default_value, param_node_name_at, record_lit_type_name_at, return_value,
+    slice_base, slice_end, slice_start, transport_stdin, unaryop_operand, CallSemantics,
+    Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -8140,6 +8141,48 @@ fn map_json_to_declared_body_type(
     map_json_to_type_structure(json, &structure, type_name, ctx, true)
 }
 
+fn map_json_field_value(
+    json: &serde_json::Value,
+    field_child: &Rc<Node>,
+    ctx: &InterpContext,
+    require_all_fields: bool,
+) -> InterpResult<Value> {
+    let type_expr = field_child
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))
+        .or_else(|| {
+            let expr = field_node_type_expr(field_child.clone());
+            if matches!(expr.expr_data.as_ref(), ExprData::ExprError { .. }) {
+                None
+            } else {
+                Some(expr)
+            }
+        });
+    if let Some(type_expr) = type_expr {
+        let field_type_name = cast_target_seed_name(ctx, type_expr.clone());
+        if !field_type_name.is_empty() {
+            let structure = lookup_type_item_across_modules(ctx, &field_type_name)
+                .map(|item| type_decl_structure(ctx, &item))
+                .unwrap_or(type_expr);
+            return map_json_to_type_structure(
+                json,
+                &structure,
+                &field_type_name,
+                ctx,
+                require_all_fields,
+            );
+        }
+    }
+    if require_all_fields {
+        let field_name = authored_name_at(ctx.si(), field_child.clone());
+        return Err(InterpError::TypeError {
+            msg: format!("REST response field '{field_name}' has no declared type"),
+        });
+    }
+    Ok(json_to_value(json))
+}
+
 fn map_json_to_type_structure(
     json: &serde_json::Value,
     structure: &Rc<Node>,
@@ -8154,6 +8197,44 @@ fn map_json_to_type_structure(
             _ => Err(InterpError::TypeError {
                 msg: format!(
                     "REST response body does not inhabit {type_name}: expected JSON string"
+                ),
+            }),
+        };
+    }
+    if kernel == "Bool" {
+        return match json {
+            serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
+            _ => Err(InterpError::TypeError {
+                msg: format!(
+                    "REST response body does not inhabit {type_name}: expected JSON boolean"
+                ),
+            }),
+        };
+    }
+    if kernel == "Int" || kernel == "Nat" {
+        return match json {
+            serde_json::Value::Number(n) => {
+                n.as_i64()
+                    .map(Value::Int)
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: format!(
+                        "REST response body does not inhabit {type_name}: expected JSON integer"
+                    ),
+                    })
+            }
+            _ => Err(InterpError::TypeError {
+                msg: format!(
+                    "REST response body does not inhabit {type_name}: expected JSON number"
+                ),
+            }),
+        };
+    }
+    if kernel == "Float" {
+        return match json {
+            serde_json::Value::Number(n) => Ok(Value::Float(n.as_f64().unwrap_or(0.0))),
+            _ => Err(InterpError::TypeError {
+                msg: format!(
+                    "REST response body does not inhabit {type_name}: expected JSON number"
                 ),
             }),
         };
@@ -8175,12 +8256,21 @@ fn map_json_to_type_structure(
         return Ok(json_to_value(json));
     }
 
-    if json.is_array() && !children.is_empty() {
-        let first_field = authored_name_at(ctx.si(), children[0].clone());
-        return Ok(Value::Record {
-            type_name: ctx.sym(type_name),
-            fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
-        });
+    if json.is_array() {
+        if require_all_fields {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "REST response body does not inhabit {type_name}: expected JSON object"
+                ),
+            });
+        }
+        if !children.is_empty() {
+            let first_field = authored_name_at(ctx.si(), children[0].clone());
+            return Ok(Value::Record {
+                type_name: ctx.sym(type_name),
+                fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
+            });
+        }
     }
 
     let obj = if require_all_fields {
@@ -8199,7 +8289,7 @@ fn map_json_to_type_structure(
             Some(path) => {
                 let pointer = format!("/{}", path);
                 match json.pointer(&pointer) {
-                    Some(v) => json_to_value(v),
+                    Some(v) => map_json_field_value(v, child, ctx, require_all_fields)?,
                     None if require_all_fields => {
                         return Err(InterpError::TypeError {
                             msg: format!(
@@ -8217,7 +8307,7 @@ fn map_json_to_type_structure(
                     None
                 }
             }) {
-                Some(v) => json_to_value(v),
+                Some(v) => map_json_field_value(v, child, ctx, require_all_fields)?,
                 None if require_all_fields => {
                     return Err(InterpError::TypeError {
                         msg: format!(

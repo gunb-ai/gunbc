@@ -60,6 +60,15 @@ fn taad_lanes() -> List<MarkdownBlock> {
   ]
 }
 
+fn taad_rest_response_table_interim() -> List<MarkdownBlock> {
+  [
+    h3(text: "Lane A interim — REST response-table interpreter realization (neat-hawk-474 / PR #7528)"),
+    p(text: "Scope: make the operation's declared response {} table the v1 seed interpreter's runtime authority for status matching and error-body decode. Interim hand-Rust lives in dispatch_rest (pattern dispatch + map_json_to_declared_body_type) until parse stores RestResponseStatusPattern on the operation node and v2 emits body decode from the same carrier."),
+    p(text: "Census-shrink receipt (permitted hand-Rust gate): deleted compile_rest_response_table_authority, rest_response_table_authority_ctx (transmute/OnceLock), rest_status_key_matches, and rest_arm_is_success parallel predicates — replaced by calls into extdeps.transports.rest from the caller's compilation closure."),
+    p(text: "Dissolution trigger: rest_response_table_modeled_surface_dissolution_note in extdeps.transports.rest; tracked green by rest_response_table_witness (wet) + rest_response_table_model_witness_test (modeled-fn consumer)."),
+  ]
+}
+
 fn taad_sequence() -> List<MarkdownBlock> {
   [
     h2(text: "Sequencing, census, non-goals"),
@@ -76,7 +85,8 @@ fn transport_argv_anemia_dissolution_body() -> List<MarkdownBlock> {
   concat(taad_intro(),
   concat(taad_decode(),
   concat(taad_target(),
-  concat(taad_lanes(), taad_sequence()))))
+  concat(taad_lanes(),
+  concat(taad_rest_response_table_interim(), taad_sequence())))))
 }
 
 data transport_argv_anemia_dissolution_plan: Plan = Plan {
