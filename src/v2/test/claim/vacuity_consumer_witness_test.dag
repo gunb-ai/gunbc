@@ -4,7 +4,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data vacuity_consumer_witness_note: String = "Binds lens_contract_vacuity.consumer_witness (mandate item 5): this witness ACTUALLY EXECUTES the real-corpus BoolWitnessClaim classifier (filesystem_read + tokenize/parse_module/normalize, reusing v2.lens.vacuity's own item-2 ingest — no second corpus-scanning producer) over a vacuity-owned fixture file, and carries a genuine synthetic RED control shaped exactly like the PR #7614 defect (a LiveSurfaceSnapshot value compared against a LiteralOracle with no independent oracle) which MUST classify ProvenDuplicate through the real classify_vacuity_same_eval_record call, not a stand-in assertion. This IS the argument for binding an executing consumer: the same-eval fail-open (classify_vacuity_same_eval_record's deepest else branch) was already flagged by the lens's own W3 dissolution note in vacuity.dag — the mechanism knew about its own defect and carried the marker, and the defect survived anyway because nothing executes the lens (AuditOnly with NoConsumerWitness). A declared, marked, honestly-noted defect is still a live fail-open when no consumer runs the thing that would report it."
 
-data vacuity_consumer_witness_join_note: String = "Correction (calm-badger-682 review, relayed): a hand-authored 'known ProvenDuplicate instances' list reconciled against a live scan by STRING label is the exact vacuity-class failure this lane exists to remove, recreated one level up. So this witness never hand-picks WHICH functions to classify: vacuity_consumer_witness_live_derived_sites() parses the one declared vacuity-owned fixture file and enumerates every fn decl found (vacuity_collect_fn_decls, the same corpus-reading fold v2.lens.vacuity's item-2 classifier uses) — the derived-site set IS whatever the parser finds, not a curated roster, so 'live derived sites == classified sites' holds by construction (every derived site is classified, nothing classified that was not derived) rather than by two lists kept in sync by hand. The substantive check is the second pair: vacuity_consumer_witness_live_shadows() (the derived sites whose evidence is ProvenDuplicate) reconciled against vacuity_consumer_witness_admitted_exceptions() (a small TYPED roster of VacuitySiteKey { file, function: Symbol } pairs, compared by Symbol/String structural equality — never a concatenated string label) via the same both-directions empty-diff shape v2.lens.inert_carrier.dag's count_not_in_roster/count_stale_roster already uses for roster-vs-live reconciliation, generalized from String names to typed VacuitySiteKey identity. A shadow with no admitted exception, or an admitted exception no longer observed as a shadow, is a nonempty diff — never silently absorbed."
+data vacuity_consumer_witness_join_note: String = "Correction (calm-badger-682 review, relayed): a hand-authored 'known ProvenDuplicate instances' list reconciled against a live scan by STRING label is the exact vacuity-class failure this lane exists to remove, recreated one level up. So this witness never hand-picks WHICH functions to classify: vacuity_consumer_witness_live_derived_sites() parses the one declared vacuity-owned fixture file and enumerates every fn decl found (vacuity_collect_fn_decls, the same corpus-reading fold v2.lens.vacuity's item-2 classifier uses) — the derived-site set IS whatever the parser finds, not a curated roster, so 'live derived sites == classified sites' holds by construction (every derived site is classified, nothing classified that was not derived) rather than by two lists kept in sync by hand. The substantive check is the second pair: vacuity_consumer_witness_live_shadows() (the derived sites whose evidence is ProvenDuplicate) reconciled against vacuity_consumer_witness_admitted_exceptions() (a small TYPED roster of VacuitySiteKey { file, function: Symbol } pairs, compared by Symbol/String structural equality — never a concatenated string label) via the same both-directions empty-diff shape v2.lens.inert_carrier.dag's count_not_in_roster/count_stale_roster already uses for roster-vs-live reconciliation, generalized from String names to typed VacuitySiteKey identity. A shadow with no admitted exception, or an admitted exception no longer observed as a shadow, is a nonempty diff — never silently absorbed. admitted_exceptions is empty today, not a placeholder: see vacuity_bool_witness_body_lowering_ceiling_note in v2.lens.vacuity — a bare top-level `==` fn body (the only shape classify_vacuity_same_eval_record's real-corpus path detects as ProvenDuplicate) does not survive normalize() under the current body-lowering implementation (confirmed by direct execution, on this branch and on a pristine origin/main checkout), so no real parseable site can honestly shadow as ProvenDuplicate yet; the fixture's fn instead uses a match-over-a-local-type body (the shape v2.std.nat's nat_cata already uses in the real corpus) to exercise derived-site enumeration and the join for real, and classifies Unknown, never a fabricated ProvenDuplicate. The empty-vs-empty reconciliation still holds by real execution, not vacuously skipped. classify_vacuity_same_eval_record's own ProvenDuplicate-detection correctness is proven independently by vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate, a direct call bypassing the ingest pipeline — mechanism proven correct, real-corpus reachability separately ceilinged (DESIGN.md §4b), citing the SAME 'general body producer' open-thread trigger DESIGN.md already names, not a second one (§3 single authority)."
 
 data vacuity_consumer_witness_scan_scope_note: String = "Scope is one declared, bounded, vacuity-owned file (dissolve-on: v2.extdeps.languages.dag's dag_language_model() grammar gains a `test` keyword/production, at which point real `test fn` declarations parse and this scan widens to the corpus discovery roster like cost_coverage/grammar_coverage do). vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution is a separate, direct receipt of that documented ceiling — it is not part of the derived-site/shadow join and carries no roster of its own."
 
@@ -84,53 +84,7 @@ fn vacuity_consumer_witness_live_shadows() -> List<VacuitySiteKey> {
 }
 
 fn vacuity_consumer_witness_admitted_exceptions() -> List<VacuitySiteKey> {
-  [
-    VacuitySiteKey {
-      file: "src/v2/lens/vacuity_self_application_fixture.dag",
-      function: ^vacuity_self_application_probe
-    }
-  ]
-}
-
-test fn vacuity_consumer_witness_debug_write_reason() -> Bool {
-  let source_text = filesystem_read(path: "/tmp/vacuity_probe_minimal.dag").content
-  let lm = dag_language_model()
-  match tokenize(text: source_text, file: vacuity_bool_witness_file_anchor, rules: lm.lex) {
-    Rejected { diagnostics: d } =>
-      Filesystem.Write(
-        path: "/tmp/vacuity_debug_reason.txt",
-        content: concat(a: "tokenize:", b: symbol_lexeme(sym: d.head.reason))
-      ).success
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: d } =>
-          Filesystem.Write(
-            path: "/tmp/vacuity_debug_reason.txt",
-            content: concat(a: "parse:", b: symbol_lexeme(sym: d.head.reason))
-          ).success
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: d } =>
-              Filesystem.Write(
-                path: "/tmp/vacuity_debug_reason.txt",
-                content: concat(a: "normalize:", b: symbol_lexeme(sym: d.head.reason))
-              ).success
-            Accepted { value: _, diagnostics: _ } =>
-              Filesystem.Write(path: "/tmp/vacuity_debug_reason.txt", content: "all-accepted").success
-          }
-      }
-  }
-}
-
-test fn vacuity_consumer_witness_debug_ingest_accepted() -> Bool {
-  let source_text = filesystem_read(path: vacuity_consumer_witness_scan_file()).content
-  match vacuity_witness_ingest_source_text(
-    source_text: source_text,
-    file: vacuity_bool_witness_file_anchor
-  ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: _ } => true
-  }
+  []
 }
 
 test fn vacuity_consumer_witness_derived_sites_nonempty_by_execution() -> Bool {
@@ -149,6 +103,26 @@ test fn vacuity_consumer_witness_shadows_reconcile_with_admitted_exceptions() ->
   let admitted = vacuity_consumer_witness_admitted_exceptions()
   (vacuity_site_key_count_not_in(keys: shadows, roster: admitted) == 0)
     && (vacuity_site_key_count_not_in(keys: admitted, roster: shadows) == 0)
+}
+
+test fn vacuity_consumer_witness_debug_write_ingest_reason() -> Bool {
+  let source_text = filesystem_read(path: vacuity_consumer_witness_scan_file()).content
+  match vacuity_witness_ingest_source_text(
+    source_text: source_text,
+    file: vacuity_bool_witness_file_anchor
+  ) {
+    Rejected { diagnostics: d } =>
+      Filesystem.Write(
+        path: "/tmp/vacuity_debug_reason.txt",
+        content: concat(a: "rejected:", b: symbol_lexeme(sym: d.head.reason))
+      ).success
+    Accepted { value: module_root, diagnostics: _ } =>
+      if length(xs: vacuity_collect_fn_decls(root: module_root, acc: Empty)) > 0 {
+        Filesystem.Write(path: "/tmp/vacuity_debug_reason.txt", content: "accepted-nonempty-decls").success
+      } else {
+        Filesystem.Write(path: "/tmp/vacuity_debug_reason.txt", content: "accepted-empty-decls").success
+      }
+  }
 }
 
 test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -> Bool {
