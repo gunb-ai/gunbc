@@ -87,6 +87,14 @@ type OccurrenceIdentityConsumerRedDebt {
   dissolve_on: String
 }
 
+type OccurrenceIdentityReceiptEnrollmentDebt {
+  id: String
+  receipt_functions: List<String>
+  owner: String
+  cause: String
+  dissolve_on: String
+}
+
 data occurrence_identity_consumer_red_debt_rehome_note: String = "PR 7530 rehomed five rows from namespace-canonical-binding to namespace-reference-derived-closure by their actual acceptance boundary. Four now execute and their debt rows have dissolved: rebuilt-reference-identity-preservation, structurally-equal-distinct-occurrences, pattern-declaration-reachability, and same-spelling-parser-declaration-isolation are permanent regression receipts in test.manual.occurrence_identity_debt_receipt_test, with the production rebuild half carried by pipeline_occurrence_sidecar_serde_round_trip. inferred-target-anchor-identity still belongs to namespace-canonical-binding because its receipt cannot execute before the production projection sites switch over.\n\none-occurrence-collector-dedupe remains on namespace-reference-derived-closure but cannot yet climb: the rehome test asked whether it conceptually precedes production changeover and missed that no production occurrence-aware repeated-discovery collector exists to observe. merge_occurrence_transports concatenates complete authored transports and validation correctly refuses duplicate authored rows; std.occurrence_binding_resolve P1 correctly refuses duplicate supplied candidate ids; the open structural producer buckets each already-validated declaration once and exposes no repeated-observation seam. None is the collector this receipt requires. The retained row names that missing seam as its next-rung trigger rather than fabricating a test-local deduper."
 
 data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedDebt> = [
@@ -101,6 +109,21 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
     required_receipt: "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.",
     owner: "namespace-canonical-binding",
     dissolve_on: "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR.",
+  },
+]
+
+data occurrence_identity_receipt_enrollment_debts: List<OccurrenceIdentityReceiptEnrollmentDebt> = [
+  OccurrenceIdentityReceiptEnrollmentDebt {
+    id: "namespace-parser-occurrence-receipts-per-pr-enrollment",
+    receipt_functions: [
+      "w_rebuilt_reference_identity_preservation_executes_holds",
+      "w_structurally_equal_distinct_occurrences_execute_holds",
+      "w_pattern_declaration_reachability_executes_holds",
+      "w_same_spelling_parser_declaration_isolation_executes_holds",
+    ],
+    owner: "witness-scheduling-source-root-surface",
+    cause: "The four receipts are green by execution and discriminating under planted defects, but they are not executed per PR. They import the production parser from src/v1, while every witness execution batch resolves against witness_layer_roots = [dag, src/v2]. ScheduleWitnessEntry carries no per-entry source roots. A compile-only Cargo harness is not execution, and a second workflow-local claim_batch step would fork the floor plan's scheduling authority.",
+    dissolve_on: "DISSOLVE-ON: ScheduleWitnessEntry admits authoritative per-entry source roots and these four functions enroll with [dag, src/v1], or the single witness_layer_roots authority deliberately widens to include src/v1; then prove their per-PR execution and delete this row in the same PR.",
   },
 ]
 

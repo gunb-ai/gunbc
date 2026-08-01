@@ -155,6 +155,15 @@ pub struct OccurrenceIdentityConsumerRedDebt {
     pub dissolve_on: String,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityReceiptEnrollmentDebt {
+    pub id: String,
+    pub receipt_functions: Rc<Vec<String>>,
+    pub owner: String,
+    pub cause: String,
+    pub dissolve_on: String,
+}
+
 pub fn occurrence_identity_consumer_red_debt_rehome_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -172,6 +181,17 @@ pub fn occurrence_identity_consumer_red_debts() -> Rc<Vec<Rc<OccurrenceIdentityC
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<OccurrenceIdentityConsumerRedDebt>>>| c.clone())
+}
+
+pub fn occurrence_identity_receipt_enrollment_debts(
+) -> Rc<Vec<Rc<OccurrenceIdentityReceiptEnrollmentDebt>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<OccurrenceIdentityReceiptEnrollmentDebt>>> = {
+            serde_json::from_value(serde_json::json!([{"id": "namespace-parser-occurrence-receipts-per-pr-enrollment", "receipt_functions": ["w_rebuilt_reference_identity_preservation_executes_holds", "w_structurally_equal_distinct_occurrences_execute_holds", "w_pattern_declaration_reachability_executes_holds", "w_same_spelling_parser_declaration_isolation_executes_holds"], "owner": "witness-scheduling-source-root-surface", "cause": "The four receipts are green by execution and discriminating under planted defects, but they are not executed per PR. They import the production parser from src/v1, while every witness execution batch resolves against witness_layer_roots = [dag, src/v2]. ScheduleWitnessEntry carries no per-entry source roots. A compile-only Cargo harness is not execution, and a second workflow-local claim_batch step would fork the floor plan's scheduling authority.", "dissolve_on": "DISSOLVE-ON: ScheduleWitnessEntry admits authoritative per-entry source roots and these four functions enroll with [dag, src/v1], or the single witness_layer_roots authority deliberately widens to include src/v1; then prove their per-PR execution and delete this row in the same PR."}]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<OccurrenceIdentityReceiptEnrollmentDebt>>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
