@@ -73,6 +73,8 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
 
 data namespace_kernel_authority_amendment_note: String = "THE KERNEL BAR AS FIRST WRITTEN DEADLOCKED ITS OWN SUCCESSOR, and this amendment is the fix (operator ruling, 2026-08-01). The recut landed namespace-binding-kernel with a red_control ending 'no second place in the compiler makes that same decision' and a handback demanding 'evidence that nothing else decides the same question'. That bar cannot be met while the bootstrap seed keeps its own hand-written none/one/many mirror inside the v1 adapter, and that mirror cannot be deleted until generic emission carries the canonical carrier with its required bounds. But namespace-reference-derived-closure DEPENDS on the kernel. So on the day the recut merged, the next step was already unstartable for a reason that had nothing to do with what the next step needs: deriving candidate populations does not require the seed mirror to be gone, it requires the canonical decision to EXIST and be callable.\n\nTHE CUT IS AUTHORITY VERSUS RETIREMENT. Owning the canonical decision and removing every rival implementation of it are separate achievements with separate evidence, and fusing them made an acceptance bar that no amount of correct kernel work could satisfy. The kernel now owns being the one canonical authority; namespace-legacy-choice-retirement owns deleting the older mechanisms, and the seed mirror is named there as one of its rows. A new node was deliberately NOT minted: that node already reads 'delete every other way of deciding what a name means' and already inventories every remaining place that decides, so the mirror is a row it should always have carried, and minting a sibling would have been a second home for one concept.\n\nTHE ADAPTER IS NOT THEREBY BLESSED. It remains a declared scaffold with its dissolution trigger on its own carrier, counted and visible; moving WHERE its retirement is tracked does not lower what is owed. What changes is only that a temporary bootstrap realization no longer gates work that does not depend on it.\n\nTWO ACCEPTANCE SENTENCES WERE ALSO WRONG AND ARE CORRECTED HERE. The red_control said 'a malformed name refuses', but this boundary accepts occurrence identities and derives no name spelling at all, so it named a check no implementation executes — it now reads malformed occurrence TRANSPORT. And the bar now states the two refusals that distinguish a malformed supplied population from a real verdict: a candidate handed in the wrong role refuses distinctly from one that is absent, and the same declaration supplied twice refuses as malformed rather than counting as two. Only two DISTINCT declaration identities are ambiguity. Collapsing either of those into an ordinary verdict would let a defective candidate producer read as a legitimate naming answer, which is the state-space conflation this whole lane exists to remove."
 
+data five_minute_ci_gate_program_note: String = "PROGRAM BOUNDARY, NOT A SINGLE PR (operator dispatch K, 2026-08-01). The product contract is one sentence: an ordinary source edit reaches a required CI verdict in five minutes without recomputing any semantic fact whose inputs did not change. Six sub-lanes discharge it — warm-merge-admission, native-selected-witness-corpus, exact-tree-materialization, module-grain-materialization, pre-index-materialization-lookup, and the existing entry-graph-union-construction measurement row reparented here. The parent carries the contract only; wall-clock and memo receipts live on the sub-lanes. Materialization climbs exact-tree → module-grain → pre-index lookup; entry-graph-union measures whether module-grain sharing is worth building and does not implement the ladder. Placement, frontend escape scan, and compile-wall shard work stay sibling lanes — named in docs/plans/five-minute-ci-gate-design.md, not duplicated as children."
+
 data namespace_node_recut_note: String = "THE BROAD NAMESPACE NODE WAS TOO COARSE TO CLOSE HONESTLY, and the recut is the fix (operator ruling, 2026-07-31). namespace-canonical-binding previously combined two separable things in one boundary: working out which declarations a name can see, and calling one decision function on them. A check proving only the none/one/many decision could therefore have marked the whole node accepted while candidate derivation, reference-derived dependency closure, and the production changeover all remained unbuilt — an acceptance hazard, and the exact shape of rung inflation DESIGN 4b forbids, where a carrier named for the top rung occupies the bottom one.\\n\\nThree prerequisites now stand in front of it. namespace-binding-kernel owns the decision alone, on a candidate population SUPPLIED to it. namespace-reference-derived-closure owns structural exposure, authored order, the candidate index, exact reference-to-declaration binding, and the derived dependency edges. namespace-ambiguity-discharge settles the genuinely-many cases from real compilation. namespace-canonical-binding KEEPS ITS DURABLE IDENTITY and is now the final production changeover only, so historical links resolve and no identity is reused.\\n\\nWhy the split falls exactly there: dependency edges are a PROJECTION OF THE BINDING, not a second authored statement. A program that instead authored the missing edges by hand reached 400 of 771 files at roughly one import per CI floor before it was stopped; the unresolved population was evidence that binding and module discovery are coupled at the wrong boundary, not a backlog to grind down.\\n\\nTHE CHANGEOVER AND ITS SUCCESSOR ARE DISJOINT, and an earlier revision of this recut broke that (review 45649). It retitled namespace-canonical-binding as 'switch the whole compiler over' with a boundary reading 'every place that resolves a name', which swallowed namespace-bound-only-consumers underneath it — that node's own boundary is type checking, call lookup, and argument-count checks reading the decided answer. Overlapping boundaries are the §2 redundancy this document exists to remove, and they are worse on a roadmap than in code: completing the parent would already entail most of the child, so either the child can never be honestly accepted or the parent was silently read narrower than it was written. The cut is PRODUCER versus READER. The changeover node owns the sites that WORK OUT what a name refers to, and the deletion of the search-everything fallback behind them. Its successor owns the READERS of that answer and their obligation to stop on unresolved or ambiguous. Neither entails the other, and each can be accepted on its own evidence.\\n\\nONE EDGE WAS DELIBERATELY NOT CHANGED. pderive-source-slot-binding still depends on namespace-canonical-binding, which now means it waits for the whole production changeover. It plausibly needs only occurrence transport plus the binding kernel, but that is unproven: the dependency moves only once the focused P-derive consumer demonstrates it can operate on an exact supplied candidate population. Loosening it on the strength of the argument alone would be asserting a fact nobody has measured."
 
 data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
@@ -838,6 +840,96 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     )
     ),
 
+    active_large(
+      identity: "rn_8QK2M5F7V3N9P1R4T6W0X2Y5Z8A",
+      id: "five-minute-ci-gate",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Reach a required CI verdict in five minutes without redundant semantic work",
+        boundary: "An ordinary source edit reaches a required CI verdict in five minutes without recomputing any semantic fact whose inputs did not change. The program is discharged by six sub-lanes: warm merge admission, native selected witnesses, exact-tree materialization, module-grain materialization, pre-index materialization lookup, and the shared-typecheck attribution row.",
+        displaced_cost: "Today a leaf pull request still pays whole-corpus discovery, cold recomputation, and merge-path receipt work even when the diff is small — confidence is bought with time the product boundary forbids.",
+        first_slice: "Register every sub-lane in the roadmap authority with boundaries, RED controls, and dependency edges; land no implementation under the parent id.",
+        red_control: "A sub-lane that widens to whole-corpus work, silently falls through from an incomplete materialization artifact to cold recompute, or claims the five-minute envelope without a fleet receipt on a representative leaf diff refuses rather than greens.",
+        out_of_scope: "No single PR closes the parent; placement host roster, tokenizer escape scan, and compile-wall shard work stay sibling lanes.",
+        handback: "The six declared sub-lane rows, this parent boundary, and the design note naming what stays outside the program."
+      )
+    ),
+    active(
+      identity: "rn_1H4J6L8N0P2Q5S7U9V1W3X6Y8Z0B",
+      id: "warm-merge-admission",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Admit merges from warm stamped receipts, not cold recomputation",
+        boundary: "Fold resolve and materialization receipt gates into merge admission so the pull-request path stamps once and admits from warm receipts. A stale base, stale roster, or missing receipt refuses — never reruns the whole floor to discover the answer.",
+        displaced_cost: "Merge admission and the floor tail currently pay separate cold paths for facts already fixed when the run started.",
+        first_slice: "Model the stamped receipt as the single admission authority and delete redundant cold receipt gates on the pull-request path.",
+        red_control: "A stale base-tree or stale gate-roster receipt blocks merge; a missing or invalid receipt refuses rather than widening to a full rerun.",
+        out_of_scope: "No change to main-push cold controls or the falsifier cadence.",
+        handback: "One admission path with discriminating stale-base, stale-roster, and fresh controls executed."
+      )
+    ),
+    active(
+      identity: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C",
+      id: "native-selected-witness-corpus",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Run only the witnesses the affected set selects, natively on the pooled floor",
+        boundary: "Discovery shrinks to the diff's affected set and executes only those witnesses on the pooled in-process floor — no tree-wide discovery on every pull request and no per-row process startup tax when native execution is available.",
+        displaced_cost: "Running the whole witness corpus on every pull request is the dominant cost on typical edits; selection without native pooling still leaves the process-tax wall.",
+        first_slice: "Enroll native selected-witness execution on the affected-set discovery path with a counted zero-selection control.",
+        red_control: "A provenance gap in selection refuses rather than widening to the whole corpus; a witness outside the selected set does not run on the pull-request path.",
+        out_of_scope: "No change to the scheduled falsifier's whole-corpus cold control.",
+        handback: "Affected-set discovery receipts, selected-row counts, and native-vs-spawn attribution on a representative diff."
+      )
+    ),
+    active_large(
+      identity: "rn_3J6L8N0P2R4S7U9W1X3Y6Z8A0B2D",
+      id: "exact-tree-materialization",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Serve exact-tree resolved graphs from verified cross-process materialization",
+        boundary: "Opt-in exact-tree cross-process cache: exact input identity plus compiler-binary identity keys a bounded materialized resolved graph. First process writes; later process verifies, decodes once, and installs into the process memo. Missing cache cold-computes; malformed, poisoned, wrong-key, wrong-content, and incomplete artifacts refuse — never fall through to silent cold recompute.",
+        displaced_cost: "Every serve, dashboard bind, and repeat entry resolve currently rebuilds the same resolved graph from scratch.",
+        first_slice: "Land the opt-in provider with incomplete-v3 refusal, honest public contract, and cross-process byte-identical controls — not default continuous-integration activation.",
+        out_of_scope: "Not module-grain edit reuse; not pre-index lookup before corpus-scale index construction.",
+        handback: "Provider module path, discriminating hit/miss/incomplete/refusal controls, and one representative large-closure memory receipt."
+      )
+    ),
+    active_large(
+      identity: "rn_4K7M9O1Q3S5T8V1W3X4Y7Z9A1B3E",
+      id: "module-grain-materialization",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Recompute only the edited module and its semantic dependents",
+        boundary: "Editing one module recomputes only that module, semantically affected dependents, and the affected shard; every other module is a verified content-keyed hit. Keys include module source, direct-import interface hashes, and compiler identity.",
+        displaced_cost: "Cross-entry typed-module work is repeated today even when module inputs are byte-identical across entries in one process.",
+        first_slice: "Land module-grain typed memo with host-budget eviction and byte-identical cached-vs-cold oracle on a representative edit.",
+        red_control: "A cache hit with divergent corpus or emit fingerprints refuses; an incomplete key refuses rather than serving a stale typed module.",
+        out_of_scope: "Not the exact-tree whole-entry cache rung; not dashboard pre-index lookup.",
+        handback: "Module-grain key authority, eviction receipts, and cached-vs-cold oracle green on the edit cone."
+      )
+    ),
+    active(
+      identity: "rn_5L8N0P2R4T6U9W2X4Y8Z0A2B4C6D",
+      id: "pre-index-materialization-lookup",
+      owner: "ci-cost",
+      path: "docs/plans/five-minute-ci-gate-design.md",
+      t: fields(
+        headline: "Probe materialization before corpus-scale index construction",
+        boundary: "A small persistent manifest lets a warm materialization hit occur before building the shared entry index and source-loading closure — the serve and dashboard path currently constructs the index first and only then discovers the cache.",
+        displaced_cost: "Warm hits that still pay corpus index construction reproduce the measured startup outage on real dashboard entries.",
+        first_slice: "Record on the actual dashboard entry: cold and warm time-to-listener-bind, time before cache probe, time in index construction, and time in provider validation — then land manifest lookup ahead of index build.",
+        red_control: "A warm hit that still builds the full corpus index on the serve path refuses as a regression; manifest mismatch refuses rather than silently rebuilding.",
+        out_of_scope: "Not the exact-tree provider itself; not module-grain keys.",
+        handback: "Dashboard timing receipt and manifest-first serve path with warm-hit control."
+      )
+    ),
+
     active_small(
       identity: "rn_2K8HXQ4MZV7NC3B6WD9YFT5J1E",
       id: "frontend-escape-scan-construction",
@@ -1557,6 +1649,16 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer"),
     edge(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping"),
     edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
+
+    edge(child: "warm-merge-admission", parent: "five-minute-ci-gate"),
+    edge(child: "native-selected-witness-corpus", parent: "five-minute-ci-gate"),
+    edge(child: "exact-tree-materialization", parent: "five-minute-ci-gate"),
+    edge(child: "module-grain-materialization", parent: "five-minute-ci-gate"),
+    edge(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate"),
+    edge(child: "entry-graph-union-construction", parent: "five-minute-ci-gate"),
+    edge(child: "module-grain-materialization", parent: "exact-tree-materialization"),
+    edge(child: "module-grain-materialization", parent: "entry-graph-union-construction"),
+    edge(child: "pre-index-materialization-lookup", parent: "module-grain-materialization"),
 
     edge(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer"),
     edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
