@@ -1,6 +1,7 @@
 module extdeps.browser.error_presentation
 
 import std.types { NonEmptyStr, String, Int, List }
+import std.measure { ByteSize, byte_size }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -81,7 +82,7 @@ type BrowserHttpHeader {
 type BrowserResponseBodyBytes
   = NoResponseBodyBytes
   | EmptyResponseBodyBytes
-  | Utf8ResponseBodyBytes { body: NonEmptyStr, byte_count: Int }
+  | Utf8ResponseBodyBytes { body: NonEmptyStr, byte_count: ByteSize }
 
 type BrowserHttpStatusReceipt
   = NoHttpResponseStatus
@@ -98,7 +99,7 @@ type BrowserDomOwnership
 type BrowserScreenshotReceipt {
   repository_path: NonEmptyStr
   sha256: NonEmptyStr
-  byte_count: Int
+  byte_count: ByteSize
 }
 
 type BrowserRecoveryBehavior
@@ -174,7 +175,7 @@ data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPrese
       screenshot: BrowserScreenshotReceipt {
         repository_path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as NonEmptyStr,
         sha256: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as NonEmptyStr,
-        byte_count: 19520,
+        byte_count: byte_size(19520),
       },
       recovery_behavior: RecoveryVisibleAfterExplicitReload,
       reload_requirement: ExplicitReloadRequired,
@@ -199,7 +200,7 @@ data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPrese
       screenshot: BrowserScreenshotReceipt {
         repository_path: "dag/test/fixtures/browser/chromium_151_empty_502.png" as NonEmptyStr,
         sha256: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as NonEmptyStr,
-        byte_count: 14089,
+        byte_count: byte_size(14089),
       },
       recovery_behavior: RecoveryVisibleAfterExplicitReload,
       reload_requirement: ExplicitReloadRequired,
@@ -218,7 +219,7 @@ data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPrese
       ],
       response_body_bytes: Utf8ResponseBodyBytes {
         body: "GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
-        byte_count: 26,
+        byte_count: byte_size(26),
       },
       navigation_result: NavigationReturnedResponse { status: 502 },
       final_url: "http://127.0.0.1:43821/body" as NonEmptyStr,
@@ -226,7 +227,7 @@ data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPrese
       screenshot: BrowserScreenshotReceipt {
         repository_path: "dag/test/fixtures/browser/chromium_151_bodied_502.png" as NonEmptyStr,
         sha256: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as NonEmptyStr,
-        byte_count: 6337,
+        byte_count: byte_size(6337),
       },
       recovery_behavior: RecoveryVisibleAfterExplicitReload,
       reload_requirement: ExplicitReloadRequired,

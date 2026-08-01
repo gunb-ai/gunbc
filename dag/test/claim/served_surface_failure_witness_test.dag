@@ -1,6 +1,7 @@
 module test.claim.served_surface_failure_witness
 
 import std.types { NonEmptyStr }
+import std.measure { byte_size }
 import extdeps.browser.error_presentation {
   BrowserRelease,
   BrowserHttpErrorPresentationPair,
@@ -255,7 +256,7 @@ test fn witness_execution_receipt_retains_full_specimens() -> Bool {
         && count(receipt.nonempty_response.response_headers) == 3
         && receipt.nonempty_response.response_body_bytes == Utf8ResponseBodyBytes {
           body: "GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
-          byte_count: 26,
+          byte_count: byte_size(26),
         }
         && receipt.nonempty_response.navigation_result == NavigationReturnedResponse { status: 502 }
         && receipt.nonempty_response.dom_ownership == HttpResponseDocumentOwned
