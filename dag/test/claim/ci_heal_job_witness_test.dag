@@ -14,12 +14,14 @@ import extdeps.languages.yaml.types {
 import gunbc.ci_spec {
   ci_heal_generated_artifact_regen_function,
   ci_heal_generated_artifact_gate_entry,
+  ci_heal_dispatch_entry,
   gunbc_ci_heal_commit_push_script
 }
 import gunbc.generated_artifact { committed_generated_artifact_paths, CiYamlArtifact, artifact_path }
 import gunbc.ci_workflow_expressions { ci_regen_heal_if }
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
+  WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup,
   Step, UsesStep, RunStep
 }
 
@@ -46,6 +48,22 @@ fn job_has_no_write(j: Job) -> Bool {
     Absent => true
     Present { value: wp } =>
       match wp.contents { Present { value: l } => !perm_is_write(p: l)  Absent => true }
+  }
+}
+
+fn job_actions_is_write(j: Job) -> Bool {
+  match j.permissions {
+    Present { value: wp } =>
+      match wp.actions { Present { value: l } => perm_is_write(p: l)  Absent => false }
+    Absent => false
+  }
+}
+
+fn job_has_no_actions_write(j: Job) -> Bool {
+  match j.permissions {
+    Absent => true
+    Present { value: wp } =>
+      match wp.actions { Present { value: l } => !perm_is_write(p: l)  Absent => true }
   }
 }
 
@@ -86,6 +104,28 @@ test fn contents_write_is_scoped_to_heal_only() -> Bool {
     && job_contents_is_write(j: ci_heal_generated_artifacts_job())
 }
 
+test fn actions_write_is_scoped_to_heal_only() -> Bool {
+  job_has_no_actions_write(j: ci_build_job())
+    && job_has_no_actions_write(j: ci_job())
+    && job_actions_is_write(j: ci_heal_generated_artifacts_job())
+}
+
+test fn workflow_dispatch_carries_optional_exact_healed_sha_input() -> Bool {
+  fold(ci_workflow.on, init: false, f: fn(acc, trigger) {
+    acc || match trigger {
+      WorkflowDispatch { inputs } =>
+        fold(inputs, init: false, f: fn(found, row) {
+          found || (row.name == "expected_healed_sha" && !row.required)
+        })
+      Push { branches: _, paths: _ } => false
+      PullRequest { branches: _, types: _ } => false
+      Schedule { cron: _ } => false
+      WorkflowCall { inputs: _ } => false
+      MergeGroup => false
+    }
+  })
+}
+
 test fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
   (ci_heal_generated_artifact_regen_function == "main_wet")
     && (ci_heal_generated_artifact_gate_entry == "dag/tools/generated_artifact_gate.dag")
@@ -109,6 +149,60 @@ test fn heal_push_targets_triggering_branch() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: "git push origin HEAD:${{ github.head_ref || github.ref_name }}")
     && !string_contains(s: script, pattern: "git push origin HEAD:main")
+}
+
+test fn heal_produced_dispatches_and_supersedes_old_run() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  (ci_heal_dispatch_entry == "dag/tools/ci_heal_dispatch.dag")
+    && string_contains(s: script, pattern: "PRIOR_HEAD=$(git rev-parse HEAD)")
+    && string_contains(s: script, pattern: "HEALED_HEAD=$(git rev-parse HEAD)")
+    && string_contains(s: script, pattern: "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\"")
+    && string_contains(s: script, pattern: "SupersededByHealedHead")
+    && string_contains(s: script, pattern: "revalidation-required")
+    && string_contains(s: script, pattern: "exit 1")
+}
+
+test fn dispatch_failure_is_loud_and_has_no_push_event_fallback() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  string_contains(s: script, pattern: "HealDispatchRefused")
+    && string_contains(s: script, pattern: "CreateWorkflowDispatchFailed")
+    && !string_contains(s: script, pattern: "workflow will be triggered by push")
+}
+
+fn yaml_value_is_github_token_context(v: YamlValue) -> Bool {
+  match v {
+    YamlString { value: s } => s == "${{ github.token }}"
+    YamlNull => false
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlSequence { elements: _ } => false
+    YamlMapping { entries: _ } => false
+  }
+}
+
+fn env_binds_github_token(kvs: List<YamlKeyValue>) -> Bool {
+  fold(kvs, init: false, f: (found, row) =>
+    found || (row.key == "GITHUB_TOKEN" && yaml_value_is_github_token_context(v: row.value)))
+}
+
+fn dispatch_step_binds_github_token(s: Step) -> Bool {
+  match s {
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    RunStep { name: _, id: _, run, shell: _, env, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      run == gunbc_ci_heal_commit_push_script() && match env {
+        Present { value: kvs } => env_binds_github_token(kvs: kvs)
+        Absent => false
+      }
+  }
+}
+
+test fn heal_dispatch_step_exports_github_token_authority() -> Bool {
+  fold(
+    ci_heal_generated_artifacts_job().steps,
+    init: false,
+    f: (found, step) => found || dispatch_step_binds_github_token(s: step)
+  )
 }
 
 fn yaml_value_is_branch_ref(v: YamlValue) -> Bool {
@@ -142,4 +236,3 @@ fn step_checks_out_branch(s: Step) -> Bool {
 test fn heal_checks_out_triggering_branch() -> Bool {
   fold(ci_heal_generated_artifacts_job().steps, init: false, f: (acc, s) => acc || step_checks_out_branch(s: s))
 }
-
