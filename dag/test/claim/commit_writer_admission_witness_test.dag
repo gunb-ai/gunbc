@@ -1,0 +1,204 @@
+module test.claim.commit_writer_admission_witness
+
+import gunbc.commit_workflow {
+  HumanGitCommit,
+  DashboardAutocommit,
+  HealAutocommit,
+  IntegrationCommit,
+  StagedTextBlob,
+  StagedNonTextBlob,
+  StagedBlobNotApplicable,
+  CommitWriterPathObservation,
+  CommitWriterAdmitted,
+  CommitWriterRefused,
+  CommitWriterUnmergedIndexRefusal,
+  CommitWriterConflictMarkerTextRefusal,
+  admit_commit_writer
+}
+import extdeps.git.object_store {
+  GitPath,
+  GitPathDecoded,
+  GitPathDecodeRefused,
+  GitIndexStageNormal,
+  GitIndexStageBase,
+  GitIndexStageOurs,
+  GitIndexStageTheirs,
+  git_decode_path_octets
+}
+import v2.std.artifact { Artifact, SourceFile, TestClaimArtifact }
+import std.bytes { pure_dag_seam_unreachable }
+
+data commit_writer_admission_witness_note: String = "Executable reproduction for commit 218dea61248d. Its auto-heal merge wrote three literal conflict blocks into dag/gunbc/publication_grant.dag. The unmerged-index witness represents the pre-add Git population (Base/Ours/Theirs); the independent stage-0 witness carries the first block exactly as committed after add normalized the index. Both refuse with the GitPath and their own structural location. The clean controls cover every declared writer kind. Mutation controls prove this is the complete marker grammar rather than a raw token scan: isolated begin text and begin/end/separator order both admit, while the same complete block is exempt only when its staged Artifact provenance is TestClaimArtifact."
+
+fn publication_grant_path() -> GitPath {
+  match git_decode_path_octets(octets: [
+    100, 97, 103, 47, 103, 117, 110, 98, 99, 47, 112, 117, 98, 108, 105, 99,
+    97, 116, 105, 111, 110, 95, 103, 114, 97, 110, 116, 46, 100, 97, 103,
+  ]) {
+    GitPathDecoded { path } => path
+    GitPathDecodeRefused { cause: _ } => pure_dag_seam_unreachable() as GitPath
+  }
+}
+
+fn source_artifact() -> Artifact {
+  Artifact {
+    kind: SourceFile,
+    id: ^publication_grant_source,
+    file_path: "dag/gunbc/publication_grant.dag",
+  }
+}
+
+fn test_artifact() -> Artifact {
+  Artifact {
+    kind: TestClaimArtifact,
+    id: ^conflict_marker_fixture,
+    file_path: "fixture supplied by typed test provenance",
+  }
+}
+
+fn clean_observation() -> CommitWriterPathObservation {
+  CommitWriterPathObservation {
+    path: publication_grant_path(),
+    stages: [GitIndexStageNormal],
+    staged_blob: StagedTextBlob {
+      text: "data public_file_publish_grants: List<PublicFilePublishGrant> = []\n",
+      provenance: source_artifact(),
+    },
+  }
+}
+
+fn unmerged_218dea6_observation() -> CommitWriterPathObservation {
+  CommitWriterPathObservation {
+    path: publication_grant_path(),
+    stages: [GitIndexStageBase, GitIndexStageOurs, GitIndexStageTheirs],
+    staged_blob: StagedBlobNotApplicable,
+  }
+}
+
+fn staged_marker_218dea6_text() -> String {
+  "data public_file_publish_grants: List<PublicFilePublishGrant> = [\n  public_file_publish_grant(path: \"dag/extdeps/git/inspect.dag\"),\n<<<<<<< HEAD\n  public_file_publish_grant(path: \"dag/extdeps/session_dashboard.dag\"),\n=======\n  public_file_publish_grant(path: \"dag/extdeps/github/workflows.dag\"),\n>>>>>>> origin/main\n  public_file_publish_grant(path: \"dag/extdeps/vendor/alphabet.dag\"),\n]\n"
+}
+
+fn staged_marker_observation(provenance: Artifact) -> CommitWriterPathObservation {
+  CommitWriterPathObservation {
+    path: publication_grant_path(),
+    stages: [GitIndexStageNormal],
+    staged_blob: StagedTextBlob {
+      text: staged_marker_218dea6_text(),
+      provenance: provenance,
+    },
+  }
+}
+
+fn admission_is_clean(writer: gunbc.commit_workflow.CommitWriter) -> Bool {
+  match admit_commit_writer(writer: writer, paths: [clean_observation()]) {
+    CommitWriterAdmitted { writer: _ } => true
+    CommitWriterRefused { writer: _, refusals: _ } => false
+  }
+}
+
+test fn clean_tree_admits_every_commit_writer() -> Bool {
+  admission_is_clean(writer: HumanGitCommit)
+    && admission_is_clean(writer: DashboardAutocommit)
+    && admission_is_clean(writer: HealAutocommit)
+    && admission_is_clean(writer: IntegrationCommit)
+}
+
+test fn unmerged_index_218dea6_shape_refuses_typed_and_located() -> Bool {
+  match admit_commit_writer(
+    writer: HealAutocommit,
+    paths: [unmerged_218dea6_observation()],
+  ) {
+    CommitWriterAdmitted { writer: _ } => false
+    CommitWriterRefused { writer: _, refusals } =>
+      (count(refusals) == 1) && match refusals.first() {
+        CommitWriterUnmergedIndexRefusal { path, stages } =>
+          (path == publication_grant_path())
+            && (stages == [GitIndexStageBase, GitIndexStageOurs, GitIndexStageTheirs])
+        CommitWriterConflictMarkerTextRefusal { location: _ } => false
+      }
+  }
+}
+
+test fn staged_marker_text_218dea6_shape_refuses_typed_and_located() -> Bool {
+  match admit_commit_writer(
+    writer: HealAutocommit,
+    paths: [staged_marker_observation(provenance: source_artifact())],
+  ) {
+    CommitWriterAdmitted { writer: _ } => false
+    CommitWriterRefused { writer: _, refusals } =>
+      (count(refusals) == 1) && match refusals.first() {
+        CommitWriterUnmergedIndexRefusal { path: _, stages: _ } => false
+        CommitWriterConflictMarkerTextRefusal { location } =>
+          (location.path == publication_grant_path())
+            && (location.begin_line == 3)
+            && (location.separator_line == 5)
+            && (location.end_line == 7)
+      }
+  }
+}
+
+test fn both_refusal_arms_are_independent_and_accumulate() -> Bool {
+  match admit_commit_writer(
+    writer: IntegrationCommit,
+    paths: [
+      unmerged_218dea6_observation(),
+      staged_marker_observation(provenance: source_artifact()),
+    ],
+  ) {
+    CommitWriterAdmitted { writer: _ } => false
+    CommitWriterRefused { writer: _, refusals } => count(refusals) == 2
+  }
+}
+
+test fn isolated_marker_token_red_control_admits() -> Bool {
+  let observation = CommitWriterPathObservation {
+    path: publication_grant_path(),
+    stages: [GitIndexStageNormal],
+    staged_blob: StagedTextBlob {
+      text: "a legitimate explanation can mention <<<<<<< HEAD without carrying a separator and end",
+      provenance: source_artifact(),
+    },
+  }
+  match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
+    CommitWriterAdmitted { writer: _ } => true
+    CommitWriterRefused { writer: _, refusals: _ } => false
+  }
+}
+
+test fn out_of_order_marker_red_control_admits() -> Bool {
+  let observation = CommitWriterPathObservation {
+    path: publication_grant_path(),
+    stages: [GitIndexStageNormal],
+    staged_blob: StagedTextBlob {
+      text: "<<<<<<< HEAD\nleft\n>>>>>>> origin/main\n=======\nright\n",
+      provenance: source_artifact(),
+    },
+  }
+  match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
+    CommitWriterAdmitted { writer: _ } => true
+    CommitWriterRefused { writer: _, refusals: _ } => false
+  }
+}
+
+test fn typed_test_artifact_provenance_exempts_complete_fixture() -> Bool {
+  match admit_commit_writer(
+    writer: HumanGitCommit,
+    paths: [staged_marker_observation(provenance: test_artifact())],
+  ) {
+    CommitWriterAdmitted { writer: _ } => true
+    CommitWriterRefused { writer: _, refusals: _ } => false
+  }
+}
+
+test fn non_text_normal_blob_admits_without_fabricating_text() -> Bool {
+  let observation = CommitWriterPathObservation {
+    path: publication_grant_path(),
+    stages: [GitIndexStageNormal],
+    staged_blob: StagedNonTextBlob,
+  }
+  match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
+    CommitWriterAdmitted { writer: _ } => true
+    CommitWriterRefused { writer: _, refusals: _ } => false
+  }
+}

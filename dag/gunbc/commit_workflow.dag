@@ -13,6 +13,15 @@ import gunbc.generated_artifact {
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import std.types { NonEmptyStr }
+import extdeps.git.object_store {
+  GitPath,
+  GitIndexStage,
+  GitIndexStageNormal,
+  GitIndexStageBase,
+  GitIndexStageOurs,
+  GitIndexStageTheirs
+}
+import v2.std.artifact { Artifact, TestClaimArtifact }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
@@ -20,6 +29,239 @@ import std.realization_schedule {
 }
 
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
+
+type CommitWriter
+  = HumanGitCommit
+  | DashboardAutocommit
+  | HealAutocommit
+  | IntegrationCommit
+
+type StagedBlobContent
+  = StagedTextBlob { text: String, provenance: Artifact }
+  | StagedNonTextBlob
+  | StagedBlobNotApplicable
+
+type CommitWriterPathObservation {
+  path: GitPath
+  stages: List<GitIndexStage>
+  staged_blob: StagedBlobContent
+}
+
+type ConflictMarkerGrammar {
+  begin: String
+  separator: String
+  end: String
+}
+
+data git_conflict_marker_grammar: ConflictMarkerGrammar = ConflictMarkerGrammar {
+  begin: "<<<<<<<"
+  separator: "======="
+  end: ">>>>>>>"
+}
+
+type ConflictMarkerLocation {
+  path: GitPath
+  begin_line: Int
+  separator_line: Int
+  end_line: Int
+}
+
+type ConflictMarkerParseState
+  = ConflictMarkerOutside
+  | ConflictMarkerBegun { begin_line: Int }
+  | ConflictMarkerSeparated { begin_line: Int, separator_line: Int }
+
+type ConflictMarkerParseFold {
+  state: ConflictMarkerParseState
+  locations: List<ConflictMarkerLocation>
+}
+
+type CommitWriterRefusal
+  = CommitWriterUnmergedIndexRefusal {
+      path: GitPath,
+      stages: List<GitIndexStage>
+    }
+  | CommitWriterConflictMarkerTextRefusal {
+      location: ConflictMarkerLocation
+    }
+
+type CommitWriterAdmission
+  = CommitWriterAdmitted { writer: CommitWriter }
+  | CommitWriterRefused {
+      writer: CommitWriter,
+      refusals: List<CommitWriterRefusal>
+    }
+
+data commit_writer_admission_note: String = "ONE ADMISSION PREDICATE FOR EVERY COMMIT WRITER. The index arm consumes extdeps.git.object_store GitIndexStage directly: a path is normalized exactly when its complete stage population is the singleton GitIndexStageNormal; Base/Ours/Theirs are preserved in the typed, located refusal rather than collapsed into a stringly conflicted-tree flag. The staged-text arm is independent because git add can erase those nonzero stages while retaining literal conflict blocks. It parses the complete begin -> separator -> end line grammar over the exact staged text supplied at the write boundary; isolated marker-like lines and out-of-order tokens are not a conflict block. Only v2.std.artifact TestClaimArtifact provenance exempts intentional fixture text, so no path allowlist or repo-wide grep exists. This function is the repository authority; the generated pre-commit hook is optional feedback and cannot enforce it. The DashboardAutocommit/HealAutocommit write-boundary realization that produced commit 218dea61248d is external dashboard infrastructure and must bind this admission before writing; until that binding lands, the model and executable reproduction witness close the decision but not the external realization."
+
+fn commit_writer_stage_is_normal(stage: GitIndexStage) -> Bool {
+  match stage {
+    GitIndexStageNormal => true
+    GitIndexStageBase => false
+    GitIndexStageOurs => false
+    GitIndexStageTheirs => false
+  }
+}
+
+fn commit_writer_stage_population_is_normal(stages: List<GitIndexStage>) -> Bool {
+  (count(stages) == 1) && commit_writer_stage_is_normal(stage: stages.first())
+}
+
+fn conflict_marker_line_has_prefix(line: String, marker: String) -> Bool {
+  (line == marker) || starts_with(s: line, prefix: concat(marker, " "))
+}
+
+fn conflict_marker_parse_line(
+  fold_state: ConflictMarkerParseFold,
+  path: GitPath,
+  line: String,
+  line_number: Int,
+  grammar: ConflictMarkerGrammar,
+) -> ConflictMarkerParseFold {
+  if conflict_marker_line_has_prefix(line: line, marker: grammar.begin) {
+    ConflictMarkerParseFold {
+      state: ConflictMarkerBegun { begin_line: line_number }
+      locations: fold_state.locations
+    }
+  } else {
+    match fold_state.state {
+      ConflictMarkerOutside => ConflictMarkerParseFold {
+        state: ConflictMarkerOutside
+        locations: fold_state.locations
+      }
+      ConflictMarkerBegun { begin_line } =>
+        if line == grammar.separator {
+          ConflictMarkerParseFold {
+            state: ConflictMarkerSeparated {
+              begin_line: begin_line,
+              separator_line: line_number,
+            }
+            locations: fold_state.locations
+          }
+        } else {
+          ConflictMarkerParseFold {
+            state: fold_state.state
+            locations: fold_state.locations
+          }
+        }
+      ConflictMarkerSeparated { begin_line, separator_line } =>
+        if conflict_marker_line_has_prefix(line: line, marker: grammar.end) {
+          ConflictMarkerParseFold {
+            state: ConflictMarkerOutside
+            locations: append(
+              fold_state.locations,
+              items: [
+                ConflictMarkerLocation {
+                  path: path,
+                  begin_line: begin_line,
+                  separator_line: separator_line,
+                  end_line: line_number,
+                },
+              ],
+            )
+          }
+        } else {
+          ConflictMarkerParseFold {
+            state: fold_state.state
+            locations: fold_state.locations
+          }
+        }
+    }
+  }
+}
+
+fn conflict_marker_locations_from_lines(
+  lines: List<String>,
+  path: GitPath,
+  grammar: ConflictMarkerGrammar,
+) -> List<ConflictMarkerLocation> {
+  let numbered = zip_with_index(lines)
+  let parsed = fold(
+    numbered,
+    init: ConflictMarkerParseFold {
+      state: ConflictMarkerOutside,
+      locations: [],
+    },
+    f: fn(acc, row) {
+      conflict_marker_parse_line(
+        fold_state: acc,
+        path: path,
+        line: row.first,
+        line_number: row.second + 1,
+        grammar: grammar,
+      )
+    },
+  )
+  parsed.locations
+}
+
+fn staged_text_has_test_artifact_provenance(provenance: Artifact) -> Bool {
+  match provenance.kind {
+    TestClaimArtifact => true
+    _ => false
+  }
+}
+
+fn commit_writer_marker_refusals(
+  path: GitPath,
+  staged_blob: StagedBlobContent,
+) -> List<CommitWriterRefusal> {
+  match staged_blob {
+    StagedTextBlob { text, provenance } =>
+      if staged_text_has_test_artifact_provenance(provenance: provenance) {
+        []
+      } else {
+        map(
+          conflict_marker_locations_from_lines(
+            lines: split(s: text, delimiter: "\n"),
+            path: path,
+            grammar: git_conflict_marker_grammar,
+          ),
+          location => CommitWriterConflictMarkerTextRefusal {
+            location: location
+          },
+        )
+      }
+    StagedNonTextBlob => []
+    StagedBlobNotApplicable => []
+  }
+}
+
+fn commit_writer_path_refusals(
+  observation: CommitWriterPathObservation,
+) -> List<CommitWriterRefusal> {
+  let index_refusals = if commit_writer_stage_population_is_normal(
+    stages: observation.stages,
+  ) {
+    []
+  } else {
+    [
+      CommitWriterUnmergedIndexRefusal {
+        path: observation.path,
+        stages: observation.stages,
+      },
+    ]
+  }
+  append(
+    index_refusals,
+    items: commit_writer_marker_refusals(
+      path: observation.path,
+      staged_blob: observation.staged_blob,
+    ),
+  )
+}
+
+fn admit_commit_writer(
+  writer: CommitWriter,
+  paths: List<CommitWriterPathObservation>,
+) -> CommitWriterAdmission {
+  let refusals = flat_map(paths, p => commit_writer_path_refusals(observation: p))
+  if refusals == [] {
+    CommitWriterAdmitted { writer: writer }
+  } else {
+    CommitWriterRefused { writer: writer, refusals: refusals }
+  }
+}
 
 type LocalTidyCheck
   = LocalTidyWitnessCheck { entry: String, check_fns: List<String> }
