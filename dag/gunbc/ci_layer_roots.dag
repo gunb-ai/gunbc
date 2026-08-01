@@ -71,6 +71,12 @@ data excl_install_media_dissolve: String = "mock_response coverage lands and ass
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
+    pattern: "stage0_rust_host_observation_live_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "SUBSTANTIATED per-row: every fn in this file evaluates gunbc.stage0_rust_host_observation rust_source_host_observation, whose realization reaches git.Inspect.HeadCommit and git.Inspect.MergeBase. Neither carries a mock_response, so the hermetic envelope does not skip these -- it REFUSES, declining to fabricate rather than inventing a revision. Because a refusing discovery member fails its whole batch, leaving them enrolled took down the entire per-PR witness corpus (CI receipt on PR 7562: batch 3 discovery-corpus, 2 roots + 105 explicit). Publishing the mocks was tried and reverted: it only moves the refusal to the next unmocked operation, and mocking the whole revision-addressed chain would let scaffold_host_observation_is_live_and_observed pass against a constant sha -- reflection evidence standing in for the live read the witness exists to prove. Falsifier wet enrollment is not available either: falsifier_self_host_wet_cadence_active is false, so a row there would satisfy a coverage argument while executing nowhere. The honest state is excluded, reason stated, gap counted -- the same class and the same trigger as the wet_integration_offline_note rows.",
+    dissolve_on: "mock_response coverage lands for the git.Inspect revision-addressed operations AND the assertions are re-checked so that they still discriminate under a fixed mock (a liveness claim that a constant satisfies must be restated or dropped); or the wet lane un-darkens and these fns enroll there as declared execution rows. Either way this row deletes."
+  },
+  WitnessExclusionRow {
     pattern: "claim/long/mandatory_tag_extdeps_corpus",
     classification: OfflineLocalRecipe,
     reason: "interpreted corpus walk prices out of every CI lane (measured ~33s/module parse, hours full run; see corpus_witness_note in the test file); the CI-cadence corpus consumer is the retained host projection v2.lens.mandatory_tag.corpus_scan",
