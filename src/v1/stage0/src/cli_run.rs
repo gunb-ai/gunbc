@@ -23303,7 +23303,7 @@ mod sidecar_placement_hygiene_tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]
-    fn workspace_entry_boundary_resolves_from_crate_cwd() {
+    fn workspace_entry_boundary_cwd_independence_positive_control() {
         let ws = super::process_workspace_root();
         let source_roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
