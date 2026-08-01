@@ -9,6 +9,10 @@ import gunbc.stage0_emit_model {
 import gunbc.stage0_emit_plan {
   HandMaintainedCandidate,
   ParsedFromRegenSourceClosure,
+  SourceIdentityUnavailable,
+  SourceIdentityUnavailableRefusal,
+  Stage0EmissionPlanAccepted,
+  Stage0EmissionPlanRefused,
   Stage0SourceModuleIdentity,
   V1SourceTree,
   generated_stage0_files_from_plan_rows,
@@ -63,9 +67,10 @@ data fixture_source_identities: List<Stage0SourceModuleIdentity> = [
 ]
 
 fn fixture_generated_files(identities: List<Stage0SourceModuleIdentity>) -> List<String> {
-  generated_stage0_files_from_plan_rows(
-    rows: stage0_emission_plan_from_source(identities: identities)
-  )
+  match stage0_emission_plan_from_source(identities: identities) {
+    Stage0EmissionPlanAccepted { rows } => generated_stage0_files_from_plan_rows(rows: rows)
+    Stage0EmissionPlanRefused { cause: _ } => []
+  }
 }
 
 test fn w_source_supply_baseline_exact_agreement() -> Bool {
@@ -88,12 +93,30 @@ test fn w_source_supply_extra_identity_red_control() -> Bool {
   !stage0_generated_output_sets_agree(modeled: modeled, observed: observed)
 }
 
+test fn w_source_identity_unavailable_refuses_before_plan_rows() -> Bool {
+  match stage0_emission_plan_from_source(identities: [
+    Stage0SourceModuleIdentity {
+      module_path: "std.unavailable",
+      storage_path: "src/v1/std/unavailable.dag",
+      source_tree: V1SourceTree,
+      provenance: SourceIdentityUnavailable
+    }
+  ]) {
+    Stage0EmissionPlanRefused {
+      cause: SourceIdentityUnavailableRefusal { module_path, storage_path }
+    } => module_path == "std.unavailable" && storage_path == "src/v1/std/unavailable.dag"
+    Stage0EmissionPlanAccepted { rows: _ } => false
+  }
+}
+
 test fn w_frontier_classifies_seed_retained_candidate() -> Bool {
-  let rows = stage0_emission_plan_from_source(identities: [
+  match stage0_emission_plan_from_source(identities: [
     fixture_source_identity(module_path: "v1.interpreter", storage_path: "src/v1/99_interpreter.dag")
-  ])
-  rows |> any(row =>
-    row.produced.basename == "v1_interpreter.rs"
-      && match row.disposition { HandMaintainedCandidate => true  _ => false }
-  )
+  ]) {
+    Stage0EmissionPlanRefused { cause: _ } => false
+    Stage0EmissionPlanAccepted { rows } => rows |> any(row =>
+      row.produced.basename == "v1_interpreter.rs"
+        && match row.disposition { HandMaintainedCandidate => true  _ => false }
+    )
+  }
 }
