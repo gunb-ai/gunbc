@@ -3,6 +3,7 @@ module extdeps.execution.mechanism
 import std.types { String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.rust.std_process
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.execution_mechanism {
   ExecutionMechanism,
@@ -23,16 +24,11 @@ import v2.std.operation_argv {
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "doc.rust-lang.org/std/process/struct.Command.html"
-  }
-}
-
-data openssh_cli_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
     locator: "man.openbsd.org/ssh"
   }
 }
+
+data execution_mechanism_grounding_note: String = "OpenSSH CLI shape is grounded by this module's external-authority anchor. Local spawn semantics consume the existing extdeps.rust.std_process authority (and its extdeps_external_authority_anchor for std::process::Command) through the import above; this module does not mint a second Rust Command citation."
 
 data execution_wrapper_refusal_note: String = "A known exec wrapper is not classified from argv[0]. env, sudo, nohup, timeout, nice, setsid, stdbuf, and xargs select the effective executable through their own option grammar; `env bash -s` is a LocalShellScript while `env git status` is a LocalProcess even though both have the same argv[0]. Looking through without modeling that grammar would recreate argv anemia inside the classifier, so wrappers refuse until their invocation shape is grounded. The executed live census pins the current TEN wrapper rows as counted residue — eight env and two sudo. An earlier source scan counted eight total because it missed two multiline env argv declarations; the derived census, not that grep, is the authority."
 
