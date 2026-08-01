@@ -82,6 +82,7 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "dag/test/claim/acquisition_mechanism_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/advertising_interface_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/crm_stage_vocabulary_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/generic_item_clone_bound_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/roadmap_forecast_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/heal_revalidation_integration_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/heal_revalidation_witness_test.dag"),
