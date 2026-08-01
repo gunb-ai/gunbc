@@ -551,3 +551,11 @@ test fn probe_nul_len1() -> Bool {
 test fn probe_nul_len8() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_nul) as String).length() == 8
 }
+
+fn probe_cr_value() -> String {
+  c_translation_unit_basename(unit_id: hostile_cr) as String
+}
+
+fn probe_nul_value() -> String {
+  c_translation_unit_basename(unit_id: hostile_nul) as String
+}
