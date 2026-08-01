@@ -1,0 +1,125 @@
+module tools.merge_admission_capture
+
+import std.types { FilePath, GitRef, NonEmptyStr, String }
+import extdeps.git
+import extdeps.git.object_store {
+  GitObjectId,
+  git_sha1_object_id,
+  git_sha256_object_id,
+}
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.merge_admission_identity {
+  TestedSubject,
+  WalkAttemptId,
+  compose_explicit_walk_attempt_id,
+  compose_walk_attempt_id,
+  merge_admission_attempt_dir,
+  merge_admission_merge_base_ref,
+  merge_admission_tested_subject_path,
+  render_tested_subject_wire,
+}
+
+data merge_admission_capture_profile_note: String = "This wet capture entry imports only the walk-attempt/tested-subject identity carrier plus typed git/filesystem services. Merge classification, commit-roster hashing, and CI failure taxonomy are deliberately downstream and absent from this closure, so the first ordinary batch does not pay or retain the stage classifier's graph before discovery."
+
+fn env_var(name: NonEmptyStr) -> String? {
+  let env = shell.Env.Get(name: name)
+  match env.value {
+    Present { value: raw } =>
+      let line = trim(raw)
+      if line == "" { none } else { Present { value: line } }
+    Absent => none
+  }
+}
+
+fn current_walk_attempt_id() -> WalkAttemptId? {
+  match env_var(name: "GUNBC_WALK_ATTEMPT_ID") {
+    Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
+    Absent =>
+      match env_var(name: "GITHUB_RUN_ID") {
+        Absent => none
+        Present { value: run_id } =>
+          match env_var(name: "GITHUB_RUN_ATTEMPT") {
+            Absent => none
+            Present { value: run_attempt } =>
+              match env_var(name: "GITHUB_JOB") {
+                Absent => none
+                Present { value: job } => compose_walk_attempt_id(
+                  run_id: run_id,
+                  run_attempt: run_attempt,
+                  job: job
+                )
+              }
+          }
+      }
+  }
+}
+
+fn tested_checkout_base_ref(event_name: String) -> GitRef {
+  if (event_name == "pull_request") || (event_name == "merge_group") {
+    "HEAD^1" as GitRef
+  } else {
+    "HEAD" as GitRef
+  }
+}
+
+fn current_event_name() -> String {
+  match env_var(name: "GITHUB_EVENT_NAME") {
+    Present { value: event_name } => event_name
+    Absent => "workflow_dispatch"
+  }
+}
+
+fn observed_git_object_id(raw: String) -> GitObjectId? {
+  let hex = trim(raw)
+  if hex.length() == 40 {
+    git_sha1_object_id(hex: hex)
+  } else if hex.length() == 64 {
+    git_sha256_object_id(hex: hex)
+  } else {
+    none
+  }
+}
+
+func capture_tested_subject() -> Bool {
+  match current_walk_attempt_id() {
+    Absent => false
+    Present { value: attempt_id } =>
+      let head = git.Core.HeadCommit()
+      if !head.success {
+        false
+      } else {
+        let base = git.Core.ShowTree(ref: tested_checkout_base_ref(event_name: current_event_name()))
+        if !base.success {
+          false
+        } else {
+          match observed_git_object_id(raw: base.tree) {
+            Absent => false
+            Present { value: base_tree } =>
+              let root = git.Core.Toplevel().path as String
+              let attempt_dir = merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
+              let cleared = shell.Remove.RecursiveForce(path: attempt_dir as FilePath)
+              if !cleared.success {
+                false
+              } else {
+                let ready = shell.Mkdir.Parents(path: attempt_dir as FilePath)
+                if !ready.success {
+                  false
+                } else {
+                  let subject = TestedSubject {
+                    attempt_id: attempt_id,
+                    head_sha: head.sha,
+                    base_ref: merge_admission_merge_base_ref,
+                    base_tree: base_tree,
+                  }
+                  Filesystem.Write(
+                    path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id),
+                    content: render_tested_subject_wire(subject: subject)
+                  ).success
+                }
+              }
+          }
+        }
+      }
+  }
+}

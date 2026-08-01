@@ -1,0 +1,131 @@
+module gunbc.merge_admission_identity
+
+import std.types { CommitSha, String, List, PathSegment, path_segment_is_safe }
+import extdeps.git.object_store {
+  GitObjectId,
+  GitSha1ObjectId,
+  GitSha256ObjectId,
+  git_sha1_object_id,
+  git_sha256_object_id,
+}
+import gunbc.repo_identity { gunbc_merge_target_ref }
+
+data merge_admission_identity_defusion_note: String = "WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and admission classification both consume them. This is a MOVE from gunbc.merge_admission and gunbc.merge_admission_produce, not a second representation: the domain modules import this carrier home. Keeping the checkout capture out of the classifier's commit-roster closure makes its declared Negligible profile true at the realization boundary."
+
+data walk_attempt_id_note: String = "The attempt identity is a PATH SEGMENT, because it is concatenated into one: merge_admission_attempt_dir builds <root>/.gunbc/merge-admission/<attempt_id>/. As a bare string it was neither path-safe nor wire-safe. Both producers — GitHub-derived composition and explicit GUNBC_WALK_ATTEMPT_ID — go through walk_attempt_id, the only constructor, and refuse rather than sanitizing."
+
+type WalkAttemptId = PathSegment where brand("WalkAttemptId")
+
+fn walk_attempt_id(raw: String) -> WalkAttemptId? {
+  if path_segment_is_safe(raw: raw) {
+    Present { value: raw as WalkAttemptId }
+  } else {
+    none
+  }
+}
+
+fn walk_attempt_id_eq(left: WalkAttemptId, right: WalkAttemptId) -> Bool {
+  (left as String) == (right as String)
+}
+
+type TestedSubject {
+  attempt_id: WalkAttemptId
+  head_sha: CommitSha
+  base_ref: String
+  base_tree: GitObjectId
+}
+
+data tested_subject_note: String = "THE SUBJECT THE FLOOR TESTED, captured as the first ordinary batch — before any substantive floor work — and bound into the receipt by the stamp. The stamp must NOT re-read HEAD or re-observe the merge target at stamp time: main can advance during a floor that runs for tens of minutes, and a receipt binding post-floor observations would claim the floor tested a tree it never saw. The gate then fetches the CURRENT target and classifies tested_base_tree_hash against it — two base facts with different jobs, never one observation doing both (the deleted single pre-floor fetch was exactly that fusion, and the freshness hole it left is what the old separate gate step's own fresh fetch existed to catch)."
+
+data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
+data merge_admission_tested_subject_schema: String = "gunbc.merge_admission_tested_subject.v1"
+
+data compose_walk_attempt_id_note: String = "Pure composition of the walk-attempt identity from its parts; the ENV OBSERVATION lives with the wet entry, this fn only joins and refuses. Every part must be nonempty — an empty run id, attempt number, or job name yields Absent, and the caller REFUSES the run rather than substituting a constant: a silent local would make every non-GitHub run one attempt, so the wrong-attempt refusal could never fire off CI, which is exactly the unreachable-arm shape §5 forbids. Non-GitHub execution supplies GUNBC_WALK_ATTEMPT_ID explicitly and it passes through compose_explicit_walk_attempt_id under the same nonempty law."
+
+data git_object_id_wire_note: String = "A Git object id on the wire carries its FORMAT, because the type does: <format>:<hex>. An anonymous hex string would be exactly the defect DESIGN's ContentHash-family residue records — a value whose family the reader has to guess — and a repository mid SHA-1/SHA-256 transition is precisely when guessing wrong is possible. This fn owns ONLY the <format>:<hex> spelling; whether the hex is a well-formed object id of that family is extdeps.git.object_store's question, answered by git_sha1_object_id / git_sha256_object_id, which check exact length and canonical lowercase hex. An earlier cut cast the suffix straight into the brand, so sha1:x, sha1:not-hex and a 64-digit value labelled sha1 all parsed (review 2026-07-30) — family without length and syntax is not identification."
+
+fn merge_admission_attempt_dir(root: String, attempt_id: WalkAttemptId) -> String {
+  concat(concat(root, "/.gunbc/merge-admission/"), attempt_id as String)
+}
+
+fn merge_admission_tested_subject_path(root: String, attempt_id: WalkAttemptId) -> String {
+  concat(merge_admission_attempt_dir(root: root, attempt_id: attempt_id), "/tested-subject.wire")
+}
+
+fn merge_admission_floor_receipt_path(root: String, attempt_id: WalkAttemptId) -> String {
+  concat(merge_admission_attempt_dir(root: root, attempt_id: attempt_id), "/floor-receipt.wire")
+}
+
+fn compose_walk_attempt_id(run_id: String, run_attempt: String, job: String) -> WalkAttemptId? {
+  if (run_id == "") || (run_attempt == "") || (job == "") {
+    none
+  } else {
+    walk_attempt_id(raw: concat(concat(concat(concat(run_id, "-"), run_attempt), "-"), job))
+  }
+}
+
+fn compose_explicit_walk_attempt_id(explicit: String) -> WalkAttemptId? {
+  walk_attempt_id(raw: explicit)
+}
+
+fn render_git_object_id_wire(oid: GitObjectId) -> String {
+  match oid {
+    GitSha1ObjectId { digest } => concat("sha1:", digest as String)
+    GitSha256ObjectId { digest } => concat("sha256:", digest as String)
+  }
+}
+
+fn parse_git_object_id_wire(raw: String) -> GitObjectId? {
+  if !(length(split(s: raw, delimiter: ":")) == 2) {
+    none
+  } else if split(s: raw, delimiter: ":").first() == "sha1" {
+    git_sha1_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
+  } else if split(s: raw, delimiter: ":").first() == "sha256" {
+    git_sha256_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
+  } else {
+    none
+  }
+}
+
+fn render_tested_subject_wire(subject: TestedSubject) -> String {
+  concat(
+    concat(
+      concat(concat(merge_admission_tested_subject_schema, "\n"), concat(subject.attempt_id as String, "\n")),
+      concat(subject.base_ref, "\n")
+    ),
+    concat(concat(render_git_object_id_wire(oid: subject.base_tree), "\n"), subject.head_sha)
+  )
+}
+
+fn receipt_wire_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
+fn parse_tested_subject_wire(text: String) -> TestedSubject? {
+  let lines = receipt_wire_lines(text: text)
+  if !(length(lines) == 5) {
+    none
+  } else if !(lines.first() == merge_admission_tested_subject_schema) {
+    none
+  } else if lines.skip(n: 2).first() == "" {
+    none
+  } else if lines.skip(n: 4).first() == "" {
+    none
+  } else {
+    match walk_attempt_id(raw: lines.skip(n: 1).first()) {
+      Absent => none
+      Present { value: attempt } =>
+        match parse_git_object_id_wire(raw: lines.skip(n: 3).first()) {
+          Absent => none
+          Present { value: tree } => Present {
+            value: TestedSubject {
+              attempt_id: attempt,
+              base_ref: lines.skip(n: 2).first(),
+              base_tree: tree,
+              head_sha: lines.skip(n: 4).first(),
+            }
+          }
+        }
+    }
+  }
+}

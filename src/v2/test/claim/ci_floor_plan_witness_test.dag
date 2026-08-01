@@ -56,6 +56,7 @@ import v2.workflow.ci_floor_plan {
   falsifier_substrate_long_lane_batch_enrolled,
   gunbc_ci_floor_schedule_lens_holds,
   witness_merge_admission_capture_is_first_batch_only,
+  witness_merge_admission_capture_uses_identity_entry,
   witness_floor_batch_clamp_params_cover_schedule,
   witness_floor_batch_clamp_overhead_all_positive,
   witness_floor_batch_clamp_rate_all_nonneg,
@@ -626,6 +627,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_floor_batch_stop_policy_plan_roster_enrolled() &&
     gunbc_ci_floor_schedule_lens_holds() &&
     witness_merge_admission_capture_is_first_batch_only() &&
+    witness_merge_admission_capture_uses_identity_entry() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
     witness_plan_serializes_heavy_resolves()

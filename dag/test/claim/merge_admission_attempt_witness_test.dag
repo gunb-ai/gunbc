@@ -3,10 +3,21 @@ module test.claim.merge_admission_attempt_witness
 import std.types { NonEmptyStr, ContentHash, CommitSha, String }
 import extdeps.github.checks { Success, Failure }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_object_id_eq }
-import gunbc.merge_admission {
+import gunbc.merge_admission_identity {
   TestedSubject,
   WalkAttemptId,
   walk_attempt_id,
+  merge_admission_tested_subject_schema,
+  merge_admission_tested_subject_path,
+  merge_admission_floor_receipt_path,
+  compose_walk_attempt_id,
+  compose_explicit_walk_attempt_id,
+  render_tested_subject_wire,
+  parse_tested_subject_wire,
+  render_git_object_id_wire,
+  parse_git_object_id_wire,
+}
+import gunbc.merge_admission {
   MergeAdmissionReceiptV2,
   MergeAdmissionVerdict,
   MergeAdmitted,
@@ -20,18 +31,9 @@ import gunbc.merge_admission {
 }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
-  merge_admission_tested_subject_schema,
-  merge_admission_tested_subject_path,
-  merge_admission_floor_receipt_path,
-  compose_walk_attempt_id,
-  compose_explicit_walk_attempt_id,
-  render_tested_subject_wire,
-  parse_tested_subject_wire,
   render_receipt_wire_v2,
   parse_receipt_wire_v2,
   render_receipt_wire,
-  render_git_object_id_wire,
-  parse_git_object_id_wire,
   stamp_floor_receipt_with_conclusion,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

@@ -1,108 +1,41 @@
 module tools.merge_admission_walk
 
-import std.types { FilePath, GitRef, NonEmptyStr, String }
+import std.types { GitRef, String }
 import extdeps.git { git_remote_ref_parts }
 import extdeps.git
-import extdeps.git.object_store {
-  GitObjectId,
-  git_sha1_object_id,
-  git_sha256_object_id,
-}
-import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.checks { Success }
 import gunbc.merge_admission {
   MergeAdmissionReceiptV2,
   MergeAdmitted,
-  TestedSubject,
-  WalkAttemptId,
   classify_merge_admission_verdict_v2,
   current_gate_roster_hash,
+}
+import gunbc.merge_admission_identity {
+  TestedSubject,
+  WalkAttemptId,
+  merge_admission_floor_receipt_path,
+  merge_admission_merge_base_ref,
+  merge_admission_tested_subject_path,
+  parse_tested_subject_wire,
 }
 import gunbc.merge_admission_produce {
   MergeTargetTreeHashOk,
   MergeTargetTreeHashRefused,
-  compose_explicit_walk_attempt_id,
-  compose_walk_attempt_id,
-  merge_admission_attempt_dir,
-  merge_admission_floor_receipt_path,
-  merge_admission_merge_base_ref,
-  merge_admission_tested_subject_path,
   observe_merge_target_tree_hash,
   parse_receipt_wire_v2,
-  parse_tested_subject_wire,
   render_receipt_wire_v2,
-  render_tested_subject_wire,
-  shell_stdout_line,
 }
 import gunbc.ci_failure_class { merge_freshness_verdict_is_consumed_to_block }
+import tools.merge_admission_capture { current_walk_attempt_id, observed_git_object_id }
 
-data merge_admission_walk_note: String = "The live merge-admission path is three claims in ONE resolved entry. capture_tested_subject is an ordinary first-batch claim; stamp_tested_floor and refresh_current_target_and_gate are two singleton success stages. The split carries two ordering laws in the WalkPlan instead of in shell: stamp is reachable only after the whole ordinary floor and its finalization passed, and stage 2 is unreachable until stage 1 passed. The stage-2 claim stays composite because fetch MUST precede classification; two sibling claims would have no ordering guarantee. All host work is typed service invocation (git, Env, Remove/Mkdir, Filesystem.Read/Write), so the deleted floor-tail and gate-step emitters have no replacement shell surface."
+data merge_admission_walk_note: String = "The live merge-admission path is an ordinary first-batch capture followed by stamp_tested_floor and refresh_current_target_and_gate as two singleton success stages in ONE shared stage entry. Capture has a smaller entry because it consumes only walk-attempt/tested-subject identity; importing the downstream classifier and commit-roster closure before discovery made the authored Negligible profile false in production. The WalkPlan carries two ordering laws instead of shell: stamp is reachable only after the whole ordinary floor and its finalization passed, and stage 2 is unreachable until stage 1 passed. The stage-2 claim stays composite because fetch MUST precede classification; two sibling claims would have no ordering guarantee."
 
 data merge_admission_checkout_ancestry_note: String = "The tested base is captured from the CHECKOUT'S ancestry, never from the moving target ref. On pull_request and merge_group, GitHub checks out the synthetic merge result: HEAD is the exact tree the floor tests and HEAD^1 is the target-side parent whose tree that result was built on. On push and workflow_dispatch, HEAD itself is the tested target tree. The captured subject persists that object id before substantive floor work. Stamp reads this file and does not re-read HEAD or the target; stage 2 alone fetches the CURRENT target, then compares it with the captured tree. A target advance during the floor therefore produces StaleBase instead of a receipt claiming the new target was tested."
 
 data merge_admission_pr_number_deferred_note: String = "MergeAdmissionReceiptV2.pr_number is optional and is not an admission key: attempt, head, base tree, roster, and conclusion are the complete classifier inputs. The retired cold stamp process parsed GITHUB_EVENT_PATH through retained jq shell solely to populate this display field. The warm path deliberately writes Absent rather than carry that shell transport into the runtime-present claim. dissolve-on: a typed GitHub event payload projection supplies the optional number; admission behavior is unchanged because no verdict arm reads it."
 
 data merge_admission_current_main_cold_baseline_note: String = "CURRENT-MAIN BEFORE RECEIPT (not the stale pre-unification estimate): GitHub Actions run 30671526012, job 91291716818, head ddbc5fd6aa, 2026-07-31. The cold stamp process occupied 94.26s from the floor group's final receipt at 23:28:39.602Z through ExitSuccess at 23:30:13.861Z. The separate gate step occupied 102.87s from its step start at 23:30:16.977Z through ExitSuccess at 23:31:59.849Z. Combined merge-admission cold-process wall was therefore 197.13s per PR on that current-main receipt. The after number must come from this PR's own on-success receipt; no projected saving is asserted here."
-
-fn env_var(name: NonEmptyStr) -> String? {
-  let env = shell.Env.Get(name: name)
-  match env.value {
-    Present { value: raw } =>
-      let line = shell_stdout_line(raw: raw)
-      if line == "" { none } else { Present { value: line } }
-    Absent => none
-  }
-}
-
-fn current_walk_attempt_id() -> WalkAttemptId? {
-  match env_var(name: "GUNBC_WALK_ATTEMPT_ID") {
-    Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
-    Absent =>
-      match env_var(name: "GITHUB_RUN_ID") {
-        Absent => none
-        Present { value: run_id } =>
-          match env_var(name: "GITHUB_RUN_ATTEMPT") {
-            Absent => none
-            Present { value: run_attempt } =>
-              match env_var(name: "GITHUB_JOB") {
-                Absent => none
-                Present { value: job } => compose_walk_attempt_id(
-                  run_id: run_id,
-                  run_attempt: run_attempt,
-                  job: job
-                )
-              }
-          }
-      }
-  }
-}
-
-fn tested_checkout_base_ref(event_name: String) -> GitRef {
-  if (event_name == "pull_request") || (event_name == "merge_group") {
-    "HEAD^1" as GitRef
-  } else {
-    "HEAD" as GitRef
-  }
-}
-
-fn current_event_name() -> String {
-  match env_var(name: "GITHUB_EVENT_NAME") {
-    Present { value: event_name } => event_name
-    Absent => "workflow_dispatch"
-  }
-}
-
-fn observed_git_object_id(raw: String) -> GitObjectId? {
-  let hex = shell_stdout_line(raw: raw)
-  if hex.length() == 40 {
-    git_sha1_object_id(hex: hex)
-  } else if hex.length() == 64 {
-    git_sha256_object_id(hex: hex)
-  } else {
-    none
-  }
-}
 
 fn read_tested_subject(root: String, attempt_id: WalkAttemptId) -> TestedSubject? {
   let read = Filesystem.Read(
@@ -123,49 +56,6 @@ fn read_floor_receipt(root: String, attempt_id: WalkAttemptId) -> MergeAdmission
     none
   } else {
     parse_receipt_wire_v2(text: read.content)
-  }
-}
-
-func capture_tested_subject() -> Bool {
-  match current_walk_attempt_id() {
-    Absent => false
-    Present { value: attempt_id } =>
-      let head = git.Core.HeadCommit()
-      if !head.success {
-        false
-      } else {
-        let base = git.Core.ShowTree(ref: tested_checkout_base_ref(event_name: current_event_name()))
-        if !base.success {
-          false
-        } else {
-          match observed_git_object_id(raw: base.tree) {
-            Absent => false
-            Present { value: base_tree } =>
-              let root = git.Core.Toplevel().path as String
-              let attempt_dir = merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
-              let cleared = shell.Remove.RecursiveForce(path: attempt_dir as FilePath)
-              if !cleared.success {
-                false
-              } else {
-                let ready = shell.Mkdir.Parents(path: attempt_dir as FilePath)
-                if !ready.success {
-                  false
-                } else {
-                  let subject = TestedSubject {
-                    attempt_id: attempt_id,
-                    head_sha: head.sha,
-                    base_ref: merge_admission_merge_base_ref,
-                    base_tree: base_tree,
-                  }
-                  Filesystem.Write(
-                    path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id),
-                    content: render_tested_subject_wire(subject: subject)
-                  ).success
-                }
-              }
-          }
-        }
-      }
   }
 }
 

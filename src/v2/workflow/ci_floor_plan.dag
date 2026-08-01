@@ -101,6 +101,8 @@ data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow
 
 data floor_merge_admission_entry: String = "dag/tools/merge_admission_walk.dag"
 
+data floor_merge_admission_capture_entry: String = "dag/tools/merge_admission_capture.dag"
+
 data floor_merge_admission_capture_function: String = "capture_tested_subject"
 
 data floor_merge_admission_stamp_function: String = "stamp_tested_floor"
@@ -113,7 +115,7 @@ data floor_merge_admission_capture_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data floor_merge_admission_schedule_note: String = "The admission path is modeled as one ordinary capture plus two singleton success stages, all calling one entry. Capture is a first-batch resource anchor with a DataDependsOn edge into compile-clean, so it observes the checkout subject before substantive floor work without creating the corpus->capture->compile->corpus cycle. Stamp and gate are distinct stages because stage barriers, not sibling order, carry their dependency; fresh fetch and classification remain one composite stage-2 function for the same reason. All three profiles are Wet, negligible, non-heavy, and non-host-compiler: the exact shape std.realization_schedule on_success_runnable_disposition admits."
+data floor_merge_admission_schedule_note: String = "The admission path is modeled as one ordinary capture plus two singleton success stages. Capture is a small first-batch resource anchor with a DataDependsOn edge into compile-clean, so it observes checkout ancestry before substantive floor work without importing the downstream classifier/roster closure or creating a corpus->capture->compile->corpus cycle. Stamp and gate share one stage entry and memo; they are distinct stages because barriers, not sibling order, carry their dependency, while fresh fetch and classification remain one composite stage-2 function. All three profiles are Wet, negligible, non-heavy, and non-host-compiler: the exact shape std.realization_schedule on_success_runnable_disposition admits."
 
 fn floor_merge_admission_profile() -> RunnableResourceProfile {
   gate_profile_negligible_wet_declared()
@@ -121,7 +123,7 @@ fn floor_merge_admission_profile() -> RunnableResourceProfile {
 
 fn floor_merge_admission_capture_runnable() -> Runnable {
   RunnableSingleClaim {
-    entry: floor_merge_admission_entry,
+    entry: floor_merge_admission_capture_entry,
     function: floor_merge_admission_capture_function,
     profile: floor_merge_admission_profile()
   }
@@ -1349,6 +1351,15 @@ fn witness_merge_admission_capture_is_first_batch_only() -> Bool {
         target: floor_merge_admission_capture_function
       )
     })
+}
+
+fn witness_merge_admission_capture_uses_identity_entry() -> Bool {
+  match floor_merge_admission_capture_runnable() {
+    RunnableSingleClaim { entry, function, profile: _ } =>
+      (entry == floor_merge_admission_capture_entry)
+        && (function == floor_merge_admission_capture_function)
+    _ => false
+  }
 }
 
 fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
