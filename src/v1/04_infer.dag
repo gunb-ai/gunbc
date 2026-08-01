@@ -25,6 +25,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField, AmbiguousReference,
+  CallArgumentNameUnknown, CallPositionalSurplus,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -1396,6 +1397,52 @@ fn borrowed_callable_call_type(gnode: Node, typed_args: List<Node>, scope: Infer
   }
 }
 
+fn call_arg_label_matches_param(param_name: String, arg_label: String) -> Bool {
+  param_name == arg_label
+    || param_name == "_"
+    || (string_length(s: param_name) >= 1
+        && substring(s: param_name, start: 0, end: 1) == "_"
+        && substring(s: param_name, start: 1, end: string_length(s: param_name)) == arg_label)
+}
+
+fn param_binds_positionally(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match p.children |> first {
+    Present { value: type_expr } =>
+      authored_name_at(source_indices: source_indices, node: type_expr) != authored_name_at(source_indices: source_indices, node: p)
+    Absent => false
+  }
+}
+
+fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args: List<Node>, type_env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  let source_indices = type_env.source_indices
+  let declared_names = sig_params |> map(p => authored_name_at(source_indices: source_indices, node: p))
+  let unknown_label_diags = typed_args |> flat_map(ta =>
+    match arg_name_at(n: ta, source_indices: source_indices) {
+      Present { value: label } =>
+        if any(declared_names, pn => call_arg_label_matches_param(param_name: pn, arg_label: label)) { [] }
+        else {
+          [make_error_node(
+            diagnostic: CallArgumentNameUnknown { callee: func_name, argument: label, declared: declared_names, span: ta.span },
+            module_name: module_name)]
+        }
+      Absent => []
+    })
+  let positional_capacity = sig_params |> filter(p => param_binds_positionally(p: p, source_indices: source_indices)) |> count
+  let positional_args = typed_args |> filter(ta => arg_name_at(n: ta, source_indices: source_indices) == none)
+  let surplus_diags = if (positional_args |> count) > positional_capacity {
+    match positional_args |> skip(positional_capacity) |> first {
+      Present { value: overflow } =>
+        [make_error_node(
+          diagnostic: CallPositionalSurplus { callee: func_name, supplied: positional_args |> count, capacity: positional_capacity, span: overflow.span },
+          module_name: module_name)]
+      Absent => []
+    }
+  } else { [] }
+  concat(unknown_label_diags, surplus_diags)
+}
+
+data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile seam now refuses the two call-shape states the interpreter already refuses at runtime, so the two authorities agree instead of one refusing and the other absorbing. The runtime authority is v1_interpreter.rs call_function_inner: a caller label naming no declared parameter raises CallContractMismatch (accepting label x against a declared x, _x, or _ — the deliberately-unused-parameter idiom, mirrored here in call_arg_label_matches_param), and a positional argument beyond the positional parameter list raises CallContractMismatch too. Before this wall the compile seam was SILENT on both, and the divergence was three-way (measured live, 2026-07-31, the probe-2 receipt in the guarantee-lane census): `sub(a: 10, bb: 3)` against `fn sub(a: Int, b: Int)` compiled with zero diagnostics, the interpreter refused it loudly, and the Rust emitter silently REORDERED it positionally — order_typed_call_args's name-match-else-positional arm bound bb's value to b, so the emitted realization computed an answer the interpreter refuses: two realizations of one program disagreeing silently, the exact state the guarantee ladder calls silent wrongness. The mechanism of the compile silence was the same absorbing fallback one seam over: direct_call_arg_mismatch_diags walks PARAMS and falls back positionally (`typed_args |> skip(pair.first) |> first`) when no arg carries the param's name, so a mislabeled arg is absorbed into a position and only its TYPE is ever judged — the label itself was never a checked fact. This wall checks the labels: every labeled actual must name a declared parameter (modulo the underscore idiom), and unlabeled actuals must fit within the positional capacity, which mirrors the interpreter's filtered param list (a param binds positionally iff its type-expr child's authored name differs from its own — the same predicate call_function_inner caches). WHY THIS CHECK IS NOT UNDER module_skips_direct_call_arg_check: that exemption exists for the TYPE judgment, whose false-positive classes are representation gaps (brand aliases, optionality's two forms, anonymous literals, expansion depth — the conformance wall's four measured classes). A LABEL has no representation: it is a surface string matched against a declared surface string, the same exact-membership judgment the interpreter performs, so the exemption's reason does not reach it and the wall runs over every module including the compiler's own sources. Both diagnostics BLOCK (is_error_diagnostic and is_interpreter_blocking_diagnostic default arms), so a refused program never reaches emit — which retires the emission path's silent reorder for Accepted programs at this seam without touching order_typed_call_args: its positional arm remains the legitimate binding rule for unlabeled args, and the state it could absorb is no longer writable in an Accepted program. DELIBERATELY NOT WALLED, each with its trigger: (1) duplicate labels — the interpreter's bindings.insert silently overwrites, so a compile refusal would be STRICTER than the runtime authority and the two would disagree in the opposite direction; the honest sequence is to land the refusal in call_function_inner first, then mirror it here, and that pair is its own slice. (2) a MISSING required argument — the interpreter does not refuse it at the call boundary either (an unbound param without a default decays to NoSuchVariable when the body reads it, or to silence if it never does); walling it at compile requires default-value awareness (param_node_default_value) and its own corpus measurement, so it is the next slice of this wall, not a silent gap in this one. (3) method/pipe-seam argument labels — this wall covers the direct-call seam (the sig != none branch); the method-call path binds its arguments through its own inference arms and is the method wall's territory. The subject grain of the climb, stated per the ladder's rung-honesty rule: the class 'call argument labels a parameter that does not exist' moves from mitigatable (runtime refusal on the interpretation path; silent wrong output on the emission path) to structurally guaranteed at the direct-call seam — no Accepted program contains one — while the method-pipe path and the two unwalled classes above stay at their measured rungs, named here rather than implied climbed. THE CENSUS RECEIPT, run before landing rather than promised after (2026-07-31): the wall refused 28 live sites across the [src/v1, dag] regen closure and the dag + src/v2 compile-clean closure, and every one was the same defect — a parameter renamed at its declaration while call sites kept the old label, absorbed positionally ever since: to_string(i:) against the renamed value (8 sites, src/v1/compile.dag), arm_body(arm:) against n, is_import_slot_node(p:) against n, fold_list(init:) against this corpus's declared empty (17 sites, one file), and floor_discovery_walk_failure_refusal_reason(path:) against path_opt. All were relabeled to the declared authority in the same change. The fold_list rows carry the sharpest lesson about WHY compile must hold this fact even where runtime does not: those 17 sites never failed live because the interpreter grounds fold_list natively (label-blind), while call_function_inner would refuse the same label on the user-fn path — so the program's meaning depended on WHICH dispatch tier happened to serve the call, and the label's truth was untested precisely where it was wrong. The wall pins the label to the one declared authority regardless of tier, which is what keeps the call sites correct when the native grounding dissolves into the declared surface (the primitive-realization-single-authority trigger). MEASURED BLIND SPOT, stated rather than implied covered: 3 more to_string(i:) sites in src/v1/dag_collect.dag never reached the wall because their callee resolves NO sig at this seam (no import, global-bare miss) — the sig == none fallthrough routes to the method bridge and this wall never sees the call. They were found by grep on the fossil's shape and fixed with the rest, but the CLASS stays open: a call whose callee sig does not resolve is judged by nothing here, and that fallthrough closes with resolution coverage (the namespace lane), not with a wider label check."
+
 fn direct_call_arg_mismatch_diags(
   value_params: List<Node>,
   typed_args: List<Node>,
@@ -2337,6 +2384,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => error_type
         }
         let value_params_for_check = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices).value_params
+        let arg_shape_diags = direct_call_shape_diags(
+          func_name: func_name,
+          sig_params: sig_params,
+          typed_args: typed_args,
+          type_env: scope.type_env,
+          module_name: scope.module_name
+        )
         let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
           direct_call_arg_mismatch_diags(
             value_params: value_params_for_check,
@@ -2354,7 +2408,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(arg_diags, arg_compat_diags)
+          diagnostics: concat(arg_diags, concat(arg_shape_diags, arg_compat_diags))
         }
       } else {
         let first_arg_type = match typed_args |> first {
