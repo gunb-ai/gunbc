@@ -1,7 +1,11 @@
 module test.claim.stage0_rust_honest_frontier_projection_witness
 
 import gunbc.stage0_rust_honest_frontier_projection {
+  HandAuthoredLOC,
+  HandCapability,
+  ProductReachability,
   TrackedRustProjectionGitRefused,
+  TrackedRustProjectionReadRefused,
   TrackedRustUnclassifiedPaths,
   exact_unclassified_tracked_rust_paths,
   honest_frontier_projection_witness_observation,
@@ -9,7 +13,8 @@ import gunbc.stage0_rust_honest_frontier_projection {
   stage0_rust_honest_frontier_projection_note,
   tracked_rust_unclassified_projection
 }
-import gunbc.stage0_rust_host_observation { GitObservationRefused }
+import gunbc.stage0_rust_host_observation { GitObservationRefused, RustManifestObserved }
+import std.types { ContentHash }
 import v2.std.algebra { length }
 
 test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool {
@@ -50,8 +55,27 @@ test fn honest_frontier_projection_propagates_observation_refusal() -> Bool {
   }
 }
 
+test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> Bool {
+  match tracked_rust_unclassified_projection(
+    observation: RustManifestObserved {
+      repository_revision: "",
+      manifest_content_identity: "witness-abc123" as ContentHash,
+      tracked_rust_repo_paths: ["synthetic/a.rs"],
+      prior_tracked_rust_repo_paths: [],
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    }
+  ) {
+    TrackedRustProjectionReadRefused { detail: detail } => detail != ""
+    _ => false
+  }
+}
+
 test fn honest_frontier_projection_declares_deferred_axes() -> Bool {
-  length(xs: stage0_rust_honest_frontier_deferred_axes) == 3
+  stage0_rust_honest_frontier_deferred_axes == [
+    ProductReachability,
+    HandAuthoredLOC,
+    HandCapability
+  ]
     && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "ProductReachability")
     && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandAuthoredLOC")
     && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandCapability")

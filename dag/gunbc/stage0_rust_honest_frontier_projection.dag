@@ -20,10 +20,15 @@ import v2.std.text { String }
 
 data stage0_rust_honest_frontier_projection_note: String = "FIRST PROJECTION ONLY. The revision-addressed tracked-Rust population comes from gunbc.stage0_rust_host_observation. Generated paths and paths with an admitted maintenance disposition remain independent subtraction axes derived from gunbc.stage0_rust_source_lifecycle_scaffold; source roles never supply a disposition. This projection preserves the exact ordered remainder rather than collapsing identity to a count. RustSourceRole, MaintenanceDisposition, GenerationAuthority, and RetirementTrigger remain independent facts. ProductReachability, HandAuthoredLOC, and HandCapability are explicitly deferred to the v1-honest-frontier follow-on; this first slice does not claim them."
 
-data stage0_rust_honest_frontier_deferred_axes: List<String> = [
-  "ProductReachability",
-  "HandAuthoredLOC",
-  "HandCapability"
+type RustHonestFrontierDeferredAxis
+  = ProductReachability
+  | HandAuthoredLOC
+  | HandCapability
+
+data stage0_rust_honest_frontier_deferred_axes: List<RustHonestFrontierDeferredAxis> = [
+  ProductReachability,
+  HandAuthoredLOC,
+  HandCapability
 ]
 
 type TrackedRustUnclassifiedProjection
@@ -65,17 +70,21 @@ fn tracked_rust_unclassified_projection(
     GitObservationRefused { detail: detail } =>
       TrackedRustProjectionGitRefused { detail: detail }
     RustManifestObserved {
-      repository_revision: _,
+      repository_revision: repository_revision,
       manifest_content_identity: _,
       tracked_rust_repo_paths: tracked_paths,
       prior_tracked_rust_repo_paths: _,
       cargo_bin_repo_paths: _
-    } => TrackedRustUnclassifiedPaths {
-      paths: exact_unclassified_tracked_rust_paths(
-        tracked_paths: tracked_paths,
-        generated_paths: derived_generated_stage0_repo_paths(),
-        maintenance_disposition_paths: admitted_maintenance_disposition_paths()
-      )
+    } => if repository_revision == "" {
+      TrackedRustProjectionReadRefused { detail: "observed manifest missing repository_revision" }
+    } else {
+      TrackedRustUnclassifiedPaths {
+        paths: exact_unclassified_tracked_rust_paths(
+          tracked_paths: tracked_paths,
+          generated_paths: derived_generated_stage0_repo_paths(),
+          maintenance_disposition_paths: admitted_maintenance_disposition_paths()
+        )
+      }
     }
   }
 }
