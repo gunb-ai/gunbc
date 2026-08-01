@@ -1,0 +1,19 @@
+module test.claim._tmp_count_probe
+
+import gunbc.v1_interpreter_primitive_surface {
+  authored_spelling_count,
+  dispatch_site_count,
+  distinct_arm_identity_count,
+  v1_interpreter_declared_arm_count,
+  v1_interpreter_derived_arm_count,
+  v1_interpreter_row_count,
+}
+
+fn main() -> Bool {
+  v1_interpreter_derived_arm_count() == 181
+    && v1_interpreter_declared_arm_count() == 2
+    && v1_interpreter_row_count() == 183
+    && dispatch_site_count() == 7
+    && distinct_arm_identity_count() == 172
+    && authored_spelling_count() == 159
+}
