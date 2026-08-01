@@ -1,0 +1,22 @@
+module test.claim.tmp_interp_scan_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data interpreter_path: String = "src/v1/stage0/src/v1_interpreter.rs"
+
+fn interpreter_lines() -> List<String> {
+  let r = filesystem_read(path: interpreter_path)
+  r.content |> split(delimiter: "\n")
+}
+
+test fn probe_line_count_plausible() -> Bool {
+  count(interpreter_lines()) > 12000
+}
+
+test fn probe_arm_shaped_line_count() -> Bool {
+  let armish = interpreter_lines() |> filter(l => starts_with(s: l, prefix: "        \""))
+  count(armish) > 100
+}
