@@ -10,8 +10,8 @@ Reasoned serially per the DESIGN preamble: §1 fixes the problem, each later sec
 
 Two files define `nat` on the two std trees:
 
-- `dag/std/nat.dag` — module `std.nat`, **4 decls**, **61 importers** in `dag/` (domain models, gunbc, extdeps).
-- `src/v2/std/nat.dag` — module `v2.std.nat`, **12 decls**, **37 importers** in `src/v2/` (excluding parse fixtures).
+- `dag/std/nat.dag` — module `std.nat`, **4 decls**, **61 live importers** in `dag/` (see §4.0).
+- `src/v2/std/nat.dag` — module `v2.std.nat`, **12 decls**, **37 live importers** in `src/v2/` (see §4.0).
 
 They share **one unqualified type name** (`Nat`) and **one shared fn name** (`nat_compare`). The shared `Nat` body **diverges**: dag = thin alias `Nat = CommutativeSemiring<Magnitude>`; v2 = coproduct `Nat = Zero | Succ { prev: Nat }`. The shared `nat_compare` body also **diverges** (semiring order via `<`/`>` vs coproduct order via `==` and `<`).
 
@@ -78,14 +78,32 @@ Imports: `std.algebra` (structures + `Ordering`), `v2.std.node { Symbol }`, `v2.
 | **A — structural authority (MOVE to `std.nat`)** | `Nat`, `Zero`, `Succ`, `nat_cata`, `nat_add`, `nat_mul`, `is_zero`, `nat_lte`, `nat_gte`, `nat_compare` (coproduct impl), `nat_additive_commutative_monoid`, `nat_semiring` | Coproduct + Peano ops are the grounded model (#5428); become the single `dag/std/nat.dag` authority. |
 | **B — DELETE (alias dies)** | dag `Nat = CommutativeSemiring<Magnitude>` | Not a second definition — replaced by coproduct + inhabitance-derived semiring instance (`nat_semiring` data). |
 | **C — STAY in v2 tree (node-bound)** | `NatAlgebraLawObligation`, `nat_declared_algebra_law_obligations` | Import `v2.std.node { Symbol }`; cannot cross to `dag/std` until `node` defork (audit category (c)). Thin `v2.std.nat` (or `v2.std.algebra_laws`) module importing `std.nat` for `Nat`/`Zero`/`Succ`/ops. |
-| **D — MERGE / re-home** | dag `nat_max`, `nat_min` | 4 + 2 importers in `dag/`; re-express on coproduct `nat_compare` or move beside coproduct ops in unified `std.nat`. |
+| **D — MERGE / re-home** | dag `nat_max`, `nat_min` | 4 + 2 live importer modules in `dag/` (§4.0); re-express on coproduct `nat_compare` or move beside coproduct ops in unified `std.nat`. |
 | **E — OUT OF SCOPE (adjacent modules)** | `src/v2/std/algebra_laws/nat_semiring.dag`, `src/v2/workflow/nat_semiring_rung*_eval.dag`, `src/v2/test/claim/manual/nat_law_anchors.dag` | Law **witness** harnesses; repoint imports when A lands, not part of the type fork itself. |
 
 **Shared-name verdict:** 1 shared type (`Nat`, bodies diverge); 1 shared fn (`nat_compare`, bodies diverge). **No** extra shared type-names beyond `Nat` (unlike `algebra`'s 16).
 
 ## 4. Importer census (symbols)
 
-### 4.1 `v2.std.nat` (37 modules, fixtures excluded)
+### 4.0 Census counting rules (subject universe)
+
+Importer counts classify **live modules** — `.dag` files with an authored top-level `import <module>` line — not transitive closure reachability and not substring matches elsewhere in the file.
+
+| rule | predicate | `dag/` `std.nat` | `src/v2/` `v2.std.nat` | `src/v2/` `std.nat` |
+| --- | --- | --- | --- | --- |
+| **Census (this doc)** | `^import <module>\\b` on a `.dag` line | **61** | **37** | **5** |
+| loose grep | `import <module>` anywhere in file | 63 | 40* | 5 |
+
+\*The three `src/v2/` files above 37 are **false positives**: `import v2.std.native_agreement` matches the substring `import v2.std.nat` under a naive grep — not nat importers.
+
+**`dag/` reconciliation (63 vs 61):** the two files in the loose count but not the census count carry `import std.nat` only inside **embedded witness fixture strings**, not as live import declarations:
+
+- `dag/test/claim/where_refinement_enforcement_witness_test.dag` (10 string literals)
+- `dag/test/claim/root4_measure_missing_generics_witness_test.dag` (1 string literal)
+
+Zero `dag/` importer paths contain `fixture`. The census subject is the **61 modules** in the table below; each has exactly one classification (direct importer of `std.nat` or `v2.std.nat`, or co-occurrence-only via closure — §2).
+
+### 4.1 `v2.std.nat` (37 live importer modules)
 
 | symbol | import sites |
 | --- | --- |
@@ -103,7 +121,7 @@ Imports: `std.algebra` (structures + `Ordering`), `v2.std.node { Symbol }`, `v2.
 
 **Load-bearing importers:** `v2.std.integer` (`Int = GroupCompletion<v2.std.nat.Nat>`), `v2.std.float`, `v2.std.datetime` (56 refs), `v2.std.cardinality`, `v2.compiler.01_tokenize`, `v2.lens.cost`, `v2.lens.testgen`, `v2.test.claim.generated.algebra_law_conformance`.
 
-### 4.2 `std.nat` (61 modules in `dag/`)
+### 4.2 `std.nat` (61 live importer modules in `dag/`)
 
 | symbol | import sites |
 | --- | --- |
