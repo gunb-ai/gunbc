@@ -161,14 +161,20 @@ import gunbc.roadmap_validation_oracle {
   validation_receipt_json,
 }
 import extdeps.git { shape_git_rev_parse_head_args }
-import gunbc.roadmap_provider_events { ProviderCompleted }
+import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.types { ContentHash }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
   workflow_attempt_progress,
-  workflow_attempt_progress_json_value,
+  workflow_attempt_progress_json_members,
+}
+import gunbc.roadmap_presentation {
+  activity_view_from_progress,
+  activity_view_json_value,
+  session_facts_view,
+  session_facts_json_value,
 }
 import extdeps.gunbc
 import extdeps.shell
@@ -2253,6 +2259,17 @@ fn belt_workflow_attempts_observe_for_instance(
   }
 }
 
+data belt_attempt_presentation_note: String = "The wire join of the two authorities the client must never re-derive: the attempt's progress members (gunbc.roadmap_workflow_progress, unchanged) plus the DECIDED activity view (gunbc.roadmap_presentation) appended as one 'activity' member. The seam reads process and current activity from INSIDE the progress carrier (one_progress_authority_note — the belt cannot pass a disagreeing process beside it), so this join is one call on one value. The join lives here because progress cannot import presentation without a cycle; the member-list seam (workflow_attempt_progress_json_members) is what lets the belt extend the object without re-stating or re-matching it."
+
+fn belt_workflow_attempt_presentation_json(
+  progress: WorkflowAttemptProgress,
+) -> JsonValue {
+  json_object(members: concat(
+    workflow_attempt_progress_json_members(progress: progress),
+    [ json_kv(key: "activity", value: activity_view_json_value(
+        view: activity_view_from_progress(progress: progress))) ]))
+}
+
 fn belt_workflow_attempts_json_value(
   observed: BeltWorkflowAttempts,
 ) -> JsonValue {
@@ -2271,7 +2288,7 @@ fn belt_workflow_attempts_json_value(
           key: "attempts",
           value: json_array(elements: map(
             attempts,
-            progress => workflow_attempt_progress_json_value(
+            progress => belt_workflow_attempt_presentation_json(
               progress: progress,
             ),
           )),
@@ -2506,6 +2523,18 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
               b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
             json_kv(key: "cleanup_detail", value: json_string(
               s: dispatch_session_cleanup_detail(cleanup: cleanup))),
+            json_kv(key: "facts", value: session_facts_json_value(
+              v: session_facts_view(
+                process: sess.worker.process,
+                process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
+                provider: provider_evidence_label(evidence: sess.worker.provider_instance),
+                configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
+                provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
+                session_name: sess.session_name,
+                cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
+                cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
+                cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
+              ))),
           ])
         }))),
       ])

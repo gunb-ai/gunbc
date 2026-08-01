@@ -345,6 +345,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "roadmap-presentation-seam-design",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_page", decl_name: "a1_composition_provisional_note", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "gunbc.roadmap_component", decl_name: "roadmap_row_archetype", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the A2 presentation seam lands on its carriers — the view projection module (WorkRowView/ActivityView/ActionView/DailyWorkspaceView/ObservationImpactView), the row archetype's ActivityRegion placed UnderHead with ActuatorRegion shrunk to actions only, and the attention-rule witnesses including the falsifier specimen (active attempt + seven obligations + session-present/process-exited + long title, coherent at three widths) — and the plan registers as a gunbc.plan.Plan row (extends roadmap-workspace-ux-plan and roadmap-workspace-remodel-plan, whose rows dissolve on their own triggers)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "nat-grounding-unification-design",
     primary_work: DeclarationRef { module_path: "gunbc.plans.dag_v2_defork_audit", decl_name: "dag_v2_defork_audit_plan", field: WholeDeclaration },
     additional_works: [],
