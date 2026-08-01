@@ -143,6 +143,17 @@ fn work_lifecycle_key(l: WorkLifecycle) -> String {
   }
 }
 
+data lifecycle_chip_note: String = "Routine-state collapse (the A1 carried-forward miss; the altitude law's interface form — routine collapses, anomaly expands). OpenLifecycle is the default state of nearly every row, so an 'open' chip on each one discriminates nothing and is permanent chrome; the DECIDED rule is that the lifecycle chip renders only when the lifecycle departs the default (review/done/superseded). The state stays machine-readable either way: the row's node-<key> class and the altitude band counts consume work_lifecycle_key regardless of chip visibility, so collapsing the chip erases pixels, never the typed fact."
+
+fn lifecycle_chip_renders(l: WorkLifecycle) -> Bool {
+  match l {
+    OpenLifecycle => false
+    ReviewLifecycle => true
+    DoneLifecycle => true
+    SupersededLifecycle => true
+  }
+}
+
 data work_scheduling_note: String = "The scheduling axis as a TYPED position, not a Bool (operator blocker 2, 2026-08-01: ready: Bool was anemic and caller-assertable — a caller could pass true for an upcoming node and the view had no typed distinction among the frontier positions). The arms are projected from the SAME predicates spawn_frontier filters — node_is_spawnable / node_is_upcoming / node_is_frontier_done / superseded — so scheduling equals frontier-bucket membership by construction (witnessed against spawn_frontier on the live authority, not asserted). SchedulingUpcoming carries its blockers: the unmet parents, the fact that explains why an open row is not dispatchable-now. SchedulingUnplanned is the honest arm for a node outside every bucket (unsized, or otherwise not yet admitted to the frontier) — collapsing it into Upcoming would fabricate a blocked-on claim with no blockers."
 
 type WorkScheduling
@@ -832,14 +843,37 @@ fn workspace_covers_row_activity(observation: ObservationImpactView, a: Activity
   }
 }
 
+data work_family_note: String = "Family-once grouping (the A1 carried-forward miss, staged behind the A2 core seam per the design note's witness item 9). A work family is a set of rows generated from ONE authority fn whose shared claim would otherwise repeat per row — the specimen is the closing-contract task generator, whose 'Write the closing check for: X' headline repeated the family claim N times on the daily page. The decided rule: the family claim is stated ONCE as the group header, and each member row carries only its DISCRIMINATING SUBJECT — a typed field supplied by the same generator that minted the member (the gated node's own ticket headline), NEVER recovered by parsing or prefix-stripping the fused headline (that recovery is exactly the heuristic class this seam exists to kill; the no-parsing witness plants a subject containing the claim prose and an unlisted lookalike row to prove both directions). Membership is typed facts (WorkFamilyMemberFact rows derived from the generator's own pairs), so an unlisted row whose headline HAPPENS to start with the claim stays ungrouped. An active member leaves its group for the Active band — attention outranks taxonomy — and the group renders only its band's members at the position of its first member, preserving row order."
+
+type WorkFamilyDecl {
+  id: String
+  claim: String
+}
+
+type WorkFamilyMemberFact {
+  family_id: String
+  task_node: String
+  subject: String
+}
+
+type WorkFamilyView {
+  id: String
+  claim: String
+  rows: List<WorkRowView>
+}
+
+type WorkBandEntry
+  = BandRow { row: WorkRowView }
+  | BandFamily { family: WorkFamilyView }
+
 type DailyWorkspaceView {
   program: ProgramProgressView?
   observation: ObservationImpactView
   active: List<WorkRowView>
-  ready: List<WorkRowView>
-  upcoming: List<WorkRowView>
-  done: List<WorkRowView>
-  superseded: List<WorkRowView>
+  ready: List<WorkBandEntry>
+  upcoming: List<WorkBandEntry>
+  done: List<WorkBandEntry>
+  superseded: List<WorkBandEntry>
 }
 
 fn row_is_active_work(row: WorkRowView) -> Bool {
@@ -856,14 +890,96 @@ fn rows_with_scheduling_key(rows: List<WorkRowView>, key: String) -> List<WorkRo
   filter(xs: rows, predicate: r => !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == key)
 }
 
-fn daily_workspace_view(rows: List<WorkRowView>, program: ProgramProgressView?, observation: ObservationImpactView) -> DailyWorkspaceView {
+fn family_member_for(members: List<WorkFamilyMemberFact>, node_id: String) -> WorkFamilyMemberFact? {
+  fold(members, init: none, f: (acc, m) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if m.task_node == node_id { Present { value: m } } else { none }
+  })
+}
+
+fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
+  WorkRowView {
+    node_id: row.node_id,
+    headline: subject,
+    summary: row.summary,
+    lifecycle: row.lifecycle,
+    scheduling: row.scheduling,
+    superseded_by: row.superseded_by,
+    activity: row.activity,
+    action: row.action,
+    supporting_facts: row.supporting_facts,
+    disclosure: row.disclosure,
+  }
+}
+
+fn family_band_rows(rows: List<WorkRowView>, members: List<WorkFamilyMemberFact>, family_id: String) -> List<WorkRowView> {
+  fold(rows, init: [], f: (acc, r) => match family_member_for(members: members, node_id: r.node_id) {
+    Present { value: m } =>
+      if m.family_id == family_id { append(acc, items: [family_subject_row(row: r, subject: m.subject)]) } else { acc }
+    Absent => acc
+  })
+}
+
+fn band_entries(
+  rows: List<WorkRowView>,
+  families: List<WorkFamilyDecl>,
+  members: List<WorkFamilyMemberFact>,
+) -> List<WorkBandEntry> {
+  let grouped = fold(rows, init: BandEntriesAcc { entries: [], emitted_family_ids: [] }, f: (acc, r) =>
+    match family_member_for(members: members, node_id: r.node_id) {
+      Absent => BandEntriesAcc {
+        entries: append(acc.entries, items: [BandRow { row: r }]),
+        emitted_family_ids: acc.emitted_family_ids,
+      }
+      Present { value: m } =>
+        if acc.emitted_family_ids |> any(fid => fid == m.family_id) {
+          acc
+        } else {
+          match family_decl_for(families: families, family_id: m.family_id) {
+            Present { value: decl } => BandEntriesAcc {
+              entries: append(acc.entries, items: [BandFamily { family: WorkFamilyView {
+                id: decl.id,
+                claim: decl.claim,
+                rows: family_band_rows(rows: rows, members: members, family_id: m.family_id),
+              } }]),
+              emitted_family_ids: append(acc.emitted_family_ids, items: [m.family_id]),
+            }
+            Absent => BandEntriesAcc {
+              entries: append(acc.entries, items: [BandRow { row: r }]),
+              emitted_family_ids: acc.emitted_family_ids,
+            }
+          }
+        }
+    })
+  grouped.entries
+}
+
+type BandEntriesAcc {
+  entries: List<WorkBandEntry>
+  emitted_family_ids: List<String>
+}
+
+fn family_decl_for(families: List<WorkFamilyDecl>, family_id: String) -> WorkFamilyDecl? {
+  fold(families, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if d.id == family_id { Present { value: d } } else { none }
+  })
+}
+
+fn daily_workspace_view(
+  rows: List<WorkRowView>,
+  program: ProgramProgressView?,
+  observation: ObservationImpactView,
+  families: List<WorkFamilyDecl>,
+  members: List<WorkFamilyMemberFact>,
+) -> DailyWorkspaceView {
   DailyWorkspaceView {
     program: program,
     observation: observation,
     active: filter(xs: rows, predicate: r => row_is_active_work(row: r)),
-    ready: rows_with_scheduling_key(rows: rows, key: "ready"),
-    upcoming: rows_with_scheduling_key(rows: rows, key: "upcoming"),
-    done: rows_with_scheduling_key(rows: rows, key: "done"),
-    superseded: rows_with_scheduling_key(rows: rows, key: "superseded"),
+    ready: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "ready"), families: families, members: members),
+    upcoming: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "upcoming"), families: families, members: members),
+    done: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "done"), families: families, members: members),
+    superseded: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "superseded"), families: families, members: members),
   }
 }
