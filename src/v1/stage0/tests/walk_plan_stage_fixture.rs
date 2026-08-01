@@ -316,11 +316,11 @@ fn walk_plan_stage_failure_blocks_stage2() {
 
 #[test]
 #[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
-fn walk_plan_stage_panic_blocks_stage2() {
+fn walk_plan_stage_recursion_refusal_blocks_stage2() {
     let session = FixtureSession::begin();
     let marker = session.stage2_marker();
     let _ = std::fs::remove_file(&marker);
-    let out = session.run_plan("walk_plan_stage_panic_barrier_plan");
+    let out = session.run_plan("walk_plan_stage_recursion_refusal_barrier_plan");
     assert!(
         out.stdout.contains("call depth exceeded") || out.stdout.contains("unbounded recursion"),
         "panicking member must surface structural recursion-depth refusal on stdout;\n{}",
