@@ -96,6 +96,8 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/publication_placement_gate_test.dag"),
   public_file_publish_grant(path: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag"),
+  public_file_publish_grant(path: "src/v1/stage0/src/v1_tests_claim_required_expr_newline_continuation_test.rs"),
+  public_file_publish_grant(path: "src/v1/tests/claim/required_expr_newline_continuation_test.dag"),
   public_file_publish_grant(path: "dag/gunbc/v1_interpreter_primitive_surface.dag"),
   public_file_publish_grant(path: "dag/test/claim/v1_interpreter_primitive_surface_witness_test.dag"),
   public_file_publish_grant(path: "dag/gunbc/build_cache_instance.dag"),
