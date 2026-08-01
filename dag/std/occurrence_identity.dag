@@ -95,30 +95,276 @@ type OccurrenceIdentityReceiptEnrollmentDebt {
   dissolve_on: String
 }
 
+type OccurrenceIdentityAcceptanceLaw {
+  id: String
+  required_receipt: String
+}
+
+data occurrence_identity_acceptance_law_rebuilt_reference: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "rebuilt-reference-identity-preservation",
+  required_receipt: "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.",
+}
+
+data occurrence_identity_acceptance_law_collector_dedupe: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "one-occurrence-collector-dedupe",
+  required_receipt: "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.",
+}
+
+data occurrence_identity_acceptance_law_distinct_occurrences: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "structurally-equal-distinct-occurrences",
+  required_receipt: "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.",
+}
+
+data occurrence_identity_acceptance_law_pattern_reachability: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "pattern-declaration-reachability",
+  required_receipt: "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.",
+}
+
+data occurrence_identity_acceptance_law_parser_isolation: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "same-spelling-parser-declaration-isolation",
+  required_receipt: "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.",
+}
+
+data occurrence_identity_acceptance_laws: List<OccurrenceIdentityAcceptanceLaw> = [
+  occurrence_identity_acceptance_law_rebuilt_reference,
+  occurrence_identity_acceptance_law_collector_dedupe,
+  occurrence_identity_acceptance_law_distinct_occurrences,
+  occurrence_identity_acceptance_law_pattern_reachability,
+  occurrence_identity_acceptance_law_parser_isolation,
+]
+
+type OccurrenceIdentityReceiptExecution
+  = OccurrenceIdentityReceiptPassed
+  | OccurrenceIdentityReceiptFailed
+  | OccurrenceIdentityReceiptNotExecuted
+
+type OccurrenceIdentityExecutingReceipt {
+  law_id: String
+  required_receipt: String
+  consumer: String
+  execution: OccurrenceIdentityReceiptExecution
+}
+
+type OccurrenceIdentityAdmittedDeferral {
+  law_id: String
+  required_receipt: String
+  reason: String
+  next_trigger: String
+}
+
+type OccurrenceIdentityClosingRefusal
+  = DuplicateAcceptanceLaw { law_id: String }
+  | UnknownReceiptLaw { law_id: String }
+  | DuplicateReceiptLaw { law_id: String }
+  | StaleReceiptLaw { law_id: String }
+  | ReceiptDidNotPass { law_id: String }
+  | UnknownDeferralLaw { law_id: String }
+  | DuplicateDeferralLaw { law_id: String }
+  | StaleDeferralLaw { law_id: String }
+  | ReceiptDeferralOverlap { law_id: String }
+
+type OccurrenceIdentityClosingVerdict
+  = OccurrenceIdentityClosingCovered { deferred_law_ids: List<String> }
+  | OccurrenceIdentityClosingOpen { missing_law_ids: List<String> }
+  | OccurrenceIdentityClosingRefused { refusals: List<OccurrenceIdentityClosingRefusal> }
+
+data occurrence_identity_closing_check_note: String = "The closing verdict is derived from the permanent acceptance-law roster, scoped-batch execution observations, and admitted deferrals. Deleting a debt row cannot delete its law. A receipt counts only when its law id and exact required_receipt still match and its execution observation is Passed; the scoped witness batch must supply that observation from execution, never from a roster entry asserting its own success. Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty deferred population closes the node."
+
+fn occurrence_identity_law_id_known(
+  laws: List<OccurrenceIdentityAcceptanceLaw>,
+  law_id: String
+) -> Bool {
+  laws |> any(law => law.id == law_id)
+}
+
+fn occurrence_identity_law_exact(
+  laws: List<OccurrenceIdentityAcceptanceLaw>,
+  law_id: String,
+  required_receipt: String
+) -> Bool {
+  laws |> any(law => law.id == law_id && law.required_receipt == required_receipt)
+}
+
+fn occurrence_identity_receipt_passed(
+  receipt: OccurrenceIdentityExecutingReceipt
+) -> Bool {
+  match receipt.execution {
+    OccurrenceIdentityReceiptPassed => true
+    _ => false
+  }
+}
+
+fn occurrence_identity_closing_refusals(
+  laws: List<OccurrenceIdentityAcceptanceLaw>,
+  receipts: List<OccurrenceIdentityExecutingReceipt>,
+  deferrals: List<OccurrenceIdentityAdmittedDeferral>
+) -> List<OccurrenceIdentityClosingRefusal> {
+  let duplicate_laws = laws
+    |> flat_map(law =>
+      if (laws |> filter(other => other.id == law.id) |> count) > 1 {
+        [DuplicateAcceptanceLaw { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  let unknown_receipts = receipts
+    |> flat_map(receipt =>
+      if occurrence_identity_law_id_known(laws: laws, law_id: receipt.law_id) {
+        []
+      } else {
+        [UnknownReceiptLaw { law_id: receipt.law_id }]
+      }
+    )
+  let duplicate_receipts = laws
+    |> flat_map(law =>
+      if (receipts |> filter(receipt => receipt.law_id == law.id) |> count) > 1 {
+        [DuplicateReceiptLaw { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  let stale_receipts = receipts
+    |> flat_map(receipt =>
+      if occurrence_identity_law_id_known(laws: laws, law_id: receipt.law_id) &&
+        !occurrence_identity_law_exact(
+          laws: laws,
+          law_id: receipt.law_id,
+          required_receipt: receipt.required_receipt,
+        ) {
+        [StaleReceiptLaw { law_id: receipt.law_id }]
+      } else {
+        []
+      }
+    )
+  let non_green_receipts = receipts
+    |> flat_map(receipt =>
+      if occurrence_identity_receipt_passed(receipt: receipt) {
+        []
+      } else {
+        [ReceiptDidNotPass { law_id: receipt.law_id }]
+      }
+    )
+  let unknown_deferrals = deferrals
+    |> flat_map(deferral =>
+      if occurrence_identity_law_id_known(laws: laws, law_id: deferral.law_id) {
+        []
+      } else {
+        [UnknownDeferralLaw { law_id: deferral.law_id }]
+      }
+    )
+  let duplicate_deferrals = laws
+    |> flat_map(law =>
+      if (deferrals |> filter(deferral => deferral.law_id == law.id) |> count) > 1 {
+        [DuplicateDeferralLaw { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  let stale_deferrals = deferrals
+    |> flat_map(deferral =>
+      if occurrence_identity_law_id_known(laws: laws, law_id: deferral.law_id) &&
+        !occurrence_identity_law_exact(
+          laws: laws,
+          law_id: deferral.law_id,
+          required_receipt: deferral.required_receipt,
+        ) {
+        [StaleDeferralLaw { law_id: deferral.law_id }]
+      } else {
+        []
+      }
+    )
+  let overlaps = laws
+    |> flat_map(law =>
+      if (receipts |> any(receipt => receipt.law_id == law.id)) &&
+        (deferrals |> any(deferral => deferral.law_id == law.id)) {
+        [ReceiptDeferralOverlap { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  append(
+    append(
+      append(
+        append(duplicate_laws, items: unknown_receipts),
+        items: duplicate_receipts,
+      ),
+      items: stale_receipts,
+    ),
+    items: append(
+      append(non_green_receipts, items: unknown_deferrals),
+      items: append(
+        append(duplicate_deferrals, items: stale_deferrals),
+        items: overlaps,
+      ),
+    ),
+  )
+}
+
+fn occurrence_identity_closing_verdict(
+  laws: List<OccurrenceIdentityAcceptanceLaw>,
+  receipts: List<OccurrenceIdentityExecutingReceipt>,
+  deferrals: List<OccurrenceIdentityAdmittedDeferral>
+) -> OccurrenceIdentityClosingVerdict {
+  let refusals = occurrence_identity_closing_refusals(
+    laws: laws,
+    receipts: receipts,
+    deferrals: deferrals,
+  )
+  if (refusals |> count) > 0 {
+    OccurrenceIdentityClosingRefused { refusals: refusals }
+  } else {
+    let missing_law_ids = laws
+      |> filter(law =>
+        !(receipts |> any(receipt => receipt.law_id == law.id)) &&
+        !(deferrals |> any(deferral => deferral.law_id == law.id))
+      )
+      |> map(law => law.id)
+    if (missing_law_ids |> count) > 0 {
+      OccurrenceIdentityClosingOpen { missing_law_ids: missing_law_ids }
+    } else {
+      OccurrenceIdentityClosingCovered {
+        deferred_law_ids: laws
+          |> filter(law => deferrals |> any(deferral => deferral.law_id == law.id))
+          |> map(law => law.id),
+      }
+    }
+  }
+}
+
+fn occurrence_identity_closing_complete(
+  verdict: OccurrenceIdentityClosingVerdict
+) -> Bool {
+  match verdict {
+    OccurrenceIdentityClosingCovered { deferred_law_ids: deferred_law_ids } =>
+      (deferred_law_ids |> count) == 0
+    _ => false
+  }
+}
+
 data occurrence_identity_consumer_red_debt_rehome_note: String = "PR 7530 rehomed five rows from namespace-canonical-binding to namespace-reference-derived-closure by their actual acceptance boundary. Four receipts are green by local execution in v1.tests.claim.occurrence_identity_debt_receipt_test, but their consumer debt rows remain until gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes them per PR. rebuilt-reference-identity-preservation has a deliberately split load-bearing receipt: w_rebuilt_reference_identity_preservation_executes_holds proves identity reaches the canonical sidecar consumer, while the generated pipeline_occurrence_sidecar_serde_round_trip assertion proves the production compile/reconcile rebuild preserves the exact transport. occurrence_identity_receipt_enrollment_debts tracks both missing enrollment surfaces. inferred-target-anchor-identity still belongs to namespace-canonical-binding because its receipt cannot execute before the production projection sites switch over.\n\none-occurrence-collector-dedupe remains on namespace-reference-derived-closure but cannot yet climb: the rehome test asked whether it conceptually precedes production changeover and missed that no production occurrence-aware repeated-discovery collector exists to observe. merge_occurrence_transports concatenates complete authored transports and validation correctly refuses duplicate authored rows; std.occurrence_binding_resolve P1 correctly refuses duplicate supplied candidate ids; the open structural producer buckets each already-validated declaration once and exposes no repeated-observation seam. None is the collector this receipt requires. The retained row names that missing seam as its next-rung trigger rather than fabricating a test-local deduper."
 
 data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedDebt> = [
   OccurrenceIdentityConsumerRedDebt {
     id: "rebuilt-reference-identity-preservation",
-    required_receipt: "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.",
+    required_receipt: occurrence_identity_acceptance_law_rebuilt_reference.required_receipt,
     owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_rebuilt_reference_identity_preservation_executes_holds per PR, and the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "one-occurrence-collector-dedupe",
-    required_receipt: "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.",
+    required_receipt: occurrence_identity_acceptance_law_collector_dedupe.required_receipt,
     owner: "namespace-reference-derived-closure",
     dissolve_on: "NEXT-RUNG TRIGGER: a production occurrence-aware discovery collector must expose a seam where one exact authored OccurrenceId can be observed twice before candidate supply. merge_occurrence_transports is not that seam: it concatenates complete authored transports and duplicate authored rows must refuse. P1 candidate supply is not that seam: duplicate supplied identities must refuse. The structural producer's one-pass bucket over validated declarations is not that seam either. DISSOLVE-ON: once a design-required production collector exposes repeated observation, its exact-identity dedupe RED executes through the sidecar consumer and this row deletes in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "structurally-equal-distinct-occurrences",
-    required_receipt: "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.",
+    required_receipt: occurrence_identity_acceptance_law_distinct_occurrences.required_receipt,
     owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_structurally_equal_distinct_occurrences_execute_holds per PR, and the distinct-authored-occurrences RED executes against the sidecar consumer; delete this row in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "pattern-declaration-reachability",
-    required_receipt: "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.",
+    required_receipt: occurrence_identity_acceptance_law_pattern_reachability.required_receipt,
     owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_pattern_declaration_reachability_executes_holds per PR, and the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR.",
   },
@@ -130,7 +376,7 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "same-spelling-parser-declaration-isolation",
-    required_receipt: "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.",
+    required_receipt: occurrence_identity_acceptance_law_parser_isolation.required_receipt,
     owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_same_spelling_parser_declaration_isolation_executes_holds per PR, and the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR.",
   },
