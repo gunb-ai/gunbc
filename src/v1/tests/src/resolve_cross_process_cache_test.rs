@@ -504,15 +504,11 @@ fn two_processes_share_cache_without_torn_read() {
     let out1 = fs::read_to_string(&verdict1).expect("verdict1");
     let out2 = fs::read_to_string(&verdict2).expect("verdict2");
     for (label, verdict) in [("child1", out1.trim()), ("child2", out2.trim())] {
-        assert!(
-            verdict == "PASS" || verdict.contains("provider refused faithful probe"),
-            "{label} verdict must either cold-build or refuse faithfully: {verdict}"
+        assert_eq!(
+            verdict, "PASS",
+            "{label} must resolve green via cold-build or v2 disk hit: {verdict}"
         );
     }
-    assert!(
-        out1.trim() == "PASS" || out2.trim() == "PASS",
-        "at least one child must cold-build the cache: child1={out1:?} child2={out2:?}"
-    );
 
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
@@ -600,14 +596,21 @@ fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
 
         let index2 = build_multi_entry_index(&roots);
         let (g3, _) = resolve_entry_with_index(&index2, &a).expect("v2 store hit must install");
+        let decodes_after_disk = decode_count();
+        assert_eq!(
+            decodes_after_disk,
+            decodes_before + 1,
+            "first disk touch decodes once"
+        );
+        let (g4, _) = resolve_entry_with_index(&index2, &a).expect("memo after disk install");
         assert!(
-            std::rc::Rc::ptr_eq(&g1, &g3),
-            "fresh index must serve the disk artifact by reference after install"
+            std::rc::Rc::ptr_eq(&g3, &g4),
+            "disk hit must install into share; repeat must serve by reference"
         );
         assert_eq!(
             decode_count(),
-            decodes_before,
-            "disk hit must not decode or rebuild"
+            decodes_after_disk,
+            "memo repeat must not decode again"
         );
     });
 }
