@@ -284,7 +284,7 @@ fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> Lis
 
 fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
   order |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
-    map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(i: pair.first)))
+    map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(value: pair.first)))
   )
 }
 
@@ -400,7 +400,7 @@ fn unary_op_name(value: UnaryOpKind) -> String {
 }
 
 fn serialize_span(span: SourceSpan) -> String {
-  concat("{\"start\": ", to_string(i: span.start), ", \"end\": ", to_string(i: span.end), "}")
+  concat("{\"start\": ", to_string(value: span.start), ", \"end\": ", to_string(value: span.end), "}")
 }
 
 fn serialize_import_node(imp: Node, source_indices: Map<String, NewlineIndex>) -> String {
@@ -431,7 +431,7 @@ fn serialize_literal(value: LiteralValue) -> String {
     LitStr { value: inner } =>
       concat("{\"kind\": \"LitStr\", \"value\": ", json_quote(s: inner), "}")
     LitInt { value: inner } =>
-      concat("{\"kind\": \"LitInt\", \"value\": ", to_string(i: inner), "}")
+      concat("{\"kind\": \"LitInt\", \"value\": ", to_string(value: inner), "}")
     LitFloat { value: inner } =>
       concat("{\"kind\": \"LitFloat\", \"value\": ", json_quote(s: inner), "}")
     LitBool { value: inner } =>
@@ -840,7 +840,7 @@ fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -
 fn serialize_dag_nodes_table(order: List<Node>, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   order |> enumerate |> map(pair =>
     concat(
-      json_quote(s: concat("n", to_string(i: pair.first))),
+      json_quote(s: concat("n", to_string(value: pair.first))),
       ": ",
       serialize_node_record(node: pair.second, source_indices: source_indices, key_to_id: key_to_id))
   ) |> join(separator: ", ")
@@ -1136,9 +1136,9 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
         " (",
         span.file,
         ":",
-        to_string(i: span.start),
+        to_string(value: span.start),
         "-",
-        to_string(i: span.end),
+        to_string(value: span.end),
         ")"
       )
     })
@@ -1150,7 +1150,7 @@ fn stage0_self_compile_refusal_message(result: PipelineResult) -> String? {
     Present {
       value: concat(
         "v2 self-compile produced ",
-        to_string(i: hard_messages |> count),
+        to_string(value: hard_messages |> count),
         " hard diagnostic(s):\n",
         hard_messages |> join(separator: "\n")
       )

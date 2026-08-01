@@ -325,13 +325,14 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
   let act = active_edges()
-  !(act |> any(e => e.child == "namespace-canonical-binding" && e.parent == "namespace-occurrence-transport"))
+  !(act |> any(e => e.child == "namespace-binding-kernel" && e.parent == "namespace-occurrence-transport"))
     && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
     && !(act |> any(e => e.child == "2-scm-p0-landing-spine"))
-    && is_top_level(edges: act, node: "namespace-canonical-binding")
+    && is_top_level(edges: act, node: "namespace-binding-kernel")
+    && !is_top_level(edges: act, node: "namespace-canonical-binding")
     && is_top_level(edges: act, node: "pderive-static-supplemental-contract")
     && is_top_level(edges: act, node: "2-scm-p0-landing-spine")
-    && edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
     && edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model")
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model")
@@ -410,7 +411,11 @@ test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
 }
 
 test fn witness_namespace_chain_is_explicit() -> Bool {
-  edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+  edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel")
+    && edge_exists(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure")
+    && edge_exists(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge")
+    && !edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
     && edge_exists(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding")
     && edge_exists(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion")

@@ -232,4 +232,3 @@ fn bash_program_fixture_gunbc_claims_specials() -> List<BashEmitSpecial> {
     ]
   )
 }
-

@@ -65,7 +65,6 @@ import gunbc.roadmap_validation_oracle {
   validation_refusal_cause_key,
   validation_oracle_pin_refusal_cause,
   validation_receipt_json,
-  validation_receipt_identity_prefix,
   validation_receipt_decode,
   ValidationReceiptDecoded,
   ValidationReceiptUndecodable,
@@ -502,13 +501,136 @@ test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
     start: 0,
     end: string_length(s: genuine) - 12,
   )
-  starts_with(
-    s: truncated,
-    prefix: validation_receipt_identity_prefix(verdict_key: "passed"),
-  ) && match validation_receipt_decode(receipt: truncated) {
+  starts_with(s: genuine, prefix: truncated)
+    && match validation_receipt_decode(receipt: genuine) {
+      ValidationReceiptDecoded { verdict_key } => verdict_key == "passed"
+      ValidationReceiptUndecodable { reason: _ } => false
+    }
+    && match validation_receipt_decode(receipt: truncated) {
+      ValidationReceiptDecoded { verdict_key: _ } => false
+      ValidationReceiptUndecodable { reason: _ } => true
+    }
+}
+
+data structural_decode_note: String = "These pin what the byte-prefix reader structurally COULD NOT decide, which is why they are the receipt for replacing it rather than decoration on top of it. A prefix reader answers one question - does the document open with these exact bytes - so it necessarily conflates `the members are in a different order` with `this is not our receipt`, and it cannot see a second verdict member at all because a duplicate sits past the prefix it compares. Reading the document as a value makes member ORDER irrelevant and member COUNT decidable, and the pair below is stated as a control: the same document decodes when its identity members occur once and refuses when one of them occurs twice, so duplication is isolated as the cause rather than inferred from a refusal that could have come from anywhere."
+
+fn decodes_as(receipt: String, expected: String) -> Bool {
+  match validation_receipt_decode(receipt: receipt) {
+    ValidationReceiptDecoded { verdict_key } => verdict_key == expected
+    ValidationReceiptUndecodable { reason: _ } => false
+  }
+}
+
+fn is_undecodable(receipt: String) -> Bool {
+  match validation_receipt_decode(receipt: receipt) {
     ValidationReceiptDecoded { verdict_key: _ } => false
     ValidationReceiptUndecodable { reason: _ } => true
   }
+}
+
+test fn a_receipt_decodes_regardless_of_member_order() -> Bool {
+  decodes_as(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}",
+    expected: "passed",
+  )
+    && decodes_as(
+      receipt: "\{\"verdict\": \"passed\", \"schema\": \"roadmap-validation-receipt/v1\"}",
+      expected: "passed",
+    )
+}
+
+test fn a_second_verdict_member_refuses_rather_than_picking_one() -> Bool {
+  decodes_as(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"refused\"}",
+    expected: "refused",
+  )
+    && is_undecodable(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"refused\", \"verdict\": \"passed\"}",
+    )
+    && is_undecodable(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\", \"verdict\": \"refused\"}",
+    )
+}
+
+test fn a_second_schema_member_refuses() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}",
+  )
+}
+
+test fn another_schema_version_refuses() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v2\", \"verdict\": \"passed\"}",
+  )
+}
+
+test fn a_verdict_this_emitter_never_writes_refuses() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"green\"}",
+  )
+}
+
+test fn a_non_string_verdict_refuses_rather_than_coercing() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": 1}",
+  )
+    && is_undecodable(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": [\"passed\"]}",
+    )
+}
+
+test fn a_document_that_is_not_an_object_refuses() -> Bool {
+  is_undecodable(receipt: "\"roadmap-validation-receipt/v1\"")
+    && is_undecodable(receipt: "[\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}]")
+}
+
+test fn a_missing_verdict_member_refuses() -> Bool {
+  is_undecodable(receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\"}")
+    && is_undecodable(receipt: "\{\"verdict\": \"passed\"}")
+}
+
+test fn members_after_the_identity_pair_do_not_disturb_the_decode() -> Bool {
+  decodes_as(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"failed\", \"detail\": \"passed\", \"oracles\": []}",
+    expected: "failed",
+  )
+}
+
+data forged_escape_note: String = "review 45642, stated at the boundary that would have been fooled rather than only at the parser. `p\\assed` is not JSON, but the unescaper's unknown-escape arm dropped the backslash and produced exactly the string this reader accepts as a verdict - so a malformed receipt decoded as a pass. The positive control beside it is what makes the claim about the FORGERY rather than about the decoder refusing things generally."
+
+test fn a_verdict_forged_with_an_unknown_escape_is_undecodable() -> Bool {
+  is_undecodable(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"p\\assed\"}",
+  )
+    && decodes_as(
+      receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}",
+      expected: "passed",
+    )
+}
+
+data verdict_key_agreement_note: String = "validation_verdict_key is the emitter's authority for a verdict's wire key, and validation_receipt_verdict_keys is the reader's list of the keys it accepts. Those are two surfaces over one fact and they can drift: adding a fifth ValidationVerdict variant updates the emitter by exhaustiveness, because the match must gain an arm, but the reader's list is an ordinary data row that nothing forces anyone to extend - so the emitter would write a receipt its own reader refuses, and the failure would surface as an undecodable verdict rather than as a missing case. This pins them to each other by round-tripping every verdict the emitter can produce, which is the same shape as witness_json_text_parse_agrees_with_lexeme_surface_on_exponents: the forked surfaces are the thing under test, not either surface alone."
+
+fn verdict_round_trips(verdict: ValidationVerdict) -> Bool {
+  decodes_as(
+    receipt: validation_receipt_json(verdict: verdict, observations: []),
+    expected: validation_verdict_key(verdict: verdict),
+  )
+}
+
+test fn every_verdict_the_emitter_writes_is_one_the_reader_accepts() -> Bool {
+  verdict_round_trips(verdict: ValidationNotRun)
+    && verdict_round_trips(verdict: ValidationPassed {
+      command: "gunbc run --claim-run",
+      oracle_identity: pinned_identity(),
+    })
+    && verdict_round_trips(verdict: ValidationFailed {
+      command: "gunbc run --claim-run",
+      exit_code: 1,
+      detail: "a witness went red",
+    })
+    && verdict_round_trips(verdict: ValidationRefused {
+      cause: ValidationContractUnspecified,
+    })
 }
 
 test fn foreign_receipt_document_is_undecodable() -> Bool {

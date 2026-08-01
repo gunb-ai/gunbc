@@ -6,7 +6,8 @@ import v2.compiler.infer {
   InferredFactsEntry,
   InferredTree,
   admitted_inferred_facts_entry,
-  facts_map_from_entries
+  facts_map_from_entries,
+  inferred_facts_subject_node
 }
 import extdeps.communication.medium { Medium }
 import v2.compiler.translate {
@@ -389,7 +390,7 @@ fn partition_grounding_subject_in_segment(
 ) -> Bool {
   node_in_subtree_by_identity(
     root: segment_root,
-    needle: facts.grounding.node
+    needle: inferred_facts_subject_node(facts: facts)
   )
 }
 

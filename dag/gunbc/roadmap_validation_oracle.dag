@@ -34,16 +34,23 @@ import gunbc.roadmap_execution_contract {
   ExecutionContract,
   ExecutionContractUnspecified,
 }
-import extdeps.languages.json.grammar { json_text_parseable }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
 import extdeps.languages.json.emit {
   JsonValue,
+  JsonString,
   json_string,
   json_int,
   json_array,
   json_object,
   json_kv,
   serialize_json,
-  serialize_json_object_prefix,
 }
 
 data validation_oracle_authority_note: String = "The single authority for WHAT a verification run is run AGAINST, kept separate from whether that run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and a human ran the receipts by hand; running them automatically is only worth anything if the thing being run cannot be edited by the agent whose work it judges. That is what this module models: the oracle a declared validation names, its observed identity, and the pin captured before the agent started. Per-oracle identity is std.content_hash.Fnv1a64Structural — content_hash_tagged_structural and content_hash_atom, the same fnv1a64 structural authority v1's surface fingerprints and v2's node hashing already use — and the ordered set fold combines those structurals into one ContentHash for the pin seam; cryptographic families are unwritable on OracleFound.identity (review 45483). Pin expected-versus-observed is extdeps.pin via admit_pin_integrity: this module supplies the SUBJECT and the OBSERVATION and borrows the adjudication."
@@ -686,13 +693,54 @@ fn validation_verdict_detail(verdict: ValidationVerdict) -> String {
 
 data validation_receipt_schema: NonEmptyStr = "roadmap-validation-receipt/v1"
 
-data validation_receipt_identity_note: String = "The persisted verdict is identified by its LEADING members exactly as the environment-admission receipt is, and for the same reason recorded there: a reader that scans a serialized document for a word can be satisfied from ANY value position, so a refusal whose detail happens to carry the word `passed` would read as a pass. The emitter always writes schema then verdict first, so the passed document's byte prefix is derivable from this same emitter and a reader requires the receipt to START with it. No nested value can occupy a document prefix, which is what makes the fabricated pass unwritable rather than merely unlikely."
+data validation_receipt_identity_note: String = "The persisted verdict used to be identified by its LEADING BYTES: the emitter always writes schema then verdict first, so a reader required the document to START with the byte prefix this same emitter derives for a given verdict. That defeated the attack it was built for - a reader that SCANS for the word `passed` is satisfied from any value position, so a refusal whose detail carries the word reads as a pass, and no nested value can occupy a document prefix. It was honest about its ceiling and it has now been reached: a prefix recovers only LEADING members, so every field after the second is unreadable, which is why the receipt could be identified but never actually read. The reader below parses the document into a JsonValue and reads schema and verdict as MEMBERS. That subsumes the positional guarantee rather than weakening it - a `passed` sitting in a detail string is a different member and cannot be mistaken for the verdict, because the reader asks for the verdict by name instead of asking where the bytes fall - and it lifts the ceiling, so the exact-head subject fields the Verify rework adds become readable by the same mechanism with no new decoder."
 
-fn validation_receipt_identity_prefix(verdict_key: String) -> String {
-  serialize_json_object_prefix(members: [
-    json_kv(key: "schema", value: json_string(s: validation_receipt_schema as String)),
-    json_kv(key: "verdict", value: json_string(s: verdict_key)),
-  ])
+data validation_receipt_duplicate_identity_note: String = "Why the identity members are read with json_object_unique_member rather than a find-first: RFC 8259 permits duplicate names and does not say which wins, so a document carrying two verdict members is well-formed JSON with no committed answer. A reader that takes the first or the last silently picks one, and last-wins in particular means appending a second verdict to a refusal turns it into a pass. Duplication is therefore refused here, not resolved, and the same rule extends unchanged to head_sha, attempt_key and node_identity when Verify adds them - which is the point of putting the exactly-once rule in this decoder rather than in the generic parser."
+
+data validation_receipt_verdict_keys: List<String> = ["not_run", "passed", "failed", "refused"]
+
+type ValidationReceiptMember
+  = ValidationReceiptMemberRead { value: String }
+  | ValidationReceiptMemberUnreadable { reason: String }
+
+fn validation_receipt_string_member(
+  doc: JsonValue,
+  key: String,
+) -> ValidationReceiptMember {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberNotAnObject =>
+      ValidationReceiptMemberUnreadable {
+        reason: "validation receipt is not a JSON object",
+      }
+    JsonMemberAbsent =>
+      ValidationReceiptMemberUnreadable {
+        reason: concat("validation receipt has no ", concat(key, " member")),
+      }
+    JsonMemberDuplicated { count: n } =>
+      ValidationReceiptMemberUnreadable {
+        reason: concat(
+          "validation receipt carries ",
+          concat(
+            to_string(n),
+            concat(
+              " ",
+              concat(key, " members; an identity member must occur exactly once"),
+            ),
+          ),
+        ),
+      }
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: sv } => ValidationReceiptMemberRead { value: sv }
+        _ =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+      }
+  }
 }
 
 fn validation_oracle_observation_json(
@@ -767,34 +815,47 @@ type ValidationReceiptDecode
   = ValidationReceiptDecoded { verdict_key: String }
   | ValidationReceiptUndecodable { reason: String }
 
+fn validation_receipt_decode_document(doc: JsonValue) -> ValidationReceiptDecode {
+  match validation_receipt_string_member(doc: doc, key: "schema") {
+    ValidationReceiptMemberUnreadable { reason: r } =>
+      ValidationReceiptUndecodable { reason: r }
+    ValidationReceiptMemberRead { value: schema } =>
+      if schema != (validation_receipt_schema as String) {
+        ValidationReceiptUndecodable {
+          reason: concat(
+            "validation receipt schema is ",
+            concat(
+              schema,
+              concat(", not ", validation_receipt_schema as String),
+            ),
+          ),
+        }
+      } else {
+        match validation_receipt_string_member(doc: doc, key: "verdict") {
+          ValidationReceiptMemberUnreadable { reason: r } =>
+            ValidationReceiptUndecodable { reason: r }
+          ValidationReceiptMemberRead { value: verdict } =>
+            if count(filter(validation_receipt_verdict_keys, k => k == verdict)) > 0 {
+              ValidationReceiptDecoded { verdict_key: verdict }
+            } else {
+              ValidationReceiptUndecodable {
+                reason: concat(
+                  "validation receipt verdict ",
+                  concat(verdict, " is not one this emitter writes"),
+                ),
+              }
+            }
+        }
+      }
+  }
+}
+
 fn validation_receipt_decode(receipt: String) -> ValidationReceiptDecode {
-  if !json_text_parseable(s: receipt) {
-    ValidationReceiptUndecodable {
-      reason: "validation receipt is not one well-formed JSON value",
-    }
-  } else if starts_with(
-    s: receipt,
-    prefix: validation_receipt_identity_prefix(verdict_key: "not_run"),
-  ) {
-    ValidationReceiptDecoded { verdict_key: "not_run" }
-  } else if starts_with(
-    s: receipt,
-    prefix: validation_receipt_identity_prefix(verdict_key: "passed"),
-  ) {
-    ValidationReceiptDecoded { verdict_key: "passed" }
-  } else if starts_with(
-    s: receipt,
-    prefix: validation_receipt_identity_prefix(verdict_key: "failed"),
-  ) {
-    ValidationReceiptDecoded { verdict_key: "failed" }
-  } else if starts_with(
-    s: receipt,
-    prefix: validation_receipt_identity_prefix(verdict_key: "refused"),
-  ) {
-    ValidationReceiptDecoded { verdict_key: "refused" }
-  } else {
-    ValidationReceiptUndecodable {
-      reason: "validation receipt does not lead with this emitter's schema and a known verdict",
-    }
+  match parse_json(s: receipt) {
+    Absent =>
+      ValidationReceiptUndecodable {
+        reason: "validation receipt is not one complete JSON value",
+      }
+    Present { value: doc } => validation_receipt_decode_document(doc: doc)
   }
 }
