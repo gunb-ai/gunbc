@@ -6,9 +6,9 @@ import std.materialization_ladder { Frame }
 
 data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect now GATES real dispatch at the landed P-B enforcement seams (the emit-host build transport, the effect-io host write, the artifact-store scratch store, and the cli_run repo gate). Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
 
-type Verb = Read | Write | Execute | Reference | Publish
+type Verb = Read | Write | Execute
 
-data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the effect-derived verbs are Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape authority via verb_of_effect_shape below -- never a parallel effect vocabulary (DESIGN 3). Reference and Publish are visibility extensions: they name graph-reference and publication reach and are not projections of EffectShape. Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create remains deferred until a displaced cost names it. dissolve-on = none (landed authority; operator may amend verb set)."
+data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the effect-derived verbs are Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape authority via verb_of_effect_shape below -- never a parallel effect vocabulary (DESIGN 3). Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create remains deferred until a displaced cost names it. The frozen Reference and Publish additions from gunbc#7541 dissolved into std.authorization_profile.ReferenceRequest and PublicationAdmissionRequest: neither is an EffectShape. dissolve-on = none (landed authority; operator may amend verb set)."
 
 data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
 
@@ -29,9 +29,8 @@ type NamespaceTree
   | ProcTree
   | ServiceOpTree { service: String }
   | CodeNameTree
-  | AudienceScopeTree
 
-data namespace_tree_note: String = "Q2 (PROVISIONAL, pending operator ruling): grant targets are positions in CITED trees (DESIGN 3, not minted): the OS filesystem namespace (extdeps/filesystem), URIs (extdeps/uri), /proc/self introspection, REST/Redfish service-operation hierarchies (ServiceOpTree per service), the code-name containment tree the namespace-resolution lane makes the single naming authority (CodeNameTree), and the publication audience hierarchy (AudienceScopeTree). INTERIM realization: path-string prefixes (position_under below). CONVERGENCE -- the anti-fork commitment: NamespacePosition and its prefix relation become PROJECTIONS of the ONE containment-tree walk when SymbolIndex lands (the same relation the resolver walks, content-addressing hashes, termination reads). dissolve-on = SymbolIndex-backed position supersedes the path-string interim."
+data namespace_tree_note: String = "Q2 (PROVISIONAL, pending operator ruling): grant targets are positions in CITED trees (DESIGN 3, not minted): the OS filesystem namespace (extdeps/filesystem), URIs (extdeps/uri), /proc/self introspection, REST/Redfish service-operation hierarchies (ServiceOpTree per service), and the code-name containment tree the namespace-resolution lane makes the single naming authority (CodeNameTree). INTERIM realization: path-string prefixes (position_under below). Publication audiences are sets in std.authorization_profile, not positions in this tree; the frozen AudienceScopeTree from gunbc#7541 dissolved. CONVERGENCE -- the anti-fork commitment: NamespacePosition and its prefix relation become PROJECTIONS of the ONE containment-tree walk when SymbolIndex lands (the same relation the resolver walks, content-addressing hashes, termination reads). dissolve-on = SymbolIndex-backed position supersedes the path-string interim."
 
 type NamespacePosition {
   tree: NamespaceTree
@@ -45,7 +44,6 @@ fn namespace_tree_eq(a: NamespaceTree, b: NamespaceTree) -> Bool {
     ProcTree => match b { ProcTree => true, _ => false }
     ServiceOpTree { service: sa } => match b { ServiceOpTree { service: sb } => sa == sb, _ => false }
     CodeNameTree => match b { CodeNameTree => true, _ => false }
-    AudienceScopeTree => match b { AudienceScopeTree => true, _ => false }
   }
 }
 
@@ -89,11 +87,9 @@ type Envelope {
 
 fn verb_eq(a: Verb, b: Verb) -> Bool {
   match a {
-    Read => match b { Read => true, Write => false, Execute => false, Reference => false, Publish => false }
-    Write => match b { Write => true, Read => false, Execute => false, Reference => false, Publish => false }
-    Execute => match b { Execute => true, Read => false, Write => false, Reference => false, Publish => false }
-    Reference => match b { Reference => true, Read => false, Write => false, Execute => false, Publish => false }
-    Publish => match b { Publish => true, Read => false, Write => false, Execute => false, Reference => false }
+    Read => match b { Read => true, Write => false, Execute => false }
+    Write => match b { Write => true, Read => false, Execute => false }
+    Execute => match b { Execute => true, Read => false, Write => false }
   }
 }
 

@@ -1,0 +1,82 @@
+module test.claim.access_authorization_profile_witness_test
+
+import std.types { Bool, String }
+import std.access {
+  AccessDecision, Permit, Deny,
+  access_policy_refusal, decision_meet,
+}
+import std.authorization_profile {
+  AudienceSet, UniversalAudience, EnumeratedAudience,
+  audience_subset, audience_join, audience_meet,
+  EffectRequest, effect_access_request,
+  ReferenceRequest, reference_access_request,
+  PublicationAdmissionRequest, publication_access_request,
+  DisclosureRequest, disclosure_access_request,
+  SealedExecutionRequest, sealed_execution_access_request,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn string_eq(a: String, b: String) -> Bool { a == b }
+
+test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool {
+  let left = EnumeratedAudience { members: ["alice", "bob"] }
+  let right = EnumeratedAudience { members: ["bob", "carol"] }
+  !audience_subset(left: left, right: right, principal_eq: string_eq)
+    && !audience_subset(left: right, right: left, principal_eq: string_eq)
+    && match audience_meet(left: left, right: right, principal_eq: string_eq) {
+      EnumeratedAudience { members: members } => members == ["bob"]
+      UniversalAudience => false
+    }
+    && match audience_join(left: left, right: right, principal_eq: string_eq) {
+      EnumeratedAudience { members: members } => members == ["alice", "bob", "carol"]
+      UniversalAudience => false
+    }
+}
+
+test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
+  let effect = effect_access_request(request: EffectRequest {
+    subject: "actor", effect: "write", target: "file", context: "frame", evidence: "grant",
+  })
+  let reference = reference_access_request(request: ReferenceRequest {
+    referrer: "caller", referenced: "callee", context: "module", evidence: "visibility-proof",
+  })
+  let publication = publication_access_request(request: PublicationAdmissionRequest {
+    subject: "session", source: "head-sha", resource: "public-root",
+    audience: UniversalAudience, context: "cutover", evidence: "coverage-receipt",
+  })
+  let disclosure = disclosure_access_request(request: DisclosureRequest {
+    principal: "principal", resource: "record", fields: ["email"],
+    audience: EnumeratedAudience { members: ["principal"] },
+    context: "purpose", evidence: "consent",
+  })
+  let sealed = sealed_execution_access_request(request: SealedExecutionRequest {
+    principal: "principal", operation: "evaluate", sealed_resource: "sealed-model",
+    execution_context: "enclave", evidence: "attestation",
+  })
+  effect.subject == "actor" && effect.context.value == "frame" && effect.evidence.value == "grant"
+    && reference.subject == "caller" && reference.object == "callee"
+      && reference.context.value.referrer == "caller" && reference.evidence.value == "visibility-proof"
+    && publication.subject == "session" && publication.action.source == "head-sha"
+      && publication.object == "public-root" && publication.evidence.value == "coverage-receipt"
+    && disclosure.action.fields == ["email"] && disclosure.context.value.context == "purpose"
+    && sealed.action.operation == "evaluate" && sealed.context.value == "enclave"
+}
+
+test fn denial_is_typed_located_and_left_biased_under_meet() -> Bool {
+  let first = access_policy_refusal(
+    profile: "PublicationAdmissionRequest", subject: "session-a", action: "publication",
+    object: "public-root", reason: "evidence rejected",
+  )
+  let second = access_policy_refusal(
+    profile: "SealedExecutionRequest", subject: "session-a", action: "execute",
+    object: "sealed-model", reason: "attestation absent",
+  )
+  match decision_meet(a: first, b: second) {
+    Permit => false
+    Deny { refusal: refusal } =>
+      refusal.location.profile == "PublicationAdmissionRequest"
+        && refusal.location.object == "public-root"
+  }
+}

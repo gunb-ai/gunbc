@@ -152,27 +152,31 @@ fn reference_access_request<R, C, E>(
   }
 }
 
-type PublicationAdmissionAction {}
+type PublicationAdmissionAction<S> {
+  source: S
+}
 
 type PublicationContext<C, P> {
   audience: AudienceSet<P>
   context: C
 }
 
-type PublicationAdmissionRequest<R, C, E, P> {
+type PublicationAdmissionRequest<S, Source, R, C, E, P> {
+  subject: S
+  source: Source
   resource: R
   audience: AudienceSet<P>
   context: C
   evidence: E
 }
 
-fn publication_access_request<R, C, E, P>(
-  request: PublicationAdmissionRequest<R, C, E, P>,
-) -> AccessRequest<R, PublicationAdmissionAction, AudienceSet<P>, PublicationContext<C, P>, E> {
+fn publication_access_request<S, Source, R, C, E, P>(
+  request: PublicationAdmissionRequest<S, Source, R, C, E, P>,
+) -> AccessRequest<S, PublicationAdmissionAction<Source>, R, PublicationContext<C, P>, E> {
   AccessRequest {
-    subject: request.resource,
-    action: PublicationAdmissionAction {},
-    object: request.audience,
+    subject: request.subject,
+    action: PublicationAdmissionAction { source: request.source },
+    object: request.resource,
     context: AccessContext { value: PublicationContext {
       audience: request.audience,
       context: request.context,

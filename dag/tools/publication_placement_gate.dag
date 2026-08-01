@@ -2,12 +2,9 @@ module tools.publication_placement_gate
 
 import std.types { CommitSha, FilePath, GitRef, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.effect_grant {
-  Publish, NamespacePosition, EffectAdmission, Admitted, EffectOutsideGrant,
-  admit_effect,
-}
-import std.materialization_ladder { Frame }
-import std.visibility_grant { world_audience }
+import std.access { AccessDecision, AccessRefusal, Permit, Deny, access_refusal_reason }
+import std.authorization_profile { AudienceSet }
+import gunbc.principal_projection { GunbcPrincipal }
 import extdeps.git {
   GitDiffStatusEntry, DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
   DiffUnknownGitStatus,
@@ -19,13 +16,14 @@ import extdeps.git {
 import extdeps.git
 import gunbc.publication_grant {
   PublicRootPublishBaseline, PublicFilePublishGrant, PublicPublicationGrantRoster,
-  public_publication_grant_roster,
+  public_publication_grant_roster, public_audience,
+  public_publication_request, decide_publication_request,
 }
 import gunbc.publication_cutover {
   public_publication_root, public_publication_cutover_sha,
 }
 
-data publication_placement_gate_note: String = "Server-side Stage-0 publication wall. Before observing a diff it validates the roster baseline against the fixed gunbc.publication_cutover authority, so a roster edit cannot advance the grandfathered corpus. It observes ONLY the mounted public checkout, computes new public paths whose cutover-to-HEAD git status is Added, Copied, or Renamed, locates each path's roster envelope, and delegates the Publish World decision to std.effect_grant.admit_effect. A changed baseline, missing/ambiguous markers, refused grants, git failures, truncated parses, and unknown statuses are distinct typed PublishGuardLocalViolation causes; none widens to a scan or proceeds. The coverage receipt names exactly the public mount, the roster markers, and new paths checked. It makes no PublishClosureGap/PublishAncestorNarrower or private-root claim. This becomes the enforcement wall when the operator makes the CI check required in branch protection; no client hook is an authority."
+data publication_placement_gate_note: String = "Server-side Stage-0 publication wall. Before observing a diff it validates the roster baseline against the fixed gunbc.publication_cutover authority, so a roster edit cannot advance the grandfathered corpus. It observes ONLY the mounted public checkout, computes new public paths whose cutover-to-HEAD git status is Added, Copied, or Renamed, locates each path's roster evidence, constructs a PublicationAdmissionRequest for the universal AudienceSet, and delegates the sole allow/deny decision to std.access.AccessPolicy. A changed baseline, missing/ambiguous markers, refused evidence, git failures, truncated parses, and unknown statuses remain distinct typed PublishGuardLocalViolation causes; none widens to a scan or proceeds. The coverage receipt names exactly the public mount, the roster markers, and new paths checked."
 
 type PublishGuardPublicRootOnly {}
 
@@ -54,14 +52,12 @@ type PublishGuardLocalViolation
   | BaselinePublishGrantRefused {
       root: FilePath,
       cutover: String,
-      verb: std.effect_grant.Verb,
-      target: NamespacePosition,
-      frame: Frame,
+      refusal: AccessRefusal,
     }
   | AddedPathPublishGrantAbsent {
       path: FilePath,
       root: FilePath,
-      audience: NamespacePosition,
+      audience: AudienceSet<GunbcPrincipal>,
     }
   | FilePublishGrantMarkerRepeated {
       path: FilePath,
@@ -70,22 +66,18 @@ type PublishGuardLocalViolation
   | FilePublishGrantMarkerRefused {
       path: FilePath,
       root: FilePath,
-      verb: std.effect_grant.Verb,
-      target: NamespacePosition,
-      frame: Frame,
+      refusal: AccessRefusal,
     }
   | AddedPathPublishGrantAmbiguous {
       path: FilePath,
       root: FilePath,
-      audience: NamespacePosition,
+      audience: AudienceSet<GunbcPrincipal>,
       marker_count: Int,
     }
   | AddedPathPublishGrantRefused {
       path: FilePath,
       root: FilePath,
-      verb: std.effect_grant.Verb,
-      target: NamespacePosition,
-      frame: Frame,
+      refusal: AccessRefusal,
     }
   | PublicRootDiffReadFailure {
       root: FilePath,
@@ -142,17 +134,15 @@ fn public_file_grant_lookup(
 
 fn admission_refusal_for_baseline(
   baseline: PublicRootPublishBaseline,
-  admission: EffectAdmission,
+  admission: AccessDecision,
 ) -> List<PublishGuardLocalViolation> {
   match admission {
-    Admitted { via_root: via_root } => []
-    EffectOutsideGrant { verb: verb, target: target, frame: frame } => [
+    Permit => []
+    Deny { refusal: refusal } => [
       BaselinePublishGrantRefused {
         root: baseline.root,
         cutover: baseline.cutover,
-        verb: verb,
-        target: target,
-        frame: frame,
+        refusal: refusal,
       }
     ]
   }
@@ -177,17 +167,15 @@ fn baseline_policy_violations(
 fn admission_refusal_for_path(
   path: FilePath,
   root: FilePath,
-  admission: EffectAdmission,
+  admission: AccessDecision,
 ) -> List<PublishGuardLocalViolation> {
   match admission {
-    Admitted { via_root: via_root } => []
-    EffectOutsideGrant { verb: verb, target: target, frame: frame } => [
+    Permit => []
+    Deny { refusal: refusal } => [
       AddedPathPublishGrantRefused {
         path: path,
         root: root,
-        verb: verb,
-        target: target,
-        frame: frame,
+        refusal: refusal,
       }
     ]
   }
@@ -197,15 +185,17 @@ fn admission_refusal_for_marker(
   grant: PublicFilePublishGrant,
   root: FilePath,
 ) -> List<PublishGuardLocalViolation> {
-  match admit_effect(env: grant.envelope, verb: Publish, target: world_audience()) {
-    Admitted { via_root: via_root } => []
-    EffectOutsideGrant { verb: verb, target: target, frame: frame } => [
+  match decide_publication_request(request: public_publication_request(
+    resource: grant.path,
+    root: root,
+    grant: grant.grant,
+  )) {
+    Permit => []
+    Deny { refusal: refusal } => [
       FilePublishGrantMarkerRefused {
         path: grant.path,
         root: root,
-        verb: verb,
-        target: target,
-        frame: frame,
+        refusal: refusal,
       }
     ]
   }
@@ -236,7 +226,7 @@ fn added_path_violations(
   path: FilePath,
   roster: PublicPublicationGrantRoster,
 ) -> List<PublishGuardLocalViolation> {
-  let audience = world_audience()
+  let audience = public_audience()
   match public_file_grant_lookup(path: path, grants: roster.file_grants) {
     PublicFileGrantAbsent => [AddedPathPublishGrantAbsent {
       path: path,
@@ -252,7 +242,11 @@ fn added_path_violations(
     PublicFileGrantFound { grant: grant } => admission_refusal_for_path(
       path: path,
       root: roster.baseline.root,
-      admission: admit_effect(env: grant.envelope, verb: Publish, target: audience),
+      admission: decide_publication_request(request: public_publication_request(
+        resource: path,
+        root: roster.baseline.root,
+        grant: grant.grant,
+      )),
     )
   }
 }
@@ -266,12 +260,16 @@ fn publication_guard_local_check(
   added_paths: List<FilePath>,
   head: String,
 ) -> PublishGuardLocalOutcome {
-  let audience = world_audience()
+  let audience = public_audience()
   let baseline_violations = append(
     baseline_policy_violations(baseline: roster.baseline),
     items: admission_refusal_for_baseline(
       baseline: roster.baseline,
-      admission: admit_effect(env: roster.baseline.envelope, verb: Publish, target: audience),
+      admission: decide_publication_request(request: public_publication_request(
+        resource: roster.baseline.root,
+        root: roster.baseline.root,
+        grant: roster.baseline.grant,
+      )),
     ),
   )
   let marker_audit = file_marker_audit(
@@ -396,18 +394,18 @@ fn render_publish_guard_local_violation(violation: PublishGuardLocalViolation) -
   match violation {
     BaselinePlacementPolicyNotPinned { declared_root, pinned_root, declared_cutover, pinned_cutover } =>
       join(["publication baseline is not the pinned policy: declared_root=", declared_root, " pinned_root=", pinned_root, " declared_cutover=", declared_cutover, " pinned_cutover=", pinned_cutover], "")
-    BaselinePublishGrantRefused { root, cutover, verb, target, frame } =>
-      join(["baseline Publish World grant refused: root=", root, " cutover=", cutover, " frame=", frame.name], "")
+    BaselinePublishGrantRefused { root, cutover, refusal } =>
+      join(["baseline universal-audience publication refused: root=", root, " cutover=", cutover, " reason=", access_refusal_reason(refusal: refusal)], "")
     AddedPathPublishGrantAbsent { path, root, audience } =>
       join(["added public path has no publication grant: path=", path, " root=", root], "")
     AddedPathPublishGrantAmbiguous { path, root, audience, marker_count } =>
       join(["added public path has ambiguous publication grants: path=", path, " root=", root, " markers=", to_string(marker_count)], "")
     FilePublishGrantMarkerRepeated { path, root } =>
       join(["publication grant marker is repeated: path=", path, " root=", root], "")
-    FilePublishGrantMarkerRefused { path, root, verb, target, frame } =>
-      join(["publication grant marker is not granted Publish World: path=", path, " root=", root, " frame=", frame.name], "")
-    AddedPathPublishGrantRefused { path, root, verb, target, frame } =>
-      join(["added public path is not granted Publish World: path=", path, " root=", root, " frame=", frame.name], "")
+    FilePublishGrantMarkerRefused { path, root, refusal } =>
+      join(["publication marker does not admit the universal audience: path=", path, " root=", root, " reason=", access_refusal_reason(refusal: refusal)], "")
+    AddedPathPublishGrantRefused { path, root, refusal } =>
+      join(["added public path does not admit the universal audience: path=", path, " root=", root, " reason=", access_refusal_reason(refusal: refusal)], "")
     PublicRootDiffReadFailure { root, cutover, head } =>
       join(["public-root git.Core.DiffNameStatus failed: root=", root, " cutover=", cutover, " head=", head], "")
     PublicRootDiffParseTruncated { root, cutover, head, pending } =>

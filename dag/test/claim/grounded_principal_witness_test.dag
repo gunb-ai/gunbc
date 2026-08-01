@@ -107,7 +107,7 @@ test fn witness_ci_runner_grounded_access_gate_permits() -> Bool {
     fixture_host: Present { value: srv1_host_observation() }
   ) {
     Permit => true
-    Deny { reason: _ } => false
+    Deny { refusal: _ } => false
   }
 }
 
@@ -120,7 +120,7 @@ test fn witness_operator_grounded_access_gate_permits() -> Bool {
     fixture_host: Present { value: srv1_host_observation() }
   ) {
     Permit => true
-    Deny { reason: _ } => false
+    Deny { refusal: _ } => false
   }
 }
 
