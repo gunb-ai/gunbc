@@ -170,7 +170,7 @@ test fn first_review_pending_is_typed_and_located() -> Bool {
     actor_authority: witness_actor,
   ) {
     LandingBlocked { pull_request: _, criteria: _, blockers, evidence: _ } =>
-      any(blockers, blocker => match blocker {
+      any(blockers, row => match row.blocker {
         AwaitingFirstReview { at, required } =>
           at.pr_number == 42 && at.head_sha == witness_head && required == 2
         _ => false
@@ -201,11 +201,11 @@ test fn stale_head_approval_does_not_enter_ready_queue() -> Bool {
   match decision {
     LandingBlocked { pull_request: _, criteria: _, blockers, evidence: _ } =>
       count(queue.ready) == 0
-        && any(blockers, blocker => match blocker {
+        && any(blockers, row => match row.blocker {
           AwaitingApprovals { actual, required, at: _ } => actual == 1 && required == 2
           _ => false
         })
-        && any(blockers, blocker => match blocker {
+        && any(blockers, row => match row.blocker {
           StaleApprovalReReviewPending { provider, at: _ } => (provider as String) == "cursor"
           _ => false
         })
@@ -237,10 +237,10 @@ test fn every_failed_requirement_survives_as_its_typed_cause() -> Bool {
   ) {
     LandingBlocked { pull_request: _, criteria: _, blockers, evidence: ev } =>
       count(blockers) == 5
-        && any(blockers, blocker => match blocker { RequestChangesBy { provider, at: _ } => (provider as String) == "codex" _ => false })
-        && any(blockers, blocker => match blocker { DraftPullRequest { at: _ } => true _ => false })
-        && any(blockers, blocker => match blocker { MergeConflict { at: _, mergeable } => mergeable == "DIRTY" _ => false })
-        && any(blockers, blocker => match blocker { ChecksFailing { at: _, state, detail } => state == "failure" && detail == "failure" _ => false })
+        && any(blockers, row => match row.blocker { RequestChangesBy { provider, at: _ } => (provider as String) == "codex" _ => false })
+        && any(blockers, row => match row.blocker { DraftPullRequest { at: _ } => true _ => false })
+        && any(blockers, row => match row.blocker { MergeConflict { at: _, mergeable } => mergeable == "DIRTY" _ => false })
+        && any(blockers, row => match row.blocker { ChecksFailing { at: _, state, detail } => state == "failure" && detail == "failure" _ => false })
         && count(ev.review_artifacts) == 1
     _ => false
   }

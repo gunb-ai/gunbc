@@ -86,6 +86,10 @@ type LandingBlocker
   | ChecksFailing { at: LandingBlockerLocation, state: String, detail: String }
   | RequirementBlockedUnclassified { at: LandingBlockerLocation, actual: String }
 
+type LandingBlockerRow {
+  blocker: LandingBlocker
+}
+
 type LandingEvidenceProjection {
   review_artifacts: List<LandingReviewArtifactProjection>
   checks_url: NonEmptyStr
@@ -106,7 +110,7 @@ type LandingDecision
   | LandingBlocked {
       pull_request: LandingPullRequestProjection,
       criteria: DashboardMergeCriteriaSnapshot,
-      blockers: List<LandingBlocker>,
+      blockers: List<LandingBlockerRow>,
       evidence: LandingEvidenceProjection,
     }
   | LandingSummaryDiverged {
@@ -146,14 +150,14 @@ fn landing_blocker_location(
   }
 }
 
-fn landing_blocker_singleton(blocker: LandingBlocker) -> List<LandingBlocker> {
-  [blocker]
+fn landing_blocker_singleton(blocker: LandingBlocker) -> List<LandingBlockerRow> {
+  [LandingBlockerRow { blocker: blocker }]
 }
 
 fn landing_approval_requirement_blockers(
   pr: LandingPullRequestProjection,
   criteria: DashboardMergeCriteriaSnapshot,
-) -> List<LandingBlocker> {
+) -> List<LandingBlockerRow> {
   let at = landing_blocker_location(
     pr: pr,
     criteria: criteria,
@@ -178,7 +182,7 @@ fn landing_approval_requirement_blockers(
 fn landing_request_changes_blockers(
   pr: LandingPullRequestProjection,
   criteria: DashboardMergeCriteriaSnapshot,
-) -> List<LandingBlocker> {
+) -> List<LandingBlockerRow> {
   let at = landing_blocker_location(
     pr: pr,
     criteria: criteria,
@@ -196,7 +200,7 @@ fn landing_failed_requirement_blockers(
   pr: LandingPullRequestProjection,
   criteria: DashboardMergeCriteriaSnapshot,
   requirement: DashboardMergeCriteriaRequirement,
-) -> List<LandingBlocker> {
+) -> List<LandingBlockerRow> {
   if requirement.ok {
     []
   } else {
@@ -236,7 +240,7 @@ fn landing_failed_requirement_blockers(
 fn landing_blockers(
   pr: LandingPullRequestProjection,
   criteria: DashboardMergeCriteriaSnapshot,
-) -> List<LandingBlocker> {
+) -> List<LandingBlockerRow> {
   flat_map(
     criteria.requirements,
     requirement => landing_failed_requirement_blockers(

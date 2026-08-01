@@ -360,7 +360,7 @@ fn landing_decision_json(d: LandingDecision) -> JsonValue {
       json_kv(key: "state", value: json_string(s: "blocked")),
       json_kv(key: "pull_request", value: landing_pr_json(pr: pull_request)),
       json_kv(key: "criteria", value: landing_criteria_json(c: criteria)),
-      json_kv(key: "blockers", value: json_array(elements: map(blockers, blocker => landing_blocker_json(blocker: blocker)))),
+      json_kv(key: "blockers", value: json_array(elements: map(blockers, row => landing_blocker_json(blocker: row.blocker)))),
       json_kv(key: "evidence", value: landing_evidence_json(e: evidence)),
     ])
     LandingSummaryDiverged { pull_request, criteria, projected_blocker_count, reason } => json_object(members: [

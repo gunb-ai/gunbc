@@ -41,7 +41,7 @@ fn landing_blocked_row(decision: LandingDecision) -> Fragment {
   match decision {
     LandingBlocked { pull_request, criteria: _, blockers, evidence: _ } => el("li", [
       el("strong", [txt(join(["#", to_string(pull_request.pr_number), " ", pull_request.pr_title], ""))]),
-      el("ul", map(blockers, blocker => el("li", [txt(landing_blocker_label(blocker: blocker))]))),
+      el("ul", map(blockers, row => el("li", [txt(landing_blocker_label(blocker: row.blocker))]))),
       el_attrs("a", [attr(name: "href", value: landing_evidence_href(number: pull_request.pr_number))], [txt("inspect evidence")]),
     ])
     LandingSummaryDiverged { pull_request, criteria: _, projected_blocker_count: _, reason } => el("li", [
