@@ -82,7 +82,20 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "dag/gunbc/build_cache_instance.dag"),
   public_file_publish_grant(path: "dag/test/claim/build_cache_placement_observation_test.dag"),
   public_file_publish_grant(path: "docs/plans/build-cache-placement-receipt.md"),
+  public_file_publish_grant(path: "dag/extdeps/github/workflows.dag"),
+  public_file_publish_grant(path: "dag/gunbc/heal_revalidation.dag"),
+  public_file_publish_grant(path: "dag/tools/ci_heal_dispatch.dag"),
+  public_file_publish_grant(path: "dag/test/claim/heal_revalidation_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/heal_revalidation_integration_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/workflow_dispatch_input_witness_test.dag"),
+  public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit.dag"),
+  public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit_test.dag"),
+  public_file_publish_grant(path: "dag/gunbc/source_integration_proof_kernel.dag"),
+  public_file_publish_grant(path: "dag/test/claim/source_integration_proof_kernel_model_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag"),
 ]
+
+data late_gate_backfill_note: String = "THE ELEVEN ROWS ABOVE THIS NOTE ARE A BACKFILL, and saying so is the point: they were authored by a session that owns none of the three lanes that added the files. #7560 landed this gate green at cd660f4f9, requiring one row per public path added after the cutover. #7544 (heal revalidation) and #7563 (SCM P1 kernel) were already in flight, written before the requirement existed, so they merged without rows and main went red at 45e7a8caa and stayed red — blocking every lane that merges main, none of which could fix it by changing their own diff.\\n\\nWHAT WAS ACTUALLY DECIDED, because a grant is a publication-intent declaration and not a formality. The wall's preventive job cannot be done retroactively: these files were published the moment those PRs merged to the public root, so the live question was not 'may they be published' but 'should any of them be UNpublished', which a grant cannot answer and a removal would. Each of the eleven was read for content that must not leave the repository — credentials, key material, routable addresses, private host detail. None carries any; the only matches are the literal NAME GITHUB_TOKEN appearing as a modeled EnvVar auth_source, which is GitHub's own runner-provided variable rather than a value. All eleven are ordinary model, witness and tool .dag files of the same kind as the granted corpus around them.\\n\\nTHE HAZARD THIS NOTE EXISTS TO NAME: 'it is already public, so granting is harmless' is exactly the reasoning that converts this wall into a rubber stamp, and it would be the absorbing fallback (DESIGN section 5) applied to authorization — a refusal answered by widening the roster rather than by examining the subject. The backfill is legitimate only because the examination happened and is recorded here; a future backfill that skips it is not this precedent."
 
 data public_publication_grant_roster: PublicPublicationGrantRoster = PublicPublicationGrantRoster {
   baseline: public_root_publish_baseline,
