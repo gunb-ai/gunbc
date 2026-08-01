@@ -730,7 +730,21 @@ it splits by scrutinee path, and the row's attribution of the silence to `Patter
 []` is wrong on the carrier, since `pattern_subject_from_node` reaches that arm only where the
 scrutinee's inferred type `is_compiler_error` (a diagnostic already exists). The silent arm is
 `PatternDynamic { span: _ } => []`. `PatternLookupBlocked`'s own silence remains **unestablished**
-— no probe here reproduced it, and it is not asserted as though one had.
+— no probe here reproduced it, and it is not asserted as though one had. **`AcceptedCounted` is
+representable but has no producer, and the carrier stage must know it** (lane-level state, not a
+PR detail): the census carries `blocking` in both directions structurally, but only
+`blocking=true` has a live specimen — the reachable non-blocking arm is #7484's
+`MethodExistenceUndecided`/`MethodExistenceFrontierAdmitted` frontier admission, and that PR's own
+witness records why admission is checked against the declared frontier rows rather than a
+synthetic source (the residual receiver shapes are upstream resolution defects that cannot be
+produced on demand). Three candidates were attempted — a where-refinement alias, an
+unlisted-import shape, an unresolved method on a bare type parameter — and each either compiled
+silent or refused *blocking*, so none is an advisory and none is recorded as one. Consequence for
+Stage 1b: a `FrontierAccepted` disposition has **no executing probe evidence** today even though
+the vocabulary and the surface both admit it, so deriving one from probe receipts would be
+deriving from an empty population. Dissolve-on: the first reproducible advisory specimen — most
+likely the frontier admission once `method-receiver-normalization` lands — becomes the probe
+corpus's advisory row.
 
 ## 11. Audit queue
 
