@@ -137,6 +137,7 @@ fn retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: 
 test fn witness_blue_and_green_retirement_both_preserve_reusable_dispatch_state() -> Bool {
   retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: deployment_spec_srv1())
     && retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: deployment_spec_srv1_green())
+    && witness_retract_attempt_state_root_refuses_when_nonempty()
 }
 
 test fn witness_spec_targets_srv1() -> Bool {
