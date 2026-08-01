@@ -114,10 +114,11 @@ fn worktree_repository_binding_of(
     WorktreeRemoteUnreadable { exit_code: exit_code, stderr: stderr }
   } else {
     let observed = url.trim()
+    let expected_url = expected as String
     if string_length(s: observed) == 0 {
       WorktreeRemoteUnreadable { exit_code: exit_code, stderr: stderr }
     } else {
-      if observed == expected as String {
+      if observed == expected_url {
         WorktreeBoundToRepository
       } else {
         WorktreeBoundElsewhere { observed: observed, expected: expected }

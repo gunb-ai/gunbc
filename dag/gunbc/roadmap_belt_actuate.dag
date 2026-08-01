@@ -3215,7 +3215,7 @@ fn belt_publish_attempt_for_instance(
   ) {
     PublicationSubjectUnobserved { reason } =>
       PublishDeferred { node_id: node_id, reason: reason }
-    PublicationSubjectObserved { subject } =>
+    PublicationSubjectObserved { subject } => {
       match observe_worktree_repository_binding(
         worktree: attempt_worktree,
         repo: subject.repository,
@@ -3237,45 +3237,47 @@ fn belt_publish_attempt_for_instance(
             ], ""),
           }
         WorktreeBoundToRepository => {
-      let path = dispatch_attempt_publication_receipt_path_for_instance(
-        instance: instance,
-        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-        attempt_key: attempt_key,
-        head_sha: subject.expected_head as String,
-      )
-      match belt_publish_gate(
-        node_id: node_id,
-        subject: subject,
-        existing: belt_publication_receipt_source(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-          attempt_key: attempt_key,
-          subject: PublicationSubjectObserved { subject: subject },
-        ),
-      ) {
-        PublishHalted { outcome } => outcome
-        PublishProceed => {
-          let receipt = publication_receipt_of(
-            subject: subject,
-            outcome: observe_publication_for_subject(
-              credential: credential,
-              subject: subject,
-            ),
+          let path = dispatch_attempt_publication_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+            attempt_key: attempt_key,
+            head_sha: subject.expected_head as String,
           )
-          let write = Filesystem.Write(
-            path: path,
-            content: publication_receipt_json(receipt: receipt),
-          )
-          belt_publish_write_outcome(
+          match belt_publish_gate(
             node_id: node_id,
             subject: subject,
-            receipt: receipt,
-            write_success: write.success,
-            write_error: write.error,
-          )
-        }
+            existing: belt_publication_receipt_source(
+              instance: instance,
+              node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+              attempt_key: attempt_key,
+              subject: PublicationSubjectObserved { subject: subject },
+            ),
+          ) {
+            PublishHalted { outcome } => outcome
+            PublishProceed => {
+              let receipt = publication_receipt_of(
+                subject: subject,
+                outcome: observe_publication_for_subject(
+                  credential: credential,
+                  subject: subject,
+                ),
+              )
+              let write = Filesystem.Write(
+                path: path,
+                content: publication_receipt_json(receipt: receipt),
+              )
+              belt_publish_write_outcome(
+                node_id: node_id,
+                subject: subject,
+                receipt: receipt,
+                write_success: write.success,
+                write_error: write.error,
+              )
+            }
+          }
         }
       }
+    }
   }
 }
 
