@@ -1,0 +1,90 @@
+module extdeps.git.publication_transport
+
+import std.types { Bool, CommitSha, GitRef, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-push"
+  }
+}
+
+data git_commit_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-commit"
+  }
+}
+
+data git_publication_transport_note: String = "Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv on each operation is ONE transport handler, never the semantic model. Slice 1 is model + shadow only — consumers route through tools.publication_publisher before binding a transport handler in the live slice."
+
+type GitRefUpdateSpec {
+  local_ref: GitRef
+  remote_ref: GitRef
+}
+
+type GitPushRequest {
+  remote: NonEmptyStr
+  ref_updates: List<GitRefUpdateSpec>
+}
+
+type GitCommitRequest {
+  message: NonEmptyStr
+  allow_empty: Bool
+}
+
+fn shape_git_push_refspec(update: GitRefUpdateSpec) -> String {
+  join([update.local_ref as String, ":", update.remote_ref as String], "")
+}
+
+fn shape_git_push_argv(request: GitPushRequest) -> List<String> {
+  fold(request.ref_updates, init: ["git", "push", request.remote as String], f: fn(argv, update) {
+    append(argv, items: [shape_git_push_refspec(update: update)])
+  })
+}
+
+fn shape_git_commit_argv(request: GitCommitRequest) -> List<String> {
+  if request.allow_empty {
+    ["git", "commit", "--allow-empty", "-m", request.message as String]
+  } else {
+    ["git", "commit", "-m", request.message as String]
+  }
+}
+
+service git.PublicationTransport {
+  operation PushRefUpdate {
+    input {
+      remote: NonEmptyStr
+      refspec: NonEmptyStr
+    }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["git", "push", "{remote}", "{refspec}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Push failed"
+    }
+  }
+
+  operation RecordCommit {
+    input {
+      message: NonEmptyStr
+      allow_empty: Bool = false
+    }
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "commit", "-m", "{message}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Commit failed"
+    }
+  }
+}

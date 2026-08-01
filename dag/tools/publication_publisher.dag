@@ -1,0 +1,165 @@
+module tools.publication_publisher
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.git.hooks { PrePushStdinRow }
+import gunbc.public_projection { PublicProjectionPlan }
+import gunbc.publication_admission_delta {
+  ChangeLocalAdmissionRequest,
+  ChangeLocalAdmissionOutcome,
+  ChangeLocalAdmitted,
+  ChangeLocalRefused,
+  CandidateDigestInconsistent,
+  WholeProjectionAuditRequired,
+  admit_change_local_projection,
+}
+import gunbc.publication_decision {
+  PublicationDecisionReceipt,
+  PublicationAuthorityId,
+}
+
+data publication_publisher_note: String = "Slice-1 sole modeled publisher (model + shadow only). Ordinary ModeledSessionId values are OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session may consume a change-locally admitted PublicProjectionPlan derived from PublicationPolicy — never a pathname census or placement-gate roster. Ordinary sessions do NOT yet lose live public-write capability in this slice; credentials and push machinery are unchanged."
+
+type ModeledSessionId = NonEmptyStr where brand("ModeledSessionId")
+
+type SessionPublicationPosture
+  = OrdinarySession { session: ModeledSessionId }
+  | SoleModeledPublisher { session: ModeledSessionId }
+
+type AdmittedPublicProjection {
+  plan: PublicProjectionPlan
+  admission: ChangeLocalAdmissionOutcome
+  decisions: List<PublicationDecisionReceipt>
+}
+
+type PublicationAuthority {
+  publisher_session: ModeledSessionId
+  authority_id: PublicationAuthorityId
+  projection: AdmittedPublicProjection
+}
+
+type PublicWriteAdmission
+  = PublicWriteAdmitted { authority: PublicationAuthority }
+  | PublicWriteRefused {
+      session: ModeledSessionId,
+      cause: PublicWriteRefusal,
+    }
+
+type PublicWriteRefusal
+  = NotTheSolePublisher {
+      session: ModeledSessionId,
+      sole_publisher: ModeledSessionId,
+    }
+  | ProjectionNotAdmitted {
+      session: ModeledSessionId,
+      detail: String,
+    }
+  | DecisionReceiptMissing {
+      session: ModeledSessionId,
+      subject_identity: String,
+    }
+  | UnauthorizedPublicPush {
+      session: ModeledSessionId,
+      push: PrePushStdinRow,
+      detail: String,
+    }
+
+data sole_modeled_publisher_session: ModeledSessionId = "gunbc-publication-publisher" as ModeledSessionId
+
+data sole_publication_authority_id: PublicationAuthorityId = "gunbc-publication-publisher" as PublicationAuthorityId
+
+fn session_publication_posture(session: ModeledSessionId) -> SessionPublicationPosture {
+  if session == sole_modeled_publisher_session {
+    SoleModeledPublisher { session: session }
+  } else {
+    OrdinarySession { session: session }
+  }
+}
+
+fn posture_is_sole_publisher(posture: SessionPublicationPosture) -> Bool {
+  match posture {
+    SoleModeledPublisher { session: _ } => true
+    OrdinarySession { session: _ } => false
+  }
+}
+
+fn change_local_admission_detail(outcome: ChangeLocalAdmissionOutcome) -> String {
+  match outcome {
+    ChangeLocalAdmitted { delta: delta, candidate: _ } =>
+      join(["change-local admission admitted; delta_count=", to_string(count(delta))], "")
+    ChangeLocalRefused { cause: cause } =>
+      match cause {
+        CandidateDigestInconsistent { expected: _, observed: _ } =>
+          "change-local admission refused: candidate projection digest inconsistent"
+        WholeProjectionAuditRequired { detail: detail } => detail
+      }
+  }
+}
+
+fn admit_public_write(
+  session: ModeledSessionId,
+  current: PublicProjectionPlan?,
+  candidate: PublicProjectionPlan,
+  decisions: List<PublicationDecisionReceipt>,
+  pushed_refs: List<PrePushStdinRow>,
+) -> PublicWriteAdmission {
+  match session_publication_posture(session: session) {
+    OrdinarySession { session: ordinary } =>
+      PublicWriteRefused {
+        session: ordinary,
+        cause: NotTheSolePublisher {
+          session: ordinary,
+          sole_publisher: sole_modeled_publisher_session,
+        },
+      }
+    SoleModeledPublisher { session: publisher } =>
+      let admission = admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+        current: current,
+        candidate: candidate,
+      })
+      match admission {
+        ChangeLocalAdmitted { delta: _, candidate: plan } =>
+          PublicWriteAdmitted {
+            authority: PublicationAuthority {
+              publisher_session: publisher,
+              authority_id: sole_publication_authority_id,
+              projection: AdmittedPublicProjection {
+                plan: plan,
+                admission: admission,
+                decisions: decisions,
+              },
+            },
+          }
+        ChangeLocalRefused { cause: cause } =>
+          PublicWriteRefused {
+            session: publisher,
+            cause: ProjectionNotAdmitted {
+              session: publisher,
+              detail: change_local_admission_detail(outcome: admission),
+            },
+          }
+      }
+  }
+}
+
+fn public_write_admission_fold<T>(
+  admission: PublicWriteAdmission,
+  on_admitted: fn(PublicationAuthority) -> T,
+  on_refused: fn(ModeledSessionId, PublicWriteRefusal) -> T,
+) -> T {
+  match admission {
+    PublicWriteAdmitted { authority: authority } => on_admitted(authority)
+    PublicWriteRefused { session: session, cause: cause } => on_refused(session, cause)
+  }
+}
+
+fn public_write_admitted(admission: PublicWriteAdmission) -> Bool {
+  public_write_admission_fold(
+    admission: admission,
+    on_admitted: fn(authority) { true },
+    on_refused: fn(session, cause) { false },
+  )
+}
+
+fn ordinary_session_lacks_public_write_authority(session: ModeledSessionId) -> Bool {
+  !posture_is_sole_publisher(posture: session_publication_posture(session: session))
+}

@@ -1,0 +1,196 @@
+module gunbc.publication_policy
+
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
+
+data publication_policy_note: String = "Subtree-prefix publication policy: default WithholdPrivate; explicit SubtreePublishRule rows override by most-specific matching prefix; unknown top-level roots refuse at construction. Duplicate identical rules are idempotent; conflicting rules at the same prefix refuse at construction — never a projection-wide ambiguity at admission time."
+
+type PublicationDisposition
+  = PublishPublic
+  | WithholdPrivate
+
+type SubtreePublishRule {
+  prefix: FilePath
+  disposition: PublicationDisposition
+}
+
+type PublicationPolicy {
+  version: NonEmptyStr
+  default_disposition: PublicationDisposition
+  rules: List<SubtreePublishRule>
+}
+
+type PublicationPolicyConstructionRefusal
+  = UnknownTopLevelRoot { prefix: FilePath }
+  | ConflictingSubtreeRule { prefix: FilePath }
+  | AmbiguousSubtreeRule { prefix: FilePath }
+
+type PublicationPolicyConstructionOutcome
+  = PublicationPolicyAccepted { policy: PublicationPolicy }
+  | PublicationPolicyRefused { cause: PublicationPolicyConstructionRefusal }
+
+data publication_policy_default_disposition: PublicationDisposition = WithholdPrivate
+
+data known_publication_roots: List<String> = [
+  "dag",
+  "docs",
+  "src",
+]
+
+fn path_segments(path: FilePath) -> List<String> {
+  split(s: path as String, delimiter: "/")
+}
+
+fn segment_prefix_is_prefix(prefix: List<String>, path: List<String>) -> Bool {
+  match prefix.first() {
+    Absent => true
+    Present { value: ph } => match path.first() {
+      Absent => false
+      Present { value: xh } =>
+        ph == xh && segment_prefix_is_prefix(prefix: prefix.skip(n: 1), path: path.skip(n: 1))
+    }
+  }
+}
+
+fn path_under_prefix(path: FilePath, prefix: FilePath) -> Bool {
+  segment_prefix_is_prefix(prefix: path_segments(path: prefix), path: path_segments(path: path))
+}
+
+fn top_level_root(path: FilePath) -> String? {
+  match path_segments(path: path).first() {
+    Absent => Absent
+    Present { value: root } => Present { value: root }
+  }
+}
+
+fn known_publication_root(path: FilePath) -> Bool {
+  match top_level_root(path: path) {
+    Absent => false
+    Present { value: root } => contains(known_publication_roots, root)
+  }
+}
+
+fn rule_prefix_length(rule: SubtreePublishRule) -> Int {
+  count(path_segments(path: rule.prefix))
+}
+
+fn disposition_eq(left: PublicationDisposition, right: PublicationDisposition) -> Bool {
+  match left {
+    PublishPublic => match right { PublishPublic => true, WithholdPrivate => false }
+    WithholdPrivate => match right { WithholdPrivate => true, PublishPublic => false }
+  }
+}
+
+fn rule_eq(left: SubtreePublishRule, right: SubtreePublishRule) -> Bool {
+  left.prefix == right.prefix && disposition_eq(left: left.disposition, right: right.disposition)
+}
+
+fn matching_rules_for_path(
+  policy: PublicationPolicy,
+  path: FilePath,
+) -> List<SubtreePublishRule> {
+  fold(policy.rules, init: [], f: fn(acc, rule) {
+    if path_under_prefix(path: path, prefix: rule.prefix) {
+      append(acc, items: [rule])
+    } else {
+      acc
+    }
+  })
+}
+
+fn most_specific_rule(rules: List<SubtreePublishRule>) -> SubtreePublishRule? {
+  fold(rules, init: none, f: fn(best, rule) {
+    match best {
+      Absent => Present { value: rule }
+      Present { value: current } =>
+        if rule_prefix_length(rule: rule) >= rule_prefix_length(rule: current) {
+          Present { value: rule }
+        } else {
+          best
+        }
+    }
+  })
+}
+
+fn resolve_disposition_for_path(
+  policy: PublicationPolicy,
+  path: FilePath,
+) -> PublicationDisposition {
+  match most_specific_rule(rules: matching_rules_for_path(policy: policy, path: path)) {
+    Absent => policy.default_disposition
+    Present { value: rule } => rule.disposition
+  }
+}
+
+fn same_prefix_rule_count(rules: List<SubtreePublishRule>, prefix: FilePath) -> Int {
+  fold(rules, init: 0, f: fn(count, rule) {
+    if rule.prefix == prefix { count + 1 } else { count }
+  })
+}
+
+fn same_prefix_rules_share_disposition(
+  rules: List<SubtreePublishRule>,
+  prefix: FilePath,
+  disposition: PublicationDisposition,
+) -> Bool {
+  fold(rules, init: true, f: fn(ok, rule) {
+    if rule.prefix == prefix {
+      ok && disposition_eq(left: rule.disposition, right: disposition)
+    } else {
+      ok
+    }
+  })
+}
+
+fn publication_policy_rule_conflicts(rules: List<SubtreePublishRule>) -> PublicationPolicyConstructionRefusal? {
+  fold(rules, init: none, f: fn(acc, rule) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if same_prefix_rule_count(rules: rules, prefix: rule.prefix) > 1 {
+          if same_prefix_rules_share_disposition(
+            rules: rules,
+            prefix: rule.prefix,
+            disposition: rule.disposition,
+          ) {
+            none
+          } else {
+            Present { value: ConflictingSubtreeRule { prefix: rule.prefix } }
+          }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn publication_policy_unknown_roots(rules: List<SubtreePublishRule>) -> PublicationPolicyConstructionRefusal? {
+  fold(rules, init: none, f: fn(acc, rule) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if known_publication_root(path: rule.prefix) {
+          none
+        } else {
+          Present { value: UnknownTopLevelRoot { prefix: rule.prefix } }
+        }
+    }
+  })
+}
+
+fn admit_publication_policy(policy: PublicationPolicy) -> PublicationPolicyConstructionOutcome {
+  match publication_policy_unknown_roots(rules: policy.rules) {
+    Present { value: cause } => PublicationPolicyRefused { cause: cause }
+    Absent =>
+      match publication_policy_rule_conflicts(rules: policy.rules) {
+        Present { value: cause } => PublicationPolicyRefused { cause: cause }
+        Absent => PublicationPolicyAccepted { policy: policy }
+      }
+  }
+}
+
+fn publication_disposition_is_public(disposition: PublicationDisposition) -> Bool {
+  match disposition {
+    PublishPublic => true
+    WithholdPrivate => false
+  }
+}

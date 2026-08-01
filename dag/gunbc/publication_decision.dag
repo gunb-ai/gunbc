@@ -1,0 +1,35 @@
+module gunbc.publication_decision
+
+import std.types { ContentHash, NonEmptyStr, String }
+
+data publication_decision_note: String = "Exceptional publication decisions bind to content identity, not pathnames. A changed sensitive artifact requires a fresh PublicationDecisionReceipt; pathname alone is never the decision key."
+
+type PublicationAuthorityId = NonEmptyStr where brand("PublicationAuthorityId")
+
+type PublicationAudience
+  = UniversalPublicationAudience
+  | EnumeratedPublicationAudience { label: String }
+
+type PublicationDecisionReceipt {
+  subject_identity: ContentHash
+  content_identity: ContentHash
+  audience: PublicationAudience
+  policy_version: NonEmptyStr
+  authority: PublicationAuthorityId
+}
+
+fn publication_decision_binds_content(
+  receipt: PublicationDecisionReceipt,
+  subject_identity: ContentHash,
+  content_identity: ContentHash,
+) -> Bool {
+  receipt.subject_identity == subject_identity && receipt.content_identity == content_identity
+}
+
+fn publication_decision_requires_refresh(
+  receipt: PublicationDecisionReceipt,
+  subject_identity: ContentHash,
+  content_identity: ContentHash,
+) -> Bool {
+  receipt.subject_identity == subject_identity && receipt.content_identity != content_identity
+}

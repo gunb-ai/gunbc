@@ -1,0 +1,111 @@
+module tools.publication_push_shadow
+
+import std.types { Bool, Int, List, String }
+import extdeps.git.hooks { PrePushStdinRow }
+import gunbc.public_projection { PublicProjectionPlan }
+import gunbc.publication_decision { PublicationDecisionReceipt }
+import tools.publication_publisher {
+  ModeledSessionId,
+  PublicWriteAdmission,
+  PublicWriteRefused,
+  PublicWriteAdmitted,
+  NotTheSolePublisher,
+  ProjectionNotAdmitted,
+  DecisionReceiptMissing,
+  UnauthorizedPublicPush,
+  admit_public_write,
+}
+
+data publication_push_shadow_note: String = "Slice-1 shadow witness: read-only stopped-line-audit observer replaying observed public pushes through the modeled admission stack. Reports typed, located, counted refusals; does not green, gate, or mutate live push paths. Ordinary sessions still reach the public remote in this slice — the ledger sizes the enforcement stage."
+
+type ObservedPublicPush {
+  session: ModeledSessionId
+  head: String
+  push: PrePushStdinRow
+  candidate: PublicProjectionPlan
+  decisions: List<PublicationDecisionReceipt>
+}
+
+type ShadowPushLedgerEntry
+  = ShadowPushWouldAdmit {
+      session: ModeledSessionId
+      head: String
+      push: PrePushStdinRow
+    }
+  | ShadowPushWouldRefuse {
+      session: ModeledSessionId
+      head: String
+      push: PrePushStdinRow
+      admission: PublicWriteAdmission
+    }
+
+fn shadow_push_admission(
+  current: PublicProjectionPlan?,
+  observed: ObservedPublicPush,
+) -> PublicWriteAdmission {
+  admit_public_write(
+    session: observed.session,
+    current: current,
+    candidate: observed.candidate,
+    decisions: observed.decisions,
+    pushed_refs: [observed.push],
+  )
+}
+
+fn shadow_push_ledger_entry(
+  current: PublicProjectionPlan?,
+  observed: ObservedPublicPush,
+) -> ShadowPushLedgerEntry {
+  let admission = shadow_push_admission(current: current, observed: observed)
+  match admission {
+    PublicWriteAdmitted { authority: _ } =>
+      ShadowPushWouldAdmit {
+        session: observed.session,
+        head: observed.head,
+        push: observed.push,
+      }
+    PublicWriteRefused { session: session, cause: cause } =>
+      ShadowPushWouldRefuse {
+        session: session,
+        head: observed.head,
+        push: observed.push,
+        admission: admission,
+      }
+  }
+}
+
+fn shadow_replay_public_pushes(
+  current: PublicProjectionPlan?,
+  events: List<ObservedPublicPush>,
+) -> List<ShadowPushLedgerEntry> {
+  map(events, event => shadow_push_ledger_entry(current: current, observed: event))
+}
+
+fn shadow_refusal_count(entries: List<ShadowPushLedgerEntry>) -> Int {
+  fold(entries, init: 0, f: fn(count, entry) {
+    match entry {
+      ShadowPushWouldAdmit { session: _, head: _, push: _ } => count
+      ShadowPushWouldRefuse { session: _, head: _, push: _, admission: _ } => count + 1
+    }
+  })
+}
+
+fn shadow_would_refuse_ordinary_session(
+  current: PublicProjectionPlan?,
+  observed: ObservedPublicPush,
+) -> Bool {
+  match shadow_push_ledger_entry(current: current, observed: observed) {
+    ShadowPushWouldAdmit { session: _, head: _, push: _ } => false
+    ShadowPushWouldRefuse { session: _, head: _, push: _, admission: admission } =>
+      match admission {
+        PublicWriteRefused { session: _, cause: cause } =>
+          match cause {
+            NotTheSolePublisher { session: _, sole_publisher: _ } => true
+            ProjectionNotAdmitted { session: _, detail: _ } => false
+            DecisionReceiptMissing { session: _, subject_identity: _ } => false
+            UnauthorizedPublicPush { session: _, push: _, detail: _ } => false
+          }
+        PublicWriteAdmitted { authority: _ } => false
+      }
+  }
+}
