@@ -16,6 +16,20 @@ data git_core_mock_case_remote_branches: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data git_core_mock_case_merge_base: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.MergeBase",
+  service: "git.Core",
+  operation: "MergeBase",
+  case_id: 0
+}
+
+data git_core_mock_case_list_tree_paths_at_revision: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.ListTreePathsAtRevision",
+  service: "git.Core",
+  operation: "ListTreePathsAtRevision",
+  case_id: 0
+}
+
 data git_core_mock_case_ls_files: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.LsFiles",
   service: "git.Core",
@@ -118,6 +132,8 @@ data git_published_mock_corpus: List<PublishedMockCase> = [
   git_core_mock_case_toplevel,
   git_core_mock_case_current_branch,
   git_core_mock_case_remote_branches,
+  git_core_mock_case_merge_base,
+  git_core_mock_case_list_tree_paths_at_revision,
   git_core_mock_case_ls_files,
   git_core_mock_case_diff,
   git_core_mock_case_diff_unified0,

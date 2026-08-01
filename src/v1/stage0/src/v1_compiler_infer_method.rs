@@ -419,7 +419,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "observe_stage0_rust_manifest".to_string(),
+            "parse_stage0_cargo_manifest_bins".to_string(),
             type_variable_node("rust_source_host_observation".to_string()),
         );
         let m = v1_rt::rc_map_insert(

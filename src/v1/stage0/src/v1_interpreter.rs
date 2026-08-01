@@ -10237,99 +10237,33 @@ fn eval_builtin_inner(
             crate::cli_run::non_fold_residue_coproduct_universe_count(),
         ))),
 
-        "observe_stage0_rust_manifest" => {
-            let manifest_repo_path = expect_str(
+        "parse_stage0_cargo_manifest_bins" => {
+            let manifest = expect_str(
                 positional.first().copied(),
-                "observe_stage0_rust_manifest manifest_repo_path",
+                "parse_stage0_cargo_manifest_bins manifest",
             )?;
-            let package_root = expect_str(
-                positional.get(1).copied(),
-                "observe_stage0_rust_manifest package_root",
-            )?;
-            let base_ref = expect_str(
-                positional.get(2).copied(),
-                "observe_stage0_rust_manifest base_ref",
-            )?;
-            let observation = crate::cli_run::observe_stage0_rust_manifest(
-                &manifest_repo_path,
-                &package_root,
-                &base_ref,
-            );
-            let variant = match observation {
-                crate::cli_run::Stage0RustHostObservation::Observed {
-                    repository_revision,
-                    manifest_digest,
-                    tracked_rust_repo_paths,
-                    prior_tracked_rust_repo_paths,
-                    cargo_bin_repo_paths,
+            let parsed = crate::cli_run::parse_stage0_cargo_manifest_bin_paths(&manifest);
+            let variant = match parsed {
+                crate::cli_run::Stage0CargoManifestBinParse::Parsed {
+                    authored_relative_paths,
                 } => Value::Variant {
-                    type_name: ctx.sym("RustSourceHostObservation"),
-                    variant_name: ctx.sym("RustManifestObserved"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (
-                            ctx.sym("repository_revision"),
-                            Value::Str(repository_revision),
+                    type_name: ctx.sym("CargoManifestBinParse"),
+                    variant_name: ctx.sym("CargoManifestBinsParsed"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("authored_relative_paths"),
+                        list_value(
+                            authored_relative_paths
+                                .into_iter()
+                                .map(Value::Str)
+                                .collect::<Vec<_>>(),
                         ),
-                        (ctx.sym("manifest_digest"), Value::Str(manifest_digest)),
-                        (
-                            ctx.sym("tracked_rust_repo_paths"),
-                            list_value(
-                                tracked_rust_repo_paths
-                                    .into_iter()
-                                    .map(Value::Str)
-                                    .collect::<Vec<_>>(),
-                            ),
-                        ),
-                        (
-                            ctx.sym("prior_tracked_rust_repo_paths"),
-                            list_value(
-                                prior_tracked_rust_repo_paths
-                                    .into_iter()
-                                    .map(Value::Str)
-                                    .collect::<Vec<_>>(),
-                            ),
-                        ),
-                        (
-                            ctx.sym("cargo_bin_repo_paths"),
-                            list_value(
-                                cargo_bin_repo_paths
-                                    .into_iter()
-                                    .map(Value::Str)
-                                    .collect::<Vec<_>>(),
-                            ),
-                        ),
-                    ])),
+                    )])),
                 },
-                crate::cli_run::Stage0RustHostObservation::ManifestReadRefused { detail } => {
-                    Value::Variant {
-                        type_name: ctx.sym("RustSourceHostObservation"),
-                        variant_name: ctx.sym("RustManifestReadRefused"),
-                        fields: Rc::new(sorted_fields(vec![(
-                            ctx.sym("detail"),
-                            Value::Str(detail),
-                        )])),
-                    }
-                }
-                crate::cli_run::Stage0RustHostObservation::ManifestParseRefused { detail } => {
-                    Value::Variant {
-                        type_name: ctx.sym("RustSourceHostObservation"),
-                        variant_name: ctx.sym("RustManifestParseRefused"),
-                        fields: Rc::new(sorted_fields(vec![(
-                            ctx.sym("detail"),
-                            Value::Str(detail),
-                        )])),
-                    }
-                }
-                crate::cli_run::Stage0RustHostObservation::GitObservationRefused { detail } => {
-                    Value::Variant {
-                        type_name: ctx.sym("RustSourceHostObservation"),
-                        variant_name: ctx.sym("GitObservationRefused"),
-                        fields: Rc::new(sorted_fields(vec![(
-                            ctx.sym("detail"),
-                            Value::Str(detail),
-                        )])),
-                    }
-                }
+                crate::cli_run::Stage0CargoManifestBinParse::Refused { detail } => Value::Variant {
+                    type_name: ctx.sym("CargoManifestBinParse"),
+                    variant_name: ctx.sym("CargoManifestBinsParseRefused"),
+                    fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+                },
             };
             Ok(Some(variant))
         }

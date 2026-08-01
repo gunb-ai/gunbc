@@ -1,17 +1,25 @@
 module gunbc.stage0_rust_host_observation
 
+import extdeps.git
+import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.roadmap_authority { SeedGrowthJustification }
+import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.stage0_cargo_manifest {
+  CargoManifestBinParse,
+  CargoManifestBinsParsed,
+  CargoManifestBinsParseRefused,
   stage0_cargo_toml_repo_path,
   stage0_package_root
 }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import std.content_hash { content_hash_atom }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.types { Int }
+import std.types { GitRef }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_host_observation_note: String = "Live tracked-Rust host boundary for the stage0 lifecycle carrier. The .dag model owns the complete result space and supplies the manifest/package paths from gunbc.stage0_cargo_manifest and the comparison ref from the single repo identity authority gunbc.repo_identity. The shrinking Rust seed realizes only Git-object/TOML effects. Success carries the exact HEAD revision; current tracked .rs paths and Cargo bytes are both read from that revision's tree, never the mutable index or worktree; manifest_digest identifies those exact parsed bytes; prior_tracked_rust_repo_paths comes from git merge-base(HEAD, gunbc_merge_target_ref), never first-parent history. Git, manifest-object read, and manifest parse failures are distinct typed refusals; none can become an empty list or RustManifestObserved."
+data stage0_rust_host_observation_note: String = "Rust-source OBSERVATION prerequisite only; lifecycle totality remains downstream in gunbc.stage0_rust_source_lifecycle_scaffold / v1-honest-frontier. extdeps.git owns the Git operation shapes. This module supplies repository policy (HEAD versus gunbc_merge_target_ref), filters the exact revision-addressed path population, normalizes authored Cargo target paths, hashes the exact manifest text through std.content_hash, and joins those facts. The temporary Rust seed owns only TOML decoding into CargoManifestBinParse plus its interpreter projection. CargoBin is a source role and cannot satisfy a maintenance disposition."
 
 type RustSourceHostObservation
   = RustManifestObserved {
@@ -25,27 +33,201 @@ type RustSourceHostObservation
   | RustManifestParseRefused { detail: String }
   | GitObservationRefused { detail: String }
 
-data rust_source_host_observation: RustSourceHostObservation = observe_stage0_rust_manifest(
+type CargoBinRepoPathProjection
+  = CargoBinRepoPathProjected { path: String }
+  | CargoBinRepoPathProjectionRefused { authored_path: String, detail: String }
+
+type CargoBinRepoPathsProjection
+  = CargoBinRepoPathsProjected { paths: List<String> }
+  | CargoBinRepoPathsProjectionRefused { authored_path: String, detail: String }
+
+fn git_refusal_detail(operation: String, stderr: String) -> String {
+  let detail = trim(stderr)
+  if detail == "" {
+    concat(operation, " refused without stderr")
+  } else {
+    concat(operation, concat(": ", detail))
+  }
+}
+
+fn rust_paths_from_nul(raw: String) -> List<String> {
+  filter(
+    xs: split(s: raw, delimiter: "\0"),
+    f: fn(path) { path != "" && ends_with(s: path, suffix: ".rs") }
+  )
+}
+
+fn cargo_path_has_parent_segment(path: String) -> Bool {
+  string_contains(s: concat("/", concat(path, "/")), pattern: "/../")
+}
+
+fn normalize_cargo_bin_repo_path(package_root: String, authored_path: String) -> CargoBinRepoPathProjection {
+  if authored_path == "" {
+    CargoBinRepoPathProjectionRefused {
+      authored_path: authored_path,
+      detail: "Cargo [[bin]].path is empty"
+    }
+  } else if starts_with(s: authored_path, prefix: "/")
+    || string_contains(s: authored_path, pattern: "\\")
+    || cargo_path_has_parent_segment(path: authored_path) {
+    CargoBinRepoPathProjectionRefused {
+      authored_path: authored_path,
+      detail: "Cargo [[bin]].path escapes or is not a canonical repository-relative slash path"
+    }
+  } else {
+    let segments = filter(
+      xs: split(s: authored_path, delimiter: "/"),
+      f: fn(segment) { segment != "" && segment != "." }
+    )
+    let normalized = join(segments, "/")
+    if normalized == "" {
+      CargoBinRepoPathProjectionRefused {
+        authored_path: authored_path,
+        detail: "Cargo [[bin]].path has no path segments"
+      }
+    } else {
+      CargoBinRepoPathProjected { path: concat(package_root, normalized) }
+    }
+  }
+}
+
+fn normalize_cargo_bin_repo_paths(
+  package_root: String,
+  authored_paths: List<String>
+) -> CargoBinRepoPathsProjection {
+  fold_list(
+    xs: authored_paths,
+    empty: CargoBinRepoPathsProjected { paths: [] },
+    cons: fn(acc, authored_path) {
+      match acc {
+        CargoBinRepoPathsProjectionRefused { authored_path: refused, detail: detail } =>
+          CargoBinRepoPathsProjectionRefused { authored_path: refused, detail: detail }
+        CargoBinRepoPathsProjected { paths: paths } =>
+          match normalize_cargo_bin_repo_path(
+            package_root: package_root,
+            authored_path: authored_path
+          ) {
+            CargoBinRepoPathProjectionRefused { authored_path: refused, detail: detail } =>
+              CargoBinRepoPathsProjectionRefused { authored_path: refused, detail: detail }
+            CargoBinRepoPathProjected { path: path } =>
+              CargoBinRepoPathsProjected { paths: list_snoc_item(xs: paths, item: path) }
+          }
+      }
+    }
+  )
+}
+
+fn observe_stage0_rust_sources(
+  manifest_repo_path: String,
+  package_root: String,
+  base_ref: String
+) -> RustSourceHostObservation {
+  let head = git.Core.HeadCommit()
+  if !head.success || (head.sha as String) == "" {
+    GitObservationRefused { detail: "git.Core.HeadCommit refused or returned an empty revision" }
+  } else {
+    let revision = head.sha as String
+    let baseline = git.Core.MergeBase(left: revision as GitRef, right: base_ref as GitRef)
+    if !baseline.success || (baseline.sha as String) == "" {
+      GitObservationRefused {
+        detail: git_refusal_detail(operation: "git.Core.MergeBase", stderr: baseline.stderr)
+      }
+    } else {
+      let current_tree = git.Core.ListTreePathsAtRevision(ref: revision as GitRef)
+      if !current_tree.success {
+        GitObservationRefused {
+          detail: git_refusal_detail(
+            operation: "git.Core.ListTreePathsAtRevision(HEAD)",
+            stderr: current_tree.stderr
+          )
+        }
+      } else {
+        let prior_tree = git.Core.ListTreePathsAtRevision(ref: baseline.sha as GitRef)
+        if !prior_tree.success {
+          GitObservationRefused {
+            detail: git_refusal_detail(
+              operation: "git.Core.ListTreePathsAtRevision(merge-base)",
+              stderr: prior_tree.stderr
+            )
+          }
+        } else {
+          let manifest = git.Core.Show(ref: revision as GitRef, path: manifest_repo_path)
+          if !manifest.success {
+            RustManifestReadRefused {
+              detail: git_refusal_detail(operation: "git.Core.Show(manifest)", stderr: manifest.stderr)
+            }
+          } else {
+            match parse_stage0_cargo_manifest_bins(manifest: manifest.content) {
+              CargoManifestBinsParseRefused { detail: detail } =>
+                RustManifestParseRefused { detail: detail }
+              CargoManifestBinsParsed { authored_relative_paths: authored_paths } =>
+                match normalize_cargo_bin_repo_paths(
+                  package_root: package_root,
+                  authored_paths: authored_paths
+                ) {
+                  CargoBinRepoPathsProjectionRefused { authored_path: authored_path, detail: detail } =>
+                    RustManifestParseRefused {
+                      detail: concat(
+                        "Cargo [[bin]].path ",
+                        concat(authored_path, concat(" refused: ", detail))
+                      )
+                    }
+                  CargoBinRepoPathsProjected { paths: cargo_bin_repo_paths } =>
+                    RustManifestObserved {
+                      repository_revision: revision,
+                      manifest_digest: content_hash_atom(value: manifest.content) as String,
+                      tracked_rust_repo_paths: rust_paths_from_nul(raw: current_tree.paths_nul),
+                      prior_tracked_rust_repo_paths: rust_paths_from_nul(raw: prior_tree.paths_nul),
+                      cargo_bin_repo_paths: cargo_bin_repo_paths
+                    }
+                }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+data rust_source_host_observation: RustSourceHostObservation = observe_stage0_rust_sources(
   manifest_repo_path: stage0_cargo_toml_repo_path,
   package_root: stage0_package_root,
   base_ref: gunbc_merge_target_ref as String
 )
 
-data stage0_rust_host_observation_hand_rust_scaffold: Disposition = Scaffold {
+data stage0_cargo_manifest_parser_seed_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "v1_compiler.cli_run",
-    decl_name: "observe_stage0_rust_manifest",
+    decl_name: "parse_stage0_cargo_manifest_bin_paths",
     field: WholeDeclaration
   }
 }
 
-data stage0_rust_host_observation_hand_rust_loc_delta_net: Int = 530
+data stage0_cargo_manifest_projection_seed_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.v1_interpreter",
+    decl_name: "eval_builtin_inner",
+    field: WholeDeclaration
+  }
+}
 
-data stage0_rust_host_observation_hand_rust_paths: List<String> = [
-  "src/v1/stage0/src/cli_run.rs",
-  "src/v1/stage0/src/v1_interpreter.rs",
-  "src/v1/stage0/src/v1_compiler_infer_method.rs"
-]
-
-data stage0_rust_host_observation_hand_rust_dissolve_trigger: String = "🟡 HAND-RUST realization receipt: +530 net Rust lines against origin/main (+428 cli_run host effects and refusal/regression tests, +97 interpreter value projection, +5 generated builtin registry). The model and result space live in this module; Rust may only realize its effects. DISSOLVES WHEN the generic Git/filesystem/TOML RealizationDispatch can produce RustSourceHostObservation directly, or V1FinishLine ZeroHandMaintainedRust retires this seed bridge. Discriminating receipts: stage0_rust_host_observation_tests (including canonical merge-base plus dirty/index skew) plus scaffold_host_observation_is_live_and_observed and the three exact typed-refusal witnesses."
+data stage0_rust_observation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "parse_stage0_cargo_manifest_bin_paths",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter",
+      decl_name: "eval_builtin_inner",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "The substrate can execute modeled Git operations and own path policy, but it cannot yet decode Cargo TOML into typed [[bin]] facts. The seed parser and value projection are the bounded compatibility bridge; generated builtin registry output is not hand-authored growth.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both declarations when a modeled Cargo-manifest grammar/ingestion realization produces CargoManifestBinParse, or when the v1 interpreter and cli_run seed retire.",
+  current_boundary: "gunbc.stage0_cargo_manifest CargoManifestBinParse -> v1_compiler.cli_run parse_stage0_cargo_manifest_bin_paths -> v1_compiler.v1_interpreter eval_builtin_inner"
+}

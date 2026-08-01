@@ -43,7 +43,6 @@ use crate::v1_std_core::{
     Node,
 };
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
@@ -193,29 +192,15 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
     )
 }
 
-/// Host realization for `gunbc.stage0_rust_host_observation`.
-///
-/// The `.dag` carrier owns the observation shape and supplies the two repository-relative
-/// paths. This seed code owns only the effects which cannot yet execute in the substrate:
-/// reading Git's tracked trees and Cargo's manifest. Every effect failure remains data so a
-/// missing tool, unreadable manifest, or malformed manifest cannot masquerade as an empty
-/// Rust population.
+/// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
+/// Git effects, repository policy, path normalization, and lifecycle classification stay in
+/// `.dag`; this bridge returns only the authored `[[bin]].path` facts or a typed parse refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Stage0RustHostObservation {
-    Observed {
-        repository_revision: String,
-        manifest_digest: String,
-        tracked_rust_repo_paths: Vec<String>,
-        prior_tracked_rust_repo_paths: Vec<String>,
-        cargo_bin_repo_paths: Vec<String>,
+pub enum Stage0CargoManifestBinParse {
+    Parsed {
+        authored_relative_paths: Vec<String>,
     },
-    ManifestReadRefused {
-        detail: String,
-    },
-    ManifestParseRefused {
-        detail: String,
-    },
-    GitObservationRefused {
+    Refused {
         detail: String,
     },
 }
@@ -225,7 +210,6 @@ enum Stage0CargoBinManifestParseRefusal {
     BinTableMissingPath,
     BinTablePathUnquoted,
     BinTableTomlParse,
-    BinTablePathEscapesPackageRoot,
 }
 
 impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
@@ -236,42 +220,12 @@ impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
                 write!(f, "[[bin]] path value must be a TOML string")
             }
             Self::BinTableTomlParse => write!(f, "Cargo manifest is not valid TOML"),
-            Self::BinTablePathEscapesPackageRoot => write!(
-                f,
-                "[[bin]] path escapes the stage0 package root after normalization"
-            ),
         }
     }
 }
 
-fn stage0_normalize_repo_relative_path(
-    root: &Path,
-    rel: &Path,
-) -> Result<PathBuf, Stage0CargoBinManifestParseRefusal> {
-    if root.is_absolute() || rel.is_absolute() {
-        return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-    }
-    let mut normalized = PathBuf::new();
-    for component in root.join(rel).components() {
-        match component {
-            std::path::Component::Normal(part) => normalized.push(part),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-                }
-            }
-            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
-                return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot)
-            }
-        }
-    }
-    Ok(normalized)
-}
-
-fn stage0_cargo_bin_repo_paths_from_manifest_text(
+fn stage0_cargo_bin_paths_from_manifest_text(
     content: &str,
-    package_root: &str,
 ) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
     let document: toml::Table = toml::from_str(content)
         .map_err(|_| Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
@@ -280,7 +234,6 @@ fn stage0_cargo_bin_repo_paths_from_manifest_text(
         Some(toml::Value::Array(bins)) => bins,
         Some(_) => return Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse),
     };
-    let package_root_path = Path::new(package_root);
     let mut paths = Vec::with_capacity(bins.len());
     for bin in bins {
         let table = bin
@@ -291,169 +244,28 @@ fn stage0_cargo_bin_repo_paths_from_manifest_text(
             .ok_or(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)?
             .as_str()
             .ok_or(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)?;
-        let normalized = stage0_normalize_repo_relative_path(package_root_path, Path::new(path))?;
-        if !normalized.starts_with(package_root_path) {
-            return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-        }
-        paths.push(normalized.to_string_lossy().replace('\\', "/"));
+        paths.push(path.to_string());
     }
     Ok(paths)
 }
 
-fn stage0_git_output(cwd: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| format!("git {} could not start: {error}", args.join(" ")))?;
-    if output.status.success() {
-        Ok(output.stdout)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(format!(
-            "git {} exited {:?}: {stderr}",
-            args.join(" "),
-            output.status.code()
-        ))
-    }
-}
-
-fn stage0_utf8_line(bytes: Vec<u8>, subject: &str) -> Result<String, String> {
-    let line = String::from_utf8(bytes)
-        .map_err(|error| format!("{subject} was not UTF-8: {error}"))?
-        .trim()
-        .to_string();
-    if line.is_empty() {
-        Err(format!("{subject} was empty"))
-    } else {
-        Ok(line)
-    }
-}
-
-fn stage0_nul_rust_paths(bytes: Vec<u8>, subject: &str) -> Result<Vec<String>, String> {
-    let mut paths = Vec::new();
-    for raw in bytes
-        .split(|byte| *byte == 0)
-        .filter(|part| !part.is_empty())
-    {
-        let path = std::str::from_utf8(raw)
-            .map_err(|error| format!("{subject} contained a non-UTF-8 path: {error}"))?;
-        if path.ends_with(".rs") {
-            paths.push(path.to_string());
-        }
-    }
-    Ok(paths)
-}
-
-pub fn observe_stage0_rust_manifest(
-    manifest_repo_path: &str,
-    package_root: &str,
-    base_ref: &str,
-) -> Stage0RustHostObservation {
-    let cwd = match std::env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            return Stage0RustHostObservation::GitObservationRefused {
-                detail: format!("current directory unavailable: {error}"),
-            }
-        }
-    };
-    let root = match stage0_git_output(&cwd, &["rev-parse", "--show-toplevel"])
-        .and_then(|bytes| stage0_utf8_line(bytes, "git toplevel"))
-    {
-        Ok(root) => PathBuf::from(root),
-        Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
-    };
-    observe_stage0_rust_manifest_at(&root, manifest_repo_path, package_root, base_ref)
-}
-
-fn observe_stage0_rust_manifest_at(
-    root: &Path,
-    manifest_repo_path: &str,
-    package_root: &str,
-    base_ref: &str,
-) -> Stage0RustHostObservation {
-    let revision = match stage0_git_output(&root, &["rev-parse", "HEAD"])
-        .and_then(|bytes| stage0_utf8_line(bytes, "repository revision"))
-    {
-        Ok(revision) => revision,
-        Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
-    };
-    let baseline_revision = match stage0_git_output(root, &["merge-base", "HEAD", base_ref])
-        .and_then(|bytes| stage0_utf8_line(bytes, "merge-base repository revision"))
-    {
-        Ok(revision) => revision,
-        Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
-    };
-    let tracked_rust_repo_paths =
-        match stage0_git_output(root, &["ls-tree", "-rz", "--name-only", &revision])
-            .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree HEAD"))
-        {
-            Ok(paths) => paths,
-            Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
-        };
-    let prior_tracked_rust_repo_paths =
-        match stage0_git_output(root, &["ls-tree", "-rz", "--name-only", &baseline_revision])
-            .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree merge-base"))
-        {
-            Ok(paths) => paths,
-            Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
-        };
-
-    let manifest_rel =
-        match stage0_normalize_repo_relative_path(Path::new(""), Path::new(manifest_repo_path)) {
-            Ok(path) => path,
-            Err(error) => {
-                return Stage0RustHostObservation::ManifestReadRefused {
-                    detail: format!("invalid manifest repository path: {error}"),
-                }
-            }
-        };
-    let manifest_repo_path = manifest_rel.to_string_lossy().replace('\\', "/");
-    let manifest_object = format!("{revision}:{manifest_repo_path}");
-    let manifest = match stage0_git_output(root, &["show", &manifest_object]).and_then(|bytes| {
-        String::from_utf8(bytes)
-            .map_err(|error| format!("manifest object {manifest_object} was not UTF-8: {error}"))
-    }) {
-        Ok(content) => content,
-        Err(detail) => return Stage0RustHostObservation::ManifestReadRefused { detail },
-    };
-    let cargo_bin_repo_paths =
-        match stage0_cargo_bin_repo_paths_from_manifest_text(&manifest, package_root) {
-            Ok(paths) => paths,
-            Err(error) => {
-                return Stage0RustHostObservation::ManifestParseRefused {
-                    detail: error.to_string(),
-                }
-            }
-        };
-    let manifest_digest = format!("{:x}", Sha256::digest(manifest.as_bytes()));
-
-    Stage0RustHostObservation::Observed {
-        repository_revision: revision,
-        manifest_digest,
-        tracked_rust_repo_paths,
-        prior_tracked_rust_repo_paths,
-        cargo_bin_repo_paths,
+pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManifestBinParse {
+    match stage0_cargo_bin_paths_from_manifest_text(content) {
+        Ok(authored_relative_paths) => Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        },
+        Err(error) => Stage0CargoManifestBinParse::Refused {
+            detail: error.to_string(),
+        },
     }
 }
 
 #[cfg(test)]
-mod stage0_rust_host_observation_tests {
-    use super::{
-        observe_stage0_rust_manifest_at, stage0_cargo_bin_repo_paths_from_manifest_text,
-        Stage0CargoBinManifestParseRefusal, Stage0RustHostObservation,
-    };
-    use sha2::{Digest, Sha256};
-    use std::fs;
-    use std::path::Path;
-    use std::process::Command;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    const PACKAGE_ROOT: &str = "src/v1/stage0/";
+mod stage0_cargo_manifest_parser_tests {
+    use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
 
     #[test]
-    fn cargo_bins_parse_to_normalized_repo_paths() {
+    fn cargo_bins_parse_to_authored_relative_paths() {
         let manifest = r#"
 [[bin]]
 name = "gunbc"
@@ -464,159 +276,44 @@ name = "claim_batch"
 path = "src/bin/claim_batch.rs"
 "#;
         assert_eq!(
-            stage0_cargo_bin_repo_paths_from_manifest_text(manifest, PACKAGE_ROOT),
-            Ok(vec![
-                "src/v1/stage0/src/main.rs".to_string(),
-                "src/v1/stage0/src/bin/claim_batch.rs".to_string(),
-            ])
+            parse_stage0_cargo_manifest_bin_paths(manifest),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec![
+                    "src/main.rs".to_string(),
+                    "src/bin/claim_batch.rs".to_string(),
+                ],
+            }
         );
     }
 
     #[test]
     fn cargo_bin_missing_path_is_typed_refusal() {
         assert_eq!(
-            stage0_cargo_bin_repo_paths_from_manifest_text(
-                "[[bin]]\nname = \"orphan\"\n",
-                PACKAGE_ROOT,
-            ),
-            Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\nname = \"orphan\"\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "[[bin]] table missing path".to_string(),
+            }
         );
     }
 
     #[test]
     fn malformed_toml_is_typed_refusal() {
         assert_eq!(
-            stage0_cargo_bin_repo_paths_from_manifest_text(
-                "[[bin]]\npath = \"unterminated\n",
-                PACKAGE_ROOT,
-            ),
-            Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"unterminated\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "Cargo manifest is not valid TOML".to_string(),
+            }
         );
     }
 
     #[test]
-    fn cargo_bin_cannot_escape_package_root() {
+    fn path_policy_is_not_applied_by_the_toml_realization() {
         assert_eq!(
-            stage0_cargo_bin_repo_paths_from_manifest_text(
-                "[[bin]]\npath = \"../../outside.rs\"\n",
-                PACKAGE_ROOT,
-            ),
-            Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot)
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"../../outside.rs\"\n"),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec!["../../outside.rs".to_string()],
+            }
         );
-    }
-
-    fn git(root: &Path, args: &[&str]) -> String {
-        let output = Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .output()
-            .expect("git starts");
-        assert!(
-            output.status.success(),
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8(output.stdout)
-            .expect("git stdout is UTF-8")
-            .trim()
-            .to_string()
-    }
-
-    #[test]
-    fn observation_uses_merge_base_and_revision_objects_not_first_parent_or_dirty_state() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time after epoch")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "gunbc-stage0-rust-observation-{}-{nonce}",
-            std::process::id()
-        ));
-        fs::create_dir_all(root.join("src/v1/stage0/src")).expect("fixture dirs");
-        git(&root, &["init", "-b", "main"]);
-        git(&root, &["config", "user.name", "fixture"]);
-        git(&root, &["config", "user.email", "fixture@example.invalid"]);
-        git(&root, &["config", "commit.gpgsign", "false"]);
-
-        let committed_manifest = "[[bin]]\nname = \"base\"\npath = \"src/base.rs\"\n";
-        fs::write(root.join("src/v1/stage0/Cargo.toml"), committed_manifest)
-            .expect("base manifest");
-        fs::write(root.join("src/v1/stage0/src/base.rs"), "fn base() {}\n").expect("base Rust");
-        git(&root, &["add", "."]);
-        git(&root, &["commit", "-m", "base"]);
-
-        git(&root, &["checkout", "-b", "feature"]);
-        fs::write(
-            root.join("src/v1/stage0/src/feature.rs"),
-            "fn feature() {}\n",
-        )
-        .expect("feature Rust");
-        git(&root, &["add", "."]);
-        git(&root, &["commit", "-m", "feature"]);
-
-        git(&root, &["checkout", "main"]);
-        fs::write(
-            root.join("src/v1/stage0/src/base_unrelated.rs"),
-            "fn base_unrelated() {}\n",
-        )
-        .expect("base advance Rust");
-        git(&root, &["add", "."]);
-        git(&root, &["commit", "-m", "base advance"]);
-        git(&root, &["checkout", "feature"]);
-        git(&root, &["merge", "--no-ff", "main", "-m", "merge base"]);
-        let head = git(&root, &["rev-parse", "HEAD"]);
-
-        fs::write(
-            root.join("src/v1/stage0/Cargo.toml"),
-            "[[bin]]\nname = \"dirty\"\npath = \"src/dirty.rs\"\n",
-        )
-        .expect("dirty manifest");
-        fs::write(root.join("src/v1/stage0/src/dirty.rs"), "fn dirty() {}\n").expect("dirty Rust");
-        git(&root, &["add", "src/v1/stage0/src/dirty.rs"]);
-
-        let observation = observe_stage0_rust_manifest_at(
-            &root,
-            "src/v1/stage0/Cargo.toml",
-            PACKAGE_ROOT,
-            "main",
-        );
-        fs::remove_dir_all(&root).expect("fixture cleanup");
-
-        let Stage0RustHostObservation::Observed {
-            repository_revision,
-            manifest_digest,
-            tracked_rust_repo_paths,
-            prior_tracked_rust_repo_paths,
-            cargo_bin_repo_paths,
-        } = observation
-        else {
-            panic!("fixture observation refused")
-        };
-        assert_eq!(repository_revision, head);
-        assert_eq!(
-            manifest_digest,
-            format!("{:x}", Sha256::digest(committed_manifest.as_bytes()))
-        );
-        assert_eq!(
-            cargo_bin_repo_paths,
-            vec!["src/v1/stage0/src/base.rs".to_string()]
-        );
-        assert!(tracked_rust_repo_paths
-            .iter()
-            .any(|p| p.ends_with("feature.rs")));
-        assert!(tracked_rust_repo_paths
-            .iter()
-            .any(|p| p.ends_with("base_unrelated.rs")));
-        assert!(!tracked_rust_repo_paths
-            .iter()
-            .any(|p| p.ends_with("dirty.rs")));
-        assert!(prior_tracked_rust_repo_paths
-            .iter()
-            .any(|p| p.ends_with("base_unrelated.rs")));
-        assert!(!prior_tracked_rust_repo_paths
-            .iter()
-            .any(|p| p.ends_with("feature.rs")));
     }
 }
 

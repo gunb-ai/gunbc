@@ -571,6 +571,37 @@ service git.Core {
     }
   }
 
+  operation MergeBase {
+    input { left: GitRef, right: GitRef }
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "merge-base", "{left}", "{right}"] }
+    exit {
+      0 => Unit
+      1 => String "No merge base"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ListTreePathsAtRevision {
+    input { ref: GitRef }
+    output {
+      paths_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-rz", "--name-only", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
   operation RemoteBranches {
     input {}
     output { branches: List<String> from "stdout_lines" }
