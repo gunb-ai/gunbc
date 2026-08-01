@@ -269,7 +269,20 @@ LANGUAGE-LAYER FINDING recorded rather than absorbed (§5 workaround rule): a on
 type NoWalkFinalization
   = NoFinalizationDeclared {}
 
+type PreWalkExecution
+  = NoPreWalkExecution {}
+  | TypedClaimSubprocess {
+      transport_entry: String
+      transport_function: String
+      source_roots: List<String>
+      claim_entry: String
+      claim_function: String
+    }
+
+data pre_walk_execution_note: String = "A WalkPlan may carry one typed execution before its ordinary population. NoPreWalkExecution is explicit absence. TypedClaimSubprocess is a modeled argv-host-effect transport: the executor resolves transport_entry, calls transport_function with the authored source_roots/claim identity, and requires a true result before arming the ordinary floor. The transport function must realize the child through gunbc.WitnessBin.Run (the existing typed bin-invocation service), never through a shell program or an executor-minted command. This placement exists for small identity captures whose result must precede the floor but whose evaluator arena must die with a child address space; a refusal is located to both transport and claim and blocks batch 1."
+
 type WalkPlan<F> {
+  pre_walk_execution: PreWalkExecution
   batches: List<List<Runnable>>
   finalization: F
   on_success_stages: List<List<Runnable>>

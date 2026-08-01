@@ -12,6 +12,7 @@ import std.realization_schedule {
   WalkPlan,
   NoWalkFinalization,
   NoFinalizationDeclared,
+  NoPreWalkExecution,
   cost_account_predicted_zero,
   runnable_memory_negligible,
   runnable_memory_substantial,
@@ -73,6 +74,7 @@ fn expected_stages() -> List<List<Runnable>> {
 
 fn synthetic_walk(stages: List<List<Runnable>>) -> WalkPlan<NoWalkFinalization> {
   WalkPlan {
+    pre_walk_execution: NoPreWalkExecution {},
     batches: synthetic_ordinary_plan().schedule,
     finalization: NoFinalizationDeclared {},
     on_success_stages: stages,
@@ -83,6 +85,7 @@ fn synthetic_walk(stages: List<List<Runnable>>) -> WalkPlan<NoWalkFinalization> 
 
 fn synthetic_walk_with_wrong_ordinary_projection() -> WalkPlan<NoWalkFinalization> {
   WalkPlan {
+    pre_walk_execution: NoPreWalkExecution {},
     batches: synthetic_ordinary_plan().schedule.skip(n: 1),
     finalization: NoFinalizationDeclared {},
     on_success_stages: expected_stages(),

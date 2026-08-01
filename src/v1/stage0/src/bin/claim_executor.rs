@@ -947,11 +947,74 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
 /// completed AND its receipts wrote, each stage a barrier, always fail-fast between
 /// stages regardless of the ordinary stop policy.
 struct ParsedWalkPlan {
+    pre_walk_execution: PreWalkExecution,
     batches: Vec<Vec<Runnable>>,
     finalization: Option<FloorFinalization>,
     on_success_stages: Vec<Vec<Runnable>>,
     ordinary_budget_ms: Option<u64>,
     on_success_budget_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PreWalkExecution {
+    None,
+    TypedClaimSubprocess {
+        transport_entry: String,
+        transport_function: String,
+        source_roots: Vec<String>,
+        claim_entry: String,
+        claim_function: String,
+    },
+}
+
+fn pre_walk_execution_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<PreWalkExecution, String> {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err(format!(
+            "WalkPlan.pre_walk_execution must be NoPreWalkExecution or TypedClaimSubprocess, got {}",
+            ctx.format_value(value)
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "NoPreWalkExecution") {
+        return Ok(PreWalkExecution::None);
+    }
+    if !ctx.sym_eq(*variant_name, "TypedClaimSubprocess") {
+        return Err(format!(
+            "WalkPlan.pre_walk_execution has unknown variant {}",
+            ctx.format_value(value)
+        ));
+    }
+    let string_field = |name: &str| -> Result<String, String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.clone()),
+            other => Err(format!(
+                "TypedClaimSubprocess.{name} must be a non-empty String, got {other:?}"
+            )),
+        }
+    };
+    let roots = ctx
+        .field(fields, "source_roots")
+        .ok_or_else(|| "TypedClaimSubprocess.source_roots is missing".to_string())?;
+    let source_roots = str_list_from_value(roots, ctx)?;
+    if source_roots.is_empty() || source_roots.iter().any(|root| root.trim().is_empty()) {
+        return Err(
+            "TypedClaimSubprocess.source_roots must contain non-empty paths".to_string(),
+        );
+    }
+    Ok(PreWalkExecution::TypedClaimSubprocess {
+        transport_entry: string_field("transport_entry")?,
+        transport_function: string_field("transport_function")?,
+        source_roots,
+        claim_entry: string_field("claim_entry")?,
+        claim_function: string_field("claim_function")?,
+    })
 }
 
 fn optional_walk_budget_ms(
@@ -1071,6 +1134,9 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
     let batches_val = ctx
         .field(fields, "batches")
         .ok_or_else(|| "WalkPlan missing field `batches`".to_string())?;
+    let pre_walk_execution_val = ctx.field(fields, "pre_walk_execution").ok_or_else(|| {
+        "WalkPlan missing field `pre_walk_execution` — a plan with no pre-walk effect declares NoPreWalkExecution; the parser never invents absence".to_string()
+    })?;
     let stages_val = ctx.field(fields, "on_success_stages").ok_or_else(|| {
         "WalkPlan missing field `on_success_stages` — a plan with no postconditions \
          declares an empty list, never omits the field"
@@ -1088,6 +1154,7 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
         "WalkPlan missing field `on_success_budget_ms` — plans without bounded postconditions declare Absent; the parser never invents a budget".to_string()
     })?;
     Ok(ParsedWalkPlan {
+        pre_walk_execution: pre_walk_execution_from_value(pre_walk_execution_val, ctx)?,
         batches: batches_from_plan(batches_val, ctx)
             .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
         finalization: finalization_from_value(finalization_val, ctx)
@@ -2241,6 +2308,79 @@ fn eval_plan(
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
     eval_plan_in_ctx(&plan_ctx, plan_entry, plan_function)
+}
+
+fn run_pre_walk_execution(
+    executor_source_roots: &[String],
+    plan_site: &str,
+    execution: &PreWalkExecution,
+) -> Result<(), String> {
+    let PreWalkExecution::TypedClaimSubprocess {
+        transport_entry,
+        transport_function,
+        source_roots,
+        claim_entry,
+        claim_function,
+    } = execution
+    else {
+        return Ok(());
+    };
+    let started = Instant::now();
+    let memory_before = stage_memory_snapshot();
+    eprintln!(
+        "claim_executor: pre-walk typed claim subprocess — transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}"
+    );
+    let (graph, indices) = resolve_entry_graph(executor_source_roots, transport_entry).map_err(
+        |msg| {
+            format!(
+                "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport resolve failed: {msg}"
+            )
+        },
+    )?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let result = run_in_context_with_args(
+        &ctx,
+        transport_function,
+        &[
+            (
+                Some("source_roots".to_string()),
+                str_list_value(source_roots),
+            ),
+            (
+                Some("claim_entry".to_string()),
+                Value::Str(claim_entry.clone()),
+            ),
+            (
+                Some("claim_function".to_string()),
+                Value::Str(claim_function.clone()),
+            ),
+        ],
+        false,
+    );
+    drop(ctx);
+    drop(graph);
+    let wall_ms = started.elapsed().as_millis();
+    let memory_after = stage_memory_snapshot();
+    eprintln!(
+        "claim_executor: pre-walk typed claim subprocess receipt — wall_ms={wall_ms} memory_current_before={} memory_current_after={} memory_peak_after={} swap_after={} high_events_after={}",
+        receipt_optional_u64(memory_before.current_bytes),
+        receipt_optional_u64(memory_after.current_bytes),
+        receipt_optional_u64(memory_after.peak_bytes),
+        receipt_optional_u64(memory_after.swap_bytes),
+        receipt_optional_u64(memory_after.high_events),
+    );
+    match result {
+        Ok(Value::Bool(true)) => Ok(()),
+        Ok(Value::Bool(false)) => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: typed child returned false"
+        )),
+        Ok(other) => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport returned {other:?}, expected Bool"
+        )),
+        Err(msg) => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport evaluation failed: {msg}"
+        )),
+    }
 }
 
 /// An infrastructure fault the walk observed directly, kept as data.
