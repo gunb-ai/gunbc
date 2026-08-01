@@ -2,11 +2,10 @@ module v2.test.claim.build_transport_admission_witness
 
 import std.types { Bool, String, List }
 import std.effect_grant {
-  Write, verb_eq, Read,
   FilesystemPathTree,
   NamespacePosition, position_under,
-  EffectAdmission, Admitted, EffectOutsideGrant,
 }
+import std.access { AccessDecision, Permit, Deny }
 import v2.std.host_transport {
   HostTransportDescriptor, WorkspaceFile, WorkspaceContent, EmittedSource,
   ProcessInvocation, HostToolProgram, ProducedProgram,
@@ -22,7 +21,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data build_transport_admission_witness_note: String = "Discriminating witnesses for the P-B build-transport admission decision (v2.compiler.build_transport_admission). A well-formed build transport (workspace-relative emitted files, a declared host toolchain, a workspace-produced run program) is Admitted; a transport whose workspace file escapes its subtree (a `..` path or an absolute path) is a located EffectOutsideGrant, never widened (DESIGN 5). The refusal arm is the RED control: if the escape projection or admit_effect check were dropped, admits_escaping_write would flip. The projection helper is exercised directly so the containment boundary is pinned independent of the fold. Containment is SEGMENT-decomposed (review 39707): a `..` PATH SEGMENT escapes, but a bare `..` substring inside a filename (foo..bar) does not -- pinned by build_transport_admits_dotdot_substring. Build/run reads cover the invocation ARGS too (review 39684): a WorkspacePath/ProducedArtifact arg that escapes is refused -- pinned by build_transport_refuses_escaping_arg."
+data build_transport_admission_witness_note: String = "Discriminating witnesses for the P-B build-transport admission decision (v2.compiler.build_transport_admission). A well-formed build transport (workspace-relative emitted files, a declared host toolchain, a workspace-produced run program) is Permit; a transport whose workspace file escapes its subtree (a `..` path or an absolute path) is a located std.access.Deny, never widened (DESIGN 5). The refusal arm is the RED control: if the escape projection or admit_effect check were dropped, admits_escaping_write would flip. The projection helper is exercised directly so the containment boundary is pinned independent of the fold. Containment is SEGMENT-decomposed (review 39707): a `..` PATH SEGMENT escapes, but a bare `..` substring inside a filename (foo..bar) does not -- pinned by build_transport_admits_dotdot_substring. Build/run reads cover the invocation ARGS too (review 39684): a WorkspacePath/ProducedArtifact arg that escapes is refused -- pinned by build_transport_refuses_escaping_arg."
 
 fn well_formed_build() -> ProcessInvocation {
   ProcessInvocation {
@@ -79,17 +78,17 @@ data contained_arg_transport: HostTransportDescriptor = transport_with_build(
   b: build_with_arg(a: WorkspacePath { path: "fixture.c" })
 )
 
-fn is_admitted(a: EffectAdmission) -> Bool {
+fn is_admitted(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => true
-    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+    Permit => true
+    Deny { refusal: refusal } => false
   }
 }
 
-fn is_refused(a: EffectAdmission) -> Bool {
+fn is_refused(a: AccessDecision) -> Bool {
   match a {
-    Admitted { via_root: r } => false
-    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+    Permit => false
+    Deny { refusal: refusal } => true
   }
 }
 
@@ -107,8 +106,11 @@ test fn build_transport_refuses_absolute_write() -> Bool {
 
 test fn build_transport_refusal_is_located() -> Bool {
   match build_transport_admissible(transport: escaping_transport) {
-    EffectOutsideGrant { verb: v, target: t, frame: f } => verb_eq(a: v, b: Write)
-    Admitted { via_root: r } => false
+    Deny { refusal: refusal } =>
+      refusal.location.profile == "EffectRequest"
+        && refusal.location.action == "write"
+        && refusal.location.object == "../etc/passwd"
+    Permit => false
   }
 }
 

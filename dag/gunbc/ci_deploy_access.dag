@@ -1,11 +1,12 @@
 module gunbc.ci_deploy_access
 
 import std.types { NonEmptyStr, List, String, Bool }
-import std.access { AccessDecision, Permit, Deny }
+import std.access { AccessDecision, Permit, Deny, access_policy_refusal, access_refusal_reason }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_ladder { Frame, SharedStateFrame }
-import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect, EffectAdmission, Admitted, EffectOutsideGrant }
+import std.access { AccessDecision }
+import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect }
 import std.effects { ExecuteEffect }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -246,7 +247,7 @@ fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> HostEffect {
 fn deploy_access_grant_admits_probe(
   access: DeployAccess,
   cmd: PrivilegedCommand
-) -> EffectAdmission {
+) -> AccessDecision {
   let grant = posix_sudo_grant_to_effect_grant(g: cmd.grant)
   admit_effect(
     env: deploy_access_grant_envelope(access: access),
@@ -295,26 +296,21 @@ fn deploy_access_sudo_miss_reason(access: DeployAccess) -> String {
 fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {
   let expected = grounded_posix_principal_name(p: access.principal)
   if actor.observed_name != expected {
-    Deny {
-      reason: Present {
-        value: concat(
+    access_policy_refusal(
+      profile: "deploy-access", subject: actor.observed_name, action: "execute", object: expected,
+      reason: concat(
           concat(
             concat(deploy_access_refusal_prefix, " — principal mismatch expected="),
             expected
           ),
           concat(" actual=", actor.observed_name)
-        )
-      }
-    }
+        ),
+    )
   } else {
     if actor.sudo_granted {
       Permit
     } else {
-      Deny {
-        reason: Present {
-          value: deploy_access_sudo_miss_reason(access: access)
-        }
-      }
+      access_policy_refusal(profile: "deploy-access", subject: actor.observed_name, action: "execute", object: expected, reason: deploy_access_sudo_miss_reason(access: access))
     }
   }
 }
@@ -322,11 +318,7 @@ fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> Access
 fn deploy_access_decision_reason(d: AccessDecision) -> String {
   match d {
     Permit => ""
-    Deny { reason: r } =>
-      match r {
-        Present { value: why } => why
-        Absent => deploy_access_refusal_prefix
-      }
+    Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
   }
 }
 
