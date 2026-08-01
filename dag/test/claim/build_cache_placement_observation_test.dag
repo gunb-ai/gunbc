@@ -16,13 +16,12 @@ fn owner_fixture() -> ProcessIdentity {
   }
 }
 
-fn observed_with_context(cgroup: NonEmptyStr, ctx: EndpointOwnerContext) -> BuildCacheEndpointObservation {
+fn observed_with_context(ctx: EndpointOwnerContext) -> BuildCacheEndpointObservation {
   EndpointOwnerObserved {
     instance: srv1_ci_instance_fixture(),
     owner: owner_fixture(),
     executable: "/usr/local/bin/sccache" as NonEmptyStr,
     principal: "ghrunner" as NonEmptyStr,
-    cgroup: cgroup,
     owner_context: ctx,
     memory_limits: none,
     memory_events: none,
@@ -31,15 +30,20 @@ fn observed_with_context(cgroup: NonEmptyStr, ctx: EndpointOwnerContext) -> Buil
 
 fn observed_in_slot(slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle) -> BuildCacheEndpointObservation {
   observed_with_context(
-    cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as NonEmptyStr,
-    ctx: OwnerInRunnerSlot { slot: slot, lifecycle: lifecycle },
+    ctx: OwnerInRunnerSlot {
+      slot: slot,
+      lifecycle: lifecycle,
+      observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as NonEmptyStr,
+    },
   )
 }
 
 fn observed_owned_by_unit(unit: NonEmptyStr) -> BuildCacheEndpointObservation {
   observed_with_context(
-    cgroup: "/system.slice/some.service" as NonEmptyStr,
-    ctx: OwnerInSystemdUnit { unit: unit },
+    ctx: OwnerInSystemdUnit {
+      unit: unit,
+      observed_cgroup: "/system.slice/some.service" as NonEmptyStr,
+    },
   )
 }
 
@@ -125,7 +129,7 @@ test fn witness_ambiguous_ownership_refuses() -> Bool {
   }
 }
 
-data unreachable_is_not_absent_doc: String = "THE srv4 CONTROL, and the one most likely to be got wrong by a sweep that reports per-host health. A host that could not be reached has NOT been observed to have no server; recording it as EndpointAbsent would be the absorbing fallback (DESIGN section 5) — ignorance rendered as an answer. srv4 was genuinely unreachable when the 2026-08-01 receipt was taken (ssh to 192.168.1.196 returned 'Permission denied (publickey)' from the srv2 jump host), so it is carried as EndpointObservationUnavailable { ReachRefused }, which derives ServerPlacementUnknown and REFUSES — distinct from ServerPlacementAbsent, which is a positive finding that the endpoint has no listener."
+data unreachable_is_not_absent_doc: String = "THE srv4 CONTROL, and the one most likely to be got wrong by a sweep that reports per-host health. A host that could not be reached has NOT been observed to have no server; recording it as EndpointAbsent would be the absorbing fallback (DESIGN section 5) — ignorance rendered as an answer. srv4 was genuinely unreachable when the 2026-08-01 receipt was taken (ssh to 192.168.1.196 returned 'Permission denied (publickey)' from the srv2 jump host), so it was carried as EndpointObservationUnavailable { ReachRefused }, which derives ServerPlacementUnknown and REFUSES — distinct from ServerPlacementAbsent, which is a positive finding that the endpoint has no listener. srv4 HAS SINCE BEEN OBSERVED (2026-08-01, over the fleet-automation key the roster always intended), and the outcome vindicates the distinction rather than retiring the control: srv4 turned out to be genuinely EndpointAbsent — no listener, no process, no unit — with a stale socket making every new server fail to bind. Had the unreachable read been recorded as Absent it would have produced the RIGHT answer for the WRONG reason, and nobody would have learned that the two states had never been distinguished. The control keeps its subject because the next unreachable host is not owed srv4's luck."
 
 test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
   let p = placement_of_endpoint_observation(
@@ -149,8 +153,10 @@ test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -
   let detail = "cgroup names actions-runner@srv1-XX.service; slot index did not parse" as NonEmptyStr
   let p = placement_of_endpoint_observation(
     observed: observed_with_context(
-      cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-XX.service" as NonEmptyStr,
-      ctx: OwnerContextUndecided { detail: detail },
+      ctx: OwnerContextUndecided {
+        detail: detail,
+        observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-XX.service" as NonEmptyStr,
+      },
     ),
   )
   match p {

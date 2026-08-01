@@ -19,14 +19,10 @@ fn srv2_host_observation() -> DeployTargetHostObservation {
 }
 
 test fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
-  let left = std.access.Deny { reason: Present { value: "host-deny-reason" } }
-  let right = std.access.Deny { reason: Present { value: "access-deny-reason" } }
+  let left = std.access.access_policy_refusal(profile: "host", subject: "runner", action: "deploy", object: "host", reason: "host-deny-reason")
+  let right = std.access.access_policy_refusal(profile: "access", subject: "runner", action: "deploy", object: "host", reason: "access-deny-reason")
   match decision_meet(a: left, b: right) {
-    Deny { reason: r } =>
-      match r {
-        Present { value: why } => why == "host-deny-reason"
-        Absent => false
-      }
+    Deny { refusal: refusal } => std.access.access_refusal_reason(refusal: refusal) == "host-deny-reason"
     Permit => false
   }
 }
@@ -38,7 +34,7 @@ test fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() ->
     fixture_host: Present { value: srv2_host_observation() }
   )
   match gate {
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       let why = deploy_access_decision_reason(d: gate)
       string_contains(s: why, pattern: deploy_target_host_refusal_prefix)
         && !string_contains(s: why, pattern: deploy_access_refusal_prefix)
@@ -57,7 +53,7 @@ test fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool
   ) {
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
-        Present { value: Deny { reason: _ } } =>
+        Present { value: Deny { refusal: _ } } =>
           string_contains(s: why, pattern: deploy_target_host_refusal_prefix)
             && !string_contains(s: why, pattern: mutation_gate_marker)
         _ => false
@@ -75,7 +71,7 @@ test fn witness_wrong_host_privileged_gate_denies() -> Bool {
     fixture_host: Present { value: srv2_host_observation() }
   )
   match gate {
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       string_contains(
         s: deploy_access_decision_reason(d: gate),
         pattern: deploy_target_host_refusal_prefix
@@ -90,7 +86,7 @@ test fn witness_right_host_unprivileged_gate_denies() -> Bool {
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
     fixture_host: Present { value: srv1_host_observation() }
   ) {
-    Deny { reason: _ } => true
+    Deny { refusal: _ } => true
     Permit => false
   }
 }
@@ -104,7 +100,7 @@ test fn witness_right_host_privileged_gate_permits() -> Bool {
     fixture_host: Present { value: srv1_host_observation() }
   ) {
     Permit => true
-    Deny { reason: _ } => false
+    Deny { refusal: _ } => false
   }
 }
 
@@ -121,7 +117,7 @@ test fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
   ) {
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
-        Present { value: Deny { reason: _ } } =>
+        Present { value: Deny { refusal: _ } } =>
           !string_contains(s: why, pattern: mutation_gate_marker)
         _ => false
       }
@@ -140,7 +136,7 @@ test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
   ) {
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
-        Present { value: Deny { reason: _ } } =>
+        Present { value: Deny { refusal: _ } } =>
           !string_contains(s: why, pattern: mutation_gate_marker)
         _ => false
       }
@@ -160,4 +156,3 @@ test fn witness_right_host_privileged_may_apply() -> Bool {
     fixture_host: Present { value: srv1_host_observation() }
   ))
 }
-

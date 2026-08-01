@@ -9,7 +9,6 @@ import std.primitive_identity {
   RealizationNamesUnknownPrimitive,
   SurfaceJoinsTwoIdentities,
   SurfaceMissingPrimitiveIdentity,
-  decl_ref,
   primitive_d0_definitions,
   primitive_d0_derived_rows_missing_identity_count,
   primitive_d0_derived_surface_authority_count,
@@ -93,7 +92,7 @@ test fn w_unknown_realization_refuses() -> Bool {
     realization: PrimitiveRealization {
       primitive: primitive_map_keys,
       target: EmitRust,
-      handler: decl_ref(module_path: "std.primitive_identity", decl_name: "missing_handler"),
+      handler: std.primitive_identity.decl_ref(module_path: "std.primitive_identity", decl_name: "missing_handler"),
     },
     definitions: [],
   ) {
@@ -129,7 +128,7 @@ test fn w_red_missing_identity_on_joined_surface() -> Bool {
   let planted = surface_row(
     authority: InterpreterDispatch,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
     primitive: Absent,
     provenance: MeasurementOnly,
   )
@@ -144,14 +143,14 @@ test fn w_red_surface_joins_two_identities() -> Bool {
   let left = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
     primitive: Present { value: primitive_map_keys },
     provenance: MeasurementOnly,
   )
   let right = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
     primitive: Present { value: primitive_map_values },
     provenance: MeasurementOnly,
   )
@@ -169,14 +168,14 @@ test fn w_red_cross_authority_identity_fork() -> Bool {
   let registry_row = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
     primitive: Present { value: primitive_map_keys },
     provenance: MeasurementOnly,
   )
   let contract_row = surface_row(
     authority: PrimitiveContractRow,
     authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "map_keys_contract"),
+    authority_ref: std.primitive_identity.decl_ref(module_path: "std.primitives", decl_name: "map_keys_contract"),
     primitive: Present { value: primitive_map_values },
     provenance: MeasurementOnly,
   )
