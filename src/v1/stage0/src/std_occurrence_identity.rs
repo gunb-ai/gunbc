@@ -327,19 +327,16 @@ pub enum OccurrenceIdentityClosingVerdict {
 pub fn occurrence_identity_closing_check_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The closing verdict is derived from the permanent acceptance-law roster, scoped-batch execution observations, and admitted deferrals. Deleting a debt row cannot delete its law. A receipt counts only when its law id and exact required_receipt still match and its execution observation is Passed; the scoped witness batch must supply that observation from execution, never from a roster entry asserting its own success. Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty deferred population closes the node.".to_string()
+            "The closing verdict is derived from the permanent occurrence_identity_acceptance_laws authority, scoped-batch execution observations, and admitted deferrals. The law population is not a caller parameter, so deleting a debt row or passing a narrowed list cannot delete a law. A receipt counts only when its law id and exact required_receipt still match and its execution observation is Passed; the scoped witness batch must supply that observation from execution, never from a roster entry asserting its own success. Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty deferred population closes the node. This five-law occurrence-identity acceptance family is distinct from the six candidate-producer conformance laws owned by the namespace mechanism.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn occurrence_identity_law_id_known(
-    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
-    law_id: String,
-) -> bool {
+pub fn occurrence_identity_law_id_known(law_id: String) -> bool {
     {
         let mut __found = false;
-        for law in laws.clone().iter().cloned() {
+        for law in occurrence_identity_acceptance_laws().iter().cloned() {
             if (law.id.clone() == law_id.clone()) {
                 __found = true;
                 break;
@@ -349,14 +346,10 @@ pub fn occurrence_identity_law_id_known(
     }
 }
 
-pub fn occurrence_identity_law_exact(
-    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
-    law_id: String,
-    required_receipt: String,
-) -> bool {
+pub fn occurrence_identity_law_exact(law_id: String, required_receipt: String) -> bool {
     {
         let mut __found = false;
-        for law in laws.clone().iter().cloned() {
+        for law in occurrence_identity_acceptance_laws().iter().cloned() {
             if ((law.id.clone() == law_id.clone())
                 && (law.required_receipt.clone() == required_receipt.clone()))
             {
@@ -383,18 +376,17 @@ pub fn occurrence_identity_closing_refusal_concat(
 }
 
 pub fn occurrence_identity_closing_refusals(
-    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
     receipts: Rc<Vec<Rc<OccurrenceIdentityExecutingReceipt>>>,
     deferrals: Rc<Vec<Rc<OccurrenceIdentityAdmittedDeferral>>>,
 ) -> Rc<Vec<Rc<OccurrenceIdentityClosingRefusal>>> {
     {
         let duplicate_laws = Rc::new({
             let mut __result = Vec::new();
-            for law in laws.clone().iter().cloned() {
+            for law in occurrence_identity_acceptance_laws().iter().cloned() {
                 __result.extend(
                     (*if ((Rc::new({
                         let mut __result = Vec::new();
-                        for other in laws.clone().iter().cloned() {
+                        for other in occurrence_identity_acceptance_laws().iter().cloned() {
                             if (other.id.clone() == law.id.clone()) {
                                 __result.push(other);
                             }
@@ -422,7 +414,7 @@ pub fn occurrence_identity_closing_refusals(
             let mut __result = Vec::new();
             for receipt in receipts.clone().iter().cloned() {
                 __result.extend(
-                    (*if occurrence_identity_law_id_known(laws.clone(), receipt.law_id.clone()) {
+                    (*if occurrence_identity_law_id_known(receipt.law_id.clone()) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![Rc::new(
@@ -439,7 +431,7 @@ pub fn occurrence_identity_closing_refusals(
         });
         let duplicate_receipts = Rc::new({
             let mut __result = Vec::new();
-            for law in laws.clone().iter().cloned() {
+            for law in occurrence_identity_acceptance_laws().iter().cloned() {
                 __result.extend(
                     (*if ((Rc::new({
                         let mut __result = Vec::new();
@@ -471,9 +463,8 @@ pub fn occurrence_identity_closing_refusals(
             let mut __result = Vec::new();
             for receipt in receipts.clone().iter().cloned() {
                 __result.extend(
-                    (*if (occurrence_identity_law_id_known(laws.clone(), receipt.law_id.clone())
+                    (*if (occurrence_identity_law_id_known(receipt.law_id.clone())
                         && !occurrence_identity_law_exact(
-                            laws.clone(),
                             receipt.law_id.clone(),
                             receipt.required_receipt.clone(),
                         ))
@@ -515,7 +506,7 @@ pub fn occurrence_identity_closing_refusals(
             let mut __result = Vec::new();
             for deferral in deferrals.clone().iter().cloned() {
                 __result.extend(
-                    (*if occurrence_identity_law_id_known(laws.clone(), deferral.law_id.clone()) {
+                    (*if occurrence_identity_law_id_known(deferral.law_id.clone()) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![Rc::new(
@@ -532,7 +523,7 @@ pub fn occurrence_identity_closing_refusals(
         });
         let duplicate_deferrals = Rc::new({
             let mut __result = Vec::new();
-            for law in laws.clone().iter().cloned() {
+            for law in occurrence_identity_acceptance_laws().iter().cloned() {
                 __result.extend(
                     (*if ((Rc::new({
                         let mut __result = Vec::new();
@@ -564,9 +555,8 @@ pub fn occurrence_identity_closing_refusals(
             let mut __result = Vec::new();
             for deferral in deferrals.clone().iter().cloned() {
                 __result.extend(
-                    (*if (occurrence_identity_law_id_known(laws.clone(), deferral.law_id.clone())
+                    (*if (occurrence_identity_law_id_known(deferral.law_id.clone())
                         && !occurrence_identity_law_exact(
-                            laws.clone(),
                             deferral.law_id.clone(),
                             deferral.required_receipt.clone(),
                         ))
@@ -587,7 +577,7 @@ pub fn occurrence_identity_closing_refusals(
         });
         let overlaps = Rc::new({
             let mut __result = Vec::new();
-            for law in laws.clone().iter().cloned() {
+            for law in occurrence_identity_acceptance_laws().iter().cloned() {
                 __result.extend(
                     (*if ({
                         let mut __found = false;
@@ -651,13 +641,11 @@ pub fn occurrence_identity_closing_refusals(
 }
 
 pub fn occurrence_identity_closing_verdict(
-    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
     receipts: Rc<Vec<Rc<OccurrenceIdentityExecutingReceipt>>>,
     deferrals: Rc<Vec<Rc<OccurrenceIdentityAdmittedDeferral>>>,
 ) -> Rc<OccurrenceIdentityClosingVerdict> {
     {
-        let refusals =
-            occurrence_identity_closing_refusals(laws.clone(), receipts.clone(), deferrals.clone());
+        let refusals = occurrence_identity_closing_refusals(receipts.clone(), deferrals.clone());
         if ((refusals.clone().len() as i64) > 0) {
             Rc::new(
                 OccurrenceIdentityClosingVerdict::OccurrenceIdentityClosingRefused {
@@ -670,7 +658,7 @@ pub fn occurrence_identity_closing_verdict(
                     let mut __result = Vec::new();
                     for law in Rc::new({
                         let mut __result = Vec::new();
-                        for law in laws.clone().iter().cloned() {
+                        for law in occurrence_identity_acceptance_laws().iter().cloned() {
                             if (!{
                                 let mut __found = false;
                                 for receipt in receipts.clone().iter().cloned() {
@@ -715,7 +703,8 @@ pub fn occurrence_identity_closing_verdict(
                                 let mut __result = Vec::new();
                                 for law in Rc::new({
                                     let mut __result = Vec::new();
-                                    for law in laws.clone().iter().cloned() {
+                                    for law in occurrence_identity_acceptance_laws().iter().cloned()
+                                    {
                                         if {
                                             let mut __found = false;
                                             for deferral in deferrals.clone().iter().cloned() {
