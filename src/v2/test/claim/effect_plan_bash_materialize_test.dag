@@ -243,15 +243,16 @@ test fn effect_plan_bash_metacharacters_and_newline_remain_one_quoted_word() -> 
 }
 
 test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
+  let nul = from_code_point(cp: 0)
   let third_argument = effect_plan_bash_materialize(plan: one_step_plan(inv: test_path_invocation(
     operation: "IsFile",
-    path: "/tmp/a\u{0000}b"
+    path: concat("/tmp/a", concat(nul, "b"))
   )))
   let second_argument = effect_plan_bash_materialize(plan: one_step_plan(inv: invocation(
     path: "dag/extdeps/tools/id.dag",
     service: "os.Id",
     operation: "Lookup",
-    bindings: [operation_argv_bind_text(name: "user", text: "a\u{0000}b")]
+    bindings: [operation_argv_bind_text(name: "user", text: concat("a", concat(nul, "b")))]
   )))
   let third_holds = match third_argument {
     EffectPlanBashMaterializationRefused { refusal: refusal } =>
@@ -283,7 +284,16 @@ test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
         }
     _ => false
   }
-  third_holds && second_holds
+  let literal_escape_text_is_not_nul = match effect_plan_bash_materialize(
+    plan: one_step_plan(inv: test_path_invocation(
+      operation: "IsFile",
+      path: "/tmp/a\\u{0000}b"
+    ))
+  ) {
+    EffectPlanBashMaterialized { source: _ } => true
+    _ => false
+  }
+  third_holds && second_holds && literal_escape_text_is_not_nul
 }
 
 test fn effect_plan_bash_RED_missing_operation_is_typed_and_located() -> Bool {

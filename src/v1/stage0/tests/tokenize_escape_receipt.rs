@@ -88,6 +88,30 @@ fn escape_decode_table() {
         "\\x0d must decode to carriage return"
     );
 
+    // \u{H...}. Unlike \xNN this spans the full Unicode scalar range. The carriage-return
+    // pair is deliberately redundant across the two forms: it makes an implementation that
+    // changes only the assertion, or regresses the already-working \x arm, visible.
+    assert_eq!(
+        decode_literal(r"\u{000d}"),
+        "\r",
+        "\\u{000d} must decode to one carriage return"
+    );
+    assert_eq!(
+        decode_literal(r"\u{0}"),
+        "\u{0}",
+        "a one-digit Unicode escape must decode to NUL"
+    );
+    assert_eq!(
+        decode_literal(r"\u{A7}"),
+        "§",
+        "an A-F-leading body must remain part of the escape, not start interpolation"
+    );
+    assert_eq!(
+        decode_literal(r"\u{1F7E1}"),
+        "🟡",
+        "an astral Unicode scalar must decode as one character"
+    );
+
     // Non-ASCII passes through untouched, and -- the point of the migration -- mixing it with
     // escapes decodes identically to the pure-ASCII case.
     assert_eq!(
@@ -120,6 +144,27 @@ fn malformed_hex_escape_declines_rather_than_fabricating() {
     );
     // Truncated at end of literal: no digits to read at all.
     assert_eq!(decode_literal(r"\x"), r"\x", "a bare \\x must not decode");
+}
+
+/// A syntactically or semantically invalid `\u{...}` remains on the tokenizer's declared
+/// unknown-escape passthrough frontier. In particular, an invalid scalar must not be pushed
+/// into `chars_to_string`, whose conversion skips invalid code points and would silently erase it.
+#[test]
+fn malformed_unicode_escape_declines_rather_than_disappearing() {
+    for malformed in [
+        r"\u{}",
+        r"\u{xyz}",
+        r"\u{1234567}",
+        r"\u{d800}",
+        r"\u{110000}",
+        r"\u{41",
+    ] {
+        assert_eq!(
+            decode_literal(malformed),
+            malformed,
+            "malformed Unicode escape must remain visible: {malformed:?}"
+        );
+    }
 }
 
 /// `\s` is not in the vocabulary and today resolves to backslash-s. That is a knowingly
