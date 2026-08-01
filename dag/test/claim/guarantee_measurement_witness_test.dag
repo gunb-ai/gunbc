@@ -1,0 +1,147 @@
+module test.claim.guarantee_measurement_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, ContentHash }
+import gunbc.guarantee_measurement {
+  GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
+  SubjectGrain, SyntheticProgram,
+  AcceptanceBoundary, CompileAccept, InterpreterRun, InferToEval, InferToTranslate,
+  CompileMode, V1Pipeline, V2SelfCompile,
+  PathRealization, InterpreterRealization, EmittedTarget,
+  GuaranteePath,
+  ProbeObservation, RefusedTyped, AcceptedClean, AcceptedCounted, ExecutionDiverged, ProbeNotRunnable,
+  observed_is_verdict,
+  GuaranteeMeasurementReceipt,
+  GuaranteePathResolution, PathResolved, PathUnknown, PathDuplicate,
+  resolve_guarantee_path,
+  ReceiptJoin, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
+  join_receipt_to_path,
+  guarantee_class_ids_unique, guarantee_path_ids_unique,
+  probe_set_digest,
+}
+
+data guarantee_measurement_witness_scope_note: String = "SYNTHETIC ROWS ONLY, by the Stage 0 charter: these witnesses prove the protocol - construction, exactly-one resolution, the refusing joins, digest determinism, and the verdict/ignorance separation - against rows invented here. No probe executes, no real class population exists yet, and nothing below says anything about the compiler. When ladder-probe-corpus lands real rows, its receipts execute through THIS vocabulary and these synthetic witnesses stay as the protocol's regression controls. The unwritability half of the node's red_control (a receipt missing an identity component) is construction-by-required-fields: it cannot be witnessed from inside a compiling program, and its corpus-wide enforcement measurement belongs to the record-construction census class, stated in the module's receipt_identity_note rather than faked here."
+
+fn synth_path(id: String) -> GuaranteePath {
+  GuaranteePath {
+    id: id as GuaranteePathId,
+    subject_grain: SyntheticProgram,
+    acceptance_boundary: CompileAccept,
+    compile_mode: V1Pipeline,
+    realization_target: EmittedTarget { language: "rust" as GuaranteeTargetName },
+  }
+}
+
+fn synth_interp_path(id: String) -> GuaranteePath {
+  GuaranteePath {
+    id: id as GuaranteePathId,
+    subject_grain: SyntheticProgram,
+    acceptance_boundary: InterpreterRun,
+    compile_mode: V1Pipeline,
+    realization_target: InterpreterRealization,
+  }
+}
+
+fn synth_phase_path(id: String, boundary: AcceptanceBoundary) -> GuaranteePath {
+  GuaranteePath {
+    id: id as GuaranteePathId,
+    subject_grain: SyntheticProgram,
+    acceptance_boundary: boundary,
+    compile_mode: V2SelfCompile,
+    realization_target: InterpreterRealization,
+  }
+}
+
+fn synth_receipt(path_id: String) -> GuaranteeMeasurementReceipt {
+  GuaranteeMeasurementReceipt {
+    class: "call-shape" as GuaranteeClassId,
+    path: path_id as GuaranteePathId,
+    probe: "call-shape-mislabel-red" as GuaranteeProbeId,
+    subject_revision: "0000000000000000000000000000000000000000" as CommitSha,
+    harness_revision: "1111111111111111111111111111111111111111" as CommitSha,
+    probe_set_digest: probe_set_digest(probe_ids: ["call-shape-mislabel-red" as GuaranteeProbeId]),
+    observed: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 1 },
+  }
+}
+
+test fn receipt_round_trip_joins_exactly_its_path() -> Bool {
+  let paths = [synth_path(id: "v1-compile-rust"), synth_interp_path(id: "v1-interp")]
+  let r = synth_receipt(path_id: "v1-compile-rust")
+  match join_receipt_to_path(receipt: r, paths: paths) {
+    ReceiptJoined { path: p } => (p.id as String) == "v1-compile-rust"
+    ReceiptPathUnknown { receipt_path: _ } => false
+    ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+  }
+}
+
+test fn receipt_naming_absent_path_refuses_unknown() -> Bool {
+  let paths = [synth_path(id: "v1-compile-rust")]
+  let r = synth_receipt(path_id: "no-such-path")
+  match join_receipt_to_path(receipt: r, paths: paths) {
+    ReceiptJoined { path: _ } => false
+    ReceiptPathUnknown { receipt_path: w } => w == "no-such-path"
+    ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+  }
+}
+
+test fn duplicate_path_registry_refuses_never_first_pick() -> Bool {
+  let paths = [synth_path(id: "dup"), synth_interp_path(id: "dup")]
+  let r = synth_receipt(path_id: "dup")
+  match join_receipt_to_path(receipt: r, paths: paths) {
+    ReceiptJoined { path: _ } => false
+    ReceiptPathUnknown { receipt_path: _ } => false
+    ReceiptPathDuplicate { receipt_path: w, matches: m } => w == "dup" && m == 2
+  }
+}
+
+test fn resolution_is_exactly_one_across_all_three_outcomes() -> Bool {
+  let paths = [
+    synth_path(id: "a"),
+    synth_interp_path(id: "b"),
+    synth_phase_path(id: "c-eval", boundary: InferToEval),
+    synth_phase_path(id: "c-translate", boundary: InferToTranslate),
+  ]
+  let resolved = match resolve_guarantee_path(paths: paths, wanted: "a") {
+    PathResolved { path: p } => (p.id as String) == "a"
+    PathUnknown { wanted: _ } => false
+    PathDuplicate { wanted: _, matches: _ } => false
+  }
+  let unknown = match resolve_guarantee_path(paths: paths, wanted: "zzz") {
+    PathResolved { path: _ } => false
+    PathUnknown { wanted: w } => w == "zzz"
+    PathDuplicate { wanted: _, matches: _ } => false
+  }
+  resolved && unknown
+}
+
+test fn duplicate_class_id_reds_uniqueness() -> Bool {
+  let clean = ["call-shape" as GuaranteeClassId, "method-existence" as GuaranteeClassId]
+  let dirty = ["call-shape" as GuaranteeClassId, "call-shape" as GuaranteeClassId]
+  guarantee_class_ids_unique(ids: clean) && !guarantee_class_ids_unique(ids: dirty)
+}
+
+test fn duplicate_path_id_reds_uniqueness() -> Bool {
+  let clean = [synth_path(id: "a"), synth_interp_path(id: "b")]
+  let dirty = [synth_path(id: "a"), synth_interp_path(id: "a")]
+  guarantee_path_ids_unique(paths: clean) && !guarantee_path_ids_unique(paths: dirty)
+}
+
+test fn probe_set_digest_is_input_determined() -> Bool {
+  let one = [ "p1" as GuaranteeProbeId, "p2" as GuaranteeProbeId ]
+  let same = [ "p1" as GuaranteeProbeId, "p2" as GuaranteeProbeId ]
+  let fewer = [ "p1" as GuaranteeProbeId ]
+  let reordered = [ "p2" as GuaranteeProbeId, "p1" as GuaranteeProbeId ]
+  ((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: same) as String))
+    && !((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: fewer) as String))
+    && !((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: reordered) as String))
+}
+
+test fn not_runnable_is_ignorance_never_a_verdict() -> Bool {
+  let verdicts = [
+    RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 1 },
+    AcceptedClean,
+    AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as NonEmptyStr, count: 3 },
+    ExecutionDiverged { description: "emit reordered what the interpreter refused" as NonEmptyStr },
+  ]
+  let ignorance = ProbeNotRunnable { cause: "harness build failed" as NonEmptyStr }
+  all(verdicts, v => observed_is_verdict(o: v)) && !observed_is_verdict(o: ignorance)
+}

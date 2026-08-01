@@ -1,0 +1,127 @@
+module gunbc.guarantee_measurement
+
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, ContentHash }
+import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
+
+data guarantee_measurement_charter_note: String = "STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else (operator spine verdict 2026-08-01; roadmap node ladder-measurement-schema; gap analysis sec 12 Stage 0). Without this stage the probe corpus and the claims carrier each invent the receipt shape and meet in a protocol cycle - probes cannot emit rows the carrier has not defined, the carrier cannot derive dispositions from receipts that do not exist. So this module carries identity brands, the path row, the receipt row, and the joins that make a receipt REFUSE when it names an unknown subject - and deliberately nothing that claims anything about the compiler: no class population, no probe executes here, no disposition, no rung. Those arrive with ladder-probe-corpus and ladder-claims-carrier, which consume this vocabulary instead of minting temporary string keys."
+
+data guarantee_measurement_axis_discipline_note: String = "The axis enums are CLOSED AND MINIMAL, grounded on the paths real measurements exercise (DESIGN 4b names source-to-interpretation, source-to-each-emission-target, and phase-carrier-to-phase-carrier as independently measured paths): CompileAccept and InterpreterRun are the merged v1 walls' seams; InferToEval is the phase boundary gunbc#7485 landed (Eval refuses underived facts) and InferToTranslate is the boundary the containment workstream closes (operator verdict 2026-08-01: the fact stays grounding-was-not-derived, and the phase that consumes it is named by the PATH, never by a second diagnostic). A new variant lands WITH the first real path row that needs it, never speculatively - an earlier draft carried a generic PhaseCarrierAcceptance arm, deleted for exactly that reason: an unused axis variant is vocabulary claiming coverage nothing measures. GuaranteeTargetName is a receipt-vocabulary brand, not a language authority: it keeps a target name from being passed where a probe id belongs, and its grounding to the real per-language authority is deliberately deferred - dissolve-on the primitive-identity join reaching target-realization rows (v2-target-realization-gate lane), at which point this brand re-grounds on that authority and this sentence deletes."
+
+type GuaranteeClassId = NonEmptyStr where brand("GuaranteeClassId")
+type GuaranteePathId = NonEmptyStr where brand("GuaranteePathId")
+type GuaranteeProbeId = NonEmptyStr where brand("GuaranteeProbeId")
+type GuaranteeTargetName = NonEmptyStr where brand("GuaranteeTargetName")
+
+type SubjectGrain
+  = SyntheticProgram
+  | CorpusModule
+  | WholeCorpus
+
+type AcceptanceBoundary
+  = CompileAccept
+  | InterpreterRun
+  | InferToEval
+  | InferToTranslate
+
+type CompileMode
+  = V1Pipeline
+  | V2SelfCompile
+
+type PathRealization
+  = InterpreterRealization
+  | EmittedTarget { language: GuaranteeTargetName }
+
+type GuaranteePath {
+  id: GuaranteePathId
+  subject_grain: SubjectGrain
+  acceptance_boundary: AcceptanceBoundary
+  compile_mode: CompileMode
+  realization_target: PathRealization
+}
+
+data probe_observation_note: String = "The RAW executed observation, never the judgment: dispositions (Unmeasured, BelowFloor, FrontierAccepted, OnLadder, OutsideModeledGuarantee) are DERIVED by the claims carrier from receipts, so storing one here would be the transcribed-rung defect the carrier stage exists to make unrepresentable. ProbeNotRunnable is a separate arm because could-not-measure is not a verdict about the subject (DESIGN 5: top-as-answer conflated with top-as-ignorance is the absorbing fallback) - a probe that failed to execute must never be readable as the subject passing or failing. diagnostic_class names a compiler diagnostic variant as prose at this stage; the diagnostic-taxonomy join is carrier-stage grounding, and a brand here would claim a join this stage does not own."
+
+type ProbeObservation
+  = RefusedTyped { diagnostic_class: NonEmptyStr, count: Int }
+  | AcceptedClean
+  | AcceptedCounted { diagnostic_class: NonEmptyStr, count: Int }
+  | ExecutionDiverged { description: NonEmptyStr }
+  | ProbeNotRunnable { cause: NonEmptyStr }
+
+fn observed_is_verdict(o: ProbeObservation) -> Bool {
+  match o {
+    RefusedTyped { diagnostic_class: _, count: _ } => true
+    AcceptedClean => true
+    AcceptedCounted { diagnostic_class: _, count: _ } => true
+    ExecutionDiverged { description: _ } => true
+    ProbeNotRunnable { cause: _ } => false
+  }
+}
+
+type GuaranteeMeasurementReceipt {
+  class: GuaranteeClassId
+  path: GuaranteePathId
+  probe: GuaranteeProbeId
+  subject_revision: CommitSha
+  harness_revision: CommitSha
+  probe_set_digest: ContentHash
+  observed: ProbeObservation
+}
+
+data receipt_identity_note: String = "Every field is REQUIRED - no Optional arms - so a receipt missing an identity component or a revision is unwritable at construction rather than caught by a check (DESIGN 5 construction over validation; the roadmap node red_control names this). The three revisions answer the three-way ambiguity the baseline stage names: subject_revision is the commit whose compiler artifacts were measured, harness_revision is the commit whose probe harness ran, probe_set_digest is the content address of the exact probe set - a baseline is the anchor's subject under today's harness and probe set, and without all three 'the baseline at commit X' names three different measurements. Enforcement of required-field construction is itself an open census class (floor-record-construction-wall); this module states the intent by shape and the wall, when it lands, is what makes the shape load-bearing corpus-wide."
+
+data guarantee_registry_mechanism_note: String = "The registry MECHANISM without a registry POPULATION: uniqueness and exactly-one resolution are folds over caller-supplied rows, witnessed here against synthetic rows only. The real class and path populations arrive with the carrier and probe stages; this module supplying them would be Stage 0 claiming compiler coverage it does not have. Resolution mirrors gunbc.roadmap_identity: exactly-one, never first-pick - a duplicate registry answered with a plausible first row is the fabricated-output arm, and it fails at exactly the moment the registry is corrupt."
+
+type GuaranteePathResolution
+  = PathResolved { path: GuaranteePath }
+  | PathUnknown { wanted: String }
+  | PathDuplicate { wanted: String, matches: Int }
+
+fn resolve_guarantee_path(paths: List<GuaranteePath>, wanted: String) -> GuaranteePathResolution {
+  let hits = paths |> filter(p => (p.id as String) == wanted)
+  if count(hits) == 0 {
+    PathUnknown { wanted: wanted }
+  } else if count(hits) > 1 {
+    PathDuplicate { wanted: wanted, matches: count(hits) }
+  } else {
+    match hits |> first {
+      Present { value: p } => PathResolved { path: p }
+      Absent => PathUnknown { wanted: wanted }
+    }
+  }
+}
+
+type ReceiptJoin
+  = ReceiptJoined { path: GuaranteePath }
+  | ReceiptPathUnknown { receipt_path: String }
+  | ReceiptPathDuplicate { receipt_path: String, matches: Int }
+
+fn join_receipt_to_path(receipt: GuaranteeMeasurementReceipt, paths: List<GuaranteePath>) -> ReceiptJoin {
+  match resolve_guarantee_path(paths: paths, wanted: receipt.path as String) {
+    PathResolved { path: p } => ReceiptJoined { path: p }
+    PathUnknown { wanted: w } => ReceiptPathUnknown { receipt_path: w }
+    PathDuplicate { wanted: w, matches: m } => ReceiptPathDuplicate { receipt_path: w, matches: m }
+  }
+}
+
+fn distinct_string_count(values: List<String>) -> Int {
+  count(fold(values, init: [], f: fn(acc, v) {
+    if any(acc, e => e == v) { acc } else { append(acc, [v]) }
+  }))
+}
+
+fn guarantee_class_ids_unique(ids: List<GuaranteeClassId>) -> Bool {
+  distinct_string_count(values: ids |> map(i => i as String)) == count(ids)
+}
+
+fn guarantee_path_ids_unique(paths: List<GuaranteePath>) -> Bool {
+  distinct_string_count(values: paths |> map(p => p.id as String)) == count(paths)
+}
+
+data probe_set_digest_note: String = "Content address of the exact probe set a receipt ran under, folded in the caller's list order: canonical ordering is the PROBE stage's obligation (it owns the probe roster and its canonical enumeration), so this fn is deterministic exactly when the caller's order is - stated rather than silently sorted here, because a sort would need an order authority this stage does not own and a host-order sort would be the determinism leak std.determinism refuses."
+
+fn probe_set_digest(probe_ids: List<GuaranteeProbeId>) -> ContentHash {
+  fold(probe_ids, init: content_hash_atom(value: "guarantee-probe-set" as NonEmptyStr), f: fn(acc, id) {
+    content_hash_combine(left: acc, right: content_hash_tagged(tag: "probe" as NonEmptyStr, payload: content_hash_atom(value: id as NonEmptyStr)))
+  })
+}
