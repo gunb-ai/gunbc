@@ -5728,7 +5728,8 @@ fn bytes_to_value(bytes: &[u8]) -> Value {
 }
 
 fn shell_stdout_string_lossy(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
+    // String stdout is a lossy CLI projection; stdout_bytes retains faithful bytes.
+    String::from_utf8_lossy(bytes).trim_end().to_string()
 }
 
 fn shell_exit_succeeded(result: &ShellResult) -> bool {
