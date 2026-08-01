@@ -6098,7 +6098,7 @@ pub fn parse_fn_body_from_prefix(
                         err: r.err.clone(),
                     });
                 }
-                parse_expr(skip_newlines(r.tokens.clone()), ctx.clone())
+                parse_required_expression_after_separator(r.tokens.clone(), ctx.clone())
             }
         } else {
             if tok_is_lbrace(token_stream_first(tokens.clone())) {
@@ -13705,6 +13705,29 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
     })
 }
 
+pub fn required_expression_newline_continuation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A newline is whitespace in a syntactically incomplete required-expression position (the parser has consumed a keyword or separator and still owes an expression). Authority: parse_required_expression_after_separator (parse_expr sites) and parse_required_expression_no_brace_after_separator (for-in collection after 'in'). Not at generic parse_expr entry — statement boundaries stay token-aligned.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn parse_required_expression_after_separator(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExprResult> {
+    parse_expr(skip_newlines(tokens.clone()), ctx.clone())
+}
+
+pub fn parse_required_expression_no_brace_after_separator(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExprResult> {
+    parse_expr_no_brace(skip_newlines(tokens.clone()), ctx.clone())
+}
+
 pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(token_stream_first(tokens.clone()));
@@ -13754,7 +13777,8 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                         err: r2.err.clone(),
                     });
                 }
-                let r3 = parse_expr(r2.tokens.clone(), tr.ctx.clone());
+                let r3 =
+                    parse_required_expression_after_separator(r2.tokens.clone(), tr.ctx.clone());
                 if has_err(r3.err.clone()) {
                     return r3;
                 }
@@ -13795,7 +13819,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                         err: r2.err.clone(),
                     });
                 }
-                let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
+                let r3 = parse_required_expression_after_separator(r2.tokens.clone(), ctx.clone());
                 if has_err(r3.err.clone()) {
                     return r3;
                 }
@@ -13835,7 +13859,7 @@ pub fn parse_return(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
                 err: r.err.clone(),
             });
         }
-        let r = parse_expr(r.tokens.clone(), ctx.clone());
+        let r = parse_required_expression_after_separator(r.tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return r;
         }
@@ -13896,7 +13920,7 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 err: r.err.clone(),
             });
         }
-        let r = parse_expr_no_brace(r.tokens.clone(), ctx.clone());
+        let r = parse_required_expression_no_brace_after_separator(r.tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: r.expr.clone(),
