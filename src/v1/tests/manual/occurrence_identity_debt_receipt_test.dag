@@ -1,4 +1,4 @@
-module test.manual.occurrence_identity_debt_receipt_test
+module v1.tests.manual.occurrence_identity_debt_receipt_test
 
 import std.types { Bool, String }
 import std.occurrence_binding {
@@ -32,7 +32,7 @@ import v1.compiler.parse {
   parse_with_table_in_occurrence_scope,
 }
 
-data occurrence_identity_debt_receipt_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry dag/test/manual/occurrence_identity_debt_receipt_test.dag --functions w_rebuilt_reference_identity_preservation_executes_holds,w_structurally_equal_distinct_occurrences_execute_holds,w_pattern_declaration_reachability_executes_holds,w_same_spelling_parser_declaration_isolation_executes_holds"
+data occurrence_identity_debt_receipt_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/manual/occurrence_identity_debt_receipt_test.dag --functions w_rebuilt_reference_identity_preservation_executes_holds,w_structurally_equal_distinct_occurrences_execute_holds,w_pattern_declaration_reachability_executes_holds,w_same_spelling_parser_declaration_isolation_executes_holds"
 
 data occurrence_identity_debt_receipt_boundary_note: String = "Acceptance receipts for four occurrence-identity debts owned by namespace-reference-derived-closure. Every fixture enters through the production parser, and every asserted reference is consumed by std.occurrence_binding_resolve.resolve_reference_occurrence_binding, the canonical sidecar-consuming supplied-candidate boundary. The functions are green by execution but remain offline because the witness scheduler cannot supply their required dag and src/v1 source roots; occurrence_identity_receipt_enrollment_debts counts that distinct scheduling debt and its next trigger. The rebuilt-reference receipt additionally executes through the production compile/reconcile Node rebuild in the generated pipeline_occurrence_sidecar_serde_round_trip test: it parses the left source independently, compiles that same source, and requires byte-equal OccurrenceTransport ids and containment paths before serde. The receipts retain their GREEN controls after the debt rows delete. Discriminating RED packet: removing or reminting typed-module occurrence_transport propagation reds rebuilt-reference; resetting the allocator between identical reparses reds structurally-equal distinct identity; skipping nested Bind declarations in stamp_parsed_pattern reds pattern reachability; and keying any parser occurrence population by authored_name instead of OccurrenceId reds the same-spelling matrix. one-occurrence-collector-dedupe is deliberately absent: main has no occurrence-aware repeated-discovery collector, and a test-local deduper would not be a consumer."
 
