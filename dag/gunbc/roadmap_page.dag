@@ -6,7 +6,6 @@ import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
-import gunbc.site.mark { render_mark }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
@@ -44,7 +43,7 @@ import gunbc.roadmap_component {
 }
 import gunbc.roadmap_workflow_stage { WorkflowSegmentKind }
 import gunbc.client_observation_state { client_observation_state_key }
-import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted }
+import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
 
 fn roadmap_page_max_depth() -> Int { 12 }
 
