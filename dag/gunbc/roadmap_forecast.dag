@@ -17,8 +17,8 @@ import extdeps.project_schedule.cpm_pert {
   three_point_estimate_method,
   resource_capacity_lower_bound_method,
 }
-import extdeps.github.pull_timing_history {
-  CitedPullTiming,
+import extdeps.github.pulls {
+  PullTimingObservation,
   gunbc_pr_7393_timing,
   gunbc_pr_7405_timing,
   gunbc_pr_7429_timing,
@@ -78,7 +78,7 @@ type AcceptedNodePullLink {
   pull_number: Int
 }
 
-data accepted_node_pull_link_note: String = "The business join between a durable roadmap acceptance and its implementation/acceptance pull request. Pull timing facts stay in extdeps.github.pull_timing_history; acceptance stays in gunbc.roadmap_authority. This list says only which PR delivered an accepted node. A PR open-to-merge interval is admitted as a calibration sample only when exactly one accepted node links to that PR; a shared delivery is reported once as BundledPullDelivery and excluded because the source does not allocate its elapsed time among node sizing cells."
+data accepted_node_pull_link_note: String = "The business join between a durable roadmap acceptance and its implementation/acceptance pull request. Pull wire shape and its normalized timing observations stay under the single extdeps.github.pulls authority; acceptance stays in gunbc.roadmap_authority. This list says only which PR delivered an accepted node. A PR open-to-merge interval is admitted as a calibration sample only when exactly one accepted node links to that PR; a shared delivery is reported once as BundledPullDelivery and excluded because the source does not allocate its elapsed time among node sizing cells."
 
 fn accepted_node_pull_links() -> List<AcceptedNodePullLink> {
   [
@@ -95,7 +95,7 @@ fn accepted_node_pull_links() -> List<AcceptedNodePullLink> {
   ]
 }
 
-fn cited_pull_timings() -> List<CitedPullTiming> {
+fn cited_pull_timings() -> List<PullTimingObservation> {
   [
     gunbc_pr_7393_timing,
     gunbc_pr_7405_timing,
@@ -144,7 +144,7 @@ fn observation_for_link(
   link: AcceptedNodePullLink,
   nodes: List<RoadmapNode>,
   receipts: List<RoadmapAcceptanceReceipt>,
-  pulls: List<CitedPullTiming>,
+  pulls: List<PullTimingObservation>,
   links: List<AcceptedNodePullLink>,
 ) -> CycleTimeObservationBuild {
   let bundled_links = links |> filter(candidate => candidate.pull_number == link.pull_number)
