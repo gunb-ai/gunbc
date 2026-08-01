@@ -6227,6 +6227,43 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
     }
 }
 
+/// Projects a host diagnostic census into the `gunbc.compile_diagnostic_census` coproduct.
+/// The two arms stay distinct all the way to the substrate — `CensusNotRunnable` must never
+/// arrive as `CensusObserved` with an empty row list, because that is byte-identical to a clean
+/// compile and would let could-not-measure read as the subject passing (DESIGN §5).
+fn compile_diagnostic_census_value(
+    census: crate::cli_run::CompileDiagnosticCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::CompileDiagnosticCensus::Observed(rows) => Value::Variant {
+            type_name: ctx.sym("CompileDiagnosticCensus"),
+            variant_name: ctx.sym("CensusObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("rows"),
+                list_value(
+                    rows.into_iter()
+                        .map(|r| Value::Record {
+                            type_name: ctx.sym("CompileDiagnosticCensusRow"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (ctx.sym("diagnostic_class"), Value::Str(r.diagnostic_class)),
+                                (ctx.sym("subject_name"), Value::Str(r.subject_name)),
+                                (ctx.sym("blocking"), Value::Bool(r.blocking)),
+                                (ctx.sym("count"), Value::Int(r.count)),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+        crate::cli_run::CompileDiagnosticCensus::NotRunnable(cause) => Value::Variant {
+            type_name: ctx.sym("CompileDiagnosticCensus"),
+            variant_name: ctx.sym("CensusNotRunnable"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
+        },
+    }
+}
+
 fn argv_materialization_value(
     result: Result<Vec<String>, ArgvRefusalCause>,
     path: &str,
@@ -9388,6 +9425,42 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
+            arm "free_call.parse_stage0_cargo_manifest_bins" { "parse_stage0_cargo_manifest_bins" } => {
+                let manifest = expect_str(
+                    $positional.first().copied(),
+                    "parse_stage0_cargo_manifest_bins manifest",
+                )?;
+                let parsed = crate::cli_run::parse_stage0_cargo_manifest_bin_paths(&manifest);
+                let variant = match parsed {
+                    crate::cli_run::Stage0CargoManifestBinParse::Parsed {
+                        authored_relative_paths,
+                    } => Value::Variant {
+                        type_name: $ctx.sym("CargoManifestBinParse"),
+                        variant_name: $ctx.sym("CargoManifestBinsParsed"),
+                        fields: Rc::new(sorted_fields(vec![(
+                            $ctx.sym("authored_relative_paths"),
+                            list_value(
+                                authored_relative_paths
+                                    .into_iter()
+                                    .map(Value::Str)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        )])),
+                    },
+                    crate::cli_run::Stage0CargoManifestBinParse::Refused { detail } => {
+                        Value::Variant {
+                            type_name: $ctx.sym("CargoManifestBinParse"),
+                            variant_name: $ctx.sym("CargoManifestBinsParseRefused"),
+                            fields: Rc::new(sorted_fields(vec![(
+                                $ctx.sym("detail"),
+                                Value::Str(detail),
+                            )])),
+                        }
+                    }
+                };
+                Ok(Some(variant))
+            },
+
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
@@ -10364,6 +10437,14 @@ macro_rules! v1_builtin_arms {
                     crate::cli_run::compile_dag_rust_emit_check(
                         &source, &file_path, &includes, &excludes,
                     ),
+                )))
+            },
+
+            arm "free_call.compile_dag_diagnostic_census" { "compile_dag_diagnostic_census" } => {
+                let source = expect_str($positional.first().copied(), $name)?;
+                Ok(Some(compile_diagnostic_census_value(
+                    crate::cli_run::compile_dag_diagnostic_census(&source),
+                    $ctx,
                 )))
             },
 

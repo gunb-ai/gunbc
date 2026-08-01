@@ -193,6 +193,131 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
     )
 }
 
+/// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
+/// Git effects, repository policy, path normalization, and lifecycle classification stay in
+/// `.dag`; this bridge returns only the authored `[[bin]].path` facts or a typed parse refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stage0CargoManifestBinParse {
+    Parsed {
+        authored_relative_paths: Vec<String>,
+    },
+    Refused {
+        detail: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stage0CargoBinManifestParseRefusal {
+    BinTableMissingPath,
+    BinTablePathUnquoted,
+    BinTableTomlParse,
+}
+
+impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BinTableMissingPath => write!(f, "[[bin]] table missing path"),
+            Self::BinTablePathUnquoted => {
+                write!(f, "[[bin]] path value must be a TOML string")
+            }
+            Self::BinTableTomlParse => write!(f, "Cargo manifest is not valid TOML"),
+        }
+    }
+}
+
+fn stage0_cargo_bin_paths_from_manifest_text(
+    content: &str,
+) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
+    let document: toml::Table = toml::from_str(content)
+        .map_err(|_| Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+    let bins = match document.get("bin") {
+        None => return Ok(Vec::new()),
+        Some(toml::Value::Array(bins)) => bins,
+        Some(_) => return Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse),
+    };
+    let mut paths = Vec::with_capacity(bins.len());
+    for bin in bins {
+        let table = bin
+            .as_table()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+        let path = table
+            .get("path")
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)?
+            .as_str()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)?;
+        paths.push(path.to_string());
+    }
+    Ok(paths)
+}
+
+pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManifestBinParse {
+    match stage0_cargo_bin_paths_from_manifest_text(content) {
+        Ok(authored_relative_paths) => Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        },
+        Err(error) => Stage0CargoManifestBinParse::Refused {
+            detail: error.to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod stage0_cargo_manifest_parser_tests {
+    use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
+
+    #[test]
+    fn cargo_bins_parse_to_authored_relative_paths() {
+        let manifest = r#"
+[[bin]]
+name = "gunbc"
+path = "src/main.rs"
+
+[[bin]]
+name = "claim_batch"
+path = "src/bin/claim_batch.rs"
+"#;
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths(manifest),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec![
+                    "src/main.rs".to_string(),
+                    "src/bin/claim_batch.rs".to_string(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn cargo_bin_missing_path_is_typed_refusal() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\nname = \"orphan\"\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "[[bin]] table missing path".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn malformed_toml_is_typed_refusal() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"unterminated\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "Cargo manifest is not valid TOML".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn path_policy_is_not_applied_by_the_toml_realization() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"../../outside.rs\"\n"),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec!["../../outside.rs".to_string()],
+            }
+        );
+    }
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -1247,6 +1372,91 @@ fn resolve_virtual_source_with_imports(
         content: entry_content.to_string(),
     }));
     sources
+}
+
+/// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
+/// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
+/// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
+/// `CompilerDiagnostic` is the single authority for naming a variant (§3 — this is a projection,
+/// never a second diagnostic vocabulary).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileDiagnosticCensusRow {
+    pub diagnostic_class: String,
+    pub subject_name: String,
+    pub blocking: bool,
+    pub count: i64,
+}
+
+/// Result of [`compile_dag_diagnostic_census`]. `NotRunnable` is a distinct arm rather than an
+/// empty row list because an empty census is byte-identical to a clean compile: could-not-measure
+/// must never be readable as the subject passing (DESIGN §5 — ⊤-as-answer conflated with
+/// ⊤-as-ignorance). Preserving the split *here*, at the host seam, is what lets the probe layer
+/// map it to `ProbeObservation::ProbeNotRunnable` without guessing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompileDiagnosticCensus {
+    Observed(Vec<CompileDiagnosticCensusRow>),
+    NotRunnable(String),
+}
+
+/// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
+/// `.dag` program through the **same** path [`compile_dag_rust_emit_check`] takes, and report the
+/// full per-class diagnostic census the compile produced.
+///
+/// MEASUREMENT ONLY. Nothing here judges acceptance and nothing is filtered: every diagnostic the
+/// compile emitted appears, advisories included, with `blocking` carried **as data** read through
+/// the existing [`compile_clean_diagnostic_is_hard`] delegation so the severity policy keeps one
+/// home. Callers filter. The sibling builtin collapses this same information into a `bool`, which
+/// discards class identity, severity, and every advisory — the three facts a guarantee probe needs
+/// in order to state which judgment fired rather than merely that something refused.
+///
+/// Scope, stated so a receipt cannot claim coverage it does not have: this is the v1 pipeline to
+/// the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
+/// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes. It observes nothing about the
+/// interpreter's disposition of the same program and nothing about other emission targets.
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let module_index = build_module_path_index_from_witness_roots();
+        let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
+        v1_compiler_compile::compile_sources(
+            Rc::new(sources.into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        )
+    }));
+    let result = match compiled {
+        Ok(r) => r,
+        Err(_) => {
+            return CompileDiagnosticCensus::NotRunnable(
+                "compile_dag_diagnostic_census: the compile panicked before producing diagnostics"
+                    .to_string(),
+            );
+        }
+    };
+    // Aggregate on the full key INCLUDING severity: one class can legitimately occur at both
+    // severities, and folding those together would hide exactly the blocking→advisory demotion
+    // this surface exists to keep visible.
+    let mut order: Vec<(String, String, bool)> = Vec::new();
+    let mut counts: HashMap<(String, String, bool), i64> = HashMap::new();
+    for d in result.diagnostics.iter() {
+        let (class, name) = compile_clean_diagnostic_histogram_key(d);
+        let blocking = compile_clean_diagnostic_is_hard(d);
+        let key = (class, name, blocking);
+        let entry = counts.entry(key.clone()).or_insert(0);
+        if *entry == 0 {
+            order.push(key);
+        }
+        *entry += 1;
+    }
+    CompileDiagnosticCensus::Observed(
+        order
+            .into_iter()
+            .map(|key| CompileDiagnosticCensusRow {
+                diagnostic_class: key.0.clone(),
+                subject_name: key.1.clone(),
+                blocking: key.2,
+                count: counts.get(&key).copied().unwrap_or(0),
+            })
+            .collect(),
+    )
 }
 
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
