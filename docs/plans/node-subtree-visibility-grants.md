@@ -1,11 +1,21 @@
-# Node/subtree visibility grants — two verbs in the effect-grant algebra, not a parallel mechanism
+# Node/subtree visibility policy — historical carrier experiment and retained P-C direction
 
-Status: DRAFT for operator review (2026-07-21, session gentle-otter-138). Origin: private/public
+Status: **SUPERSEDED AS AN IMPLEMENTATION PLAN (operator ruling 2026-08-01).** The carrier-specific
+`Reference` / `Publish` / `AudienceScopeTree` / `std.visibility_grant` design below is retained as
+historical rationale and must not be implemented. Those carriers and their carrier-only witnesses
+were deleted when their only consumer, the Stage 0 placement gate, dissolved; authorization
+admission now projects typed request profiles into `std.access`. The publication intent returns
+only at P-C as `PublicationPolicy` → derived `PublicProjectionPlan` → sole modeled publisher, with
+the policy and capability-product constraints below retained. The distinct reference-gating intent
+currently has no consumer and no enforcement claim; it returns only if a concrete consumer appears,
+through a typed `std.access` request profile rather than resurrecting the deleted effect verbs.
+
+Historical origin (2026-07-21, session gentle-otter-138): private/public
 toggling over the containment tree — motivated generically by (a) hiding implementation-internal
 declarations from cross-container reference, and (b) partitioning a source tree across storage
 roots of differing audience, a need any project with a public mirror and a private overlay has,
-and which forge-style per-subtree visibility toggles are a known point of prior art for. No code
-lands from this doc. It rides `docs/plans/effect-namespace-grants.md` (owned silent-ibex-417) and
+and which forge-style per-subtree visibility toggles are a known point of prior art for. The
+superseded plan rode `docs/plans/effect-namespace-grants.md` (owned silent-ibex-417) and
 `docs/plans/namespace-resolution-design.md` (the containment-tree authority), both cited, not
 duplicated.
 
