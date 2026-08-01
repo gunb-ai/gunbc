@@ -236,14 +236,19 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
     && !string_contains(s: h, pattern: "j.status")
 }
 
+data client_reads_decided_activity_note: String = "A2 flip of the belt-B contract pins: the client consumes the DECIDED activity object (attempt.activity — arm, attention, summary, evidence) and the segment roster; the former positives provider_activity / workflow_status / remaining_obligations are now the discriminating NEGATIVES, because a client that re-derives a summary or a remaining count from the raw fields is a second projection authority. The segments receiver is pinned in its grouped spelling — (attempt.segments || []).forEach — the exact shape whose ungrouped form was the 2026-08-01 silent no-op."
+
 test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
     && string_contains(s: js, pattern: "fetch('/workflow.json')")
-    && string_contains(s: js, pattern: "provider_activity")
-    && string_contains(s: js, pattern: "workflow_status")
-    && string_contains(s: js, pattern: "remaining_obligations")
-    && string_contains(s: js, pattern: "attempt.segments.forEach")
+    && string_contains(s: js, pattern: "attempt.activity")
+    && string_contains(s: js, pattern: "av.arm")
+    && string_contains(s: js, pattern: "av.attention")
+    && string_contains(s: js, pattern: "(attempt.segments || []).forEach")
+    && !string_contains(s: js, pattern: "provider_activity")
+    && !string_contains(s: js, pattern: "workflow_status")
+    && !string_contains(s: js, pattern: "remaining_obligations")
     && string_contains(s: js, pattern: "gunbcRefreshWorkflow().finally")
     && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
