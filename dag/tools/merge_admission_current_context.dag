@@ -14,7 +14,13 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.merge_admission {
   WalkAttemptId,
+  MergeAdmissionVerdict,
   MergeAdmitted,
+  MergeDeniedStaleBase,
+  MergeDeniedStaleRoster,
+  MergeDeniedNotSuccess,
+  MergeDeniedWrongAttempt,
+  MergeDeniedSubjectMismatch,
   classify_merge_admission_verdict_v2,
   current_gate_roster_hash,
   merge_admission_verdict_label,
@@ -60,6 +66,15 @@ fn current_walk_attempt_id() -> WalkAttemptId? {
         },
       )
   }
+}
+
+fn denied_exit(verdict: MergeAdmissionVerdict) -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "merge_admission_current_context: blocked (",
+      concat(merge_admission_verdict_label(v: verdict), ")")
+    )
+  )
 }
 
 func main() -> ProcessExit {
@@ -114,11 +129,10 @@ func main() -> ProcessExit {
   )
   match verdict {
     MergeAdmitted => ExitSuccess
-    _ => exit_failure(
-      reason: concat(
-        "merge_admission_current_context: blocked (",
-        concat(merge_admission_verdict_label(v: verdict), ")")
-      )
-    )
+    MergeDeniedStaleBase => denied_exit(verdict: verdict)
+    MergeDeniedStaleRoster => denied_exit(verdict: verdict)
+    MergeDeniedNotSuccess => denied_exit(verdict: verdict)
+    MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
+    MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
   }
 }

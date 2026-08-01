@@ -20,7 +20,14 @@ import gunbc.merge_admission {
   gate_roster_content_hash,
   current_gate_roster_hash,
 }
-import gunbc.commit_workflow { commit_gate_roster }
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  CommitSpecGate,
+  CommitWitnessClaim,
+  CommitCargoFmtCheck,
+  gate_eq,
+}
+import gunbc.ci_gate { PublicationPlacementGate }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
   merge_admission_tested_subject_schema,
@@ -101,7 +108,18 @@ test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
 
 fn publication_pre_activation_roster_hash() -> ContentHash {
   gate_roster_content_hash(
-    roster: concat(commit_gate_roster.take(n: 5), commit_gate_roster.skip(n: 6))
+    roster: fold(commit_gate_roster, init: [], f: fn(acc, row) {
+      match row.check {
+        CommitSpecGate { gate: gate } =>
+          if gate_eq(a: gate, b: PublicationPlacementGate) {
+            acc
+          } else {
+            concat(acc, [row])
+          }
+        CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => concat(acc, [row])
+        CommitCargoFmtCheck => concat(acc, [row])
+      }
+    })
   )
 }
 
@@ -123,7 +141,11 @@ test fn pre_publication_wall_receipt_refuses_against_live_roster() -> Bool {
       current_roster_hash: current_gate_roster_hash,
     ) {
       MergeDeniedStaleRoster => true
-      _ => false
+      MergeAdmitted => false
+      MergeDeniedStaleBase => false
+      MergeDeniedNotSuccess => false
+      MergeDeniedWrongAttempt => false
+      MergeDeniedSubjectMismatch => false
     }
 }
 
@@ -144,7 +166,11 @@ test fn current_publication_wall_receipt_admits_against_live_roster() -> Bool {
     current_roster_hash: current_gate_roster_hash,
   ) {
     MergeAdmitted => true
-    _ => false
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
 }
 
