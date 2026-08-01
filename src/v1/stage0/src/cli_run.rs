@@ -23302,6 +23302,17 @@ mod sidecar_placement_hygiene_tests {
     use super::scan_wire_contract_decl_names;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    #[test]
+    fn workspace_entry_boundary_resolves_from_crate_cwd() {
+        let ws = super::process_workspace_root();
+        let source_roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        super::resolve_workspace_entry(&source_roots, super::FLOOR_DISCOVERY_PRODUCER_ENTRY)
+            .expect("typed workspace-relative entry must resolve independently of process cwd");
+    }
+
     static SEQ: AtomicU64 = AtomicU64::new(0);
     /// Fixtures live under the workspace's own `target/`, not `std::env::temp_dir()`.
     /// Anything on the floor's reporting path normalizes through
