@@ -1,0 +1,56 @@
+module test.claim.resolved_graph_cache_hand_rust_witness
+
+import gunbc.resolved_graph_cache_hand_rust_scaffold {
+  resolved_graph_cache_hand_rust_scaffold,
+  resolved_graph_cache_hand_rust_dissolve_trigger,
+  resolved_graph_cache_hand_rust_loc_delta_net,
+  resolved_graph_cache_hand_rust_paths,
+  resolved_graph_cache_hand_rust_receipt_plan_anchor,
+  resolved_graph_cache_hand_rust_receipt_witness_entry,
+  resolved_graph_cache_hand_rust_roadmap_lane_anchor,
+  resolved_graph_cache_hand_rust_test_discriminator_cold_oracle,
+  resolved_graph_cache_hand_rust_test_discriminator_legacy_migrate,
+  resolved_graph_cache_hand_rust_test_discriminator_migration_race,
+  resolved_graph_cache_hand_rust_test_discriminator_toctou,
+}
+import std.disposition { Scaffold, SingleAuthority }
+import std.types { Bool }
+import v2.std.algebra { length }
+
+data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt for review 46781: pins the seed-retained scaffold bind on v1_compiler.resolved_graph_cache.lookup_verified_probe, names bounded deferral (cli_run_hollowing_plan area 2.6), and cites named discriminators executed by cargo test -p v1-compiler-tests resolve_cross_process_cache_test -- --nocapture."
+
+test fn resolved_graph_cache_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match resolved_graph_cache_hand_rust_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn resolved_graph_cache_hand_rust_receipt_is_checkable() -> Bool {
+  !(resolved_graph_cache_hand_rust_dissolve_trigger == "")
+    && !(resolved_graph_cache_hand_rust_receipt_plan_anchor == "")
+    && !(resolved_graph_cache_hand_rust_roadmap_lane_anchor == "")
+    && resolved_graph_cache_hand_rust_receipt_witness_entry ==
+      "dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag"
+    && resolved_graph_cache_hand_rust_loc_delta_net > 0
+    && (length(xs: resolved_graph_cache_hand_rust_paths) == 2)
+}
+
+test fn resolved_graph_cache_hand_rust_discriminating_tests_named() -> Bool {
+  string_contains(
+    s: resolved_graph_cache_hand_rust_test_discriminator_toctou,
+    pattern: "verified_lookup"
+  )
+    && string_contains(
+      s: resolved_graph_cache_hand_rust_test_discriminator_migration_race,
+      pattern: "v3_write_refuses"
+    )
+    && string_contains(
+      s: resolved_graph_cache_hand_rust_test_discriminator_legacy_migrate,
+      pattern: "legacy_v1"
+    )
+    && string_contains(
+      s: resolved_graph_cache_hand_rust_test_discriminator_cold_oracle,
+      pattern: "cold_oracle"
+    )
+}

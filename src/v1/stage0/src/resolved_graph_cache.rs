@@ -1,3 +1,5 @@
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.resolved_graph_cache_hand_rust_scaffold;
+// witness: dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag).
 use im::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
