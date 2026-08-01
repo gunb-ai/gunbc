@@ -1,0 +1,216 @@
+module extdeps.advertising.meta_ads
+
+import std.types { List, NonEmptyStr }
+
+import extdeps.advertising.types { AdPriceDetermination, AuctionDetermined, RateUnavailable }
+import extdeps.securities { Securities }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.meta_platforms { meta_platforms }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.facebook.com/docs/marketing-api/reference/ad-campaign"
+  }
+}
+
+data meta_ads_subject: Vendor<Securities> = meta_platforms
+
+data meta_ads_provenance_note: String = "Interface facts live-fetched 2026-08-01 from the Meta Marketing API developer docs: the anchor page (which, per the API's legacy object naming, is the AD SET reference -- billing_event, bid_strategy, and optimization_goal are ad-set-level fields) and the bidding overview at developers.facebook.com/docs/marketing-api/bidding, which states the billing-event concept verbatim: the system 'defines events you want to pay for, including impressions, clicks, or various actions.' Two Business Help Center pages were attempted and are client-rendered (this fetch reads only their titles): 'About Ad Auctions | Meta Business Help Center' (facebook.com/business/help/430291176997542) and 'Best Practices for Minimum Budgets | Meta Business Help Center' (facebook.com/business/help/203183363050448) -- the latter is why the minimum-budget row below is RateUnavailable with that cause, never a remembered number."
+
+type MetaBillingEvent
+  = MetaBillAppInstalls
+  | MetaBillClicks
+  | MetaBillImpressions
+  | MetaBillLinkClicks
+  | MetaBillNone
+  | MetaBillOfferClaims
+  | MetaBillPageLikes
+  | MetaBillPostEngagement
+  | MetaBillThruplay
+  | MetaBillPurchase
+  | MetaBillListingInteraction
+
+type MetaBillingEventRow {
+  event: MetaBillingEvent
+  wire_value: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+data meta_billing_event_note: String = "billing_event is the published API enum naming what the advertiser is CHARGED for; wire values verbatim from the anchor reference. It is a separate axis from optimization_goal (optimize delivery for one event while being billed on another) -- fusing the two would misstate the documented interface, so the optimization-goal roster lands as its own row below."
+
+data meta_bill_app_installs: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillAppInstalls,
+  wire_value: "APP_INSTALLS",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_clicks: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillClicks,
+  wire_value: "CLICKS",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_impressions: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillImpressions,
+  wire_value: "IMPRESSIONS",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_link_clicks: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillLinkClicks,
+  wire_value: "LINK_CLICKS",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_none: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillNone,
+  wire_value: "NONE",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_offer_claims: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillOfferClaims,
+  wire_value: "OFFER_CLAIMS",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_page_likes: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillPageLikes,
+  wire_value: "PAGE_LIKES",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_post_engagement: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillPostEngagement,
+  wire_value: "POST_ENGAGEMENT",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_thruplay: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillThruplay,
+  wire_value: "THRUPLAY",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_purchase: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillPurchase,
+  wire_value: "PURCHASE",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_bill_listing_interaction: MetaBillingEventRow = MetaBillingEventRow {
+  event: MetaBillListingInteraction,
+  wire_value: "LISTING_INTERACTION",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+fn meta_billing_event_catalog() -> List<MetaBillingEventRow> {
+  [
+    meta_bill_app_installs,
+    meta_bill_clicks,
+    meta_bill_impressions,
+    meta_bill_link_clicks,
+    meta_bill_none,
+    meta_bill_offer_claims,
+    meta_bill_page_likes,
+    meta_bill_post_engagement,
+    meta_bill_thruplay,
+    meta_bill_purchase,
+    meta_bill_listing_interaction,
+  ]
+}
+
+type MetaBidStrategy
+  = MetaLowestCostWithoutCap
+  | MetaLowestCostWithBidCap
+  | MetaCostCap
+  | MetaLowestCostWithMinRoas
+
+type MetaBidStrategyRow {
+  strategy: MetaBidStrategy
+  wire_value: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+data meta_strategy_lowest_cost_without_cap: MetaBidStrategyRow = MetaBidStrategyRow {
+  strategy: MetaLowestCostWithoutCap,
+  wire_value: "LOWEST_COST_WITHOUT_CAP",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_strategy_lowest_cost_with_bid_cap: MetaBidStrategyRow = MetaBidStrategyRow {
+  strategy: MetaLowestCostWithBidCap,
+  wire_value: "LOWEST_COST_WITH_BID_CAP",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_strategy_cost_cap: MetaBidStrategyRow = MetaBidStrategyRow {
+  strategy: MetaCostCap,
+  wire_value: "COST_CAP",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+data meta_strategy_lowest_cost_with_min_roas: MetaBidStrategyRow = MetaBidStrategyRow {
+  strategy: MetaLowestCostWithMinRoas,
+  wire_value: "LOWEST_COST_WITH_MIN_ROAS",
+  citation: "developers.facebook.com/docs/marketing-api/reference/ad-campaign",
+}
+
+fn meta_bid_strategy_catalog() -> List<MetaBidStrategyRow> {
+  [
+    meta_strategy_lowest_cost_without_cap,
+    meta_strategy_lowest_cost_with_bid_cap,
+    meta_strategy_cost_cap,
+    meta_strategy_lowest_cost_with_min_roas,
+  ]
+}
+
+data meta_optimization_goal_note: String = "optimization_goal wire values transcribed verbatim from the anchor reference 2026-08-01. Kept as a wire-value roster rather than a closed enum: this is the coarse-grain record that the axis EXISTS and is distinct from billing_event; per-goal modeling waits for a consumer that needs it (second-consumer discipline), and a 33-variant enum nobody eliminates over would be roster theater."
+
+data meta_optimization_goal_wire_values: List<NonEmptyStr> = [
+  "NONE",
+  "APP_INSTALLS",
+  "AD_RECALL_LIFT",
+  "ENGAGED_USERS",
+  "EVENT_RESPONSES",
+  "IMPRESSIONS",
+  "LEAD_GENERATION",
+  "QUALITY_LEAD",
+  "LINK_CLICKS",
+  "OFFSITE_CONVERSIONS",
+  "PAGE_LIKES",
+  "POST_ENGAGEMENT",
+  "QUALITY_CALL",
+  "REACH",
+  "LANDING_PAGE_VIEWS",
+  "VISIT_INSTAGRAM_PROFILE",
+  "ENGAGED_PAGE_VIEWS",
+  "VALUE",
+  "THRUPLAY",
+  "DERIVED_EVENTS",
+  "APP_INSTALLS_AND_OFFSITE_CONVERSIONS",
+  "CONVERSATIONS",
+  "IN_APP_VALUE",
+  "MESSAGING_PURCHASE_CONVERSION",
+  "MESSAGING_DEEP_CONVERSATION_AND_FOLLOW",
+  "SUBSCRIBERS",
+  "REMINDERS_SET",
+  "MEANINGFUL_CALL_ATTEMPT",
+  "PROFILE_VISIT",
+  "PROFILE_AND_PAGE_ENGAGEMENT",
+  "ADVERTISER_SILOED_VALUE",
+  "AUTOMATIC_OBJECTIVE",
+  "MESSAGING_APPOINTMENT_CONVERSION",
+]
+
+data meta_ads_media_rate: AdPriceDetermination = AuctionDetermined {
+  mechanism_citation: "developers.facebook.com/docs/marketing-api/bidding",
+}
+
+data meta_ads_minimum_daily_budget_rate: AdPriceDetermination = RateUnavailable {
+  cause: "Meta publishes minimum daily budget figures in the Business Help Center page 'Best Practices for Minimum Budgets' (facebook.com/business/help/203183363050448), but that page is client-rendered and this fetch reads only its title (2026-08-01) -- refused, never filled from memory",
+}

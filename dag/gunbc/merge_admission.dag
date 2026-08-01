@@ -19,7 +19,7 @@ import std.realization_schedule {
 import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
+  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, PublicationPlacementGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate,
 }
@@ -78,6 +78,7 @@ fn gate_content_hash(g: Gate) -> ContentHash {
     ExtdepsExternalAuthorityGate => content_hash_atom(value: "ExtdepsExternalAuthorityGate")
     DagCompileCleanGate => content_hash_atom(value: "DagCompileCleanGate")
     GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
+    PublicationPlacementGate => content_hash_atom(value: "PublicationPlacementGate")
     SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
     RegenVerifyGate => content_hash_atom(value: "RegenVerifyGate")
     SelfHostReadsRealBytesGate => content_hash_atom(value: "SelfHostReadsRealBytesGate")
@@ -183,7 +184,9 @@ type CheckCoverage
 
 data check_coverage_subject_universe_note: String = "CHECK COVERAGE IS A TOTAL CLASSIFICATION OVER AN EXPLICIT SUBJECT UNIVERSE (operator mandate 2026-08-01). The subject is (required PR head, required gate-roster identity, nonempty required gate population). No check runs is CheckCoverageAbsent, never an empty list that all() can call green. A run still executing is Running. A dependency stop is Stopped and carries both the completed and UNEXECUTED populations plus a cause, so batch-1 drift stopping the witness batches cannot masquerade as a witness verdict. Complete is the only arm admission examines for success. Stale carries both observed and required identities; it is not repaired by relabeling the observation. Adding a coverage state requires a new coproduct arm and turns every exhaustive consumer red until classified — unclassified is structurally unavailable."
 
-data check_coverage_external_consumer_boundary_note: String = "BOUNDARY, NOT AN END-TO-END CLOSURE CLAIM. This module is the repository's admission authority and now makes the correct semantics representable and executable. The live fail-open observed 2026-08-01 was in the external dashboard readout: it reported no failing or pending checks with ok=true when the healed head had NO run. That consumer lives outside this repository and is not changed here. Until it conforms to classify_check_coverage_admission, the operational rule is stricter than its readout: never merge unless an executing run explicitly names the current PR head and reaches every required witness; an auto-heal head with no subsequent run is untested."
+data check_coverage_external_consumer_boundary_note: String = "BOUNDARY, NOT AN END-TO-END CLOSURE CLAIM. This module is the repository's admission authority and now makes the correct semantics representable and executable. The live fail-open observed 2026-08-01 was in the external dashboard readout: it reported no failing or pending checks with ok=true when the healed head had NO run. That consumer is ctrl session-dashboard: scripts/session-dashboard/lib/summarize_checks.mjs supplies the check classification consumed by pr_merge_ready_digest.mjs and server.mjs. It lives outside this repository and is not changed here. Until it conforms to classify_check_coverage_admission, the operational rule is stricter than its readout: never merge unless an executing run explicitly names the current PR head and reaches every required witness; an auto-heal head with no subsequent run is untested."
+
+data check_coverage_external_consumer_adoption_receipt_in_flight: String = "ADOPTION IN FLIGHT, NOT COMPLETE (observed 2026-08-01). gunb-ai/ctrl PR #1922, Adopt gunbc exact-head CI admission semantics in dashboard checks, is OPEN, non-draft, and mergeStateStatus CLEAN. It maps CANCELLED runs to superseded rather than failed, an empty check rollup to none rather than passing, and permits the merge gate only when checksState is passing. This receipt closes only after #1922 is merged AND the live session-dashboard consumer is observed reading those semantics. gunbc records that external obligation but does not own or claim completion of the ctrl change. The repeated cancelled-run false negatives observed while validating gunbc PR #7544 are the live symptom this adoption removes."
 
 type CheckCoverageAdmissionVerdict
   = CheckCoverageAdmitted
