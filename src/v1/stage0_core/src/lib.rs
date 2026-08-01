@@ -58,6 +58,8 @@ pub mod std_computation;
 pub mod std_content_hash;
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;
+#[path = "../../stage0/src/std_roster_frontier.rs"]
+pub mod std_roster_frontier;
 #[path = "../../stage0/src/std_disposition.rs"]
 pub mod std_disposition;
 #[path = "../../stage0/src/std_effects.rs"]

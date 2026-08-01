@@ -37,7 +37,7 @@ import gunbc.live_deploy.spec {
   deployment_step_teardown_disposition,
   gunbc_service_user,
 }
-import gunbc.host_layout { srv1_dispatch_attempt_state_root }
+import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
@@ -483,6 +483,20 @@ test fn emitted_twin_scripts_touch_none_of_productions_effects() -> Bool {
     && string_contains(s: live, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "/etc/systemd/system/gunbc-roadmap.service")
+}
+
+data belt_spawn_root_witness_note: String = "THE CLAIM THE BELT-TIMER MEMBER MOST NEEDED AND DID NOT HAVE (review 46541). Every other member's twin-safety follows from its PATH differing, which spec_owned_paths and the disjointness claim above already cover. The belt timer is the one member whose damage is not expressible as a path collision: both instances install their own unit at their own path, and the twin's unit can still drive PRODUCTION's tree, because what selects the tree is an argument inside the unit body rather than the unit's name. A path-level witness cannot see it, which is exactly the shape deployment_service_handler_note records for the serve handler.\\n\\nSo this reads the emitted body. The twin's belt unit must carry the twin's own spawn root, and must not carry production's — and because GUNBC_BELT_SPAWN_WORKDIR is fail-closed in belt_run_once_cli, a unit that carried neither would refuse at run time rather than silently default, which is the third state this pins shut.\\n\\nIt is discriminating in the direction that matters: deleting the Environment= line, or hardcoding either root in the emitter, reds it. The earlier conditional-membership shape would also have redded it, since the twin would have had no belt unit at all to carry a root."
+
+test fn twin_belt_timer_actuates_its_own_tree_not_productions() -> Bool {
+  let live_instance = srv1_live_dashboard_instance()
+  let lab_instance = srv1_lab_dashboard_instance()
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec())
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1())
+  let env = concat(belt_spawn_workdir_env_var as String, "=")
+  string_contains(s: twin, pattern: concat(env, lab_instance.repo_root as String))
+    && !string_contains(s: twin, pattern: concat(env, live_instance.repo_root as String))
+    && string_contains(s: live, pattern: concat(env, live_instance.repo_root as String))
+    && !(live_instance.repo_root == lab_instance.repo_root)
 }
 
 test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
