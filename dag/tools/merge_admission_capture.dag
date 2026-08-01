@@ -1,7 +1,7 @@
 module tools.merge_admission_capture
 
 import std.types { FilePath, GitRef, NonEmptyStr, String }
-import extdeps.git
+import extdeps.git.inspect
 import extdeps.git.object_store {
   GitObjectId,
   git_sha1_object_id,
@@ -85,18 +85,18 @@ func capture_tested_subject() -> Bool {
   match current_walk_attempt_id() {
     Absent => false
     Present { value: attempt_id } =>
-      let head = git.Core.HeadCommit()
+      let head = git.Inspect.HeadCommit()
       if !head.success {
         false
       } else {
-        let base = git.Core.ShowTree(ref: tested_checkout_base_ref(event_name: current_event_name()))
+        let base = git.Inspect.ShowTree(ref: tested_checkout_base_ref(event_name: current_event_name()))
         if !base.success {
           false
         } else {
           match observed_git_object_id(raw: base.tree) {
             Absent => false
             Present { value: base_tree } =>
-              let root = git.Core.Toplevel().path as String
+              let root = git.Inspect.Toplevel().path as String
               let attempt_dir = merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
               let cleared = shell.Remove.RecursiveForce(path: attempt_dir as FilePath)
               if !cleared.success {

@@ -1,8 +1,11 @@
 module gunbc.ci_spec
 
+import std.types { Duration }
+
 import gunbc.ci_release_bins {
   ci_floor_required_artifact_names
 }
+
 import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
@@ -67,6 +70,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
+
+data gunbc_ci_ordinary_floor_budget_minutes: Duration = 55
+
+data gunbc_ci_admission_postcondition_budget_minutes: Duration = 5
+
+fn gunbc_ci_workflow_wrapper_budget_minutes() -> Duration {
+  gunbc_ci_ordinary_floor_budget_minutes + gunbc_ci_admission_postcondition_budget_minutes
+}
+
+data gunbc_ci_two_population_budget_note: String = "The CI walk owns two disjoint wall allowances: 55 minutes for ordinary batches and 5 minutes for green-only admission postconditions. WalkPlan carries both so claim_executor, not the outer runner, prevents ordinary work from consuming the admission allowance. The GitHub step is the exact 60-minute sum and remains only the wrapper backstop; a budget refusal is located to its population inside the executor."
 
 data gunbc_ci_floor_batch_stop_policy_note: String = "Floor batch stop policy (operator ruling 2026-07-22, fail-fast lane): claim_executor's walk halt is event-scoped so cheap-gate-early reorder does not truncate main's ledger. pull_request → StopBeforeDependents (fail-fast: a cheap-gate red stops before compile/corpus). push (main) and schedule (falsifier) → FullLedger (record batch failure and continue; exit non-zero at end). Unknown/unrecognized events default to FullLedger — never silently stop-early and lose ledger (the absorbing fallback). Authority: gunbc_ci_floor_batch_stop_policy_for_github_event in v2.workflow.ci_floor_plan; consumer: claim_executor.rs run_walk (see gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note)."
 

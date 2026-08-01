@@ -20,6 +20,8 @@ import gunbc.ci_spec {
   FloorBatchStopPolicy,
   gunbc_ci_floor_batch_clamp_params,
   gunbc_ci_compile_clean_clamp,
+  gunbc_ci_ordinary_floor_budget_minutes,
+  gunbc_ci_admission_postcondition_budget_minutes,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
 import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_entries, project_falsifier_gates }
@@ -115,7 +117,7 @@ data floor_merge_admission_capture_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data floor_merge_admission_schedule_note: String = "The admission path is modeled as one ordinary capture plus two singleton success stages. Capture is a small first-batch resource anchor with a DataDependsOn edge into compile-clean, so it observes checkout ancestry before substantive floor work without importing the downstream classifier/roster closure or creating a corpus->capture->compile->corpus cycle. Stamp and gate share one stage entry and memo; they are distinct stages because barriers, not sibling order, carry their dependency, while fresh fetch and classification remain one composite stage-2 function. All three profiles are Wet, negligible, non-heavy, and non-host-compiler: the exact shape std.realization_schedule on_success_runnable_disposition admits."
+data floor_merge_admission_schedule_note: String = "The admission path is modeled as one ordinary capture plus two singleton success stages. Capture is a small first-batch resource anchor with a DataDependsOn edge into compile-clean, so it observes checkout ancestry before substantive floor work without importing the downstream classifier/roster closure or creating a corpus->capture->compile->corpus cycle. Stamp and gate share one entry but may pay one resolve per singleton stage; their disk-visible receipts and barriers, not sibling order or cross-stage memo retention, carry the dependency, while fresh fetch and classification remain one composite stage-2 function. All three profiles are Wet, negligible, non-heavy, and non-host-compiler: the exact shape std.realization_schedule on_success_runnable_disposition admits."
 
 fn floor_merge_admission_profile() -> RunnableResourceProfile {
   gate_profile_negligible_wet_declared()
@@ -1369,6 +1371,8 @@ fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
       declared_resolve_count: ci_floor_declared_resolve_count,
     },
     on_success_stages: gunbc_ci_on_success_stages(),
+    ordinary_budget_ms: Present { value: gunbc_ci_ordinary_floor_budget_minutes * 60000 },
+    on_success_budget_ms: Present { value: gunbc_ci_admission_postcondition_budget_minutes * 60000 },
   }
 }
 
@@ -1377,6 +1381,8 @@ fn gunbc_ci_regen_floor_plan() -> WalkPlan<NoWalkFinalization> {
     batches: gunbc_ci_regen_floor_ordinary_batches(),
     finalization: NoFinalizationDeclared {},
     on_success_stages: [],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 
@@ -1385,6 +1391,8 @@ fn gunbc_ci_plan_artifact_plan() -> WalkPlan<NoWalkFinalization> {
     batches: gunbc_ci_plan_artifact_ordinary_batches(),
     finalization: NoFinalizationDeclared {},
     on_success_stages: [],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 
@@ -1393,6 +1401,8 @@ fn gunbc_falsifier_plan() -> WalkPlan<NoWalkFinalization> {
     batches: gunbc_falsifier_ordinary_batches(),
     finalization: NoFinalizationDeclared {},
     on_success_stages: [],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 

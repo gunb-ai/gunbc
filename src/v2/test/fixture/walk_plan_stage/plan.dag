@@ -34,6 +34,8 @@ fn walk_plan_stage_overlap_barrier_plan() -> WalkPlan<NoWalkFinalization> {
       [walk_plan_stage_overlap_peer_a_claim(), walk_plan_stage_overlap_peer_b_claim()],
       [walk_plan_stage_barrier_witness_claim()],
     ],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 
@@ -45,6 +47,8 @@ fn walk_plan_stage_failure_barrier_plan() -> WalkPlan<NoWalkFinalization> {
       [walk_plan_stage_failure_red_member_claim()],
       [walk_plan_stage_stage2_marker_claim()],
     ],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 
@@ -56,6 +60,8 @@ fn walk_plan_stage_recursion_refusal_barrier_plan() -> WalkPlan<NoWalkFinalizati
       [walk_plan_stage_recursion_refusal_member_claim()],
       [walk_plan_stage_stage2_marker_claim()],
     ],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 
@@ -67,5 +73,7 @@ fn walk_plan_stage_receipt_refusal_barrier_plan() -> WalkPlan<NoWalkFinalization
       [walk_plan_stage_receipt_refusal_poison_claim()],
       [walk_plan_stage_stage2_marker_claim()],
     ],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }

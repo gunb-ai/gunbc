@@ -950,6 +950,37 @@ struct ParsedWalkPlan {
     batches: Vec<Vec<Runnable>>,
     finalization: Option<FloorFinalization>,
     on_success_stages: Vec<Vec<Runnable>>,
+    ordinary_budget_ms: Option<u64>,
+    on_success_budget_ms: Option<u64>,
+}
+
+fn optional_walk_budget_ms(
+    value: &Value,
+    ctx: &InterpContext,
+    field: &str,
+) -> Result<Option<u64>, String> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Present") => match ctx.field(fields, "value") {
+            Some(Value::Int(n)) if *n > 0 => u64::try_from(*n)
+                .map(Some)
+                .map_err(|_| format!("WalkPlan.{field} exceeds the executor's u64 range")),
+            Some(Value::Int(n)) => Err(format!(
+                "WalkPlan.{field} must be a positive millisecond count, got {n}"
+            )),
+            other => Err(format!(
+                "WalkPlan.{field} Present.value must be Nat, got {other:?}"
+            )),
+        },
+        other => Err(format!(
+            "WalkPlan.{field} must be Present {{ value: Nat }} or Absent, got {}",
+            ctx.format_value(other)
+        )),
+    }
 }
 
 /// Parse the plan-carried finalization VALUE (walk_finalization_note). The executor
@@ -1050,6 +1081,12 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
          NoFinalizationDeclared, never omits the field"
             .to_string()
     })?;
+    let ordinary_budget_val = ctx.field(fields, "ordinary_budget_ms").ok_or_else(|| {
+        "WalkPlan missing field `ordinary_budget_ms` — unbounded plans declare Absent; the parser never invents a budget".to_string()
+    })?;
+    let on_success_budget_val = ctx.field(fields, "on_success_budget_ms").ok_or_else(|| {
+        "WalkPlan missing field `on_success_budget_ms` — plans without bounded postconditions declare Absent; the parser never invents a budget".to_string()
+    })?;
     Ok(ParsedWalkPlan {
         batches: batches_from_plan(batches_val, ctx)
             .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
@@ -1057,6 +1094,16 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
             .map_err(|msg| format!("WalkPlan.finalization: {msg}"))?,
         on_success_stages: batches_from_plan(stages_val, ctx)
             .map_err(|msg| format!("WalkPlan.on_success_stages: {msg}"))?,
+        ordinary_budget_ms: optional_walk_budget_ms(
+            ordinary_budget_val,
+            ctx,
+            "ordinary_budget_ms",
+        )?,
+        on_success_budget_ms: optional_walk_budget_ms(
+            on_success_budget_val,
+            ctx,
+            "on_success_budget_ms",
+        )?,
     })
 }
 
@@ -3485,6 +3532,38 @@ fn write_on_success_stage_receipt(
     body.push_str(&format!("unit_count={}\n", run.unit_count));
     body.push_str(&format!("resolves={resolves}\n"));
     body.push_str(&format!("wall_ms={}\n", run.wall_nanos / 1_000_000));
+    body.push_str(&format!(
+        "memory_current_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_current_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_peak_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.peak_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_peak_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.peak_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_swap_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.swap_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_swap_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.swap_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_high_events_before={}\n",
+        receipt_optional_u64(run.memory_before.high_events)
+    ));
+    body.push_str(&format!(
+        "memory_high_events_after={}\n",
+        receipt_optional_u64(run.memory_after.high_events)
+    ));
     // Recorded rather than omitted so a future DECLARED stage clamp shows up as a value
     // change here instead of a new field a reader has to notice.
     body.push_str(&format!(
@@ -4191,6 +4270,44 @@ struct StageRun {
     thread_panicked: bool,
     /// The stage exceeded its derived clamp. Already printed as a typed refusal.
     over_budget: bool,
+    memory_before: StageMemorySnapshot,
+    memory_after: StageMemorySnapshot,
+}
+
+#[derive(Clone, Copy, Default)]
+struct StageMemorySnapshot {
+    current_bytes: Option<u64>,
+    peak_bytes: Option<u64>,
+    swap_bytes: Option<u64>,
+    high_events: Option<u64>,
+}
+
+fn stage_memory_snapshot() -> StageMemorySnapshot {
+    let Some(dir) = binding_high_cgroup_dir()
+        .or_else(binding_cap_cgroup_dir)
+        .or_else(leaf_cgroup_dir)
+    else {
+        return StageMemorySnapshot::default();
+    };
+    let high_events = read_cgroup_raw(&dir, "memory.events").and_then(|events| {
+        events.lines().find_map(|line| {
+            let mut fields = line.split_whitespace();
+            match (fields.next(), fields.next()) {
+                (Some("high"), Some(value)) => value.parse::<u64>().ok(),
+                _ => None,
+            }
+        })
+    });
+    StageMemorySnapshot {
+        current_bytes: read_cgroup_u64(&dir, "memory.current"),
+        peak_bytes: read_cgroup_u64(&dir, "memory.peak"),
+        swap_bytes: read_cgroup_u64(&dir, "memory.swap.current"),
+        high_events,
+    }
+}
+
+fn receipt_optional_u64(value: Option<u64>) -> String {
+    value.map_or_else(|| "unreadable".to_string(), |n| n.to_string())
 }
 
 /// ONE stage of a walk, and the SINGLE execution path both populations share.
@@ -4244,6 +4361,7 @@ fn run_stage(
         units.len(),
         governor.current_target_width()
     );
+    let memory_before = stage_memory_snapshot();
     let stage_start = Instant::now();
     // Partition units into lanes (decision table: `batch_unit_lane`): memo and Discovery
     // units stay on the main thread; others spawn.
@@ -4341,6 +4459,7 @@ fn run_stage(
         }
     }
     let wall_nanos = stage_start.elapsed().as_nanos();
+    let memory_after = stage_memory_snapshot();
     // THE COST WALL (Piece 3 derived clamp): the per-stage clamp is overhead + runtime
     // unit count * rate, computed HERE where the affected-set-selected count is known
     // (the schedule holds one opaque discovery runnable; the count is runtime).
@@ -4387,7 +4506,40 @@ fn run_stage(
         clamp_ms,
         thread_panicked,
         over_budget,
+        memory_before,
+        memory_after,
     }
+}
+
+fn arm_population_budget_watchdog(
+    population: &'static str,
+    plan_site: &str,
+    budget_ms: Option<u64>,
+) -> Arc<std::sync::atomic::AtomicBool> {
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(budget_ms.is_some()));
+    let Some(budget_ms) = budget_ms else {
+        return armed;
+    };
+    let watchdog_armed = armed.clone();
+    let site = plan_site.to_string();
+    let _ = std::thread::Builder::new()
+        .name(format!("{population}-budget-watchdog"))
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(budget_ms));
+            if watchdog_armed.load(std::sync::atomic::Ordering::Acquire) {
+                let body = format!(
+                    "population={population}\nplan_site={site}\nbudget_ms={budget_ms}\noutcome=refused\n"
+                );
+                let _ = fs::create_dir_all("target");
+                let _ = fs::write("target/floor-population-budget-refusal.txt", body);
+                eprintln!(
+                    "claim_executor: {}-OVER-BUDGET — plan_site={site} budget_ms={budget_ms}; executor refusing inside the population boundary",
+                    population.to_ascii_uppercase().replace('_', "-")
+                );
+                std::process::exit(1);
+            }
+        });
+    armed
 }
 
 fn run_walk(
@@ -4396,6 +4548,8 @@ fn run_walk(
     batches: &[Vec<Runnable>],
     on_success_stages: &[Vec<Runnable>],
     floor_finalization: Option<&FloorFinalization>,
+    ordinary_budget_ms: Option<u64>,
+    on_success_budget_ms: Option<u64>,
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
@@ -4417,6 +4571,9 @@ fn run_walk(
     let mut failure_details: Vec<String> = Vec::new();
     let mut infra_faults: Vec<InfraFault> = Vec::new();
     let walk_start = Instant::now();
+    let ordinary_start = Instant::now();
+    let ordinary_budget_armed =
+        arm_population_budget_watchdog("ordinary_floor", plan_site, ordinary_budget_ms);
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
@@ -4430,6 +4587,21 @@ fn run_walk(
         std::collections::HashMap::new();
     let memo_path_entries = memo_path_entry_keys(batches);
     for (bi, batch) in batches.iter().enumerate() {
+        if ordinary_budget_ms
+            .is_some_and(|budget| ordinary_start.elapsed().as_millis() >= u128::from(budget))
+        {
+            let budget = ordinary_budget_ms.expect("checked Some above");
+            any_failed = true;
+            failure_details.push(format!(
+                "ordinary floor exceeded its population budget before batch {}: budget_ms={budget}",
+                bi + 1
+            ));
+            eprintln!(
+                "claim_executor: ORDINARY-FLOOR-OVER-BUDGET before batch {} — budget_ms={budget}; admission postcondition allowance remains reserved",
+                bi + 1
+            );
+            break;
+        }
         batches_run = bi + 1;
         let StageRun {
             results: batch_results,
@@ -4439,6 +4611,8 @@ fn run_walk(
             clamp_ms: batch_clamp_ms,
             thread_panicked,
             over_budget,
+            memory_before: _,
+            memory_after: _,
         } = run_stage(
             source_roots,
             batch,
@@ -4617,6 +4791,7 @@ fn run_walk(
             }
         }
     }
+    ordinary_budget_armed.store(false, std::sync::atomic::Ordering::Release);
     // On-success stages: run only on a fully-green ordinary floor; each stage is a
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
     // is an ordinary-floor policy and never applies between stages. Members run through
@@ -4662,6 +4837,9 @@ fn run_walk(
                 ),
             }
         } else {
+            let on_success_start = Instant::now();
+            let on_success_budget_armed =
+                arm_population_budget_watchdog("on_success", plan_site, on_success_budget_ms);
             let mut stage_rows: Vec<(usize, bool)> = Vec::new();
             let mut stage_resolves: u64 = 0;
             let mut stage_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
@@ -4669,10 +4847,27 @@ fn run_walk(
             // The stage population's own memo-path set. The stage memo is SEPARATE from
             // `walk_memo` by lifecycle, not by accident: stage contexts must drop after
             // `write_materialization_receipt` above so stage materialization is
-            // structurally not folded into the floor receipt. One entry shared by several
-            // stages still resolves once, within that separate map.
+            // structurally not folded into the floor receipt. Only heavy claims enroll in
+            // the memo lane, and those refuse stage admission today; non-heavy claims in
+            // separate stages therefore resolve independently. The map remains because it
+            // is the common run_stage interface, not as a cross-stage reuse promise.
             let stage_memo_path_entries = memo_path_entry_keys(on_success_stages);
             for (si, stage) in on_success_stages.iter().enumerate() {
+                if on_success_budget_ms.is_some_and(|budget| {
+                    on_success_start.elapsed().as_millis() >= u128::from(budget)
+                }) {
+                    let budget = on_success_budget_ms.expect("checked Some above");
+                    on_success_failed = true;
+                    failure_details.push(format!(
+                        "on-success population exceeded its budget before stage {}: budget_ms={budget}",
+                        si + 1
+                    ));
+                    eprintln!(
+                        "claim_executor: ON-SUCCESS-OVER-BUDGET before stage {} — budget_ms={budget}",
+                        si + 1
+                    );
+                    break;
+                }
                 let run = run_stage(
                     source_roots,
                     stage,
@@ -4832,6 +5027,7 @@ fn run_walk(
             if !aggregate_written {
                 on_success_failed = true;
             }
+            on_success_budget_armed.store(false, std::sync::atomic::Ordering::Release);
         }
     }
     WalkOutcome {
@@ -5038,6 +5234,8 @@ fn run_perturb_check(
         &format!("{plan_entry}::{plan_function} (perturb re-walk)"),
         &remapped,
         &[],
+        None,
+        None,
         None,
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
@@ -5256,6 +5454,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
     let batches = walk_plan.batches;
     let on_success_stages = walk_plan.on_success_stages;
+    let ordinary_budget_ms = walk_plan.ordinary_budget_ms;
+    let on_success_budget_ms = walk_plan.on_success_budget_ms;
     // Plan-shape validation BEFORE the governor arms and before any batch runs.
     {
         let refusals = validate_on_success_stage_admissibility(&on_success_stages);
@@ -5513,6 +5713,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         &batches,
         &on_success_stages,
         floor_finalization.as_ref(),
+        ordinary_budget_ms,
+        on_success_budget_ms,
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
@@ -5710,6 +5912,50 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn population_budget_watchdog_refuses_and_writes_located_receipt() {
+        const CHILD_MARKER: &str = "GUNBC_POPULATION_BUDGET_WATCHDOG_CHILD";
+        if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
+            let _armed =
+                arm_population_budget_watchdog("ordinary_floor", "fixture::bounded_plan", Some(50));
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            panic!("watchdog did not terminate the child");
+        }
+
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-population-budget-watchdog-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create watchdog fixture directory");
+        let output = std::process::Command::new(std::env::current_exe().expect("current test exe"))
+            .arg("--exact")
+            .arg("tests::population_budget_watchdog_refuses_and_writes_located_receipt")
+            .arg("--nocapture")
+            .env(CHILD_MARKER, "1")
+            .current_dir(&dir)
+            .output()
+            .expect("run watchdog child");
+        assert!(!output.status.success(), "budget child must refuse");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("ORDINARY-FLOOR-OVER-BUDGET")
+                && stderr.contains("fixture::bounded_plan")
+                && stderr.contains("budget_ms=50"),
+            "refusal must be typed and located, got: {stderr}"
+        );
+        let receipt = fs::read_to_string(dir.join("target/floor-population-budget-refusal.txt"))
+            .expect("watchdog refusal receipt");
+        assert!(
+            receipt.contains("population=ordinary_floor")
+                && receipt.contains("plan_site=fixture::bounded_plan")
+                && receipt.contains("budget_ms=50")
+                && receipt.contains("outcome=refused"),
+            "receipt must carry the refused population and its subject: {receipt}"
+        );
+        fs::remove_dir_all(&dir).expect("remove watchdog fixture directory");
+    }
 
     // Process-wide eval-recompute totals are shared across every test in this
     // binary. Tests that drain or assert on the accumulator must serialize so
@@ -7096,6 +7342,8 @@ mod tests {
             "test::on_success_materialization_fixture",
             &ordinary_batch,
             on_success_stages,
+            None,
+            None,
             None,
             &Arc::new(MemoryGovernor::from_environment(1)),
             None,

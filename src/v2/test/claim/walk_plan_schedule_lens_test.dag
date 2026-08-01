@@ -75,7 +75,9 @@ fn synthetic_walk(stages: List<List<Runnable>>) -> WalkPlan<NoWalkFinalization> 
   WalkPlan {
     batches: synthetic_ordinary_plan().schedule,
     finalization: NoFinalizationDeclared {},
-    on_success_stages: stages
+    on_success_stages: stages,
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none
   }
 }
 
@@ -83,7 +85,9 @@ fn synthetic_walk_with_wrong_ordinary_projection() -> WalkPlan<NoWalkFinalizatio
   WalkPlan {
     batches: synthetic_ordinary_plan().schedule.skip(n: 1),
     finalization: NoFinalizationDeclared {},
-    on_success_stages: expected_stages()
+    on_success_stages: expected_stages(),
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none
   }
 }
 

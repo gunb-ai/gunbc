@@ -67,7 +67,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries,
   falsifier_self_host_wet_known_red_batch_enrolled
 }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate, gunbc_ci_ordinary_floor_budget_minutes, gunbc_ci_admission_postcondition_budget_minutes }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -80,6 +80,7 @@ import gunbc.ci_materialization { FloorFinalization, ci_floor_declared_resolve_c
 import std.execution_mode { Hermetic, Wet, execution_mode_eq }
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
+import v2.std.optional { Absent, Present }
 import std.types { Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -677,12 +678,29 @@ fn forked_count_floor_plan() -> WalkPlan<FloorFinalization> {
       declared_resolve_count: ci_floor_declared_resolve_count + 1,
     },
     on_success_stages: [],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 
 test fn floor_plan_projects_the_declared_resolve_count_authority() -> Bool {
   plan_declares_authority_count(p: gunbc_ci_floor_plan())
     && floor_plan_declared_resolve_count() == ci_floor_declared_resolve_count
+}
+
+test fn floor_plan_carries_disjoint_ordinary_and_postcondition_budgets() -> Bool {
+  let plan = gunbc_ci_floor_plan()
+  match plan.ordinary_budget_ms {
+    Absent => false
+    Present { value: ordinary_ms } =>
+      match plan.on_success_budget_ms {
+        Absent => false
+        Present { value: postcondition_ms } =>
+          (ordinary_ms == gunbc_ci_ordinary_floor_budget_minutes * 60000)
+            && (postcondition_ms == gunbc_ci_admission_postcondition_budget_minutes * 60000)
+            && (ordinary_ms + postcondition_ms == 60 * 60000)
+      }
+  }
 }
 
 test fn forked_declared_count_is_refused_by_the_same_predicate() -> Bool {

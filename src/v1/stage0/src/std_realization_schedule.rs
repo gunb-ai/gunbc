@@ -401,7 +401,18 @@ pub struct WalkPlan<F> {
     pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
     pub finalization: F,
     pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub ordinary_budget_ms: Option<Nat>,
+    pub on_success_budget_ms: Option<Nat>,
     pub _phantom: std::marker::PhantomData<F>,
+}
+
+pub fn walk_population_budget_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WalkPlan carries an explicit Optional<Nat> millisecond budget for each population. Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach writes floor-population-budget-refusal.txt with population, plan site, and budget before claim_executor exits nonzero; the outer workflow timeout remains only a larger wrapper backstop.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {

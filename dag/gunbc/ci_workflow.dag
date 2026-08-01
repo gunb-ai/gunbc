@@ -13,6 +13,7 @@ import gunbc.ci_spec {
   ci_release_bins_archive_name,
   gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
   gunbc_ci_heal_binary_source_skew_guard_script,
+  gunbc_ci_workflow_wrapper_budget_minutes,
 }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
@@ -276,7 +277,7 @@ fn ci_floor_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_workflow_wrapper_budget_minutes() }
   }
 }
 
@@ -402,7 +403,7 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
   }
 }
 
-data gunbc_ci_floor_step_timeout_minutes: Duration = 55
+data gunbc_ci_workflow_wrapper_timeout_minutes: Duration = gunbc_ci_workflow_wrapper_budget_minutes()
 
 data gunbc_ci_regen_step_timeout_minutes: Duration = 15
 
@@ -414,7 +415,7 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.ci_workflow",
-    decl_name: "gunbc_ci_floor_step_timeout_minutes",
+    decl_name: "gunbc_ci_workflow_wrapper_timeout_minutes",
     field: WholeDeclaration
   }
 }
@@ -444,7 +445,7 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_regen_job_backstop_timeout_minutes() -> Int {

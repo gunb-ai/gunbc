@@ -681,16 +681,16 @@ service git.Core {
   }
 
   operation FetchNoTags {
-    input { remote: String, ref: String }
+    input { remote: String, ref: String, stall_deadline_seconds: Seconds }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["git", "fetch", "--no-tags", "{remote}", "{ref}"] }
+    transport shell { argv: ["git", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime={stall_deadline_seconds}", "fetch", "--no-tags", "{remote}", "{ref}"] }
     exit {
       0 => Unit
-      nonzero => String "Fetch failed"
+      nonzero => String "Fetch failed or exceeded its typed no-progress deadline"
     }
   }
 
