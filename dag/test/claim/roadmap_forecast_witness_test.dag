@@ -33,6 +33,8 @@ import gunbc.roadmap_forecast {
   roadmap_cycle_time_observation_builds,
   accepted_cycle_time_observations,
   cycle_time_history_refusals,
+  cycle_time_population_exclusions,
+  BundledPullDelivery,
   calibrate_cell,
   Calibrated,
   CalibrationRefusedNoSample,
@@ -55,6 +57,9 @@ import gunbc.roadmap_forecast {
   schedule_forecast,
   live_roadmap_schedule_forecast,
   no_calibration_gap_count,
+  AdjustmentUnavailable,
+  ReviewCycleDurationUnobserved,
+  OperatorMergeLatencyUnobserved,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -136,13 +141,15 @@ fn fixture_observations() -> List<CycleTimeObservation> {
 test fn witness_cited_acceptance_pr_history_joins_without_refusal() -> Bool {
   let builds = roadmap_cycle_time_observation_builds()
   count(builds) == 10
-    && count(accepted_cycle_time_observations(builds: builds)) == 10
+    && count(accepted_cycle_time_observations(builds: builds)) == 4
     && count(cycle_time_history_refusals(builds: builds)) == 0
-    && all(builds, build => match build {
-      CycleTimeObserved { observation } =>
-        millisecond_count(m: observation.cycle_time) > 0
-          && string_contains(observation.source_url as String, "https://github.com/gunb-ai/gunbc/pull/")
-      CycleTimeHistoryRefused { refusal: _ } => false
+    && count(cycle_time_population_exclusions(builds: builds)) == 2
+    && all(accepted_cycle_time_observations(builds: builds), observation =>
+      millisecond_count(m: observation.cycle_time) > 0
+        && string_contains(observation.source_url as String, "https://github.com/gunb-ai/gunbc/pull/")
+    )
+    && all(cycle_time_population_exclusions(builds: builds), exclusion => match exclusion {
+      BundledPullDelivery { pull_number: _, nodes } => count(nodes) > 1
     })
 }
 
@@ -163,24 +170,24 @@ test fn witness_live_calibration_keeps_small_sample_intervals() -> Bool {
   match low_small {
     CalibrationRefusedNoSample { cell: _ } => false
     Calibrated { interval: l } =>
-      l.sample_count == 2
+      l.sample_count == 1
         && millisecond_count(m: l.minimum) == 7721000
-        && millisecond_count(m: l.median) == 10942000
-        && millisecond_count(m: l.maximum) == 14163000
+        && millisecond_count(m: l.median) == 7721000
+        && millisecond_count(m: l.maximum) == 7721000
         && match medium_medium {
           CalibrationRefusedNoSample { cell: _ } => false
           Calibrated { interval: m } =>
-            m.sample_count == 2
+            m.sample_count == 1
               && millisecond_count(m: m.minimum) == 2570000
-              && millisecond_count(m: m.median) == 8366500
-              && millisecond_count(m: m.maximum) == 14163000
+              && millisecond_count(m: m.median) == 2570000
+              && millisecond_count(m: m.maximum) == 2570000
               && match high_medium {
                 CalibrationRefusedNoSample { cell: _ } => false
                 Calibrated { interval: h } =>
-                  h.sample_count == 6
+                  h.sample_count == 2
                     && millisecond_count(m: h.minimum) == 4396000
-                    && millisecond_count(m: h.median) == 63837000
-                    && millisecond_count(m: h.maximum) == 63837000
+                    && millisecond_count(m: h.median) == 21652000
+                    && millisecond_count(m: h.maximum) == 38908000
               }
         }
   }
@@ -196,8 +203,22 @@ test fn witness_live_graph_refuses_with_four_located_calibration_gaps() -> Bool 
           && match first(refusals) {
             Absent => false
             Present { value: refusal } => match refusal {
-              NoCalibrationSample { gaps } =>
+              NoCalibrationSample { gaps, population_exclusions, assumptions: declared, scenario_adjustment: adjustment } =>
                 count(gaps) == 4
+                  && count(population_exclusions) == 2
+                  && millisecond_count(m: declared.operator_merge_latency.duration) == 5
+                  && match adjustment {
+                    AdjustmentUnavailable { causes } =>
+                      count(causes) == 2
+                        && any(causes, cause => match cause {
+                          ReviewCycleDurationUnobserved { declared_count: _ } => true
+                          OperatorMergeLatencyUnobserved { declared_latency: _ } => false
+                        })
+                        && any(causes, cause => match cause {
+                          ReviewCycleDurationUnobserved { declared_count: _ } => false
+                          OperatorMergeLatencyUnobserved { declared_latency } => millisecond_count(m: declared_latency) == 5
+                        })
+                  }
                   && all(gaps, gap => count(gap.nodes) > 0)
                   && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyLow, volume: VolumeMedium }))
                   && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyMedium, volume: VolumeSmall }))
@@ -224,7 +245,7 @@ test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } =>
       count(refusals) == 1 && any(refusals, refusal => match refusal {
-        NoCalibrationSample { gaps: _ } => true
+        NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => true
         ForecastGraphEmpty => false
         DependencyCycle { nodes: _ } => false
         DependencyEndpointUnknown { nodes: _ } => false
@@ -245,6 +266,7 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
     edges: [RoadmapEdge { child: b.node, parent: a.node }],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions(),
     anchor: anchor(),
   )
@@ -253,14 +275,18 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
     ScheduleForecastKnown { forecast } =>
       forecast.critical_path == [a.node, b.node]
         && count(forecast.nodes) == 3
-        && forecast.completion_lower_bound.earliest.epoch_ms == 1030
-        && forecast.completion_lower_bound.median.epoch_ms == 1050
-        && forecast.completion_lower_bound.latest.epoch_ms == 1070
-        && millisecond_count(m: forecast.lower_bounds.total_work.duration.median) == 75
-        && millisecond_count(m: forecast.lower_bounds.critical_path_minimum.duration.median) == 50
-        && millisecond_count(m: forecast.lower_bounds.capacity_constrained_minimum.duration.median) == 50
-        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.num) == 75
-        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.denom) == 50
+        && forecast.completion_lower_bound.earliest.epoch_ms == 1020
+        && forecast.completion_lower_bound.median.epoch_ms == 1040
+        && forecast.completion_lower_bound.latest.epoch_ms == 1060
+        && millisecond_count(m: forecast.lower_bounds.total_work.duration.median) == 60
+        && millisecond_count(m: forecast.lower_bounds.critical_path_minimum.duration.median) == 40
+        && millisecond_count(m: forecast.lower_bounds.capacity_constrained_minimum.duration.median) == 40
+        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.num) == 60
+        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.denom) == 40
+        && count(forecast.calibration_population_exclusions) == 0
+        && match forecast.scenario_adjustment {
+          AdjustmentUnavailable { causes } => count(causes) == 2
+        }
         && forecast.assumptions.worker_concurrency_cap.max_concurrent == 3
         && millisecond_count(m: forecast.assumptions.operator_merge_latency.duration) == 5
   }
@@ -275,6 +301,7 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions_with_cap(max_concurrent: 1),
     anchor: anchor(),
   )
@@ -283,6 +310,7 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions_with_cap(max_concurrent: 3),
     anchor: anchor(),
   )
@@ -291,11 +319,11 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
     ScheduleForecastKnown { forecast: serialized_bound } => match three_workers {
       ScheduleForecastRefused { refusals: _ } => false
       ScheduleForecastKnown { forecast: parallel_bound } =>
-        serialized_bound.completion_lower_bound.median.epoch_ms == 1075
-          && parallel_bound.completion_lower_bound.median.epoch_ms == 1025
-          && millisecond_count(m: serialized_bound.lower_bounds.total_work.duration.median) == 75
-          && millisecond_count(m: serialized_bound.lower_bounds.critical_path_minimum.duration.median) == 25
-          && millisecond_count(m: serialized_bound.lower_bounds.capacity_constrained_minimum.duration.median) == 75
+        serialized_bound.completion_lower_bound.median.epoch_ms == 1060
+          && parallel_bound.completion_lower_bound.median.epoch_ms == 1020
+          && millisecond_count(m: serialized_bound.lower_bounds.total_work.duration.median) == 60
+          && millisecond_count(m: serialized_bound.lower_bounds.critical_path_minimum.duration.median) == 20
+          && millisecond_count(m: serialized_bound.lower_bounds.capacity_constrained_minimum.duration.median) == 60
           && serialized_bound.completion_lower_bound.median.epoch_ms > parallel_bound.completion_lower_bound.median.epoch_ms
     }
   }
@@ -308,6 +336,7 @@ test fn witness_invalid_worker_cap_refuses() -> Bool {
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions_with_cap(max_concurrent: 0),
     anchor: anchor(),
   ) {
@@ -318,7 +347,7 @@ test fn witness_invalid_worker_cap_refuses() -> Bool {
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
       NodeUnsized { nodes: _ } => false
-      NoCalibrationSample { gaps: _ } => false
+      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
     })
@@ -331,6 +360,7 @@ test fn witness_empty_graph_refuses() -> Bool {
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
@@ -346,6 +376,7 @@ test fn witness_unsized_node_refuses() -> Bool {
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
@@ -355,7 +386,7 @@ test fn witness_unsized_node_refuses() -> Bool {
       ForecastGraphEmpty => false
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
-      NoCalibrationSample { gaps: _ } => false
+      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
       WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
@@ -373,12 +404,13 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-      NoCalibrationSample { gaps } => count(gaps) == 1 && first(gaps).nodes == [n.node]
+      NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps) == 1 && first(gaps).nodes == [n.node]
       ForecastGraphEmpty => false
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
@@ -401,6 +433,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
     ],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
@@ -410,7 +443,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
       ForecastGraphEmpty => false
       DependencyEndpointUnknown { nodes: _ } => false
       NodeUnsized { nodes: _ } => false
-      NoCalibrationSample { gaps: _ } => false
+      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
       WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
@@ -426,6 +459,7 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
+    population_exclusions: [],
     assumptions: assumptions(),
     anchor: anchor(),
   ) {

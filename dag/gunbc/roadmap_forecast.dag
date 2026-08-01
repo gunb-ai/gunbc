@@ -6,7 +6,6 @@ import std.measure {
   PositiveMeasureCount,
   millisecond,
   millisecond_count,
-  positive_measure_count_value,
 }
 import std.graph { GraphEdge, CallGraph, graph_cycle_members }
 import std.algebra { FieldOfFractions }
@@ -49,7 +48,7 @@ import gunbc.roadmap_authority {
 
 data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
 
-data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. ReviewCycleCount states how many normalized historical open-to-merge cycles to budget, and OperatorMergeLatencyAssumption is added once per node. BeltCapacity is session-grain: under EndToEndBeltSlotOccupancyAssumption, each forecast node continuously occupies one belt slot across its modeled PR open-to-merge interval, so TotalWork is slot-time, NOT labor effort, and capacity enters through ceil(total slot-time / cap). The output is explicitly conditional lower-bound projection, never a resource-leveled expected date. dissolve-on: observed dispatch-to-release slot occupancy plus a separately grounded RCPSP resource-leveling slice can replace this declared occupancy assumption and lower-bound-only projection with a typed feasible schedule; until then no consumer may read these bounds as observed labor or promised landing dates."
+data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. PR open-to-merge is one undecomposed observation: ReviewCycleCount and OperatorMergeLatencyAssumption remain named and visible, but ScenarioAdjustment is AdjustmentUnavailable until per-review duration and operator merge latency are separately observed. Neither is multiplied into or added onto the baseline. BeltCapacity is session-grain: under EndToEndBeltSlotOccupancyAssumption, each forecast node continuously occupies one belt slot across its modeled baseline interval, so capacity enters through ceil(total slot-time / cap). The output is explicitly conditional lower-bound projection, never a resource-leveled expected date. dissolve-on: separately grained review/merge observations, observed dispatch-to-release slot occupancy, and a grounded RCPSP resource-leveling slice replace the unavailable adjustment, declared occupancy assumption, and lower-bound-only projection; until then no consumer may read these bounds as observed labor or promised landing dates."
 
 data remaining_cost_relative_sizing_follow_on_note: String = "FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing: remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished dependency closure, bucketed relative to the historical plus active task population by a separately grounded order-of-magnitude or quantile policy. It must project from this module's TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative portfolio sizing and grounds one population-bucketing policy; then one fold derives the label without creating a second sizing authority."
 
@@ -133,8 +132,12 @@ type CycleTimeHistoryRefusal
   | HistoryPullDuplicate { node: RoadmapNodeId, pull_number: Int }
   | HistoryPullNotMergedAfterOpen { node: RoadmapNodeId, pull_number: Int }
 
+type CycleTimePopulationExclusion
+  = BundledPullDelivery { pull_number: Int, nodes: List<RoadmapNodeId> }
+
 type CycleTimeObservationBuild
   = CycleTimeObserved { observation: CycleTimeObservation }
+  | CycleTimePopulationExcluded { exclusion: CycleTimePopulationExclusion }
   | CycleTimeHistoryRefused { refusal: CycleTimeHistoryRefusal }
 
 fn observation_for_link(
@@ -142,7 +145,9 @@ fn observation_for_link(
   nodes: List<RoadmapNode>,
   receipts: List<RoadmapAcceptanceReceipt>,
   pulls: List<CitedPullTiming>,
+  links: List<AcceptedNodePullLink>,
 ) -> CycleTimeObservationBuild {
+  let bundled_links = links |> filter(candidate => candidate.pull_number == link.pull_number)
   let matching_nodes = nodes |> filter(n => n.node == link.node)
   if count(matching_nodes) == 0 {
     return CycleTimeHistoryRefused { refusal: HistoryNodeMissing { node: link.node } }
@@ -182,6 +187,12 @@ fn observation_for_link(
       refusal: HistoryPullNotMergedAfterOpen { node: link.node, pull_number: link.pull_number }
     }
   }
+  if count(bundled_links) > 1 {
+    return CycleTimePopulationExcluded { exclusion: BundledPullDelivery {
+      pull_number: link.pull_number,
+      nodes: bundled_links |> map(candidate => candidate.node),
+    } }
+  }
   let receipt = first(matching_receipts)
   CycleTimeObserved {
     observation: CycleTimeObservation {
@@ -200,17 +211,20 @@ fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
   let nodes = declared_roadmap_nodes()
   let receipts = roadmap_acceptance_receipts()
   let pulls = cited_pull_timings()
-  accepted_node_pull_links() |> map(link => observation_for_link(
+  let links = accepted_node_pull_links()
+  links |> map(link => observation_for_link(
     link: link,
     nodes: nodes,
     receipts: receipts,
     pulls: pulls,
+    links: links,
   ))
 }
 
 fn accepted_cycle_time_observations(builds: List<CycleTimeObservationBuild>) -> List<CycleTimeObservation> {
   builds |> flat_map(b => match b {
     CycleTimeObserved { observation } => [observation]
+    CycleTimePopulationExcluded { exclusion: _ } => []
     CycleTimeHistoryRefused { refusal: _ } => []
   })
 }
@@ -218,8 +232,24 @@ fn accepted_cycle_time_observations(builds: List<CycleTimeObservationBuild>) -> 
 fn cycle_time_history_refusals(builds: List<CycleTimeObservationBuild>) -> List<CycleTimeHistoryRefusal> {
   builds |> flat_map(b => match b {
     CycleTimeObserved { observation: _ } => []
+    CycleTimePopulationExcluded { exclusion: _ } => []
     CycleTimeHistoryRefused { refusal } => [refusal]
   })
+}
+
+fn cycle_time_population_exclusions(builds: List<CycleTimeObservationBuild>) -> List<CycleTimePopulationExclusion> {
+  builds
+    |> flat_map(b => match b {
+      CycleTimeObserved { observation: _ } => []
+      CycleTimePopulationExcluded { exclusion } => [exclusion]
+      CycleTimeHistoryRefused { refusal: _ } => []
+    })
+    |> fold(init: [], f: (acc, exclusion) => match exclusion {
+      BundledPullDelivery { pull_number, nodes: _ } =>
+        if any(acc, existing => match existing {
+          BundledPullDelivery { pull_number: existing_pull, nodes: _ } => existing_pull == pull_number
+        }) { acc } else { concat(acc, [exclusion]) }
+    })
 }
 
 type CycleTimeInterval {
@@ -283,6 +313,20 @@ type ScheduleForecastAssumptions {
   belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption
 }
 
+type ScenarioAdjustmentUnavailableCause
+  = ReviewCycleDurationUnobserved { declared_count: PositiveMeasureCount }
+  | OperatorMergeLatencyUnobserved { declared_latency: Millisecond }
+
+type ScenarioAdjustment
+  = AdjustmentUnavailable { causes: List<ScenarioAdjustmentUnavailableCause> }
+
+fn scenario_adjustment(assumptions: ScheduleForecastAssumptions) -> ScenarioAdjustment {
+  AdjustmentUnavailable { causes: [
+    ReviewCycleDurationUnobserved { declared_count: assumptions.review_cycle_count.count },
+    OperatorMergeLatencyUnobserved { declared_latency: assumptions.operator_merge_latency.duration },
+  ] }
+}
+
 type ForecastInstant { epoch_ms: EpochMs }
 
 type ForecastLowerBoundInterval {
@@ -305,7 +349,7 @@ type DurationEstimateInterval {
 
 type TotalWork { duration: DurationEstimateInterval }
 
-data total_work_semantics_note: String = "TotalWork is the capacity-independent sum of per-node modeled open-to-merge cycle durations after review-cycle and merge-latency assumptions. It is an absolute cycle-time cost, not an observation of labor hours. Only CapacityConstrainedMinimum interprets that sum as belt slot-time, and it structurally carries the occupancy assumption required for that interpretation."
+data total_work_semantics_note: String = "TotalWork is the capacity-independent sum of per-node calibrated open-to-merge baseline durations. It applies no review-cycle multiplier and adds no merge latency because both are already inseparable inside the observed interval. It is an absolute cycle-time cost, not an observation of labor hours. Only CapacityConstrainedMinimum interprets that sum as belt slot-time, and it structurally carries the occupancy assumption required for that interpretation."
 
 type CriticalPathMinimum { duration: DurationEstimateInterval }
 
@@ -334,6 +378,8 @@ type ScheduleForecast {
   assumptions: ScheduleForecastAssumptions
   nodes: List<NodeScheduleForecast>
   critical_path: List<RoadmapNodeId>
+  calibration_population_exclusions: List<CycleTimePopulationExclusion>
+  scenario_adjustment: ScenarioAdjustment
   lower_bounds: ScheduleLowerBounds
   completion_lower_bound: ForecastLowerBoundInterval
 }
@@ -348,7 +394,12 @@ type ForecastRefusal
   | DependencyCycle { nodes: List<RoadmapNodeId> }
   | DependencyEndpointUnknown { nodes: List<RoadmapNodeId> }
   | NodeUnsized { nodes: List<RoadmapNodeId> }
-  | NoCalibrationSample { gaps: List<CalibrationGap> }
+  | NoCalibrationSample {
+      gaps: List<CalibrationGap>,
+      population_exclusions: List<CycleTimePopulationExclusion>,
+      assumptions: ScheduleForecastAssumptions,
+      scenario_adjustment: ScenarioAdjustment,
+    }
   | WorkerConcurrencyCapInvalid { declared_cap: Int }
   | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
   | ForecastBuildRefused { node: RoadmapNodeId }
@@ -369,7 +420,7 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
     ScheduleForecastKnown { forecast: _ } => 0
     ScheduleForecastRefused { refusals } => refusals |> fold(init: 0, f: (acc, refusal) =>
       acc + match refusal {
-        NoCalibrationSample { gaps } => count(gaps)
+        NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps)
         WorkerConcurrencyCapInvalid { declared_cap: _ } => 0
         ForecastGraphEmpty => 0
         DependencyCycle { nodes: _ } => 0
@@ -439,14 +490,11 @@ fn interval_bound(interval: CycleTimeInterval, bound: ForecastBound) -> Int {
   }
 }
 
-fn adjusted_node_duration(
+fn baseline_node_duration(
   interval: CycleTimeInterval,
   bound: ForecastBound,
-  assumptions: ScheduleForecastAssumptions,
 ) -> Millisecond {
-  millisecond(
-    count: (interval_bound(interval: interval, bound: bound) * positive_measure_count_value(count: assumptions.review_cycle_count.count)) + millisecond_count(m: assumptions.operator_merge_latency.duration),
-  )
+  millisecond(count: interval_bound(interval: interval, bound: bound))
 }
 
 type PathEstimate {
@@ -467,7 +515,6 @@ fn path_to_node(
   nodes: List<RoadmapNode>,
   edges: List<RoadmapEdge>,
   observations: List<CycleTimeObservation>,
-  assumptions: ScheduleForecastAssumptions,
   bound: ForecastBound,
 ) -> PathEstimateResult {
   let cell = match sizing_cell_of(sizing: node.sizing) {
@@ -487,7 +534,6 @@ fn path_to_node(
         nodes: nodes,
         edges: edges,
         observations: observations,
-        assumptions: assumptions,
         bound: bound,
       )
     }
@@ -508,10 +554,9 @@ fn path_to_node(
       )
       PathEstimated { estimate: PathEstimate {
         duration: millisecond(
-          count: millisecond_count(m: parent_best.duration) + millisecond_count(m: adjusted_node_duration(
+          count: millisecond_count(m: parent_best.duration) + millisecond_count(m: baseline_node_duration(
             interval: interval,
             bound: bound,
-            assumptions: assumptions,
           )),
         ),
         path: concat(parent_best.path, [node.node]),
@@ -538,7 +583,6 @@ fn build_node_forecast(
   nodes: List<RoadmapNode>,
   edges: List<RoadmapEdge>,
   observations: List<CycleTimeObservation>,
-  assumptions: ScheduleForecastAssumptions,
   anchor: ForecastAnchorObservation,
 ) -> NodeForecastBuild {
   let cell = match sizing_cell_of(sizing: node.sizing) {
@@ -549,9 +593,9 @@ fn build_node_forecast(
     CalibrationRefusedNoSample { cell: _ } => return NodeForecastBuildRefused { node: node.node }
     Calibrated { interval } => interval
   }
-  let earliest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, assumptions: assumptions, bound: EarliestBound)
-  let median = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, assumptions: assumptions, bound: MedianBound)
-  let latest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, assumptions: assumptions, bound: LatestBound)
+  let earliest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: EarliestBound)
+  let median = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: MedianBound)
+  let latest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: LatestBound)
   match earliest {
     PathEstimateUnknown { node: _ } => NodeForecastBuildRefused { node: node.node }
     PathEstimated { estimate: early } => match median {
@@ -592,14 +636,12 @@ fn dependency_completion_lower_bound(nodes: List<NodeScheduleForecast>, anchor: 
 
 fn total_work_duration(
   nodes: List<NodeScheduleForecast>,
-  assumptions: ScheduleForecastAssumptions,
   bound: ForecastBound,
 ) -> Millisecond {
   let total = nodes |> fold(init: 0, f: (acc, node) =>
-    acc + millisecond_count(m: adjusted_node_duration(
+    acc + millisecond_count(m: baseline_node_duration(
       interval: node.calibrated_cycle_time,
       bound: bound,
-      assumptions: assumptions,
     ))
   )
   millisecond(count: total)
@@ -607,12 +649,11 @@ fn total_work_duration(
 
 fn total_work(
   nodes: List<NodeScheduleForecast>,
-  assumptions: ScheduleForecastAssumptions,
 ) -> TotalWork {
   TotalWork { duration: DurationEstimateInterval {
-    minimum: total_work_duration(nodes: nodes, assumptions: assumptions, bound: EarliestBound),
-    median: total_work_duration(nodes: nodes, assumptions: assumptions, bound: MedianBound),
-    maximum: total_work_duration(nodes: nodes, assumptions: assumptions, bound: LatestBound),
+    minimum: total_work_duration(nodes: nodes, bound: EarliestBound),
+    median: total_work_duration(nodes: nodes, bound: MedianBound),
+    maximum: total_work_duration(nodes: nodes, bound: LatestBound),
   } }
 }
 
@@ -667,6 +708,7 @@ fn schedule_forecast(
   edges: List<RoadmapEdge>,
   observations: List<CycleTimeObservation>,
   history_refusals: List<CycleTimeHistoryRefusal>,
+  population_exclusions: List<CycleTimePopulationExclusion>,
   assumptions: ScheduleForecastAssumptions,
   anchor: ForecastAnchorObservation,
 ) -> ScheduleForecastResult {
@@ -684,7 +726,12 @@ fn schedule_forecast(
         concat(
           if count(unsized) > 0 { [NodeUnsized { nodes: unsized }] } else { [] },
           concat(
-            if count(gaps) > 0 { [NoCalibrationSample { gaps: gaps }] } else { [] },
+            if count(gaps) > 0 { [NoCalibrationSample {
+              gaps: gaps,
+              population_exclusions: population_exclusions,
+              assumptions: assumptions,
+              scenario_adjustment: scenario_adjustment(assumptions: assumptions),
+            }] } else { [] },
             concat(
               if invalid_worker_cap { [WorkerConcurrencyCapInvalid { declared_cap: assumptions.worker_concurrency_cap.max_concurrent }] } else { [] },
               if count(history_refusals) > 0 { [CalibrationHistoryRefused { refusals: history_refusals }] } else { [] },
@@ -702,7 +749,6 @@ fn schedule_forecast(
     nodes: nodes,
     edges: edges,
     observations: observations,
-    assumptions: assumptions,
     anchor: anchor,
   ))
   let build_refusals = builds |> flat_map(b => match b {
@@ -727,10 +773,7 @@ fn schedule_forecast(
     },
   )
   let dependency_bound = dependency_completion_lower_bound(nodes: forecasts, anchor: anchor)
-  let total = total_work(
-    nodes: forecasts,
-    assumptions: assumptions,
-  )
+  let total = total_work(nodes: forecasts)
   let critical_minimum = critical_path_minimum(bound: dependency_bound, anchor: anchor)
   let capacity_minimum = capacity_constrained_minimum(
     total: total,
@@ -743,6 +786,8 @@ fn schedule_forecast(
     assumptions: assumptions,
     nodes: forecasts,
     critical_path: critical.path,
+    calibration_population_exclusions: population_exclusions,
+    scenario_adjustment: scenario_adjustment(assumptions: assumptions),
     lower_bounds: ScheduleLowerBounds {
       total_work: total,
       critical_path_minimum: critical_minimum,
@@ -763,6 +808,7 @@ fn live_roadmap_schedule_forecast(
     edges: active_roadmap_edges(),
     observations: accepted_cycle_time_observations(builds: builds),
     history_refusals: cycle_time_history_refusals(builds: builds),
+    population_exclusions: cycle_time_population_exclusions(builds: builds),
     assumptions: assumptions,
     anchor: anchor,
   )
