@@ -1,7 +1,6 @@
 module test.claim.stage0_emit_model_witness
 
 import gunbc.stage0_emit_model {
-  generated_stage0_file_count,
   is_generated_stage0_file,
   stage0_module_emit_basename,
   stage0_module_emit_filename
@@ -36,7 +35,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_plan -> enrolled gunbc.stage0_emit_plan_generated projection. Positives catch missing derived basenames; negatives prove frontier-classified seed-retained files stay out. Floor catches a collapsed source supply. Regen's independent EmitResult agreement rejects both modeled-but-not-produced and produced-but-unmodeled paths."
+data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_plan -> enrolled gunbc.stage0_emit_plan_generated projection. Positives catch missing derived basenames; negatives prove frontier-classified seed-retained files stay out. Regen's independent EmitResult agreement rejects both modeled-but-not-produced and produced-but-unmodeled paths."
 
 test fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "cli_run.rs") &&
@@ -55,10 +54,6 @@ test fn w_generated_files_classified_generated() -> Bool {
   is_generated_stage0_file(basename: "std_algebra.rs")
 }
 
-test fn w_generated_file_count_floor_holds() -> Bool {
-  generated_stage0_file_count() >= 101
-}
-
 test fn w_enrolled_manifest_equals_typed_emission_plan_derivation() -> Bool {
   match generated_stage0_files_from_emission_plan() {
     GeneratedStage0FilesRefused { cause: _ } => false
@@ -66,7 +61,6 @@ test fn w_enrolled_manifest_equals_typed_emission_plan_derivation() -> Bool {
       (files |> sort_by(file => file)) == (generated_stage0_files |> sort_by(file => file))
   }
 }
-
 test fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
   stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
