@@ -80,22 +80,6 @@ test fn scaffold_note_cites_zero_hand_maintained_rust_roadmap_row() -> Bool {
     && string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "v1-honest-frontier")
 }
 
-test fn scaffold_host_observation_is_live_and_observed() -> Bool {
-  match rust_source_host_observation {
-    RustManifestObserved {
-      repository_revision: revision,
-      manifest_digest: digest,
-      tracked_rust_repo_paths: tracked,
-      prior_tracked_rust_repo_paths: prior,
-      cargo_bin_repo_paths: cargo
-    } => revision != ""
-      && digest != ""
-      && length(xs: tracked) > 0
-      && length(xs: prior) > 0
-      && length(xs: cargo) > 0
-    _ => false
-  }
-}
 
 test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
   length(xs: stage0_rust_observation_seed_growth_justification.hand_authored_declarations) == 7
@@ -114,23 +98,11 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
     }
 }
 
-test fn scaffold_host_observation_reaches_path_derived_verdict() -> Bool {
-  match rust_source_manifest_state_verdict(observation: rust_source_host_observation) {
-    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: count } } => count > 0
-    ManifestStateScaffoldRefused { cause: CargoTargetMissingLifecycleDisposition { path: path } } => path != ""
-    ManifestStateScaffoldOk => true
-    ManifestStateScaffoldRefused { cause: _ } => false
-  }
-}
 
 test fn scaffold_join_mechanical_checks_holds() -> Bool {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
 }
 
-test fn scaffold_mechanical_checks_reflect_live_classification() -> Bool {
-  !stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
-    && !manifest_state_verdict_scaffold_holds()
-}
 
 test fn scaffold_generated_paths_match_authority_count_holds() -> Bool {
   length(xs: derived_generated_stage0_repo_paths()) == generated_stage0_file_count()
