@@ -9,7 +9,7 @@ import gunbc.gitattributes_emit {
   GitattributesGenerated,
   GitattributesGenerationRefused,
   expected_gitattributes,
-  all_committed_paths_have_merge_rows,
+  all_generated_projection_paths_have_merge_rows,
   dag_linguist_presentation_policy_pattern,
   dag_linguist_presentation_policy_attribute,
   generated_projection_merge_attribute,
@@ -34,7 +34,7 @@ data witness_note: String = "Lane 2 executable model surface for the .gitattribu
 
 test fn witness_all_committed_paths_have_merge_rows_holds() -> Bool {
   count(committed_generated_artifact_paths()) > 0
-    && all_committed_paths_have_merge_rows()
+    && all_generated_projection_paths_have_merge_rows()
     && gitattributes_has_merge_row_for(path: ".gitattributes")
     && gitattributes_has_merge_row_for(path: "src/v1/stage0/src/std_algebra.rs")
 }
