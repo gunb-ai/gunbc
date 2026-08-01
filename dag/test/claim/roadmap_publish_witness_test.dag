@@ -1,0 +1,378 @@
+module test.claim.roadmap_publish_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List }
+import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open }
+import extdeps.github.github { GitHubUser, UserType, User }
+import gunbc.roadmap_publish {
+  RemoteBranch,
+  PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
+  RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
+  PublicationOutcome,
+  PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous,
+  RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged,
+  RemoteBranchBindingAmbiguous,
+  BranchNotPublished, PublicationObservationRefused,
+  adjudicate_publication,
+  publication_detail,
+  publication_offers_the_expected_head,
+}
+
+data witness_scope_note: String = "What is claimed is the ADJUDICATION, not the fetch. adjudicate_publication is pure and total over observations the caller already holds, so every arm is reachable with no network and no token.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls or git. A change that broke the reads while leaving the adjudication intact would keep these green. What the coproduct inputs buy is that a broken read is now REPRESENTABLE — the caller reports it and the refusal arm is exercised here — where an earlier cut could only raise."
+
+data fixture_expected: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data fixture_older: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data fixture_branch: NonEmptyStr = "dispatch/some-node-a7" as NonEmptyStr
+data fixture_remote: NonEmptyStr = "origin" as NonEmptyStr
+data fixture_base: NonEmptyStr = "main" as NonEmptyStr
+
+fn fixture_user() -> GitHubUser {
+  GitHubUser { login: "someone", id: 1, type: User }
+}
+
+fn fixture_pull(
+  number: Int,
+  branch: String,
+  base: String,
+  sha: CommitSha,
+  draft: Bool,
+) -> PullRequest {
+  PullRequest {
+    number: number,
+    title: "a change",
+    body: Absent,
+    state: Open,
+    html_url: "https://github.com/gunb-ai/gunbc/pull/1" as NonEmptyStr,
+    user: fixture_user(),
+    head: PullRequestRef { ref: branch, sha: sha, label: branch },
+    base: PullRequestRef { ref: base, sha: fixture_older, label: base },
+    created_at: "2026-07-31T00:00:00Z",
+    updated_at: "2026-07-31T00:00:00Z",
+    merged_at: Absent,
+    draft: draft,
+  }
+}
+
+fn fixture_ref(branch: String, sha: CommitSha) -> RemoteBranch {
+  RemoteBranch {
+    remote: fixture_remote,
+    branch: branch as NonEmptyStr,
+    head_sha: sha,
+  }
+}
+
+fn adjudicate_with(
+  pulls: PullRequestObservation,
+  remotes: RemoteBranchObservation,
+) -> PublicationOutcome {
+  adjudicate_publication(
+    pulls: pulls,
+    remotes: remotes,
+    remote: fixture_remote,
+    branch: fixture_branch,
+    expected_base: fixture_base,
+    expected_head: fixture_expected,
+  )
+}
+
+fn remotes_deliberately_unreadable() -> RemoteBranchObservation {
+  RemoteBranchesUnreadable { detail: "not consulted on this path" }
+}
+
+fn one_pull(sha: CommitSha, draft: Bool) -> PullRequestObservation {
+  PullRequestsRead {
+    pulls: [
+      fixture_pull(
+        number: 22,
+        branch: fixture_branch as String,
+        base: fixture_base as String,
+        sha: sha,
+        draft: draft,
+      ),
+    ],
+  }
+}
+
+test fn a_pull_request_at_the_expected_head_is_bound() -> Bool {
+  match adjudicate_with(pulls: one_pull(sha: fixture_expected, draft: true), remotes: remotes_deliberately_unreadable()) {
+    PublicationBound { branch: _, pr_number, pr_head, url: _, draft } =>
+      pr_number == 22 && (pr_head as String) == (fixture_expected as String) && draft
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+data divergence_is_the_point_note: String = "A pull request exists, its branch and base match, and its head is a DIFFERENT commit — the ordinary state after a worker pushes while a review is in flight. A branch lookup reports this as a successful publication and every later receipt binds to a commit nobody assessed. Both shas are asserted, because naming only one leaves the operator unable to tell which is stale."
+
+test fn a_pull_request_at_another_head_diverges_and_names_both() -> Bool {
+  match adjudicate_with(pulls: one_pull(sha: fixture_older, draft: false), remotes: remotes_deliberately_unreadable()) {
+    PublicationHeadDiverged { branch: _, pr_number, pr_head, expected_head, url: _ } =>
+      pr_number == 22
+        && (pr_head as String) == (fixture_older as String)
+        && (expected_head as String) == (fixture_expected as String)
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+data no_silent_pick_note: String = "THE CLAIM THAT KILLS first(). Two open pull requests carry the same head branch against the same base. An implementation selecting the first would report one of them as THE publication, and which one depends on list order — so this witness ALSO reverses nothing and asserts the ambiguous arm carries BOTH numbers. A silent pick passes every other claim in this file."
+
+test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
+  let outcome = adjudicate_with(
+    pulls: PullRequestsRead {
+      pulls: [
+        fixture_pull(number: 22, branch: fixture_branch as String, base: fixture_base as String, sha: fixture_expected, draft: false),
+        fixture_pull(number: 23, branch: fixture_branch as String, base: fixture_base as String, sha: fixture_older, draft: false),
+      ],
+    },
+    remotes: remotes_deliberately_unreadable(),
+  )
+  match outcome {
+    PublicationBindingAmbiguous { branch: _, base_ref, pr_numbers } =>
+      (base_ref as String) == (fixture_base as String)
+        && count(pr_numbers) == 2
+        && any(pr_numbers, n => n == 22)
+        && any(pr_numbers, n => n == 23)
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+data base_discriminates_note: String = "A pull request on the right branch against a DIFFERENT base is not this publication. Without the base in the key, such a pull request would bind — and it is a real shape, since a stacked or retargeted change carries the same head branch. Here it must fall through to the remote-ref path rather than be adopted."
+
+test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
+  let outcome = adjudicate_with(
+    pulls: PullRequestsRead {
+      pulls: [
+        fixture_pull(number: 22, branch: fixture_branch as String, base: "release/1.x", sha: fixture_expected, draft: false),
+      ],
+    },
+    remotes: RemoteBranchesRead { branches: [] },
+  )
+  match outcome {
+    BranchNotPublished { branch: _, remote_branches_seen } => remote_branches_seen == 0
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+data remote_ref_must_be_exact_note: String = "THE HOLE THE PREVIOUS CUT LEFT. With no pull request to compare against, an earlier version established only that a ref with the right NAME existed — abandoning the exact-head thesis on the one path where nothing else would reveal the mismatch. A stale branch from an earlier attempt satisfied it. Both directions are asserted: at the expected head is its own arm, and diverged names both shas."
+
+test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_arm() -> Bool {
+  let outcome = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: "main", sha: fixture_older),
+        fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
+      ],
+    },
+  )
+  match outcome {
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
+      (branch as String) == (fixture_branch as String)
+        && (head_sha as String) == (fixture_expected as String)
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bool {
+  let outcome = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [fixture_ref(branch: fixture_branch as String, sha: fixture_older)],
+    },
+  )
+  match outcome {
+    RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
+      (remote_head as String) == (fixture_older as String)
+        && (expected_head as String) == (fixture_expected as String)
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+data remote_ref_ambiguity_note: String = "The pull-request fold got 0/1/many in the first cut of that correction and the remote-ref fold beside it did not - it handled zero and then took the first of the rest, which is the same silent pick one screen below the note forbidding it. This is stated in BOTH orders on purpose: with the expected head first, the old code answered RemoteBranchAtExpectedHeadWithoutPullRequest, and with the stale ref first it answered RemoteBranchHeadDiverged, so a single-order claim would have been satisfied by list position rather than by a decision. Two orders over one observation make the answer order-independent, which is the property that was actually missing."
+
+fn ambiguous_over_two_refs(outcome: PublicationOutcome) -> Bool {
+  match outcome {
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched } =>
+      refs_matched == 2
+    _ => false
+  }
+}
+
+test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
+  let expected_first = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
+        fixture_ref(branch: fixture_branch as String, sha: fixture_older),
+      ],
+    },
+  )
+  let stale_first = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: fixture_branch as String, sha: fixture_older),
+        fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
+      ],
+    },
+  )
+  ambiguous_over_two_refs(outcome: expected_first)
+    && ambiguous_over_two_refs(outcome: stale_first)
+    && !publication_offers_the_expected_head(outcome: expected_first)
+}
+
+test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool {
+  let outcome = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
+        fixture_ref(branch: "other", sha: fixture_older),
+      ],
+    },
+  )
+  match outcome {
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha } =>
+      (head_sha as String) == (fixture_expected as String)
+    _ => false
+  }
+}
+
+test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
+  let outcome = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [
+        fixture_ref(branch: "main", sha: fixture_older),
+        fixture_ref(branch: "other", sha: fixture_older),
+      ],
+    },
+  )
+  match outcome {
+    BranchNotPublished { branch, remote_branches_seen } =>
+      (branch as String) == (fixture_branch as String) && remote_branches_seen == 2
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationObservationRefused { detail: _ } => false
+  }
+}
+
+data refusal_is_not_absence_note: String = "AN UNREADABLE OBSERVATION MUST NOT READ AS 'NOT PUBLISHED'. Both are negative, so a claim asserting only 'it did not conclude bound' passes against the collapse — and the collapse points the operator at the wrong action entirely: pushing a branch that may already be pushed, because the truth is that nothing was learned."
+
+test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool {
+  match adjudicate_with(
+    pulls: PullRequestsUnreadable { detail: "401 from the forge" },
+    remotes: RemoteBranchesRead { branches: [] },
+  ) {
+    PublicationObservationRefused { detail } =>
+      string_contains(s: detail, pattern: "401 from the forge")
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+  }
+}
+
+test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpublished() -> Bool {
+  match adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesUnreadable { detail: "ls-remote timed out" },
+  ) {
+    PublicationObservationRefused { detail } =>
+      string_contains(s: detail, pattern: "ls-remote timed out")
+    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+  }
+}
+
+data only_one_arm_offers_note: String = "Exactly one arm answers yes, and a remote ref at the expected head is deliberately NOT it: there is nothing to review, and the review lane's subject is a pull request. Asserting the true case alone would pass against a predicate that answered yes for everything, so every other arm is asserted false in the same claim."
+
+test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
+  let bound = adjudicate_with(pulls: one_pull(sha: fixture_expected, draft: false), remotes: remotes_deliberately_unreadable())
+  let diverged = adjudicate_with(pulls: one_pull(sha: fixture_older, draft: false), remotes: remotes_deliberately_unreadable())
+  let ref_only = adjudicate_with(
+    pulls: PullRequestsRead { pulls: [] },
+    remotes: RemoteBranchesRead {
+      branches: [fixture_ref(branch: fixture_branch as String, sha: fixture_expected)],
+    },
+  )
+  let refused = adjudicate_with(
+    pulls: PullRequestsUnreadable { detail: "no token" },
+    remotes: RemoteBranchesRead { branches: [] },
+  )
+  publication_offers_the_expected_head(outcome: bound)
+    && !publication_offers_the_expected_head(outcome: diverged)
+    && !publication_offers_the_expected_head(outcome: ref_only)
+    && !publication_offers_the_expected_head(outcome: refused)
+}
+
+test fn the_diverged_detail_names_both_commits() -> Bool {
+  let diverged = publication_detail(outcome: adjudicate_with(
+    pulls: one_pull(sha: fixture_older, draft: false),
+    remotes: remotes_deliberately_unreadable(),
+  ))
+  string_contains(s: diverged, pattern: fixture_older as String)
+    && string_contains(s: diverged, pattern: fixture_expected as String)
+    && string_contains(s: diverged, pattern: "branch moved")
+}
+
+test fn the_bound_detail_distinguishes_draft_from_ready() -> Bool {
+  let as_draft = publication_detail(outcome: adjudicate_with(
+    pulls: one_pull(sha: fixture_expected, draft: true),
+    remotes: remotes_deliberately_unreadable(),
+  ))
+  let as_ready = publication_detail(outcome: adjudicate_with(
+    pulls: one_pull(sha: fixture_expected, draft: false),
+    remotes: remotes_deliberately_unreadable(),
+  ))
+  string_contains(s: as_draft, pattern: "draft pull request #22")
+    && !string_contains(s: as_ready, pattern: "draft")
+    && string_contains(s: as_ready, pattern: "pull request #22")
+}
