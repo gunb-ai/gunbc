@@ -37,16 +37,19 @@ fn run(script: String) -> Bool {
   shell.Exec.Run(script: script as extdeps.shell.exec.TransportScript).success
 }
 
+fn setup_bare_repo(bare: String, work: String) -> Bool {
+  run(script: concat("git init --bare ", bare))
+    && run(script: concat("git init ", work))
+    && run(script: concat("cd ", work, " && git config user.email witness@test && git config user.name witness"))
+    && run(script: concat("cd ", work, " && git remote add origin ", bare))
+    && run(script: concat("cd ", work, " && echo file > f && git add f && git commit -m init && git push -u origin main"))
+}
+
 test fn repository_remote_head_bare_repo_by_real_execution() -> Bool {
   let root = shell.Mktemp.Dir()
   let bare = concat(root.path as String, "/remote.git")
   let work = concat(root.path as String, "/work")
-  let setup =
-    run(script: concat("git init --bare ", bare))
-      && run(script: concat("git init ", work))
-      && run(script: concat("cd ", work, " && git config user.email witness@test && git config user.name witness"))
-      && run(script: concat("cd ", work, " && git remote add origin ", bare))
-      && run(script: concat("cd ", work, " && echo file > f && git add f && git commit -m init && git push -u origin main"))
+  let setup = setup_bare_repo(bare: bare, work: work)
   let binding = witness_binding(remote_url: bare, worktree: work)
   let inv = repository_remote_head_invocation(binding: binding)
   let materialized = shell_materialize_operation_argv(
