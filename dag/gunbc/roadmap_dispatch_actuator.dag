@@ -195,10 +195,6 @@ fn dispatch_capability_program(
 
 type DispatchBriefFields {
   node_id: String
-  title: String
-  repo: String
-  intricacy_label: String
-  volume_label: String
   displaced_cost: String
   current_state: String
   first_slice: String
@@ -209,6 +205,9 @@ type DispatchBriefFields {
   commands_to_run: String
   expected_artifact: String
 }
+
+data dispatch_brief_fields_invariant_note: String = "DispatchBriefFields contains only fields consumed by fill_dispatch_brief. Sizing remains typed on RoadmapNode and is projected only where rendered."
+
 
 data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
 
@@ -316,22 +315,6 @@ fn dispatch_worker_observation_for_process(
 
 fn dispatch_worker_observation() -> WorkerObservation {
   worker_observation_without_provider_probe(instance: dispatch_provider_instance())
-}
-
-fn intricacy_label(i: Intricacy) -> String {
-  match i {
-    IntricacyLow => "low"
-    IntricacyMedium => "medium"
-    IntricacyHigh => "high"
-  }
-}
-
-fn volume_label(v: Volume) -> String {
-  match v {
-    VolumeSmall => "small"
-    VolumeMedium => "medium"
-    VolumeLarge => "large"
-  }
 }
 
 fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
@@ -694,10 +677,6 @@ fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields 
     Present { value: t } =>
       DispatchBriefFields {
         node_id: node.node,
-        title: title,
-        repo: repo,
-        intricacy_label: "",
-        volume_label: "",
         displaced_cost: t.displaced_cost,
         current_state: t.current_state,
         first_slice: t.first_slice,
@@ -711,10 +690,6 @@ fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields 
     Absent =>
       DispatchBriefFields {
         node_id: node.node,
-        title: title,
-        repo: repo,
-        intricacy_label: "",
-        volume_label: "",
         displaced_cost: title,
         current_state: title,
         first_slice: title,
@@ -741,10 +716,6 @@ fn dispatch_brief_fields_for_environment(
     let f = dispatch_slot_fields(node: node, repo: repo)
     DispatchBriefFields {
       node_id: f.node_id,
-      title: f.title,
-      repo: repo,
-      intricacy_label: intricacy_label(i: intricacy),
-      volume_label: volume_label(v: volume),
       displaced_cost: f.displaced_cost,
       current_state: f.current_state,
       first_slice: f.first_slice,
@@ -760,10 +731,6 @@ fn dispatch_brief_fields_for_environment(
     let f = dispatch_slot_fields(node: node, repo: "")
     DispatchBriefFields {
       node_id: f.node_id,
-      title: f.title,
-      repo: "",
-      intricacy_label: "unsized",
-      volume_label: "unsized",
       displaced_cost: f.displaced_cost,
       current_state: f.current_state,
       first_slice: f.first_slice,

@@ -6,7 +6,6 @@ import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
-import gunbc.site.mark { render_mark }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
@@ -24,11 +23,12 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
-  declared_roadmap_nodes, active_roadmap_nodes, accepted_roadmap_node_ids,
+  accepted_roadmap_node_ids,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
+  theme_toggle_label_prefix, theme_toggle_auto_value,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
   WorkflowLamp, workflow_lamps_v0, workflow_lamp_key, workflow_lamp_label,
   workflow_lamp_initial_state,
@@ -44,11 +44,11 @@ import gunbc.roadmap_component {
 }
 import gunbc.roadmap_workflow_stage { WorkflowSegmentKind }
 import gunbc.client_observation_state { client_observation_state_key }
-import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted }
+import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
 
 fn roadmap_page_max_depth() -> Int { 12 }
 
-data finish_line_stylesheet_debt_note: String = "DECLARED SCAFFOLD, counted not silent (2026-07-28): this section's markup is the finish-line projection, but gunbc.roadmap_style still carries the retired three-gate/brick rules (.three-gate-progress, .gate-row, .gate-bar, .bar-fill, ul.bricks, li.brick, .brick-state) and carries no rule for the .finish-line-* classes emitted here — so the section ships structurally correct and visually unstyled, and those rules are unreferenced. The styling pass was deliberately NOT bundled: test.claim.design_register_lift_parity_witness pins roadmap_css_lift_parity_digest, and every re-pin on that row is derived BY EXECUTION from the emitted stylesheet (never chosen), which this change's authoring environment cannot produce. Landing a hand-guessed digest would be the fabricated-output failure DESIGN §5 forbids, and landing a moved stylesheet against a stale pin would knowingly red the corpus. DISSOLVE-ON: one styling pass in an environment that can build the seed — delete the seven gate/brick rules, add the .finish-line-* rules on the same tokened/typed grain (the width_brick_state and radius_5/height_bar dimension tokens lose their last consumers with them), then re-pin roadmap_css_lift_parity_digest from the executed emission with the derivation receipt, exactly as every prior re-pin note on that row records."
+data finish_line_placement_note: String = "The finish-line block is REFERENCE prose, not operational attention (A1 of the presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / leads with the frontier and carries only the one-line program_progress_compact_markup; the four claims render on /roadmap, where the strategic argument lives. The 2026-07-28 stylesheet-debt scaffold that shipped this section unstyled dissolved in the same pass: the gate/brick rules are deleted, .finish-line-* rules exist on the tokened grain, and roadmap_css_lift_parity_digest was re-pinned by execution (see the A1 re-pin note in test.claim.design_register_lift_parity_witness). The count line under the heading is the LOCAL denominator — accepted finish lines over the four — never the global roadmap population, which belonged to a different question (review: the section visually implied a denominator of four while reporting an unrelated global one)."
 
 fn finish_line_state_class(accepted: Bool) -> String {
   if accepted { "accepted" } else { "active" }
@@ -64,11 +64,12 @@ fn finish_line_row(spec: V1FinishLineSpec, accepted_ids: List<RoadmapNodeId>) ->
   ])
 }
 
-fn roadmap_counts_label() -> String {
+fn finish_line_local_count_label(accepted_ids: List<RoadmapNodeId>) -> String {
   join([
-    to_string(count(declared_roadmap_nodes())), " declared · ",
-    to_string(count(accepted_roadmap_node_ids())), " accepted · ",
-    to_string(count(active_roadmap_nodes())), " active",
+    to_string(v1_finish_lines_accepted_count(accepted: accepted_ids)),
+    " of ",
+    to_string(count(v1_exit_finish_lines())),
+    " complete",
   ], "")
 }
 
@@ -76,9 +77,24 @@ fn finish_line_progress_markup() -> Fragment {
   let accepted_ids = accepted_roadmap_node_ids()
   el_class("section", "finish-line-progress", [
     el("h2", [ txt("v1 exit: four finish lines") ]),
-    el_class("p", "finish-line-counts", [ txt(roadmap_counts_label()) ]),
+    el_class("p", "finish-line-counts", [ txt(finish_line_local_count_label(accepted_ids: accepted_ids)) ]),
     el_class("ul", "finish-lines",
       map(v1_exit_finish_lines(), s => finish_line_row(spec: s, accepted_ids: accepted_ids))),
+  ])
+}
+
+fn program_progress_compact_markup() -> Fragment {
+  let accepted_ids = accepted_roadmap_node_ids()
+  el_class("section", "program-progress", [
+    el_class("span", "program-progress-name", [ txt("v1 exit") ]),
+    el_class("span", "program-progress-count", [
+      txt(join([
+        to_string(v1_finish_lines_accepted_count(accepted: accepted_ids)),
+        " of ",
+        to_string(count(v1_exit_finish_lines())),
+        " finish lines complete",
+      ], "")),
+    ]),
   ])
 }
 
@@ -91,24 +107,31 @@ fn dashboard_instance_banner() -> Fragment {
 }
 
 
-data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. It renders with an empty label: the text is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. With no JS the control is a blank button that does nothing, which is honest — there is no sound to mute either."
+data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. The former empty-label rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require blankness — a blank button has no visible content and no accessible name, which is a defect, not honesty. The TWO TOGGLES SHIP DIFFERENT AMOUNTS OF STATE, and the asymmetry is the honesty boundary, not an inconsistency (A1 reconciliation, operator feedback 2026-08-01): the theme control ships 'theme · auto' because at parse time the document carries no data-theme and prefers-color-scheme governs — which is the DEFINITION of auto, true for every visitor until the client program applies a stored choice; the sound control ships only its NAME because its state has no parse-time truth — the preference lives in this browser's storage (unreadable at serve), and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated claim for someone. The client program repaints both from storage on load, exactly as before."
 
 fn sound_toggle_control() -> Fragment {
   el_attrs("button", [
     attr(name: "class", value: sound_toggle_class ),
     attr(name: "type", value: "button" ),
-  ], [])
+  ], [ txt("sound") ])
 }
 
 fn theme_toggle_control() -> Fragment {
   el_attrs("button", [
     attr(name: "class", value: theme_toggle_class ),
     attr(name: "type", value: "button" ),
-  ], [])
+  ], [ txt(join([theme_toggle_label_prefix, theme_toggle_auto_value], "")) ])
 }
 
-fn roadmap_header(title: String) -> Fragment {
-  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]), sound_toggle_control(), theme_toggle_control() ])
+data roadmap_wordmark_note: String = "A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name lives in the wordmark, so the two never restate each other."
+
+fn roadmap_header(page: String) -> Fragment {
+  el("header", [
+    el_class("span", "wordmark", [ txt("gunbc") ]),
+    el("h1", [ txt(page) ]),
+    sound_toggle_control(),
+    theme_toggle_control(),
+  ])
 }
 
 fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {
@@ -294,19 +317,34 @@ fn item_is_ticket(rn: RoadmapNode) -> Bool {
   }
 }
 
+data item_facts_disclosure_note: String = "Supporting facts live in the disclosure, not the head row (A1 of the presentation recon, operator-signed 2026-08-01): the head line had grown to ~7 simultaneous inline facts — owner, sizing codes, carrier links, dependencies — wrapping arbitrarily under the title, which is the half-console-half-product voice fork the recon named. The head now carries the row's PRIMARY facts only (status, title, state badges, the dependency line that explains why an upcoming row waits) plus the actuator; owner/sizing/carriers are supporting facts behind the same disclosure that already held the body. A row with supporting facts but no body still discloses (summary label 'facts'), so no fact is dropped — only demoted. The proper display-role model (PrimaryFact/SupportingFact/EvidenceFact) is A2's presentation seam; this is the damage-removal cut of it."
+
+fn item_supporting_facts(rn: RoadmapNode) -> List<Fragment> {
+  let facts = concat(owner_badge(rn: rn), concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)))
+  if count(facts) == 0 {
+    []
+  } else {
+    [ el_class("div", "item-facts", facts) ]
+  }
+}
+
 fn item_detail_block(rn: RoadmapNode) -> List<Fragment> {
-  if line_lead(line: rn.line) == line_title(line: rn.line) {
+  let facts = item_supporting_facts(rn: rn)
+  let has_body = !(line_lead(line: rn.line) == line_title(line: rn.line))
+  if count(facts) == 0 && !has_body {
     []
   } else {
     let is_ticket = item_is_ticket(rn: rn)
+    let body = if has_body { item_body_nodes(rn: rn) } else { [] }
+    let label = if is_ticket { "ticket" } else { if has_body { "brief" } else { "facts" } }
     [ el_attrs("details", [
         attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ),
       ], [
         el("summary", [
           el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
-          txt(if is_ticket { "ticket" } else { "brief" }),
+          txt(label),
         ]),
-        el_class("div", "item-body", item_body_nodes(rn: rn)),
+        el_class("div", "item-body", concat(facts, body)),
       ]) ]
   }
 }
@@ -490,6 +528,8 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
   collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
+data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass (operator feedback 2026-08-01): the flat row list, the head-line composition, and the visual style of this module are ONE PROVISIONAL RENDERER, not product ontology. What A1 fixed is which claims render and at what altitude (operational before narrative, local denominators, supporting facts demoted, routine chrome quieted); it deliberately did NOT choose the workspace's interaction model. The named misses carried forward to the presentation-seam slice (A2: WorkRowView/DailyWorkspaceView/ObservationImpactView, roadmap_page becomes serialize-only): the row's one purpose-specific supporting line (why-now / what-it-unlocks — deferred because no typed fact carries it yet, and truncating ticket prose by punctuation is exactly the heuristic class the seam exists to kill); the observation-refusal altitude split (one cause narrated once, not once per channel); availability-vs-priority on the dispatch control; family-once row grouping; routine-state collapse (open/ticket/idle lamps). Witnesses over this module assert per-claim semantics, never element order or adjacency — pinning the accidental composition would harden this renderer into the model."
+
 data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion. That final wrapper is always present, carrying the workflow observation strip plus the optional dispatch button, so done/superseded rows remain observable and dynamic process evidence plus stop/clear/unavailable cleanup stay inside the existing grid cell. The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its lamp or optional control."
 
 fn dependency_badge(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<Fragment> {
@@ -514,11 +554,9 @@ fn node_head_row(rn: RoadmapNode, edges: List<RoadmapEdge>, merged: List<Int>, d
       el_class("span", node_mid_class, concat(
         concat(
           [ el_class("span", "title", lead_nodes(line: rn.line)) ],
-          concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
+          superseded_badge(rn: rn),
         ),
-        concat(
-          concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
-          dependency_badge(rn: rn, edges: edges)))),
+        dependency_badge(rn: rn, edges: edges))),
     ],
     workflow_controls_nodes(rn: rn, dispatchable: dispatchable)))
 }
@@ -659,15 +697,16 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
   let edges = doc_all_edges(doc: doc)
   Element {
     tag: "html",
-    attributes: [],
+    attributes: [ attr(name: "lang", value: "en" ) ],
     children: [
       el("head", [
         Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
         el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — daily workspace") ]),
       ]),
       el("body", [
-        roadmap_header(title: "gunbc — daily workspace"),
+        roadmap_header(page: "daily workspace"),
         el_class("main", "daily-workspace", concat(main_prefix, [
           roadmap_frontier_markup(frontier: frontier, edges: edges, merged: merged),
         ])),
@@ -682,7 +721,7 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
   let main_children = concat(main_prefix, concat(lead, secs))
   let body_base = [
-    roadmap_header(title: "gunbc — roadmap"),
+    roadmap_header(page: "roadmap"),
     el_class("main", "roadmap", main_children),
   ]
   let body_children = if list_length(main_children) == 0 {
@@ -692,10 +731,11 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
   }
   Element {
     tag: "html",
-    attributes: [],
+    attributes: [ attr(name: "lang", value: "en" ) ],
     children: [
       el("head", [
         Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
         el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — roadmap") ]),
       ]),
@@ -742,7 +782,7 @@ fn roadmap_daily_workspace_page_for_authority() -> Fragment {
     merged: authored_merged_prs(),
     main_prefix: [
       dashboard_instance_banner(),
-      finish_line_progress_markup(),
+      program_progress_compact_markup(),
     ],
   )
 }
