@@ -23,6 +23,7 @@ import std.occurrence_identity {
 }
 import v1.std.core {
   Node,
+  NewlineIndex,
   build_newline_index,
   empty_intern_table,
 }
