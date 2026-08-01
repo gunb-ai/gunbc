@@ -1,6 +1,7 @@
 module v2.extdeps.languages.verilog
 
 import v2.std.nat { Nat }
+import std.integer { Signedness }
 import v2.std.node { Symbol }
 import v2.std.grammar {
   StampClass,
@@ -23,6 +24,8 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
+
+data verilog_std_integer_signedness_migration_note: String = "Signedness consumer migration: verilog imports std.integer.Signedness. Semantic equivalence: verilog signed/unsigned on net, port, and parameter declarations is the same interpretive axis as std.integer Signed/Unsigned — whether a bit pattern is read as two's-complement signed range or unsigned modular arithmetic; no Verilog-specific signedness semantics beyond this axis are modeled on these fields."
 
 type PortDirection
   = Input
@@ -155,10 +158,6 @@ type PackingShape
 type NetVectoredPacking
   = NetUnranged
   | NetRanged { vectoredness: VectorednessClause, range: VectorRange }
-
-type Signedness
-  = Signed
-  | Unsigned
 
 type DriveStrengthClause
   = NoDriveStrength

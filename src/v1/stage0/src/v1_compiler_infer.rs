@@ -79,9 +79,9 @@ pub use crate::v1_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v1_compiler_infer_lookup::{
     field_summary_for_type, func_sig_if_resolved, global_bare_callable_node,
     lookup_coproduct_common_field_node, lookup_field_type_node, lookup_func_sig, lookup_in_scope,
-    map_key_type_in_env, map_value_type_in_env, product_field_result_type,
-    resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
-    set_element_type_in_env,
+    lookup_structural_method, map_key_type_in_env, map_value_type_in_env,
+    product_field_result_type, resolve_known_method_node, resolve_method_receiver_type,
+    resolve_scrutinee_type_node, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -116,12 +116,13 @@ pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    is_type_expr_annotation, make_callable_type, make_container_type, method_receiver_element_node,
-    node_is_collection, node_is_element_collection, node_is_keyed_collection,
-    node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
-    node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
-    resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
-    template_return_has_variables, template_return_is_receiver_self,
+    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
+    method_receiver_element_node, node_is_collection, node_is_element_collection,
+    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
+    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
+    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
+    structural_carrier_template_name, template_return_has_variables,
+    template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
@@ -130,8 +131,9 @@ use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics}
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, CallArgumentNameUnknown, CallPositionalSurplus, FieldNotFound,
-    InternalError, MissingField, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
+    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
+    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
+    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -159,22 +161,22 @@ use crate::v1_std_core::VarBindingKind::{
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
     binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
-    default_ident_span, empty_intern_table, error_type, expr_call_func_at,
-    expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
-    expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
-    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
-    find_child_named, find_property_string, float_type, foreach_body, foreach_collection,
-    foreach_variable_at, generic_param_name_at, has_child_named, has_inferred, if_condition,
-    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
-    is_container_type, is_error_diagnostic, is_property_contraction, is_tree_size_reducing,
-    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
-    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    default_ident_span, diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table,
+    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
+    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
+    field_node_type_expr, find_child_named, find_property_string, float_type, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_container_type, is_error_diagnostic, is_property_contraction,
+    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
+    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
     qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
@@ -184,8 +186,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
     ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    StringPart, UnaryOpKind, VarBindingKind,
+    FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -997,6 +999,175 @@ pub fn type_mismatch_error(
     )
 }
 
+pub fn seed_node_traversal_frontier() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "\\u{1F7E1} dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is 16 self-recursive `children |> flat_map` sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus 579 direct Node-storage field reads in 04_infer alone. collect_explicit_return_values is the 17th instance, not a new class, and a per-function row would assert separable work that does not exist while 16 identical siblings carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds a 17th shape without removing any of the 16, and migrating all 17 is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn collect_explicit_return_values(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*n.expr_data.clone()).clone() {
+            ExprData::ExprLambda => Rc::new(vec![]),
+            ExprData::ExprReturn => v1_rt::concat(
+                Rc::new(vec![return_value(n.clone())]),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result
+                            .extend((*collect_explicit_return_values(c.clone())).iter().cloned());
+                    }
+                    __result
+                }),
+            ),
+            _ => Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.extend((*collect_explicit_return_values(c.clone())).iter().cloned());
+                }
+                __result
+            }),
+        }
+    })
+}
+
+pub fn explicit_return_conformance_diags(
+    declared: Rc<Node>,
+    body_typed: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for returned in collect_explicit_return_values(body_typed.clone())
+            .iter()
+            .cloned()
+        {
+            __result.extend(
+                (*declared_type_conformance_diags(
+                    declared.clone(),
+                    resolved_type(returned.clone()),
+                    returned.span.clone(),
+                    scope.clone(),
+                ))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn explicit_return_conformance_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom — 16 such sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings) — and there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is the 17th instance of a 16-instance idiom, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a 17th shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn declared_return_type_node(item: Rc<Node>) -> Rc<Node> {
+    preserve_outer_optional_cardinality(item.clone(), resolved_type(item.clone()))
+}
+
+pub fn conformance_ground_kernel_scalar(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let plain_shape = ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0));
+        let required = (n.return_cardinality.clone() == Cardinality::Required);
+        let kernel_named = is_kernel_type(authored_name_at(source_indices.clone(), n.clone()));
+        ((plain_shape.clone() && required.clone()) && kernel_named.clone())
+    }
+}
+
+pub fn conformance_ground_element_collection(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let shaped_container = (((n.connective.clone() == Connective::NoConnective)
+            && node_is_element_collection(n.clone(), source_indices.clone()))
+            && (node_is_keyed_collection(n.clone(), source_indices.clone()) == false));
+        let required = (n.return_cardinality.clone() == Cardinality::Required);
+        let element_ground = match n.children.clone().first().cloned() {
+            Some(el) => conformance_ground_kernel_scalar(
+                child_type_node(el.clone()),
+                source_indices.clone(),
+            ),
+            None => false,
+        };
+        ((shaped_container.clone() && required.clone()) && element_ground.clone())
+    }
+}
+
+pub fn conformance_ground_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (conformance_ground_kernel_scalar(n.clone(), source_indices.clone())
+        || conformance_ground_element_collection(n.clone(), source_indices.clone()))
+}
+
+pub fn conformance_unjudged_live_hole_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "PROVEN LIVE HOLE, AND THE REASON THE UNJUDGED ADVISORY IS EXCLUDED FROM THIS PR (codex reviews 45647, 45767). The branch now returns [] for the unjudged case, matching origin/main exactly, so this PR neither closes nor worsens the class; it lands with the identity capability instead. The record below is kept because the witness and the five measured attempts are what that lane starts from. The unjudged branch is not merely unmeasured — a program that is simply WRONG reaches emission through it. Executed witness: `type R { x: Int }` `type S { y: String }` `fn wrong_record() -> R { S { y: \"a\" } }` compiles EXIT 0 and EMITS TWO FILES, on this branch and on origin/main alike. Two structurally unrelated named records is not a representation gap; it is the conformance half of #7479. It was briefly reported as a counted advisory here, and that is precisely what was removed: counting it protects nothing, and a number beside a wrong program is the fabricated success DESIGN 5 forbids, one level up. THE FIX WAS ATTEMPTED AND IS NOT LANDED, and the measurements are recorded because they are the real cost of the next attempt rather than a reason to stop looking. Three successive narrowings of a refuse-when-both-sides-are-named-structured rule were each run against the whole corpus: (1) both sides structured and named -> 90 refusals of CORRECT code, dominated by the two-representation optionality class (24 Node(Optional) vs Primitive(Node), plus Coproduct(X) vs Coproduct(Optional)); (2) narrowed to inhabited named RECORDS with kernel scope names excluded -> 15; (3) additionally guarding the raw nodes -> 27, and the population had by then shifted to a NEW class, produced sides that are let-BINDING names (module_emit_scope, scope_after_expr, lookup_item) rather than types. The count moving 90 -> 15 -> 27 rather than monotonically down is the finding: each guard displaces the false-positive population instead of shrinking it, which is the exemption-accumulation this wall refuses elsewhere, and shipping any of the three would red correct code. So the arm is NOT landed, and with no arm to land the residue is left exactly where main leaves it rather than dressed up as partial coverage. The blocking obstacle is named and is not vague: the produced-side node reaching this branch is not reliably a TYPE — it can be a nominal reference, a kernel encoding of cardinality or absence, an anonymous literal, or a let-binding identity — so no predicate over its shape can separate a real mismatch from a representation gap until produced-side type identity is established upstream. A FOURTH attempt isolated the obstacle exactly, and it is the reason the other three moved the population instead of shrinking it: guarding on `both sides are Conj whose authored name RESOLVES via lookup_type_by_name to a record declaration` still refused 14 seed sites, and every one had a LET-BINDING name on the produced side (module_emit_scope, scope_after_expr, lookup_item, service_fallback_transport). lookup_type_by_name resolves those because bindings and types inhabit ONE name environment, so the guard cannot tell a type identity from a binding identity — which is the stated obstacle, now demonstrated rather than inferred. A FIFTH attempt tested the one discriminator that looked left — requiring the resolved declaration to NAME ITSELF, on the theory that a type declares its own name while a binding resolves to a type named differently — and it returned the IDENTICAL 14 sites, because lookup_type_by_name on a binding returns a node carrying the BINDING's name, not its type's. The name environment does not merely conflate the two lookups; the resolved node itself carries no separable type identity. No predicate over the produced node's shape or name can close this class. Dissolve-on: feature:conformance-produced-type-identity — the produced node carries a resolved type identity rather than a shape to be guessed at, at which point the refusal arm is one predicate over two identities and this row deletes. THE PERMISSION IS NOT THIS PATH'S AND THAT WAS MEASURED, NOT ASSERTED: the identical program built against origin/main compiles EXIT 0, emits 2 files and reports ZERO diagnostics, and this branch now does the same, because the unjudged branch returns the same empty list main returns. So the conformance path neither newly permits the emission nor closes it. THE COUNTED-ADVISORY MIDDLE GROUND WAS TRIED AND REJECTED, and the rejection is the useful part of this row: an advisory made the fail-open visible without making it stop, and review held that visibility is not protection when the program is PROVABLY wrong rather than merely unproven (codex reviews 45647, 45695, 45711, 45767, 45777). Agreed on execution — the R/S witness above emitted two files under the advisory. So the class is left at main's behavior and named here with its trigger, and what ships is the method-existence wall, which does refuse and does emit nothing. That is a judgment about sequencing, not a claim that the hole is acceptable: a declared boundary with an executed witness, an owner-facing trigger and a measured cost, and deliberately NOT a success path with a number beside it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn conformance_expansion_depth_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "MEASUREMENT RECEIPT FOR THE NEXT LANE, NOT A DESCRIPTION OF LIVE CODE — the expansion-peeling comparison it records was deleted together with the unjudged advisory it fed (codex review 45767), and this row is kept because the measurement is what the next attempt starts from rather than re-derives. A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so comparing them as they arrive reads one type as two. Measured over the whole corpus that was the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, each a reference and its own body — which is why the frontier first read 3005 and then 1566 once each side was resolved through lookup_type_for and peeled through peel_where_refinement_base, the SAME peel the method wall uses (DESIGN section 3: one authority, two consumers, not a second one minted here). Reporting those as unjudged was not a conservative silence but a WRONG COUNT, and an inflated frontier buries the residue that genuinely cannot be decided under pairs that were never in doubt. THE COMPARISON MUST BE THE STRUCTURAL RELATION, NOT A RENDERED SHAPE STRING, and the first version of this got that wrong in a way worth keeping on the record: it compared node_type_shape output, which collapses every anonymous product to the literal text Product(<anon>) and every named product to its OUTER NAME ONLY, discarding fields, variants and their types. So two structurally different records compared EQUAL and were stamped proven-conforming — the exact fail-open this wall exists to delete, reintroduced while removing a different one, and by the same mechanism as the earlier 1.0/0.0 seam: a projection that looks like evidence used where a proof was required (codex review 45600). A display projection is for MESSAGES; a judgment must consume the structural relation. That constraint outlives the deleted code and binds whoever rebuilds it: node_type_compatible recurses into container elements and compares canonical template names, so identity is established rather than rendered, but its known imprecision is only safe where a mismatch costs a count rather than a refusal — it reports MISMATCH for the four classes of correct code enumerated in declared_type_conformance_note, so wiring it to a refusal without first establishing produced-side type identity (feature:conformance-produced-type-identity) reds correct code. That is the trap the five measured attempts in conformance_unjudged_live_hole_note fell into.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn declared_type_conformance_diags(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let both_ground = (conformance_ground_type(declared.clone(), si.clone())
+            && conformance_ground_type(produced.clone(), si.clone()));
+        if !both_ground.clone() {
+            Rc::new(vec![])
+        } else {
+            if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![type_mismatch_error(
+                    node_type_shape(declared.clone(), si.clone()),
+                    node_type_shape(produced.clone(), si.clone()),
+                    span.clone(),
+                    scope.module_name.clone(),
+                )])
+            }
+        }
+    }
+}
+
+pub fn declared_type_conformance_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as expected but then kept the declaration own inferred return REGARDLESS of what the body produced, and the generic expected handling in infer_expr applies where-refinement checks rather than a general actual-subtype-of-declared judgment. So fn f() -> Int { \"wrong\" } typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are checked against their declaration: a fn body vs its declared return (both the param-carrying and paramless arms) and a data value vs its type annotation. THE SCOPE IS DELIBERATELY NARROW AND THE NARROWING IS THE FINDING. node_type_compatible is the corpus compatibility relation and it is NOT sound as a general declared-versus-produced conformance judgment: measured over the whole tree, four independent classes of CORRECT code reported a mismatch, each a place where the relation compares names across representations it never peels. (1) OPTIONALITY LIVES IN TWO REPRESENTATIONS — a fn declared -> String? carries optionality in item.return_cardinality while its body produces the nominal Optional coproduct, so 4 correct sites in 05_emit_rust.dag read as expected Primitive(String) got Coproduct(Optional). (2) BRAND ALIASES ARE NOT PEELED — Hash is ContentHash is a branded String, so 3 correct sites in dag_collect_support.dag read as expected Primitive(String) got Primitive(Hash); the same class the method wall measured as NonEmptyStr arriving as Product(NonEmptyStr). (3) ANONYMOUS RECORD LITERALS — the corpus writes a typed list as [ { name: ..., .. }, .. ] without repeating the nominal type, so 8+ correct rows in dag/std/algebra.dag read as expected Container(List,Product(AlgebraFieldTemplate)) got Container(List,Product(<anon>)). (4) CARDINALITY IS NOT ON THE RESOLVED TYPE NODE — resolved_type(n: item) drops the declaration optional marker, which is why the declared side is built through preserve_outer_optional_cardinality, the existing single authority for carrying an outer node cardinality onto an inner type node. Each class was found by RUNNING the wall over the corpus, never by reasoning about it, and the list is not known to be exhaustive — which is precisely why this wall does not chase them with exemptions. Four ad-hoc carve-outs would leave a wall that is neither principled nor trustworthy, and fabricating a refusal is the mirror image of the fabricated success the wall exists to delete. So the predicate is POSITIVE ESTABLISHMENT, the same discipline the method wall uses: judge ONLY when both sides are ground kernel scalars — plain shape, Required cardinality, and a name in std.types kernel_type_set — because then a name difference IS a real difference with no alias, brand, container, coproduct or cardinality representation in between. That admits the whole class the operator named (declaring one primitive and returning another, fn f() -> Int { \"a string\" } and data d: Int = \"a string\") and admits nothing it cannot prove. THE GATE WAS FIRST WRITTEN AS SCALAR-ONLY AND THAT WAS TOO NARROW, which review found before any consumer did: a plain shape excludes a List, so a declared List<Int> whose body produced a List<String> was indistinguishable from a conforming declaration and compiled clean, and calling that state UNJUDGED in prose did not model it (codex review 45398). The widening is the SAME argument, not an exception to it — a container of a ground kernel scalar has no alias, brand, coproduct, anonymous-literal or cardinality representation standing between the two sides either, so a difference in the element name is a real difference exactly as a difference in a scalar name is. conformance_ground_type therefore admits a ground kernel scalar OR a Required, non-keyed element collection whose element is one, and the whole dag + src/v2 corpus stays clean under it, which is the same instrument that found the four false-positive classes above. The discriminating control was run against the PRIOR compiler rather than reasoned about: `fn f() -> List<Int> { [\"a\", \"b\"] }` with `data d: List<String> = [1, 2]` compiles with exit 0 on the pre-widening binary and refuses with two located mismatches on this one. EVERYTHING STILL WIDER IS UNJUDGED, AND IN THIS PR UNJUDGED IS A SILENCE — a deliberate narrowing, not an oversight. It is worth stating why the opposite was tried first: an unproven declaration returning an empty diagnostic list is byte-for-byte indistinguishable in the output from a proven-conforming one, so the absence of a check reads as the presence of a proof (codex review 45500). Making it a counted DeclaredTypeConformanceUnjudged advisory answered that objection and raised a larger one — an advisory does not stop a wrong program, so a proven-wrong program still emitted with a number beside it (codex reviews 45647, 45695, 45711, 45777). That advisory measured the frontier at 1566 declarations whole-tree and is EXCLUDED here (codex review 45767), because the branch could not be made to refuse safely either — see conformance_unjudged_live_hole_note for the executed witness and the five measured attempts. So this branch returns [] for the unjudged case, which is byte-for-byte what origin/main does, and this PR's contribution to conformance is exactly the REFUSALS it can prove: ground kernel scalars and ground element collections. Nothing about the unjudged class is worse than main; it is simply not addressed here, and it lands with the identity capability rather than beside it. IT WAS FIRST MEASURED AT 3005 AND THAT NUMBER WAS WRONG, which matters because the count is the whole bound: nearly half of it was one type compared against ITSELF at two expansion depths (a declaration naming T versus a body producing T's expanded body), so the frontier was reported almost twice its true size — see conformance_expansion_depth_note. An inflated frontier is not a conservative error; it hides the residue that genuinely cannot be decided underneath pairs that were never in doubt. It fires only where the declared and produced SHAPES DIFFER, because identical shapes have nothing to prove and counting them would bury the signal under declarations nobody doubts — the residue that matters is exactly the set where a mismatch could hide. Each numbered class above is a promotion trigger, and each promotion should be visible as a drop in that count. Keyed collections are deliberately not admitted yet — the key and value axes need their own corpus measurement, and guessing that the element argument transfers is precisely the move this note refuses elsewhere. Dissolve-on: a peeling conformance relation that grounds brand aliases to their base, reconciles the two optionality representations, and grounds an anonymous literal against its expected nominal type — at which point the ground-kernel-scalar gate widens class by class and finally deletes. Not covered here and each its own lane: direct-call argument types inside compiler modules (the v2. / v1.compiler. exemption), default field values, generic record instantiation, and post-substitution generic field access.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn rejects_string_for_optional_coproduct_field(
     expected: Rc<Node>,
     got: Rc<Node>,
@@ -1439,10 +1610,35 @@ pub fn nominal_call_arg_brand_mismatch(
     }
 }
 
-pub fn type_expr_where_refinement_predicates(ty: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    if (((ty.connective.clone() == Connective::Conj) && (ty.type_annotation.clone() != None))
+pub fn is_where_refinement_type(ty: Rc<Node>) -> bool {
+    (((ty.connective.clone() == Connective::Conj) && (ty.type_annotation.clone() != None))
         && ((ty.children.clone().len() as i64) == 1))
-    {
+}
+
+pub fn where_refinement_chain(ty: Rc<Node>, type_env: Rc<TypeEnv>) -> Rc<Vec<Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if is_where_refinement_type(ty.clone()) {
+            match ty.children.clone().first().cloned() {
+                Some(base) => {
+                    let base_resolved = match lookup_type_for(type_env.clone(), base.clone()) {
+                        Some(resolved) => resolved.clone(),
+                        None => base.clone(),
+                    };
+                    v1_rt::concat(
+                        Rc::new(vec![ty.clone()]),
+                        where_refinement_chain(base_resolved.clone(), type_env.clone()),
+                    )
+                }
+                None => Rc::new(vec![ty.clone()]),
+            }
+        } else {
+            Rc::new(vec![ty.clone()])
+        }
+    })
+}
+
+pub fn type_expr_where_refinement_predicates(ty: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    if is_where_refinement_type(ty.clone()) {
         match ty.type_annotation.clone() {
             Some(annot) => match annot.connective.clone() {
                 Connective::Conj => annot.children.clone(),
@@ -1459,30 +1655,30 @@ pub fn type_where_refinement_predicates_transitive(
     ty: Rc<Node>,
     type_env: Rc<TypeEnv>,
 ) -> Rc<Vec<Rc<Node>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let immediate = type_expr_where_refinement_predicates(ty.clone());
-        let inherited = if (((ty.connective.clone() == Connective::Conj)
-            && (ty.type_annotation.clone() != None))
-            && ((ty.children.clone().len() as i64) == 1))
+    Rc::new({
+        let mut __result = Vec::new();
+        for link in where_refinement_chain(ty.clone(), type_env.clone())
+            .iter()
+            .cloned()
         {
-            match ty.children.clone().first().cloned() {
-                Some(base) => {
-                    let base_resolved = match lookup_type_for(type_env.clone(), base.clone()) {
-                        Some(resolved) => resolved.clone(),
-                        None => base.clone(),
-                    };
-                    type_where_refinement_predicates_transitive(
-                        base_resolved.clone(),
-                        type_env.clone(),
-                    )
-                }
-                None => Rc::new(vec![]),
-            }
-        } else {
-            Rc::new(vec![])
-        };
-        v1_rt::concat(immediate.clone(), inherited.clone())
+            __result.extend(
+                (*type_expr_where_refinement_predicates(link.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
     })
+}
+
+pub fn peel_where_refinement_base(ty: Rc<Node>, type_env: Rc<TypeEnv>) -> Rc<Node> {
+    match where_refinement_chain(ty.clone(), type_env.clone())
+        .last()
+        .cloned()
+    {
+        Some(ground) => ground.clone(),
+        None => ty.clone(),
+    }
 }
 
 pub fn where_predicate_name_at(
@@ -2845,6 +3041,123 @@ pub struct MethodPipeFallback {
     pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
 }
 
+pub fn method_existence_decision(
+    recv_rt: Rc<Node>,
+    method_name: String,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Rc<MethodPipeFallback> {
+    {
+        let recv_shape = node_type_shape(
+            recv_rt.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        let recv_surface_established = (kernel_profile_lookup(authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            recv_rt.clone(),
+        )) != None);
+        if recv_surface_established.clone() {
+            Rc::new(MethodPipeFallback {
+                result_ty: error_type(),
+                kernel_diags: Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::MethodNotFound {
+                        method: method_name.clone(),
+                        receiver_type: recv_shape.clone(),
+                        span: span.clone(),
+                    }),
+                    scope.module_name.clone(),
+                )]),
+            })
+        } else {
+            {
+                let peeled = peel_where_refinement_base(recv_rt.clone(), scope.type_env.clone());
+                let peeled_lookup = lookup_structural_method(
+                    peeled.clone(),
+                    method_name.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                match peeled_lookup.resolution.clone() {
+                    Some(mfr) => Rc::new(MethodPipeFallback {
+                        result_ty: mfr.result_type.clone(),
+                        kernel_diags: peeled_lookup.kernel_diagnostics.clone(),
+                    }),
+                    None => {
+                        let peeled_shape = node_type_shape(
+                            peeled.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        let peeled_surface_established = (kernel_profile_lookup(authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            peeled.clone(),
+                        )) != None);
+                        if peeled_surface_established.clone() {
+                            Rc::new(MethodPipeFallback {
+                                result_ty: error_type(),
+                                kernel_diags: Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::MethodNotFound {
+                                        method: method_name.clone(),
+                                        receiver_type: peeled_shape.clone(),
+                                        span: span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )]),
+                            })
+                        } else {
+                            match unresolved_method_frontier_trigger(
+                                scope.module_name.clone(),
+                                method_name.clone(),
+                                recv_shape.clone(),
+                            ) {
+                                Some(trigger) => {
+                                    if (authored_name_at(
+                                        scope.type_env.clone().source_indices.clone(),
+                                        recv_rt.clone(),
+                                    ) == "".to_string())
+                                    {
+                                        Rc::new(MethodPipeFallback {
+                                            result_ty: error_type(),
+                                            kernel_diags: Rc::new(vec![make_error_node(
+                                                Rc::new(
+                                                    CompilerDiagnostic::ReceiverTypeUnestablished {
+                                                        method: method_name.clone(),
+                                                        span: span.clone(),
+                                                    },
+                                                ),
+                                                scope.module_name.clone(),
+                                            )]),
+                                        })
+                                    } else {
+                                        Rc::new(MethodPipeFallback {
+    result_ty: error_type(),
+    kernel_diags: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::MethodExistenceFrontierAdmitted {
+    method: method_name.clone(),
+    receiver_type: recv_shape.clone(),
+    trigger: trigger.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+})
+                                    }
+                                }
+                                None => Rc::new(MethodPipeFallback {
+                                    result_ty: error_type(),
+                                    kernel_diags: Rc::new(vec![make_error_node(
+                                        Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
+                                            method: method_name.clone(),
+                                            receiver_type: recv_shape.clone(),
+                                            span: span.clone(),
+                                        }),
+                                        scope.module_name.clone(),
+                                    )]),
+                                }),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn method_pipe_map_keys_values_fallback(
     recv_rt: Rc<Node>,
     method_name: String,
@@ -2862,10 +3175,12 @@ pub fn method_pipe_map_keys_values_fallback(
                     kernel_diags: lk.miss_diags.clone(),
                 })
             }
-            None => Rc::new(MethodPipeFallback {
-                result_ty: recv_rt.clone(),
-                kernel_diags: Rc::new(vec![]),
-            }),
+            None => method_existence_decision(
+                recv_rt.clone(),
+                method_name.clone(),
+                scope.clone(),
+                span.clone(),
+            ),
         }
     } else {
         if (method_name.clone() == "map_values".to_string()) {
@@ -2877,18 +3192,301 @@ pub fn method_pipe_map_keys_values_fallback(
                         kernel_diags: lv.miss_diags.clone(),
                     })
                 }
-                None => Rc::new(MethodPipeFallback {
-                    result_ty: recv_rt.clone(),
-                    kernel_diags: Rc::new(vec![]),
-                }),
+                None => method_existence_decision(
+                    recv_rt.clone(),
+                    method_name.clone(),
+                    scope.clone(),
+                    span.clone(),
+                ),
             }
         } else {
-            Rc::new(MethodPipeFallback {
-                result_ty: recv_rt.clone(),
-                kernel_diags: Rc::new(vec![]),
-            })
+            method_existence_decision(
+                recv_rt.clone(),
+                method_name.clone(),
+                scope.clone(),
+                span.clone(),
+            )
         }
     }
+}
+
+pub fn method_existence_wall_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. THE LARGEST MEASURED CLASS WAS NOT UNDECIDABLE AT ALL AND IS NOW DECIDED — a where-refinement alias arrived as Product(NonEmptyStr) only because resolve_method_receiver_type short-circuits on Conj and never peeled to the String base; peeling it (where_refinement_receiver_peel_note) moved 12 corpus sites out of this residue in both directions at once, resolving the correct .length() calls AND making a bogus method on a branded string a hard MethodNotFound. What remains genuinely has no surface: a lambda parameter whose type never propagates so the receiver has no authored name at all (the LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag and the StoreObjectFold lambdas in extdeps/git/object_store.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), a bare type variable, and an Optional whose cardinality is dropped before lookup so the inner product is what arrives. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. A RECEIVER WITH NO AUTHORED NAME AT ALL is not weak evidence about the method — it is no evidence about anything, because the receiver's own type was never established upstream. That is a different judgment failure from 'this receiver has a surface and the method is not on it', so it carries its own diagnostic, ReceiverTypeUnestablished, whose message names that cause instead of implying the method is missing. THE DIAGNOSTIC NAMES THE CAUSE; THE ROSTER BOUNDS THE ADMISSION, and separating those two was a correction. The class was first admitted on the CAUSE alone — any anonymous receiver, non-blocking — on the reasoning that the wall cannot tell an existing method from a nonexistent one when the receiver has no type, so refusing would refuse both. That reasoning is sound about DECIDABILITY and wrong about ADMISSION: it made every future anonymous-receiver call green, including one whose method does not exist, so the exception was unbounded exactly where existence is unknown (codex review 45459). Counting a diagnostic does not stop invalid code reaching the live system. Admission is now gated on the same declared roster as every other unestablished shape, keyed (module, method, Primitive()), so the seven measured occurrences are admitted and a new one anywhere else REFUSES as MethodExistenceUndecided. That is a ratchet that can only shrink, and blocking a new instance of a known deficit is the factory model rather than an inconvenience. Everything that has a name but no surface stays in the same shape-keyed roster. MethodExistenceUndecided carries what is left as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. AND THE WALL IS REACHED FROM EVERY ARM, WHICH IT WAS NOT AT FIRST: the decision lived inline in the final else of method_pipe_map_keys_values_fallback, so an unresolved map_keys, sorted_map_keys or map_values whose receiver is not a keyed collection took an EARLIER branch and returned recv_rt with an empty diagnostic list — the identical success-shaped fallback this wall exists to delete, preserved in the two special cases that ran before it (codex review 45430). A wall reachable only from the default arm is not a wall, and prose about the default arm cannot see the two arms in front of it. The decision is now method_existence_decision, held once and called from all three, with the control run against the prior binary rather than reasoned about: List<Int> |> map_keys and |> map_values compile with exit 0 on the pre-routing binary and produce two located MethodNotFound refusals on this one. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. THE UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT, one fixed here and the rest left as promotion triggers that would each let the wall decide a further non-kernel receiver: (1) FIXED — a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup; (2) a lambda parameter receiver whose type never propagates from the declared fn type it is bound under; (3) a coproduct payload binding typed as the VARIANT name rather than the field type; (4) an optional receiver whose cardinality is dropped so the inner product reaches lookup in place of Optional own surface. Each is carried as a row in unresolved_method_frontier, keyed on the receiver shape that is the evidence for it, except (2) which is the ReceiverTypeUnestablished cause class above. THE INSTRUMENT WAS WRONG BEFORE THE WALL WAS, and that is the most transferable thing here: this wall was measured with `gunbc run --entry dag/tools/generated_artifact_gate.dag`, which reaches only that gate's import closure, and it reported CLEAN while twelve real sites sat outside it — they surfaced from CI instead. The whole-corpus instrument is `gunbc compile --source-root dag --source-root src/v2 --target dag`, the same compile-clean gate CI runs, and it resolves 1629 sources against 2740 indexed modules. A narrow instrument reporting clean is indistinguishable from a wall that works, which is the §5 specification-without-execution trap wearing the shape of a green run. A FOURTH SHAPE was then found and NOT fixed: a brand alias can also arrive as a plain qualified LEAF (Primitive(std.types.NonEmptyStr)) rather than the refinement Conj the peel walks. Three head-resolution strategies were implemented and measured against it — lookup_type_for on the node, lookup_type_by_name on the qualified name, and on its last segment — none recovered the refinement, so the machinery was DELETED rather than shipped unproven and the site is a declared row. Unproven machinery that decides nothing is worse than a declared row that admits what it cannot decide. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn where_refinement_receiver_peel_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and the FIRST version of it was a §3 violation that this note asserted its way past — worth recording, because the note is where the defect actually lived. It hand-rolled a second recursive walker over the Conj/annotation/single-child shape and then CLAIMED, in this sentence, that the refinement chain had one traversal authority and the peel was its second consumer. Both walkers independently encoded the shape test, the lookup_type_for base resolution and the recursion, so they could drift apart silently; the prose asserted the property instead of the code establishing it (codex review 45410). WHY THESE READ NODE STORAGE DIRECTLY, since it is asked and the answer is not a per-function one: they are 2 of the 589 direct Node-storage reads in this file (579 of them on origin/main), which is the v1 seed's pervasive and only idiom — the seed IS the traversal, the stage that walks the tree so that later stages need not. There is no canonical query or fold surface reachable from here: fold_node and node_query live in src/v2/std, no v1 seed module imports v2 at all, and v1 COMPILES v2, so routing v1 inference through v2's fold inverts the bootstrap rather than tidying it. DESIGN's fold_node line is scoped to the 7 v2 stages and is a DRY example within v2, not a rule binding the seed. So the disposition here is the SEED'S disposition, the same trigger the hand-Rust receipt carries — the v1 seed shrinks to zero at v2 self-host and these dissolve with it — and attaching a separate per-function trigger to 2 reads while 587 identical reads beside them carry none would be a fabricated bound, describing separable work that does not exist (codex review 45570). The repair is the extraction the claim described: where_refinement_chain is the one walk, it yields the refinement chain from the surface alias down to its ground base, and it has exactly two consumers — type_where_refinement_predicates_transitive flat_maps the immediate predicates over the chain, and peel_where_refinement_base takes its last link. The shape test itself is is_where_refinement_type, held once. Now there is one traversal authority, and it is one because the code says so. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UnresolvedMethodFrontierRow {
+    pub module_name: String,
+    pub method: String,
+    pub receiver_shape: String,
+    pub occurrences: i64,
+    pub cause: String,
+    pub dissolution_trigger: String,
+}
+
+pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> {
+    Rc::new(vec![Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "v2.compiler.tokenize".to_string(),
+    method: "apply".to_string(),
+    occurrences: 7,
+    receiver_shape: "Primitive()".to_string(),
+    cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.".to_string(),
+    dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "extdeps.git.object_store".to_string(),
+    method: "map".to_string(),
+    occurrences: 2,
+    receiver_shape: "Primitive()".to_string(),
+    cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.".to_string(),
+    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "extdeps.git.object_store".to_string(),
+    method: "flat_map".to_string(),
+    occurrences: 1,
+    receiver_shape: "Primitive()".to_string(),
+    cause: "same StoreObjectFold lambda-parameter shape as the `map` row above; listed separately because the key names one method on one receiver shape, never a module-wide pass.".to_string(),
+    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "extdeps.mercurial".to_string(),
+    method: "any".to_string(),
+    occurrences: 3,
+    receiver_shape: "Primitive()".to_string(),
+    cause: "receiver is an untyped parameter of a lambda stored in a fold record field, the same shape as the object_store rows.".to_string(),
+    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "gunbc.scm_compatibility.mercurial".to_string(),
+    method: "map".to_string(),
+    occurrences: 3,
+    receiver_shape: "Primitive()".to_string(),
+    cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.".to_string(),
+    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "extdeps.dns.domain_name".to_string(),
+    method: "list_push".to_string(),
+    occurrences: 1,
+    receiver_shape: "Primitive(ok)".to_string(),
+    cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.".to_string(),
+    dissolution_trigger: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "v1.compiler.trace".to_string(),
+    method: "map".to_string(),
+    occurrences: 1,
+    receiver_shape: "Product(SpanMapping)".to_string(),
+    cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
+    dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "gunbc.source_integration_landing_spine".to_string(),
+    method: "map".to_string(),
+    occurrences: 1,
+    receiver_shape: "Node(Optional)".to_string(),
+    cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.".to_string(),
+    dissolution_trigger: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "test.claim.sccache_local_content_verified_on_read".to_string(),
+    method: "contains".to_string(),
+    occurrences: 1,
+    receiver_shape: "Primitive(std.types.NonEmptyStr)".to_string(),
+    cause: "the brand-alias class in its LEAF form. The receiver is a coproduct variant payload whose declared type is NonEmptyStr, and it arrives not as the refinement Conj the peel walks but as a plain leaf carrying the QUALIFIED name std.types.NonEmptyStr — so there is no refinement chain to descend and no kernel profile under that name. Three head-resolution strategies were tried against this site and measured: resolving the leaf through lookup_type_for, through lookup_type_by_name on the qualified name, and on its last segment. NONE of them recovered the refinement, so the machinery was deleted rather than shipped unproven, and the site is declared here instead. Why the peel reaches the Conj form but not this one is not yet understood, and saying so is more useful than a fourth guess.".to_string(),
+    dissolution_trigger: "one representation for a brand alias at method lookup — the same reconciliation the conformance wall's class (2) names — so the leaf and Conj forms stop being two shapes for one concept".to_string(),
+}), Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "v2.std.compilers.target_model".to_string(),
+    method: "lookup".to_string(),
+    occurrences: 1,
+    receiver_shape: "Primitive(T)".to_string(),
+    cause: "receiver is a bare type variable. This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.".to_string(),
+    dissolution_trigger: "primitive-realization-single-authority, giving every receiver a complete declared method surface".to_string(),
+})])
+}
+
+pub fn frontier_diag_matches_row(
+    d: Rc<CompilerDiagnostic>,
+    method: String,
+    receiver_shape: String,
+) -> bool {
+    match diagnostic_frontier_occurrence_key(d.clone()) {
+        Some(key) => {
+            ((key.method.clone() == method.clone())
+                && (key.receiver_shape.clone() == receiver_shape.clone()))
+        }
+        None => false,
+    }
+}
+
+pub fn frontier_row_observed(
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    method: String,
+    receiver_shape: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for e in diagnostics.clone().iter().cloned() {
+            if frontier_diag_matches_row(
+                e.diagnostic.clone(),
+                method.clone(),
+                receiver_shape.clone(),
+            ) {
+                __result.push(e);
+            }
+        }
+        __result
+    })
+}
+
+pub fn frontier_row_budget_span(
+    observed: Rc<Vec<Rc<ErrorNode>>>,
+    module_span: Rc<SourceSpan>,
+) -> Rc<SourceSpan> {
+    match observed.clone().first().cloned() {
+        Some(witness) => diagnostic_to_span(witness.diagnostic.clone()),
+        None => module_span,
+    }
+}
+
+pub fn frontier_row_budget_diags(
+    row: Rc<UnresolvedMethodFrontierRow>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    module_name: String,
+    module_span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if ((frontier_row_observed(
+        diagnostics.clone(),
+        row.method.clone(),
+        row.receiver_shape.clone(),
+    )
+    .len() as i64)
+        == row.occurrences.clone())
+    {
+        Rc::new(vec![])
+    } else {
+        Rc::new(vec![make_error_node(
+            Rc::new(CompilerDiagnostic::FrontierOccurrenceBudgetExceeded {
+                method: row.method.clone(),
+                receiver_type: row.receiver_shape.clone(),
+                declared: row.occurrences.clone(),
+                observed: (frontier_row_observed(
+                    diagnostics.clone(),
+                    row.method.clone(),
+                    row.receiver_shape.clone(),
+                )
+                .len() as i64),
+                span: frontier_row_budget_span(
+                    frontier_row_observed(
+                        diagnostics.clone(),
+                        row.method.clone(),
+                        row.receiver_shape.clone(),
+                    ),
+                    module_span.clone(),
+                ),
+            }),
+            module_name.clone(),
+        )])
+    }
+}
+
+pub fn frontier_occurrence_budget_diags(
+    module_name: String,
+    module_span: Rc<SourceSpan>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for r in Rc::new({
+            let mut __result = Vec::new();
+            for r in unresolved_method_frontier().iter().cloned() {
+                if (r.module_name.clone() == module_name.clone()) {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*frontier_row_budget_diags(
+                    r.clone(),
+                    diagnostics.clone(),
+                    module_name.clone(),
+                    module_span.clone(),
+                ))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn frontier_occurrence_budget_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE COUNT IS WHAT MAKES THE FRONTIER A RATCHET INSTEAD OF AN EXEMPTION. Keying admission on (module, method, receiver_shape) bounds WHERE an unresolved call may live but not HOW MANY may live there, so a second call in the same module, on the same method, failing to resolve the same way, inherited the admission — and that is not hypothetical: the measured rows are not all singletons (v2.compiler.tokenize admits seven `apply` calls, extdeps.mercurial three `any`, gunbc.scm_compatibility.mercurial three `map`), so a row admitting seven would silently admit an eighth (codex review 45464). Each row therefore declares its MEASURED occurrence count and this fold refuses the excess, located on the first offending call. THE COMPARISON IS EQUALITY, AND IT WAS FIRST WRITTEN AS A CEILING, WHICH DID NOT RATCHET. `observed > declared` was justified here on the reasoning that a narrower compile closure sees fewer occurrences of a module's rows, so equality would red a partial build. That reasoning is WRONG about this check: it runs per MODULE, and every occurrence of a module's rows is present whenever that module is typechecked at all — a closure that omits the module never runs its rows, so there is no partial-visibility case to protect. What the ceiling actually did was let seven shrink to six while the declared seven stood, so a seventh call could return silently: a static limit, not a ratchet, and the note claimed the ratchet anyway (codex review 45491). Equality closes it in the only way that works — fixing a call reds until the declared count is lowered, which removes the headroom a reintroduction would have slipped into. Both directions are asserted in the witness, because the under-count half is the half that makes it a ratchet and it is the one an author is tempted to relax. WHY NOT A STABLE PER-OCCURRENCE KEY, which would close this exactly: std.occurrence_identity is the corpus authority for occurrence identity and its own scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, allocating OccurrenceId inside one graph-scoped allocator instead. An allocator-assigned integer cannot appear as a literal in a declared row, because it is not stable across compiles — so a per-occurrence key is not merely unimplemented here, it is unavailable from the authority that owns the concept. The count is the strongest bound the substrate currently supports. Dissolve-on: a content-addressed occurrence identity stable across edits (the namespace lane's containment addressing), at which point rows key on the occurrence itself and the count field deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn frontier_occurrence_budget_checked(
+    module_name: String,
+    module_span: Rc<SourceSpan>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    v1_rt::concat(
+        diagnostics.clone(),
+        frontier_occurrence_budget_diags(
+            module_name.clone(),
+            module_span.clone(),
+            diagnostics.clone(),
+        ),
+    )
+}
+
+pub fn unresolved_method_frontier_trigger(
+    module_name: String,
+    method: String,
+    receiver_shape: String,
+) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for r in unresolved_method_frontier().iter().cloned() {
+            if (((r.module_name.clone() == module_name.clone())
+                && (r.method.clone() == method.clone()))
+                && (r.receiver_shape.clone() == receiver_shape.clone()))
+            {
+                __result.push(r);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(row) => Some(row.dissolution_trigger.clone()),
+        None => None,
+    }
+}
+
+pub fn unresolved_method_frontier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The declared frontier for method calls whose receiver establishes NO method surface even after where-refinement peeling (DESIGN §7: a declared row with a reason and a migration trigger, countable and prioritizable, never a silent escape hatch). WHY A ROSTER AT ALL: MethodExistenceUndecided BLOCKS. Leaving the undecided class non-blocking meant emittable_graph still emitted code containing a method whose existence was never established — the same fail-open the wall claims to close, correctly refused twice in review (codex reviews 45357 and 45383). Blocking it outright was not available either: the residue is CORRECT, WORKING code, seven sites of it the v2 tokenizer own LexMatchThunk { apply: fn(s) } idiom, so a blanket refusal would refuse the compiler v2 is migrating to — fabricating a refusal, which §5 forbids exactly as it forbids fabricating a success. THE KEY IS (module, method, receiver_shape), AND THE THIRD COMPONENT IS THE CORRECTION. A (module, method) key was shipped first and was wrong on two counts, one found by review and one by execution, which is worth recording because they are the same defect seen from two sides. Review found it as a fail-open: any NEW apply call in v2.compiler.tokenize would inherit the pass even on a fully resolved receiver, so the note claim that no new fail-open can enter was false (codex review 45398). Execution found it as an UNDERCOUNT: the roster was measured over the v1 self-compile closure alone, and the first whole-corpus run reded seven sites in three modules the roster had never seen. Both dissolve into the same fix — the frontier admits a receiver whose surface could not be established, so the SHAPE of that receiver is the evidence, and keying on it means a new call refuses unless it reproduces the exact unestablished shape the row was measured on. The residue after that is 13 sites in four shapes: Primitive() with no authored name (a lambda parameter whose type never propagates, 10 sites), Primitive(T) (a bare type variable), Primitive(ok) (a coproduct payload typed as its variant name), and a Product that is really an Optional whose cardinality was dropped. Every one is an upstream receiver-resolution defect, not a method-existence fact, which is exactly why the wall cannot decide them and why each row names the resolution fix rather than a permanent exemption. Admitted rows still emit MethodExistenceFrontierAdmitted, counted and carrying its own trigger, so the frequency stays observable rather than zeroed by construction (§5). THE RESIDUAL WIDENING, STATED RATHER THAN CLAIMED AWAY: a second unresolved call to the same method, in the same module, on a receiver that fails to resolve in the same way, is still admitted. That is narrower than the module-wide pass it replaces and it is not zero. Closing it entirely needs an occurrence identity stable across edits — content-addressed, not line-anchored — which is the same containment/content-hash authority the namespace lane is landing; until then the honest bound is this key, and the peel above is the mechanism that actually SHRINKS the frontier rather than administering it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn categorized_error(
@@ -12921,6 +13519,23 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     } else {
                         body_typed.inferred.clone()
                     };
+                    let return_conformance_diags = if (item.inferred.clone() != None) {
+                        v1_rt::concat(
+                            declared_type_conformance_diags(
+                                declared_return_type_node(item.clone()),
+                                resolved_type(body_typed.clone()),
+                                item.body.clone().clone().unwrap().span.clone(),
+                                scope.clone(),
+                            ),
+                            explicit_return_conformance_diags(
+                                declared_return_type_node(item.clone()),
+                                body_typed.clone(),
+                                scope.clone(),
+                            ),
+                        )
+                    } else {
+                        Rc::new(vec![])
+                    };
                     let is_recursive = expr_has_self_call(
                         body_typed.clone(),
                         authored_name_at(
@@ -12982,7 +13597,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         }),
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(transport_diags.clone(), props_diags.clone()),
-                            body_diags.clone(),
+                            v1_rt::concat(body_diags.clone(), return_conformance_diags.clone()),
                         ),
                     })
                 }
@@ -12998,7 +13613,22 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             Some(resolved_type(item.clone())),
                         );
                         let body_typed = body_result.typed.clone();
-                        let body_diags = body_result.diagnostics.clone();
+                        let body_diags = v1_rt::concat(
+                            body_result.diagnostics.clone(),
+                            v1_rt::concat(
+                                declared_type_conformance_diags(
+                                    declared_return_type_node(item.clone()),
+                                    resolved_type(body_typed.clone()),
+                                    item.body.clone().clone().unwrap().span.clone(),
+                                    scope.clone(),
+                                ),
+                                explicit_return_conformance_diags(
+                                    declared_return_type_node(item.clone()),
+                                    body_typed.clone(),
+                                    scope.clone(),
+                                ),
+                            ),
+                        );
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
                                 name: item.name.clone(),
@@ -13040,7 +13670,19 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 data_expected.clone(),
                             );
                             let val_typed = val_result.typed.clone();
-                            let val_diags = val_result.diagnostics.clone();
+                            let val_diags = if (item.type_annotation.clone() != None) {
+                                v1_rt::concat(
+                                    val_result.diagnostics.clone(),
+                                    declared_type_conformance_diags(
+                                        item.type_annotation.clone().clone().unwrap(),
+                                        resolved_type(val_typed.clone()),
+                                        item.body.clone().clone().unwrap().span.clone(),
+                                        scope.clone(),
+                                    ),
+                                )
+                            } else {
+                                val_result.diagnostics.clone()
+                            };
                             let inferred_ret = if (item.type_annotation.clone() != None) {
                                 Some(Rc::new(InferredNode::Resolved {
                                     node: item.type_annotation.clone().clone().unwrap(),
@@ -17566,12 +18208,16 @@ pub fn typecheck_module(
                 item_registry: ctx.item_registry.clone(),
                 occurrence_transport: Some(resolved.occurrence_transport.clone()),
             }),
-            diagnostics: v1_rt::concat(
+            diagnostics: frontier_occurrence_budget_checked(
+                resolved_module_name.clone(),
+                resolved.module.clone().span.clone(),
                 v1_rt::concat(
-                    v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
-                    infer_diags.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
+                        infer_diags.clone(),
+                    ),
+                    seed_diags.clone(),
                 ),
-                seed_diags.clone(),
             ),
             binding_forks: env_result.binding_forks.clone(),
         })
