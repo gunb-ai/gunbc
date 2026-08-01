@@ -1,14 +1,14 @@
-# Node/subtree visibility policy — historical carrier experiment and retained P-C direction
+# Node/subtree visibility — retired carrier experiment; capabilities remain open
 
 Status: **SUPERSEDED AS AN IMPLEMENTATION PLAN (operator ruling 2026-08-01).** The carrier-specific
 `Reference` / `Publish` / `AudienceScopeTree` / `std.visibility_grant` design below is retained as
 historical rationale and must not be implemented. Those carriers and their carrier-only witnesses
 were deleted when their only consumer, the Stage 0 placement gate, dissolved; authorization
-admission now projects typed request profiles into `std.access`. The publication intent returns
-only at P-C as `PublicationPolicy` → derived `PublicProjectionPlan` → sole modeled publisher, with
-the policy and capability-product constraints below retained. The distinct reference-gating intent
-currently has no consumer and no enforcement claim; it returns only if a concrete consumer appears,
-through a typed `std.access` request profile rather than resurrecting the deleted effect verbs.
+admission now projects typed request profiles into `std.access`. This retires the representation,
+not publication or reference control as product capabilities. No replacement publication ontology
+has been selected; every concrete replacement shape below is an unapproved historical proposal and
+requires operator design review before implementation. Reference-edge admission is a separate
+deferred capability awaiting a concrete consumer, not part of the publication rollback.
 
 Historical origin (2026-07-21, session gentle-otter-138): private/public
 toggling over the containment tree — motivated generically by (a) hiding implementation-internal
@@ -286,8 +286,9 @@ alternative, not an open question.
 ## 6. Staging
 
 Mirrors `effect-namespace-grants.md`'s own phase discipline — each green-by-execution with REDs,
-under-scope counted and never silent. P-B records the deleted experiment; P-C is the next live
-publication-enforcement threshold.
+under-scope counted and never silent. P-B records the deleted experiment. The former P-C text is
+retained only as a rejected-as-selected proposal; no live publication-enforcement threshold or
+replacement ontology is chosen here.
 
 - **P-A (model, no behavior change):** `Verb::Reference` and `Verb::Publish` added to
   `std/effect_grant.dag`; `NodeVisibility`/`VisibilityStatus` modeled for both, including the
@@ -306,18 +307,13 @@ publication-enforcement threshold.
   future bytes at a grandfathered pathname without a content identity. The roster, cutover, gate,
   tests, and floor enrollment were deleted; new public files require no stamp. The subtree-default
   experiment retained on closed PR #7588 is a seed for the later re-land, not a Stage 0 gate.
-- **P-C (restoration trigger — private/public composition):** publication enforcement re-lands
-  only when a private authoritative source and public projection create content to guard, and then
-  before any public write. `PublicationPolicy` is a keyed subtree-prefix → disposition authority
-  with default `WithholdPrivate`, unknown roots refusing, and the most-specific covering rule
-  winning. Identical-rule repetition is idempotent or refused at construction, never turned into
-  projection-wide ambiguity. The public tree is derived as a `PublicProjectionPlan`; only the sole
-  modeled publisher, holding the only public-write capability, may consume that plan and write the
-  public remote. Exceptional publication decisions bind to content identity rather than granting
-  every future blob at a path. Candidate admission is change-local; a separate whole-projection
-  audit is centrally owned. The server-side required check attests this pre-publication boundary,
-  and Rules 1–2 run over the composed graph. This is the restoration bar fixed by the operator
-  verdict 2026-08-01.
+- **P-C (UNSELECTED historical proposal — operator correction 2026-08-01):** the prior draft
+  hardened a keyed subtree `PublicationPolicy`, `PublicProjectionPlan`, sole-publisher realization,
+  and most-specific-rule resolution into a restoration bar. The operator did not select those
+  shapes. Publication remains required, but its replacement ontology awaits design review. A
+  required GitHub CI check runs after pushed objects enter the public repository, so it may protect
+  merge integrity but cannot itself be a confidentiality wall. Any future confidentiality boundary
+  must act before unauthorized bytes reach public storage; that constraint does not choose how.
 - **P-D (Stage 2 — node granularity):** rides the module-identity many-to-many storage-binding
   thread (`module-identity-storage-binding-design.md`) so one file can carry nodes of different
   `Publish` grants; the public tree becomes a **generated projection** rather than a hand-
@@ -399,10 +395,10 @@ must not collapse "everything is publishable" with "the private authority was un
 4. **`Reference`'s `LegacyOpen` dissolve-on** — left open-ended (per-node opt-in only) rather than
    a scheduled bulk migration; confirm vs. an operator-set target date for corpus-wide
    default-private.
-5. **`Publish` frontier default (§4/§8)** — DECIDED by the operator verdict 2026-08-01:
-   `PublicationPolicy` defaults to `WithholdPrivate`, unknown roots refuse, and most-specific
-   subtree rule wins. This activates only with P-C's private authoritative source → derived public
-   projection → sole-publisher boundary; the deleted Stage 0 public-path roster does not return.
+5. **Publication replacement ontology** — OPEN pending operator design review. The earlier
+   `PublicationPolicy` default, subtree precedence, derived projection, and sole-publisher proposal
+   was not selected. The only fixed facts are that publication remains required, the deleted Stage
+   0 public-path roster does not return, and confidentiality must bind before public storage.
 6. **`VisibilityScope` retirement** — once the `AudienceScopeTree` projection lands (§1.4), does
    `std.cache_interface.VisibilityScope` get deleted in favor of the shared tree, or kept as the
    cache lane's local name projected from it? Either is consistent with §3 (below-boundary
@@ -410,9 +406,10 @@ must not collapse "everything is publishable" with "the private authority was un
 
 ## 11. Publication capability profile + locked realizations; sequencing decision (operator, 2026-07-25)
 
-This section owns the publication/locked-realization extension that was first captured in the SCM
-seed. It is design-only until P-C's composed projection lands; the source-intent integration plan consumes this
-interface but does not define its secrecy semantics.
+This section retains the publication/locked-realization capability axes first captured in the SCM
+seed. It selects no publication replacement ontology; implementation awaits operator design review.
+The source-intent integration plan consumes the eventual reviewed interface but does not define its
+secrecy semantics.
 
 `Publish` is not a boolean and its refinements are **not a total ladder**. They form a product of
 independently declared capabilities:
