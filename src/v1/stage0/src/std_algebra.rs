@@ -30,21 +30,21 @@ pub struct Semigroup<T> {
 }
 
 #[derive(Clone)]
-pub struct Monoid<T: Clone> {
+pub struct Monoid<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
     pub identity: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
-pub struct CommutativeMonoid<T: Clone> {
+pub struct CommutativeMonoid<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
     pub identity: T,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
-pub struct Group<T: Clone> {
+pub struct Group<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
     pub identity: T,
     pub inverse: Rc<dyn Fn(T) -> T>,
@@ -52,7 +52,7 @@ pub struct Group<T: Clone> {
 }
 
 #[derive(Clone)]
-pub struct AbelianGroup<T: Clone> {
+pub struct AbelianGroup<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
     pub identity: T,
     pub inverse: Rc<dyn Fn(T) -> T>,
@@ -60,7 +60,7 @@ pub struct AbelianGroup<T: Clone> {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GroupCompletion<M: Clone> {
+pub struct GroupCompletion<M> {
     pub pos: M,
     pub neg: M,
     pub _phantom: std::marker::PhantomData<M>,
@@ -136,7 +136,7 @@ pub struct FieldOfFractions<R: Clone> {
 }
 
 #[derive(Clone)]
-pub struct Semiring<T: Clone> {
+pub struct Semiring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
     pub zero: T,
     pub mul: Rc<dyn Fn(T, T) -> T>,
@@ -145,7 +145,7 @@ pub struct Semiring<T: Clone> {
 }
 
 #[derive(Clone)]
-pub struct CommutativeSemiring<T: Clone> {
+pub struct CommutativeSemiring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
     pub zero: T,
     pub mul: Rc<dyn Fn(T, T) -> T>,
@@ -154,7 +154,7 @@ pub struct CommutativeSemiring<T: Clone> {
 }
 
 #[derive(Clone)]
-pub struct Ring<T: Clone> {
+pub struct Ring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
     pub zero: T,
     pub negate: Rc<dyn Fn(T) -> T>,
@@ -164,7 +164,7 @@ pub struct Ring<T: Clone> {
 }
 
 #[derive(Clone)]
-pub struct OrderedRing<T: Clone> {
+pub struct OrderedRing<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
     pub sub: Rc<dyn Fn(T, T) -> T>,
     pub zero: T,
@@ -183,7 +183,7 @@ pub struct OrderedRing<T: Clone> {
 }
 
 #[derive(Clone)]
-pub struct Field<T: Clone> {
+pub struct Field<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
     pub zero: T,
     pub negate: Rc<dyn Fn(T) -> T>,
@@ -202,7 +202,7 @@ pub struct Lattice<T> {
 }
 
 #[derive(Clone)]
-pub struct BoundedLattice<T: Clone> {
+pub struct BoundedLattice<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
     pub top: T,
@@ -211,7 +211,7 @@ pub struct BoundedLattice<T: Clone> {
 }
 
 #[derive(Clone)]
-pub struct BooleanAlgebra<T: Clone> {
+pub struct BooleanAlgebra<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
     pub complement: Rc<dyn Fn(T) -> T>,
@@ -229,7 +229,7 @@ pub struct PointwisePower<T> {
 pub type FreeMonoid<T> = Vec<T>;
 
 #[derive(Clone)]
-pub struct PartialFunction<K: Clone, V: Clone> {
+pub struct PartialFunction<K, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,
     pub empty: Rc<PartialFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,

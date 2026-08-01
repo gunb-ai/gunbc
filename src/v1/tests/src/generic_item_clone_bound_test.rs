@@ -56,15 +56,6 @@ fn generic_struct_with_freemonoid_field_gets_clone_bound() {
 }
 
 #[test]
-fn generic_enum_with_payload_gets_clone_bound() {
-    let emitted = emit_host();
-    assert!(
-        emitted.contains("enum OccurrenceBindingResult<N: Clone>"),
-        "enum with N in variant payloads must emit N: Clone:\n{emitted}"
-    );
-}
-
-#[test]
 fn unused_generic_param_has_no_clone_bound() {
     let emitted = emit_host();
     assert!(
