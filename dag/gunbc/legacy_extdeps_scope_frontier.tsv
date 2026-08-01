@@ -398,3 +398,4 @@ dag/extdeps/version/pep440.dag
 dag/extdeps/version/semver.dag
 dag/extdeps/web_audio/web_audio.dag
 dag/extdeps/languages/lean/overflow.dag
+dag/extdeps/project_schedule/cpm_pert.dag
