@@ -38,7 +38,16 @@ import v2.std.compilers.lexing {
 import v2.std.collection { Absent, List, Map, Present, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty }
-import std.integer { Signedness }
+import std.integer {
+  Signedness,
+  IntegerOverflowSemantics,
+  OverflowReturns,
+  OverflowRaises,
+  OverflowUndefined,
+  OverflowReturnValueRule,
+  ReturnWrapping,
+  ReturnSaturating
+}
 import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_map }
 import v2.std.text { String }
@@ -49,6 +58,7 @@ import v2.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth
@@ -185,6 +195,69 @@ type LeanProofCheckSemantics<IRCarrier> {
 
 data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. LeanAdmittedBitWidth is sole_constructor — cross-module forge is refused; honest rung is accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test), not structural impossibility. Catalog fixed widths match admission Accepted before constructing LeanIntegerScalar; refusal stops at LeanWidthAdmissionRefused, not LeanIntegerWidth. Platform word is LeanPlatformWord. Signedness is std.integer.Signedness."
 
+data lean_overflow_semantics_admissibility_note: String = "P3b PR2 cluster-2 receipt (lean end-to-end): overflow axis is std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>; lean_admit_fixed_width_overflow_semantics is the admission boundary. Lean fixed-width catalog integers use modular wrap (OverflowReturns ReturnWrapping). Panic and trap remain distinct inhabitants of LeanOverflowRaiseEffect — not collapsed into one raise arm. OverflowUndefined and OverflowRaises refuse at admission for catalog fixed-width paths. Honest rung: accepted refinement with executing refusal (witness lean_overflow_semantics_witness_test), not structural impossibility."
+
+type LeanOverflowRaiseEffect
+  = LeanOverflowPanics
+  | LeanOverflowTraps
+
+type LeanAdmittedOverflowSemantics sole_constructor {
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+}
+
+type LeanOverflowSemanticsAdmission
+  = LeanOverflowAccepted { semantics: LeanAdmittedOverflowSemantics }
+  | LeanOverflowRefused {
+      observed: IntegerOverflowSemantics<LeanOverflowRaiseEffect>,
+      reason: Symbol
+    }
+
+data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> =
+  OverflowReturns { value_rule: ReturnWrapping }
+
+fn lean_admit_fixed_width_overflow_semantics(
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+) -> LeanOverflowSemanticsAdmission {
+  match semantics {
+    OverflowReturns { value_rule: ReturnWrapping } =>
+      LeanOverflowAccepted {
+        semantics: LeanAdmittedOverflowSemantics { semantics: semantics }
+      }
+    OverflowReturns { value_rule: ReturnSaturating } =>
+      LeanOverflowRefused {
+        observed: semantics,
+        reason: ^lean_overflow_refuse_saturating_not_fixed_width_catalog
+      }
+    OverflowRaises { effect: _ } =>
+      LeanOverflowRefused {
+        observed: semantics,
+        reason: ^lean_overflow_refuse_raises_not_fixed_width_catalog
+      }
+    OverflowUndefined =>
+      LeanOverflowRefused {
+        observed: semantics,
+        reason: ^lean_overflow_refuse_undefined_not_fixed_width_catalog
+      }
+  }
+}
+
+fn lean_overflow_semantics_arm_tag(
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+) -> Symbol {
+  match semantics {
+    OverflowReturns { value_rule: _ } => ^lean_overflow_arm_returns
+    OverflowRaises { effect: _ } => ^lean_overflow_arm_raises
+    OverflowUndefined => ^lean_overflow_arm_undefined
+  }
+}
+
+fn lean_overflow_raise_effect_tag(effect: LeanOverflowRaiseEffect) -> Symbol {
+  match effect {
+    LeanOverflowPanics => ^lean_overflow_effect_panics
+    LeanOverflowTraps => ^lean_overflow_effect_traps
+  }
+}
+
 type LeanAdmittedBitWidth sole_constructor {
   width: BitWidth
 }
@@ -206,6 +279,7 @@ type LeanPrimitiveFacts {
   surface_spelling: Symbol
   scalar: LeanScalar
   representation: Symbol
+  overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 }
 
 fn lean_primitive_facts_for_catalog_width(
@@ -221,12 +295,14 @@ fn lean_primitive_facts_for_catalog_width(
         signedness: signedness,
         width: LeanFixedWidth { width: admitted }
       },
-      representation: representation
+      representation: representation,
+      overflow: lean_catalog_fixed_width_overflow
     }
     LeanBitWidthRefused { width: refused } => LeanPrimitiveFacts {
       surface_spelling: surface_spelling,
       scalar: LeanWidthAdmissionRefused { width: refused },
-      representation: representation
+      representation: representation,
+      overflow: OverflowUndefined
     }
   }
 }
@@ -307,14 +383,16 @@ fn lean_facts_usize() -> LeanPrimitiveFacts {
   LeanPrimitiveFacts {
     surface_spelling: ^lean_surface_spelling_usize,
     scalar: LeanIntegerScalar { signedness: Unsigned, width: LeanPlatformWord },
-    representation: ^lean_repr_usize_platform_word
+    representation: ^lean_repr_usize_platform_word,
+    overflow: lean_catalog_fixed_width_overflow
   }
 }
 
 data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_bool,
   scalar: BoolScalar,
-  representation: ^lean_repr_bool_inductive
+  representation: ^lean_repr_bool_inductive,
+  overflow: OverflowUndefined
 }
 
 data lean_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
@@ -387,6 +465,57 @@ fn lean_integer_width_node(width: LeanIntegerWidth) -> Node {
   }
 }
 
+fn lean_overflow_return_value_rule_node(rule: OverflowReturnValueRule) -> Node {
+  match rule {
+    ReturnWrapping => lean_inhabitant_atom(id: ^lean_tag_overflow_return_wrapping)
+    ReturnSaturating => lean_inhabitant_atom(id: ^lean_tag_overflow_return_saturating)
+  }
+}
+
+fn lean_overflow_raise_effect_node(effect: LeanOverflowRaiseEffect) -> Node {
+  match effect {
+    LeanOverflowPanics => lean_inhabitant_atom(id: ^lean_tag_overflow_effect_panics)
+    LeanOverflowTraps => lean_inhabitant_atom(id: ^lean_tag_overflow_effect_traps)
+  }
+}
+
+fn lean_overflow_semantics_node(
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+) -> Node {
+  match semantics {
+    OverflowReturns { value_rule: rule } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        lean_named_edge(
+          name: ^lean_overflow_field_classifier,
+          target: lean_inhabitant_atom(id: ^lean_tag_overflow_returns)
+        ),
+        lean_named_edge(
+          name: ^lean_overflow_field_value_rule,
+          target: lean_overflow_return_value_rule_node(rule: rule)
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+    OverflowRaises { effect: effect } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        lean_named_edge(
+          name: ^lean_overflow_field_classifier,
+          target: lean_inhabitant_atom(id: ^lean_tag_overflow_raises)
+        ),
+        lean_named_edge(
+          name: ^lean_overflow_field_effect,
+          target: lean_overflow_raise_effect_node(effect: effect)
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+    OverflowUndefined =>
+      lean_inhabitant_atom(id: ^lean_tag_overflow_undefined)
+  }
+}
+
 fn lean_scalar_node(scalar: LeanScalar) -> Node {
   match scalar {
     LeanIntegerScalar { signedness, width } => Node {
@@ -428,6 +557,10 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
       lean_named_edge(
         name: ^lean_facts_field_representation,
         target: lean_inhabitant_atom(id: facts.representation)
+      ),
+      lean_named_edge(
+        name: ^lean_facts_field_overflow,
+        target: lean_overflow_semantics_node(semantics: facts.overflow)
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -467,6 +600,8 @@ fn lean_fixed_int_spec_facts(
           v2.std.optional.Present { value: lean_signedness_node(signedness: signedness) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
+      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
+          v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: facts.overflow) }
       } else {
           v2.std.optional.Absent
       }
