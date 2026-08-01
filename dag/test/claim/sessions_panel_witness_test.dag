@@ -139,7 +139,7 @@ test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
   return string_contains(s: js, pattern: "sb.dataset.sessionPresence = 'present'")
     && !string_contains(s: js, pattern: "sb.textContent = 'session")
     && !string_contains(s: js, pattern: "pb.textContent = 'dispatch'")
-    && string_contains(s: js, pattern: "session · present")
+    && !string_contains(s: js, pattern: "session · present")
 }
 
 test fn sessions_refusal_withdraws_prior_presence() -> Bool {
