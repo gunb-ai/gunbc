@@ -16,6 +16,20 @@ data git_core_mock_case_remote_branches: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data git_inspect_mock_case_merge_base: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Inspect.MergeBase",
+  service: "git.Inspect",
+  operation: "MergeBase",
+  case_id: 0
+}
+
+data git_inspect_mock_case_list_tree_paths_at_revision: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Inspect.ListTreePathsAtRevision",
+  service: "git.Inspect",
+  operation: "ListTreePathsAtRevision",
+  case_id: 0
+}
+
 data git_core_mock_case_ls_files: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.LsFiles",
   service: "git.Core",
@@ -79,9 +93,9 @@ data git_core_mock_case_show: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
-data git_core_mock_case_show_tree: PublishedMockCase = PublishedMockCase {
-  operation_key: "git.Core.ShowTree",
-  service: "git.Core",
+data git_inspect_mock_case_show_tree: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Inspect.ShowTree",
+  service: "git.Inspect",
   operation: "ShowTree",
   case_id: 0
 }
@@ -107,17 +121,19 @@ data git_core_mock_case_head_commit_short: PublishedMockCase = PublishedMockCase
   case_id: 0
 }
 
-data git_core_mock_case_toplevel: PublishedMockCase = PublishedMockCase {
-  operation_key: "git.Core.Toplevel",
-  service: "git.Core",
+data git_inspect_mock_case_toplevel: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Inspect.Toplevel",
+  service: "git.Inspect",
   operation: "Toplevel",
   case_id: 0
 }
 
 data git_published_mock_corpus: List<PublishedMockCase> = [
-  git_core_mock_case_toplevel,
+  git_inspect_mock_case_toplevel,
   git_core_mock_case_current_branch,
   git_core_mock_case_remote_branches,
+  git_inspect_mock_case_merge_base,
+  git_inspect_mock_case_list_tree_paths_at_revision,
   git_core_mock_case_ls_files,
   git_core_mock_case_diff,
   git_core_mock_case_diff_unified0,
@@ -127,7 +143,7 @@ data git_published_mock_corpus: List<PublishedMockCase> = [
   git_core_mock_case_rev_list,
   git_core_mock_case_rev_list_before,
   git_core_mock_case_show,
-  git_core_mock_case_show_tree,
+  git_inspect_mock_case_show_tree,
   git_core_mock_case_fetch_no_tags,
   git_core_mock_case_fetch_prune,
   git_core_mock_case_head_commit_short

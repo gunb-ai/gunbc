@@ -1,0 +1,51 @@
+module test.claim.stage0_rust_host_observation_live_witness
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  CargoTargetMissingLifecycleDisposition,
+  DerivedUnclassifiedTracked,
+  ManifestStateScaffoldOk,
+  ManifestStateScaffoldRefused,
+  manifest_state_verdict_scaffold_holds,
+  rust_source_manifest_state_verdict,
+  stage0_rust_lifecycle_scaffold_mechanical_checks_holds
+}
+import gunbc.stage0_rust_host_observation {
+  RustManifestObserved,
+  rust_source_host_observation
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_observation_split_note: String = "SPLIT OUT OF stage0_rust_source_lifecycle_scaffold_witness_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN RUN. These three witnesses evaluate rust_source_host_observation, which reaches git.Inspect.HeadCommit and git.Inspect.MergeBase. Neither operation carries a mock_response, so under the hermetic envelope the run REFUSES rather than skipping -- and because a discovery-batch member that refuses fails the whole batch, one unmocked operation took down the entire per-PR witness corpus (CI receipt: batch 3 discovery-corpus, 2 roots + 105 explicit, on PR 7562). Splitting the file is what restores those 105 rows; the exclusion row below is what keeps this file honest about not running.\n\nWHY NOT JUST PUBLISH THE MOCKS. That was tried and deliberately reverted. Mocking HeadCommit makes the next unmocked operation refuse (MergeBase), and mocking the whole revision-addressed chain would make a witness named scaffold_host_observation_is_live_and_observed assert a fabricated sha. That is reflection-evidence-mistaken-for-structural-proof: the witness exists to prove the read axis reaches THIS repository state, and a constant satisfies its assertions while proving none of it. A green witness that cannot fail is worth less than a counted gap.\n\nTHE SPLIT IS NOT DONE WHEN THE FUNCTIONS MOVE -- THE IMPORT IS THE TRIGGER. rust_source_host_observation is a data declaration, not a fn, so IMPORTING it evaluates it. The first cut of this split moved all three witnesses here but left the now-dead import of that one symbol behind in the origin file, and the origin file's remaining mention of the name was a quoted string in an authority-ref comparison -- so every by-name reading, grep included, said the symbol was still legitimately used while the only thing importing it did was fire the live read. CI failed identically to before the split, on a file whose test bodies no longer touch the observation at all. Removing the import line is the entire fix, and the general rule is that a live-tree data decl reaches every module that names it in an import list, used or not.\n\nWHAT IS ACTUALLY LOST. These three do not execute in any lane today, and that is stated rather than implied: the wet cadence they belong in is not scheduled, so enrolling them there would be coverage by illusion. The gap is one row, counted, with the dissolve-on below. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/stage0_rust_host_observation_live_witness_test.dag --functions scaffold_host_observation_is_live_and_observed,scaffold_host_observation_reaches_path_derived_verdict,scaffold_mechanical_checks_reflect_live_classification"
+
+test fn scaffold_host_observation_is_live_and_observed() -> Bool {
+  match rust_source_host_observation {
+    RustManifestObserved {
+      repository_revision: revision,
+      manifest_digest: digest,
+      tracked_rust_repo_paths: tracked,
+      prior_tracked_rust_repo_paths: prior,
+      cargo_bin_repo_paths: cargo
+    } => revision != ""
+      && digest != ""
+      && length(xs: tracked) > 0
+      && length(xs: prior) > 0
+      && length(xs: cargo) > 0
+    _ => false
+  }
+}
+
+test fn scaffold_host_observation_reaches_path_derived_verdict() -> Bool {
+  match rust_source_manifest_state_verdict(observation: rust_source_host_observation) {
+    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: count } } => count > 0
+    ManifestStateScaffoldRefused { cause: CargoTargetMissingLifecycleDisposition { path: path } } => path != ""
+    ManifestStateScaffoldOk => true
+    ManifestStateScaffoldRefused { cause: _ } => false
+  }
+}
+
+test fn scaffold_mechanical_checks_reflect_live_classification() -> Bool {
+  !stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
+    && !manifest_state_verdict_scaffold_holds()
+}

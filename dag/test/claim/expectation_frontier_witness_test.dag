@@ -1,6 +1,7 @@
 module test.claim.expectation_frontier_witness
 
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.output_policy { ExpectSuccess }
@@ -18,12 +19,12 @@ data subject_source_roots_note: String = "witness_layer_roots (dag + src/v2), NO
 data frontier_marker: String = "[expectation-frontier]"
 
 fn claim_batch_path() -> String {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   witness_bin_release_path(root: root.path, bin_name: "claim_batch")
 }
 
 fn run_entry_capturing_stderr(entry: String, function: String) -> String {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: root.path,
     bin_path: claim_batch_path(),

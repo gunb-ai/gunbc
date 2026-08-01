@@ -161,14 +161,20 @@ import gunbc.roadmap_validation_oracle {
   validation_receipt_json,
 }
 import extdeps.git { shape_git_rev_parse_head_args }
-import gunbc.roadmap_provider_events { ProviderCompleted }
+import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.types { ContentHash }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
   workflow_attempt_progress,
-  workflow_attempt_progress_json_value,
+  workflow_attempt_progress_json_members,
+}
+import gunbc.roadmap_presentation {
+  activity_view_from_progress,
+  activity_view_json_value,
+  session_facts_view,
+  session_facts_json_value,
 }
 import extdeps.gunbc
 import extdeps.shell
@@ -1333,11 +1339,15 @@ type BeltObserve
   = Observed { live: List<DispatchLiveSession> }
   | ObserveRefused { reason: String }
 
-data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). So the decision (belt_observe_from_result) gates on exit success: `tmux ls` exit 0 -> parse stdout into the true session set. On FAILURE only tmux's two DOCUMENTED empty signals count as a genuine zero observation — stderr containing 'no server running' or 'no sessions' (grounded in the extdeps tmux.Session.List exit contract `1 => Unit \"No sessions\"`, dag/extdeps/tmux/tmux.dag) -> Observed []. EVERY OTHER failure (socket/permission/transient error, empty-stderr non-zero exit) is an UNKNOWABLE session set -> ObserveRefused (typed, located, carries stderr), never a blind spawn/reap. First-tick bootstrap still works: no server yields the documented 'no server running' signal -> Observed [] -> spawns proceed. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
+data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). So the decision (belt_observe_from_result) gates on exit success: `tmux ls` exit 0 -> parse stdout into the true session set. On FAILURE only tmux's three DOCUMENTED empty spellings count as a genuine zero observation — stderr containing 'no server running', 'no sessions', or the no-server socket ENOENT spelling 'error connecting to ... (No such file or directory)' (grounded in extdeps.tmux tmux.Session.List and tmux_client_connect_error_note) -> Observed []. EVERY OTHER failure (socket permission/transient error, empty-stderr non-zero exit) is an UNKNOWABLE session set -> ObserveRefused (typed, located, carries stderr), never a blind spawn/reap. In particular, 'error connecting to ... (Connection refused)' is not the cited ENOENT fact and keeps refusing. First-tick bootstrap works under either no-server spelling: the empty observation admits the first spawn that creates the instance socket. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
 
 fn tmux_ls_stderr_reports_empty(stderr: String) -> Bool {
   string_contains(s: stderr, pattern: "no server running")
     || string_contains(s: stderr, pattern: "no sessions")
+    || (
+      string_contains(s: stderr, pattern: "error connecting to ")
+        && string_contains(s: stderr, pattern: "(No such file or directory)")
+    )
 }
 
 fn belt_observe_from_result(
@@ -2253,6 +2263,17 @@ fn belt_workflow_attempts_observe_for_instance(
   }
 }
 
+data belt_attempt_presentation_note: String = "The wire join of the two authorities the client must never re-derive: the attempt's progress members (gunbc.roadmap_workflow_progress, unchanged) plus the DECIDED activity view (gunbc.roadmap_presentation) appended as one 'activity' member. The seam reads process and current activity from INSIDE the progress carrier (one_progress_authority_note — the belt cannot pass a disagreeing process beside it), so this join is one call on one value. The join lives here because progress cannot import presentation without a cycle; the member-list seam (workflow_attempt_progress_json_members) is what lets the belt extend the object without re-stating or re-matching it."
+
+fn belt_workflow_attempt_presentation_json(
+  progress: WorkflowAttemptProgress,
+) -> JsonValue {
+  json_object(members: concat(
+    workflow_attempt_progress_json_members(progress: progress),
+    [ json_kv(key: "activity", value: activity_view_json_value(
+        view: activity_view_from_progress(progress: progress))) ]))
+}
+
 fn belt_workflow_attempts_json_value(
   observed: BeltWorkflowAttempts,
 ) -> JsonValue {
@@ -2271,7 +2292,7 @@ fn belt_workflow_attempts_json_value(
           key: "attempts",
           value: json_array(elements: map(
             attempts,
-            progress => workflow_attempt_progress_json_value(
+            progress => belt_workflow_attempt_presentation_json(
               progress: progress,
             ),
           )),
@@ -2506,6 +2527,18 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
               b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
             json_kv(key: "cleanup_detail", value: json_string(
               s: dispatch_session_cleanup_detail(cleanup: cleanup))),
+            json_kv(key: "facts", value: session_facts_json_value(
+              v: session_facts_view(
+                process: sess.worker.process,
+                process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
+                provider: provider_evidence_label(evidence: sess.worker.provider_instance),
+                configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
+                provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
+                session_name: sess.session_name,
+                cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
+                cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
+                cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
+              ))),
           ])
         }))),
       ])

@@ -479,6 +479,24 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   )
 }
 
+data ci_heal_dispatch_entry: String = "dag/tools/ci_heal_dispatch.dag"
+data ci_heal_dispatch_function: String = "main"
+
+fn gunbc_ci_heal_dispatch_invoke() -> String {
+  concat(
+    "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\" GUNBC_HEAL_BRANCH_REF=\"${{ github.head_ref || github.ref_name }}\" ",
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: ci_heal_dispatch_entry,
+      function: ci_heal_dispatch_function,
+      rooted: true,
+      claim_run: false
+    )
+  )
+}
+
+data ci_heal_dispatch_invoke_note: String = "After a successful push the heal invokes tools.ci_heal_dispatch, which binds the modeled github.Workflows.CreateDispatch operation. The moving branch ref and immutable HEALED_HEAD are distinct inputs. The dispatched run binds the branch resolution recorded in github.sha and its checkout head to that immutable input before any witness can count. The workflow RunStep projects github.token into its GITHUB_TOKEN environment because GitHub Actions does not inject the installation token as a process variable by default; CreateDispatch auth_source reads that env var. A transport refusal makes the gunbc invocation nonzero; the surrounding heal script classifies HealDispatchRefused, keeps revalidation required, and fails loudly. There is deliberately no fallback to the ordinary push event and no silent retry."
+
 data ci_heal_binary_source_skew_note: String = "THE PAIRING THE HEAL JOB NEVER MODELED (incident 2026-07-29). A generated artifact's identity is (authority source x compiler), and this job silently pairs TWO DIFFERENT REVISIONS of that product: the release binary comes from `build`, which uses the default pull_request checkout — the MERGE ref (main + PR) — while this job checks out `github.head_ref`, the BRANCH HEAD, because it pushes the regeneration back (ci_heal_branch_checkout_note reasons carefully about the push semantics and never about the binary's provenance; it calls build's output 'the release gunbc binary', treating a projection of one revision as a context-free tool). The skew is latent until a seed change adds a Rust->.dag call: then the merge-ref binary invokes a `.dag` function the branch-head tree does not contain, `lookup_fn` misses, and the run dies mid-regen. Live receipt: #7348 landed the scoped-run observation seed, whose Rust calls gunbc.observation_seed_render.scoped_run_begin_write_measured; every open PR whose branch head predated it went red at once (#7392, #7394, #7395 — identical failure, none of them at fault), while main stayed green because ci_regen_heal_if skips this job on push. Reproduced by execution: ONE binary built from the merge ref, run against a pre-#7348 tree -> the exact CI failure; run against the same tree with origin/main merged in -> ExitSuccess, zero drift. The guard below refuses the unsound pairing instead of discovering it as a mid-regen crash."
 
 data ci_heal_binary_source_skew_guard_note: String = "THE COMPARAND IS THE BUILT-FROM REVISION, NOT A BRANCH NAME (operator ruling 2026-07-29). The first cut of this guard compared against `origin/main`, and that was wrong on the operator's own objection: `origin/main` names several different things — the one on this runner, the one on a developer's machine, and the actual source of truth — so a guard keyed on it asserts a relationship between the tree and WHICHEVER main this box last fetched, and can even race an advance mid-run. There is no ambiguity to resolve because the question was never about main: it is 'was this binary compiled from a revision this tree can satisfy'. `github.sha` answers it exactly — on a pull_request it IS the merge commit the build job checked out, so the guard compares the tree against the binary's own provenance, in the same workflow run, with no floating ref anywhere. The guard fails closed if that revision cannot be resolved: an unverifiable provenance is a refusal, never an assumed-fine.\n\nPRECISION IS ALSO THE POINT (DESIGN §5 — refuse, never widen; and never manufacture friction the defect does not warrant). A blanket 'tree must equal the built-from revision' would red nearly every PR to catch a rare pairing — a wall priced in other people's time. The DECIDABLE condition that actually matters is narrower: the binary is unsound against this tree exactly when the built-from revision carries SEED commits (src/v1 — the Rust the binary is compiled from) this tree lacks, because only those can introduce a Rust->.dag expectation the tree cannot satisfy. `git rev-list HEAD..$BUILT_FROM -- src/v1` is exactly that set: empty on the overwhelming majority of PRs (a .dag-only advance cannot skew a compiled binary), non-empty precisely in the #7348 shape. VERIFIED BY EXECUTION on the incident itself: at the pre-#7348 branch point the set is two commits and one of them IS 445bac31c (#7348), so the guard names the responsible commit in its own refusal; at current main and at the same branch after the advance was merged in, the set is empty and the guard is silent — the heal that went green on #7395 is the live receipt for the passing arm. On non-empty the step REFUSES rather than regenerating with a compiler that disagrees with the tree, which is the fabricated-plausible-output arm §5 forbids: main_wet would write whatever artifacts that mismatched pair produces and the commit-push step would push them to the branch. NOT IN SCOPE: preventing a stale branch from MERGING at all. That is merge-admission policy, it needs a source-of-truth model this repo does not have yet (operator: the SCM lane after v1 deletion), and this guard deliberately does not pretend to supply one — it protects the one pairing this job has agency over."
@@ -489,7 +507,7 @@ fn gunbc_ci_heal_binary_source_skew_guard_script() -> String {
   ci_heal_binary_source_skew_guard_script()
 }
 
-data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH step: a GitHub Actions run: foreign-executor context (the shell-intent design's bootstrap/foreign-executor case that renders through bash), so the git commit/push is a hand-authored shell string like the deploy invoke and the release-bins unpack script beside it. COMMIT SCOPE IS ARTIFACT-ONLY BY CONSTRUCTION (review 41703, DESIGN §5 no-silent-widen): staging is `git add` over EXACTLY committed_generated_artifact_paths() (the registry the drift gate guards and the exact set main_wet writes) — never `git add -A`, so an incidental dirty file on the runner (checkout residue, line-ending normalization, leftover state) can never be swept into an unattended push. Each path is guarded by a `[ -e ]` existence test (ci_heal_git_add_lines): a registered artifact that is absent on this tree — e.g. one a later PR deleted while its registry row lingered (the #7121 FleetConvergeArtifact incident) — is loudly echoed and skipped, never an exit-128 `git add` pathspec error that fails the whole heal; the drift gate remains the wall for a registered-but-missing artifact, the heal just commits what main_wet actually produced. The commit fires ONLY when `git diff --cached --quiet` reports a staged change — i.e. only when main_wet actually healed a registry artifact — so a clean tree is a no-op, and the byte-idempotent fixed point makes the healed commit's own re-run a no-op that terminates the loop. The push target is the TRIGGERING branch, not hardcoded main: `git push origin HEAD:${{ github.head_ref || github.ref_name }}` resolves to the PR source branch on a pull_request and to main on a push (operator-directed 2026-07-23: heal pushes to PRs so drift is repaired on the PR branch before it reaches main). The push authenticates with the job's GITHUB_TOKEN (persisted by actions/checkout, which checked out that same branch head) and needs the job-scoped contents:write grant. Loop termination is NOT a re-run of CI on the healed commit: a push made with the workflow's GITHUB_TOKEN does NOT trigger a new workflow run (GitHub's cascade-prevention is by design), so the healed commit fires no follow-on run — termination is guaranteed instead by the byte-idempotent fixed point itself, PROVEN pre-merge by generated_artifact_drift_test.witness_committed_is_fixed_point (committed bytes == artifact_generate) with its RED control, so a second heal would be a no-op even if one were triggered (review 41782 correction: the earlier 'verified by execution on the healed commit' claim was wrong — no such run exists). The healed artifacts are re-validated by the batch-0 drift gate on the NEXT unrelated PR/push, not on the heal commit, which is correct-by-construction (it is main_wet's own output). A concurrent advance on the target branch makes the push a non-fast-forward that fails LOUDLY (never a force-push), and the next run on that branch retries. A fork PR's branch is not writable by the workflow GITHUB_TOKEN, so a fork heal push fails loudly rather than silently — fork heals are out of scope; the fleet's PR model is same-repo session branches, which are pushable."
+data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH+DISPATCH step creates and classifies a new subject. COMMIT SCOPE remains artifact-only: staging is exactly committed_generated_artifact_paths(), never git add -A, and missing registered paths are loudly skipped. Before mutation it captures PRIOR_HEAD; after the artifact-only commit it captures HEALED_HEAD and the changed artifact population, pushes non-force to the triggering PR branch, then explicitly invokes github.Workflows.CreateDispatch with the branch ref plus HEALED_HEAD as expected_healed_sha. The workflow model binds github.token into the step's GITHUB_TOKEN environment because the modeled service resolves its sole credential authority there and Actions does not export the token context automatically. A clean staged diff is HealNoChange and exits successfully. A mutation is HealProduced, makes the prior run SupersededByHealedHead, and the old run exits nonzero even after a successful dispatch: no result from tree A can authorize tree B. If push or dispatch fails, the job fails loudly; dispatch failure emits HealDispatchRefused and never assumes the GITHUB_TOKEN push produced an event. The dispatched workflow excludes this heal job, requires both github.sha (the GitHub run/check subject) and checkout HEAD to equal the immutable expected SHA before witnesses, and refuses either mismatch. The byte-idempotent fixed point still proves loop safety, but it is no longer used as a substitute for executing revalidation on the healed head."
 
 data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -516,18 +534,34 @@ fn ci_heal_shell_lines() -> List<String> {
     concat(
       ci_heal_git_add_lines(),
       [
+        "PRIOR_HEAD=$(git rev-parse HEAD)",
         "if git diff --cached --quiet; then",
-        "  echo \"chore-heal: no generated-artifact drift on this tree; nothing to commit\"",
+        "  echo \"HealNoChange head=$PRIOR_HEAD\"",
+        "  exit 0",
         "else",
+        "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
         "  git commit -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
+        "  HEALED_HEAD=$(git rev-parse HEAD)",
         "  git push origin HEAD:${{ github.head_ref || github.ref_name }}",
-        "  echo \"chore-heal: pushed regenerated generated artifacts to the triggering branch\"",
-        "fi"
+        "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\"",
+        "  ROOT=$(git rev-parse --show-toplevel)"
       ]
     )
   )
 }
 
 fn gunbc_ci_heal_commit_push_script() -> String {
-  fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) })
+  concat(
+    fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
+    concat(
+      concat("  if ! ", gunbc_ci_heal_dispatch_invoke()),
+      concat(
+        "  then\n  echo \"::error::HealDispatchRefused healed_head=$HEALED_HEAD cause=CreateWorkflowDispatchFailed\" >&2\n  exit 1\n  fi\n",
+        concat(
+          "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
+          "  exit 1\nfi\n"
+        )
+      )
+    )
+  )
 }

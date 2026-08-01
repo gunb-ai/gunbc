@@ -60,7 +60,7 @@ test fn anomaly_unreadable_answer_does_not_name_the_network() -> Bool {
 test fn anomaly_workflow_segment_reaches_the_surface() -> Bool {
   return producer_reaches_the_surface(
     js: dispatch_client_js_source(),
-    source_arg: "wdt, 'workflow:' + seg.kind, bad ? sl + ' — ' + sd : ''")
+    source_arg: "gunbcRowDisclosure(act), 'workflow:' + seg.kind, bad ? seg.short_label + ' · ' + seg.state + ' — ' + sd : ''")
 }
 
 data workflow_segment_fallback_note: String = "A refused segment whose wire detail is empty still gets a true line rather than a bare label — the same fall-closed phrasing the dispatch band uses, shared as one row rather than spelled twice."
@@ -115,10 +115,12 @@ test fn anomaly_reason_surface_is_styled() -> Bool {
 
 data accessible_name_note: String = "The accessible name is the THIRD reason channel and it was silently broken, which is why it is pinned here rather than left to the markup witnesses. `seg.label + ': ' + seg.state + (seg.detail ? ' — ' + seg.detail : '')` was emitted without the group, so it parsed as `(label + state + detail) ? ' — ' + detail : ''` — always true, since a concatenation is never the empty string — and a screen reader was told the detail alone with no label and no state. The model always said the right thing; the printer dropped the group (extdeps.languages.typescript.program.ts_operator_precedence_note). Asserting the parenthesized text here means the row's accessible name cannot silently lose its subject again."
 
+data ledger_row_text_first_note: String = "Re-pointed at A2: the stage chips carried label+state in an aria-label because their visible face was a compressed chip; the activity ledger row IS its accessible name — one text node carrying label, state, and detail, readable by any client without attribute decoding. The class this guards (an obligation's state never lives in border style or attributes alone) is unchanged; the carrier moved from attribute to content."
+
 test fn anomaly_stage_accessible_name_keeps_label_and_state() -> Bool {
   return string_contains(
     s: dispatch_client_js_source(),
-    pattern: "stage.setAttribute('aria-label', seg.label + ': ' + seg.state + (seg.detail ? ' — ' + seg.detail : ''))")
+    pattern: "ob.textContent = seg.label + ' · ' + seg.state + (seg.detail ? ' — ' + seg.detail : '')")
 }
 
 test fn anomaly_workflow_refusal_reason_survives_concatenation() -> Bool {
