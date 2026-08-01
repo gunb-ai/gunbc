@@ -36,16 +36,21 @@ type CommitWriter
   | HealAutocommit
   | IntegrationCommit
 
-type StagedBlobContent
-  = StagedTextBlob { text: String, provenance: Artifact }
-  | StagedNonTextBlob
-  | StagedBlobNotApplicable
-
-type CommitWriterPathObservation {
-  path: GitPath
-  stages: List<GitIndexStage>
-  staged_blob: StagedBlobContent
-}
+type CommitWriterPathObservation
+  = CommitWriterNormalTextObservation {
+      path: GitPath,
+      stage: GitIndexStage,
+      text: String,
+      provenance: Artifact,
+    }
+  | CommitWriterNormalNonTextObservation {
+      path: GitPath,
+      stage: GitIndexStage,
+    }
+  | CommitWriterUnmergedObservation {
+      path: GitPath,
+      stages: List<GitIndexStage>,
+    }
 
 type ConflictMarkerGrammar {
   begin: String
@@ -92,7 +97,7 @@ type CommitWriterAdmission
       refusals: List<CommitWriterRefusal>
     }
 
-data commit_writer_admission_note: String = "ONE ADMISSION PREDICATE FOR EVERY COMMIT WRITER. The index arm consumes extdeps.git.object_store GitIndexStage directly: a path is normalized exactly when its complete stage population is the singleton GitIndexStageNormal; Base/Ours/Theirs are preserved in the typed, located refusal rather than collapsed into a stringly conflicted-tree flag. The staged-text arm is independent because git add can erase those nonzero stages while retaining literal conflict blocks. It parses the complete begin -> separator -> end line grammar over the exact staged text supplied at the write boundary; isolated marker-like lines and out-of-order tokens are not a conflict block. Only v2.std.artifact TestClaimArtifact provenance exempts intentional fixture text, so no path allowlist or repo-wide grep exists. This function is the repository authority; the generated pre-commit hook is optional feedback and cannot enforce it. The DashboardAutocommit/HealAutocommit write-boundary realization that produced commit 218dea61248d is external dashboard infrastructure and must bind this admission before writing; until that binding lands, the model and executable reproduction witness close the decision but not the external realization."
+data commit_writer_admission_note: String = "ONE ADMISSION PREDICATE FOR EVERY COMMIT WRITER. The path-observation coproduct makes the index/content relationship structural: a normal text or non-text staged blob is observed, OR a non-normal Git stage population is observed; there is no normal-but-uninspected constructor. The index arm consumes extdeps.git.object_store GitIndexStage directly, preserving Base/Ours/Theirs in the typed, located refusal rather than collapsing them into a stringly conflicted-tree flag. The staged-text arm is independent because git add can erase those nonzero stages while retaining literal conflict blocks. It parses the complete begin -> separator -> end line grammar over the exact staged text supplied at the write boundary; isolated marker-like lines and out-of-order tokens are not a conflict block. Only v2.std.artifact TestClaimArtifact provenance exempts intentional fixture text, so no path allowlist or repo-wide grep exists. This function is the repository authority; the generated pre-commit hook is optional feedback and cannot enforce it. LIVE BINDING SPLIT: commit 218dea61248d has the dashboard sweep's WIP-prefixed subject even though its reused committer identity says gunbc-ci-auto-heal, so DashboardAutocommit is the evidenced missing external consumer. The repository CI HealAutocommit already carries a partial realization in v2.workflow.ci_heal_skew_guard_emit: ci_heal_skew_authored_conflict_refusal aborts authored conflicts, while ci_heal_skew_conflict_arm resolves registered generated paths and writes through extdeps.git shape_git_commit_no_verify_no_edit_argv. That --no-verify path proves the hook cannot be this writer's enforcement boundary. COUNTABLE FOLLOW-UP BINDINGS: (1) v2.workflow.ci_heal_skew_guard_emit ci_heal_skew_conflict_arm and (2) the out-of-repository dashboard autocommit daemon must each acquire the missing staged-blob observation plus typed artifact-provenance transport and call admit_commit_writer immediately before writing. The heal binding must also move regeneration and byte-proof before commit rather than treating post-commit drift as the wall. Until those realization bindings land, this model and executable reproduction close the decision but not the writer transports."
 
 fn commit_writer_stage_is_normal(stage: GitIndexStage) -> Bool {
   match stage {
@@ -101,10 +106,6 @@ fn commit_writer_stage_is_normal(stage: GitIndexStage) -> Bool {
     GitIndexStageOurs => false
     GitIndexStageTheirs => false
   }
-}
-
-fn commit_writer_stage_population_is_normal(stages: List<GitIndexStage>) -> Bool {
-  (count(stages) == 1) && commit_writer_stage_is_normal(stage: stages.first())
 }
 
 fn conflict_marker_line_has_prefix(line: String, marker: String) -> Bool {
@@ -170,29 +171,47 @@ fn conflict_marker_parse_line(
   }
 }
 
+fn conflict_marker_locations_from_lines_at(
+  lines: List<String>,
+  index: Int,
+  path: GitPath,
+  grammar: ConflictMarkerGrammar,
+  parsed: ConflictMarkerParseFold,
+) -> List<ConflictMarkerLocation> {
+  if index >= count(lines) {
+    parsed.locations
+  } else {
+    conflict_marker_locations_from_lines_at(
+      lines: lines,
+      index: index + 1,
+      path: path,
+      grammar: grammar,
+      parsed: conflict_marker_parse_line(
+        fold_state: parsed,
+        path: path,
+        line: lines.skip(n: index).first(),
+        line_number: index + 1,
+        grammar: grammar,
+      ),
+    )
+  }
+}
+
 fn conflict_marker_locations_from_lines(
   lines: List<String>,
   path: GitPath,
   grammar: ConflictMarkerGrammar,
 ) -> List<ConflictMarkerLocation> {
-  let numbered = zip_with_index(lines)
-  let parsed = fold(
-    numbered,
-    init: ConflictMarkerParseFold {
+  conflict_marker_locations_from_lines_at(
+    lines: lines,
+    index: 0,
+    path: path,
+    grammar: grammar,
+    parsed: ConflictMarkerParseFold {
       state: ConflictMarkerOutside,
       locations: [],
     },
-    f: fn(acc, row) {
-      conflict_marker_parse_line(
-        fold_state: acc,
-        path: path,
-        line: row.first,
-        line_number: row.second + 1,
-        grammar: grammar,
-      )
-    },
   )
-  parsed.locations
 }
 
 fn staged_text_has_test_artifact_provenance(provenance: Artifact) -> Bool {
@@ -202,53 +221,57 @@ fn staged_text_has_test_artifact_provenance(provenance: Artifact) -> Bool {
   }
 }
 
-fn commit_writer_marker_refusals(
+fn commit_writer_text_marker_refusals(
   path: GitPath,
-  staged_blob: StagedBlobContent,
+  text: String,
+  provenance: Artifact,
 ) -> List<CommitWriterRefusal> {
-  match staged_blob {
-    StagedTextBlob { text, provenance } =>
-      if staged_text_has_test_artifact_provenance(provenance: provenance) {
-        []
-      } else {
-        map(
-          conflict_marker_locations_from_lines(
-            lines: split(s: text, delimiter: "\n"),
-            path: path,
-            grammar: git_conflict_marker_grammar,
-          ),
-          location => CommitWriterConflictMarkerTextRefusal {
-            location: location
-          },
-        )
-      }
-    StagedNonTextBlob => []
-    StagedBlobNotApplicable => []
+  if staged_text_has_test_artifact_provenance(provenance: provenance) {
+    []
+  } else {
+    map(
+      conflict_marker_locations_from_lines(
+        lines: split(s: text, delimiter: "\n"),
+        path: path,
+        grammar: git_conflict_marker_grammar,
+      ),
+      location => CommitWriterConflictMarkerTextRefusal {
+        location: location
+      },
+    )
   }
 }
 
 fn commit_writer_path_refusals(
   observation: CommitWriterPathObservation,
 ) -> List<CommitWriterRefusal> {
-  let index_refusals = if commit_writer_stage_population_is_normal(
-    stages: observation.stages,
-  ) {
-    []
-  } else {
-    [
+  match observation {
+    CommitWriterNormalTextObservation { path, stage, text, provenance } =>
+      append(
+        if commit_writer_stage_is_normal(stage: stage) {
+          []
+        } else {
+          [CommitWriterUnmergedIndexRefusal { path: path, stages: [stage] }]
+        },
+        items: commit_writer_text_marker_refusals(
+          path: path,
+          text: text,
+          provenance: provenance,
+        ),
+      )
+    CommitWriterNormalNonTextObservation { path, stage } =>
+      if commit_writer_stage_is_normal(stage: stage) {
+        []
+      } else {
+        [CommitWriterUnmergedIndexRefusal { path: path, stages: [stage] }]
+      }
+    CommitWriterUnmergedObservation { path, stages } => [
       CommitWriterUnmergedIndexRefusal {
-        path: observation.path,
-        stages: observation.stages,
+        path: path,
+        stages: stages,
       },
     ]
   }
-  append(
-    index_refusals,
-    items: commit_writer_marker_refusals(
-      path: observation.path,
-      staged_blob: observation.staged_blob,
-    ),
-  )
 }
 
 fn admit_commit_writer(
