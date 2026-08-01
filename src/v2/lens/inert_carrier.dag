@@ -11,7 +11,7 @@ fn inert_row(unit: String, reason: String) -> FrontierRow {
 }
 
 data inert_carrier_roster: List<FrontierRow> = [
-  inert_row(unit: "AccessPolicy", reason: "modeled access-policy carrier with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader)"),
+  inert_row(unit: "DownstreamSupportRoster", reason: "modeled downstream coverage-roster carrier from the extdeps modeling preflight (#7571): it is the declared home for support/coverage rows that an upstream module may not carry, and the plan text names it, but no module constructs or reads one yet"),
   inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CompileDiagnosticCensus", reason: "the census coproduct outlived its only production consumer: gunbc.compile_diagnostic_census deliberately deleted census_rows(c: CompileDiagnosticCensus) so that reading a row list out of the CensusNotRunnable arm became structurally unwritable (codex review 46144), and the surviving selectors all take List<CompileDiagnosticCensusRow>. Every remaining reference is the declaration itself or a witness, so the type is inert BY the construction climb rather than by being unfinished — correct, and awaiting the producer that matches on it"),
