@@ -10233,10 +10233,11 @@ fn resolved_graph_from_sources_with_index(
     {
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
-    // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
-    // the share above on hit so later same-subject demands never re-decode. CI leaves
-    // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
-    // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
+    // Cross-process store tier: cwd-default `.gunbc/resolved-graph-cache` outside
+    // GITHUB_ACTIONS (or explicit `GUNBC_RESOLVED_GRAPH_CACHE_DIR`). Installs into
+    // the share above on hit so later same-subject demands never re-decode. CI
+    // disables the default (`GITHUB_ACTIONS`), so PR jobs never inherit warmed
+    // artifacts from a prior run — only explicit test harnesses arm the disk tier.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         if !cross_process_provider_routing_suppressed() {
             match cross_process_probe(&cache_root, &subject) {
