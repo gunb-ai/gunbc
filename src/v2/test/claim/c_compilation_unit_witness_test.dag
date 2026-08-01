@@ -485,8 +485,7 @@ test fn witness_c_basename_kills_parent_directory_segments() -> Bool {
 
 test fn witness_c_basename_injective_on_escape_marker() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_percent) as String) == "a%000025b"
-    && (c_translation_unit_basename(unit_id: collide_left) as String)
-       != (c_translation_unit_basename(unit_id: collide_right) as String)
+    && (c_translation_unit_basename(unit_id: collide_left) as String) != (c_translation_unit_basename(unit_id: collide_right) as String)
 }
 
 test fn witness_c_basename_output_always_safe() -> Bool {
