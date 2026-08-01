@@ -77,7 +77,7 @@ fn audience_observable_from_http_error_read(
   body_class: BrowserHttpErrorBodyClass,
 ) -> AudienceObservable {
   match read {
-    BrowserHttpErrorPresentationReadObserved { release: _, presentation, receipt: _ } =>
+    BrowserHttpErrorPresentationReadObserved { browser_build: _, presentation, receipt: _ } =>
       match presentation {
         BrowserReplacesHttpErrorResponse => BrowserOwned
         BrowserRendersHttpErrorResponse => match body_class {

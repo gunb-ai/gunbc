@@ -23,7 +23,7 @@ data mozilla_firefox_error_page_authority: ExternalAuthority = ExternalAuthority
 data apple_safari_error_page_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "webkit.org/status/"
+    locator: "support.apple.com/en-us/102564"
   }
 }
 
@@ -73,11 +73,18 @@ type BrowserHttpErrorPresentationPair {
   nonempty_body: BrowserHttpErrorPresentation
 }
 
+type BrowserPresentationExecutionReceipt {
+  observed_on: NonEmptyStr
+  harness: NonEmptyStr
+  empty_response_evidence: NonEmptyStr
+  nonempty_response_evidence: NonEmptyStr
+}
+
 type BrowserPresentationProfile
   = BrowserPresentationObserved {
-      release: BrowserRelease,
+      browser_build: BrowserRelease,
       http_error: BrowserHttpErrorPresentationPair,
-      receipt: NonEmptyStr,
+      receipt: BrowserPresentationExecutionReceipt,
     }
   | BrowserPresentationUnobserved {
       product: BrowserProduct,
@@ -86,9 +93,21 @@ type BrowserPresentationProfile
 
 data browser_error_presentation_evidence_note: String = "THESE ARE BUILD-GRAIN OBSERVATIONS, NOT BROWSER PROMISES. Chrome, Firefox, and Safari own network-error UI whose wording and replacement policy can move between releases; the exact release is therefore mandatory on the only constructor that may carry a presentation answer. BrowserPresentationUnobserved has no presentation fields at all: nobody looking cannot be rounded toward either replacement or rendering. A future observation upgrades one whole discriminating pair from the same run — empty 502 versus non-empty 502 — so two separately authored facts cannot accidentally cite different builds. The vendor rows cite the real upstream error-page implementations; fetch_error_semantics_authority separately grounds the script-fetch fact that network errors reject while HTTP error responses remain responses."
 
-data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPresentationUnobserved {
-  product: GoogleChrome,
-  reason: "Chrome for Testing 151.0.7922.34 downloaded via Playwright 1.62.1 on 2026-08-01, but the rootless execution image lacked the browser shared-library closure; no presentation result was fabricated" as NonEmptyStr,
+data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPresentationObserved {
+  browser_build: BrowserRelease {
+    product: GoogleChrome,
+    exact_version: "151.0.7922.34" as NonEmptyStr,
+  },
+  http_error: BrowserHttpErrorPresentationPair {
+    empty_body: BrowserReplacesHttpErrorResponse,
+    nonempty_body: BrowserRendersHttpErrorResponse,
+  },
+  receipt: BrowserPresentationExecutionReceipt {
+    observed_on: "2026-08-01" as NonEmptyStr,
+    harness: "Playwright 1.62.1 Chromium, headless Linux arm64; one local HTTP server answered Content-Length 0 status 502 and text/plain status 502 carrying GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
+    empty_response_evidence: "page.goto refused with net::ERR_HTTP_RESPONSE_CODE_FAILURE and page.url committed chrome-error://chromewebdata/" as NonEmptyStr,
+    nonempty_response_evidence: "page.goto returned status 502 at the requested HTTP URL and page.content contained GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
+  },
 }
 
 data mozilla_firefox_error_presentation: BrowserPresentationProfile = BrowserPresentationUnobserved {
@@ -103,16 +122,16 @@ data apple_safari_error_presentation: BrowserPresentationProfile = BrowserPresen
 
 fn browser_presentation_product(profile: BrowserPresentationProfile) -> BrowserProduct {
   match profile {
-    BrowserPresentationObserved { release, http_error: _, receipt: _ } => release.product
+    BrowserPresentationObserved { browser_build, http_error: _, receipt: _ } => browser_build.product
     BrowserPresentationUnobserved { product, reason: _ } => product
   }
 }
 
 type BrowserHttpErrorPresentationRead
   = BrowserHttpErrorPresentationReadObserved {
-      release: BrowserRelease,
+      browser_build: BrowserRelease,
       presentation: BrowserHttpErrorPresentation,
-      receipt: NonEmptyStr,
+      receipt: BrowserPresentationExecutionReceipt,
     }
   | BrowserHttpErrorPresentationReadUnobserved {
       product: BrowserProduct,
@@ -124,9 +143,9 @@ fn browser_http_error_presentation(
   body_class: BrowserHttpErrorBodyClass,
 ) -> BrowserHttpErrorPresentationRead {
   match profile {
-    BrowserPresentationObserved { release, http_error, receipt } =>
+    BrowserPresentationObserved { browser_build, http_error, receipt } =>
       BrowserHttpErrorPresentationReadObserved {
-        release: release,
+        browser_build: browser_build,
         presentation: match body_class {
           EmptyHttpErrorBody => http_error.empty_body
           NonEmptyHttpErrorBody => http_error.nonempty_body
@@ -140,4 +159,3 @@ fn browser_http_error_presentation(
       }
   }
 }
-

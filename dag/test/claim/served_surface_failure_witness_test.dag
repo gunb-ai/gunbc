@@ -3,6 +3,7 @@ module test.claim.served_surface_failure_witness
 import std.types { NonEmptyStr }
 import extdeps.browser.error_presentation {
   BrowserRelease,
+  BrowserPresentationExecutionReceipt,
   BrowserHttpErrorPresentationPair,
   BrowserPresentationProfile,
   BrowserPresentationObserved,
@@ -58,7 +59,7 @@ fn observed_chrome_fixture(
   body_replaced: Bool,
 ) -> BrowserPresentationProfile {
   BrowserPresentationObserved {
-    release: BrowserRelease {
+    browser_build: BrowserRelease {
       product: GoogleChrome,
       exact_version: "fixture-1" as NonEmptyStr,
     },
@@ -74,7 +75,12 @@ fn observed_chrome_fixture(
         BrowserRendersHttpErrorResponse
       },
     },
-    receipt: "test-local discriminating profile" as NonEmptyStr,
+    receipt: BrowserPresentationExecutionReceipt {
+      observed_on: "test-local" as NonEmptyStr,
+      harness: "test-local discriminating profile" as NonEmptyStr,
+      empty_response_evidence: "fixture" as NonEmptyStr,
+      nonempty_response_evidence: "fixture" as NonEmptyStr,
+    },
   }
 }
 
@@ -82,6 +88,17 @@ test fn witness_seven_hops_remain_seven_rows() -> Bool {
   count(served_surface_audience_observable_map(browser: google_chrome_error_presentation)) == 7
     && count(served_surface_audience_observable_map(browser: mozilla_firefox_error_presentation)) == 7
     && count(served_surface_audience_observable_map(browser: apple_safari_error_presentation)) == 7
+}
+
+test fn witness_executed_chrome_receipt_drives_production_cells() -> Bool {
+  audience_observable(
+    state: GunbcServeCompileWindow,
+    browser: google_chrome_error_presentation,
+  ) == BrowserOwned
+    && audience_observable(
+      state: GunbcServeApplication500 { body: "typed" as NonEmptyStr },
+      browser: google_chrome_error_presentation,
+    ) == BodyOwned { surface: GunbcTypedErrorBody }
 }
 
 test fn witness_wire_observables_do_not_collapse() -> Bool {
@@ -176,4 +193,3 @@ test fn witness_unobserved_browser_never_fabricates_presentation() -> Bool {
     _ => false
   }
 }
-
