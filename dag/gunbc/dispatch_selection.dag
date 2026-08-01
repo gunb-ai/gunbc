@@ -1,0 +1,229 @@
+module gunbc.dispatch_selection
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import extdeps.llm.cli { ReasoningEffort, ReasoningLow, ReasoningMedium, ReasoningHigh }
+import extdeps.llm.cli_lifecycle { ProviderKind, ClaudeCliProvider, CodexCliProvider, CursorCliProvider }
+import gunbc.roadmap_model { Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_dashboard_live_id,
+  srv1_dashboard_lab_id,
+  srv2_dashboard_lab_id,
+  srv2_dashboard_preview_id,
+}
+
+data dispatch_selection_note: String = "Slice A selection kernel: ExecutionProfile is the single authority for how much reasoning effort a dispatch uses; provider inventory rows replace the former host-wide dispatch_cli_provider constant. Every dispatch records requested versus resolved in DispatchExecutionReceipt so a downgrade or override is never silent."
+
+type ExecutionProfile
+  = ProfileAutomatic
+  | ProfileDeep
+  | ProfileExactOverride { effort: ReasoningEffort }
+
+type ProviderPreference
+  = ProviderAutomatic
+  | ProviderExact { kind: ProviderKind }
+
+type DispatchExecutionRequest {
+  profile: ExecutionProfile
+  provider: ProviderPreference
+}
+
+type DispatchProviderOffer {
+  kind: ProviderKind
+  priority: Int
+  process_fingerprint: NonEmptyStr
+}
+
+type DispatchProviderInventory {
+  offers: List<DispatchProviderOffer>
+}
+
+type DispatchExecutionResolution {
+  provider: ProviderKind
+  effort: ReasoningEffort
+}
+
+type DispatchExecutionReceipt
+  = DispatchExecutionResolved {
+      requested: DispatchExecutionRequest,
+      resolved: DispatchExecutionResolution,
+    }
+  | DispatchExecutionRefused {
+      requested: DispatchExecutionRequest,
+      reason: NonEmptyStr,
+    }
+
+data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
+data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
+data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmptyStr
+
+data dispatch_codex_offer: DispatchProviderOffer = DispatchProviderOffer {
+  kind: CodexCliProvider,
+  priority: 0,
+  process_fingerprint: dispatch_codex_process_fingerprint,
+}
+
+data dispatch_claude_offer: DispatchProviderOffer = DispatchProviderOffer {
+  kind: ClaudeCliProvider,
+  priority: 1,
+  process_fingerprint: dispatch_claude_process_fingerprint,
+}
+
+data dispatch_cursor_offer: DispatchProviderOffer = DispatchProviderOffer {
+  kind: CursorCliProvider,
+  priority: 2,
+  process_fingerprint: dispatch_cursor_process_fingerprint,
+}
+
+data srv1_live_dispatch_inventory: DispatchProviderInventory = DispatchProviderInventory {
+  offers: [dispatch_codex_offer],
+}
+
+data srv1_lab_dispatch_inventory: DispatchProviderInventory = DispatchProviderInventory {
+  offers: [dispatch_codex_offer],
+}
+
+data srv2_lab_dispatch_inventory: DispatchProviderInventory = DispatchProviderInventory {
+  offers: [dispatch_codex_offer, dispatch_cursor_offer],
+}
+
+data srv2_preview_dispatch_inventory: DispatchProviderInventory = DispatchProviderInventory {
+  offers: [dispatch_codex_offer, dispatch_cursor_offer],
+}
+
+fn automatic_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
+  match i {
+    IntricacyHigh => ReasoningHigh
+    IntricacyMedium => ReasoningMedium
+    IntricacyLow => ReasoningMedium
+  }
+}
+
+fn resolve_execution_effort(
+  profile: ExecutionProfile,
+  intricacy: Intricacy,
+) -> ReasoningEffort {
+  match profile {
+    ProfileAutomatic => automatic_effort_for_intricacy(i: intricacy)
+    ProfileDeep => ReasoningHigh
+    ProfileExactOverride { effort } => effort
+  }
+}
+
+fn dispatch_offer_matches_preference(
+  offer: DispatchProviderOffer,
+  preference: ProviderPreference,
+) -> Bool {
+  match preference {
+    ProviderAutomatic => true
+    ProviderExact { kind } => offer.kind == kind
+  }
+}
+
+fn dispatch_offer_priority(offer: DispatchProviderOffer) -> Int {
+  offer.priority
+}
+
+fn dispatch_inventory_select_offer(
+  inventory: DispatchProviderInventory,
+  preference: ProviderPreference,
+) -> DispatchProviderOffer {
+  let candidates = filter(
+    inventory.offers,
+    offer => dispatch_offer_matches_preference(
+      offer: offer,
+      preference: preference,
+    ),
+  )
+  fold(candidates, init: dispatch_codex_offer, f: fn(best, offer) {
+    if dispatch_offer_priority(offer: offer) < dispatch_offer_priority(offer: best) {
+      offer
+    } else {
+      best
+    }
+  })
+}
+
+fn dispatch_provider_inventory_for_instance(
+  instance: HostDashboardInstance,
+) -> DispatchProviderInventory {
+  if instance.instance_id == srv1_dashboard_live_id {
+    srv1_live_dispatch_inventory
+  } else if instance.instance_id == srv1_dashboard_lab_id {
+    srv1_lab_dispatch_inventory
+  } else if instance.instance_id == srv2_dashboard_lab_id {
+    srv2_lab_dispatch_inventory
+  } else if instance.instance_id == srv2_dashboard_preview_id {
+    srv2_preview_dispatch_inventory
+  } else {
+    srv1_live_dispatch_inventory
+  }
+}
+
+fn default_dispatch_execution_request() -> DispatchExecutionRequest {
+  DispatchExecutionRequest {
+    profile: ProfileAutomatic,
+    provider: ProviderAutomatic,
+  }
+}
+
+fn resolve_dispatch_execution(
+  inventory: DispatchProviderInventory,
+  request: DispatchExecutionRequest,
+  intricacy: Intricacy,
+) -> DispatchExecutionReceipt {
+  let effort = resolve_execution_effort(
+    profile: request.profile,
+    intricacy: intricacy,
+  )
+  let candidates = filter(
+    inventory.offers,
+    offer => dispatch_offer_matches_preference(
+      offer: offer,
+      preference: request.provider,
+    ),
+  )
+  if candidates.length() == 0 {
+    DispatchExecutionRefused {
+      requested: request,
+      reason: "no provider offer matches the requested preference" as NonEmptyStr,
+    }
+  } else {
+    let offer = dispatch_inventory_select_offer(
+      inventory: inventory,
+      preference: request.provider,
+    )
+    DispatchExecutionResolved {
+      requested: request,
+      resolved: DispatchExecutionResolution {
+        provider: offer.kind,
+        effort: effort,
+      },
+    }
+  }
+}
+
+fn dispatch_execution_receipt_for_node(
+  instance: HostDashboardInstance,
+  request: DispatchExecutionRequest,
+  intricacy: Intricacy,
+) -> DispatchExecutionReceipt {
+  resolve_dispatch_execution(
+    inventory: dispatch_provider_inventory_for_instance(instance: instance),
+    request: request,
+    intricacy: intricacy,
+  )
+}
+
+fn dispatch_offer_process_fingerprint(
+  inventory: DispatchProviderInventory,
+  kind: ProviderKind,
+) -> NonEmptyStr {
+  fold(inventory.offers, init: dispatch_codex_process_fingerprint, f: fn(best, offer) {
+    if offer.kind == kind {
+      offer.process_fingerprint
+    } else {
+      best
+    }
+  })
+}

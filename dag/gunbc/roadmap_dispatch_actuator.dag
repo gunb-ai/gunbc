@@ -81,7 +81,35 @@ import extdeps.llm.cli {
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceFieldUnobserved,
+  ProviderKind,
   ClaudeCliProvider,
+  CodexCliProvider,
+  CursorCliProvider,
+}
+import gunbc.dispatch_selection {
+  ExecutionProfile,
+  ProfileAutomatic,
+  DispatchExecutionRequest,
+  DispatchExecutionReceipt,
+  DispatchExecutionResolved,
+  DispatchExecutionRefused,
+  default_dispatch_execution_request,
+  dispatch_execution_receipt_for_node,
+  dispatch_provider_inventory_for_instance,
+  dispatch_offer_process_fingerprint,
+  resolve_execution_effort,
+  srv1_live_dispatch_inventory,
+  dispatch_inventory_select_offer,
+  ProviderAutomatic,
+  ProviderExact,
+}
+import extdeps.llm.cursor_cli {
+  cursor_cli_program,
+  cursor_automation_invocation,
+  CursorDefaultEditMode,
+  CursorSandboxFromConfig,
+  CursorStreamJson,
+  shape_cursor_invocation,
 }
 import gunbc.worker_lifecycle {
   WorkerObservation,
@@ -146,10 +174,34 @@ data dispatch_claude_fingerprint_finding_note: String = "NAMED FINDING (U4 live 
 type DispatchCliProvider
   = ClaudeCodeProvider
   | CodexCliProvider
+  | CursorCliProvider
 
-data dispatch_cli_provider_note: String = "The dispatch provider is an explicit closed choice, not whichever executable happens to be authenticated on the host. v0 selects CodexCliProvider because the operator's Claude subscription is unavailable and the dedicated srv1 Codex state root is authenticated. Provider choice owns argv, preflight, and expected pane fingerprint together; adding a provider without all three projections is impossible at this call site. This is still a single host-wide provider selection. Per-node/provider placement belongs to the compute-fabric offer lane, not this unblock slice."
+data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() remains the srv1-live default projection for legacy call sites; instance-aware dispatch uses dispatch_execution_receipt_for_node. Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
 
-data dispatch_cli_provider: DispatchCliProvider = CodexCliProvider
+fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
+  match kind {
+    ClaudeCliProvider => ClaudeCodeProvider
+    CodexCliProvider => CodexCliProvider
+    CursorCliProvider => CursorCliProvider
+  }
+}
+
+fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> ProviderKind {
+  match provider {
+    ClaudeCodeProvider => ClaudeCliProvider
+    CodexCliProvider => CodexCliProvider
+    CursorCliProvider => CursorCliProvider
+  }
+}
+
+fn dispatch_cli_provider() -> DispatchCliProvider {
+  provider_kind_to_dispatch_cli(
+    kind: dispatch_inventory_select_offer(
+      inventory: srv1_live_dispatch_inventory,
+      preference: ProviderAutomatic,
+    ).kind,
+  )
+}
 
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data dispatch_codex_process_fingerprint_note: String = "LIVE RECEIPT (srv1, 2026-07-27): the authenticated npm-installed Codex CLI (`/usr/bin/codex` launcher, codex-cli 0.133.0) reports pane_current_command `node` while a real read-only `codex exec --json` turn is active. The pane emitted thread.started, turn.started, and item.completed before exit. Therefore the current host realization's expected fingerprint is node, not the argv token codex. This is deliberately fail-closed across packaging changes: if provisioning moves srv1 to a standalone native binary and tmux begins reporting codex, ownership/Stop refuses until that new realization is observed and this row changes with its receipt."
@@ -171,6 +223,7 @@ fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
   match provider {
     ClaudeCodeProvider => "claude"
     CodexCliProvider => "codex"
+    CursorCliProvider => "cursor"
   }
 }
 
@@ -272,6 +325,7 @@ fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
   match provider {
     ClaudeCodeProvider => claude_cli_program as NonEmptyStr
     CodexCliProvider => codex_cli_program as NonEmptyStr
+    CursorCliProvider => cursor_cli_program as NonEmptyStr
   }
 }
 
@@ -279,10 +333,7 @@ fn dispatch_provider_instance_for(
   provider: DispatchCliProvider,
 ) -> ProviderInstance {
   ProviderInstance {
-    kind: match provider {
-      ClaudeCodeProvider => ClaudeCliProvider
-      CodexCliProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
-    },
+    kind: dispatch_cli_to_provider_kind(provider: provider),
     host: ProviderInstanceFieldUnobserved {
       reason: "session observation does not read host identity" as NonEmptyStr,
     },
@@ -303,7 +354,7 @@ fn dispatch_provider_instance_for(
 }
 
 fn dispatch_provider_instance() -> ProviderInstance {
-  dispatch_provider_instance_for(provider: dispatch_cli_provider)
+  dispatch_provider_instance_for(provider: dispatch_cli_provider())
 }
 
 fn dispatch_worker_observation_for_process(
@@ -320,11 +371,10 @@ fn dispatch_worker_observation() -> WorkerObservation {
 }
 
 fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
-  match i {
-    IntricacyHigh => ReasoningHigh
-    IntricacyMedium => ReasoningMedium
-    IntricacyLow => ReasoningMedium
-  }
+  resolve_execution_effort(
+    profile: ProfileAutomatic,
+    intricacy: i,
+  )
 }
 
 fn claude_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
@@ -332,10 +382,10 @@ fn claude_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
 }
 
 fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr {
-  match provider {
-    ClaudeCodeProvider => dispatch_claude_process_fingerprint
-    CodexCliProvider => dispatch_codex_process_fingerprint
-  }
+  dispatch_offer_process_fingerprint(
+    inventory: srv1_live_dispatch_inventory,
+    kind: dispatch_cli_to_provider_kind(provider: provider),
+  )
 }
 
 fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
@@ -737,7 +787,7 @@ fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope {
   TmuxSessionScope {
     session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
     expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
-    expected_process_fingerprint: dispatch_provider_process_fingerprint(provider: dispatch_cli_provider),
+    expected_process_fingerprint: dispatch_provider_process_fingerprint(provider: dispatch_cli_provider()),
   }
 }
 
@@ -962,6 +1012,7 @@ fn dispatch_provider_inner_argv(
         worktree_path: worktree_path,
         brief: brief,
       )
+    CursorCliProvider => []
   }
 }
 
@@ -998,6 +1049,7 @@ fn dispatch_provider_inner_argv_for_instance(
         worktree_path: worktree_path,
         brief: brief,
       )
+    CursorCliProvider => []
   }
 }
 
@@ -1261,7 +1313,12 @@ fn dispatch_spawn_commands_for_provider(
     node: node,
     session_uuid: session_uuid,
     attempt_key: attempt_key,
-    provider: provider,
+    request: DispatchExecutionRequest {
+      profile: ProfileAutomatic,
+      provider: ProviderExact {
+        kind: dispatch_cli_to_provider_kind(provider: provider),
+      },
+    },
   )
 }
 
@@ -1270,18 +1327,57 @@ fn dispatch_spawn_commands_for_instance(
   node: RoadmapNode,
   session_uuid: String,
   attempt_key: String,
+  request: DispatchExecutionRequest,
+) -> DispatchSpawnPlan {
+  let intricacy = match node.sizing {
+    Sized { intricacy, volume: _, repo: _, acceptance: _ } => intricacy
+    Unsized => IntricacyMedium
+  }
+  match dispatch_execution_receipt_for_node(
+    instance: instance,
+    request: request,
+    intricacy: intricacy,
+  ) {
+    DispatchExecutionRefused { requested: _, reason } =>
+      DispatchSpawnRefused {
+        step: "dispatch-selection" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchExecutionResolved { requested: _, resolved } => {
+      let provider = provider_kind_to_dispatch_cli(kind: resolved.provider)
+      let effort = resolved.effort
+      if provider == CursorCliProvider {
+        DispatchSpawnRefused {
+          step: "cursor-provider-spawn" as NonEmptyStr,
+          detail: "cursor dispatch spawn is not yet wired on this actuator path",
+        }
+      } else {
+        dispatch_spawn_commands_for_resolved_instance(
+          instance: instance,
+          node: node,
+          session_uuid: session_uuid,
+          attempt_key: attempt_key,
+          provider: provider,
+          effort: effort,
+        )
+      }
+    }
+  }
+}
+
+fn dispatch_spawn_commands_for_resolved_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
   provider: DispatchCliProvider,
+  effort: ReasoningEffort,
 ) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
     environment: instance.execution_environment,
   )
   let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
-  let effort = match node.sizing {
-    Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
-      dispatch_reasoning_effort_for_intricacy(i: intricacy)
-    Unsized => "medium"
-  }
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -1368,7 +1464,7 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
     node: node,
     session_uuid: session_uuid,
     attempt_key: attempt_key,
-    provider: dispatch_cli_provider,
+    request: default_dispatch_execution_request(),
   )
 }
 
