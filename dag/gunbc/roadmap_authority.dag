@@ -1926,8 +1926,24 @@ fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
   }
 }
 
+data closing_contract_family_claim_note: String = "The family claim, stated once (presentation family-once grouping): every closing-contract task shares this claim, and each generated ticket's fused headline ('Write the closing check for: X') repeats it per row. The pair surface below exposes the DISCRIMINATING SUBJECT (the gated node's own typed ticket headline) beside each generated task so a projection can state the claim once and never recover the subject by parsing the fused headline. The generated ticket itself is unchanged — ROADMAP.md rendering and dispatch briefs keep the full self-contained headline."
+
+data closing_contract_family_claim: String = "Write the closing check — one executable done-condition for each gated node below"
+
+type ClosingContractTaskPair {
+  task: RoadmapNode
+  subject: String
+}
+
+fn closing_contract_task_pairs() -> List<ClosingContractTaskPair> {
+  startable_nodes_missing_closing_contract() |> map(n => ClosingContractTaskPair {
+    task: closing_contract_task_for(n: n),
+    subject: ticket_headline_of(n: n),
+  })
+}
+
 fn closing_contract_task_nodes() -> List<RoadmapNode> {
-  startable_nodes_missing_closing_contract() |> map(n => closing_contract_task_for(n: n))
+  closing_contract_task_pairs() |> map(p => p.task)
 }
 
 fn closing_contract_task_edges() -> List<RoadmapEdge> {
