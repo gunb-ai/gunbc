@@ -1,0 +1,339 @@
+module test.claim.roadmap_forecast_witness
+
+import std.measure {
+  millisecond,
+  millisecond_count,
+  positive_measure_count,
+}
+import gunbc.roadmap_belt { BeltCapacity }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_status { PlainLine, Unsigned }
+import gunbc.roadmap_model {
+  RoadmapNodeId,
+  RoadmapNodeIdentity,
+  RoadmapNode,
+  RoadmapEdge,
+  IntricacyLow,
+  IntricacyMedium,
+  IntricacyHigh,
+  VolumeSmall,
+  VolumeMedium,
+  Sized,
+  Unsized,
+  ManualAcceptance,
+}
+import gunbc.roadmap_forecast {
+  SizingCell,
+  sizing_cell_eq,
+  CycleTimeObservation,
+  AcceptedRoadmapNodePullHistory,
+  CycleTimeObserved,
+  CycleTimeHistoryRefused,
+  roadmap_cycle_time_observation_builds,
+  accepted_cycle_time_observations,
+  cycle_time_history_refusals,
+  calibrate_cell,
+  Calibrated,
+  CalibrationRefusedNoSample,
+  ForecastAnchorObservation,
+  ReviewCycleCount,
+  OperatorMergeLatencyAssumption,
+  ScheduleForecastAssumptions,
+  ScheduleForecastKnown,
+  ScheduleForecastRefused,
+  DependencyCycle,
+  NodeUnsized,
+  NoCalibrationSample,
+  CalibrationHistoryRefused,
+  DependencyEndpointUnknown,
+  ForecastBuildRefused,
+  schedule_forecast,
+  live_roadmap_schedule_forecast,
+  no_calibration_gap_count,
+  ProjectedSchedule,
+  roadmap_temporal_value_is_observation,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn assumptions() -> ScheduleForecastAssumptions {
+  ScheduleForecastAssumptions {
+    worker_concurrency_cap: BeltCapacity { max_concurrent: 3 },
+    review_cycle_count: ReviewCycleCount { count: positive_measure_count(predecessor: 0) },
+    operator_merge_latency: OperatorMergeLatencyAssumption { duration: millisecond(count: 5) },
+  }
+}
+
+fn anchor() -> ForecastAnchorObservation {
+  ForecastAnchorObservation { observed_at: 1000 }
+}
+
+fn sized_node(id: String, cell: SizingCell) -> RoadmapNode {
+  RoadmapNode {
+    identity: concat("fixture-", id) as RoadmapNodeIdentity,
+    node: id as RoadmapNodeId,
+    line: PlainLine { content: id },
+    carriers: [],
+    sizing: Sized {
+      intricacy: cell.intricacy,
+      volume: cell.volume,
+      repo: "gunbc",
+      acceptance: ManualAcceptance,
+    },
+    execution: ExecutionContractUnspecified,
+    owner: "fixture",
+    signoff: Unsigned,
+  }
+}
+
+fn unsized_node(id: String) -> RoadmapNode {
+  let base = sized_node(id: id, cell: SizingCell { intricacy: IntricacyLow, volume: VolumeSmall })
+  RoadmapNode {
+    identity: base.identity,
+    node: base.node,
+    line: base.line,
+    carriers: base.carriers,
+    sizing: Unsized,
+    execution: base.execution,
+    owner: base.owner,
+    signoff: base.signoff,
+  }
+}
+
+fn observation(id: String, cell: SizingCell, duration_ms: Int) -> CycleTimeObservation {
+  CycleTimeObservation {
+    node: id as RoadmapNodeId,
+    sizing_cell: cell,
+    pull_number: duration_ms,
+    cycle_time: millisecond(count: duration_ms),
+    accepted_on: "2026-08-01",
+    source_url: "https://github.com/gunb-ai/gunbc/pull/1",
+    provenance: AcceptedRoadmapNodePullHistory,
+  }
+}
+
+fn fixture_cell() -> SizingCell {
+  SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium }
+}
+
+fn fixture_observations() -> List<CycleTimeObservation> {
+  [
+    observation(id: "history-a", cell: fixture_cell(), duration_ms: 10),
+    observation(id: "history-b", cell: fixture_cell(), duration_ms: 20),
+    observation(id: "history-c", cell: fixture_cell(), duration_ms: 30),
+  ]
+}
+
+test fn witness_cited_acceptance_pr_history_joins_without_refusal() -> Bool {
+  let builds = roadmap_cycle_time_observation_builds()
+  count(builds) == 10
+    && count(accepted_cycle_time_observations(builds: builds)) == 10
+    && count(cycle_time_history_refusals(builds: builds)) == 0
+    && all(builds, build => match build {
+      CycleTimeObserved { observation } =>
+        millisecond_count(m: observation.cycle_time) > 0
+          && string_contains(observation.source_url as String, "https://github.com/gunb-ai/gunbc/pull/")
+      CycleTimeHistoryRefused { refusal: _ } => false
+    })
+}
+
+test fn witness_live_calibration_keeps_small_sample_intervals() -> Bool {
+  let observations = accepted_cycle_time_observations(builds: roadmap_cycle_time_observation_builds())
+  let low_small = calibrate_cell(
+    cell: SizingCell { intricacy: IntricacyLow, volume: VolumeSmall },
+    observations: observations,
+  )
+  let medium_medium = calibrate_cell(
+    cell: SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium },
+    observations: observations,
+  )
+  let high_medium = calibrate_cell(
+    cell: SizingCell { intricacy: IntricacyHigh, volume: VolumeMedium },
+    observations: observations,
+  )
+  match low_small {
+    CalibrationRefusedNoSample { cell: _ } => false
+    Calibrated { interval: l } =>
+      l.sample_count == 2
+        && millisecond_count(m: l.minimum) == 7721000
+        && millisecond_count(m: l.median) == 10942000
+        && millisecond_count(m: l.maximum) == 14163000
+        && match medium_medium {
+          CalibrationRefusedNoSample { cell: _ } => false
+          Calibrated { interval: m } =>
+            m.sample_count == 2
+              && millisecond_count(m: m.minimum) == 2570000
+              && millisecond_count(m: m.median) == 8366500
+              && millisecond_count(m: m.maximum) == 14163000
+              && match high_medium {
+                CalibrationRefusedNoSample { cell: _ } => false
+                Calibrated { interval: h } =>
+                  h.sample_count == 6
+                    && millisecond_count(m: h.minimum) == 4396000
+                    && millisecond_count(m: h.median) == 63837000
+                    && millisecond_count(m: h.maximum) == 63837000
+              }
+        }
+  }
+}
+
+test fn witness_live_graph_refuses_with_four_located_calibration_gaps() -> Bool {
+  let result = live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
+  no_calibration_gap_count(result: result) == 4
+    && match result {
+      ScheduleForecastKnown { forecast: _ } => false
+      ScheduleForecastRefused { refusals } =>
+        count(refusals) == 1
+          && match first(refusals) {
+            Absent => false
+            Present { value: refusal } => match refusal {
+              NoCalibrationSample { gaps } =>
+                count(gaps) == 4
+                  && all(gaps, gap => count(gap.nodes) > 0)
+                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyLow, volume: VolumeMedium }))
+                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyMedium, volume: VolumeSmall }))
+                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyMedium, volume: VolumeLarge }))
+                  && any(gaps, gap => sizing_cell_eq(a: gap.cell, b: SizingCell { intricacy: IntricacyHigh, volume: VolumeLarge }))
+              DependencyCycle { nodes: _ } => false
+              DependencyEndpointUnknown { nodes: _ } => false
+              NodeUnsized { nodes: _ } => false
+              CalibrationHistoryRefused { refusals: _ } => false
+              ForecastBuildRefused { node: _ } => false
+            }
+          }
+    }
+}
+
+test fn witness_live_graph_gap_count_is_four() -> Bool {
+  no_calibration_gap_count(result: live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())) == 4
+}
+
+test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
+  match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } =>
+      count(refusals) == 1 && any(refusals, refusal => match refusal {
+        NoCalibrationSample { gaps: _ } => true
+        DependencyCycle { nodes: _ } => false
+        DependencyEndpointUnknown { nodes: _ } => false
+        NodeUnsized { nodes: _ } => false
+        CalibrationHistoryRefused { refusals: _ } => false
+        ForecastBuildRefused { node: _ } => false
+      })
+  }
+}
+
+test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bool {
+  let a = sized_node(id: "a", cell: fixture_cell())
+  let b = sized_node(id: "b", cell: fixture_cell())
+  let c = sized_node(id: "c", cell: fixture_cell())
+  let result = schedule_forecast(
+    nodes: [a, b, c],
+    edges: [RoadmapEdge { child: b.node, parent: a.node }],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  )
+  match result {
+    ScheduleForecastRefused { refusals: _ } => false
+    ScheduleForecastKnown { forecast } =>
+      forecast.critical_path == [a.node, b.node]
+        && count(forecast.nodes) == 3
+        && forecast.completion.earliest.epoch_ms == 1030
+        && forecast.completion.median.epoch_ms == 1050
+        && forecast.completion.latest.epoch_ms == 1070
+        && forecast.assumptions.worker_concurrency_cap.max_concurrent == 3
+        && millisecond_count(m: forecast.assumptions.operator_merge_latency.duration) == 5
+  }
+}
+
+test fn witness_unsized_node_refuses() -> Bool {
+  let n = unsized_node(id: "unsized")
+  match schedule_forecast(
+    nodes: [n],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  ) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+      NodeUnsized { nodes } => nodes == [n.node]
+      DependencyCycle { nodes: _ } => false
+      DependencyEndpointUnknown { nodes: _ } => false
+      NoCalibrationSample { gaps: _ } => false
+      CalibrationHistoryRefused { refusals: _ } => false
+      ForecastBuildRefused { node: _ } => false
+    })
+  }
+}
+
+test fn witness_empty_calibration_cell_refuses() -> Bool {
+  let n = sized_node(
+    id: "missing-cell",
+    cell: SizingCell { intricacy: IntricacyHigh, volume: VolumeSmall },
+  )
+  match schedule_forecast(
+    nodes: [n],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  ) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+      NoCalibrationSample { gaps } => count(gaps) == 1 && first(gaps).nodes == [n.node]
+      DependencyCycle { nodes: _ } => false
+      DependencyEndpointUnknown { nodes: _ } => false
+      NodeUnsized { nodes: _ } => false
+      CalibrationHistoryRefused { refusals: _ } => false
+      ForecastBuildRefused { node: _ } => false
+    })
+  }
+}
+
+test fn witness_dependency_cycle_refuses() -> Bool {
+  let a = sized_node(id: "cycle-a", cell: fixture_cell())
+  let b = sized_node(id: "cycle-b", cell: fixture_cell())
+  match schedule_forecast(
+    nodes: [a, b],
+    edges: [
+      RoadmapEdge { child: a.node, parent: b.node },
+      RoadmapEdge { child: b.node, parent: a.node },
+    ],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  ) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+      DependencyCycle { nodes } => count(nodes) == 2
+      DependencyEndpointUnknown { nodes: _ } => false
+      NodeUnsized { nodes: _ } => false
+      NoCalibrationSample { gaps: _ } => false
+      CalibrationHistoryRefused { refusals: _ } => false
+      ForecastBuildRefused { node: _ } => false
+    })
+  }
+}
+
+test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
+  let a = sized_node(id: "projection-a", cell: fixture_cell())
+  match schedule_forecast(
+    nodes: [a],
+    edges: [],
+    observations: fixture_observations(),
+    history_refusals: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  ) {
+    ScheduleForecastRefused { refusals: _ } => false
+    ScheduleForecastKnown { forecast } =>
+      !roadmap_temporal_value_is_observation(value: ProjectedSchedule { forecast: forecast })
+  }
+}
