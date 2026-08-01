@@ -1,0 +1,105 @@
+module test.manual.publication_live_probe
+
+import std.types { String, NonEmptyStr, CommitSha, Bool }
+import std.credentials { CredentialSource }
+import extdeps.github.pulls { PullRequest, PullRequestState, Open, Closed }
+import extdeps.github.github { Repository }
+import gunbc.roadmap_publish {
+  PublicationSubject,
+  PublicationReceipt,
+  publication_receipt_of,
+  publication_receipt_json,
+  publication_receipt_decode,
+  ReceiptDecoded, ReceiptUndecodable,
+  publication_evidence_for,
+  PublicationEvidence,
+  EvidenceForSubject, EvidenceAbsent, EvidenceUnreadable, EvidenceForAnotherSubject,
+}
+import gunbc.roadmap_publish_observe {
+  PublicationCredential, PublicationCredentialPresent,
+  observe_pull_requests,
+  gunbc_repository,
+}
+import gunbc.roadmap_publish {
+  adjudicate_publication,
+  RemoteBranchesUnreadable,
+  RefAdvertisementRefused,
+  publication_subject_remote,
+}
+import gunbc.roadmap_workflow_progress {
+  publication_segment,
+}
+import gunbc.roadmap_workflow_stage {
+  workflow_segment_state_key,
+}
+import gunbc.roadmap_publish {
+  PublicationSubjectObserved,
+}
+
+data probe_note: String = "Throwaway live probe: observes gunb-ai/gunbc for this branch at a supplied head, writes the receipt, decodes it, and paints the segment for the same head and for a different one. Not enrolled anywhere; deleted after the receipt is captured."
+
+data probe_credential: CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
+
+fn probe_subject(head: String) -> PublicationSubject {
+  PublicationSubject {
+    node_id: "publication-slice-probe",
+    attempt_key: "live",
+    repository: gunbc_repository(),
+    branch: "session/proud-swift-104-pubslice" as NonEmptyStr,
+    expected_base: "main" as NonEmptyStr,
+    expected_head: head as CommitSha,
+  }
+}
+
+fn probe_receipt_text(head: String) -> String {
+  publication_receipt_json(
+    receipt: publication_receipt_of(
+      subject: probe_subject(head: head),
+      outcome: adjudicate_publication(
+        pulls: observe_pull_requests(
+          credential: PublicationCredentialPresent { source: probe_credential },
+          repo: gunbc_repository(),
+        ),
+        remotes: RemoteBranchesUnreadable {
+          cause: RefAdvertisementRefused {
+            remote: publication_subject_remote(subject: probe_subject(head: head)),
+            exit_code: 128,
+            stderr: "not consulted on this probe: the pull-request half is the live surface",
+          },
+        },
+        remote: publication_subject_remote(subject: probe_subject(head: head)),
+        branch: "session/proud-swift-104-pubslice" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: head as CommitSha,
+      ),
+    ),
+  )
+}
+
+fn probe_lamp(subject_head: String, receipt: String) -> String {
+  workflow_segment_state_key(
+    state: publication_segment(
+      publication_subject: PublicationSubjectObserved {
+        subject: probe_subject(head: subject_head),
+      },
+      publication_receipt_readable: true,
+      publication_receipt: receipt,
+    ).state,
+  )
+}
+
+fn probe_detail(subject_head: String, receipt: String) -> String {
+  publication_segment(
+    publication_subject: PublicationSubjectObserved {
+      subject: probe_subject(head: subject_head),
+    },
+    publication_receipt_readable: true,
+    publication_receipt: receipt,
+  ).detail
+}
+
+fn main(head: String, other_head: String) -> Bool {
+  let receipt = probe_receipt_text(head: head)
+  probe_lamp(subject_head: head, receipt: receipt) == "complete"
+    && probe_lamp(subject_head: other_head, receipt: receipt) == "refused"
+}

@@ -21,7 +21,7 @@ import gunbc.roadmap_publish {
   adjudicate_publication,
 }
 import extdeps.github.github { Repository, github_https_clone_url }
-import extdeps.github.pulls
+import extdeps.github.pulls { PullRequestState, Open }
 
 data observer_role_note: String = "THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES. gunbc.roadmap_publish adjudicates observations a caller already holds, which is what makes every one of its arms reachable from constructed values in a witness. That property is worth keeping, so the reading lives here instead: this module calls the transport, decides what was learned, and hands back an ordinary value. The split is the reason the refusal arms are constructible at all - a function that called the service itself could not build them, because a transport failure there is not a value.\\n\\nWhat this module must never become is a second adjudicator. It reports what it saw and refuses when it could not see; which outcome that implies is roadmap_publish's business."
 
@@ -97,6 +97,8 @@ fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
   )
 }
 
+data open_state_is_supplied_not_defaulted_note: String = "THE STATE IS PASSED, NOT LEFT TO THE OPERATION'S DEFAULT, and the reason is a real failure rather than style. github.Pulls.List declares `state: PullRequestState = Open`, and the interpreter evaluates that default expression in the CALLER'S scope - so a caller whose module does not bind `Open` dies with `undefined variable: Open` at the moment of the call, which is the moment furthest from the declaration that caused it. A live probe hit exactly that.\\n\\nPassing it also states the domain fact rather than inheriting it. Publication asks whether a commit is ON OFFER, and a merged or closed pull request is not an offer, so Open is the answer this module wants and would still want if the operation's default changed."
+
 data pull_observation_transport_bound_note: String = "THE FAILURE PATH IS CLOSED ON THE SIDE THAT IS DECIDABLE HERE AND OPEN ON THE SIDE THAT IS NOT, and the boundary between them is stated rather than blurred.\\n\\nCLOSED: NO CREDENTIAL. A publication read without a usable token is not a failed read, it is a read that must not be attempted. Sending an empty bearer token produces a 401 whose only content is that we sent nothing, so calling in order to discover what we already know converts a decidable local fact into a transport failure - and the REST path turns transport failures into raises, so the decidable fact would arrive as the least tractable kind of event. PublicationCredential makes the fact a value before the call, and the arm is reachable in a hermetic witness by construction. This is the failure mode a fresh host actually hits.\\n\\nOPEN: NON-2XX FROM A REAL CALL. github.Pulls.List declares 200/401/404/422/5xx, and the realization honours only 200. dispatch_rest in the v1 seed returns Err(InterpError::TypeError) for any status at or above 400, so control never returns to this function and PullRequestsUnreadable cannot be constructed from a failed call - only by a caller that already holds one. That is a REALIZATION gap, not a modeling gap: the response table is declared and the handler ignores it.\\n\\nWHY IT IS NOT CLOSED HERE. Two moves would close it and both are worse than the gap. Realizing the response table is a v1 seed change, which is the direction the seed is supposed to shrink in and does not belong inside a publication slice. Reading pull requests through a second operation whose failure IS a value - a gh CLI shell op beside the REST op - forks one dependency operation once per transport, which is the exact N-transport fork DESIGN 3 names; the corpus has no gh model today and this lane must not be the reason it gains a forked one.\\n\\nSo the residual is one class, named: a non-2xx pull-request read raises instead of refusing. Dissolve-on: the REST response-table realization, after which observe_pull_requests matches the declared statuses and this note's OPEN half deletes.\\n\\nWhy the arm still exists in the type: a caller CAN hold a refusal - an absent credential, a prior read that failed, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it through one transport would push the ignorance-as-answer conflation back into every other producer."
 
 type PublicationCredential
@@ -122,6 +124,7 @@ fn observe_pull_requests(
         auth_token: source,
         owner: repo.owner,
         repo: repo.name,
+        state: Open,
       )
       PullRequestsRead { pulls: result.pulls }
     }
