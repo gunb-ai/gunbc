@@ -320,3 +320,42 @@ test fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
   }
 }
 
+
+// ── artifact identity is no longer a writable field (review 2026-08-01, #2) ──
+// CompilationUnit previously carried `artifact: CompilationUnitArtifactId`,
+// always populated by rebranding `id`. It claimed independent information while
+// carrying none, so `CompilationUnit { id: "unit-a", ..., artifact: "unit-b" }`
+// was writable and made one unit claim two target identities: `unit-a.h`/`.c`
+// against `unit-b.o`. The repair REMOVES the field, so that specimen is
+// unwritable rather than refused — the climb is to structural impossibility, and
+// per DESIGN section 4b the evidence stays enrolled even though the machinery is
+// deleted. A runtime falsifier can no longer be constructed (there is nothing to
+// mismatch), so the retained evidence is a compile-refusal pair: a record
+// literal carrying a field its declaration does not have must NOT compile clean,
+// while the same literal without it must. Both poles execute.
+
+fn w_extra_derived_field_is_unwritable() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module cuartifact_extra\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn mismatched() -> Unit {\n  Unit { id: \"unit-a\" as UnitId, artifact: \"unit-b\" as UnitId }\n}\n",
+    "src/cuartifact_extra.rs",
+    [],
+    []
+  )
+}
+
+fn w_declared_fields_only_compiles_clean() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n",
+    "src/cuartifact_ok.rs",
+    ["fn consistent"],
+    []
+  )
+}
+
+test fn mismatched_artifact_identity_is_unwritable() -> Bool {
+  w_extra_derived_field_is_unwritable()
+}
+
+test fn declared_fields_only_is_the_accepted_control() -> Bool {
+  w_declared_fields_only_compiles_clean()
+}
