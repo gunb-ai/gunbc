@@ -91,7 +91,7 @@ test fn identity_survives_a_slug_rename() -> Bool {
   }
 }
 
-data tombstone_witness_note: String = "The tombstone roster is empty today and these claims are shaped so that stays honest rather than vacuous. The first asserts the registry equals active plus tombstoned — arithmetic that holds at zero and keeps holding when the first retirement lands. The second asserts every tombstoned record reports itself inactive, which is vacuously true now and becomes load-bearing the moment a row exists. Neither asserts a count, because pinning zero would red on the first legitimate retirement."
+data tombstone_witness_note: String = "These claims are shaped to stay honest as the tombstone roster grows (written when it was empty; the first retirement landed 2026-07-31 and the 2026-08-01 spine recut added four more — the note's original 'empty today' opening rotted within a day, which is its own small receipt for why nothing here pins a population). The first asserts the registry equals active plus tombstoned — arithmetic that holds at zero and keeps holding as retirements land. The second asserts every tombstoned record reports itself inactive, load-bearing since the first row. Neither asserts a count, because pinning one would red on the next legitimate retirement."
 
 test fn registry_is_active_plus_tombstoned() -> Bool {
   identity_count() == active_identity_count() + count(roadmap_tombstoned_identities())
