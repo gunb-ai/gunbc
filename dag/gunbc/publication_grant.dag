@@ -89,6 +89,9 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "dag/tools/ci_heal_dispatch.dag"),
   public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit.dag"),
   public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit_test.dag"),
+  public_file_publish_grant(path: "dag/gunbc/source_integration_proof_kernel.dag"),
+  public_file_publish_grant(path: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/source_integration_proof_kernel_model_witness_test.dag"),
 ]
 
 data public_publication_grant_roster: PublicPublicationGrantRoster = PublicPublicationGrantRoster {
