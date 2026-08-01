@@ -15,6 +15,7 @@ import gunbc.plans.typescript_gap_census { typescript_gap_census_plan }
 import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
 import gunbc.plans.fleet_acceptance_criteria { fleet_acceptance_criteria_plan }
 import gunbc.plans.structural_quadratic_wall_coverage_audit { structural_quadratic_wall_coverage_audit_plan }
+import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_plan }
 
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
@@ -30,5 +31,6 @@ data batch_g_plans: List<Plan> = [
   cli_run_hollowing_plan,
   fleet_acceptance_criteria_plan,
   structural_quadratic_wall_coverage_audit_plan,
-  ci_performance_tanking_evidence_plan
+  ci_performance_tanking_evidence_plan,
+  extdeps_modeling_preflight_plan
 ]

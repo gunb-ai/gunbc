@@ -1,0 +1,391 @@
+module test.claim.external_model_scope_witness
+
+import extdeps.filesystem.filesystem_io
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+  DeclaredScopeFacts, DownstreamSupportRoster,
+  ScopeDecision, ScopeCoherent, ScopeIncoherent,
+  ScopeFinding, ForeignSubjectRow, ConsumerCoverageInUpstream,
+  external_model_scope_decision, external_model_scope_portfolio_decision,
+  external_model_scope_citations, external_subject_ref_eq,
+}
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.extdeps_scope_frontier {
+  scope_carrier_paths, scope_machinery_exempt_paths,
+  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
+  scope_cover_holds, manifest_freeze_holds, carrier_content_declares_scope,
+  scope_placement_refused_paths,
+  manifest_line_observation,
+  ManifestLineObservation, ManifestUntouched, ManifestIntroduced, ManifestLinesAdded, ManifestDiffUnreadable,
+  PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
+}
+import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
+import tools.extdeps_scope_placement_gate { manifest_remove_only_exit }
+import std.process { ProcessExit, ExitSuccess }
+import extdeps.vendor.microsoft
+import extdeps.vendor.atlassian
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data external_model_scope_witness_note: String = "RED and GREEN controls for the external_model_scope_decision KERNEL, in exactly the operator-verdict shapes (gunbc#7556): RED = a generic browser module declaring a Chromium subject scope while carrying Chrome | Firefox | Safari concrete rows is incoherent; GREEN = a shared navigation shape plus separate Chromium and Firefox modules plus a downstream support roster is coherent. These are controls of the decision kernel over DECLARED facts — not proof of an admission wall (the kernel's honesty boundary is external_model_scope_decision_kernel_note; the mechanical wall witnessed here is scope PRESENCE: the frozen-manifest cover accounting below). Plus the staged-enrollment accounting for gunbc.extdeps_scope_frontier's frozen legacy manifest."
+
+fn subject(module_path: String, decl_name: String) -> ExternalSubjectRef {
+  ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: module_path,
+      decl_name: decl_name,
+      field: WholeDeclaration
+    }
+  }
+}
+
+fn coverage_row(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration }
+}
+
+fn synthetic_scope(subject_ref: ExternalSubjectRef, locator: String) -> ExternalModelScope {
+  ExternalModelScope {
+    subject: subject_ref,
+    first_citation: ExternalAuthority {
+      uri: Uri { scheme: Https, locator: locator }
+    },
+    further_citations: []
+  }
+}
+
+fn decision_incoherent_with_count(d: ScopeDecision, n: Int) -> Bool {
+  match d {
+    ScopeCoherent => false
+    ScopeIncoherent { finding_count: c, findings: _ } => c == n
+  }
+}
+
+fn decision_coherent(d: ScopeDecision) -> Bool {
+  match d {
+    ScopeCoherent => true
+    ScopeIncoherent { finding_count: _, findings: _ } => false
+  }
+}
+
+fn finding_is_foreign(f: ScopeFinding) -> Bool {
+  match f {
+    ForeignSubjectRow { module: _, declared: _, foreign: _ } => true
+    ConsumerCoverageInUpstream { module: _, coverage_row: _ } => false
+  }
+}
+
+data red_control_note: String = "The first red control is exactly the gunbc#7556 shape: one generic browser module, a Chromium subject scope, and Chrome | Firefox | Safari concrete product rows — three independently governed subjects in one module, incoherent with one located ForeignSubjectRow per foreign subject. Subjects are symbolic DeclarationRefs into the one-module-per-subject file map DESIGN §3 names."
+
+fn red_generic_browser_module() -> DeclaredScopeFacts {
+  DeclaredScopeFacts {
+    module: "extdeps.browser",
+    scope: synthetic_scope(
+      subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+      locator: "www.chromium.org/developers"
+    ),
+    product_fact_subjects: [
+      subject(module_path: "extdeps.browser.google_chrome", decl_name: "google_chrome"),
+      subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
+      subject(module_path: "extdeps.browser.apple_safari", decl_name: "apple_safari")
+    ],
+    consumer_coverage_rows: []
+  }
+}
+
+test fn red_generic_browser_module_with_product_rows_incoherent() -> Bool {
+  let d = external_model_scope_decision(m: red_generic_browser_module())
+  decision_incoherent_with_count(d: d, n: 3)
+}
+
+test fn red_generic_browser_module_findings_are_all_foreign_subject_rows() -> Bool {
+  match external_model_scope_decision(m: red_generic_browser_module()) {
+    ScopeCoherent => false
+    ScopeIncoherent { finding_count: _, findings: fs } =>
+      all(fs, f => finding_is_foreign(f: f))
+  }
+}
+
+test fn red_consumer_coverage_in_upstream_incoherent() -> Bool {
+  let m = DeclaredScopeFacts {
+    module: "extdeps.browser.chromium",
+    scope: synthetic_scope(
+      subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+      locator: "www.chromium.org/developers"
+    ),
+    product_fact_subjects: [subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
+    consumer_coverage_rows: [coverage_row(module_path: "extdeps.browser.chromium", decl_name: "served_surface_chromium_support_state")]
+  }
+  match external_model_scope_decision(m: m) {
+    ScopeCoherent => false
+    ScopeIncoherent { finding_count: c, findings: fs } =>
+      c == 1 && all(fs, f => !finding_is_foreign(f: f))
+  }
+}
+
+data green_control_note: String = "The green control is the decomposed portfolio: a shared navigation-shape module with no product rows, one module per implementation subject (Chromium, Firefox), and the coverage state carried by a DownstreamSupportRoster in the product/workflow layer rather than by any upstream module."
+
+fn green_portfolio() -> List<DeclaredScopeFacts> {
+  [
+    DeclaredScopeFacts {
+      module: "extdeps.whatwg.html_navigation",
+      scope: synthetic_scope(
+        subject_ref: subject(module_path: "extdeps.whatwg.html_navigation", decl_name: "whatwg_html_standard"),
+        locator: "html.spec.whatwg.org/multipage/browsing-the-web.html"
+      ),
+      product_fact_subjects: [],
+      consumer_coverage_rows: []
+    },
+    DeclaredScopeFacts {
+      module: "extdeps.browser.chromium",
+      scope: synthetic_scope(
+        subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
+        locator: "www.chromium.org/developers"
+      ),
+      product_fact_subjects: [subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
+      consumer_coverage_rows: []
+    },
+    DeclaredScopeFacts {
+      module: "extdeps.browser.firefox",
+      scope: synthetic_scope(
+        subject_ref: subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
+        locator: "www.mozilla.org/en-US/firefox/releases/"
+      ),
+      product_fact_subjects: [subject(module_path: "extdeps.browser.firefox", decl_name: "firefox")],
+      consumer_coverage_rows: []
+    }
+  ]
+}
+
+fn green_downstream_roster() -> DownstreamSupportRoster {
+  DownstreamSupportRoster {
+    module: "gunbc.served_surface_browser_support",
+    coverage_rows: [
+      coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "chromium_observed_receipt"),
+      coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "firefox_unobserved_obligation")
+    ]
+  }
+}
+
+test fn green_decomposed_portfolio_with_downstream_roster_coherent() -> Bool {
+  let roster = green_downstream_roster()
+  decision_coherent(d: external_model_scope_portfolio_decision(mods: green_portfolio()))
+    && (roster.coverage_rows |> count) == 2
+}
+
+test fn adopted_vendor_scopes_coherent_by_execution() -> Bool {
+  let ms_subject = extdeps.vendor.microsoft.extdeps_model_scope.subject
+  let at_subject = extdeps.vendor.atlassian.extdeps_model_scope.subject
+  let ms = DeclaredScopeFacts {
+    module: "extdeps.vendor.microsoft",
+    scope: extdeps.vendor.microsoft.extdeps_model_scope,
+    product_fact_subjects: [ms_subject],
+    consumer_coverage_rows: []
+  }
+  let at = DeclaredScopeFacts {
+    module: "extdeps.vendor.atlassian",
+    scope: extdeps.vendor.atlassian.extdeps_model_scope,
+    product_fact_subjects: [at_subject],
+    consumer_coverage_rows: []
+  }
+  decision_coherent(d: external_model_scope_portfolio_decision(mods: [ms, at]))
+    && (external_model_scope_citations(scope: extdeps.vendor.microsoft.extdeps_model_scope) |> count) == 1
+    && (external_model_scope_citations(scope: extdeps.vendor.atlassian.extdeps_model_scope) |> count) == 1
+    && external_subject_ref_eq(a: ms_subject, b: subject(module_path: "extdeps.vendor.microsoft", decl_name: "microsoft"))
+    && external_subject_ref_eq(a: at_subject, b: subject(module_path: "extdeps.vendor.atlassian", decl_name: "atlassian"))
+    && extdeps.vendor.microsoft.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=MSFT"
+    && extdeps.vendor.atlassian.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=TEAM"
+}
+
+test fn preflight_rows_counted() -> Bool {
+  (extdeps_modeling_preflight_rows |> count) == 8
+}
+
+fn strings_contain(xs: List<String>, s: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || x == s })
+}
+
+data manifest_read_note: String = "The frozen legacy manifest is a live-tree input of this witness (one path per line; row count DERIVED by parse_frontier_manifest, never hand-declared). A manifest read failure is a red, never an empty frontier — an unreadable manifest must not widen into 'everything is enrolled'."
+
+fn read_manifest_rows() -> List<String> {
+  let r = filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path)
+  parse_frontier_manifest(content: r.content)
+}
+
+test fn manifest_rows_nonempty_floor() -> Bool {
+  (read_manifest_rows() |> count) > 150
+}
+
+fn roster_path_resolves(path: String) -> Bool {
+  let r = filesystem_read(path: path)
+  r.content != ""
+}
+
+test fn roster_paths_resolve_on_disk() -> Bool {
+  let union = concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows()))
+  all(union, p => roster_path_resolves(path: p))
+}
+
+test fn red_scope_placement_refuses_unrostered_added_extdeps_file() -> Bool {
+  let refused = scope_placement_refused_paths(
+    added: ["dag/extdeps/browser/opera.dag", "dag/gunbc/other.dag", "docs/plans/x.md", "dag/extdeps/notes.tsv"],
+    carriers: scope_carrier_paths,
+    machinery: scope_machinery_exempt_paths,
+  )
+  (refused |> count) == 1
+    && strings_contain(xs: refused, s: "dag/extdeps/browser/opera.dag")
+}
+
+test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool {
+  let refused = scope_placement_refused_paths(
+    added: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag", "src/v2/lens/x.dag"],
+    carriers: scope_carrier_paths,
+    machinery: scope_machinery_exempt_paths,
+  )
+  (refused |> count) == 0
+}
+
+fn synthetic_manifest_add_diff() -> String {
+  join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "index 1111111..2222222 100644",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "+++ b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "@@ -0,0 +1 @@",
+    "+dag/extdeps/vendor/reverted_module.dag",
+    "diff --git a/dag/gunbc/other.dag b/dag/gunbc/other.dag",
+    "--- a/dag/gunbc/other.dag",
+    "+++ b/dag/gunbc/other.dag",
+    "@@ -1 +1 @@",
+    "+data unrelated: String"
+  ], "\n")
+}
+
+fn remove_only_exit_is_success(observation: ManifestLineObservation) -> Bool {
+  match manifest_remove_only_exit(observation: observation) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+test fn red_manifest_remove_only_refuses_added_row() -> Bool {
+  let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
+  match observation {
+    ManifestLinesAdded { rows: rows } =>
+      (rows |> count) == 1
+        && strings_contain(xs: rows, s: "dag/extdeps/vendor/reverted_module.dag")
+        && !remove_only_exit_is_success(observation: observation)
+    _ => false
+  }
+}
+
+test fn green_manifest_remove_only_admits_removal_and_unrelated_edits() -> Bool {
+  let removal_only = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "+++ b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "@@ -5 +4,0 @@",
+    "-dag/extdeps/vendor/migrated_module.dag",
+    "diff --git a/dag/extdeps/vendor/migrated_module.dag b/dag/extdeps/vendor/migrated_module.dag",
+    "--- a/dag/extdeps/vendor/migrated_module.dag",
+    "+++ b/dag/extdeps/vendor/migrated_module.dag",
+    "@@ -1 +1,2 @@",
+    "+data extdeps_model_scope: ExternalModelScope = ..."
+  ], "\n")
+  let observation = manifest_line_observation(diff_text: removal_only)
+  match observation {
+    ManifestUntouched => remove_only_exit_is_success(observation: observation)
+    _ => false
+  }
+}
+
+test fn green_manifest_introduction_admitted_once() -> Bool {
+  let intro = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "@@ -0,0 +1,2 @@",
+    "+dag/extdeps/a.dag",
+    "+dag/extdeps/b.dag"
+  ], "\n")
+  let observation = manifest_line_observation(diff_text: intro)
+  match observation {
+    ManifestIntroduced => remove_only_exit_is_success(observation: observation)
+    _ => false
+  }
+}
+
+test fn red_manifest_unreadable_refuses_through_parser() -> Bool {
+  let truncated = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "index 1111111..2222222 100644",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv"
+  ], "\n")
+  let observation = manifest_line_observation(diff_text: truncated)
+  match observation {
+    ManifestDiffUnreadable => !remove_only_exit_is_success(observation: observation)
+    _ => false
+  }
+}
+
+test fn red_manifest_deletion_refuses_through_parser() -> Bool {
+  let deletion = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "deleted file mode 100644",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "+++ /dev/null",
+    "@@ -1,2 +0,0 @@",
+    "-dag/extdeps/a.dag",
+    "-dag/extdeps/b.dag"
+  ], "\n")
+  match manifest_line_observation(diff_text: deletion) {
+    ManifestDiffUnreadable => true
+    _ => false
+  }
+}
+
+test fn frontier_rosters_are_disjoint() -> Bool {
+  let manifest = read_manifest_rows()
+  all(scope_carrier_paths, p => !strings_contain(xs: scope_machinery_exempt_paths, s: p) && !strings_contain(xs: manifest, s: p))
+    && all(scope_machinery_exempt_paths, p => !strings_contain(xs: manifest, s: p))
+}
+
+data wet_half_split_note: String = "The live observations (Filesystem.List directory walk of dag/extdeps; git.Core.DiffNameStatus freeze..HEAD) run in dag/test/claim/external_model_scope_live_cover_witness_test.dag — a wet-integration row, discovery-excluded per gunbc.ci_layer_roots (the d4bef96 floor red: hermetic discovery executed those service ops against the mock corpus, which publishes no operation for them). THIS file keeps everything hermetic-safe per-PR: the kernel RED/GREEN controls, the manifest/roster accounting via the filesystem_read carve-out, the carrier-content verification, roster_paths_resolve_on_disk (per-PR roster-to-disk direction: every rostered path across all three rosters must resolve in the checkout — a stale or fabricated row reds via the interpreter's typed hermetic Read refusal, 'no mock_response for operation Read', verified by execution on a nonexistent probe path during development), and the RED controls of the shared pure decision fns (scope_cover_holds, manifest_freeze_holds on gunbc.extdeps_scope_frontier) that the wet file executes against live observations."
+
+test fn red_cover_check_refuses_unrostered_file() -> Bool {
+  scope_cover_holds(
+    walked: ["dag/extdeps/a.dag", "dag/extdeps/unrostered_probe.dag"],
+    union: ["dag/extdeps/a.dag"]
+  ) == false
+}
+
+test fn red_cover_check_refuses_stale_roster_row() -> Bool {
+  scope_cover_holds(
+    walked: ["dag/extdeps/a.dag"],
+    union: ["dag/extdeps/a.dag", "dag/extdeps/departed_stale_row.dag"]
+  ) == false
+}
+
+test fn red_carrier_content_check_refuses_undeclared() -> Bool {
+  carrier_content_declares_scope(content: "module extdeps.vendor.example\n\ndata something_else: String = \"x\"\n") == false
+}
+
+test fn carriers_declare_scope_on_disk() -> Bool {
+  (scope_carrier_paths |> count) > 0
+    && all(scope_carrier_paths, p => carrier_content_declares_scope(content: filesystem_read(path: p).content))
+}
+
+test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool {
+  manifest_freeze_holds(
+    manifest: ["dag/extdeps/a.dag", "dag/extdeps/smuggled_new_module.dag"],
+    observation: PostFreezeAdded { paths: ["dag/extdeps/smuggled_new_module.dag"] }
+  ) == false
+}
+
+test fn red_manifest_freeze_refuses_failed_diff() -> Bool {
+  manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeDiffFailed) == false
+    && manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeParseTruncated) == false
+}
