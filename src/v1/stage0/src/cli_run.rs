@@ -15107,9 +15107,8 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
     if dag_paths.is_empty() {
         return Ok(());
     }
-    let (graph, indices) =
-        resolve_entry_graph_shared(source_roots, &floor_naming_hygiene_entry_anchored())
-            .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
+    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_NAMING_HYGIENE_ENTRY)
+        .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
         .iter()
@@ -15153,8 +15152,13 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
     }
 }
 
-const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
-const FLOOR_NAMING_HYGIENE_ENTRY: &str = "src/v2/workflow/floor_naming_hygiene.dag";
+#[derive(Clone, Copy)]
+struct WorkspaceRootRelativeEntry(&'static str);
+
+const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
+const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_naming_hygiene.dag");
 
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
@@ -15166,21 +15170,25 @@ const FLOOR_NAMING_HYGIENE_ENTRY: &str = "src/v2/workflow/floor_naming_hygiene.d
 /// already documented at the sibling fixture tests in this file).
 ///
 /// So locate the entry rather than assume a cwd: `process_workspace_root` is git-toplevel
-/// derived, hence identical in both worlds. Both resolve sites go through this one function
-/// so the `resolve_entry_graph_shared` cache stays keyed on a single spelling of the entry —
-/// two spellings would resolve the same closure twice.
+/// derived, hence identical in both worlds. Every workspace-root-relative entry goes through
+/// this typed boundary so `resolve_entry_graph_shared` sees one anchored spelling per entry —
+/// alternate spellings would resolve the same closure twice.
 ///
 /// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
 /// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
 /// anchoring plumbing when entry resolution stops reading cwd.
-fn floor_discovery_producer_entry_anchored() -> String {
-    let anchored = process_workspace_root().join(FLOOR_DISCOVERY_PRODUCER_ENTRY);
-    anchored.to_string_lossy().into_owned()
-}
-
-fn floor_naming_hygiene_entry_anchored() -> String {
-    let anchored = process_workspace_root().join(FLOOR_NAMING_HYGIENE_ENTRY);
-    anchored.to_string_lossy().into_owned()
+fn resolve_workspace_entry(
+    source_roots: &[String],
+    entry: WorkspaceRootRelativeEntry,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let anchored = process_workspace_root().join(entry.0);
+    resolve_entry_graph_shared(source_roots, &anchored.to_string_lossy())
 }
 
 fn owned_data_decl_record_to_value(
@@ -15389,9 +15397,8 @@ fn invoke_floor_discovery_producer_over_corpus(
         let discovery = discover_owned_data_decls(corpus_roots, scan_dir, &excludes)?;
         owned_data_records.extend(discovery.records);
     }
-    let (graph, indices) =
-        resolve_entry_graph_shared(producer_roots, &floor_discovery_producer_entry_anchored())
-            .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let (graph, indices) = resolve_workspace_entry(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let source_root_values: Vec<v1_interpreter::Value> = corpus_roots
         .iter()
@@ -23367,7 +23374,7 @@ mod sidecar_placement_hygiene_tests {
         // rule and can never report a wire-contract violation.
         //
         // Nothing here chdirs, and that is load-bearing: the producer entry is located by
-        // `floor_discovery_producer_entry_anchored` (git-toplevel, not cwd), so this test
+        // `resolve_workspace_entry` (git-toplevel, not cwd), so this test
         // behaves the same under `cargo test` (cwd = crate dir) as on the floor (cwd = repo
         // root). Chdir is not the alternative — this harness is multi-threaded and cwd is
         // process-global.
