@@ -8,7 +8,7 @@ import gunbc.roadmap_publish {
   PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure, RefAdvertisementRefused,
-  PullRequestReadFailure,
+  PullRequestReadFailure, render_pull_request_read_failure,
   PullRequestCredentialUnavailable, PullRequestStatusRefused,
   PullRequestTransportRefused, PullRequestBodyUndecodable,
   PublicationOutcome,
@@ -337,7 +337,7 @@ test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool
     pulls: PullRequestsUnreadable {
       cause: PullRequestStatusRefused {
         repository: "gunb-ai/gunbc",
-        status: 401 as HttpStatus,
+        status: 401,
         body: "Bad credentials",
       },
     },
@@ -902,4 +902,101 @@ fn evidence_key(e: PublicationEvidence) -> String {
     EvidenceForSubject { receipt: _ } => "for-subject"
     EvidenceForAnotherSubject { field: _, expected: _, found: _ } => "another-subject"
   }
+}
+
+data four_causes_stay_four_note: String = "THE COLLAPSE THIS FILE MUST KEEP FAILING TO PRODUCE. PullRequestsUnreadable used to carry a single detail String, and the four failures that reach it were flattened into prose at the point of construction. A caller could then only re-derive which one it held by matching on substrings, which is the classifier-by-substring move DESIGN removes - and the case that matters most is the most decidable one: a 401 is the single clearest failure in this path and would have arrived as the least tractable kind of value.\\n\\nWHAT THIS ASSERTS, and why the key projection rather than the sentence: render_pull_request_read_failure is a PROJECTION of the cause, so asserting only its text would let a future edit collapse two arms into one sentence while both still typechecked, and the claim would stay green. Matching the coproduct gives four distinct keys, so a collapse is a compile error rather than a silently identical string. The rendering is asserted SEPARATELY below, for the facts a reader of the refusal actually needs.\\n\\nWHY NO ARM IS OMITTED: each is reachable from a different producer state - a credential decided locally before any request, a status a remote authority chose, an exchange that never produced a status, and a payload that arrived and could not be decoded. Three of the four were unreachable through the real transport until the REST outcome became data, which is why they are witnessed here rather than assumed."
+
+fn pull_request_failure_key(cause: PullRequestReadFailure) -> String {
+  match cause {
+    PullRequestCredentialUnavailable { repository: _, reason: _ } => "credential"
+    PullRequestStatusRefused { repository: _, status: _, body: _ } => "status"
+    PullRequestTransportRefused { repository: _, cause: _ } => "transport"
+    PullRequestBodyUndecodable { repository: _, status: _, cause: _ } => "body"
+  }
+}
+
+fn fixture_repository_name() -> String { "gunb-ai/gunbc" }
+
+fn fixture_pull_request_failures() -> List<PullRequestReadFailure> {
+  [
+    PullRequestCredentialUnavailable {
+      repository: fixture_repository_name(),
+      reason: "GITHUB_TOKEN is not set in the belt's environment",
+    },
+    PullRequestStatusRefused {
+      repository: fixture_repository_name(),
+      status: 401,
+      body: "Bad credentials",
+    },
+    PullRequestTransportRefused {
+      repository: fixture_repository_name(),
+      cause: "connection refused" as NonEmptyStr,
+    },
+    PullRequestBodyUndecodable {
+      repository: fixture_repository_name(),
+      status: 200,
+      cause: "response body was not valid utf-8" as NonEmptyStr,
+    },
+  ]
+}
+
+test fn four_pull_request_read_failures_stay_four_distinct_causes() -> Bool {
+  let keys = map(fixture_pull_request_failures(), c => pull_request_failure_key(cause: c))
+  count(keys) == 4
+    && count(filter(keys, k => k == "credential")) == 1
+    && count(filter(keys, k => k == "status")) == 1
+    && count(filter(keys, k => k == "transport")) == 1
+    && count(filter(keys, k => k == "body")) == 1
+}
+
+data refusal_names_the_operation_not_the_url_note: String = "THE RENDERER NAMES github.Pulls.List THROUGH ITS OperationRef, following the discipline ls_remote_operation_ref_note derives for the sibling reader: a path-and-query spelling is ONE realization of an operation and changes when the invocation is derived, while the operation identity does not. So a refusal that quoted /repos/OWNER/REPO/pulls would carry a fact with a shorter shelf life than the failure it describes.\\n\\nEACH ARM MUST ALSO CARRY WHAT ITS OWN REMEDY NEEDS, which is why this asserts fields rather than just the operation label. A status refusal is actionable only with the status AND the body - the body is usually the only place the remote says why, and 401 alone does not distinguish a missing scope from a revoked token. A transport refusal has no status to carry, and asserting its absence is the point: a sentinel zero would be a plausible-looking value standing where the honest answer is that the question does not apply."
+
+test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool {
+  let rendered = render_pull_request_read_failure(
+    cause: PullRequestStatusRefused {
+      repository: fixture_repository_name(),
+      status: 401,
+      body: "Bad credentials",
+    },
+  )
+  string_contains(s: rendered, pattern: "github.Pulls.List")
+    && string_contains(s: rendered, pattern: fixture_repository_name())
+    && string_contains(s: rendered, pattern: "401")
+    && string_contains(s: rendered, pattern: "Bad credentials")
+    && !string_contains(s: rendered, pattern: "/repos/")
+}
+
+test fn a_transport_refusal_carries_no_status_at_all() -> Bool {
+  let rendered = render_pull_request_read_failure(
+    cause: PullRequestTransportRefused {
+      repository: fixture_repository_name(),
+      cause: "connection refused" as NonEmptyStr,
+    },
+  )
+  string_contains(s: rendered, pattern: "github.Pulls.List")
+    && string_contains(s: rendered, pattern: "connection refused")
+    && string_contains(s: rendered, pattern: "no status exists")
+    && !string_contains(s: rendered, pattern: "status 0")
+}
+
+data every_cause_refuses_note: String = "TOTALITY OVER THE ADJUDICATOR, ASSERTED RATHER THAN ASSUMED. adjudicate_publication answers a PullRequestObservation, and the arm that matters is that NONE of the four causes may produce an ordinary negative result. BranchNotPublished and a refusal are both negative, so a collapse in that direction passes any claim asserting only 'it did not conclude bound' - and it points the operator at the wrong action entirely, since the remedy for 'not published' is to push and the remedy for 'we could not find out' is not.\\n\\nThe remotes are deliberately READ-and-empty here rather than unreadable, so the only thing that can produce a refusal is the pull-request side. If a cause were ever handled by falling through to the remote branch reading, this witness would see BranchNotPublished and red."
+
+test fn every_pull_request_read_failure_refuses_rather_than_reporting_unpublished() -> Bool {
+  all(
+    fixture_pull_request_failures(),
+    c => match adjudicate_with(
+      pulls: PullRequestsUnreadable { cause: c },
+      remotes: RemoteBranchesRead { branches: [] },
+    ) {
+      PublicationObservationRefused { detail } =>
+        string_contains(s: detail, pattern: "github.Pulls.List")
+      BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+      RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+      RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+      RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+      PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+      PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+      PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    },
+  )
 }

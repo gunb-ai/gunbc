@@ -66,7 +66,7 @@ fn render_pull_request_read_failure(cause: PullRequestReadFailure) -> String {
     PullRequestStatusRefused { repository, status, body } =>
       join([
         at, " against ", repository,
-        " was answered with status ", to_string(status as Int), ": ", body,
+        " was answered with status ", to_string(status), ": ", body,
       ], "")
     PullRequestTransportRefused { repository, cause: detail } =>
       join([
@@ -76,7 +76,7 @@ fn render_pull_request_read_failure(cause: PullRequestReadFailure) -> String {
     PullRequestBodyUndecodable { repository, status, cause: detail } =>
       join([
         at, " against ", repository,
-        " was answered with status ", to_string(status as Int),
+        " was answered with status ", to_string(status),
         " and a body that could not be decoded: ", detail as String,
       ], "")
   }
