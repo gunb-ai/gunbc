@@ -7,6 +7,7 @@ import gunbc.roadmap_document {
 }
 import std.types { ContentHash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
@@ -375,14 +376,6 @@ fn active_large(identity: String,
 
 fn edge(child: String, parent: String) -> RoadmapEdge {
   RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
-}
-
-type SeedGrowthJustification {
-  hand_authored_declarations: List<DeclarationRef>
-  reason: String
-  owning_dissolution_lane: RoadmapNodeId
-  trigger: String
-  current_boundary: String
 }
 
 fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification {
