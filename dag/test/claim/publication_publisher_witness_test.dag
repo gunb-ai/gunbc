@@ -48,6 +48,7 @@ import tools.publication_publisher {
   ProjectionNotAdmitted,
   DecisionReceiptMissing,
   UnauthorizedPublicPush,
+  NoPushedRefsPresented,
   PublicWriteAdmitted,
   PublicWriteRefused,
   sole_modeled_publisher_session,
@@ -386,6 +387,34 @@ test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
     PublicWriteRefused { session: _, cause: cause } =>
       match cause {
         UnauthorizedPublicPush { session: _, local_ref: _, local_sha: _, detail: _ } => true
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_empty_pushed_refs() -> Bool {
+  let policy = public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/empty-push.md" as FilePath,
+    identity: "subject-empty-push",
+  )
+  let candidate = derive_public_projection_plan(
+    policy: policy,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [synthetic_decision_receipt(subject: subject)],
+    pushed_refs: [],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        NoPushedRefsPresented { session: session } =>
+          session == sole_modeled_publisher_session
         _ => false
       }
     PublicWriteAdmitted { authority: _ } => false

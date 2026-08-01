@@ -66,6 +66,9 @@ type PublicWriteRefusal
       local_sha: String,
       detail: String,
     }
+  | NoPushedRefsPresented {
+      session: ModeledSessionId,
+    }
 
 data sole_modeled_publisher_session: ModeledSessionId = "gunbc-publication-publisher" as ModeledSessionId
 
@@ -137,9 +140,13 @@ fn pushed_refs_match_candidate(
   pushed_refs: List<PrePushStdinRow>,
   candidate: PublicProjectionPlan,
 ) -> Bool {
-  fold(pushed_refs, init: true, f: fn(ok, push) {
-    ok && push.local_sha == candidate.source_revision
-  })
+  if count(pushed_refs) == 0 {
+    false
+  } else {
+    fold(pushed_refs, init: true, f: fn(ok, push) {
+      ok && push.local_sha == candidate.source_revision
+    })
+  }
 }
 
 fn unauthorized_push_detail(
@@ -187,7 +194,12 @@ fn admit_public_write(
                 },
               }
             Absent =>
-              if pushed_refs_match_candidate(pushed_refs: pushed_refs, candidate: plan) {
+              if count(pushed_refs) == 0 {
+                PublicWriteRefused {
+                  session: publisher,
+                  cause: NoPushedRefsPresented { session: publisher },
+                }
+              } else if pushed_refs_match_candidate(pushed_refs: pushed_refs, candidate: plan) {
                 PublicWriteAdmitted {
                   authority: PublicationAuthority {
                     publisher_session: publisher,
