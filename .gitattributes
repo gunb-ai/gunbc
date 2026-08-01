@@ -73,3 +73,4 @@ docs/plans/cli-run-hollowing-plan.md merge=generated-artifact
 docs/plans/fleet-acceptance-criteria.md merge=generated-artifact
 docs/plans/structural-quadratic-wall-coverage-audit.md merge=generated-artifact
 docs/plans/ci-performance-tanking-evidence.md merge=generated-artifact
+docs/plans/extdeps-modeling-preflight.md merge=generated-artifact
