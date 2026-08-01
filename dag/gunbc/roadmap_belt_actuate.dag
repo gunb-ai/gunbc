@@ -154,6 +154,9 @@ import gunbc.roadmap_publish_observe {
   PublicationCredentialSource,
   CredentialSourceConfigured, CredentialSourceAbsent,
   observe_publication_for_subject,
+  WorktreeRepositoryBinding,
+  WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
+  observe_worktree_repository_binding,
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap_validation_oracle {
@@ -3193,6 +3196,11 @@ fn belt_publish_attempt_for_instance(
   attempt_key: String,
   credential: PublicationCredentialSource,
 ) -> BeltPublishOutcome {
+  let attempt_worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+  )
   match belt_publication_subject_for(
     node_id: node_id,
     attempt_key: attempt_key,
@@ -3202,16 +3210,33 @@ fn belt_publish_attempt_for_instance(
     ),
     head: belt_worktree_head_observe(
       instance: instance,
-      worktree: dispatch_worktree_path_for_instance(
-        instance: instance,
-        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-        attempt_key: attempt_key,
-      ),
+      worktree: attempt_worktree,
     ),
   ) {
     PublicationSubjectUnobserved { reason } =>
       PublishDeferred { node_id: node_id, reason: reason }
-    PublicationSubjectObserved { subject } => {
+    PublicationSubjectObserved { subject } =>
+      match observe_worktree_repository_binding(
+        worktree: attempt_worktree,
+        repo: subject.repository,
+      ) {
+        WorktreeRemoteUnreadable { exit_code: code, stderr: err } =>
+          PublishEvidenceUnreadable {
+            node_id: node_id,
+            detail: join([
+              "the attempt worktree's origin remote could not be read, so it is unknown whether the head being published came from this repository (git exit ",
+              to_string(code), "): ", err,
+            ], ""),
+          }
+        WorktreeBoundElsewhere { observed: observed, expected: expected } =>
+          PublishEvidenceUnreadable {
+            node_id: node_id,
+            detail: join([
+              "the attempt worktree is a checkout of a different repository, so its head is not evidence about this subject — origin is ",
+              observed, " but this publication is about ", expected as String,
+            ], ""),
+          }
+        WorktreeBoundToRepository => {
       let path = dispatch_attempt_publication_receipt_path_for_instance(
         instance: instance,
         node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
@@ -3249,8 +3274,8 @@ fn belt_publish_attempt_for_instance(
             write_error: write.error,
           )
         }
+        }
       }
-    }
   }
 }
 

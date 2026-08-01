@@ -97,7 +97,49 @@ fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
   )
 }
 
-data open_state_is_supplied_not_defaulted_note: String = "THE STATE IS PASSED, NOT LEFT TO THE OPERATION'S DEFAULT, and the reason is a real failure rather than style. github.Pulls.List declares `state: PullRequestState = Open`, and the interpreter evaluates that default expression in the CALLER'S scope - so a caller whose module does not bind `Open` dies with `undefined variable: Open` at the moment of the call, which is the moment furthest from the declaration that caused it. A live probe hit exactly that.\\n\\nPassing it also states the domain fact rather than inheriting it. Publication asks whether a commit is ON OFFER, and a merged or closed pull request is not an offer, so Open is the answer this module wants and would still want if the operation's default changed."
+data worktree_repository_binding_note: String = "THE ONE READ NOBODY WAS DOING: WHETHER THE WORKTREE THE HEAD CAME FROM IS A CHECKOUT OF THE REPOSITORY BEING JUDGED. Both remote reads in this module are bound to one repository by construction — publication_subject_remote projects the clone URL from subject.repository, and the pull-request read takes owner and name from the same value, which is what repository_bound_observation_note establishes. That argument covers the two REMOTE reads and says nothing about the LOCAL one.\\n\\nThe attempt's exact head is read from a worktree on disk (worktree_head_observation_note). If that worktree's origin points at a different repository, every value in the judgment is individually well-formed and the conclusion is about the wrong subject: a head that exists in repository A is compared against branches and pull requests in repository B, and 'branch not published' is the ordinary-looking answer. Nothing in the outcome would reveal it, which is the same shape as the serve-handler defect gunbc.live_deploy.spec's deployment_service_handler_note records — every path-level check passes and the process simply operates on the wrong thing.\\n\\nDELIBERATELY NARROW (operator, 2026-08-01): this compares one observed remote against one derived clone URL and refuses on a mismatch. It is not a claim of worker exclusivity, not a lock, and not a statement that no other process may touch the tree — those are different properties needing different mechanisms, and conflating them here would buy an ownership guarantee this read cannot support.\\n\\nEMPTY STDOUT IS UNREADABLE, NOT A MISMATCH, following this module's own precedent rather than inventing a second rule: worktree_head_observation_note establishes that a zero exit with empty output is UNOBSERVED, because git can exit zero and print nothing. Reporting an empty observed URL as WorktreeBoundElsewhere would name a bound-to-something-else fact the read never established, and would put the empty string in a diagnostic as though it were an address."
+
+type WorktreeRepositoryBinding
+  = WorktreeBoundToRepository
+  | WorktreeBoundElsewhere { observed: String, expected: NonEmptyStr }
+  | WorktreeRemoteUnreadable { exit_code: Int, stderr: String }
+
+fn worktree_repository_binding_of(
+  exit_code: Int,
+  stderr: String,
+  url: String,
+  expected: NonEmptyStr,
+) -> WorktreeRepositoryBinding {
+  if exit_code != 0 {
+    WorktreeRemoteUnreadable { exit_code: exit_code, stderr: stderr }
+  } else {
+    let observed = url.trim()
+    if string_length(s: observed) == 0 {
+      WorktreeRemoteUnreadable { exit_code: exit_code, stderr: stderr }
+    } else {
+      if observed == expected as String {
+        WorktreeBoundToRepository
+      } else {
+        WorktreeBoundElsewhere { observed: observed, expected: expected }
+      }
+    }
+  }
+}
+
+fn observe_worktree_repository_binding(
+  worktree: String,
+  repo: Repository,
+) -> WorktreeRepositoryBinding {
+  let result = git.Core.RemoteUrlIn(repository_path: worktree, remote: "origin")
+  worktree_repository_binding_of(
+    exit_code: result.exit_code,
+    stderr: result.stderr,
+    url: result.url,
+    expected: github_https_clone_url(repo: repo),
+  )
+}
+
+data open_state_is_supplied_not_defaulted_note: String ="THE STATE IS PASSED, NOT LEFT TO THE OPERATION'S DEFAULT, and the reason is a real failure rather than style. github.Pulls.List declares `state: PullRequestState = Open`, and the interpreter evaluates that default expression in the CALLER'S scope - so a caller whose module does not bind `Open` dies with `undefined variable: Open` at the moment of the call, which is the moment furthest from the declaration that caused it. A live probe hit exactly that.\\n\\nPassing it also states the domain fact rather than inheriting it. Publication asks whether a commit is ON OFFER, and a merged or closed pull request is not an offer, so Open is the answer this module wants and would still want if the operation's default changed."
 
 data pull_observation_transport_bound_note: String = "CONFIGURED IS NOT USABLE, AND THE LIVE 401 IS WHY THIS CARRIER IS NAMED FOR PRESENCE RATHER THAN VALIDITY. An earlier cut called this arm Present and its note called the credential usable, having established only that GITHUB_TOKEN exists and does not trim to empty. A live probe on 2026-08-01 supplied exactly such a token - present, nonempty, and rejected - and GitHub answered 401 Bad credentials. So the carrier asserted a fact it had no authority for. Usability is answerable only by the authority that answers it, which for this operation is the HTTP response; the environment can report configuration and nothing more.\\n\\nFOUR FACTS THAT MUST NOT COLLAPSE INTO TWO: a source that is absent means no request is made and the refusal is decided locally; a source that is configured but rejected means the request WAS made and a remote authority refused it; a transported request with a refused status is a remote answer; a request that never transported has no status at all. Folding the invalid token into the absent arm would report a local decision for a remote one and lose the only message that says what is actually wrong with the token.\\n\\nSTILL OPEN, AND NOW MEASURED RATHER THAN REASONED: a non-2xx response does not reach this function as a value. github.Pulls.List declares 200/401/404/422/5xx and dispatch_rest in the v1 seed raises for any status at or above 400, so control never returns and CredentialSourceConfigured cannot be turned into a PullRequestsUnreadable by a real call - only by a caller that already holds one. The 2026-08-01 probe executed that path and confirmed it: the effect ran, the 401 arrived, and the raise escaped. This was previously recorded here as a reasoned residual; it is now an executed blocker, and Publication cannot claim a live trip until a declared non-2xx arrives as data. Dissolve-on: the REST response-table realization, after which observe_pull_requests matches the declared statuses and this paragraph deletes.\\n\\nWHY THE UNREADABLE ARM STILL EXISTS: a caller CAN hold a refusal - an absent source, a prior failed read, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it through one transport would push the ignorance-as-answer conflation back into every other producer."
 
