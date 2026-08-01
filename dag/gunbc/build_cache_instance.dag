@@ -75,12 +75,16 @@ type EndpointObservationUnavailableReason
   | ProcTableUnreadable { detail: NonEmptyStr }
   | EndpointPathUnreadable { detail: NonEmptyStr }
 
-data endpoint_owner_context_note: String = "WHAT THE OWNER'S CGROUP RESOLVES TO IS ONE FACT WITH THREE SHAPES, not three fields that happen to agree. The first version of this carrier spelled it as a bare `unit` beside `owning_runner_slot: RunnerSlotIdentity?` and `runner_slot_lifecycle: RunnerSlotLifecycle?`, which admitted states no observation can produce and no reader can interpret: a slot with no lifecycle, a lifecycle with no slot, or a unit contradicting both. The lifecycle-without-slot case was the dangerous one — the derivation matched on the slot first, so an Absent slot carrying a Present lifecycle fell straight through to the unit comparison and could return ServerManagedUnitOwned, converging on a runner-owned endpoint from inconsistent substrate data (review 46217). Guarding that with a check would have conceded the state is writable; the coproduct makes it unwritable instead (DESIGN section 5, construction over validation). A slot cannot be recorded without deciding its lifecycle against current fleet intent, because deciding it is the same act as finding it. When the chain reaches a cgroup it cannot classify — an unreadable unit, a slot index that does not parse, a desired-slot roster the observer could not read — that is its own positive arm carrying the located reason, never a half-filled record."
+data endpoint_owner_context_note: String = "WHAT THE OWNER'S CGROUP RESOLVES TO IS ONE FACT WITH THREE SHAPES, not three fields that happen to agree. The first version of this carrier spelled it as a bare `unit` beside `owning_runner_slot: RunnerSlotIdentity?` and `runner_slot_lifecycle: RunnerSlotLifecycle?`, which admitted states no observation can produce and no reader can interpret: a slot with no lifecycle, a lifecycle with no slot, or a unit contradicting both. The lifecycle-without-slot case was the dangerous one — the derivation matched on the slot first, so an Absent slot carrying a Present lifecycle fell straight through to the unit comparison and could return ServerManagedUnitOwned, converging on a runner-owned endpoint from inconsistent substrate data (review 46217). Guarding that with a check would have conceded the state is writable; the coproduct makes it unwritable instead (DESIGN section 5, construction over validation). A slot cannot be recorded without deciding its lifecycle against current fleet intent, because deciding it is the same act as finding it. When the chain reaches a cgroup it cannot classify — an unreadable unit, a slot index that does not parse, a desired-slot roster the observer could not read — that is its own positive arm carrying the located reason, never a half-filled record.\n\nSECOND REPAIR (operator review, post-merge): the raw cgroup path now lives INSIDE each arm as observed_cgroup rather than beside the context as its own field on EndpointOwnerObserved. Those two were independently writable and could disagree — a record could carry a cgroup naming a runner slice while its context said OwnerInSystemdUnit, and placement trusted the context, so the contradiction was silent. They are not two facts: the context IS the classification of that cgroup, so the string travels with the classification derived from it and the disagreement has nowhere to live. The path is retained because a refusal must be located — ServerUnsupervised quotes it so an operator sees WHICH cgroup was found — but it is diagnostic evidence carried by the decision, never a second input a reader could consult instead."
 
 type EndpointOwnerContext
-  = OwnerInRunnerSlot { slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle }
-  | OwnerInSystemdUnit { unit: NonEmptyStr }
-  | OwnerContextUndecided { detail: NonEmptyStr }
+  = OwnerInRunnerSlot {
+      slot: RunnerSlotIdentity
+      lifecycle: RunnerSlotLifecycle
+      observed_cgroup: NonEmptyStr
+    }
+  | OwnerInSystemdUnit { unit: NonEmptyStr, observed_cgroup: NonEmptyStr }
+  | OwnerContextUndecided { detail: NonEmptyStr, observed_cgroup: NonEmptyStr }
 
 type BuildCacheEndpointObservation
   = EndpointAbsent { instance: BuildCacheInstance }
@@ -89,7 +93,6 @@ type BuildCacheEndpointObservation
       owner: ProcessIdentity
       executable: NonEmptyStr
       principal: NonEmptyStr
-      cgroup: NonEmptyStr
       owner_context: EndpointOwnerContext
       memory_limits: CgroupMemoryLimits?
       memory_events: CgroupMemoryEvents?
@@ -111,18 +114,18 @@ type BuildCacheServerPlacement
 
 fn placement_of_owner(
   instance: BuildCacheInstance,
-  cgroup: NonEmptyStr,
   owner_context: EndpointOwnerContext,
 ) -> BuildCacheServerPlacement {
   match owner_context {
-    OwnerInRunnerSlot { slot: s, lifecycle: lc } =>
+    OwnerInRunnerSlot { slot: s, lifecycle: lc, observed_cgroup: _ } =>
       ServerRunnerOwned { slot: s, lifecycle: lc }
-    OwnerInSystemdUnit { unit: u } =>
+    OwnerInSystemdUnit { unit: u, observed_cgroup: cg } =>
       match (u as String) == (instance.intended_unit as String) {
         true => ServerManagedUnitOwned { unit: u }
-        false => ServerUnsupervised { cgroup: cgroup }
+        false => ServerUnsupervised { cgroup: cg }
       }
-    OwnerContextUndecided { detail: d } => ServerPlacementUnknown { detail: d }
+    OwnerContextUndecided { detail: d, observed_cgroup: _ } =>
+      ServerPlacementUnknown { detail: d }
   }
 }
 
@@ -136,12 +139,11 @@ fn placement_of_endpoint_observation(
       owner: _,
       executable: _,
       principal: _,
-      cgroup: cg,
       owner_context: ctx,
       memory_limits: _,
       memory_events: _,
     } =>
-      placement_of_owner(instance: inst, cgroup: cg, owner_context: ctx)
+      placement_of_owner(instance: inst, owner_context: ctx)
     EndpointOwnershipAmbiguous { instance: _, candidate_count: n } =>
       ServerPlacementUnknown {
         detail: concat(
