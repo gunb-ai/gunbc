@@ -3056,33 +3056,162 @@ fn match_pattern(
     }
 }
 
-pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &["resolve_type_node"];
+/// SINGLE AUTHORITY for the v1 interpreter's v4 std-bridge dispatch.
+///
+/// Before this, every bridge name was written TWICE -- once in a
+/// `*_BRIDGE_FNS` const that the guard predicate tested, once in the match
+/// arm that dispatched it -- so a name could sit in one and not the other and
+/// nothing would say so. The const list, the dispatch, and the enumerable
+/// roster now all expand from these tokens, so they cannot disagree
+/// (DESIGN.md §3 single authority, §5 construction over validation).
+macro_rules! v1_bridge_family_arms {
+    ($cb:ident, $fname:ident, $args:ident, $node:ident, $ctx:ident) => {
+        $cb! {
+            $fname, $args, $node, $ctx;
+            family STD_NODE_BRIDGE_FNS "v2.std.node" {
+                arm "v4_bridge.resolve_type_node" { "resolve_type_node" } =>
+                    crate::coproduct_reflection::eval_resolve_type_node($ctx, &$args),
+            }
+            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing" {
+                arm "v4_bridge.symbol_intern_lexeme" { "symbol_intern_lexeme" } =>
+                    crate::coproduct_reflection::eval_symbol_intern_lexeme($ctx, &$args),
+                arm "v4_bridge.symbol_lexeme" { "symbol_lexeme" } =>
+                    crate::coproduct_reflection::eval_symbol_lexeme($ctx, &$args),
+            }
+            family STD_QUALIFIED_NAME_BRIDGE_FNS "v2.std.qualified_name" {
+                arm "v4_bridge.qualified_name_from_dotted_string" { "qualified_name_from_dotted_string" } =>
+                    crate::coproduct_reflection::eval_qualified_name_from_dotted_string($ctx, &$args),
+            }
+            family STD_NODE_QUERY_BRIDGE_FNS "v2.std.node_query" {
+                arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
+                    crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
+            }
+            family STD_CONCEPT_INDEX_BRIDGE_FNS "v2.std.concept_index" {
+                arm "v4_bridge.concept_decl_facts_live" { "concept_decl_facts_live" } =>
+                    crate::coproduct_reflection::eval_concept_decl_facts_live($ctx, &$args),
+            }
+            family STD_FN_INDEX_BRIDGE_FNS "v2.std.fn_index" {
+                arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
+                    crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
+                arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
+                    crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
+            }
+            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view" {
+                arm "v4_bridge.corpus_dependency_view_per_pr_substrate_refuse" { "corpus_dependency_view_per_pr_substrate_refuse" } =>
+                    crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse($ctx, &$args),
+            }
+            family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index" {
+                arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
+                    crate::coproduct_reflection::eval_data_init_decl_facts_live($ctx, &$args),
+            }
+            family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens" {
+                arm "v4_bridge.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } =>
+                    Ok(Value::Int(crate::cli_run::inert_lens_unreached_module_count())),
+                arm "v4_bridge.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } =>
+                    Ok(Value::Int(crate::cli_run::inert_lens_top_level_module_count())),
+            }
+        }
+    };
+}
 
-pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme", "symbol_lexeme"];
+/// Expansion 1: the name lists the guard predicate tests.
+macro_rules! v1_bridge_consts {
+    ($f:ident, $a:ident, $n:ident, $c:ident;
+     $(family $cname:ident $module:literal { $(arm $id:literal { $lit:literal } => $body:expr ,)* })*) => {
+        $( pub(crate) const $cname: &[&str] = &[$($lit),*]; )*
+    };
+}
 
-pub(crate) const STD_QUALIFIED_NAME_BRIDGE_FNS: &[&str] = &["qualified_name_from_dotted_string"];
+v1_bridge_family_arms!(v1_bridge_consts, func_name, args, node, ctx);
 
-pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
+/// Expansion 2: the dispatch itself.
+macro_rules! v1_bridge_dispatch {
+    ($f:ident, $a:ident, $n:ident, $c:ident;
+     $(family $cname:ident $module:literal { $(arm $id:literal { $lit:literal } => $body:expr ,)* })*) => {
+        $(
+            if is_v4_bridge_family($c, &$f, $cname, $module) {
+                return match $f.as_str() {
+                    $($lit => $body,)*
+                    _ => unreachable!("bridge fn set mismatch: {}", $module),
+                };
+            }
+        )*
+    };
+}
 
-pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["concept_decl_facts_live"];
+/// Expansion 3: the roster, from the same tokens.
+macro_rules! v1_bridge_roster {
+    ($f:ident, $a:ident, $n:ident, $c:ident;
+     $(family $cname:ident $module:literal { $(arm $id:literal { $lit:literal } => $body:expr ,)* })*) => {
+        &[$($(($id, $lit, $module)),*),*]
+    };
+}
 
-pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &[
-    "fn_arrow_decl_facts_live",
-    "fn_arrow_decl_substrate_is_whole_tree",
-];
+/// The v4 std-bridge dispatch surface, enumerated: (arm identity, authored
+/// spelling, declaring .dag module).
+pub fn v1_bridge_arm_spellings() -> &'static [(&'static str, &'static str, &'static str)] {
+    v1_bridge_family_arms!(v1_bridge_roster, func_name, args, node, ctx)
+}
 
-pub(crate) const CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS: &[&str] =
-    &["corpus_dependency_view_per_pr_substrate_refuse"];
+/// One guard for every bridge family. This replaced nine byte-identical
+/// predicates that differed only in their name list and module string.
+fn is_v4_bridge_family(
+    ctx: &InterpContext,
+    func_name: &str,
+    names: &[&str],
+    module: &str,
+) -> bool {
+    if !names.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == module)
+}
 
-pub(crate) const STD_DATA_INDEX_BRIDGE_FNS: &[&str] = &["data_init_decl_facts_live"];
+/// SINGLE AUTHORITY for the v2.std.collection map grounding. This site
+/// carried the same name fork the bridges did: each spelling appeared in the
+/// const the guard tested AND in the match that mapped it to a builtin.
+macro_rules! v1_map_grounding_arms {
+    ($cb:ident, $fname:ident) => {
+        $cb! {
+            $fname;
+            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
+            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
+        }
+    };
+}
 
-pub(crate) const INERT_LENS_BRIDGE_FNS: &[&str] = &[
-    "inert_lens_unreached_module_count",
-    "inert_lens_top_level_module_count",
-];
+/// Expansion 1: the name list the guard predicate tests.
+macro_rules! v1_map_grounding_names {
+    ($f:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
+        const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[$($($lit),+),*];
+    };
+}
 
-const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] =
-    &["empty_map", "empty_map_primitive_delegate", "map_insert"];
+v1_map_grounding_arms!(v1_map_grounding_names, name);
+
+/// Expansion 2: the spelling -> builtin mapping.
+macro_rules! v1_map_grounding_dispatch {
+    ($f:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
+        match $f {
+            $($($lit)|+ => $body,)*
+            _ => return None,
+        }
+    };
+}
+
+/// Expansion 3: the roster, from the same tokens.
+macro_rules! v1_map_grounding_roster {
+    ($f:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
+        &[$(($id, &[$($lit),+])),*]
+    };
+}
+
+/// The map-grounding surface, enumerated.
+pub fn v1_map_grounding_arm_spellings() -> &'static [(&'static str, &'static [&'static str])] {
+    v1_map_grounding_arms!(v1_map_grounding_roster, name)
+}
 
 const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
 
@@ -3114,86 +3243,6 @@ pub fn std_qualified_name_bridge_fn_names() -> &'static [&'static str] {
     STD_QUALIFIED_NAME_BRIDGE_FNS
 }
 
-fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_NODE_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.std.node")
-}
-
-fn is_v4_std_node_query_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_NODE_QUERY_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.std.node_query")
-}
-
-fn is_v4_std_concept_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_CONCEPT_INDEX_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.std.concept_index")
-}
-
-fn is_v4_std_fn_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_FN_INDEX_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.std.fn_index")
-}
-
-fn is_v4_corpus_dependency_view_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.lens.affected_set.corpus_dependency_view")
-}
-
-fn is_v4_std_data_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_DATA_INDEX_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.std.data_index")
-}
-
-fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_LEXING_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.std.compilers.lexing")
-}
-
-fn is_v4_std_qualified_name_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !STD_QUALIFIED_NAME_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.std.qualified_name")
-}
-
-fn is_v4_inert_lens_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
-    if !INERT_LENS_BRIDGE_FNS.contains(&func_name) {
-        return false;
-    }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == "v2.lens.inert_lens")
-}
 
 fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
     if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
@@ -3212,11 +3261,8 @@ fn try_v2_std_collection_map_primitive_grounding(
     if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
         return None;
     }
-    let builtin_name = match fn_node.name.as_str() {
-        "empty_map_primitive_delegate" | "empty_map" => "empty_map",
-        "map_insert" => "map_insert",
-        _ => return None,
-    };
+    let grounded_name = fn_node.name.as_str();
+    let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
         Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
@@ -3228,6 +3274,43 @@ fn try_v2_std_collection_map_primitive_grounding(
         Ok(None) => None,
         Err(e) => Some(Err(e)),
     }
+}
+
+/// SINGLE AUTHORITY for the two native fold intercepts. These run BEFORE the
+/// free-call dispatch, which is why `fold_list` never reaches the builtin
+/// registry and was invisible to every roster that read the registry alone.
+macro_rules! v1_native_intercept_arms {
+    ($cb:ident, $fname:ident, $args:ident, $env:ident, $ctx:ident) => {
+        $cb! {
+            $fname, $args, $env, $ctx;
+            arm "native_intercept.fold_list" { "fold_list" } =>
+                return eval_fold_list_native(&$args, $env, $ctx),
+            arm "native_intercept.fold_list_right" { "fold_list_right" } =>
+                return eval_fold_list_right_native(&$args, $env, $ctx),
+        }
+    };
+}
+
+/// Expansion 1: the dispatch.
+macro_rules! v1_native_intercept_dispatch {
+    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
+        match $f.as_str() {
+            $($lit => $body,)*
+            _ => {}
+        }
+    };
+}
+
+/// Expansion 2: the roster, from the same tokens.
+macro_rules! v1_native_intercept_roster {
+    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
+        &[$(($id, $lit)),*]
+    };
+}
+
+/// The native intercept surface, enumerated.
+pub fn v1_native_intercept_arm_spellings() -> &'static [(&'static str, &'static str)] {
+    v1_native_intercept_arms!(v1_native_intercept_roster, func_name, args, env, ctx)
 }
 
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -3257,99 +3340,9 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
-    if is_v4_std_node_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "resolve_type_node" => crate::coproduct_reflection::eval_resolve_type_node(ctx, &args),
-            _ => unreachable!("bridge fn set mismatch"),
-        };
-    }
+    v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
 
-    if is_v4_std_lexing_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "symbol_intern_lexeme" => {
-                crate::coproduct_reflection::eval_symbol_intern_lexeme(ctx, &args)
-            }
-            "symbol_lexeme" => crate::coproduct_reflection::eval_symbol_lexeme(ctx, &args),
-            _ => unreachable!("lexing bridge fn set mismatch"),
-        };
-    }
-
-    if is_v4_std_qualified_name_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "qualified_name_from_dotted_string" => {
-                crate::coproduct_reflection::eval_qualified_name_from_dotted_string(ctx, &args)
-            }
-            _ => unreachable!("qualified_name bridge fn set mismatch"),
-        };
-    }
-
-    if is_v4_std_node_query_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "coproduct_nullary_inhabitants" => {
-                crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, node, &args)
-            }
-            _ => unreachable!("node_query bridge fn set mismatch"),
-        };
-    }
-
-    if is_v4_std_concept_index_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "concept_decl_facts_live" => {
-                crate::coproduct_reflection::eval_concept_decl_facts_live(ctx, &args)
-            }
-            _ => unreachable!("concept_index bridge fn set mismatch"),
-        };
-    }
-
-    if is_v4_std_fn_index_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "fn_arrow_decl_facts_live" => {
-                crate::coproduct_reflection::eval_fn_arrow_decl_facts_live(ctx, &args)
-            }
-            "fn_arrow_decl_substrate_is_whole_tree" => {
-                crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree(ctx, &args)
-            }
-            _ => unreachable!("fn_index bridge fn set mismatch"),
-        };
-    }
-
-    if is_v4_corpus_dependency_view_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "corpus_dependency_view_per_pr_substrate_refuse" => {
-                crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse(
-                    ctx, &args,
-                )
-            }
-            _ => unreachable!("corpus_dependency_view bridge fn set mismatch"),
-        };
-    }
-
-    if is_v4_std_data_index_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "data_init_decl_facts_live" => {
-                crate::coproduct_reflection::eval_data_init_decl_facts_live(ctx, &args)
-            }
-            _ => unreachable!("data_index bridge fn set mismatch"),
-        };
-    }
-
-    if is_v4_inert_lens_bridge_call(ctx, &func_name) {
-        return match func_name.as_str() {
-            "inert_lens_unreached_module_count" => Ok(Value::Int(
-                crate::cli_run::inert_lens_unreached_module_count(),
-            )),
-            "inert_lens_top_level_module_count" => Ok(Value::Int(
-                crate::cli_run::inert_lens_top_level_module_count(),
-            )),
-            _ => unreachable!("inert_lens bridge fn set mismatch"),
-        };
-    }
-
-    match func_name.as_str() {
-        "fold_list" => return eval_fold_list_native(&args, env, ctx),
-        "fold_list_right" => return eval_fold_list_right_native(&args, env, ctx),
-        _ => {}
-    }
+    v1_native_intercept_arms!(v1_native_intercept_dispatch, func_name, args, env, ctx);
 
     if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
         return Ok(result);
@@ -3593,6 +3586,81 @@ fn parse_table_memo_scope_and_key(
     Some((grammar_digest, token_stream_digest, position, production))
 }
 
+/// SINGLE AUTHORITY for the parse-table memo dispatch.
+macro_rules! v1_parse_table_arms {
+    ($cb:ident, $func_name:ident, $ctx:ident, $fn_node:ident, $args:ident, $env:ident) => {
+        $cb! {
+            $func_name, $ctx, $fn_node, $args, $env;
+                arm "parse_table_memo.parse_table_lookup" { "parse_table_lookup" } => {
+                    let positional: Vec<&Value> = $args.iter().map(|(_, v)| v).collect();
+                    let [table, key] = match positional.as_slice() {
+                        [table, key] => [table, key],
+                        _ => return Ok(None),
+                    };
+                    let Some(memo_key) = parse_table_memo_scope_and_key($ctx, table, key) else {
+                        return Ok(None);
+                    };
+                    let allows_memo = parse_table_materialization_allows_memo($ctx, table);
+                    let mut st = $ctx.parse_table_memo.borrow_mut();
+                    st.lookups += 1;
+                    if allows_memo {
+                        if let Some(v) = st.map.get(&memo_key).cloned() {
+                            st.hits += 1;
+                            drop(st);
+                            record_parse_memo_lookup(&memo_key, true);
+                            return Ok(Some(witness_holds(v, $ctx)));
+                        }
+                    }
+                    drop(st);
+                    record_parse_memo_lookup(&memo_key, false);
+                    let result = call_function($ctx, $fn_node, $args, $env)?;
+                    Ok(Some(result))
+                },
+                arm "parse_table_memo.parse_table_insert" { "parse_table_insert" } => {
+                    let positional: Vec<&Value> = $args.iter().map(|(_, v)| v).collect();
+                    let [table, key, value] = match positional.as_slice() {
+                        [table, key, value] => [table, key, value],
+                        _ => return Ok(None),
+                    };
+                    let result = call_function($ctx, $fn_node, $args, $env)?;
+                    if parse_table_materialization_allows_memo($ctx, table) {
+                        if let Some(memo_key) = parse_table_memo_scope_and_key($ctx, table, key) {
+                            let mut st = $ctx.parse_table_memo.borrow_mut();
+                            st.keepalive.push((*table).clone());
+                            st.keepalive.push((*key).clone());
+                            st.keepalive.push((*value).clone());
+                            st.map.insert(memo_key, (*value).clone());
+                            st.inserts += 1;
+                        }
+                    }
+                    Ok(Some(result))
+                },
+        }
+    };
+}
+
+/// Expansion 1: the dispatch.
+macro_rules! v1_parse_table_dispatch {
+    ($f:ident, $c:ident, $fnn:ident, $a:ident, $e:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
+        match $f {
+            $($lit => $body,)*
+            _ => Ok(None),
+        }
+    };
+}
+
+/// Expansion 2: the roster, from the same tokens.
+macro_rules! v1_parse_table_roster {
+    ($f:ident, $c:ident, $fnn:ident, $a:ident, $e:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
+        &[$(($id, $lit)),*]
+    };
+}
+
+/// The parse-table memo surface, enumerated.
+pub fn v1_parse_table_arm_spellings() -> &'static [(&'static str, &'static str)] {
+    v1_parse_table_arms!(v1_parse_table_roster, func_name, ctx, fn_node, args, env)
+}
+
 fn try_parse_table_memo_dispatch(
     ctx: &InterpContext,
     func_name: &str,
@@ -3600,53 +3668,7 @@ fn try_parse_table_memo_dispatch(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Option<Value>> {
-    match func_name {
-        "parse_table_lookup" => {
-            let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
-            let [table, key] = match positional.as_slice() {
-                [table, key] => [table, key],
-                _ => return Ok(None),
-            };
-            let Some(memo_key) = parse_table_memo_scope_and_key(ctx, table, key) else {
-                return Ok(None);
-            };
-            let allows_memo = parse_table_materialization_allows_memo(ctx, table);
-            let mut st = ctx.parse_table_memo.borrow_mut();
-            st.lookups += 1;
-            if allows_memo {
-                if let Some(v) = st.map.get(&memo_key).cloned() {
-                    st.hits += 1;
-                    drop(st);
-                    record_parse_memo_lookup(&memo_key, true);
-                    return Ok(Some(witness_holds(v, ctx)));
-                }
-            }
-            drop(st);
-            record_parse_memo_lookup(&memo_key, false);
-            let result = call_function(ctx, fn_node, args, env)?;
-            Ok(Some(result))
-        }
-        "parse_table_insert" => {
-            let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
-            let [table, key, value] = match positional.as_slice() {
-                [table, key, value] => [table, key, value],
-                _ => return Ok(None),
-            };
-            let result = call_function(ctx, fn_node, args, env)?;
-            if parse_table_materialization_allows_memo(ctx, table) {
-                if let Some(memo_key) = parse_table_memo_scope_and_key(ctx, table, key) {
-                    let mut st = ctx.parse_table_memo.borrow_mut();
-                    st.keepalive.push((*table).clone());
-                    st.keepalive.push((*key).clone());
-                    st.keepalive.push((*value).clone());
-                    st.map.insert(memo_key, (*value).clone());
-                    st.inserts += 1;
-                }
-            }
-            Ok(Some(result))
-        }
-        _ => Ok(None),
-    }
+    v1_parse_table_arms!(v1_parse_table_dispatch, func_name, ctx, fn_node, args, env)
 }
 
 fn is_structural_pure_fn(name: &str) -> bool {
@@ -4781,6 +4803,544 @@ fn eval_algebra_method(
     result
 }
 
+/// SINGLE AUTHORITY for the v1 interpreter's method dispatch surface, same
+/// shape as `v1_builtin_arms`: the dispatch and the roster are two expansions
+/// of these tokens, so neither can drift from the other.
+macro_rules! v1_algebra_method_arms {
+    ($cb:ident, $method:ident, $receiver:ident, $args:ident, $env:ident, $ctx:ident) => {
+        $cb! {
+            $method, $receiver, $args, $env, $ctx;
+            arm "method_call.lookup" { "lookup" } => {
+                let key = $args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "lookup requires a key argument".to_string(),
+                })?;
+                raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+            },
+
+            arm "method_call.map" { "map" } => list_method_with_closure("map", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
+                items
+                    .iter()
+                    .map(|item| apply_closure(f, &[item.clone()], $env, $ctx))
+                    .collect::<InterpResult<Vec<Value>>>()
+                    .map(|v| list_value((v)))
+            }),
+
+            arm "method_call.filter" { "filter" } => {
+                list_method_with_closure("filter", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
+                    let mut result = Vec::new();
+                    for item in items.iter() {
+                        let keep = apply_closure(f, &[item.clone()], $env, $ctx)?;
+                        if keep.is_truthy() {
+                            result.push(item.clone());
+                        }
+                    }
+                    Ok(list_value((result)))
+                })
+            },
+
+            arm "method_call.fold" { "fold" } => {
+                let items = expect_list(&$receiver, "fold")?;
+                let (init, f) = match $args {
+                    [init, f] => (init.clone(), f),
+                    _ => {
+                        return Err(InterpError::TypeError {
+                            msg: "fold requires (init, f) arguments".to_string(),
+                        })
+                    }
+                };
+                let mut acc = init;
+                for item in items.iter() {
+                    acc = apply_closure(f, &[acc, item.clone()], $env, $ctx)?;
+                }
+                Ok(acc)
+            },
+
+            arm "method_call.flat_map" { "flat_map" } => list_method_with_closure(
+                "flat_map",
+                $receiver,
+                $args,
+                $env,
+                $ctx,
+                |items, f, $env, $ctx| {
+                    let mut result = Vec::new();
+                    for item in items.iter() {
+                        let mapped = apply_closure(f, &[item.clone()], $env, $ctx)?;
+                        if matches!(&mapped, Value::Str(_)) {
+                            result.push(mapped);
+                        } else {
+                            match free_monoid_to_vec(&mapped) {
+                                Some(inner) => result.extend(inner),
+                                None => result.push(mapped),
+                            }
+                        }
+                    }
+                    Ok(list_value((result)))
+                },
+            ),
+
+            arm "method_call.any" { "any" } => list_method_with_closure("any", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
+                for item in items.iter() {
+                    if apply_closure(f, &[item.clone()], $env, $ctx)?.is_truthy() {
+                        return Ok(Value::Bool(true));
+                    }
+                }
+                Ok(Value::Bool(false))
+            }),
+
+            arm "method_call.all" { "all" } => list_method_with_closure("all", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
+                for item in items.iter() {
+                    if !apply_closure(f, &[item.clone()], $env, $ctx)?.is_truthy() {
+                        return Ok(Value::Bool(false));
+                    }
+                }
+                Ok(Value::Bool(true))
+            }),
+
+            arm "method_call.sort_by" { "sort_by" } => {
+                list_method_with_closure("sort_by", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
+                    let mut keyed: Vec<(Value, Value)> = items
+                        .iter()
+                        .map(|item| {
+                            let key = apply_closure(f, &[item.clone()], $env, $ctx)?;
+                            Ok((key, item.clone()))
+                        })
+                        .collect::<InterpResult<_>>()?;
+                    keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
+                    Ok(list_value(
+                        keyed.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+                    ))
+                })
+            },
+
+            arm "method_call.list_push" { "list_push" } => {
+                if matches!(&$receiver, Value::Str(_)) {
+                    return Err(InterpError::TypeError {
+                        msg: "list_push not supported on String".to_string(),
+                    });
+                }
+                let item = $args.first().cloned().unwrap_or(Value::Null);
+                match value_to_list_carrier(&$receiver) {
+                    Some((items, copied)) => {
+                        let mut counters = $ctx.mutation_counters.borrow_mut();
+                        counters.list_push_calls += 1;
+                        counters.list_push_items_copied += copied;
+                        drop(counters);
+                        let mut result = (*items).clone();
+                        result.push_back(item);
+                        Ok(list_value(result))
+                    }
+                    None => Err(InterpError::TypeError {
+                        msg: format!("list_push on non-list: {}", $receiver.type_label()),
+                    }),
+                }
+            },
+
+            arm "method_call.concat" { "concat" | "append" | "push" } => {
+                if let Value::Str(s) = &$receiver {
+                    let mut result = s.clone();
+                    for arg in $args {
+                        result.push_str(&format!("{}", arg));
+                    }
+                    return Ok(Value::Str(result));
+                }
+                // String grounding (model↔realization): when a native String arg
+                // participates, the whole `concat` is a String and realizes as one
+                // native `Value::Str` — provided the receiver is itself string-like
+                // (all-codepoint). A `List<String>` receiver (`Str` *elements*) is
+                // rejected by `free_monoid_to_string` and falls through to the list
+                // path below, so `["a","b"].concat("c")` stays a list.
+                if $method == "concat" && $args.iter().any(|a| matches!(a, Value::Str(_))) {
+                    if let Some(base) = free_monoid_to_string(&$receiver) {
+                        if let Some(rest) = $args
+                            .iter()
+                            .map(free_monoid_to_string)
+                            .collect::<Option<Vec<_>>>()
+                        {
+                            return Ok(Value::Str(format!("{}{}", base, rest.concat())));
+                        }
+                    }
+                }
+                if let Ok(items) = expect_list(&$receiver, "concat") {
+                    // Fail-closed backstop (DESIGN §5): a native String arg meeting a
+                    // codepoint-bearing `Cons`-chain receiver here is the
+                    // model↔realization straddle that grounding above did not
+                    // dissolve — refuse loudly rather than push the `Str` into a
+                    // mixed `[codepoint.., Str]` list. A `Value::List` receiver is a
+                    // generic collection (`[1].append("ab")` is a legitimate
+                    // two-element list), and a homogeneous `List<String>` carries no
+                    // codepoint — both pass (the `orig` representation guard).
+                    if $args.iter().any(|a| matches!(a, Value::Str(_))) {
+                        let snapshot: Vec<Value> = items.iter().cloned().collect();
+                        if let Some(detail) = string_realization_straddle_detail(&$receiver, &snapshot) {
+                            return Err(InterpError::StringRealizationStraddle { detail });
+                        }
+                    }
+                    let mut result = (*items).clone();
+                    let mut merged_items = 0usize;
+                    let mut copied_items = 0usize;
+                    for arg in $args {
+                        if matches!(arg, Value::Str(_)) {
+                            result.push_back(arg.clone());
+                        } else {
+                            match value_to_list_carrier(arg) {
+                                Some((other, copied)) => {
+                                    merged_items += other.len();
+                                    copied_items += copied as usize;
+                                    result.append((*other).clone());
+                                }
+                                None => result.push_back(arg.clone()),
+                            }
+                        }
+                    }
+                    let mut counters = $ctx.mutation_counters.borrow_mut();
+                    if merged_items > 0 {
+                        counters.list_concat_calls += 1;
+                        counters.list_concat_items_copied += copied_items as u64;
+                    } else {
+                        counters.list_push_calls += 1;
+                    }
+                    drop(counters);
+                    return Ok(list_value(result));
+                }
+                Err(InterpError::TypeError {
+                    msg: format!("cannot concat on {}", $receiver.type_label()),
+                })
+            },
+
+            arm "method_call.length" { "length" | "count" | "size" } => match native_len(&$receiver) {
+                Some(n) => Ok(Value::Int(n)),
+                None => match free_monoid_to_vec(&$receiver) {
+                    Some(items) => Ok(Value::Int(items.len() as i64)),
+                    None => match &$receiver {
+                        Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                        _ => Err(InterpError::TypeError {
+                            msg: format!("cannot get length of {}", $receiver.type_label()),
+                        }),
+                    },
+                },
+            },
+
+            // Known-method bridge parity: infer rewrites bare `is_empty(xs)` on
+            // import-stripped modules into a method call (the census never serves
+            // algebra template names), so eval must implement the same member the
+            // bridge targets — emptiness via the shared length authority above.
+            arm "method_call.is_empty" { "is_empty" } => match native_len(&$receiver) {
+                Some(n) => Ok(Value::Bool(n == 0)),
+                None => match free_monoid_to_vec(&$receiver) {
+                    Some(items) => Ok(Value::Bool(items.is_empty())),
+                    None => match &$receiver {
+                        Value::Map(m) => Ok(Value::Bool(m.is_empty())),
+                        _ => Err(InterpError::TypeError {
+                            msg: format!("cannot check is_empty of {}", $receiver.type_label()),
+                        }),
+                    },
+                },
+            },
+
+            arm "method_call.first" { "first" } => {
+                let items = expect_list(&$receiver, "first")?;
+                Ok(items.front().cloned().unwrap_or(Value::Null))
+            },
+
+            arm "method_call.last" { "last" } => {
+                let items = expect_list(&$receiver, "last")?;
+                Ok(items.last().cloned().unwrap_or(Value::Null))
+            },
+
+            arm "method_call.reverse" { "reverse" } => {
+                let items = expect_list(&$receiver, "reverse")?;
+                Ok(list_value(items.iter().rev().cloned().collect::<Vec<_>>()))
+            },
+
+            arm "method_call.skip" { "skip" } => {
+                let items = expect_list(&$receiver, "skip")?;
+                let n = expect_int($args.first(), "skip")?;
+                Ok(list_value(
+                    items.iter().skip(n as usize).cloned().collect::<Vec<_>>(),
+                ))
+            },
+
+            arm "method_call.take" { "take" } => {
+                let items = expect_list(&$receiver, "take")?;
+                let n = expect_int($args.first(), "take")?;
+                Ok(list_value(
+                    items.iter().take(n as usize).cloned().collect::<Vec<_>>(),
+                ))
+            },
+
+            arm "method_call.enumerate" { "enumerate" } => {
+                let items = expect_list(&$receiver, "enumerate")?;
+                let result: Vec<Value> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| Value::Record {
+                        type_name: $ctx.sym("Pair"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("first"), Value::Int(i as i64)),
+                            ($ctx.sym("second"), v.clone()),
+                        ])),
+                    })
+                    .collect();
+                Ok(list_value((result)))
+            },
+
+            arm "method_call.contains" { "contains" | "has" } => match &$receiver {
+                Value::Map(m) => {
+                    let key = $args.first().ok_or_else(|| InterpError::TypeError {
+                        msg: "contains requires a key argument".to_string(),
+                    })?;
+                    match CanonKey::new(key.clone()) {
+                        Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
+                        None => Ok(Value::Bool(false)),
+                    }
+                }
+                Value::Str(s) => {
+                    let sub = expect_str($args.first(), "contains")?;
+                    Ok(Value::Bool(s.contains(&sub)))
+                }
+                _ => match expect_list(&$receiver, "contains") {
+                    Ok(items) => {
+                        let target = $args.first().cloned().unwrap_or(Value::Null);
+                        Ok(Value::Bool(items.iter().any(|item| *item == target)))
+                    }
+                    Err(_) => Err(InterpError::TypeError {
+                        msg: format!("contains not supported on {}", $receiver.type_label()),
+                    }),
+                },
+            },
+
+            arm "method_call.join" { "join" } => {
+                let items = expect_list(&$receiver, "join")?;
+                let sep = $args.first().map(|v| format!("{}", v)).unwrap_or_default();
+                let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
+                Ok(Value::Str(strs.join(&sep)))
+            },
+
+            arm "method_call.chars" { "chars" } => {
+                // §6 residue: this materializes a string as a `Value::List` of
+                // codepoint `Int`s, indistinguishable at the Value level from a
+                // generic `Int` list. That is the named hole in the String-straddle
+                // wall — see `string_realization_straddle_detail`'s `Value::List`
+                // exemption. Closed by regrounding `Char`/codepoint-sequence so the
+                // realization is distinguishable (grounding root, sibling #5428).
+                let s = expect_str(Some(&$receiver), "chars")?;
+                let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
+                Ok(list_value(items))
+            },
+
+            arm "method_call.map_get" { "map_get" } => {
+                let key = $args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "map_get requires a key argument".to_string(),
+                })?;
+                let raw = raw_map_lookup(&$receiver, key, $env, $ctx)?;
+                Ok(map_lookup_as_optional(raw, $ctx))
+            },
+
+            arm "method_call.get" { "get" } => {
+                if matches!(&$receiver, Value::Str(_)) {
+                    let key = $args.first().ok_or_else(|| InterpError::TypeError {
+                        msg: "get requires a key argument".to_string(),
+                    })?;
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                } else if let Ok(items) = expect_list(&$receiver, "get") {
+                    let idx = expect_int($args.first(), "get")?;
+                    Ok(list_get_at_or_null(&items, idx))
+                } else {
+                    let key = $args.first().ok_or_else(|| InterpError::TypeError {
+                        msg: "get requires a key argument".to_string(),
+                    })?;
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                }
+            },
+
+            // These 4 arms were absent here but present in the free-function builtin dispatch --
+            // eval_algebra_method (method/pipe calls) and that dispatch (direct calls) are two
+            // surfaces over one builtin set that have diverged; they should be one authority.
+            // Pure-eval logic, in scope of ROADMAP HAND kernel D (`v1_interpreter` pure-eval
+            // dissolution, docs/plans/interpreter-kernel-d.md): dissolution trigger is the
+            // pure-eval seam (`emit_host` transport wiring) grounding this dispatch into
+            // `v2.compiler.eval`, at which point per-builtin arms stop being hand-Rust here.
+            arm "method_call.map_keys" { "map_keys" } => {
+                let m = expect_map(&$receiver, "map_keys")?;
+                let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+                Ok(list_value((keys)))
+            },
+
+            arm "method_call.map_values" { "map_values" } => {
+                let m = expect_map(&$receiver, "map_values")?;
+                let vals: Vec<Value> = m.values().cloned().collect();
+                Ok(list_value((vals)))
+            },
+
+            arm "method_call.map_contains_key" { "map_contains_key" | "map_has" } => {
+                let m = expect_map(&$receiver, "map_contains_key")?;
+                let key = $args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: "map_contains_key requires a key argument".to_string(),
+                })?;
+                match CanonKey::new(key.clone()) {
+                    Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
+                    None => Ok(Value::Bool(false)),
+                }
+            },
+
+            arm "method_call.map_is_empty" { "map_is_empty" } => {
+                let m = expect_map(&$receiver, "map_is_empty")?;
+                Ok(Value::Bool(m.is_empty()))
+            },
+
+            arm "method_call.insert" { "insert" | "map_insert" } => {
+                let m = expect_map(&$receiver, "insert")?;
+                let (key, val) = match $args {
+                    [k, v] => (k.clone(), v.clone()),
+                    _ => {
+                        return Err(InterpError::TypeError {
+                            msg: "insert requires (key, value) arguments".to_string(),
+                        })
+                    }
+                };
+                let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
+                    msg: "insert key is not a valid map key (closure/fn/NaN)".to_string(),
+                })?;
+                let mut counters = $ctx.mutation_counters.borrow_mut();
+                counters.map_insert_calls += 1;
+                drop(counters);
+                Ok(map_value(m.update(ck, val)))
+            },
+
+            arm "method_call.merge" { "merge" } => {
+                let base = expect_map(&$receiver, "merge")?;
+                let overlay = expect_map($args.first().unwrap_or(&Value::Null), "merge")?;
+                let mut counters = $ctx.mutation_counters.borrow_mut();
+                counters.map_merge_calls += 1;
+                drop(counters);
+                Ok(map_value((*overlay).clone().union((*base).clone())))
+            },
+
+            arm "method_call.keys" { "keys" } => {
+                let m = expect_map(&$receiver, "keys")?;
+                let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+                Ok(list_value((keys)))
+            },
+
+            arm "method_call.values" { "values" } => {
+                let m = expect_map(&$receiver, "values")?;
+                let vals: Vec<Value> = m.values().cloned().collect();
+                Ok(list_value((vals)))
+            },
+
+            arm "method_call.replace" { "replace" } => {
+                let s = expect_string(&$receiver, "replace")?;
+                match $args {
+                    [from, to] => {
+                        let from_s = format!("{}", from);
+                        let to_s = format!("{}", to);
+                        Ok(Value::Str(s.replace(&from_s, &to_s)))
+                    }
+                    _ => Err(InterpError::TypeError {
+                        msg: "replace requires (from, to) arguments".to_string(),
+                    }),
+                }
+            },
+
+            arm "method_call.split" { "split" } => {
+                let s = expect_string(&$receiver, "split")?;
+                let sep = expect_str($args.first(), "split")?;
+                let parts: Vec<Value> = s.split(&sep).map(|p| Value::Str(p.to_string())).collect();
+                Ok(list_value((parts)))
+            },
+
+            arm "method_call.trim" { "trim" } => {
+                let s = expect_string(&$receiver, "trim")?;
+                Ok(Value::Str(s.trim().to_string()))
+            },
+
+            arm "method_call.starts_with" { "starts_with" } => {
+                let s = expect_string(&$receiver, "starts_with")?;
+                let prefix = expect_str($args.first(), "starts_with")?;
+                Ok(Value::Bool(s.starts_with(&prefix)))
+            },
+
+            arm "method_call.ends_with" { "ends_with" } => {
+                let s = expect_string(&$receiver, "ends_with")?;
+                let suffix = expect_str($args.first(), "ends_with")?;
+                Ok(Value::Bool(s.ends_with(&suffix)))
+            },
+
+            arm "method_call.substring" { "substring" } => {
+                let s = expect_string(&$receiver, "substring")?;
+                match $args {
+                    [start, end] => {
+                        let s_idx = expect_int(Some(start), "substring start")? as usize;
+                        let e_idx = expect_int(Some(end), "substring end")? as usize;
+                        let sliced: String = s
+                            .chars()
+                            .skip(s_idx)
+                            .take(e_idx.saturating_sub(s_idx))
+                            .collect();
+                        Ok(Value::Str(sliced))
+                    }
+                    _ => Err(InterpError::TypeError {
+                        msg: "substring requires (start, end) arguments".to_string(),
+                    }),
+                }
+            },
+
+            arm "method_call.char_at" { "char_at" } => {
+                let s = expect_string(&$receiver, "char_at")?;
+                let idx = expect_int($args.first(), "char_at")?;
+                Ok(s.chars()
+                    .nth(idx as usize)
+                    .map(|c| Value::Str(c.to_string()))
+                    .unwrap_or(Value::Null))
+            },
+
+            arm "method_call.index_by" { "index_by" } => list_method_with_closure(
+                "index_by",
+                $receiver,
+                $args,
+                $env,
+                $ctx,
+                |items, f, $env, $ctx| {
+                    let mut m = HamtMap::new();
+                    for item in items.iter() {
+                        let key = apply_closure(f, &[item.clone()], $env, $ctx)?;
+                        let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
+                            msg: "index_by key is not a valid map key (closure/fn/NaN)".to_string(),
+                        })?;
+                        m.insert(ck, item.clone());
+                    }
+                    Ok(map_value(m))
+                },
+            ),
+
+        }
+    };
+}
+
+/// Expansion 1: the dispatch.
+macro_rules! v1_algebra_dispatch {
+    ($m:ident, $r:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
+        match $m {
+            $($($lit)|+ => $body,)*
+            _ => Err(InterpError::Unimplemented {
+                what: format!("method '{}'", $m),
+            }),
+        }
+    };
+}
+
+/// Expansion 2: the roster, from the same tokens.
+macro_rules! v1_algebra_roster {
+    ($m:ident, $r:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
+        &[$(($id, &[$($lit),+])),*]
+    };
+}
+
+/// The method dispatch surface, enumerated.
+pub fn v1_algebra_arm_spellings() -> &'static [(&'static str, &'static [&'static str])] {
+    v1_algebra_method_arms!(v1_algebra_roster, method, receiver, args, env, ctx)
+}
+
 fn eval_algebra_method_inner(
     method: &str,
     receiver: Value,
@@ -4788,514 +5348,7 @@ fn eval_algebra_method_inner(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    match method {
-        "lookup" => {
-            let key = args.first().ok_or_else(|| InterpError::TypeError {
-                msg: "lookup requires a key argument".to_string(),
-            })?;
-            raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
-        }
-
-        "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
-            items
-                .iter()
-                .map(|item| apply_closure(f, &[item.clone()], env, ctx))
-                .collect::<InterpResult<Vec<Value>>>()
-                .map(|v| list_value((v)))
-        }),
-
-        "filter" => {
-            list_method_with_closure("filter", receiver, args, env, ctx, |items, f, env, ctx| {
-                let mut result = Vec::new();
-                for item in items.iter() {
-                    let keep = apply_closure(f, &[item.clone()], env, ctx)?;
-                    if keep.is_truthy() {
-                        result.push(item.clone());
-                    }
-                }
-                Ok(list_value((result)))
-            })
-        }
-
-        "fold" => {
-            let items = expect_list(&receiver, "fold")?;
-            let (init, f) = match args {
-                [init, f] => (init.clone(), f),
-                _ => {
-                    return Err(InterpError::TypeError {
-                        msg: "fold requires (init, f) arguments".to_string(),
-                    })
-                }
-            };
-            let mut acc = init;
-            for item in items.iter() {
-                acc = apply_closure(f, &[acc, item.clone()], env, ctx)?;
-            }
-            Ok(acc)
-        }
-
-        "flat_map" => list_method_with_closure(
-            "flat_map",
-            receiver,
-            args,
-            env,
-            ctx,
-            |items, f, env, ctx| {
-                let mut result = Vec::new();
-                for item in items.iter() {
-                    let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
-                    if matches!(&mapped, Value::Str(_)) {
-                        result.push(mapped);
-                    } else {
-                        match free_monoid_to_vec(&mapped) {
-                            Some(inner) => result.extend(inner),
-                            None => result.push(mapped),
-                        }
-                    }
-                }
-                Ok(list_value((result)))
-            },
-        ),
-
-        "any" => list_method_with_closure("any", receiver, args, env, ctx, |items, f, env, ctx| {
-            for item in items.iter() {
-                if apply_closure(f, &[item.clone()], env, ctx)?.is_truthy() {
-                    return Ok(Value::Bool(true));
-                }
-            }
-            Ok(Value::Bool(false))
-        }),
-
-        "all" => list_method_with_closure("all", receiver, args, env, ctx, |items, f, env, ctx| {
-            for item in items.iter() {
-                if !apply_closure(f, &[item.clone()], env, ctx)?.is_truthy() {
-                    return Ok(Value::Bool(false));
-                }
-            }
-            Ok(Value::Bool(true))
-        }),
-
-        "sort_by" => {
-            list_method_with_closure("sort_by", receiver, args, env, ctx, |items, f, env, ctx| {
-                let mut keyed: Vec<(Value, Value)> = items
-                    .iter()
-                    .map(|item| {
-                        let key = apply_closure(f, &[item.clone()], env, ctx)?;
-                        Ok((key, item.clone()))
-                    })
-                    .collect::<InterpResult<_>>()?;
-                keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
-                Ok(list_value(
-                    keyed.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
-                ))
-            })
-        }
-
-        "list_push" => {
-            if matches!(&receiver, Value::Str(_)) {
-                return Err(InterpError::TypeError {
-                    msg: "list_push not supported on String".to_string(),
-                });
-            }
-            let item = args.first().cloned().unwrap_or(Value::Null);
-            match value_to_list_carrier(&receiver) {
-                Some((items, copied)) => {
-                    let mut counters = ctx.mutation_counters.borrow_mut();
-                    counters.list_push_calls += 1;
-                    counters.list_push_items_copied += copied;
-                    drop(counters);
-                    let mut result = (*items).clone();
-                    result.push_back(item);
-                    Ok(list_value(result))
-                }
-                None => Err(InterpError::TypeError {
-                    msg: format!("list_push on non-list: {}", receiver.type_label()),
-                }),
-            }
-        }
-
-        "concat" | "append" | "push" => {
-            if let Value::Str(s) = &receiver {
-                let mut result = s.clone();
-                for arg in args {
-                    result.push_str(&format!("{}", arg));
-                }
-                return Ok(Value::Str(result));
-            }
-            // String grounding (model↔realization): when a native String arg
-            // participates, the whole `concat` is a String and realizes as one
-            // native `Value::Str` — provided the receiver is itself string-like
-            // (all-codepoint). A `List<String>` receiver (`Str` *elements*) is
-            // rejected by `free_monoid_to_string` and falls through to the list
-            // path below, so `["a","b"].concat("c")` stays a list.
-            if method == "concat" && args.iter().any(|a| matches!(a, Value::Str(_))) {
-                if let Some(base) = free_monoid_to_string(&receiver) {
-                    if let Some(rest) = args
-                        .iter()
-                        .map(free_monoid_to_string)
-                        .collect::<Option<Vec<_>>>()
-                    {
-                        return Ok(Value::Str(format!("{}{}", base, rest.concat())));
-                    }
-                }
-            }
-            if let Ok(items) = expect_list(&receiver, "concat") {
-                // Fail-closed backstop (DESIGN §5): a native String arg meeting a
-                // codepoint-bearing `Cons`-chain receiver here is the
-                // model↔realization straddle that grounding above did not
-                // dissolve — refuse loudly rather than push the `Str` into a
-                // mixed `[codepoint.., Str]` list. A `Value::List` receiver is a
-                // generic collection (`[1].append("ab")` is a legitimate
-                // two-element list), and a homogeneous `List<String>` carries no
-                // codepoint — both pass (the `orig` representation guard).
-                if args.iter().any(|a| matches!(a, Value::Str(_))) {
-                    let snapshot: Vec<Value> = items.iter().cloned().collect();
-                    if let Some(detail) = string_realization_straddle_detail(&receiver, &snapshot) {
-                        return Err(InterpError::StringRealizationStraddle { detail });
-                    }
-                }
-                let mut result = (*items).clone();
-                let mut merged_items = 0usize;
-                let mut copied_items = 0usize;
-                for arg in args {
-                    if matches!(arg, Value::Str(_)) {
-                        result.push_back(arg.clone());
-                    } else {
-                        match value_to_list_carrier(arg) {
-                            Some((other, copied)) => {
-                                merged_items += other.len();
-                                copied_items += copied as usize;
-                                result.append((*other).clone());
-                            }
-                            None => result.push_back(arg.clone()),
-                        }
-                    }
-                }
-                let mut counters = ctx.mutation_counters.borrow_mut();
-                if merged_items > 0 {
-                    counters.list_concat_calls += 1;
-                    counters.list_concat_items_copied += copied_items as u64;
-                } else {
-                    counters.list_push_calls += 1;
-                }
-                drop(counters);
-                return Ok(list_value(result));
-            }
-            Err(InterpError::TypeError {
-                msg: format!("cannot concat on {}", receiver.type_label()),
-            })
-        }
-
-        "length" | "count" | "size" => match native_len(&receiver) {
-            Some(n) => Ok(Value::Int(n)),
-            None => match free_monoid_to_vec(&receiver) {
-                Some(items) => Ok(Value::Int(items.len() as i64)),
-                None => match &receiver {
-                    Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-                    _ => Err(InterpError::TypeError {
-                        msg: format!("cannot get length of {}", receiver.type_label()),
-                    }),
-                },
-            },
-        },
-
-        // Known-method bridge parity: infer rewrites bare `is_empty(xs)` on
-        // import-stripped modules into a method call (the census never serves
-        // algebra template names), so eval must implement the same member the
-        // bridge targets — emptiness via the shared length authority above.
-        "is_empty" => match native_len(&receiver) {
-            Some(n) => Ok(Value::Bool(n == 0)),
-            None => match free_monoid_to_vec(&receiver) {
-                Some(items) => Ok(Value::Bool(items.is_empty())),
-                None => match &receiver {
-                    Value::Map(m) => Ok(Value::Bool(m.is_empty())),
-                    _ => Err(InterpError::TypeError {
-                        msg: format!("cannot check is_empty of {}", receiver.type_label()),
-                    }),
-                },
-            },
-        },
-
-        "first" => {
-            let items = expect_list(&receiver, "first")?;
-            Ok(items.front().cloned().unwrap_or(Value::Null))
-        }
-
-        "last" => {
-            let items = expect_list(&receiver, "last")?;
-            Ok(items.last().cloned().unwrap_or(Value::Null))
-        }
-
-        "reverse" => {
-            let items = expect_list(&receiver, "reverse")?;
-            Ok(list_value(items.iter().rev().cloned().collect::<Vec<_>>()))
-        }
-
-        "skip" => {
-            let items = expect_list(&receiver, "skip")?;
-            let n = expect_int(args.first(), "skip")?;
-            Ok(list_value(
-                items.iter().skip(n as usize).cloned().collect::<Vec<_>>(),
-            ))
-        }
-
-        "take" => {
-            let items = expect_list(&receiver, "take")?;
-            let n = expect_int(args.first(), "take")?;
-            Ok(list_value(
-                items.iter().take(n as usize).cloned().collect::<Vec<_>>(),
-            ))
-        }
-
-        "enumerate" => {
-            let items = expect_list(&receiver, "enumerate")?;
-            let result: Vec<Value> = items
-                .iter()
-                .enumerate()
-                .map(|(i, v)| Value::Record {
-                    type_name: ctx.sym("Pair"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("first"), Value::Int(i as i64)),
-                        (ctx.sym("second"), v.clone()),
-                    ])),
-                })
-                .collect();
-            Ok(list_value((result)))
-        }
-
-        "contains" | "has" => match &receiver {
-            Value::Map(m) => {
-                let key = args.first().ok_or_else(|| InterpError::TypeError {
-                    msg: "contains requires a key argument".to_string(),
-                })?;
-                match CanonKey::new(key.clone()) {
-                    Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
-                    None => Ok(Value::Bool(false)),
-                }
-            }
-            Value::Str(s) => {
-                let sub = expect_str(args.first(), "contains")?;
-                Ok(Value::Bool(s.contains(&sub)))
-            }
-            _ => match expect_list(&receiver, "contains") {
-                Ok(items) => {
-                    let target = args.first().cloned().unwrap_or(Value::Null);
-                    Ok(Value::Bool(items.iter().any(|item| *item == target)))
-                }
-                Err(_) => Err(InterpError::TypeError {
-                    msg: format!("contains not supported on {}", receiver.type_label()),
-                }),
-            },
-        },
-
-        "join" => {
-            let items = expect_list(&receiver, "join")?;
-            let sep = args.first().map(|v| format!("{}", v)).unwrap_or_default();
-            let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-            Ok(Value::Str(strs.join(&sep)))
-        }
-
-        "chars" => {
-            // §6 residue: this materializes a string as a `Value::List` of
-            // codepoint `Int`s, indistinguishable at the Value level from a
-            // generic `Int` list. That is the named hole in the String-straddle
-            // wall — see `string_realization_straddle_detail`'s `Value::List`
-            // exemption. Closed by regrounding `Char`/codepoint-sequence so the
-            // realization is distinguishable (grounding root, sibling #5428).
-            let s = expect_str(Some(&receiver), "chars")?;
-            let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
-            Ok(list_value(items))
-        }
-
-        "map_get" => {
-            let key = args.first().ok_or_else(|| InterpError::TypeError {
-                msg: "map_get requires a key argument".to_string(),
-            })?;
-            let raw = raw_map_lookup(&receiver, key, env, ctx)?;
-            Ok(map_lookup_as_optional(raw, ctx))
-        }
-
-        "get" => {
-            if matches!(&receiver, Value::Str(_)) {
-                let key = args.first().ok_or_else(|| InterpError::TypeError {
-                    msg: "get requires a key argument".to_string(),
-                })?;
-                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
-            } else if let Ok(items) = expect_list(&receiver, "get") {
-                let idx = expect_int(args.first(), "get")?;
-                Ok(list_get_at_or_null(&items, idx))
-            } else {
-                let key = args.first().ok_or_else(|| InterpError::TypeError {
-                    msg: "get requires a key argument".to_string(),
-                })?;
-                raw_map_lookup(&receiver, key, env, ctx).map(RawMapLookup::into_raw)
-            }
-        }
-
-        // These 4 arms were absent here but present in the free-function builtin dispatch --
-        // eval_algebra_method (method/pipe calls) and that dispatch (direct calls) are two
-        // surfaces over one builtin set that have diverged; they should be one authority.
-        // Pure-eval logic, in scope of ROADMAP HAND kernel D (`v1_interpreter` pure-eval
-        // dissolution, docs/plans/interpreter-kernel-d.md): dissolution trigger is the
-        // pure-eval seam (`emit_host` transport wiring) grounding this dispatch into
-        // `v2.compiler.eval`, at which point per-builtin arms stop being hand-Rust here.
-        "map_keys" => {
-            let m = expect_map(&receiver, "map_keys")?;
-            let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
-            Ok(list_value((keys)))
-        }
-
-        "map_values" => {
-            let m = expect_map(&receiver, "map_values")?;
-            let vals: Vec<Value> = m.values().cloned().collect();
-            Ok(list_value((vals)))
-        }
-
-        "map_contains_key" | "map_has" => {
-            let m = expect_map(&receiver, "map_contains_key")?;
-            let key = args.first().ok_or_else(|| InterpError::TypeError {
-                msg: "map_contains_key requires a key argument".to_string(),
-            })?;
-            match CanonKey::new(key.clone()) {
-                Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
-                None => Ok(Value::Bool(false)),
-            }
-        }
-
-        "map_is_empty" => {
-            let m = expect_map(&receiver, "map_is_empty")?;
-            Ok(Value::Bool(m.is_empty()))
-        }
-
-        "insert" | "map_insert" => {
-            let m = expect_map(&receiver, "insert")?;
-            let (key, val) = match args {
-                [k, v] => (k.clone(), v.clone()),
-                _ => {
-                    return Err(InterpError::TypeError {
-                        msg: "insert requires (key, value) arguments".to_string(),
-                    })
-                }
-            };
-            let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
-                msg: "insert key is not a valid map key (closure/fn/NaN)".to_string(),
-            })?;
-            let mut counters = ctx.mutation_counters.borrow_mut();
-            counters.map_insert_calls += 1;
-            drop(counters);
-            Ok(map_value(m.update(ck, val)))
-        }
-
-        "merge" => {
-            let base = expect_map(&receiver, "merge")?;
-            let overlay = expect_map(args.first().unwrap_or(&Value::Null), "merge")?;
-            let mut counters = ctx.mutation_counters.borrow_mut();
-            counters.map_merge_calls += 1;
-            drop(counters);
-            Ok(map_value((*overlay).clone().union((*base).clone())))
-        }
-
-        "keys" => {
-            let m = expect_map(&receiver, "keys")?;
-            let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
-            Ok(list_value((keys)))
-        }
-
-        "values" => {
-            let m = expect_map(&receiver, "values")?;
-            let vals: Vec<Value> = m.values().cloned().collect();
-            Ok(list_value((vals)))
-        }
-
-        "replace" => {
-            let s = expect_string(&receiver, "replace")?;
-            match args {
-                [from, to] => {
-                    let from_s = format!("{}", from);
-                    let to_s = format!("{}", to);
-                    Ok(Value::Str(s.replace(&from_s, &to_s)))
-                }
-                _ => Err(InterpError::TypeError {
-                    msg: "replace requires (from, to) arguments".to_string(),
-                }),
-            }
-        }
-
-        "split" => {
-            let s = expect_string(&receiver, "split")?;
-            let sep = expect_str(args.first(), "split")?;
-            let parts: Vec<Value> = s.split(&sep).map(|p| Value::Str(p.to_string())).collect();
-            Ok(list_value((parts)))
-        }
-
-        "trim" => {
-            let s = expect_string(&receiver, "trim")?;
-            Ok(Value::Str(s.trim().to_string()))
-        }
-
-        "starts_with" => {
-            let s = expect_string(&receiver, "starts_with")?;
-            let prefix = expect_str(args.first(), "starts_with")?;
-            Ok(Value::Bool(s.starts_with(&prefix)))
-        }
-
-        "ends_with" => {
-            let s = expect_string(&receiver, "ends_with")?;
-            let suffix = expect_str(args.first(), "ends_with")?;
-            Ok(Value::Bool(s.ends_with(&suffix)))
-        }
-
-        "substring" => {
-            let s = expect_string(&receiver, "substring")?;
-            match args {
-                [start, end] => {
-                    let s_idx = expect_int(Some(start), "substring start")? as usize;
-                    let e_idx = expect_int(Some(end), "substring end")? as usize;
-                    let sliced: String = s
-                        .chars()
-                        .skip(s_idx)
-                        .take(e_idx.saturating_sub(s_idx))
-                        .collect();
-                    Ok(Value::Str(sliced))
-                }
-                _ => Err(InterpError::TypeError {
-                    msg: "substring requires (start, end) arguments".to_string(),
-                }),
-            }
-        }
-
-        "char_at" => {
-            let s = expect_string(&receiver, "char_at")?;
-            let idx = expect_int(args.first(), "char_at")?;
-            Ok(s.chars()
-                .nth(idx as usize)
-                .map(|c| Value::Str(c.to_string()))
-                .unwrap_or(Value::Null))
-        }
-
-        "index_by" => list_method_with_closure(
-            "index_by",
-            receiver,
-            args,
-            env,
-            ctx,
-            |items, f, env, ctx| {
-                let mut m = HamtMap::new();
-                for item in items.iter() {
-                    let key = apply_closure(f, &[item.clone()], env, ctx)?;
-                    let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
-                        msg: "index_by key is not a valid map key (closure/fn/NaN)".to_string(),
-                    })?;
-                    m.insert(ck, item.clone());
-                }
-                Ok(map_value(m))
-            },
-        ),
-
-        _ => Err(InterpError::Unimplemented {
-            what: format!("method '{}'", method),
-        }),
-    }
+    v1_algebra_method_arms!(v1_algebra_dispatch, method, receiver, args, env, ctx)
 }
 
 pub fn fixture_now_secs(ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
@@ -9214,61 +9267,96 @@ macro_rules! v1_builtin_arms {
             // into a nested list; they share an `arm_identity`, so `contains` as a
             // free call and `contains` as a method stay two rows while `length`,
             // `count` and `size` stay one arm under three rows.
-            "interpreter_free_call_arm_rows" => {
-                let mut items: Vec<Value> = Vec::new();
-                for spellings in v1_builtin_arm_spellings() {
-                    // The macro grammar requires at least one literal per arm, so an
-                    // arm's identity is its first authored spelling. Deriving it HERE
-                    // is what keeps the .dag side from ever meeting an empty list it
-                    // would have to give a fabricated default.
-                    let first = match spellings.first() {
-                        Some(f) => *f,
-                        None => {
-                            return Err(InterpError::TypeError {
-                                msg: "interpreter_free_call_arm_rows: an arm with no \
-                                      spellings is unrepresentable in the macro grammar"
-                                    .to_string(),
-                            })
+            arm "free_call.interpreter_dispatch_arm_rows" { "interpreter_dispatch_arm_rows" } => {
+                // EVERY primitive dispatch site the interpreter owns, one row per
+                // (site, arm identity, spelling). The identity comes from each
+                // site's macro authority rather than from spelling order, so
+                // reordering an alias group or renaming a user-facing spelling
+                // leaves it untouched.
+                //
+                // Not enumerated here, and deliberately: the `lookup`
+                // short-circuit in `eval_method_call` is an `if`, not a match
+                // arm, and the `Filesystem.Read` hermetic carve-out dispatches
+                // on a service name. Both stay declared in the .dag carrier,
+                // counted, with their own dissolution triggers.
+                let mut rows: Vec<(&str, &str, &str, &str)> = Vec::new();
+                for (form, symbol, roster) in [
+                    ("FreeCall", "eval_builtin_inner", v1_builtin_arm_spellings()),
+                    (
+                        "MethodCall",
+                        "eval_algebra_method_inner",
+                        v1_algebra_arm_spellings(),
+                    ),
+                    (
+                        "NativeSpecial",
+                        "try_v2_std_collection_map_primitive_grounding",
+                        v1_map_grounding_arm_spellings(),
+                    ),
+                ] {
+                    for (arm_identity, spellings) in roster {
+                        for spelling in spellings.iter() {
+                            rows.push((form, symbol, arm_identity, spelling));
                         }
-                    };
-                    let arm_identity = format!("free_call:{}", first);
-                    for spelling in spellings.iter() {
-                        items.push(Value::Record {
-                            type_name: $ctx.sym("InterpreterDispatchArmRow"),
-                            fields: Rc::new(sorted_fields(vec![
-                                ($ctx.sym("arm_identity"), Value::Str(arm_identity.clone())),
-                                (
-                                    $ctx.sym("authored_spelling"),
-                                    Value::Str((*spelling).to_string()),
-                                ),
-                            ])),
-                        });
                     }
                 }
+                for (arm_identity, spelling, _module) in v1_bridge_arm_spellings() {
+                    rows.push(("FreeCall", "eval_call", arm_identity, spelling));
+                }
+                for (form, symbol, roster) in [
+                    (
+                        "NativeSpecial",
+                        "eval_call",
+                        v1_native_intercept_arm_spellings(),
+                    ),
+                    (
+                        "NativeSpecial",
+                        "try_parse_table_memo_dispatch",
+                        v1_parse_table_arm_spellings(),
+                    ),
+                ] {
+                    for (arm_identity, spelling) in roster {
+                        rows.push((form, symbol, arm_identity, spelling));
+                    }
+                }
+                let items: Vec<Value> = rows
+                    .into_iter()
+                    .map(|(form, symbol, arm_identity, spelling)| Value::Record {
+                        type_name: $ctx.sym("InterpreterDispatchArmRow"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("arm_identity"), Value::Str(arm_identity.to_string())),
+                            (
+                                $ctx.sym("authored_spelling"),
+                                Value::Str(spelling.to_string()),
+                            ),
+                            ($ctx.sym("dispatch_form"), Value::Str(form.to_string())),
+                            ($ctx.sym("dispatch_symbol"), Value::Str(symbol.to_string())),
+                        ])),
+                    })
+                    .collect();
                 Ok(Some(list_value(items)))
             },
 
-            "to_string" => {
+            arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
                 })?;
                 Ok(Some(Value::Str(format!("{}", v))))
             },
 
-            "utf8_decode_bytes" => {
+            arm "free_call.utf8_decode_bytes" { "utf8_decode_bytes" } => {
                 let bytes = expect_byte_vec($positional.first().copied(), "utf8_decode_bytes")?;
                 let text =
                     v1_rt::utf8_decode_bytes(&bytes).map_err(|msg| InterpError::TypeError { msg })?;
                 Ok(Some(Value::Str(text)))
             },
 
-            "bytes_octets" => {
+            arm "free_call.bytes_octets" { "bytes_octets" } => {
                 let bytes = expect_byte_vec($positional.first().copied(), "bytes_octets")?;
                 let items: Vec<Value> = bytes.iter().map(|b| Value::Int(*b as i64)).collect();
                 Ok(Some(list_value(items)))
             },
 
-            "octets_bytes" => {
+            arm "free_call.octets_bytes" { "octets_bytes" } => {
                 let arg = $positional
                     .first()
                     .copied()
@@ -9295,13 +9383,13 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(out)))
             },
 
-            "utf8_encode_bytes" => {
+            arm "free_call.utf8_encode_bytes" { "utf8_encode_bytes" } => {
                 let s = expect_str($positional.first().copied(), "utf8_encode_bytes")?;
                 let items: Vec<Value> = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
                 Ok(Some(list_value(items)))
             },
 
-            "discriminant" => match $positional.first() {
+            arm "free_call.discriminant" { "discriminant" } => match $positional.first() {
                 Some(Value::Variant { variant_name, .. }) => {
                     Ok(Some(Value::Str(resolve_sym(*variant_name))))
                 }
@@ -9309,7 +9397,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "chars_to_string" => {
+            arm "free_call.chars_to_string" { "chars_to_string" } => {
                 let cps = match $positional.first().copied() {
                     Some(v) => free_monoid_to_vec(v).ok_or_else(|| InterpError::TypeError {
                         msg: "chars_to_string expects a list of code points".to_string(),
@@ -9338,7 +9426,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Str(s)))
             },
 
-            "get" => match $positional.as_slice() {
+            arm "free_call.get" { "get" } => match $positional.as_slice() {
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
@@ -9347,7 +9435,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "parse_int" => {
+            arm "free_call.parse_int" { "parse_int" } => {
                 let s = expect_str($positional.first().copied(), "parse_int")?;
                 match s.parse::<i64>() {
                     Ok(n) => Ok(Some(Value::Int(n))),
@@ -9355,19 +9443,19 @@ macro_rules! v1_builtin_arms {
                 }
             },
 
-            "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
+            arm "free_call.record_source_chars_index_lookup" { "record_source_chars_index_lookup" } => Ok(Some(Value::Unit)),
 
             // Scaffold arm — dissolution trigger lives on `v1_rt::trace_mark`'s doc comment
             // (realization_measurement_loop Phase 0, docs/plans/realization-measurement-loop.md):
             // delete this arm with the rest of the trace_mark deletion set named there.
-            "trace_mark" => {
+            arm "free_call.trace_mark" { "trace_mark" } => {
                 if let [Value::Str(s)] = $positional.as_slice() {
                     v1_rt::trace_mark(s.clone());
                 }
                 Ok(Some(Value::Unit))
             },
 
-            "concat" => {
+            arm "free_call.concat" { "concat" } => {
                 if $positional.len() >= 2 && $positional.iter().all(|v| matches!(v, Value::Str(_))) {
                     let mut result = String::new();
                     for v in &$positional {
@@ -9418,7 +9506,7 @@ macro_rules! v1_builtin_arms {
                 }
             },
 
-            "count" => match $positional.first() {
+            arm "free_call.count" { "count" } => match $positional.first() {
                 Some(v) => match free_monoid_to_vec(v) {
                     Some(items) => Ok(Some(Value::Int(items.len() as i64))),
                     None => Ok(None),
@@ -9426,7 +9514,7 @@ macro_rules! v1_builtin_arms {
                 None => Ok(None),
             },
 
-            "reverse" => match $positional.first() {
+            arm "free_call.reverse" { "reverse" } => match $positional.first() {
                 Some(Value::Str(_)) => Ok(None),
                 Some(v) => match free_monoid_to_vec(v) {
                     Some(items) => {
@@ -9439,37 +9527,37 @@ macro_rules! v1_builtin_arms {
                 None => Ok(None),
             },
 
-            "string_length" => {
+            arm "free_call.string_length" { "string_length" } => {
                 let s = expect_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.chars().count() as i64)))
             },
 
-            "substring" => {
+            arm "free_call.substring" { "substring" } => {
                 let s = expect_str($positional.first().copied(), "substring")?;
                 let start = expect_int($positional.get(1).copied(), "substring start")?;
                 let end = expect_int($positional.get(2).copied(), "substring end")?;
                 Ok(Some(Value::Str(v1_rt::substring(&s, start, end))))
             },
 
-            "char_at" => {
+            arm "free_call.char_at" { "char_at" } => {
                 let s = expect_str($positional.first().copied(), "char_at")?;
                 let pos = expect_int($positional.get(1).copied(), "char_at pos")?;
                 Ok(Some(Value::Str(v1_rt::char_at(&s, pos))))
             },
 
-            "string_contains" => {
+            arm "free_call.string_contains" { "string_contains" } => {
                 let s = expect_str($positional.first().copied(), "contains")?;
                 let sub = expect_str($positional.get(1).copied(), "contains sub")?;
                 Ok(Some(Value::Bool(s.contains(&sub))))
             },
 
-            "starts_with" => {
+            arm "free_call.starts_with" { "starts_with" } => {
                 let s = expect_str($positional.first().copied(), "starts_with")?;
                 let prefix = expect_str($positional.get(1).copied(), "starts_with prefix")?;
                 Ok(Some(Value::Bool(s.starts_with(&prefix))))
             },
 
-            "length" => match $positional.first() {
+            arm "free_call.length" { "length" } => match $positional.first() {
                 Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
                 Some(v) => match native_len(v) {
                     Some(n) => Ok(Some(Value::Int(n))),
@@ -9481,7 +9569,7 @@ macro_rules! v1_builtin_arms {
                 None => Ok(None),
             },
 
-            "contains" => match $positional.as_slice() {
+            arm "free_call.contains" { "contains" } => match $positional.as_slice() {
                 [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
                 [xs, target, ..] => match free_monoid_to_vec(xs) {
                     Some(items) => Ok(Some(Value::Bool(items.iter().any(|item| item == *target)))),
@@ -9490,41 +9578,41 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "replace" => {
+            arm "free_call.replace" { "replace" } => {
                 let s = expect_str($positional.first().copied(), "replace")?;
                 let from = expect_str($positional.get(1).copied(), "replace from")?;
                 let to = expect_str($positional.get(2).copied(), "replace to")?;
                 Ok(Some(Value::Str(s.replace(&from, &to))))
             },
 
-            "code_point" => {
+            arm "free_call.code_point" { "code_point" } => {
                 let s = expect_str($positional.first().copied(), "code_point")?;
                 let cp = s.chars().next().map(|c| c as i64).unwrap_or(0);
                 Ok(Some(Value::Int(cp)))
             },
 
-            "from_code_point" => {
+            arm "free_call.from_code_point" { "from_code_point" } => {
                 let cp = expect_int($positional.first().copied(), "from_code_point")?;
                 let c = char::from_u32(cp as u32).unwrap_or('\0');
                 Ok(Some(Value::Str(c.to_string())))
             },
 
-            "is_xid_start" => {
+            arm "free_call.is_xid_start" { "is_xid_start" } => {
                 let cp = expect_int($positional.first().copied(), "is_xid_start")?;
                 Ok(Some(Value::Bool(v1_rt::is_xid_start(cp))))
             },
 
-            "is_xid_continue" => {
+            arm "free_call.is_xid_continue" { "is_xid_continue" } => {
                 let cp = expect_int($positional.first().copied(), "is_xid_continue")?;
                 Ok(Some(Value::Bool(v1_rt::is_xid_continue(cp))))
             },
 
-            "is_emoji_ident" => {
+            arm "free_call.is_emoji_ident" { "is_emoji_ident" } => {
                 let cp = expect_int($positional.first().copied(), "is_emoji_ident")?;
                 Ok(Some(Value::Bool(v1_rt::is_emoji_ident(cp))))
             },
 
-            "list_push" | "append" => match $positional.as_slice() {
+            arm "free_call.list_push" { "list_push" | "append" } => match $positional.as_slice() {
                 [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
                 [list_val, item] => match value_to_list_carrier(list_val) {
                     Some((items, copied)) => {
@@ -9541,7 +9629,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "list_concat" => match $positional.as_slice() {
+            arm "free_call.list_concat" { "list_concat" } => match $positional.as_slice() {
                 [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
                 [a, b] => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
                     (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
@@ -9558,11 +9646,11 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "empty_map" => Ok(Some(map_value(HamtMap::new()))),
+            arm "free_call.empty_map" { "empty_map" } => Ok(Some(map_value(HamtMap::new()))),
 
-            "empty_set" => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
+            arm "free_call.empty_set" { "empty_set" } => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
 
-            "set_insert" => match $positional.as_slice() {
+            arm "free_call.set_insert" { "set_insert" } => match $positional.as_slice() {
                 [Value::Set(s), Value::Str(k)] => {
                     let mut counters = $ctx.mutation_counters.borrow_mut();
                     counters.set_insert_calls += 1;
@@ -9575,7 +9663,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "set_union" => match $positional.as_slice() {
+            arm "free_call.set_union" { "set_union" } => match $positional.as_slice() {
                 [Value::Set(a), Value::Set(b)] => {
                     let mut counters = $ctx.mutation_counters.borrow_mut();
                     counters.set_union_calls += 1;
@@ -9588,12 +9676,12 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "set_contains" => match $positional.as_slice() {
+            arm "free_call.set_contains" { "set_contains" } => match $positional.as_slice() {
                 [Value::Set(s), Value::Str(k)] => Ok(Some(Value::Bool(s.contains(k.as_str())))),
                 _ => Ok(None),
             },
 
-            "map_insert" => match $positional.as_slice() {
+            arm "free_call.map_insert" { "map_insert" } => match $positional.as_slice() {
                 [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
                     Some(ck) => {
                         let mut counters = $ctx.mutation_counters.borrow_mut();
@@ -9611,7 +9699,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "lookup" => match $positional.as_slice() {
+            arm "free_call.lookup" { "lookup" } => match $positional.as_slice() {
                 [map, key] => {
                     let raw = raw_map_lookup(map, key, &Env::empty(), $ctx)?;
                     Ok(Some(map_lookup_as_optional(raw, $ctx)))
@@ -9619,7 +9707,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "map_keys" => match $positional.first() {
+            arm "free_call.map_keys" { "map_keys" } => match $positional.first() {
                 Some(Value::Map(m)) => {
                     let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
                     Ok(Some(list_value((keys))))
@@ -9627,7 +9715,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "map_values" => match $positional.first() {
+            arm "free_call.map_values" { "map_values" } => match $positional.first() {
                 Some(Value::Map(m)) => {
                     let vals: Vec<Value> = m.values().cloned().collect();
                     Ok(Some(list_value((vals))))
@@ -9635,7 +9723,7 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "map_contains_key" | "map_has" => match $positional.as_slice() {
+            arm "free_call.map_contains_key" { "map_contains_key" | "map_has" } => match $positional.as_slice() {
                 [Value::Map(m), k] => match CanonKey::new((*k).clone()) {
                     Some(ck) => Ok(Some(Value::Bool(m.contains_key(&ck)))),
                     None => Ok(Some(Value::Bool(false))),
@@ -9643,17 +9731,17 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "map_is_empty" => match $positional.as_slice() {
+            arm "free_call.map_is_empty" { "map_is_empty" } => match $positional.as_slice() {
                 [Value::Map(m)] => Ok(Some(Value::Bool(m.is_empty()))),
                 _ => Ok(None),
             },
 
-            "rc_ptr_eq" | "rc_vec_ptr_eq" => match $positional.as_slice() {
+            arm "free_call.rc_ptr_eq" { "rc_ptr_eq" | "rc_vec_ptr_eq" } => match $positional.as_slice() {
                 [a, b] => Ok(Some(Value::Bool(a == b))),
                 _ => Ok(None),
             },
 
-            "map_merge" => match $positional.as_slice() {
+            arm "free_call.map_merge" { "map_merge" } => match $positional.as_slice() {
                 [Value::Map(base), Value::Map(overlay)] => {
                     let mut counters = $ctx.mutation_counters.borrow_mut();
                     counters.map_merge_calls += 1;
@@ -9663,12 +9751,12 @@ macro_rules! v1_builtin_arms {
                 _ => Ok(None),
             },
 
-            "str_eq" => match $positional.as_slice() {
+            arm "free_call.str_eq" { "str_eq" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] => Ok(Some(Value::Bool(a == b))),
                 _ => Ok(None),
             },
 
-            "atom_identity_hash" => match $positional.as_slice() {
+            arm "free_call.atom_identity_hash" { "atom_identity_hash" } => match $positional.as_slice() {
                 [Value::Str(s)] => Ok(Some(Value::Str(v1_rt::atom_identity_hash(s.clone())))),
                 _ => Err(InterpError::TypeError {
                     msg: "atom_identity_hash requires exactly one string argument".to_string(),
@@ -9678,7 +9766,7 @@ macro_rules! v1_builtin_arms {
             // ObservePeakResidentAtSubject realization seam (witness-realization plan P1):
             // process peak resident set (VmHWM) in bytes. Fail-closed when the host
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
-            "observed_peak_resident_bytes" => match $positional.as_slice() {
+            arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
                     let bytes = std::fs::read_to_string("/proc/self/status")
                         .ok()
@@ -9703,7 +9791,7 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
-            "hash_combine" => match $positional.as_slice() {
+            arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
                         return Err(InterpError::TypeError {
@@ -9717,12 +9805,12 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
-            "filesystem_read" => {
+            arm "free_call.filesystem_read" { "filesystem_read" } => {
                 let path = expect_str($positional.first().copied(), "filesystem_read")?;
                 Ok(Some(eval_filesystem_read_builtin(path, $ctx)?))
             },
 
-            "emit_host_run_transport" => Ok(Some(eval_emit_host_run_transport_builtin(
+            arm "free_call.emit_host_run_transport" { "emit_host_run_transport" } => Ok(Some(eval_emit_host_run_transport_builtin(
                 $positional.first().copied(),
                 $positional.get(1).copied(),
                 $positional.get(2).copied(),
@@ -9730,7 +9818,7 @@ macro_rules! v1_builtin_arms {
                 $ctx,
             )?)),
 
-            "emit_host_run_transport_cached" => Ok(Some(eval_emit_host_run_transport_cached_builtin(
+            arm "free_call.emit_host_run_transport_cached" { "emit_host_run_transport_cached" } => Ok(Some(eval_emit_host_run_transport_cached_builtin(
                 $positional.first().copied(),
                 $positional.get(1).copied(),
                 $positional.get(2).copied(),
@@ -9739,12 +9827,12 @@ macro_rules! v1_builtin_arms {
                 $ctx,
             )?)),
 
-            "emit_host_native_cache_evict" => Ok(Some(eval_emit_host_native_cache_evict_builtin(
+            arm "free_call.emit_host_native_cache_evict" { "emit_host_native_cache_evict" } => Ok(Some(eval_emit_host_native_cache_evict_builtin(
                 $positional.first().copied(),
                 $ctx,
             )?)),
 
-            "contiguous_loop_elementwise_kernel" => {
+            arm "free_call.contiguous_loop_elementwise_kernel" { "contiguous_loop_elementwise_kernel" } => {
                 let op_codes = expect_int_list_flex($positional.first().copied(), $name)?;
                 let a = expect_int_list_flex($positional.get(1).copied(), $name)?;
                 let b = expect_int_list_flex($positional.get(2).copied(), $name)?;
@@ -9765,7 +9853,7 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "contiguous_loop_elementwise_float_kernel" => {
+            arm "free_call.contiguous_loop_elementwise_float_kernel" { "contiguous_loop_elementwise_float_kernel" } => {
                 let op_codes = expect_int_list_flex($positional.first().copied(), $name)?;
                 let fma_policy = expect_fma_contraction_policy_wire($positional.get(1).copied(), $name)?;
                 let a = expect_float_list_flex($positional.get(2).copied(), $name)?;
@@ -9788,7 +9876,7 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "layer_import_facts" => {
+            arm "free_call.layer_import_facts" { "layer_import_facts" } => {
                 let std_roots = expect_str_list($positional.first().copied(), "layer_import_facts")?;
                 let extdeps_roots = expect_str_list($positional.get(1).copied(), "layer_import_facts")?;
                 let facts = crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
@@ -9811,7 +9899,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "import_resolution_facts" => {
+            arm "free_call.import_resolution_facts" { "import_resolution_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "import_resolution_facts")?;
                 let importer_roots =
@@ -9837,7 +9925,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "reference_resolution_facts" => {
+            arm "free_call.reference_resolution_facts" { "reference_resolution_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "reference_resolution_facts")?;
                 let importer_roots =
@@ -9869,7 +9957,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "concept_decl_facts" => {
+            arm "free_call.concept_decl_facts" { "concept_decl_facts" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "concept_decl_facts")?;
                 Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(
                     $ctx,
@@ -9877,7 +9965,7 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
-            "export_signature_facts" => {
+            arm "free_call.export_signature_facts" { "export_signature_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "export_signature_facts")?;
                 Ok(Some(
@@ -9885,7 +9973,7 @@ macro_rules! v1_builtin_arms {
                 ))
             },
 
-            "decl_facts" => {
+            arm "free_call.decl_facts" { "decl_facts" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "decl_facts")?;
                 Ok(Some(crate::coproduct_reflection::eval_decl_facts(
                     $ctx,
@@ -9893,7 +9981,7 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
-            "module_declaration_facts" => {
+            arm "free_call.module_declaration_facts" { "module_declaration_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "module_declaration_facts")?;
                 let facts = crate::cli_run::module_declaration_facts(&pool_roots);
@@ -9910,7 +9998,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "fact_cardinality_decl_facts" => {
+            arm "free_call.fact_cardinality_decl_facts" { "fact_cardinality_decl_facts" } => {
                 let facts = crate::cli_run::fact_cardinality_decl_facts();
                 let mut items: Vec<Value> = Vec::new();
                 for f in facts {
@@ -9939,19 +10027,19 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "languages_consumer_census_data_decl_count" => Ok(Some(Value::Int(
+            arm "free_call.languages_consumer_census_data_decl_count" { "languages_consumer_census_data_decl_count" } => Ok(Some(Value::Int(
                 crate::cli_run::languages_consumer_census_data_decl_count(),
             ))),
 
-            "languages_consumer_census_per_language_row_count" => Ok(Some(Value::Int(
+            arm "free_call.languages_consumer_census_per_language_row_count" { "languages_consumer_census_per_language_row_count" } => Ok(Some(Value::Int(
                 crate::cli_run::languages_consumer_census_per_language_row_count(),
             ))),
 
-            "languages_consumer_census_format_row_count" => Ok(Some(Value::Int(
+            arm "free_call.languages_consumer_census_format_row_count" { "languages_consumer_census_format_row_count" } => Ok(Some(Value::Int(
                 crate::cli_run::languages_consumer_census_format_row_count(),
             ))),
 
-            "languages_consumer_census_external_consumer_count" => {
+            arm "free_call.languages_consumer_census_external_consumer_count" { "languages_consumer_census_external_consumer_count" } => {
                 let decl_name = expect_str(
                     $positional.first().copied(),
                     "languages_consumer_census_external_consumer_count",
@@ -9961,7 +10049,7 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "languages_consumer_census_is_composition_only" => {
+            arm "free_call.languages_consumer_census_is_composition_only" { "languages_consumer_census_is_composition_only" } => {
                 let decl_name = expect_str(
                     $positional.first().copied(),
                     "languages_consumer_census_is_composition_only",
@@ -9971,7 +10059,7 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "languages_consumer_census_has_external_consumer" => {
+            arm "free_call.languages_consumer_census_has_external_consumer" { "languages_consumer_census_has_external_consumer" } => {
                 let decl_name = expect_str(
                     $positional.first().copied(),
                     "languages_consumer_census_has_external_consumer",
@@ -9981,7 +10069,7 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "shell_materialize_operation_argv" => {
+            arm "free_call.shell_materialize_operation_argv" { "shell_materialize_operation_argv" } => {
                 let path = expect_str(
                     $positional.first().copied(),
                     "shell_materialize_operation_argv",
@@ -10005,7 +10093,7 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "shell_transport_operation_rows" => {
+            arm "free_call.shell_transport_operation_rows" { "shell_transport_operation_rows" } => {
                 let mut items: Vec<Value> = Vec::new();
                 for row in crate::cli_run::shell_transport_operation_rows() {
                     items.push(Value::Record {
@@ -10039,7 +10127,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "extdeps_qualified_name_resolves_in_derived_module_set" => {
+            arm "free_call.extdeps_qualified_name_resolves_in_derived_module_set" { "extdeps_qualified_name_resolves_in_derived_module_set" } => {
                 let module = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg:
                         "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
@@ -10050,7 +10138,7 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "transport_script_position_facts_for_path" => {
+            arm "free_call.transport_script_position_facts_for_path" { "transport_script_position_facts_for_path" } => {
                 let path = expect_str(
                     $positional.first().copied(),
                     "transport_script_position_facts_for_path",
@@ -10075,7 +10163,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "extdeps_shape_transport_policy_facts_for_qualified_name" => {
+            arm "free_call.extdeps_shape_transport_policy_facts_for_qualified_name" { "extdeps_shape_transport_policy_facts_for_qualified_name" } => {
                 let qn = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "extdeps_shape_transport_policy_facts_for_qualified_name requires a QualifiedName"
                         .to_string(),
@@ -10170,7 +10258,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(result))
             },
 
-            "extdeps_external_authority_facts_for_qualified_name" => {
+            arm "free_call.extdeps_external_authority_facts_for_qualified_name" { "extdeps_external_authority_facts_for_qualified_name" } => {
                 let qn = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "extdeps_external_authority_facts_for_qualified_name requires a QualifiedName"
                         .to_string(),
@@ -10191,31 +10279,31 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(result))
             },
 
-            "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
+            arm "free_call.extdeps_external_authority_live_clean_tree_holds" { "extdeps_external_authority_live_clean_tree_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::extdeps_external_authority_live_clean_tree_holds(),
             ))),
-            "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
+            arm "free_call.extdeps_external_authority_live_roster_module_count" { "extdeps_external_authority_live_roster_module_count" } => Ok(Some(Value::Int(
                 crate::cli_run::extdeps_external_authority_live_roster_module_count(),
             ))),
 
-            "doc_graph_orphan_count" => {
+            arm "free_call.doc_graph_orphan_count" { "doc_graph_orphan_count" } => {
                 let extra_roots = expect_str_list($positional.first().copied(), $name)?;
                 Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(
                     extra_roots,
                 ))))
             },
-            "doc_graph_admitted_root_count" => {
+            arm "free_call.doc_graph_admitted_root_count" { "doc_graph_admitted_root_count" } => {
                 let extra_roots = expect_str_list($positional.first().copied(), $name)?;
                 Ok(Some(Value::Int(
                     crate::cli_run::doc_graph_admitted_root_count(extra_roots),
                 )))
             },
-            "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
+            arm "free_call.doc_graph_dangling_link_count" { "doc_graph_dangling_link_count" } => Ok(Some(Value::Int(
                 crate::cli_run::doc_graph_dangling_link_count(),
             ))),
-            "doc_graph_doc_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
+            arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
-            "compile_dag_rust_emit_check" => {
+            arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
                 let includes = expect_str_list($positional.get(2).copied(), $name)?;
@@ -10227,78 +10315,78 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
+            arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
             ))),
 
-            "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
+            arm "free_call.witness_layer_roots_compile_clean_emit_check" { "witness_layer_roots_compile_clean_emit_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
             ))),
-            "consume_floor_compile_clean_gate_verdict" => Ok(Some(Value::Bool(
+            arm "free_call.consume_floor_compile_clean_gate_verdict" { "consume_floor_compile_clean_gate_verdict" } => Ok(Some(Value::Bool(
                 crate::cli_run::consume_floor_compile_clean_gate_verdict(),
             ))),
 
-            "witness_compile_clean_cli_floor_verdicts_agree" => Ok(Some(Value::Bool(
+            arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
             ))),
 
-            "test_migration_debt_module_count" => Ok(Some(Value::Int(
+            arm "free_call.test_migration_debt_module_count" { "test_migration_debt_module_count" } => Ok(Some(Value::Int(
                 crate::cli_run::test_migration_debt_module_count(),
             ))),
-            "test_migration_debt_total_loc" => Ok(Some(Value::Int(
+            arm "free_call.test_migration_debt_total_loc" { "test_migration_debt_total_loc" } => Ok(Some(Value::Int(
                 crate::cli_run::test_migration_debt_total_loc(),
             ))),
-            "test_migration_debt_total_test_fns" => Ok(Some(Value::Int(
+            arm "free_call.test_migration_debt_total_test_fns" { "test_migration_debt_total_test_fns" } => Ok(Some(Value::Int(
                 crate::cli_run::test_migration_debt_total_test_fns(),
             ))),
-            "test_migration_debt_module_names" => {
+            arm "free_call.test_migration_debt_module_names" { "test_migration_debt_module_names" } => {
                 let names = crate::cli_run::test_migration_debt_module_names();
                 let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
                 Ok(Some(list_value(items)))
             },
-            "test_migration_debt_known_covered_module_is_not_debt" => Ok(Some(Value::Bool(
+            arm "free_call.test_migration_debt_known_covered_module_is_not_debt" { "test_migration_debt_known_covered_module_is_not_debt" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
             ))),
-            "test_migration_delete_guard_holds" => Ok(Some(Value::Bool(
+            arm "free_call.test_migration_delete_guard_holds" { "test_migration_delete_guard_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_delete_guard_holds(),
             ))),
-            "test_migration_delete_guard_uncovered_deletes" => {
+            arm "free_call.test_migration_delete_guard_uncovered_deletes" { "test_migration_delete_guard_uncovered_deletes" } => {
                 let paths = crate::cli_run::test_migration_delete_guard_uncovered_deletes();
                 let items: Vec<Value> = paths.into_iter().map(Value::Str).collect();
                 Ok(Some(list_value(items)))
             },
 
-            "inert_carrier_names_live" => {
+            arm "free_call.inert_carrier_names_live" { "inert_carrier_names_live" } => {
                 let names = crate::cli_run::inert_carrier_names_live();
                 let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
                 Ok(Some(list_value(items)))
             },
-            "inert_carrier_declared_count" => Ok(Some(Value::Int(
+            arm "free_call.inert_carrier_declared_count" { "inert_carrier_declared_count" } => Ok(Some(Value::Int(
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
-            "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
+            arm "free_call.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } => Ok(Some(Value::Int(
                 crate::cli_run::inert_lens_unreached_module_count(),
             ))),
-            "inert_lens_top_level_module_count" => Ok(Some(Value::Int(
+            arm "free_call.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } => Ok(Some(Value::Int(
                 crate::cli_run::inert_lens_top_level_module_count(),
             ))),
 
-            "non_fold_residue_count" => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
-            "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
+            arm "free_call.non_fold_residue_count" { "non_fold_residue_count" } => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
+            arm "free_call.non_fold_residue_unrostered_count" { "non_fold_residue_unrostered_count" } => Ok(Some(Value::Int(
                 crate::cli_run::non_fold_residue_unrostered_count(),
             ))),
-            "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
+            arm "free_call.non_fold_residue_stale_roster_count" { "non_fold_residue_stale_roster_count" } => Ok(Some(Value::Int(
                 crate::cli_run::non_fold_residue_stale_roster_count(),
             ))),
-            "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
+            arm "free_call.non_fold_residue_coproduct_universe_count" { "non_fold_residue_coproduct_universe_count" } => Ok(Some(Value::Int(
                 crate::cli_run::non_fold_residue_coproduct_universe_count(),
             ))),
 
-            "commit_witness_claim_roster_unresolvable_count" => Ok(Some(Value::Int(
+            arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
-            "commit_witness_claim_pair_resolvable" => {
+            arm "free_call.commit_witness_claim_pair_resolvable" { "commit_witness_claim_pair_resolvable" } => {
                 let entry = expect_str(
                     $positional.first().copied(),
                     "commit_witness_claim_pair_resolvable entry",
@@ -10311,23 +10399,23 @@ macro_rules! v1_builtin_arms {
                     crate::cli_run::commit_witness_claim_pair_resolvable(&entry, &function),
                 )))
             },
-            "non_fold_residue_wildcard_red_fixture_holds" => Ok(Some(Value::Bool(
+            arm "free_call.non_fold_residue_wildcard_red_fixture_holds" { "non_fold_residue_wildcard_red_fixture_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::non_fold_residue_wildcard_red_fixture_holds(),
             ))),
-            "non_fold_residue_total_fold_green_fixture_holds" => Ok(Some(Value::Bool(
+            arm "free_call.non_fold_residue_total_fold_green_fixture_holds" { "non_fold_residue_total_fold_green_fixture_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::non_fold_residue_total_fold_green_fixture_holds(),
             ))),
-            "non_fold_residue_roster_red_fixture_holds" => Ok(Some(Value::Bool(
+            arm "free_call.non_fold_residue_roster_red_fixture_holds" { "non_fold_residue_roster_red_fixture_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::non_fold_residue_roster_red_fixture_holds(),
             ))),
-            "non_fold_residue_synthetic_unrostered_red_holds" => Ok(Some(Value::Bool(
+            arm "free_call.non_fold_residue_synthetic_unrostered_red_holds" { "non_fold_residue_synthetic_unrostered_red_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::non_fold_residue_synthetic_unrostered_red_holds(),
             ))),
 
-            "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
+            arm "free_call.complexity_linearity_syntactic_finding_count" { "complexity_linearity_syntactic_finding_count" } => Ok(Some(Value::Int(
                 crate::cli_run::complexity_linearity_syntactic_finding_count(),
             ))),
-            "complexity_linearity_wildcard_facts" => {
+            arm "free_call.complexity_linearity_wildcard_facts" { "complexity_linearity_wildcard_facts" } => {
                 let facts = crate::cli_run::complexity_linearity_wildcard_facts();
                 let mut items: Vec<Value> = Vec::new();
                 for f in facts {
@@ -10347,7 +10435,7 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            "fallback_arm_census_facts" => {
+            arm "free_call.fallback_arm_census_facts" { "fallback_arm_census_facts" } => {
                 let facts = crate::cli_run::fallback_arm_census_facts();
                 let mut items: Vec<Value> = Vec::new();
                 for f in facts {
@@ -10368,7 +10456,7 @@ macro_rules! v1_builtin_arms {
                 }
                 Ok(Some(list_value(items)))
             },
-            "fallback_arm_census_class_count" => {
+            arm "free_call.fallback_arm_census_class_count" { "fallback_arm_census_class_count" } => {
                 let class = expect_str(
                     $positional.first().copied(),
                     "fallback_arm_census_class_count",
@@ -10377,14 +10465,14 @@ macro_rules! v1_builtin_arms {
                     crate::cli_run::fallback_arm_census_class_count(&class),
                 )))
             },
-            "fallback_arm_census_total" => Ok(Some(Value::Int(
+            arm "free_call.fallback_arm_census_total" { "fallback_arm_census_total" } => Ok(Some(Value::Int(
                 crate::cli_run::fallback_arm_census_total(),
             ))),
-            "fallback_arm_census_reconciliation_holds" => Ok(Some(Value::Bool(
+            arm "free_call.fallback_arm_census_reconciliation_holds" { "fallback_arm_census_reconciliation_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::fallback_arm_census_reconciliation_holds(),
             ))),
 
-            "complexity_linearity_syntactic_site_fired" => {
+            arm "free_call.complexity_linearity_syntactic_site_fired" { "complexity_linearity_syntactic_site_fired" } => {
                 let site = expect_str(
                     $positional.first().copied(),
                     "complexity_linearity_syntactic_site_fired",
@@ -10393,7 +10481,7 @@ macro_rules! v1_builtin_arms {
                     crate::cli_run::complexity_linearity_syntactic_site_fired(&site),
                 )))
             },
-            "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
+            arm "free_call.census_corpus_roots_follow_layer_authority" { "census_corpus_roots_follow_layer_authority" } => Ok(Some(Value::Bool(
                 crate::cli_run::census_corpus_roots_follow_layer_authority(),
             ))),
 
@@ -10403,7 +10491,7 @@ macro_rules! v1_builtin_arms {
 
 /// Expansion 1 of `v1_builtin_arms`: the dispatch itself.
 macro_rules! v1_builtin_dispatch {
-    ($n:ident, $p:ident, $c:ident; $($($lit:literal)|+ => $body:expr ,)*) => {
+    ($n:ident, $p:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
         match $n {
             $($($lit)|+ => $body,)*
             _ => Ok(None),
@@ -10414,15 +10502,15 @@ macro_rules! v1_builtin_dispatch {
 /// Expansion 2 of `v1_builtin_arms`: the roster, derived from the same tokens.
 /// Arm bodies are matched but not emitted, so they are never name-resolved here.
 macro_rules! v1_builtin_roster {
-    ($n:ident, $p:ident, $c:ident; $($($lit:literal)|+ => $body:expr ,)*) => {
-        &[$(&[$($lit),+]),*]
+    ($n:ident, $p:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
+        &[$(($id, &[$($lit),+])),*]
     };
 }
 
 /// The free-call primitive surface, enumerated. One entry per dispatch arm; the
 /// inner slice holds that arm's spellings, so alias groups stay visible rather
 /// than being flattened into a name set.
-pub fn v1_builtin_arm_spellings() -> &'static [&'static [&'static str]] {
+pub fn v1_builtin_arm_spellings() -> &'static [(&'static str, &'static [&'static str])] {
     // `name` exists only to satisfy the shared `let name = $name;` above; the
     // roster expansion matches the arm bodies but never emits them, so nothing
     // else in this scope is read.

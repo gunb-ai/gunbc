@@ -489,7 +489,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "interpreter_free_call_arm_rows".to_string(),
+            "interpreter_dispatch_arm_rows".to_string(),
             list_of_type_variable("interpreter_dispatch_arm_row_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
