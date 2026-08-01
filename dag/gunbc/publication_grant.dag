@@ -59,6 +59,17 @@ fn public_file_publish_grant(path: FilePath) -> PublicFilePublishGrant {
 }
 
 data public_file_publish_grants: List<PublicFilePublishGrant> = [
+  public_file_publish_grant(path: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/matrix-governor.log"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/matrix-run.log"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-broad-capped.json"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-explicit-order-a.json"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-explicit-order-b.json"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-narrow-disjoint.json"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-narrow-production.json"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-typical-disjoint.json"),
+  public_file_publish_grant(path: "docs/plans/receipts/entry-graph-union-slice2/receipt-typical-production.json"),
   public_file_publish_grant(path: "dag/extdeps/advertising/google_ads.dag"),
   public_file_publish_grant(path: "dag/extdeps/advertising/meta_ads.dag"),
   public_file_publish_grant(path: "dag/extdeps/advertising/types.dag"),
@@ -100,6 +111,7 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit.dag"),
   public_file_publish_grant(path: "src/v2/workflow/ci_heal_revalidation_preflight_emit_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/publication_placement_gate_test.dag"),
+  public_file_publish_grant(path: "src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs"),
   public_file_publish_grant(path: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag"),
   public_file_publish_grant(path: "dag/gunbc/stage0_rust_host_observation.dag"),
   public_file_publish_grant(path: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"),
