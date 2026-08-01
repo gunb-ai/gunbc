@@ -529,13 +529,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "One decision function, handed the candidates rather than finding them",
-        boundary: "Given a list of things a name could refer to, decide: none, exactly one, or more than one. Checking that the name and the declarations are well formed and of a kind that could match. NOT working out which declarations are in view — that is the next step.",
+        headline: "One canonical decision authority, handed the candidates rather than finding them",
+        boundary: "Given a list of things a name could refer to, decide: none, exactly one, or more than one. Checking that what it was handed is well formed and of a kind that could match. NOT working out which declarations are in view — that is the next step. Owns the canonical decision itself; does NOT own removing the older mechanisms that still decide it their own way.",
         displaced_cost: "Several lookup mechanisms exist today and they can disagree about the same name, which is how a program silently ends up meaning something other than what was written. Separating the decision from the search makes the decision reviewable on its own.",
-        first_slice: "Validate the name and its declarations, then call the one decision function exactly once on a candidate list supplied from outside.",
-        red_control: "A malformed name refuses; a declaration of the wrong kind is excluded; supplied lists of nothing, one thing, and two things give unresolved, resolved, and ambiguous respectively; and no second place in the compiler makes that same decision.",
-        out_of_scope: "Does not work out which declarations are visible, does not order them by where they were written, does not build an index, and does not claim the wider naming work is finished.",
-        handback: "The decision function plus worked none/one/many examples actually run, and evidence that nothing else decides the same question."
+        first_slice: "Validate what was handed in, then call the one decision function exactly once on a candidate list supplied from outside.",
+        red_control: "Malformed occurrence transport refuses; a declaration of the wrong kind is excluded; a candidate given in the wrong role refuses, distinctly from one that is absent; the same declaration supplied twice refuses as a malformed population rather than counting as two; and supplied lists of nothing, one thing, and two distinct things give unresolved, resolved, and ambiguous respectively.",
+        out_of_scope: "Does not work out which declarations are visible, does not order them by where they were written, does not build an index, and does not claim the wider naming work is finished. Does not require the older deciding mechanisms to be gone — that is the retirement node's job, and holding it here would block the next step on work the next step does not need.",
+        handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
     active_large(
@@ -620,10 +620,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
         headline: "Delete every other way of deciding what a name means",
-        boundary: "Once all ordinary consumers use the one rule, remove the older mechanisms: name-string matching, walking up the parent chain, the global pool of bare names, and the import retry.",
+        boundary: "Once all ordinary consumers use the one rule, remove the older mechanisms: name-string matching, walking up the parent chain, the global pool of bare names, the import retry, and the hand-written seed mirror that counts none/one/many for itself inside the bootstrap compiler. Owning that last one HERE, rather than in the node that defines the canonical decision, is deliberate — see namespace_kernel_authority_amendment_note.",
         displaced_cost: "Leaving them in place means one name can still get different answers from different code paths.",
         first_slice: "Inventory every remaining place that decides what a name refers to, and remove one complete family.",
-        red_control: "The inventory refuses anything it cannot classify and must reach zero before this closes.",
+        red_control: "The inventory refuses anything it cannot classify and must reach zero before this closes; the seed mirror is one of its rows and is not closed by anything upstream of it.",
         out_of_scope: "Code that merely stores where things are written, without choosing meanings, stays.",
         handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       )
