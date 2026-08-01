@@ -1,6 +1,7 @@
 module v1.compiler.tokenize
 
-import std.types { SourceSpan, unicode_scalar }
+import std.types { SourceSpan }
+import std.unicode.types { unicode_scalar }
 
 import v1.std.core {
   make_file_span,
@@ -409,7 +410,7 @@ data escape_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test c
 
 data hex_escape_note: String = "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies)."
 
-data unicode_escape_note: String = "\\u\{H...\} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.types.unicode_scalar authority used by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan."
+data unicode_escape_note: String = "\\u\{H...\} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan."
 
 data unknown_escape_refusal_note: String = "An escape marker has already entered a closed grammar production, so an unrecognized or malformed escape refuses as one located ShUnknown string token; it never returns a successfully decoded prefix and never copies unsupported syntax into an accepted value. A literal backslash is spelled \\\\. The former passthrough arm made unsupported syntax indistinguishable from supported syntax and was the root class behind the inert Unicode escapes. Its 142-site regex-heavy corpus frontier migrated with this close, and the whole corpus is the receipt because every source passes through this tokenizer."
 
