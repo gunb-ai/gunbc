@@ -91,15 +91,15 @@ type GuaranteeMeasurementReceipt {
 
 data receipt_identity_note: String = "Every field is REQUIRED - no Optional arms - so a receipt missing an identity component or a revision is unwritable at construction rather than caught by a check (DESIGN 5 construction over validation; the roadmap node red_control names this). The three revisions answer the three-way ambiguity the baseline stage names: subject_revision is the commit whose compiler artifacts were measured, harness_revision is the commit whose probe harness ran, probe_set_digest is the content address of the exact probe set - a baseline is the anchor's subject under today's harness and probe set, and without all three 'the baseline at commit X' names three different measurements. Enforcement of required-field construction is itself an open census class (floor-record-construction-wall); this module states the intent by shape and the wall, when it lands, is what makes the shape load-bearing corpus-wide."
 
-data guarantee_registry_mechanism_note: String = "The registry MECHANISM without a registry POPULATION: uniqueness and exactly-one resolution are folds over caller-supplied rows, witnessed here against synthetic rows only. The real class and path populations arrive with the carrier and probe stages; this module supplying them would be Stage 0 claiming compiler coverage it does not have. Resolution mirrors gunbc.roadmap_identity: exactly-one, never first-pick - a duplicate registry answered with a plausible first row is the fabricated-output arm, and it fails at exactly the moment the registry is corrupt."
+data guarantee_registry_mechanism_note: String = "The registry MECHANISM without a registry POPULATION: uniqueness and exactly-one resolution are folds over caller-supplied rows, witnessed here against synthetic rows only. The real class and path populations arrive with the carrier and probe stages; this module supplying them would be Stage 0 claiming compiler coverage it does not have. Resolution mirrors gunbc.roadmap_identity: exactly-one, never first-pick - a duplicate registry answered with a plausible first row is the fabricated-output arm, and it fails at exactly the moment the registry is corrupt. The lookup key is the branded GuaranteePathId end-to-end, through the refusal variants, and join_receipt_to_path passes receipt.path without erasing it to String (review 46179). Measured honestly rather than assumed (DESIGN 4b: a brand is cosmetic until construction and acceptance enforce the distinction): today's checker ACCEPTS a bare String at both a branded parameter and a branded record field - two executed controls, both accepted - so this threading is model-correctness and erasure-removal, not yet a wall. Brand acceptance-enforcement is its own guarantee class for the probe corpus to carry (below floor, with those controls as its discriminating probes), and this seam hardens for free when that class climbs."
 
 type GuaranteePathResolution
   = PathResolved { path: GuaranteePath }
-  | PathUnknown { wanted: String }
-  | PathDuplicate { wanted: String, matches: Int }
+  | PathUnknown { wanted: GuaranteePathId }
+  | PathDuplicate { wanted: GuaranteePathId, matches: Int }
 
-fn resolve_guarantee_path(paths: List<GuaranteePath>, wanted: String) -> GuaranteePathResolution {
-  let hits = paths |> filter(p => (p.id as String) == wanted)
+fn resolve_guarantee_path(paths: List<GuaranteePath>, wanted: GuaranteePathId) -> GuaranteePathResolution {
+  let hits = paths |> filter(p => (p.id as String) == (wanted as String))
   if count(hits) == 0 {
     PathUnknown { wanted: wanted }
   } else if count(hits) > 1 {
@@ -114,11 +114,11 @@ fn resolve_guarantee_path(paths: List<GuaranteePath>, wanted: String) -> Guarant
 
 type ReceiptJoin
   = ReceiptJoined { path: GuaranteePath }
-  | ReceiptPathUnknown { receipt_path: String }
-  | ReceiptPathDuplicate { receipt_path: String, matches: Int }
+  | ReceiptPathUnknown { receipt_path: GuaranteePathId }
+  | ReceiptPathDuplicate { receipt_path: GuaranteePathId, matches: Int }
 
 fn join_receipt_to_path(receipt: GuaranteeMeasurementReceipt, paths: List<GuaranteePath>) -> ReceiptJoin {
-  match resolve_guarantee_path(paths: paths, wanted: receipt.path as String) {
+  match resolve_guarantee_path(paths: paths, wanted: receipt.path) {
     PathResolved { path: p } => ReceiptJoined { path: p }
     PathUnknown { wanted: w } => ReceiptPathUnknown { receipt_path: w }
     PathDuplicate { wanted: w, matches: m } => ReceiptPathDuplicate { receipt_path: w, matches: m }

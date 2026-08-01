@@ -79,7 +79,7 @@ test fn receipt_naming_absent_path_refuses_unknown() -> Bool {
   let r = synth_receipt(path_id: "no-such-path")
   match join_receipt_to_path(receipt: r, paths: paths) {
     ReceiptJoined { path: _ } => false
-    ReceiptPathUnknown { receipt_path: w } => w == "no-such-path"
+    ReceiptPathUnknown { receipt_path: w } => (w as String) == "no-such-path"
     ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
   }
 }
@@ -90,7 +90,7 @@ test fn duplicate_path_registry_refuses_never_first_pick() -> Bool {
   match join_receipt_to_path(receipt: r, paths: paths) {
     ReceiptJoined { path: _ } => false
     ReceiptPathUnknown { receipt_path: _ } => false
-    ReceiptPathDuplicate { receipt_path: w, matches: m } => w == "dup" && m == 2
+    ReceiptPathDuplicate { receipt_path: w, matches: m } => (w as String) == "dup" && m == 2
   }
 }
 
@@ -101,14 +101,14 @@ test fn resolution_is_exactly_one_across_all_three_outcomes() -> Bool {
     synth_phase_path(id: "c-eval", boundary: InferToEval),
     synth_phase_path(id: "c-translate", boundary: InferToTranslate),
   ]
-  let resolved = match resolve_guarantee_path(paths: paths, wanted: "a") {
+  let resolved = match resolve_guarantee_path(paths: paths, wanted: "a" as GuaranteePathId) {
     PathResolved { path: p } => (p.id as String) == "a"
     PathUnknown { wanted: _ } => false
     PathDuplicate { wanted: _, matches: _ } => false
   }
-  let unknown = match resolve_guarantee_path(paths: paths, wanted: "zzz") {
+  let unknown = match resolve_guarantee_path(paths: paths, wanted: "zzz" as GuaranteePathId) {
     PathResolved { path: _ } => false
-    PathUnknown { wanted: w } => w == "zzz"
+    PathUnknown { wanted: w } => (w as String) == "zzz"
     PathDuplicate { wanted: _, matches: _ } => false
   }
   resolved && unknown
