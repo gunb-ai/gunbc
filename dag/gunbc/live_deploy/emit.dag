@@ -28,7 +28,10 @@ import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, TailscaleServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, TailscaleServeMapping,
+  deployment_belt_service_unit_name,
+  deployment_belt_timer_unit_name,
+  deployment_belt_service_unit_path,
   deployment_spec_srv1,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
@@ -37,6 +40,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
@@ -151,6 +155,66 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
   ])
 }
 
+data belt_tick_cadence_note: String = "OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer than the cadence schedules its successor while it is still running and ticks pile up back-to-back — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real regardless of how long a tick takes and the belt can never outrun itself. systemd additionally refuses to start a Type=oneshot unit that is already active, so the two together make overlap unwritable rather than unlikely.\\n\\n60s is the operator's stated default for this lane and is deliberately not tuned against anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant wakeup window, which is the default behavior and would otherwise make the effective cadence unpredictable.\\n\\nOnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and tailscale are all converging, and a belt tick that spawns before the repo tree is in place produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs one cadence period and removes a class of self-inflicted refusals from the receipt."
+
+data belt_tick_cadence: String = "60s"
+
+fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
+  let svc = spec.service
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc roadmap belt tick (one reconcile pass over the ready frontier)"),
+    doc_line_of(text: "After=network-online.target"),
+    doc_line_of(text: "Wants=network-online.target"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Service]"),
+    doc_line_of(text: "Type=oneshot"),
+    doc_line_of(text: concat("User=", svc.service_user)),
+    doc_line_of(text: concat("Group=", svc.service_user)),
+    doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
+    doc_line_of(text: join([
+      "Environment=", belt_spawn_workdir_env_var as String, "=", svc.repo_root,
+    ], "")),
+    doc_line_of(text: join([
+      "ExecStart=", svc.serve_binary,
+      " run --source-root dag --source-root src/v2",
+      " --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli",
+    ], "")),
+  ])
+}
+
+fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc roadmap belt tick cadence"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Timer]"),
+    doc_line_of(text: concat("Unit=", deployment_belt_service_unit_name(names: spec.names) as String)),
+    doc_line_of(text: "OnBootSec=2min"),
+    doc_line_of(text: concat("OnUnitInactiveSec=", belt_tick_cadence)),
+    doc_line_of(text: "AccuracySec=5s"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Install]"),
+    doc_line_of(text: "WantedBy=timers.target"),
+  ])
+}
+
+fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([
+    "cat > \"$_gunbc_stage/", deployment_belt_service_unit_name(names: spec.names) as String, "\" <<'GUNBC_BELT_SERVICE_EOF'\n",
+    render(doc: emit_belt_service_unit_doc(spec: spec), proto: live_deploy_protocol),
+    "GUNBC_BELT_SERVICE_EOF",
+  ], ""))
+}
+
+fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([
+    "cat > \"$_gunbc_stage/", deployment_belt_timer_unit_name(names: spec.names) as String, "\" <<'GUNBC_BELT_TIMER_EOF'\n",
+    render(doc: emit_belt_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+    "GUNBC_BELT_TIMER_EOF",
+  ], ""))
+}
+
 data live_deploy_reconcile_binding_note: String = "apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members, observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed = the owned artifacts) => every member Removed => Teardown (all Owned, so no refusal). The DeploymentStep (key_of/key_eq/value_eq/ownership_of) bundle is this consumer's Realization of the spine — not a copy of it. ownership_of projects through deployment_step_ownership onto the single gunbc.ownership authority, so it is ALWAYS Present (a deploy member's ownership is known by construction); the OwnershipUnknown/MemberNotOwned refusal arms are the safety backstop for a future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the degenerate poles (no Modified — one side is always empty)."
 
 fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
@@ -242,7 +306,7 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   ], ""))
 }
 
-data tailscale_apply_is_unconditional_note: String = "THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve command in `if ! tailscale serve status | grep -q \':<port>\'`, which is a pseudo-observation twice over: it greps unstructured status text for a port number that appears nowhere in the configuration key, and a mapping for a DIFFERENT deployment on the same port would satisfy it — so the guard skipped precisely when another deployment held the endpoint, which is the collision it looked like it was preventing.\\n\\nThere is nothing to guard. Configuring an endpoint to a backend it already has is a no-op at the upstream, because the endpoint IS the key; issuing it twice cannot produce a second mapping. So the correct number of observations here is zero, and the replacement for a wrong observation is not a better observation but no observation at all.\\n\\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply and the teardown cannot disagree about the flags — which is the property the upstream `off` form actually requires."
+data tailscale_apply_is_unconditional_note: String = "THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve command in `if ! tailscale serve status | grep -q ':<port>'`, which is a pseudo-observation twice over: it greps unstructured status text for a port number that appears nowhere in the configuration key, and a mapping for a DIFFERENT deployment on the same port would satisfy it — so the guard skipped precisely when another deployment held the endpoint, which is the collision it looked like it was preventing.\\n\\nThere is nothing to guard. Configuring an endpoint to a backend it already has is a no-op at the upstream, because the endpoint IS the key; issuing it twice cannot produce a second mapping. So the correct number of observations here is zero, and the replacement for a wrong observation is not a better observation but no observation at all.\\n\\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply and the teardown cannot disagree about the flags — which is the property the upstream `off` form actually requires."
 
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join(
@@ -335,6 +399,21 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
       deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
       deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
     ]
+    BeltTimerUnit => [
+      apply_belt_service_unit_write_step(spec: spec),
+      apply_belt_timer_unit_write_step(spec: spec),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_belt_service_unit_name(names: spec.names) as String, "\" ",
+        deployment_belt_service_unit_path(names: spec.names) as String,
+      ], "")),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_belt_timer_unit_name(names: spec.names) as String, "\" ",
+        art.path as String,
+      ], "")),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: systemctl_enable_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
+      deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
+    ]
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
@@ -351,6 +430,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     SystemdUnit => [
       deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
       deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+    ]
+    BeltTimerUnit => [
+      deploy_raw(command: concat(systemctl_disable_now_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true), " 2>/dev/null || true")),
+      deploy_raw(command: join([
+        "sudo -n rm -f ", art.path as String, " ", deployment_belt_service_unit_path(names: spec.names) as String,
+      ], "")),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
     ]
     DispatchWorktreeRoot => [

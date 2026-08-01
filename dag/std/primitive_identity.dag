@@ -11,34 +11,30 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, d
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.rust.emit { rt_function_registry }
+import gunbc.v1_interpreter_primitive_surface {
+  v1_interpreter_primitive_arms,
+  v1_interpreter_row_count,
+}
 
-data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join mechanism across five carriers, five refusal variants typed, three refusal detectors executing with witnesses (see primitive_d0_refusal_execution_note), derived census across four surfaces. OPEN at fifth surface (InterpreterDispatch): closure fires when interpreter-primitive-roster lands (primitive_interpreter_dispatch_derivation_next_trigger). Four-of-five derived is honest interim state, not completion."
+data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join mechanism across five carriers, five refusal variants typed, three refusal detectors executing with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1 (interpreter-primitive-roster consumption): measurement scaffold deleted; primitive_surface_census_derived reads the roster authority. Population-wide identity join closure remains the terminal acceptance bar."
 
 data primitive_d0_refusal_execution_note: String = "Five PrimitiveJoinViolation variants typed at D0. Three detectors execute with RED witnesses: primitive_surface_missing_identity_violation, primitive_realization_unknown_primitive_violation, primitive_duplicate_semantic_definition_violation. Two scaffold detectors execute on planted inputs only (terminal join expands population-wide detection): primitive_surface_joins_two_identities_violation, primitive_incompatible_invocation_assignment_violation."
 
-data primitive_identity_d0_note: String = "D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract. primitive_surface_census_derived reads four live authorities. primitive_interpreter_dispatch_measurement_rows is an interim measurement scaffold, NOT an authority (see primitive_interpreter_dispatch_measurement_scaffold_note). Open denominator receipt: primitive_d0_open_denominator_receipt. Dissolve-on: feature:primitive-realization-single-authority."
-
-data primitive_interpreter_dispatch_measurement_scaffold_note: String = "SCAFFOLD — interim measurement, NOT an authority: primitive_interpreter_dispatch_measurement_rows carries four join specimens with provenance MeasurementOnly. Dissolution trigger: interpreter-primitive-roster lands on clever-crab-111 v1 lane (interpreter_free_call_arm_spellings macro + six-site roster); primitive_surface_census_derived absorbs InterpreterDispatch; delete primitive_interpreter_dispatch_measurement_rows and this note."
+data primitive_identity_d0_note: String = "D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract. primitive_surface_census_derived reads five live authorities including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. Open denominator receipt: primitive_d0_open_denominator_receipt. Dissolve-on: feature:primitive-realization-single-authority."
 
 data primitive_d0_derived_surface_drift_audit_note: String = "Derived-surface drift audit (review 45947 class): AlgebraTemplate — CLOSED, all_algebra_field_templates flat_maps all_algebra_profiles (2c9c01351). EmitHandler — single authority, rt_function_registry with derived rt_functions/rt_ref_map_functions projections (no parallel roster). BuiltinRegistry — OPEN parallel enumeration: builtin_registry_surface_names hand list beside builtin_function_registry Map (witness cannot map_keys Node at runtime; builtin_registry_surface_names_note). PrimitiveContractRow — OPEN parallel enumeration: primitive_contract_roster hand list beside *_contract data rows (primitive_contract_roster_note). D0 mutation control on those two surfaces discovers drift only when the hand list is updated, not when the primary authority grows alone."
 
-data primitive_d0_open_denominator_receipt_note: String = "Typed located counted open denominator (rung-honesty receipt): derived_surface_authority_count=4 (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler); open_surface_authority_count=1 (InterpreterDispatch at primitive_interpreter_dispatch_derivation_next_trigger); interpreter_dispatch_arm_count=158; interpreter_dispatch_spelling_count=169 across six v1_interpreter sites; interpreter_measurement_specimen_count=4 (NOT 158). derived_census_rows_missing_identity_count is measured live by primitive_d0_derived_rows_missing_identity_count — ranks join work remaining on derived surfaces. See primitive_d0_derived_surface_drift_audit_note for per-surface drift status."
+data primitive_d0_open_denominator_receipt_note: String = "Typed located counted denominator (rung-honesty receipt): derived_surface_authority_count=5 (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler, InterpreterDispatch); open_surface_authority_count=0; interpreter dispatch rows/arm-identities/spellings derived from gunbc.v1_interpreter_primitive_surface counters (v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count). primitive_d0_interpreter_census_matches_roster links census to roster authority. derived_census_rows_missing_identity_count is measured live by primitive_d0_derived_rows_missing_identity_count — ranks join work remaining on derived surfaces. See primitive_d0_derived_surface_drift_audit_note for per-surface drift status."
 
-data primitive_d0_derived_surface_authority_count: Int = 4
+data primitive_d0_derived_surface_authority_count: Int = 5
 
-data primitive_d0_open_surface_authority_count: Int = 1
-
-data primitive_interpreter_dispatch_arm_count: Int = 158
-
-data primitive_interpreter_dispatch_spelling_count: Int = 169
+data primitive_d0_open_surface_authority_count: Int = 0
 
 data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 
-data primitive_d0_mutation_control_coverage_note: String = "Exact D1 mutation-control coverage after D0: DISCOVERED on AlgebraTemplate and EmitHandler — new template or emit-handler row without identity join appears on primitive_surface_census_derived and can refuse. PARTIAL on BuiltinRegistry and PrimitiveContractRow (parallel_roster_surface_authority_count=2) — mutation control fires when the hand roster (builtin_registry_surface_names, primitive_contract_roster) is updated, NOT when builtin_function_registry or a *_contract data row grows alone; see primitive_d0_derived_surface_drift_audit_note. NOT DISCOVERED on InterpreterDispatch — new arm on any of the six v1_interpreter dispatch sites is blind until primitive_interpreter_dispatch_derivation_next_trigger lands. Counted: open_surface_authority_count=1. Derived does not mean complete; parallel roster does not mean single-authority."
+data primitive_d0_mutation_control_coverage_note: String = "D1 mutation-control coverage: DISCOVERED on AlgebraTemplate, EmitHandler, and InterpreterDispatch — new template, emit-handler, or interpreter-dispatch row without identity join appears on primitive_surface_census_derived and can refuse. PARTIAL on BuiltinRegistry and PrimitiveContractRow (parallel_roster_surface_authority_count=2) — mutation control fires when the hand roster (builtin_registry_surface_names, primitive_contract_roster) is updated, NOT when builtin_function_registry or a *_contract data row grows alone; see primitive_d0_derived_surface_drift_audit_note. Counted: open_surface_authority_count=0. Derived does not mean complete; parallel roster does not mean single-authority."
 
-data primitive_interpreter_dispatch_six_sites_note: String = "Interpreter dispatch is SIX sites in v1_interpreter (clever-crab-111 census, parent-verified): eval_builtin_inner 112 arms/115 spellings free calls; eval_algebra_method_inner 39 arms/46 spellings methods; eval_call 2 arms fold_list and fold_list_right native intercept BEFORE eval_builtin_inner; try_v2_std_collection_map_primitive_grounding 2 arms; try_parse_table_memo_dispatch 2 arms; eval_method_call 1 arm lookup short-circuit. Total 158 arms / 169 spellings. D0 primitive_interpreter_dispatch_measurement_rows covers four join specimens only — NOT this six-site population. A census reading only eval_builtin_inner sees about two thirds."
-
-data primitive_interpreter_dispatch_derivation_next_trigger: String = "Next rung trigger: land interpreter-primitive-roster — modeled roster authority for all six v1_interpreter dispatch sites. clever-crab-111 macro authority makes eval_builtin_inner arms and interpreter_free_call_arm_spellings roster unwritable-by-construction (arm without roster entry and roster entry without arm both refuse); other five sites are hand-declared rows with the macro as dissolution trigger. Coordinate roster shape with clever-crab before building join consumption. No roster row carries identity — arms that join to nothing stay representable for SurfaceMissingPrimitiveIdentity."
+data primitive_interpreter_dispatch_roster_note: String = "Interpreter dispatch is seven dispatch symbols in v1_interpreter (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner; eval_call (bridge families plus native fold intercept); try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; eval_method_call lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling denominators are v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count on the roster authority — not duplicated here. primitive_interpreter_surface_rows derives from v1_interpreter_primitive_arms with provenance DerivedFromAuthority."
 
 data primitive_interpreter_surface_unenumerable_finding_note: String = "Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/05_eval.dag) is a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner — explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable sooner; five other sites remain hand-declared until macro dissolves them."
 
@@ -46,7 +42,6 @@ data primitive_fold_list_spelling_fork_note: String = "Named finding — SPELLIN
 
 data primitive_lookup_dual_realization_note: String = "Named finding — first two-realizations-one-name specimen: lookup has eval_method_call short-circuit AND an algebra template arm; the short-circuit shadows the algebra arm. Better join specimen than index_by for SurfaceJoinsTwoIdentities / realization reconciliation. keys and values DO have algebra template arms — determinism undetectability is about the lens view of unqualified symbols, not absence of algebra arms."
 
-data primitive_interpreter_dispatch_derivation_blocked_note: String = "Interpreter dispatch derivation blocked pending primitive_interpreter_dispatch_derivation_next_trigger. Measurement rows use provenance MeasurementOnly and cover four join specimens only; see primitive_interpreter_dispatch_six_sites_note."
 
 type PrimitiveIdentity {
   slug: NonEmptyStr
@@ -381,54 +376,43 @@ fn primitive_emit_surface_rows() -> List<PrimitiveSurfaceRow> {
     )
 }
 
-fn primitive_interpreter_dispatch_measurement_rows() -> List<PrimitiveSurfaceRow> {
-  [
-    surface_row(
-      authority: InterpreterDispatch,
-      authored_symbol: "map_keys",
-      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
-      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "map_keys"),
-      provenance: MeasurementOnly,
-    ),
-    surface_row(
-      authority: InterpreterDispatch,
-      authored_symbol: "map_values",
-      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
-      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "map_values"),
-      provenance: MeasurementOnly,
-    ),
-    surface_row(
-      authority: InterpreterDispatch,
-      authored_symbol: "fold_list",
-      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_call"),
-      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "fold_list"),
-      provenance: MeasurementOnly,
-    ),
-    surface_row(
-      authority: InterpreterDispatch,
-      authored_symbol: "index_by",
-      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_algebra_method_inner"),
-      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "index_by"),
-      provenance: MeasurementOnly,
-    ),
-  ]
+fn primitive_interpreter_surface_rows() -> List<PrimitiveSurfaceRow> {
+  v1_interpreter_primitive_arms()
+    |> map(arm =>
+      surface_row(
+        authority: InterpreterDispatch,
+        authored_symbol: arm.authored_spelling as String,
+        authority_ref: decl_ref(
+          module_path: "gunbc.v1_interpreter_primitive_surface",
+          decl_name: "v1_interpreter_primitive_arms",
+        ),
+        primitive: primitive_identity_lookup(
+          authority: InterpreterDispatch,
+          authored_symbol: arm.authored_spelling as String,
+        ),
+        provenance: DerivedFromAuthority,
+      )
+    )
 }
 
 fn primitive_surface_census_derived() -> List<PrimitiveSurfaceRow> {
   concat(
     concat(
-      concat(primitive_registry_surface_rows(), primitive_contract_surface_rows()),
-      primitive_algebra_surface_rows()
+      concat(
+        concat(
+          primitive_registry_surface_rows(),
+          primitive_contract_surface_rows()
+        ),
+        primitive_algebra_surface_rows()
+      ),
+      primitive_emit_surface_rows()
     ),
-    primitive_emit_surface_rows()
+    primitive_interpreter_surface_rows()
   )
 }
 
 fn primitive_d0_surface_census() -> List<PrimitiveSurfaceRow> {
-  concat(
-    primitive_surface_census_derived(),
-    primitive_interpreter_dispatch_measurement_rows()
-  )
+  primitive_surface_census_derived()
 }
 
 data primitive_map_keys_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
@@ -624,16 +608,18 @@ fn primitive_d0_derived_rows_missing_identity_count() -> Int {
   count(primitive_surface_rows_missing_identity_violations(rows: primitive_surface_census_derived()))
 }
 
-fn primitive_d0_interpreter_measurement_row_count() -> Int {
-  count(primitive_interpreter_dispatch_measurement_rows())
+fn primitive_d0_interpreter_surface_row_count() -> Int {
+  count(primitive_interpreter_surface_rows())
+}
+
+fn primitive_d0_interpreter_census_matches_roster() -> Bool {
+  primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count()
 }
 
 fn primitive_d0_open_denominator_receipt_holds() -> Bool {
-  primitive_d0_derived_surface_authority_count == 4
-    && primitive_d0_open_surface_authority_count == 1
-    && primitive_interpreter_dispatch_arm_count == 158
-    && primitive_interpreter_dispatch_spelling_count == 169
-    && primitive_d0_interpreter_measurement_row_count() == 4
+  primitive_d0_derived_surface_authority_count == 5
+    && primitive_d0_open_surface_authority_count == 0
+    && primitive_d0_interpreter_census_matches_roster()
     && primitive_d0_derived_rows_missing_identity_count() > 0
 }
 
@@ -709,10 +695,12 @@ fn primitive_d0_fold_list_registry_gap_holds() -> Bool {
     )
 }
 
-fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
+fn primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveSurfaceAuthority) -> Bool {
   let rows = primitive_d0_surface_census()
-    |> filter(fn(row) { (row.authored_symbol as String) == "map_keys" })
-  count(rows) == 5
+    |> filter(fn(row) {
+      row.authority == authority && (row.authored_symbol as String) == "map_keys"
+    })
+  count(rows) >= 1
     && rows |> all(fn(row) {
       match primitive_surface_row_identity_violation(row: row, expected: primitive_map_keys) {
         Absent => true
@@ -721,9 +709,17 @@ fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
     })
 }
 
-fn primitive_d0_interpreter_rows_are_measurement_only() -> Bool {
-  primitive_interpreter_dispatch_measurement_rows()
-    |> all(fn(row) { row.provenance == MeasurementOnly })
+fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
+  primitive_d0_authority_map_keys_rows_coherent(authority: BuiltinRegistry)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveContractRow)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: AlgebraTemplate)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: EmitHandler)
+    && primitive_d0_authority_map_keys_rows_coherent(authority: InterpreterDispatch)
+}
+
+fn primitive_d0_interpreter_rows_are_from_authority() -> Bool {
+  primitive_interpreter_surface_rows()
+    |> all(fn(row) { row.provenance == DerivedFromAuthority })
 }
 
 fn primitive_d0_derived_rows_are_from_authority() -> Bool {

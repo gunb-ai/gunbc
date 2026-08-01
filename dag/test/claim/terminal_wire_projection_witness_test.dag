@@ -15,6 +15,7 @@ import extdeps.render.ansi {
   ansi_horizontal_tab,
   ansi_erase_entire_line,
   ansi_control_is_content_admissible,
+  ansi_text_contains_cursor_control,
 }
 import extdeps.render.terminal {
   DynamicLineState,
@@ -250,7 +251,10 @@ test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
   ansi_c0_controls.count() == 33 &&
   ansi_c1_controls.count() == 32 &&
   scan.next_index == 65 &&
-  scan.first_failure == -1
+  scan.first_failure == -1 &&
+  ansi_text_contains_cursor_control(text: from_code_point(cp: 128))
+    && ansi_text_contains_cursor_control(text: from_code_point(cp: 159))
+    && !ansi_text_contains_cursor_control(text: "\\u{0080}")
 }
 
 test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {

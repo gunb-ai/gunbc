@@ -1,0 +1,228 @@
+module test.claim.runner_activation_wall
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data runner_activation_wall_doc: String = "The acceptance controls for the activation wall. Each one names a state the fleet was actually in on 2026-08-01 and asserts that it cannot yield an enable command: srv1's endpoint owned from a RETIRED slot, srv2's and srv3's from ACTIVE ones, srv4's absent behind a stale socket, and every host's placement unknown before it was read. The point of the set is that a runner may be activated only against an exact desired instance whose endpoint is held by the managed unit — not against a responsive daemon, not against a host that merely enrolled."
+
+fn srv1_deploy_fixture() -> RunnerHostDeploy {
+  srv4_runner_host_deploy
+}
+
+fn ready_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
+  ci_cache_instance(host: host)
+}
+
+fn owner_fixture() -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    pid: 4242,
+    start_time: "80000000" as NonEmptyStr,
+  }
+}
+
+fn fully_verified_ready(host: HostIdentity, unit: NonEmptyStr) -> BuildCacheInstanceReady {
+  BuildCacheInstanceReady {
+    instance: ready_instance_fixture(host: host),
+    owner: owner_fixture(),
+    managed_unit: unit,
+    endpoint_verified: true,
+    executable_verified: true,
+    principal_verified: true,
+    storage_verified: true,
+    capacity_verified: true,
+    compile_pool_verified: true,
+  }
+}
+
+fn ready_pool_fixture() -> HostCompilePoolReady {
+  HostCompilePoolReady {
+    host: "srv4",
+    slice_unit: gunbc_managed_compile_pool_slice,
+    pool_declared: true,
+    pool_observed: true,
+  }
+}
+
+fn yields_command(outcome: RunnerCommandOrRefusal) -> Bool {
+  match outcome {
+    RunnerCommandReady { command: _ } => true
+    RunnerCommandRefused { host_label: _, reason: _ } => false
+  }
+}
+
+fn activation_for(cache_ready: BuildCacheInstanceReady, pool_ready: HostCompilePoolReady) -> RunnerCommandOrRefusal {
+  let d = srv1_deploy_fixture()
+  runner_activate_command(
+    admission: admit_runner_activation(
+      host_admission: admit_runner_host(deploy: d),
+      cache_ready: cache_ready,
+      pool_ready: pool_ready,
+    ),
+  )
+}
+
+test fn witness_exact_desired_instance_with_managed_owner_activates() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  yields_command(
+    outcome: activation_for(
+      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
+      pool_ready: ready_pool_fixture(),
+    ),
+  )
+}
+
+test fn witness_bare_host_admission_cannot_yield_an_enable_command() -> Bool {
+  let blind = runner_activation_readiness_blind_widen_sketch(
+    host_admission: admit_runner_host(deploy: srv1_deploy_fixture()),
+  )
+  let d = srv1_deploy_fixture()
+  let unready = admit_runner_activation(
+    host_admission: admit_runner_host(deploy: d),
+    cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: "wrong.service" as NonEmptyStr),
+    pool_ready: HostCompilePoolReady {
+      host: "srv4",
+      slice_unit: gunbc_managed_compile_pool_slice,
+      pool_declared: false,
+      pool_observed: false,
+    },
+  )
+  yields_command(outcome: blind) && !runner_activation_gate_accepts(outcome: blind, admission: unready)
+}
+
+test fn witness_absent_endpoint_cannot_admit_activation() -> Bool {
+  observation_admits_activation(
+    observed: EndpointAbsent { instance: ready_instance_fixture(host: "srv4") },
+  ) == false
+}
+
+test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool {
+  let retired = placement_admits_activation(
+    placement: ServerRunnerOwned {
+      slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 },
+      lifecycle: RetiredRunnerSlot,
+    },
+  )
+  let desired = placement_admits_activation(
+    placement: ServerRunnerOwned {
+      slot: RunnerSlotIdentity { host: "srv2", slot_index: 5 },
+      lifecycle: DesiredRunnerSlot,
+    },
+  )
+  (retired == false) && (desired == false)
+}
+
+test fn witness_unknown_unsupervised_and_ambiguous_cannot_admit_activation() -> Bool {
+  let unknown = placement_admits_activation(
+    placement: ServerPlacementUnknown { detail: "unreadable" as NonEmptyStr },
+  )
+  let unsupervised = placement_admits_activation(
+    placement: ServerUnsupervised { cgroup: "/system.slice/other.service" as NonEmptyStr },
+  )
+  let ambiguous = observation_admits_activation(
+    observed: EndpointOwnershipAmbiguous {
+      instance: ready_instance_fixture(host: "srv1"),
+      candidate_count: 2,
+    },
+  )
+  let unreachable = observation_admits_activation(
+    observed: EndpointObservationUnavailable {
+      instance: ready_instance_fixture(host: "srv4"),
+      reason: ReachRefused { detail: "Permission denied (publickey)" as NonEmptyStr },
+    },
+  )
+  (unknown == false) && (unsupervised == false) && (ambiguous == false) && (unreachable == false)
+}
+
+test fn witness_receipt_from_another_host_is_refused() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: "srv1").intended_unit
+  yields_command(
+    outcome: activation_for(
+      cache_ready: fully_verified_ready(host: "srv1", unit: intended),
+      pool_ready: ready_pool_fixture(),
+    ),
+  ) == ((d.host_label as String) == "srv1")
+}
+
+test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  let declared_not_observed = activation_for(
+    cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
+    pool_ready: HostCompilePoolReady {
+      host: "srv4",
+      slice_unit: gunbc_managed_compile_pool_slice,
+      pool_declared: true,
+      pool_observed: false,
+    },
+  )
+  yields_command(outcome: declared_not_observed) == false
+}
+
+test fn witness_partially_verified_instance_refuses() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  let partial = BuildCacheInstanceReady {
+    instance: ready_instance_fixture(host: d.host_label as HostIdentity),
+    owner: owner_fixture(),
+    managed_unit: intended,
+    endpoint_verified: true,
+    executable_verified: true,
+    principal_verified: true,
+    storage_verified: false,
+    capacity_verified: true,
+    compile_pool_verified: true,
+  }
+  yields_command(outcome: activation_for(cache_ready: partial, pool_ready: ready_pool_fixture())) == false
+}
+
+data materialization_does_not_activate_doc: String = "The split's own control. Materializing a slot must remain possible on nothing more than host enrollment — that is the whole point of separating it — while activation must not. If this witness ever fails because the installer command started demanding a readiness receipt, the split has collapsed in the other direction and materialization has become impossible to perform first, which would make the ordering unsatisfiable rather than enforced."
+
+test fn witness_materializing_a_slot_does_not_activate_it() -> Bool {
+  let d = srv1_deploy_fixture()
+  let install = runner_host_installer_command(
+    admission: admit_runner_host(deploy: d),
+    installer_path: "/opt/actions-runner/install.sh" as NonEmptyStr,
+    pem_src_path: "/etc/gunbc/app.pem" as NonEmptyStr,
+  )
+  let activate = activation_for(
+    cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: "not-the-intended.service" as NonEmptyStr),
+    pool_ready: ready_pool_fixture(),
+  )
+  yields_command(outcome: install) && (yields_command(outcome: activate) == false)
+}
+
+data pool_receipt_binding_doc: String = "The controls review 46581 forced. The cache receipt was bound to the activation two ways -- host and intended unit -- and the pool receipt beside it was gated on two Booleans alone, so a pool observed on a DIFFERENT host, or a correctly-observed slice with some other name, admitted activation. Both are asserted here rather than only the host case, because they fail for different reasons: one receipt is about the wrong machine, the other is about the wrong cgroup on the right machine, and a wall that caught only the first would still activate a runner whose compiles are charged outside the intended pool."
+
+test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  yields_command(
+    outcome: activation_for(
+      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
+      pool_ready: HostCompilePoolReady {
+        host: "srv2",
+        slice_unit: gunbc_managed_compile_pool_slice,
+        pool_declared: true,
+        pool_observed: true,
+      },
+    ),
+  ) == false
+}
+
+test fn witness_a_pool_receipt_naming_another_slice_is_refused() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  yields_command(
+    outcome: activation_for(
+      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
+      pool_ready: HostCompilePoolReady {
+        host: d.host_label as HostIdentity,
+        slice_unit: "some-other.slice" as NonEmptyStr,
+        pool_declared: true,
+        pool_observed: true,
+      },
+    ),
+  ) == false
+}
