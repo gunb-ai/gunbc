@@ -35462,6 +35462,9 @@ mod repeated_typecheck_attribution_arithmetic {
             key_tracker,
             rows,
             entry_timings: Vec::new(),
+            all_hit_probe_rows: Vec::new(),
+            all_hit_probe_active: false,
+            observed_entry_module_keys: HashSet::new(),
         }
         .into_measurement(
             vec!["dag".to_string()],
@@ -35470,6 +35473,7 @@ mod repeated_typecheck_attribution_arithmetic {
             None,
             vec!["a".to_string(), "b".to_string()],
             Vec::new(),
+            None,
             None,
             sum_memberships,
             union_modules,
