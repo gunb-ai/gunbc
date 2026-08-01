@@ -1806,15 +1806,16 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       node: nid(s: "entry-graph-union-construction"),
       criteria_digest: chash(s: "4442f95272011c70"),
       red_control: RedControlExecuted {
-        witness_module: "v1-compiler.cli_run.repeated_typecheck_attribution_arithmetic",
-        witness_fn: "perfect_sharing_yields_zero_decision_ratio",
+        witness_module: "v1-compiler-tests.union_resolve_receipts_test",
+        witness_fn: "shared_typecheck_distinct_compute_count_is_order_invariant",
         executed_on: "2026-08-01",
       },
       handback: HandbackDelivered {
         first_artifact: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md",
         further_artifacts: [
           "docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json",
-          "src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs",
+          "docs/plans/receipts/entry-graph-union-slice2/receipt-post-merge-representative-50.json",
+          "docs/plans/per-entry-assembly-decomposition-measurement.md",
           "src/v1/tests/src/union_resolve_receipts_test.rs",
         ],
       },

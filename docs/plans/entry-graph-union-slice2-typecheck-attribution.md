@@ -177,7 +177,7 @@ GUNBC_CI_DIFF_BASE=0d6ffc4db975 measure_repeated_typecheck_attribution \
 
 ## G — post-verdict retention boundary
 
-**Retain (structural law — enrolled regression controls):**
+**Retained (structural law — enrolled regression controls):**
 
 Within one shared typed-cache authority:
 
@@ -185,9 +185,11 @@ Within one shared typed-cache authority:
 2. Later requesters observe **cache hits**, not recomputation.
 3. Entry resolve **order does not change** the distinct-computation set.
 
-Witnesses: `repeated_typecheck_attribution_records_shared_prefix_hits`, `repeated_typecheck_attribution_reorder_preserves_distinct_computes`, `repeated_typecheck_attribution_partial_probe_hit_single_row_per_module` (`v1-compiler-tests`); sibling `typecheck_compute_count` oracles in the same file.
+Witnesses: `union_resolve_typechecks_each_node_once` (first compute only; later requester
+adds fewer computes and re-resolves add zero) and
+`shared_typecheck_distinct_compute_count_is_order_invariant` (`v1-compiler-tests`).
 
-**Delete after merged-SHA provenance receipt** (one representative 50-entry cell + reorder control rerun on `main`, then archive):
+**Deleted after merged-SHA provenance receipt:**
 
 - `measure_repeated_typecheck_attribution` bin and orchestration (`measure_*`, production-selection roster path)
 - JSON receipt renderers (`render_repeated_typecheck_attribution_*`)
@@ -195,3 +197,21 @@ Witnesses: `repeated_typecheck_attribution_records_shared_prefix_hits`, `repeate
 - `repeated_typecheck_attribution_arithmetic` (ratio aggregation — historical instrument math, not the structural law)
 
 `decision_ratio=0` was the slice-2 hypothesis outcome, not a permanent structural invariant to defend via production CLI forever.
+
+### Post-merge integration receipt (provenance, not a second decision gate)
+
+The representative 50-entry cell was rerun from merged main with binary SHA-256
+`1e8aba324353aca22bce3a9586e368633263757bb4d87584c15e5345301b9b45`:
+4,302 hits, 680 first misses, zero refusals, and zero repeated misses. The seven-entry
+reorder control produced 225 hits and 400 first misses in each direction; the sorted
+distinct miss-key sets are identical.
+
+Receipts: `receipt-post-merge-representative-50.json`,
+`receipt-post-merge-reorder-a.json`, and `receipt-post-merge-reorder-b.json` under the
+slice-2 receipt directory. The reverse receipt names dashboard commit `a3b2c6dcb9` while
+the other two name `46c5c8fe71`: the dashboard committed only the representative JSON
+between the frozen-binary runs. The compiler tree and binary were identical, so this is a
+provenance wrinkle, not a source change or a second gate.
+
+The successor measurement is
+[per-entry assembly decomposition](per-entry-assembly-decomposition-measurement.md).
