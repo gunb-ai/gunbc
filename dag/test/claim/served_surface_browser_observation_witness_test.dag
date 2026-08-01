@@ -14,6 +14,7 @@ import extdeps.automation.playwright {
   PlaywrightManagedChromiumDownload,
   playwright_1_62_1,
 }
+import extdeps.os.debian { Debian12Bookworm }
 import gunbc.served_surface_browser_observation {
   ConnectionRefusedPresentationSpecimen,
   EmptyBody502PresentationSpecimen,
@@ -31,6 +32,8 @@ import gunbc.served_surface_browser_observation {
   ExplicitReload,
   HealthyResponseDocumentObserved,
   PlaywrightDefaultChromiumLaunch,
+  ContainerVisibleHostKernel,
+  LinuxKernelRelease,
   playwright_chromium_151_linux_arm64_headless_navigation_run,
   local_http_url,
   navigation_specimen_stimulus,
@@ -46,6 +49,10 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
     && run.environment.chromium_build.source_identity == ChromiumSourceRevisionUnobserved
     && run.environment.playwright_build == playwright_1_62_1
     && run.environment.browser_binary_provenance == PlaywrightManagedChromiumDownload
+    && run.environment.container_userland == Debian12Bookworm
+    && run.environment.container_visible_host_kernel == ContainerVisibleHostKernel {
+      visible_release: "6.8.0-124-generic" as LinuxKernelRelease,
+    }
     && match run.environment.launch_configuration {
       PlaywrightDefaultChromiumLaunch { executable_path: _ } => true
     }

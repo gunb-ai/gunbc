@@ -27,6 +27,10 @@ import extdeps.automation.playwright {
 
 type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
 
+type ContainerVisibleHostKernel {
+  visible_release: LinuxKernelRelease
+}
+
 type BrowserPresentationMode
   = | HeadlessPresentation
 
@@ -39,8 +43,8 @@ type BrowserExecutionEnvironment {
   chromium_build: ChromiumBuild
   playwright_build: PlaywrightBuild
   browser_binary_provenance: PlaywrightBrowserBinaryProvenance
-  operating_system: DebianRelease
-  kernel_release: LinuxKernelRelease
+  container_userland: DebianRelease
+  container_visible_host_kernel: ContainerVisibleHostKernel
   architecture: Architecture
   presentation_mode: BrowserPresentationMode
   launch_configuration: BrowserLaunchConfiguration
@@ -147,8 +151,10 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: BrowserDiscrim
     chromium_build: chromium_151_0_7922_34,
     playwright_build: playwright_1_62_1,
     browser_binary_provenance: PlaywrightManagedChromiumDownload,
-    operating_system: Debian12Bookworm,
-    kernel_release: "6.8.0-124-generic" as LinuxKernelRelease,
+    container_userland: Debian12Bookworm,
+    container_visible_host_kernel: ContainerVisibleHostKernel {
+      visible_release: "6.8.0-124-generic" as LinuxKernelRelease,
+    },
     architecture: Aarch64,
     presentation_mode: HeadlessPresentation,
     launch_configuration: PlaywrightDefaultChromiumLaunch {
@@ -269,4 +275,4 @@ fn navigation_specimen_coverage(specimen: NavigationPresentationSpecimen) -> Spe
   }
 }
 
-data evidence_grain_note: NonEmptyStr = "This run claims only what the exact stimuli produced under its one Chromium, Playwright, operating-system, architecture, presentation-mode, and launch identity. Each exact specimen constructor is the sole authored identity; stimulus, navigation outcome, presented document, coverage, screenshot, and recovery are projections from that constructor, so their correlated facts cannot be authored inconsistently. LocalSyntheticHarness prevents these responses from standing in for a production proxy or operational cause. EmptyBody502ExactCoverage cannot widen one specimen into all empty HTTP errors. RecoveryTrial records that ExplicitReload was performed and a healthy response document followed; it carries no reload-necessity constructor. The run names no browser support roster, production response chain, continuity guarantee, or roadmap implementation lane." as NonEmptyStr
+data evidence_grain_note: NonEmptyStr = "This run claims only what the exact stimuli produced under its one Chromium, Playwright, container-userland, container-visible host-kernel, architecture, presentation-mode, and launch identity. Debian12Bookworm records the container userland reported by /etc/os-release; ContainerVisibleHostKernel separately records the host kernel release exposed by uname inside that container and does not infer a host operating-system distribution from its suffix. Each exact specimen constructor is the sole authored identity; stimulus, navigation outcome, presented document, coverage, screenshot, and recovery are projections from that constructor, so their correlated facts cannot be authored inconsistently. LocalSyntheticHarness prevents these responses from standing in for a production proxy or operational cause. EmptyBody502ExactCoverage cannot widen one specimen into all empty HTTP errors. RecoveryTrial records that ExplicitReload was performed and a healthy response document followed; it carries no reload-necessity constructor. The run names no browser support roster, production response chain, continuity guarantee, or roadmap implementation lane." as NonEmptyStr
