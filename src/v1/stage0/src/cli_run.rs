@@ -58,7 +58,8 @@ pub use materialization_provider_consumer::{
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, faithful_probe_unavailable_gap, lookup as cross_process_lookup,
+    closure_content_digest, faithful_probe_unavailable_gap,
+    lookup_verified_probe as cross_process_lookup_verified_probe,
     probe as cross_process_probe, resolved_graph_cache_root_from_env, subject_digest_for_closure,
     supports_faithful_probe, transform_content_digest, write as cross_process_write,
     CacheLookupResult, CacheProbeResult, CacheRejectReason, CachedResolvedGraph,
@@ -10251,7 +10252,10 @@ fn resolved_graph_from_sources_with_index(
                         // rebuild is the declared migration disposition — never route
                         // through the v3 provider probe.
                     } else {
-                        let parts = probe.parts.expect("v3 faithful probe carries parts");
+                        let parts = probe
+                            .parts
+                            .as_ref()
+                            .expect("v3 faithful probe carries parts");
                         let closure_digest = closure_content_digest(&sources);
                         let compiler_digest = transform_content_digest();
                         match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
@@ -10262,7 +10266,11 @@ fn resolved_graph_from_sources_with_index(
                             &parts,
                         ) {
                             Ok(ResolvedGraphProviderOutcome::Hit) => {
-                                match cross_process_lookup(&cache_root, &subject) {
+                                match cross_process_lookup_verified_probe(
+                                    &cache_root,
+                                    &subject,
+                                    &probe,
+                                ) {
                                     CacheLookupResult::Hit(cached) => {
                                         return Ok(install_cross_process_materialization_hit(
                                             index, &subject, cached, memo_share,

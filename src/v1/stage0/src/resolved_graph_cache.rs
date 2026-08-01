@@ -512,6 +512,42 @@ fn faithful_parts_from_v3_header(header: &V3Header) -> FaithfulResolvedGraphProb
     }
 }
 
+fn approved_probe_matches_v3_header(
+    header: &V3Header,
+    approved: &CacheProbeHit,
+) -> Result<(), CacheRejectReason> {
+    if approved.format_version != FORMAT_VERSION {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    if header.payload_integrity_digest != approved.payload_integrity_digest {
+        return Err(CacheRejectReason::ContentDigestMismatch);
+    }
+    if header.payload_len != approved.payload_byte_count {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    if header.stored_request_key != approved.stored_request_key {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    if header.stored_semantic_digest != approved.stored_semantic_digest {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    let approved_parts = approved
+        .parts
+        .as_ref()
+        .ok_or(CacheRejectReason::BackendKeyMalformed)?;
+    let header_parts = faithful_parts_from_v3_header(header);
+    if header_parts.graph_digest != approved_parts.graph_digest
+        || header_parts.graph_bytes != approved_parts.graph_bytes
+        || header_parts.indices_digest != approved_parts.indices_digest
+        || header_parts.indices_bytes != approved_parts.indices_bytes
+        || header_parts.union_digest != approved_parts.union_digest
+        || header_parts.union_bytes != approved_parts.union_bytes
+    {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    Ok(())
+}
+
 fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     let mut file = match File::open(path) {
         Ok(f) => f,
@@ -578,46 +614,10 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     }
 }
 
-fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
-    let mut file = match File::open(path) {
-        Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheLookupResult::Miss,
-        Err(_) => {
-            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-        }
-    };
-    let file_len = match file.metadata() {
-        Ok(m) => m.len() as usize,
-        Err(_) => return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
-    };
-    if file_len > resolved_graph_cache_cap_bytes() as usize {
-        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-    }
-    if file_len < MAGIC.len() + 4 {
-        return CacheLookupResult::Miss;
-    }
-    let mut prefix = [0u8; MAGIC.len() + 4];
-    if file.read_exact(&mut prefix).is_err() {
-        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-    }
-    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
-    if version != FORMAT_VERSION {
-        return CacheLookupResult::Miss;
-    }
-    let mut header_rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
-    if file.read_exact(&mut header_rest).is_err() {
-        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-    }
-    let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
-    let header = match parse_v3_header(&header_bytes, expected_subject, file_len) {
-        Ok(h) => h,
-        Err(CacheRejectReason::ContentDigestMismatch) => {
-            return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
-        }
-        Err(CacheRejectReason::BackendKeyMalformed) => {
-            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-        }
-    };
+fn decode_v3_payload_from_file(
+    file: &mut File,
+    header: V3Header,
+) -> CacheLookupResult {
     let payload_len = match usize::try_from(header.payload_len) {
         Ok(n) => n,
         Err(_) => {
@@ -683,11 +683,122 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     })
 }
 
+fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheLookupResult::Miss,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+    };
+    let file_len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(_) => return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
+    if file_len > resolved_graph_cache_cap_bytes() as usize {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    if file_len < MAGIC.len() + 4 {
+        return CacheLookupResult::Miss;
+    }
+    let mut prefix = [0u8; MAGIC.len() + 4];
+    if file.read_exact(&mut prefix).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
+    if version != FORMAT_VERSION {
+        return CacheLookupResult::Miss;
+    }
+    let mut header_rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
+    if file.read_exact(&mut header_rest).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
+    let header = match parse_v3_header(&header_bytes, expected_subject, file_len) {
+        Ok(h) => h,
+        Err(CacheRejectReason::ContentDigestMismatch) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
+        }
+        Err(CacheRejectReason::BackendKeyMalformed) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+    };
+    decode_v3_payload_from_file(&mut file, header)
+}
+
+fn read_cached_file_verified_probe(
+    path: &Path,
+    expected_subject: &str,
+    approved: &CacheProbeHit,
+) -> CacheLookupResult {
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheLookupResult::Miss,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+    };
+    let file_len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(_) => return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
+    if file_len > resolved_graph_cache_cap_bytes() as usize {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    if file_len < MAGIC.len() + 4 {
+        return CacheLookupResult::Miss;
+    }
+    let mut prefix = [0u8; MAGIC.len() + 4];
+    if file.read_exact(&mut prefix).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
+    if version != FORMAT_VERSION {
+        return CacheLookupResult::Miss;
+    }
+    let mut header_rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
+    if file.read_exact(&mut header_rest).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
+    let header = match parse_v3_header(&header_bytes, expected_subject, file_len) {
+        Ok(h) => h,
+        Err(CacheRejectReason::ContentDigestMismatch) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
+        }
+        Err(CacheRejectReason::BackendKeyMalformed) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+    };
+    match approved_probe_matches_v3_header(&header, approved) {
+        Ok(()) => decode_v3_payload_from_file(&mut file, header),
+        Err(reason) => CacheLookupResult::RejectedHit(reason),
+    }
+}
+
 pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
     if !v1_rt::is_hash_digest(subject_digest) {
         return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
     read_cached_file(&artifact_path(cache_root, subject_digest), subject_digest)
+}
+
+/// Decode a provider-approved v3 probe from disk. The reopened artifact header must
+/// match the approved probe exactly before payload bytes are read — closing the TOCTOU
+/// gap between logical provider verification and materialization install.
+pub fn lookup_verified_probe(
+    cache_root: &Path,
+    subject_digest: &str,
+    approved: &CacheProbeHit,
+) -> CacheLookupResult {
+    if !v1_rt::is_hash_digest(subject_digest) {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    read_cached_file_verified_probe(
+        &artifact_path(cache_root, subject_digest),
+        subject_digest,
+        approved,
+    )
 }
 
 pub fn probe(cache_root: &Path, subject_digest: &str) -> CacheProbeResult {

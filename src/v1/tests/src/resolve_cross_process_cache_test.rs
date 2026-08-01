@@ -44,7 +44,8 @@ use v1_compiler::cli_run::{
 };
 use v1_compiler::resolved_graph_cache::{
     build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
-    decode_count, derive_subject_digest, encode_resolved_graph_parts, lookup, probe,
+    decode_count, derive_subject_digest, encode_resolved_graph_parts, lookup,
+    lookup_verified_probe, probe,
     subject_digest_for_closure, transform_content_digest, write_raw_artifact_for_test,
     CacheLookupResult, CacheProbeResult, CacheRejectReason, KeyInputMaterials,
     UNION_PART_ABSENT_DIGEST,
@@ -842,6 +843,75 @@ fn provider_disposition_four_arm_matrix() {
             "incomplete v3 must not decode or cold-rebuild"
         );
     });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// review 46613: provider-approved probe must bind the reopened artifact header before
+/// decode — a replacement file that is internally valid but header-mismatched refuses.
+#[test]
+fn verified_lookup_refuses_artifact_replaced_after_probe() {
+    let dir = temp_dir("verified-probe-toctou");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve fixture");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let correct_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("correct bytes");
+    let wrong_semantic = resolved_graph_parts_semantic_digest(
+        &encode_resolved_graph_parts(&graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("encode")
+            .graph_digest,
+        1,
+        &encode_resolved_graph_parts(&graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("encode")
+            .indices_digest,
+        1,
+        UNION_PART_ABSENT_DIGEST,
+        0,
+    )
+    .expect("wrong semantic");
+    assert_ne!(semantic, wrong_semantic, "test needs distinct semantic digests");
+    let swapped_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &wrong_semantic,
+    )
+    .expect("swapped bytes");
+
+    let cache_dir = dir.join("toctou-cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+    write_raw_artifact_for_test(&cache_dir, &subject, &correct_bytes).expect("write correct");
+    let approved = match probe(&cache_dir, &subject) {
+        CacheProbeResult::Hit(hit) => hit,
+        other => panic!("expected probe hit: {other:?}"),
+    };
+    write_raw_artifact_for_test(&cache_dir, &subject, &swapped_bytes).expect("swap artifact");
+    match lookup_verified_probe(&cache_dir, &subject, &approved) {
+        CacheLookupResult::RejectedHit(_) => {}
+        other => panic!("verified lookup must refuse header mismatch after swap: {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::Hit(_) => {}
+        other => panic!("unverified lookup still decodes swapped artifact: {other:?}"),
+    }
 
     let _ = fs::remove_dir_all(&dir);
 }
