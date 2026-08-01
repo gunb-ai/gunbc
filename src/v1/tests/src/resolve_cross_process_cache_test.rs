@@ -45,10 +45,9 @@ use v1_compiler::cli_run::{
 use v1_compiler::resolved_graph_cache::{
     build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
     decode_count, derive_subject_digest, encode_resolved_graph_parts, lookup,
-    lookup_verified_probe, probe,
-    subject_digest_for_closure, transform_content_digest, write_raw_artifact_for_test,
-    CacheLookupResult, CacheProbeResult, CacheRejectReason, KeyInputMaterials,
-    UNION_PART_ABSENT_DIGEST,
+    lookup_verified_probe, probe, subject_digest_for_closure, transform_content_digest,
+    write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult, CacheRejectReason,
+    KeyInputMaterials, UNION_PART_ABSENT_DIGEST,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -885,7 +884,10 @@ fn verified_lookup_refuses_artifact_replaced_after_probe() {
         0,
     )
     .expect("wrong semantic");
-    assert_ne!(semantic, wrong_semantic, "test needs distinct semantic digests");
+    assert_ne!(
+        semantic, wrong_semantic,
+        "test needs distinct semantic digests"
+    );
     let swapped_bytes = build_valid_artifact_bytes(
         &subject,
         &graph,

@@ -614,10 +614,7 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     }
 }
 
-fn decode_v3_payload_from_file(
-    file: &mut File,
-    header: V3Header,
-) -> CacheLookupResult {
+fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookupResult {
     let payload_len = match usize::try_from(header.payload_len) {
         Ok(n) => n,
         Err(_) => {
