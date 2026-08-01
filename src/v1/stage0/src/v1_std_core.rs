@@ -460,6 +460,18 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    CallArgumentNameUnknown {
+        callee: String,
+        argument: String,
+        declared: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
+    CallPositionalSurplus {
+        callee: String,
+        supplied: i64,
+        capacity: i64,
+        span: Rc<SourceSpan>,
+    },
     OccurrenceTransportViolation {
         refusal: Rc<OccurrenceTransportRefusal>,
     },
@@ -544,6 +556,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
         } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
@@ -797,6 +811,48 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                 cs.clone().join(&", ".to_string()),
             ),
             " — qualify by containment path, alias, or rename".to_string(),
+        ),
+        CompilerDiagnostic::CallArgumentNameUnknown {
+            callee: c,
+            argument: a,
+            declared: ds,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()),
+                            "': no parameter named '".to_string(),
+                        ),
+                        a.clone(),
+                    ),
+                    "' (declared: [".to_string(),
+                ),
+                ds.clone().join(&", ".to_string()),
+            ),
+            "])".to_string(),
+        ),
+        CompilerDiagnostic::CallPositionalSurplus {
+            callee: c,
+            supplied: s,
+            capacity: cap,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()),
+                            "': too many positional arguments: ".to_string(),
+                        ),
+                        (s.clone()).to_string(),
+                    ),
+                    " supplied, ".to_string(),
+                ),
+                (cap.clone()).to_string(),
+            ),
+            " positional parameter(s) declared".to_string(),
         ),
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
