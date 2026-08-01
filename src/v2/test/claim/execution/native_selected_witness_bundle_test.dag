@@ -490,10 +490,10 @@ fn selected_logic_receipt(
   }
 }
 
-fn selected_logic_sample_cutover_evidence_with_native(
+fn selected_logic_sample_cutover_evidence_for_plan(
+  plan: SelectedWitnessPlan,
   native_verdict: SelectedWitnessVerdict
 ) -> List<NativeBundleFamilyCutoverEvidence> {
-  let plan = selected_logic_alt_plan()
   let interpreted = SelectedLogicVerdicts {
     meet: SelectedWitnessPassed
     join: SelectedWitnessPassed
@@ -521,6 +521,15 @@ fn selected_logic_sample_cutover_evidence_with_native(
       interpreter_frontier_count: selected_witness_plan_interpreter_frontier_count(plan: plan)
     }
   }]
+}
+
+fn selected_logic_sample_cutover_evidence_with_native(
+  native_verdict: SelectedWitnessVerdict
+) -> List<NativeBundleFamilyCutoverEvidence> {
+  selected_logic_sample_cutover_evidence_for_plan(
+    plan: selected_logic_alt_plan(),
+    native_verdict: native_verdict
+  )
 }
 
 fn selected_logic_sample_cutover_evidence() -> List<NativeBundleFamilyCutoverEvidence> {
@@ -905,6 +914,21 @@ test fn native_selected_witness_bundle_non_discriminating_red_refuses_holds() ->
     receipt: selected_logic_sample_receipt(),
     family_evidence: selected_logic_sample_cutover_evidence_with_native(
       native_verdict: SelectedWitnessPassed
+    )
+  ) {
+    NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
+    _ => false
+  }
+}
+
+test fn native_selected_witness_bundle_unplanted_subject_red_refuses_holds() -> Bool {
+  let plan = selected_logic_primary_plan()
+  match selected_logic_execution_admit(
+    plan: plan,
+    receipt: selected_logic_sample_receipt(),
+    family_evidence: selected_logic_sample_cutover_evidence_for_plan(
+      plan: plan,
+      native_verdict: SelectedWitnessFailed
     )
   ) {
     NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
