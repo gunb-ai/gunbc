@@ -11,6 +11,7 @@ import gunbc.membership_reconcile {
   membership_refusal_count,
 }
 import gunbc.ownership { Ownership, Ensured }
+import extdeps.git
 import extdeps.git {
   shape_git_config_local_argv,
   shape_git_config_local_get_argv,
