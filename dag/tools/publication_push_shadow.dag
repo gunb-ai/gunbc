@@ -12,6 +12,7 @@ import tools.publication_publisher {
   NotTheSolePublisher,
   ProjectionNotAdmitted,
   DecisionReceiptMissing,
+  DecisionReceiptNotAuthorizing,
   UnauthorizedPublicPush,
   NoPushedRefsPresented,
   admit_public_write,
@@ -104,6 +105,7 @@ fn shadow_would_refuse_ordinary_session(
             NotTheSolePublisher { session: _, sole_publisher: _ } => true
             ProjectionNotAdmitted { session: _, detail: _ } => false
             DecisionReceiptMissing { session: _, subject_identity: _ } => false
+            DecisionReceiptNotAuthorizing { session: _, subject_identity: _, detail: _ } => false
             UnauthorizedPublicPush { session: _, local_ref: _, local_sha: _, detail: _ } => false
             NoPushedRefsPresented { session: _ } => false
           }

@@ -18,6 +18,7 @@ import gunbc.publication_decision {
   PublicationDecisionReceipt,
   PublicationAuthorityId,
   publication_decision_binds_content,
+  publication_decision_authorizes_newly_public,
 }
 
 data publication_publisher_note: String = "Slice-1 sole modeled publisher (model + shadow only). Ordinary ModeledSessionId values are OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session may consume a change-locally admitted PublicProjectionPlan derived from PublicationPolicy — never a pathname census or placement-gate roster. Ordinary sessions do NOT yet lose live public-write capability in this slice; credentials and push machinery are unchanged."
@@ -60,6 +61,11 @@ type PublicWriteRefusal
       session: ModeledSessionId,
       subject_identity: String,
     }
+  | DecisionReceiptNotAuthorizing {
+      session: ModeledSessionId,
+      subject_identity: String,
+      detail: String,
+    }
   | UnauthorizedPublicPush {
       session: ModeledSessionId,
       local_ref: String,
@@ -82,10 +88,14 @@ fn session_publication_posture(session: ModeledSessionId) -> SessionPublicationP
   }
 }
 
-fn posture_is_sole_publisher(posture: SessionPublicationPosture) -> Bool {
+fn session_publication_posture_fold<T>(
+  posture: SessionPublicationPosture,
+  on_ordinary: fn(ModeledSessionId) -> T,
+  on_sole_publisher: fn(ModeledSessionId) -> T,
+) -> T {
   match posture {
-    SoleModeledPublisher { session: _ } => true
-    OrdinarySession { session: _ } => false
+    OrdinarySession { session: session } => on_ordinary(session)
+    SoleModeledPublisher { session: session } => on_sole_publisher(session)
   }
 }
 
@@ -102,7 +112,23 @@ fn change_local_admission_detail(outcome: ChangeLocalAdmissionOutcome) -> String
   }
 }
 
-fn receipt_covers_subject(
+fn receipt_authorizes_newly_public(
+  receipts: List<PublicationDecisionReceipt>,
+  subject: PublicationSubject,
+  policy_version: NonEmptyStr,
+  authority: PublicationAuthorityId,
+) -> Bool {
+  fold(receipts, init: false, f: fn(found, receipt) {
+    found || publication_decision_authorizes_newly_public(
+      receipt: receipt,
+      subject: subject,
+      policy_version: policy_version,
+      authority: authority,
+    )
+  })
+}
+
+fn receipt_binds_subject_content(
   receipts: List<PublicationDecisionReceipt>,
   subject: PublicationSubject,
 ) -> Bool {
@@ -115,20 +141,41 @@ fn receipt_covers_subject(
   })
 }
 
-fn newly_public_subject_missing_receipt(
+fn newly_public_subject_receipt_refusal(
   delta: List<ProjectionDeltaClass>,
   decisions: List<PublicationDecisionReceipt>,
-) -> PublicationSubject? {
+  policy_version: NonEmptyStr,
+  authority: PublicationAuthorityId,
+  session: ModeledSessionId,
+) -> PublicWriteRefusal? {
   fold(delta, init: none, f: fn(acc, item) {
     match acc {
       Present { value: _ } => acc
       Absent =>
         match item {
           NewlyPublic { subject: subject } =>
-            if receipt_covers_subject(receipts: decisions, subject: subject) {
+            if receipt_authorizes_newly_public(
+              receipts: decisions,
+              subject: subject,
+              policy_version: policy_version,
+              authority: authority,
+            ) {
               none
+            } else if receipt_binds_subject_content(receipts: decisions, subject: subject) {
+              Present {
+                value: DecisionReceiptNotAuthorizing {
+                  session: session,
+                  subject_identity: subject.subject_identity as String,
+                  detail: "decision receipt does not authorize newly public subject",
+                },
+              }
             } else {
-              Present { value: subject }
+              Present {
+                value: DecisionReceiptMissing {
+                  session: session,
+                  subject_identity: subject.subject_identity as String,
+                },
+              }
             }
           _ => none
         }
@@ -184,14 +231,17 @@ fn admit_public_write(
       })
       match admission {
         ChangeLocalAdmitted { delta: delta, candidate: plan } =>
-          match newly_public_subject_missing_receipt(delta: delta, decisions: decisions) {
-            Present { value: subject } =>
+          match newly_public_subject_receipt_refusal(
+            delta: delta,
+            decisions: decisions,
+            policy_version: plan.policy_version,
+            authority: sole_publication_authority_id,
+            session: publisher,
+          ) {
+            Present { value: cause } =>
               PublicWriteRefused {
                 session: publisher,
-                cause: DecisionReceiptMissing {
-                  session: publisher,
-                  subject_identity: subject.subject_identity as String,
-                },
+                cause: cause,
               }
             Absent =>
               if count(pushed_refs) == 0 {
@@ -262,5 +312,9 @@ fn public_write_admitted(admission: PublicWriteAdmission) -> Bool {
 }
 
 fn ordinary_session_lacks_public_write_authority(session: ModeledSessionId) -> Bool {
-  !posture_is_sole_publisher(posture: session_publication_posture(session: session))
+  session_publication_posture_fold(
+    posture: session_publication_posture(session: session),
+    on_ordinary: fn(ordinary) { true },
+    on_sole_publisher: fn(publisher) { false },
+  )
 }

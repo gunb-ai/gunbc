@@ -28,8 +28,11 @@ import gunbc.public_projection {
 import gunbc.publication_decision {
   PublicationDecisionReceipt,
   PublicationAuthorityId,
+  PublicationAudience,
   UniversalPublicationAudience,
+  EnumeratedPublicationAudience,
   publication_decision_requires_refresh,
+  publication_decision_authorizes_newly_public,
 }
 import gunbc.publication_admission_delta {
   ChangeLocalAdmissionRequest,
@@ -47,6 +50,7 @@ import tools.publication_publisher {
   NotTheSolePublisher,
   ProjectionNotAdmitted,
   DecisionReceiptMissing,
+  DecisionReceiptNotAuthorizing,
   UnauthorizedPublicPush,
   NoPushedRefsPresented,
   PublicWriteAdmitted,
@@ -292,6 +296,120 @@ test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool {
         _ => false
       })) > 0
     ChangeLocalRefused { cause: _ } => false
+  }
+}
+
+test fn publication_decision_authorizes_matching_policy_authority_and_audience() -> Bool {
+  let subject = synthetic_subject(
+    path: "docs/plans/receipt-auth.md" as FilePath,
+    identity: "subject-receipt-auth",
+  )
+  publication_decision_authorizes_newly_public(
+    receipt: synthetic_decision_receipt(subject: subject),
+    subject: subject,
+    policy_version: synthetic_policy_version,
+    authority: sole_publication_authority_id,
+  )
+}
+
+test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/stale-receipt.md" as FilePath,
+    identity: "subject-stale-receipt",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let stale_receipt = PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: UniversalPublicationAudience,
+    policy_version: "stale-policy" as NonEmptyStr,
+    authority: sole_publication_authority_id,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [stale_receipt],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptNotAuthorizing { session: _, subject_identity: id, detail: _ } =>
+          id == (subject.subject_identity as String)
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool {
+  let subject = synthetic_subject(
+    path: "docs/plans/wrong-authority.md" as FilePath,
+    identity: "subject-wrong-authority",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted_public_docs_policy(),
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let wrong_authority_receipt = PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: UniversalPublicationAudience,
+    policy_version: synthetic_policy_version,
+    authority: "not-the-publisher" as PublicationAuthorityId,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [wrong_authority_receipt],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptNotAuthorizing { session: _, subject_identity: _, detail: _ } => true
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
+  let subject = synthetic_subject(
+    path: "docs/plans/narrow-audience.md" as FilePath,
+    identity: "subject-narrow-audience",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted_public_docs_policy(),
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let narrow_receipt = PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: EnumeratedPublicationAudience { label: "private-team" },
+    policy_version: synthetic_policy_version,
+    authority: sole_publication_authority_id,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [narrow_receipt],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptNotAuthorizing { session: _, subject_identity: _, detail: _ } => true
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
   }
 }
 
