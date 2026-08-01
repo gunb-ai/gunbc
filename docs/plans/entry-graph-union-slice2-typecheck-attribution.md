@@ -1,6 +1,6 @@
 # Receipt — entry-graph-union slice 2: repeated-typecheck attribution
 
-**Status:** measurement instrument landed 2026-08-01 (PR #7533). **DESIGN.md + slice 1 remain the authority** — this is a dated receipt scaffold, not a floor fact ledger. Dissolves with `cli_run_repeated_typecheck_attribution_probe` when the slice-2 union verdict is taken.
+**Status:** verdict taken 2026-08-01 (§F; PR #7533). **DESIGN.md + slice 1 remain the authority** — this is a dated receipt scaffold, not a floor fact ledger. Measurement orchestration + `measure_repeated_typecheck_attribution` bin dissolve on union construction (#7534) merge or operator archive; probe hooks and enrolled `v1-compiler-tests` controls remain per DESIGN §4b.
 
 **ROADMAP:** `gunbc.roadmap_authority` id `entry-graph-union-construction` (lane `ci-cost`, slice 2 of the same row as slice 1).
 
@@ -90,14 +90,17 @@ Diagnostic only: `cache_hit_ratio = hits / (hits + misses)`.
 # Fixture-scale (fast, no git diff required):
 cargo test -p v1-compiler-tests repeated_typecheck_attribution
 
-# Production-selected set (disjoint windows on dev host):
+# Production-selected set (disjoint windows on dev host; build bin once, do not rebuild mid-matrix):
+cargo build --release -p v1-compiler --bin measure_repeated_typecheck_attribution
 GUNBC_CI_DIFF_BASE=<base-sha> measure_repeated_typecheck_attribution \
   --source-root dag --source-root src/v2 \
   --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual \
-  --entry-offset 117 --max-entries 50
+  --scan-dir src/v2/test/claim/emit \
+  --entry-offset <offset> --max-entries 50 \
+  --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-<name>.json
 ```
 
-Emits `[typecheck-attribution-measurement] {json}`.
+Emits `[typecheck-attribution-measurement] {json}` on stdout; `--receipt-out` writes the full row-level receipt.
 
 ---
 
@@ -137,4 +140,24 @@ At every measured cell: **repeated typecheck compute is zero**, order-stable, an
 
 **Disposition:** cache hits already eliminate repeated typecheck work — the **union/shared typed-computation program closes or shrinks**. The surviving cost axes are **first-time typecheck**, **per-entry assembly** (Σ assembly ≈ 35–38s vs total typecheck ≈ 34–41s per 50-entry cell — comparable magnitude), and **retention at scale** (instrument-path OOM at `N=286` without M2 eviction; floor-scale behavior unmeasured here).
 
-Full per-row receipts: `docs/plans/receipts/entry-graph-union-slice2/receipt-*.json`. Reproduce disjoint cells: `docs/plans/receipts/entry-graph-union-slice2/run_matrix.sh disjoint`.
+Full per-row receipts: `docs/plans/receipts/entry-graph-union-slice2/receipt-*.json`.
+
+Reproduce disjoint cells (§E; one invocation per cell — no shell orchestration):
+
+```sh
+COMMON=(--source-root dag --source-root src/v2
+  --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual
+  --scan-dir src/v2/test/claim/emit --max-entries 50)
+
+GUNBC_CI_DIFF_BASE=e30621111f37 measure_repeated_typecheck_attribution \
+  "${COMMON[@]}" --entry-offset 0 \
+  --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-narrow-disjoint.json
+
+GUNBC_CI_DIFF_BASE=b01cdf4d8914 measure_repeated_typecheck_attribution \
+  "${COMMON[@]}" --entry-offset 117 \
+  --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-typical-disjoint.json
+
+GUNBC_CI_DIFF_BASE=0d6ffc4db975 measure_repeated_typecheck_attribution \
+  "${COMMON[@]}" --entry-offset 235 \
+  --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json
+```
