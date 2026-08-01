@@ -195,7 +195,7 @@ type LeanProofCheckSemantics<IRCarrier> {
 
 data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. LeanAdmittedBitWidth is sole_constructor — cross-module forge is refused; honest rung is accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test), not structural impossibility. Catalog fixed widths match admission Accepted before constructing LeanIntegerScalar; refusal stops at LeanWidthAdmissionRefused, not LeanIntegerWidth. Platform word is LeanPlatformWord. Signedness is std.integer.Signedness."
 
-data lean_overflow_semantics_admissibility_note: String = "P3b PR2 cluster-2 receipt (lean end-to-end): overflow axis is std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect> on LeanIntegerScalar only — BoolScalar and LeanWidthAdmissionRefused carry no overflow field. lean_admit_fixed_width_overflow_semantics is the admission boundary. Lean fixed-width catalog integers use modular wrap (OverflowReturns ReturnWrapping). Panic and trap remain distinct inhabitants of LeanOverflowRaiseEffect — not collapsed into one raise arm. OverflowUndefined and OverflowRaises refuse at admission for catalog fixed-width paths. Honest rung: accepted refinement with executing refusal (witness lean_overflow_semantics_witness_test), not structural impossibility."
+data lean_overflow_semantics_admissibility_note: String = "P3b PR2 cluster-2 receipt (lean end-to-end): overflow axis is LeanAdmittedOverflowSemantics (sole_constructor) on LeanIntegerScalar only — BoolScalar, LeanWidthAdmissionRefused, and LeanOverflowAdmissionRefused carry no admitted overflow field. lean_admit_fixed_width_overflow_semantics is the admission boundary producing LeanOverflowAccepted with LeanAdmittedOverflowSemantics or LeanOverflowRefused pinning the observed semantics. Catalog fixed widths admit ReturnWrapping before constructing LeanIntegerScalar; refusal stops at LeanOverflowAdmissionRefused, not LeanIntegerScalar. Panic and trap remain distinct inhabitants of LeanOverflowRaiseEffect. Honest rung: accepted refinement with executing refusal (witness lean_overflow_semantics_witness_test), not structural impossibility."
 
 type LeanOverflowRaiseEffect
   = LeanOverflowPanics
@@ -275,9 +275,10 @@ type LeanScalar
   = LeanIntegerScalar {
       signedness: Signedness,
       width: LeanIntegerWidth,
-      overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+      overflow: LeanAdmittedOverflowSemantics
     }
   | LeanWidthAdmissionRefused { width: BitWidth }
+  | LeanOverflowAdmissionRefused { semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect> }
   | BoolScalar
 
 type LeanPrimitiveFacts {
@@ -293,15 +294,23 @@ fn lean_primitive_facts_for_catalog_width(
   representation: Symbol
 ) -> LeanPrimitiveFacts {
   match lean_admit_bit_width(width: bit_width(count: count)) {
-    LeanBitWidthAccepted { width: admitted } => LeanPrimitiveFacts {
-      surface_spelling: surface_spelling,
-      scalar: LeanIntegerScalar {
-        signedness: signedness,
-        width: LeanFixedWidth { width: admitted },
-        overflow: lean_catalog_fixed_width_overflow
-      },
-      representation: representation
-    }
+    LeanBitWidthAccepted { width: admitted } =>
+      match lean_admit_fixed_width_overflow_semantics(semantics: lean_catalog_fixed_width_overflow) {
+        LeanOverflowAccepted { semantics: admitted_overflow } => LeanPrimitiveFacts {
+          surface_spelling: surface_spelling,
+          scalar: LeanIntegerScalar {
+            signedness: signedness,
+            width: LeanFixedWidth { width: admitted },
+            overflow: admitted_overflow
+          },
+          representation: representation
+        }
+        LeanOverflowRefused { observed: refused_overflow, reason: _ } => LeanPrimitiveFacts {
+          surface_spelling: surface_spelling,
+          scalar: LeanOverflowAdmissionRefused { semantics: refused_overflow },
+          representation: representation
+        }
+      }
     LeanBitWidthRefused { width: refused } => LeanPrimitiveFacts {
       surface_spelling: surface_spelling,
       scalar: LeanWidthAdmissionRefused { width: refused },
@@ -383,14 +392,21 @@ fn lean_facts_uint64() -> LeanPrimitiveFacts {
 }
 
 fn lean_facts_usize() -> LeanPrimitiveFacts {
-  LeanPrimitiveFacts {
-    surface_spelling: ^lean_surface_spelling_usize,
-    scalar: LeanIntegerScalar {
-      signedness: Unsigned,
-      width: LeanPlatformWord,
-      overflow: lean_catalog_fixed_width_overflow
-    },
-    representation: ^lean_repr_usize_platform_word
+  match lean_admit_fixed_width_overflow_semantics(semantics: lean_catalog_fixed_width_overflow) {
+    LeanOverflowAccepted { semantics: admitted_overflow } => LeanPrimitiveFacts {
+      surface_spelling: ^lean_surface_spelling_usize,
+      scalar: LeanIntegerScalar {
+        signedness: Unsigned,
+        width: LeanPlatformWord,
+        overflow: admitted_overflow
+      },
+      representation: ^lean_repr_usize_platform_word
+    }
+    LeanOverflowRefused { observed: refused_overflow, reason: _ } => LeanPrimitiveFacts {
+      surface_spelling: ^lean_surface_spelling_usize,
+      scalar: LeanOverflowAdmissionRefused { semantics: refused_overflow },
+      representation: ^lean_repr_usize_platform_word
+    }
   }
 }
 
