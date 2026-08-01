@@ -32,7 +32,6 @@ type SystemdUnitProperty
   | MemoryHigh
   | CPUWeight
   | MemoryCurrent
-  | LoadState
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -41,7 +40,6 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemoryHigh => "MemoryHigh" as NonEmptyStr
     CPUWeight => "CPUWeight" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
-    LoadState => "LoadState" as NonEmptyStr
   }
 }
 
