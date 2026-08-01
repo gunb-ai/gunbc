@@ -769,8 +769,22 @@ is required, not advisory.** What bought the mandate is this entry's own record:
 mechanism explanations (no advisory is producible → the closure was too narrow → the predicate
 resolves nowhere) were each refuted, while the conclusions they explained kept surviving. Mechanism
 stories do not survive contact; executed discriminating controls do, and a row asserted on the
-former is how a wall gets built against behaviour that was already correct. Corpus prevalence is
-the cheap cross-check for both failure modes: the whole-tree
+former is how a wall gets built against behaviour that was already correct. **Companion mandate,
+bought by this entry's own review incident (lane policy, operator-adopted 2026-08-01): enrolled
+evidence must be DISCRIMINATING, not merely present — one executing RED per refusal arm, and a
+refusal arm without its RED is unmergeable regardless of approval tally.** The receipt is that this
+module's *own* exported accessor collapsed `CensusNotRunnable` to `[]`, so could-not-measure and
+observed-nothing became one empty list at the API boundary — the exact conflation the coproduct
+exists to prevent, reintroduced by the carrier built to prevent it — and its witness **asserted the
+collapse as contract** (`count(census_rows(not_runnable)) == 0`). A green witness pinning the wrong
+contract is worse than no witness: it defends the defect against its own fix. Three approving
+review providers passed over it; one caught it (`review 46144`). Two consequences the carrier stage
+inherits: a review tally is **never** a substitute for an executed discriminating control on a
+spine carrier; and where construction is available it, not reviewer vigilance, is the wall — the
+collapsing accessor was deleted rather than documented, so the conflation is now unwritable at that
+boundary and a reviewer missing what cannot be written costs nothing. Where only validation is
+available, the RED is the wall and the tally is decoration. Corpus prevalence is
+the cheap cross-check for both probe failure modes: the whole-tree
 census carries **1,981** `where-refinement` advisories, so the class was demonstrably reachable
 while the probe found none, and a probe disagreeing with corpus prevalence is evidence against the
 probe. Both the original claim and its first correction are recorded here rather than overwritten,
