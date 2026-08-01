@@ -11,11 +11,47 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
-/// Production-path walks share `target/` hygiene paths; serialize harness runs so
-/// parallel `cargo test` threads cannot interleave cleanup with overlap markers.
+/// Production-path walks share `target/` hygiene paths; one session holds this lock
+/// from pre-cleanup through post-walk assertions so parallel `#[ignore]` tests cannot
+/// interleave marker/receipt mutations.
 static FIXTURE_RUN_LOCK: Mutex<()> = Mutex::new(());
+
+struct FixtureSession {
+    _guard: MutexGuard<'static, ()>,
+    root: PathBuf,
+    authority: HarnessAuthority,
+}
+
+impl FixtureSession {
+    fn begin() -> Self {
+        let guard = FIXTURE_RUN_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let root = workspace_root();
+        LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
+        let authority = materialize_harness_authority(&root);
+        LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = Some(authority.clone()));
+        Self {
+            _guard: guard,
+            root,
+            authority,
+        }
+    }
+
+    fn stage2_marker(&self) -> PathBuf {
+        self.root.join(&self.authority.stage2_marker_rel)
+    }
+
+    fn stage1_receipt(&self) -> PathBuf {
+        self.root.join(&self.authority.stage1_receipt_rel)
+    }
+
+    fn run_plan(&self, plan_function: &str) -> FixtureOutput {
+        run_fixture_plan_unlocked(&self.root, &self.authority, plan_function)
+    }
+}
 
 thread_local! {
     static LAST_HARNESS_AUTHORITY: RefCell<Option<HarnessAuthority>> = const { RefCell::new(None) };
@@ -185,26 +221,11 @@ fn materialize_harness_authority(root: &Path) -> HarnessAuthority {
     parse_harness_authority(&content)
 }
 
-fn ensure_harness_authority(root: &Path) -> HarnessAuthority {
-    if let Some(auth) = LAST_HARNESS_AUTHORITY.with(|cell| cell.borrow().clone()) {
-        return auth;
-    }
-    let auth = materialize_harness_authority(root);
-    LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = Some(auth.clone()));
-    auth
-}
-
-fn last_harness_authority(root: &Path) -> HarnessAuthority {
-    ensure_harness_authority(root)
-}
-
-fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
-    let _guard = FIXTURE_RUN_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let root = workspace_root();
-    let authority = materialize_harness_authority(&root);
-    LAST_HARNESS_AUTHORITY.with(|cell| *cell.borrow_mut() = Some(authority.clone()));
+fn run_fixture_plan_unlocked(
+    root: &Path,
+    authority: &HarnessAuthority,
+    plan_function: &str,
+) -> FixtureOutput {
     let bin = claim_executor_bin();
     assert!(
         bin.exists(),
@@ -212,7 +233,7 @@ fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
         bin.display()
     );
     let output = Command::new(&bin)
-        .current_dir(&root)
+        .current_dir(root)
         .env("GUNBC_WALK_ATTEMPT_ID", &authority.attempt_id)
         .args([
             "--source-root",
@@ -233,20 +254,12 @@ fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
     }
 }
 
-fn stage2_marker_path(root: &PathBuf) -> PathBuf {
-    root.join(&last_harness_authority(root).stage2_marker_rel)
-}
-
-fn stage1_receipt_path(root: &PathBuf) -> PathBuf {
-    root.join(&last_harness_authority(root).stage1_receipt_rel)
-}
-
 #[test]
 #[ignore = "cold overlap resolve can take minutes; run locally: cargo test -p v1-compiler walk_plan_stage_overlap_barrier -- --ignored --test-threads=1"]
 fn walk_plan_stage_overlap_barrier_production_path() {
-    let root = workspace_root();
-    let _ = std::fs::remove_file(stage2_marker_path(&root));
-    let out = run_fixture_plan("walk_plan_stage_overlap_barrier_plan");
+    let session = FixtureSession::begin();
+    let _ = std::fs::remove_file(session.stage2_marker());
+    let out = session.run_plan("walk_plan_stage_overlap_barrier_plan");
     assert!(
         out.stderr.contains("on-success stage 1"),
         "fixture must reach on-success stages, not fail-fast on budget;\n{}",
@@ -265,7 +278,7 @@ fn walk_plan_stage_overlap_barrier_production_path() {
         out.combined()
     );
     assert!(
-        stage1_receipt_path(&root).is_file(),
+        session.stage1_receipt().is_file(),
         "stage-1 per-stage receipt must exist before stage 2"
     );
     assert!(
@@ -285,10 +298,10 @@ fn walk_plan_stage_overlap_barrier_production_path() {
 #[test]
 #[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_failure_blocks_stage2() {
-    let root = workspace_root();
-    let marker = stage2_marker_path(&root);
+    let session = FixtureSession::begin();
+    let marker = session.stage2_marker();
     let _ = std::fs::remove_file(&marker);
-    let out = run_fixture_plan("walk_plan_stage_failure_barrier_plan");
+    let out = session.run_plan("walk_plan_stage_failure_barrier_plan");
     assert!(
         out.stderr.contains("remaining stage(s) NOT run"),
         "failed stage 1 must block stage 2;\n{}",
@@ -309,10 +322,10 @@ fn walk_plan_stage_failure_blocks_stage2() {
 #[test]
 #[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_panic_blocks_stage2() {
-    let root = workspace_root();
-    let marker = stage2_marker_path(&root);
+    let session = FixtureSession::begin();
+    let marker = session.stage2_marker();
     let _ = std::fs::remove_file(&marker);
-    let out = run_fixture_plan("walk_plan_stage_panic_barrier_plan");
+    let out = session.run_plan("walk_plan_stage_panic_barrier_plan");
     assert!(
         out.stdout.contains("call depth exceeded") || out.stdout.contains("unbounded recursion"),
         "panicking member must surface structural recursion-depth refusal on stdout;\n{}",
@@ -338,10 +351,10 @@ fn walk_plan_stage_panic_blocks_stage2() {
 #[test]
 #[ignore = "production-path fixture: cold claim_executor walk (~7m); recipe in plan.dag; use --test-threads=1"]
 fn walk_plan_stage_receipt_refusal_blocks_stage2() {
-    let root = workspace_root();
-    let marker = stage2_marker_path(&root);
+    let session = FixtureSession::begin();
+    let marker = session.stage2_marker();
     let _ = std::fs::remove_file(&marker);
-    let out = run_fixture_plan("walk_plan_stage_receipt_refusal_barrier_plan");
+    let out = session.run_plan("walk_plan_stage_receipt_refusal_barrier_plan");
     assert!(
         out.stdout
             .contains("PASS [on-success stage 1] walk_plan_stage_receipt_refusal_poison_holds"),
