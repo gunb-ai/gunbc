@@ -101,11 +101,44 @@ Emits `[typecheck-attribution-measurement] {json}`.
 
 ---
 
-## F — verdict slot (to be filled by execution)
+## F — execution matrix (2026-08-01, branch `78ccb693`, binary `target/slice2-measurement-bin/`)
 
-**Not established in this PR** — the instrument lands; corpus-scale receipts run on operator-chosen subjects. Handback rules (operator 2026-08-01):
+**Verdict slot intentionally empty** — numbers below; three-way handback (union justified / attack per-entry assembly / close program) deferred to operator.
 
-- `decision_ratio` large → union/shared typed-computation program justified
-- `decision_ratio` small + high `cache_hit_ratio` → attack per-entry assembly instead; union program closes or shrinks
+### Host envelope / governor
 
-Record retractions here when execution contradicts expectations, same discipline as slice 1 §Verdict.
+| field | value |
+|---|---|
+| cgroup `memory.max` | 33,578,549,248 bytes (~31.3 GiB) |
+| `GUNBC_MEMORY_BUDGET_BYTES` | unset |
+| probe scheduling | serial, one shared `MultiEntryIndex`; adaptive `MemoryGovernor` **not engaged** |
+| `cgroup_memory_events_high` | 0 on every run |
+
+**Retraction:** uncapped narrow production (`N=286`, `GUNBC_CI_DIFF_BASE=e30621111f37`) was **OOM-killed** at the cgroup ceiling after ~31 min (exit `Killed`, no receipt). Production subjects below use `--max-entries 50` (production-selection order preserved, first 50 of each subject's roster).
+
+Binary snapshot: `sha256:8af9c72606aba8373c611c9608e4402bd6c7a4308862f80536af2a381a79174e`.
+
+### Matrix handback
+
+| run | N | cap | diff base | distinct module keys | distinct typecheck computes | repeated typecheck computes | repeated wall / total typecheck wall | decision_ratio | cache_hit_ratio | Σ assembly wall | VmHWM |
+|---|---:|---|---|---:|---:|---:|---|---:|---:|---:|---:|
+| explicit-order-a | 7 | — | — | 398 | 398 | **0** | 0 / 14.0s | **0** | 0.362 | 6.0s | 3.11 GiB |
+| explicit-order-b | 7 | — | — | 398 | 398 | **0** | 0 / 13.3s | **0** | 0.362 | 5.6s | 3.05 GiB |
+| narrow-production | 50 | 50 | `e30621111f37` | 622 | 622 | **0** | 0 / 36.6s | **0** | 0.884 | 38.2s | 8.30 GiB |
+| typical-production | 50 | 50 | `b01cdf4d8914` | 622 | 622 | **0** | 0 / 32.4s | **0** | 0.884 | 33.9s | 8.29 GiB |
+| broad-capped | 50 | 50 | `0d6ffc4db975` | 622 | 622 | **0** | 0 / 34.7s | **0** | 0.884 | 38.3s | 8.27 GiB |
+
+Membership at `N=50`: `sum_closure_memberships=5339`, `union_modules=619`, duplication **8.63×** (vs slice-1 full-roster 35.9–38.4× — cap shrinks overlap denominator).
+
+### Structural reads (execution, not verdict)
+
+1. **Reorder invariance holds at execution scale:** explicit A vs B — identical distinct computes (398), identical repeated misses (0), identical membership; only per-entry assembly/typecheck walls reorder.
+2. **Repeated membership does not become repeated typecheck** on any matrix cell: `repeated_typecheck_misses=0` and `decision_ratio=0` throughout, while `cache_hit_ratio` rises to **0.884** at `N=50` (membership duplication 8.6× still present).
+3. **Per-entry assembly is non-trivial** relative to typecheck at production cap: Σ `reconcile_assembly_ns` ≈ 34–38s vs total typecheck ≈ 32–37s for `N=50` — the lane's alternate target if union is not justified by repeated compute.
+4. **Cap artifact:** at `--max-entries 50` the three production subjects selected the same first-50 roster prefix (alphabetical production order), so narrow/typical/broad rows coincide on attribution — breadth contrast requires uncapped runs on a host that survives `N≈300`.
+
+Full per-row receipts: `docs/plans/receipts/entry-graph-union-slice2/receipt-*.json`. Reproduce: `docs/plans/receipts/entry-graph-union-slice2/run_matrix.sh`.
+
+### Verdict slot
+
+*Empty — operator three-way handback pending.*
