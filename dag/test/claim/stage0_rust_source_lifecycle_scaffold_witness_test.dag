@@ -98,7 +98,7 @@ test fn scaffold_host_observation_is_live_and_observed() -> Bool {
 }
 
 test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
-  length(xs: stage0_rust_observation_seed_growth_justification.hand_authored_declarations) == 2
+  length(xs: stage0_rust_observation_seed_growth_justification.hand_authored_declarations) == 7
     && stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as String == "v1-hand-queue-drain"
     && match stage0_cargo_manifest_parser_seed_scaffold {
       Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>

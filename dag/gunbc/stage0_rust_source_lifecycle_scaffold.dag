@@ -327,7 +327,7 @@ type RustMaintenanceDisposition
   | EmitFrom { authority: DeclarationRef }
   | DeleteWith { roadmap_node: RoadmapNodeId }
   | RetainedKernel { reason: String }
-  | HandScaffold { dissolve_on: String }
+  | HandScaffold { reason: String, dissolve_on: String }
 
 type RustSourceLifecycleRow {
   path: String
@@ -416,7 +416,7 @@ fn residue_row(path: String, reason: String, dissolve_on: String) -> RustSourceL
     path: path,
     roles: [],
     maintenance_dispositions: [
-      HandScaffold { dissolve_on: concat(reason, concat("; ", dissolve_on)) }
+      HandScaffold { reason: reason, dissolve_on: dissolve_on }
     ]
   }
 }
@@ -564,7 +564,7 @@ fn rust_maintenance_disposition_well_formed(disposition: RustMaintenanceDisposit
     EmitFrom { authority: ref } => declaration_ref_populated(ref: ref)
     DeleteWith { roadmap_node: node } => !((node as String) == "")
     RetainedKernel { reason: reason } => !(reason == "")
-    HandScaffold { dissolve_on: dissolve_on } => !(dissolve_on == "")
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } => !(reason == "") && !(dissolve_on == "")
   }
 }
 

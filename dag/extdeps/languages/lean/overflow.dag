@@ -1,0 +1,16 @@
+module extdeps.languages.lean.overflow
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.integer { OverflowReturnValueRule, ReturnWrapping }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "lean-lang.org/doc/reference/latest/Basic-Types/Fixed-Precision-Integers/"
+  }
+}
+
+data lean_fixed_width_overflow_provenance_note: String = "Upstream Lean 4 fixed-precision integer overflow (extdeps_external_authority_anchor, cited 2026-08-01): literals that overflow their type's precision are interpreted modulo the precision; signed types use twos-complement (lean-lang Fixed-Precision-Integers). Init.Data.UInt.Basic documents UInt8.add, UInt8.mul, UInt8.pow, and width conversions as wrapping around on overflow. Catalog fixed-width scalars ground on ReturnWrapping — not saturating, trap, or undefined."
+
+data lean_upstream_fixed_width_overflow_returns_rule: OverflowReturnValueRule = ReturnWrapping

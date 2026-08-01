@@ -230,6 +230,15 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
   )
 }
 
+data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINATOR, authored only after the first P1 carrier made the node's whole completion condition executable. The validation is deliberately RED: its closed capability population is the roadmap node's own bar, and this first slice supplies only the bounded candidate-generation model check. Missing behavior is derived set difference, never a hand-maintained progress count; duplicate passing rows cannot erase it, and a false row remains missing. The contract therefore cannot green on zero progress and cannot confuse a modeled carrier with an executed proof kernel. It is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots. Each later P1 slice adds an executing scenario check without weakening the aggregate. When the final capability greens, that same change removes the expect-red enrollment and promotes the witness to the ordinary discovery ratchet."
+
+fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag" as FilePath,
+    function: "witness_p1_proof_kernel_acceptance_contract_holds" as NonEmptyStr,
+  )
+}
+
 data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
 
 data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT CLOSES A NODE, so it can only be authored once that validation exists. A node without one stays ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make a lane look dispatchable produces exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The closing validation is written as part of the node's first slice; the contract follows the witness, never precedes it.\n\nTHE ROSTER IS NOT TRANSCRIBED HERE. This row previously carried a hand survey — 'two of six startable roots are bindable' plus the four names and why each lacked a validation — and it rotted exactly as a hand-maintained count must: two of the four it named (v1-test-hygiene-producer-retirement, pderive-typesafe-nullary-reflection) were accepted while the sentence still listed them as unbound, and the leading count was edited twice by unrelated changes. startable_nodes_missing_closing_contract() computes the same set from the nodes themselves, so read it there and delete nothing by hand. What stays here is the RULE, which does not change when the roster does.\n\nOne bound node was removed rather than added by this correction: see v1_test_migration_unbound_note. A contract whose validation cannot fail on zero progress is worse than no contract, because it reports done over undone work."
@@ -528,7 +537,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )
     ),
-    active_sized(
+    with_execution(active_sized(
       identity: "rn_D33CBEADA91C3E8C10D8515CC4",
       id: "2-scm-p1-proof-kernel",
       owner: "source-intent",
@@ -544,7 +553,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No source parser, quotient-delta edit lens, effect transport, executed target transition, writable SCM realization, command-line product, hosted service, arbitrary synthesis, unbounded proof search, or P2/P3 roadmap node.",
         handback: "Return the modeled bounded fragment, one public reconciliation fold, data-driven invariant and certificate carriers, the executing discriminating scenario corpus, the closing validation bound and green, and the exact P2 capture and P3 effect work still absent."
       )
-    ),
+    ), e: scm_p1_proof_kernel_execution_contract()),
 
     active(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -1149,6 +1158,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_7QVX2K4M9NBTR6HDJ0FZ8SWCPE",
+      id: "v1-interpreter-primitive-roster",
+      owner: "self-host",
+      path: "dag/gunbc/v1_interpreter_primitive_surface.dag",
+      t: fields(
+        headline: "Make the interpreter's primitive surface enumerable",
+        boundary: "Every interpreter dispatch arm -- free call, method, guard-predicated bridge, native special and the one service carve-out -- has one interpreter-local identity, dispatch form and authored spelling, enumerable independently of semantic primitive identity. Adding or deleting an implementation arm without changing the roster refuses.",
+        displaced_cost: "The interpreter's primitive surface had no roster anywhere, so nobody could ask which primitives it provides. That blocks the primitive-identity join at its fifth surface, and it blocks sequencing v1 deletion honestly: you cannot show nothing still needs a capability you cannot enumerate.",
+        first_slice: "R0 -- the roster is DERIVED FROM the dispatch. Each dispatch site in the seed expands its match arms and its roster rows from one macro token list, so the two cannot disagree; the sites that are not match arms at all stay declared, counted, each naming its own dissolution trigger. R1, the step after, inverts the direction: the .dag roster GENERATES the interpreter's local dispatch identity and lookup, at which point the denominator leaves Rust, the macro authorities delete, and the declared rows delete with them. R0 is mechanically preventive for the sites it covers and is not claimed as structural: the invalid state is unwritable within a site, but a whole new dispatch site can still be added in Rust without anyone noticing, and only R1 closes that.",
+        red_control: "A dispatch arm added without a roster row, and a roster row with no arm, must both be unwritable rather than caught afterwards. A spelling reached by two different arms within one form is unreachable code and has to be named rather than silently accepted. A roster that cannot represent an arm carrying no semantic primitive identity fails this node outright, because that population is exactly what the identity join must discover.",
+        out_of_scope: "Which semantic primitive each arm realizes belongs to the primitive-identity join, not here, and no row may carry an identity field. Generating the dispatch itself from the roster is the step after this one.",
+        handback: "The roster; three derived denominators -- dispatch sites, distinct arm identities, distinct authored spellings -- rather than one conflated count; row-grain enumeration provenance, since a row's provenance is a fact about that row and not about its dispatch form; a reconciliation of every quoted dispatch line in the seed file into either a row or a named non-primitive residue; a typed disposition for the Rust the scaffold adds, naming every symbol and the exact deletion condition; and witnesses asserting exact values rather than lower bounds, with a discriminating red for each detector."
+      )
+    ),
+    active(
       identity: "rn_J4Q81A4BJ8TXN6ZE4481RMB3Y9",
       id: "v1-interpreter-quarantine",
       owner: "self-host",
@@ -1554,6 +1578,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover"),
     edge(child: "v1-emitter-delete", parent: "v1-emitter-quarantine"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-interpreter-primitive-roster"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
     edge(child: "v1-interpreter-delete", parent: "v1-emitter-delete"),
     edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
