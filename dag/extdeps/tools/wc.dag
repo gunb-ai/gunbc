@@ -1,0 +1,52 @@
+module extdeps.tools.wc
+
+import std.types { FilePath, String, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/wc-invocation.html"
+  }
+}
+
+data wc_cli_tool: CliTool = CliTool {
+  name: "wc",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+service wc.ByteCount {
+  operation File {
+    input { path: FilePath }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["wc", "--bytes", "{path}"] }
+  }
+}
+
+type FileByteCountRead
+  = FileByteCountObserved { bytes: ByteSize }
+  | FileByteCountUnavailable { reason: NonEmptyStr }
+
+fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
+  let read = wc.ByteCount.File(path: path)
+  if !read.success {
+    FileByteCountUnavailable { reason: "wc --bytes failed" as NonEmptyStr }
+  } else {
+    match parse_int(s: split(s: trim(read.stdout), delimiter: " ").first()) {
+      Present { value: n } => if n < 0 {
+        FileByteCountUnavailable { reason: "wc returned a negative byte count" as NonEmptyStr }
+      } else {
+        FileByteCountObserved { bytes: byte_size(n as Nat) }
+      }
+      Absent => FileByteCountUnavailable { reason: "wc byte count was not an integer" as NonEmptyStr }
+    }
+  }
+}

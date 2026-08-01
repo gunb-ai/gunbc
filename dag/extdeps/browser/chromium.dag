@@ -1,0 +1,41 @@
+module extdeps.browser.chromium
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c"
+  }
+}
+
+data chromium_net_error_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c/net/base/net_error_list.h"
+  }
+}
+
+type ChromiumVersion = NonEmptyStr where brand("ChromiumVersion")
+type ChromiumSourceRevision = NonEmptyStr where brand("ChromiumSourceRevision")
+
+type ChromiumBuild {
+  version: ChromiumVersion
+  source_revision: ChromiumSourceRevision
+}
+
+data chromium_151_0_7922_34: ChromiumBuild = ChromiumBuild {
+  version: "151.0.7922.34" as ChromiumVersion,
+  source_revision: "782af9cb30a53f54487e5d2e44738645a8ec457c" as ChromiumSourceRevision,
+}
+
+type ChromiumNavigationError
+  = ChromiumErrConnectionRefused
+  | ChromiumErrHttpResponseCodeFailure
+
+type ChromiumInternalDocument
+  = ChromiumWebDataErrorDocument
+
+data chromium_identity_boundary_note: NonEmptyStr = "ChromiumBuild names the Chromium project build grounded by the pinned Chromium revision above. It is not a Google Chrome, Opera, Edge, or Playwright identity. ChromiumNavigationError and ChromiumInternalDocument name only Chromium implementation vocabulary; downstream execution receipts may observe these values without promoting them into another browser distribution." as NonEmptyStr

@@ -1,0 +1,37 @@
+module extdeps.automation.playwright
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/microsoft/playwright/tree/26a9e470a7b3c7822084b09fb7f13902c5f37b51"
+  }
+}
+
+data playwright_browser_provisioning_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "playwright.dev/docs/browsers"
+  }
+}
+
+type PlaywrightVersion = NonEmptyStr where brand("PlaywrightVersion")
+type PlaywrightSourceRevision = NonEmptyStr where brand("PlaywrightSourceRevision")
+
+type PlaywrightBuild {
+  version: PlaywrightVersion
+  source_revision: PlaywrightSourceRevision
+}
+
+data playwright_1_62_1: PlaywrightBuild = PlaywrightBuild {
+  version: "1.62.1" as PlaywrightVersion,
+  source_revision: "26a9e470a7b3c7822084b09fb7f13902c5f37b51" as PlaywrightSourceRevision,
+}
+
+type PlaywrightBrowserBinaryProvenance
+  = PlaywrightManagedChromiumDownload
+
+data playwright_identity_boundary_note: NonEmptyStr = "PlaywrightBuild names the automation dependency. PlaywrightManagedChromiumDownload says only that Playwright provisioned and launched the tested Chromium binary; it does not reclassify that binary as Google Chrome or establish behavior for any browser distribution." as NonEmptyStr
