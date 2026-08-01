@@ -1,34 +1,29 @@
 #!/usr/bin/env python3
-"""OFFLINE AUTHORING TOOL — not a merge-floor step (choice b, quiet-hawk-219).
+"""OFFLINE AUTHORING TOOL — choice (b), two halves (quiet-hawk-219 refinement).
 
-Regenerate provisional debt / expect-red / unclassified TSV carriers from a
-pinned census. NEVER invoked from CI, claim_executor, compile-clean, or any
-enrolled floor consumer. The checked artifacts are the OUTPUT rows
-(provisional_debt_roster.tsv, expect_red_controls.tsv, unclassified_sites.tsv,
-provisional_debt_by_type.tsv, census_sha.txt) plus type_ref_census_sha in
-authority.dag.
+NEVER invoked from CI, claim_executor, compile-clean, or any enrolled floor
+consumer. Checked artifacts are the OUTPUT rows (SHA-pinned TSVs +
+type_ref_census_sha in authority.dag).
+
+HALF 1 PURE — census-rows → roster-rows fold over typed diagnostics at the
+pinned SHA, applying already-decided classification labels.
+  Scaffold: type_ref_roster_pure_regen_dissolve_trigger
+  Dissolves to a .dag fold at the next debt-contract regeneration touch.
+
+HALF 2 HOST-EFFECT — deliberate/incidental execution discriminator
+(compile as-is vs bind-patched scratch). Documented authoring-time measurement
+PROCEDURE, not a Scaffold. Typed OUTPUT (classification rows + bind-outcome
+evidence) is the artifact. No dissolve obligation. Optional only:
+type_ref_roster_host_effect_classify_optional_trigger if Wet/host_effect
+someday models it as a witness — not promised at peel re-census.
 
 Authority: gunbc.type_ref_binding_authority_debt
   type_ref_roster_regenerator_choice
-  type_ref_roster_regenerator_offline_dissolve_trigger
+  type_ref_roster_pure_regen_dissolve_trigger
+  type_ref_roster_host_effect_classify_procedure_note
 
-Dissolve-on: next debt-contract regeneration touch models this as a .dag fold
-and deletes this file.
-
-Census input: SITE\\tUnresolvedType\\tTYPE\\tfile\\tstart\\tend lines (or full
-histogram out). Requires --census-sha (the tree the histogram was evaluated
-against).
-
-Classification:
-  subset = files with unbound/refusal assertion vocabulary (word-bounded)
-           OR section-14 RED probe fixtures (row3/4/5)
-  outside subset → incidental BY CONSTRUCTION
-  inside subset → execution discriminator: does the control fail if the ref binds?
-    yes → deliberate expect-red
-    no → incidental
-    undecidable → unclassified (real bucket; never empty-by-construction)
-
-Does NOT freeze the roster.
+Census input: SITE\\tUnresolvedType\\tTYPE\\tfile\\tstart\\tend (or full histogram).
+Requires --census-sha. Does NOT freeze the roster.
 """
 from __future__ import annotations
 

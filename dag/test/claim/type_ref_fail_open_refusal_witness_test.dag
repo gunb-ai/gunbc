@@ -12,7 +12,9 @@ import gunbc.type_ref_binding_authority_debt {
   type_ref_binding_authority_debt_dissolve_trigger,
   type_ref_census_sha,
   type_ref_roster_regenerator_choice,
-  type_ref_roster_regenerator_offline_dissolve_trigger
+  type_ref_roster_pure_regen_dissolve_trigger,
+  type_ref_roster_host_effect_classify_procedure_note,
+  type_ref_roster_host_effect_classify_optional_trigger
 }
 import std.types { String, Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -74,8 +76,18 @@ test fn regenerator_declared_offline_authoring_tool() -> Bool {
   string_contains(s: type_ref_roster_regenerator_choice, pattern: "CHOICE (b)")
     && string_contains(s: type_ref_roster_regenerator_choice, pattern: "OFFLINE AUTHORING TOOL")
     && string_contains(s: type_ref_roster_regenerator_choice, pattern: "NEVER invoked from CI")
+    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "HALF 1 PURE")
+    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "HALF 2 HOST-EFFECT")
 }
 
-test fn regenerator_offline_dissolve_names_dag_fold() -> Bool {
-  string_contains(s: type_ref_roster_regenerator_offline_dissolve_trigger, pattern: ".dag fold")
+test fn pure_regen_dissolve_does_not_oblige_host_effect() -> Bool {
+  string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "HALF 1 PURE")
+    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "Does NOT obligate modeling the host-effect")
+}
+
+test fn host_effect_classify_is_procedure_not_scaffold() -> Bool {
+  string_contains(s: type_ref_roster_host_effect_classify_procedure_note, pattern: "not a Scaffold")
+    && string_contains(s: type_ref_roster_host_effect_classify_procedure_note, pattern: "No dissolve-on")
+    && string_contains(s: type_ref_roster_host_effect_classify_optional_trigger, pattern: "OPTIONAL only")
+    && string_contains(s: type_ref_roster_host_effect_classify_optional_trigger, pattern: "Peel re-census does not fire this")
 }
