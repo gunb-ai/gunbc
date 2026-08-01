@@ -1,0 +1,52 @@
+module gunbc.direct_process_observation
+
+import std.types { String, NonEmptyStr }
+
+type DirectProviderEventsObservation
+  = DirectProviderEventsObserved { content: String }
+  | DirectProviderEventsRefused { reason: NonEmptyStr }
+
+data direct_process_observation_note: String = "The substrate authority for reading attempt-owned provider evidence directly, without shelling out to a foreign projector. Complete Codex JSONL remains in provider-events.jsonl; observation reads that file through Filesystem.Read and hands the bytes to gunbc.roadmap_provider_events.parse_codex_jsonl, which enforces the CharacterCount line budget and anchored envelope classification in-process. This dissolves codex_provider_event_projection_filter and ProviderEventProjectionCapability (review 44058 scaffold; codex_projection_filter_scaffold_note) — the jq program existed only to bound a line before the substrate could read it, which is the purity trap DESIGN section 6 names once parse_codex_jsonl_with_line_budget landed. A read refusal is typed and located; it is never conflated with an empty event stream."
+
+fn direct_provider_events_observation_readable(
+  observation: DirectProviderEventsObservation,
+) -> Bool {
+  match observation {
+    DirectProviderEventsObserved { content: _ } => true
+    DirectProviderEventsRefused { reason: _ } => false
+  }
+}
+
+fn direct_provider_events_observation_content(
+  observation: DirectProviderEventsObservation,
+) -> String {
+  match observation {
+    DirectProviderEventsObserved { content } => content
+    DirectProviderEventsRefused { reason: _ } => ""
+  }
+}
+
+fn direct_provider_events_observation_error(
+  observation: DirectProviderEventsObservation,
+) -> String {
+  match observation {
+    DirectProviderEventsObserved { content: _ } => ""
+    DirectProviderEventsRefused { reason } => reason as String
+  }
+}
+
+fn observe_provider_events_file(path: String) -> DirectProviderEventsObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    DirectProviderEventsObserved { content: read.content }
+  } else {
+    DirectProviderEventsRefused {
+      reason: join([
+        "provider event stream is unreadable at ",
+        path,
+        ": ",
+        read.error,
+      ], "") as NonEmptyStr,
+    }
+  }
+}

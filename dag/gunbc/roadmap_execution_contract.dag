@@ -8,7 +8,6 @@ type ExecutionCapability
   | TmuxSessionCapability
   | TmuxPipeShellCapability
   | TeeEventCaptureCapability
-  | ProviderEventProjectionCapability
   | EnvironmentBindingCapability
   | AttemptStateDirectoryCapability
   | AttemptCurrentPointerCapability
@@ -58,7 +57,6 @@ fn execution_capability_label(capability: ExecutionCapability) -> String {
     TmuxSessionCapability => "tmux-session"
     TmuxPipeShellCapability => "tmux-pipe-shell"
     TeeEventCaptureCapability => "tee-event-capture"
-    ProviderEventProjectionCapability => "provider-event-projection"
     EnvironmentBindingCapability => "environment-binding"
     AttemptStateDirectoryCapability => "attempt-state-directory"
     AttemptCurrentPointerCapability => "attempt-current-pointer"
@@ -165,7 +163,6 @@ fn dispatch_platform_required_capabilities() -> List<ExecutionCapability> {
     TmuxSessionCapability,
     TmuxPipeShellCapability,
     TeeEventCaptureCapability,
-    ProviderEventProjectionCapability,
     EnvironmentBindingCapability,
     AttemptStateDirectoryCapability,
     AttemptCurrentPointerCapability,
