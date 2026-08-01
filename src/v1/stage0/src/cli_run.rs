@@ -16313,6 +16313,8 @@ pub fn measure_selected_entry_closure_overlap(
     }
 
     let mut closure_sizes: Vec<(String, usize)> = Vec::new();
+    let mut sum_closure_memberships: usize = 0;
+    let mut fanout: HashMap<String, usize> = HashMap::new();
     let mut sum_closure_bytes: u128 = 0;
     let mut union_bytes_by_module: HashMap<String, u128> = HashMap::new();
     for entry in &selected_entries {
@@ -16334,10 +16336,16 @@ pub fn measure_selected_entry_closure_overlap(
             union_bytes_by_module.insert(name, bytes);
         }
         closure_sizes.push((entry.clone(), members.len()));
+        sum_closure_memberships += members.len();
+        for m in members {
+            *fanout.entry(m).or_insert(0) += 1;
+        }
     }
-    let (sum_closure_memberships, union_modules, fanout_by_module) =
-        closure_overlap_membership_for_entries(&index, &selected_entries)?;
     let union_bytes: u128 = union_bytes_by_module.values().sum();
+    let union_modules = fanout.len();
+    let mut fanout_by_module: Vec<(String, usize)> =
+        fanout.into_iter().map(|(k, v)| (k, v)).collect();
+    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     closure_sizes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
     let head_sha = std::process::Command::new("git")
@@ -16584,9 +16592,9 @@ pub fn measure_repeated_typecheck_attribution(
         selected_entries,
         overlap.skipped_entries,
         max_entries_applied,
-        overlap.sum_closure_memberships,
-        overlap.union_modules,
-        overlap.fanout_by_module.clone(),
+        sum_closure_memberships,
+        union_modules,
+        fanout_by_module,
         peak_rss_vhwm_bytes(),
     ))
 }
