@@ -762,7 +762,15 @@ nowhere": the predicate resolves fine, as local+parameter firing proves. The cor
 the one the baseline stage should carry:
 **a synthetic-probe negative is only as good as the probe's ability to reach the judgment**, and
 that can fail two independent ways — a closure too narrow for the judgment's machinery, *or* a
-shape that never triggers it. Corpus prevalence is the cheap cross-check for both: the whole-tree
+shape that never triggers it. **MANDATE (lane policy, operator-adopted 2026-08-01): every
+below-floor or silent-class row the baseline stage produces carries a probe-adequacy receipt —
+closure AND shape AND the corpus-prevalence cross-check where the class has a population — and it
+is required, not advisory.** What bought the mandate is this entry's own record: *three* consecutive
+mechanism explanations (no advisory is producible → the closure was too narrow → the predicate
+resolves nowhere) were each refuted, while the conclusions they explained kept surviving. Mechanism
+stories do not survive contact; executed discriminating controls do, and a row asserted on the
+former is how a wall gets built against behaviour that was already correct. Corpus prevalence is
+the cheap cross-check for both failure modes: the whole-tree
 census carries **1,981** `where-refinement` advisories, so the class was demonstrably reachable
 while the probe found none, and a probe disagreeing with corpus prevalence is evidence against the
 probe. Both the original claim and its first correction are recorded here rather than overwritten,
