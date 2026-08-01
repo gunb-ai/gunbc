@@ -1,11 +1,13 @@
 module v2.test.claim.c_compilation_unit_witness
 
 import std.algebra { Empty }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, String }
 import v2.extdeps.languages.c {
   c_include_directive_for_dep,
   c_partition_fold_outcome,
   c_partition_unit_graph_has_cycle,
+  c_translation_unit_basename,
+  c_translation_unit_basename_safe,
   c_translation_unit_spelling,
   c_unit_header_path,
   c_unit_object_path,
@@ -53,6 +55,19 @@ data witness_mod_a2: ModuleId = "mod.a2" as NonEmptyStr
 
 data witness_unit_one: CompilationUnitId = "cu-one" as CompilationUnitId
 data witness_unit_two: CompilationUnitId = "cu-two" as CompilationUnitId
+
+data hostile_parent_dir: CompilationUnitId = "../peer" as CompilationUnitId
+data hostile_slash: CompilationUnitId = "a/b" as CompilationUnitId
+data hostile_backslash: CompilationUnitId = "a\\b" as CompilationUnitId
+data hostile_quote: CompilationUnitId = "a\"b" as CompilationUnitId
+data hostile_newline: CompilationUnitId = "a\nb" as CompilationUnitId
+data hostile_cr: CompilationUnitId = "a\rb" as CompilationUnitId
+data hostile_nul: CompilationUnitId = "a\u{0}b" as CompilationUnitId
+data hostile_dot: CompilationUnitId = "." as CompilationUnitId
+data hostile_dotdot: CompilationUnitId = ".." as CompilationUnitId
+data hostile_percent: CompilationUnitId = "a%b" as CompilationUnitId
+data collide_left: CompilationUnitId = "a/b" as CompilationUnitId
+data collide_right: CompilationUnitId = "a%00002fb" as CompilationUnitId
 data witness_unit_a: CompilationUnitId = "cu-a" as CompilationUnitId
 data witness_unit_b: CompilationUnitId = "cu-b" as CompilationUnitId
 
@@ -445,3 +460,67 @@ test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
   }
 }
 
+
+// ── C spelling safety (review 2026-08-01, finding 1) ────────────────────────
+// CompilationUnitId is a branded NonEmptyStr with no spelling law, so hostile
+// values inhabit it. These controls execute against the encoder, not the brand.
+
+test fn witness_c_basename_positive_control_unchanged() -> Bool {
+  (c_translation_unit_basename(unit_id: witness_unit_one) as String) == "cu-one"
+    && c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
+}
+
+test fn witness_c_basename_encodes_path_and_source_hostiles() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_slash) as String) == "a%00002fb"
+    && (c_translation_unit_basename(unit_id: hostile_backslash) as String) == "a%00005cb"
+    && (c_translation_unit_basename(unit_id: hostile_quote) as String) == "a%000022b"
+    && (c_translation_unit_basename(unit_id: hostile_newline) as String) == "a%00000ab"
+    && (c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00000db"
+    && (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%000000b"
+}
+
+test fn witness_c_basename_kills_parent_directory_segments() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_dot) as String) == "%00002e"
+    && (c_translation_unit_basename(unit_id: hostile_dotdot) as String) == "%00002e."
+    && (c_translation_unit_basename(unit_id: hostile_parent_dir) as String) == "%00002e.%00002fpeer"
+}
+
+// Injectivity: the escape marker itself escapes, so no unencoded id can collide
+// with an encoded one. `a/b` and the literal `a%00002fb` are distinct ids and
+// MUST NOT collapse to one basename — otherwise two units contend for one .o.
+test fn witness_c_basename_injective_on_escape_marker() -> Bool {
+  (c_translation_unit_basename(unit_id: hostile_percent) as String) == "a%000025b"
+    && (c_translation_unit_basename(unit_id: collide_left) as String)
+       != (c_translation_unit_basename(unit_id: collide_right) as String)
+}
+
+// Every encoded basename inhabits the safe refinement, including the hostiles.
+test fn witness_c_basename_output_always_safe() -> Bool {
+  c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_parent_dir) as String)
+    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_quote) as String)
+    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_newline) as String)
+    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_dotdot) as String)
+    && !c_translation_unit_basename_safe(value: "..")
+    && !c_translation_unit_basename_safe(value: "a/b")
+    && !c_translation_unit_basename_safe(value: "")
+}
+
+// Executing C-source control: the rendered include stays exactly ONE directive
+// — one leading `#include "`, one closing quote, and no embedded newline that
+// would split the generated translation unit.
+test fn witness_c_include_directive_stays_single_directive() -> Bool {
+  let hostile_include = c_include_directive_for_dep(dep_id: hostile_newline)
+  let quote_include = c_include_directive_for_dep(dep_id: hostile_quote)
+  hostile_include == "#include \"a%00000ab.h\""
+    && quote_include == "#include \"a%000022b.h\""
+    && !string_contains(s: hostile_include, pattern: "\n")
+    && !string_contains(s: quote_include, pattern: "\"a\"")
+}
+
+// Object path derives from the SAME encoder as header/source (finding 2: there
+// is no independent artifact identity to disagree with the unit id).
+test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
+  c_unit_object_path(unit_id: hostile_slash) == "a%00002fb.o"
+    && c_unit_header_path(unit_id: hostile_slash) == "a%00002fb.h"
+    && c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
+}
