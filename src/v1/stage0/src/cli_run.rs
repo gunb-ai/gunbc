@@ -7100,8 +7100,9 @@ fn bump_typecheck_compute_count() {
 // --- Repeated typecheck attribution probe (entry-graph-union slice 2 / lane ci-cost) ---
 // ONE-SHOT INSTRUMENT: per (entry, typed module content key) records cache disposition,
 // compute wall on miss, and cross-entry first-computer / later-requester counts against
-// ONE shared `MultiEntryIndex`. Dissolves with slice-2 union verdict (same trigger as
-// `cli_run_selected_closure_overlap_probe`).
+// ONE shared `MultiEntryIndex`. Verdict taken 2026-08-01 (§F); measurement orchestration
+// deletes after merged-SHA provenance receipt — see `cli_run_repeated_typecheck_attribution_probe`
+// scaffold below for the intrinsic trigger (not #7534).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypedCacheDisposition {
