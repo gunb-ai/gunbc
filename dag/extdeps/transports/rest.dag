@@ -72,7 +72,7 @@ fn rest_response_arm_status_class(pattern: RestResponseStatusPattern) -> HttpSta
   }
 }
 
-data rest_response_table_modeled_surface_dissolution_note: String = "Parse still lowers response arms to stringly response_<k> properties on the operation node; the v1 seed interpreter projects each key to RestResponseStatusPattern and calls rest_response_pattern_matches / rest_response_arm_status_class from this module (no parallel Rust predicates). Body decode for error arms uses map_json_to_declared_body_type against the declared type name. Dissolves when parse stores RestResponseStatusPattern on the operation node and body decode is v2-emitted from the same carrier — lane: transport_argv_anemia_dissolution REST response-table row; interim receipt: rest_response_table_witness + rest_response_table_model_witness_test enrolled in ci_release_bins."
+data rest_response_table_modeled_surface_dissolution_note: String = "Parse still lowers response arms to stringly response_<k> properties on the operation node; the v1 seed interpreter projects each key to RestResponseStatusPattern and calls rest_response_pattern_matches / rest_response_arm_status_class from the caller's compilation closure (no parallel Rust predicates, no dispatch-time recompile). Body decode for error arms uses map_json_to_declared_body_type against the declared type name. A closure missing extdeps.transports.rest refuses via Unimplemented. Dissolves when parse stores RestResponseStatusPattern on the operation node and body decode is v2-emitted from the same carrier — lane: transport_argv_anemia_dissolution REST response-table row; interim receipt: rest_response_table_witness + rest_response_table_model_witness_test enrolled in ci_release_bins."
 
 type HttpTransportRefused {
   cause: String

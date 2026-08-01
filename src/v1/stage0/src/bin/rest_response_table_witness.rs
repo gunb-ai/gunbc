@@ -116,10 +116,34 @@ fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
     module_index: &ModuleIndex,
+    seed_modules: &[&str],
 ) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
+    let mut queue: Vec<(String, String)> = Vec::new();
+
+    for module_path in seed_modules {
+        if seen.contains_key(*module_path) {
+            continue;
+        }
+        if let Some(file_path) = module_index.get(*module_path) {
+            if let Ok(file_content) = std::fs::read_to_string(file_path) {
+                let rel_path = file_path
+                    .strip_prefix(&ws)
+                    .unwrap_or(file_path)
+                    .to_string_lossy()
+                    .to_string();
+                seen.insert(
+                    (*module_path).to_string(),
+                    Rc::new(SourceFile {
+                        path: rel_path.clone(),
+                        content: file_content.clone(),
+                    }),
+                );
+                queue.push((rel_path, file_content));
+            }
+        }
+    }
 
     while let Some((_path, content)) = queue.pop() {
         for module_path in extract_imports(&content) {
@@ -173,8 +197,9 @@ fn run_probe(
     module_index: &ModuleIndex,
     src: &str,
     entry: &str,
+    seed_modules: &[&str],
 ) -> Result<Result<Value, InterpError>, String> {
-    let sources = resolve_imports_transitively("test.dag", src, module_index);
+    let sources = resolve_imports_transitively("test.dag", src, module_index, seed_modules);
     let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved)?;
     let graph = resolved.graph.as_ref().ok_or("graph")?;
@@ -250,10 +275,12 @@ fn expect_str(v: Result<Value, InterpError>, what: &str) -> Result<String, Strin
     }
 }
 
+const REST_RESPONSE_TABLE_AUTHORITY: &[&str] = &["extdeps.transports.rest"];
+
 fn declared_error_arm_decodes_typed_refusal(idx: &ModuleIndex) -> Result<(), String> {
     let port = serve_canned("401 Unauthorized", r#"{"message":"denied"}"#)?;
     let src = table_source(port);
-    match run_probe(idx, &src, "probe_detail")? {
+    match run_probe(idx, &src, "probe_detail", REST_RESPONSE_TABLE_AUTHORITY)? {
         Err(InterpError::RestResponseRefused {
             status,
             body_type,
@@ -291,7 +318,7 @@ fn declared_error_arm_decodes_typed_refusal(idx: &ModuleIndex) -> Result<(), Str
 fn undeclared_status_refuses_fail_closed(idx: &ModuleIndex) -> Result<(), String> {
     let port = serve_canned("403 Forbidden", r#"{"message":"nope"}"#)?;
     let src = table_source(port);
-    match run_probe(idx, &src, "probe_detail")? {
+    match run_probe(idx, &src, "probe_detail", REST_RESPONSE_TABLE_AUTHORITY)? {
         Err(InterpError::RestUndeclaredStatus { status, .. }) => {
             if status != 403 {
                 return Err(format!("expected status 403 in refusal, got: {status}"));
@@ -308,7 +335,10 @@ fn undeclared_status_refuses_fail_closed(idx: &ModuleIndex) -> Result<(), String
 fn success_arm_still_maps_body(idx: &ModuleIndex) -> Result<(), String> {
     let port = serve_canned("200 OK", r#"{"message":"fine"}"#)?;
     let src = table_source(port);
-    let detail = expect_str(run_probe(idx, &src, "probe_detail")?, "200 body")?;
+    let detail = expect_str(
+        run_probe(idx, &src, "probe_detail", REST_RESPONSE_TABLE_AUTHORITY)?,
+        "200 body",
+    )?;
     if detail != "fine" {
         return Err(format!("expected body message 'fine', got '{detail}'"));
     }
@@ -318,7 +348,7 @@ fn success_arm_still_maps_body(idx: &ModuleIndex) -> Result<(), String> {
 fn no_table_still_raises_on_error(idx: &ModuleIndex) -> Result<(), String> {
     let port = serve_canned("401 Unauthorized", r#"{"message":"denied"}"#)?;
     let src = bare_source(port);
-    match run_probe(idx, &src, "probe_detail")? {
+    match run_probe(idx, &src, "probe_detail", &[])? {
         Err(InterpError::TypeError { msg }) => {
             if !msg.contains("401") {
                 return Err(format!("expected 401 in raise, got: {msg}"));
@@ -337,6 +367,27 @@ fn no_table_still_raises_on_error(idx: &ModuleIndex) -> Result<(), String> {
     }
 }
 
+fn response_table_without_rest_authority_refuses(idx: &ModuleIndex) -> Result<(), String> {
+    let port = serve_canned("401 Unauthorized", r#"{"message":"denied"}"#)?;
+    let src = table_source(port);
+    match run_probe(idx, &src, "probe_detail", &[])? {
+        Err(InterpError::Unimplemented { what }) => {
+            if !what.contains("extdeps.transports.rest") {
+                return Err(format!(
+                    "expected missing-rest-authority refusal, got: {what}"
+                ));
+            }
+            Ok(())
+        }
+        Err(other) => Err(format!(
+            "expected Unimplemented for missing rest authority, got {other:?}"
+        )),
+        Ok(v) => Err(format!(
+            "REGRESSION: response table without rest authority returned {v:?}"
+        )),
+    }
+}
+
 fn value_record_has_str_field(val: &Value, want: &str) -> bool {
     match val {
         Value::Record { fields, .. } => fields
@@ -349,7 +400,7 @@ fn value_record_has_str_field(val: &Value, want: &str) -> bool {
 fn malformed_error_body_refuses_inhabitance(idx: &ModuleIndex) -> Result<(), String> {
     let port = serve_canned("401 Unauthorized", r#"{"wrong":true}"#)?;
     let src = table_source(port);
-    match run_probe(idx, &src, "probe_detail")? {
+    match run_probe(idx, &src, "probe_detail", REST_RESPONSE_TABLE_AUTHORITY)? {
         Err(InterpError::TypeError { msg }) => {
             if !msg.contains("does not inhabit ErrorShape") {
                 return Err(format!("expected inhabitance refusal, got: {msg}"));
@@ -373,6 +424,10 @@ const CASES: &[WitnessCase] = &[
     (
         "declared_error_arm_decodes_typed_refusal",
         declared_error_arm_decodes_typed_refusal,
+    ),
+    (
+        "response_table_without_rest_authority_refuses",
+        response_table_without_rest_authority_refuses,
     ),
     (
         "malformed_error_body_refuses_inhabitance",

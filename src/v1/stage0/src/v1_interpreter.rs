@@ -7377,128 +7377,17 @@ fn rest_response_table_authority_available(ctx: &InterpContext) -> bool {
         .is_some()
 }
 
-fn rest_response_table_authority_ctx(
-    caller: &InterpContext,
-) -> InterpResult<&'static InterpContext> {
-    if rest_response_table_authority_available(caller) {
-        return Ok(unsafe {
-            std::mem::transmute::<&InterpContext, &'static InterpContext>(caller)
-        });
-    }
-    static AUTHORITY: std::sync::OnceLock<Result<usize, String>> = std::sync::OnceLock::new();
-    let ptr = match AUTHORITY.get_or_init(|| {
-        compile_rest_response_table_authority().map(|ctx| Box::into_raw(Box::new(ctx)) as usize)
-    }) {
-        Ok(ptr) => *ptr,
-        Err(msg) => {
-            return Err(InterpError::Unimplemented {
-                what: format!("rest response table authority unavailable: {msg}"),
-            })
-        }
-    };
-    Ok(unsafe { &*(ptr as *const InterpContext) })
-}
-
-fn compile_rest_response_table_authority() -> Result<InterpContext, String> {
-    use crate::cli_run::workspace_root;
-    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
-    use im::HashMap;
-    use std::collections::HashMap as StdHashMap;
-    use std::path::Path;
-
-    let ws = workspace_root();
-    let rest_path = ws.join("dag/extdeps/transports/rest.dag");
-    if !rest_path.is_file() {
-        return Err(format!("rest authority missing: {}", rest_path.display()));
-    }
-
-    fn scan_modules(dir: &Path, index: &mut StdHashMap<String, std::path::PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                scan_modules(&path, index);
-            } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Some(module_path) = content
-                        .lines()
-                        .map(str::trim)
-                        .find(|l| !l.is_empty())
-                        .and_then(|l| l.strip_prefix("module "))
-                        .and_then(|rest| rest.split_whitespace().next())
-                    {
-                        index.insert(module_path.to_string(), path);
-                    }
-                }
-            }
-        }
-    }
-
-    let mut module_index = StdHashMap::new();
-    for root in [ws.join("dag"), ws.join("src/v1")] {
-        if root.is_dir() {
-            scan_modules(&root, &mut module_index);
-        }
-    }
-
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = vec!["extdeps.transports.rest".to_string()];
-    while let Some(module_path) = queue.pop() {
-        if seen.contains_key(&module_path) {
-            continue;
-        }
-        let Some(file_path) = module_index.get(&module_path) else {
-            return Err(format!("module not found: {module_path}"));
-        };
-        let content = std::fs::read_to_string(file_path)
-            .map_err(|e| format!("read {}: {e}", file_path.display()))?;
-        let rel_path = file_path
-            .strip_prefix(&ws)
-            .unwrap_or(file_path)
-            .to_string_lossy()
-            .to_string();
-        for imp in extract_module_import_names(&content, &rel_path) {
-            if !seen.contains_key(&imp) {
-                queue.push(imp);
-            }
-        }
-        seen.insert(
-            module_path,
-            Rc::new(SourceFile {
-                path: rel_path,
-                content,
-            }),
-        );
-    }
-
-    let sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
-    let graph = resolved
-        .graph
-        .as_ref()
-        .ok_or_else(|| format!("compile rest authority failed: {:?}", resolved.diagnostics))?;
-    Ok(InterpContext::new(
-        graph,
-        resolved.source_indices.clone(),
-        ExecutionMode::Wet,
-    ))
-}
-
-fn extract_module_import_names(content: &str, path: &str) -> Vec<String> {
-    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), path.to_string());
-    let source_index =
-        crate::v1_std_core::build_newline_index(path.to_string(), content.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert(path.to_string(), source_index);
-    let result = crate::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
-    match &result.module {
-        Some(module) => crate::v1_std_core::module_imports(module.clone())
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect(),
-        None => vec![],
+/// The caller's compilation closure must already include `extdeps.transports.rest`.
+/// No parallel authority context is compiled at dispatch time.
+fn require_rest_response_table_authority<'a>(
+    ctx: &'a InterpContext,
+) -> InterpResult<&'a InterpContext> {
+    if rest_response_table_authority_available(ctx) {
+        Ok(ctx)
+    } else {
+        Err(InterpError::Unimplemented {
+            what: "REST response table requires extdeps.transports.rest in the compilation closure (rest_response_pattern_matches unavailable)".to_string(),
+        })
     }
 }
 
@@ -7532,7 +7421,7 @@ fn parse_response_pattern_key(ctx: &InterpContext, pattern_key: &str) -> InterpR
 }
 
 fn rest_pattern_matches(ctx: &InterpContext, pattern_key: &str, status: u16) -> InterpResult<bool> {
-    let authority = rest_response_table_authority_ctx(ctx)?;
+    let authority = require_rest_response_table_authority(ctx)?;
     let pattern = parse_response_pattern_key(authority, pattern_key)?;
     let result = run_in_context_with_args(
         authority,
@@ -7555,7 +7444,7 @@ fn rest_pattern_matches(ctx: &InterpContext, pattern_key: &str, status: u16) -> 
 }
 
 fn rest_arm_is_successful(ctx: &InterpContext, pattern_key: &str) -> InterpResult<bool> {
-    let authority = rest_response_table_authority_ctx(ctx)?;
+    let authority = require_rest_response_table_authority(ctx)?;
     let pattern = parse_response_pattern_key(authority, pattern_key)?;
     let result = run_in_context_with_args(
         authority,
