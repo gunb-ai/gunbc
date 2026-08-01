@@ -24,6 +24,10 @@ type Stage0SourceModuleIdentity {
   provenance: Stage0SourceIdentityProvenance
 }
 
+type Stage0SourceIdentitySupply
+  = Stage0SourceIdentitySupplyAvailable { identities: List<Stage0SourceModuleIdentity> }
+  | Stage0SourceIdentitySupplyUnavailable { cause: String }
+
 type Stage0ProducedFileKind
   = ModuleProjection
   | CompilerSupportProjection
@@ -45,9 +49,15 @@ type Stage0EmissionPlanRow {
 }
 
 type Stage0EmissionPlanRefusalCause
-  = SourceIdentityUnavailableRefusal {
+  = SourceIdentitySupplyUnavailableRefusal { cause: String }
+  | SourceIdentityUnavailableRefusal {
       module_path: String,
       storage_path: String
+    }
+  | Stage0OutputPathCollision {
+      path: String,
+      first_producer: String,
+      duplicate_producer: String
     }
 
 type Stage0EmissionPlanOutcome
@@ -58,7 +68,7 @@ data stage0_projection_disposition_authority_note: String = "GeneratedProjection
 
 data stage0_source_identity_supply_scaffold_note: String = "DECLARED SCAFFOLD. stage0_emission_source_identities_host observes SOURCE only: the Rust seed walks gunbc.cli_run.regen_input_sources and parses every row through the source-authority-aligned module binding parser. It must never observe EmitResult or share the emit-output path. DISSOLVE-ON: generated_artifact_gate accepts a v2.compiler.source_authority.ModuleStorageIndex; then this host builtin and this scaffold carrier delete, and the same pure folds consume that index directly."
 
-data stage0_source_identity_non_seed_refusal_note: String = "The authored body is Empty deliberately: the native seed intercepts this scaffold spelling before evaluation; a realization without that declared host supply derives only the three compiler-support rows and fails the generated-count/exact-agreement walls. It never fabricates plausible source identities."
+data stage0_source_identity_non_seed_refusal_note: String = "The authored body is explicitly Unavailable: absence of the native source-side realization flows as a typed refusal through planning and artifact generation, and is structurally incapable of producing bytes for main_wet to write."
 
 data stage0_source_identity_supply_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -73,8 +83,8 @@ data stage0_source_identity_supply_dissolution_trigger: String = "dissolve-on: g
 
 data stage0_source_identity_supply_hand_rust_receipt: String = "HAND-RUST GATE — one checkable receipt for this declared source-supply scaffold. WHAT GROWS: src/v1/stage0/src/cli_run.rs adds the Stage0EmissionSourceIdentity transport, cache, and stage0_emission_source_identities; src/v1/stage0/src/v1_interpreter.rs adds the matching builtin arm. At this increment, `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs src/v1/stage0/src/v1_interpreter.rs` reports 65/0 and 42/0, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs src/v1/stage0/src/v1_interpreter.rs | grep -cE '^\\+.*\\bfn '` reports 1: this is counted hand-Rust growth, not a flat-census claim. WHAT SHRINKS NOW: `git show origin/main:dag/gunbc/stage0_emit_model.dag | sed -n '/^data generated_stage0_files:/,/^]/p' | grep -c '[.]rs'` reports 110 handwritten membership rows, while the same range in this branch is absent (0); the enrolled stage0_emit_plan_generated projection is derived in their place. EXPLICIT DEFERRAL: ROADMAP node v1-zero-hand-maintained-rust, modeled as ZeroHandMaintainedRust in gunbc.v1_deletion_plan.v1_exit_finish_lines. CONCRETE DISSOLUTION: when generated_artifact_gate accepts v2.compiler.source_authority.ModuleStorageIndex, the Rust transport, cache, and interpreter arm delete and stage0_emission_plan_from_source consumes the index projection directly, exactly as stage0_source_identity_supply_dissolution_trigger states."
 
-fn stage0_emission_source_identities_host() -> List<Stage0SourceModuleIdentity> {
-  []
+fn stage0_emission_source_identities_host() -> Stage0SourceIdentitySupply {
+  Stage0SourceIdentitySupplyUnavailable { cause: "source identity host supply unavailable" }
 }
 
 fn stage0_module_emit_basename(module_path: String) -> String {
@@ -131,6 +141,33 @@ fn stage0_emission_plan_row(produced: Stage0ProducedFileIdentity) -> Stage0Emiss
   }
 }
 
+fn append_stage0_plan_row_or_refuse(
+  outcome: Stage0EmissionPlanOutcome,
+  row: Stage0EmissionPlanRow
+) -> Stage0EmissionPlanOutcome {
+  match outcome {
+    Stage0EmissionPlanRefused { cause } => Stage0EmissionPlanRefused { cause: cause }
+    Stage0EmissionPlanAccepted { rows } => {
+      let first = fold(rows, init: "", f: fn(found, existing) {
+        if found == "" && existing.canonical_repo_path == row.canonical_repo_path {
+          existing.produced.producer_identity
+        } else { found }
+      })
+      if first == "" {
+        Stage0EmissionPlanAccepted { rows: concat(rows, [row]) }
+      } else {
+        Stage0EmissionPlanRefused {
+          cause: Stage0OutputPathCollision {
+            path: row.canonical_repo_path,
+            first_producer: first,
+            duplicate_producer: row.produced.producer_identity
+          }
+        }
+      }
+    }
+  }
+}
+
 fn stage0_module_plan_rows_or_refuse(
   identities: List<Stage0SourceModuleIdentity>
 ) -> Stage0EmissionPlanOutcome {
@@ -147,9 +184,10 @@ fn stage0_module_plan_rows_or_refuse(
               storage_path: identity.storage_path
             }
           }
-          ParsedFromRegenSourceClosure => Stage0EmissionPlanAccepted {
-            rows: concat(rows, [stage0_emission_plan_row(produced: module_produced_file(identity: identity))])
-          }
+          ParsedFromRegenSourceClosure => append_stage0_plan_row_or_refuse(
+            outcome: Stage0EmissionPlanAccepted { rows: rows },
+            row: stage0_emission_plan_row(produced: module_produced_file(identity: identity))
+          )
         }
       }
     }
@@ -161,20 +199,23 @@ fn stage0_emission_plan_from_source(
 ) -> Stage0EmissionPlanOutcome {
   match stage0_module_plan_rows_or_refuse(identities: identities) {
     Stage0EmissionPlanRefused { cause } => Stage0EmissionPlanRefused { cause: cause }
-    Stage0EmissionPlanAccepted { rows } => Stage0EmissionPlanAccepted {
-      rows: concat(
-        rows,
-        stage0_compiler_support_file_identities
-          |> map(produced => stage0_emission_plan_row(produced: produced))
-      ) |> sort_by(row => row.produced.basename)
+    Stage0EmissionPlanAccepted { rows } => match fold(
+      stage0_compiler_support_file_identities,
+      init: Stage0EmissionPlanAccepted { rows: rows },
+      f: fn(acc, produced) { append_stage0_plan_row_or_refuse(outcome: acc, row: stage0_emission_plan_row(produced: produced)) }
+    ) {
+      Stage0EmissionPlanRefused { cause } => Stage0EmissionPlanRefused { cause: cause }
+      Stage0EmissionPlanAccepted { rows } => Stage0EmissionPlanAccepted { rows: rows |> sort_by(row => row.produced.basename) }
     }
   }
 }
 
-fn stage0_emission_plan() -> List<Stage0EmissionPlanRow> {
-  match stage0_emission_plan_from_source(identities: stage0_emission_source_identities_host()) {
-    Stage0EmissionPlanAccepted { rows } => rows
-    Stage0EmissionPlanRefused { cause: _ } => []
+fn stage0_emission_plan() -> Stage0EmissionPlanOutcome {
+  match stage0_emission_source_identities_host() {
+    Stage0SourceIdentitySupplyUnavailable { cause } => Stage0EmissionPlanRefused {
+      cause: SourceIdentitySupplyUnavailableRefusal { cause: cause }
+    }
+    Stage0SourceIdentitySupplyAvailable { identities } => stage0_emission_plan_from_source(identities: identities)
   }
 }
 
@@ -198,14 +239,6 @@ fn generated_stage0_paths_from_plan_rows(rows: List<Stage0EmissionPlanRow>) -> L
       HandMaintainedCandidate => acc
     }
   })
-}
-
-fn generated_stage0_files_from_emission_plan() -> List<String> {
-  generated_stage0_files_from_plan_rows(rows: stage0_emission_plan())
-}
-
-fn generated_stage0_paths_from_emission_plan() -> List<String> {
-  generated_stage0_paths_from_plan_rows(rows: stage0_emission_plan())
 }
 
 fn stage0_generated_output_sets_agree(

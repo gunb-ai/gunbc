@@ -9364,7 +9364,11 @@ macro_rules! v1_builtin_arms {
                         ])),
                     })
                     .collect();
-                Ok(Some(list_value(items)))
+                Ok(Some(Value::Variant {
+                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
+                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
+                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
+                }))
             },
 
             arm "free_call.parse_stage0_cargo_manifest_bins" { "parse_stage0_cargo_manifest_bins" } => {
