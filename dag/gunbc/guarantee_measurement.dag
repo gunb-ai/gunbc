@@ -39,7 +39,7 @@ type GuaranteePath {
   realization_target: PathRealization
 }
 
-data probe_observation_note: String = "The RAW executed observation, never the judgment: dispositions (Unmeasured, BelowFloor, FrontierAccepted, OnLadder, OutsideModeledGuarantee) are DERIVED by the claims carrier from receipts, so storing one here would be the transcribed-rung defect the carrier stage exists to make unrepresentable. ProbeNotRunnable is a separate arm because could-not-measure is not a verdict about the subject (DESIGN 5: top-as-answer conflated with top-as-ignorance is the absorbing fallback) - a probe that failed to execute must never be readable as the subject passing or failing. diagnostic_class names a compiler diagnostic variant as prose at this stage; the diagnostic-taxonomy join is carrier-stage grounding, and a brand here would claim a join this stage does not own. On observed_is_verdict's shape (review 46075): the verdict/ignorance projection is this sum's ONLY query today, so no canonical fold exists to route it through - the predicate/walker dissolution rule (nat-grounding-unification A-prime; e0599 sec 3.0) triggers where a canonical fold ALREADY exists or a substrate walk is extended, and neither holds for a freshly declared domain sum. The named re-grounding trigger, recorded so the hand-match cannot accumulate siblings: the claims carrier's disposition derivation is this sum's expected second consumer, and WHEN it lands, a probe_observation fold becomes the canonical surface, observed_is_verdict re-expresses through it, and this sentence deletes with the migration."
+data probe_observation_note: String = "The RAW executed observation, never the judgment: dispositions (Unmeasured, BelowFloor, FrontierAccepted, OnLadder, OutsideModeledGuarantee) are DERIVED by the claims carrier from receipts, so storing one here would be the transcribed-rung defect the carrier stage exists to make unrepresentable. ProbeNotRunnable is a separate arm because could-not-measure is not a verdict about the subject (DESIGN 5: top-as-answer conflated with top-as-ignorance is the absorbing fallback) - a probe that failed to execute must never be readable as the subject passing or failing. diagnostic_class names a compiler diagnostic variant as prose at this stage; the diagnostic-taxonomy join is carrier-stage grounding, and a brand here would claim a join this stage does not own. On query shape (review 46075, review 46159): probe_observation_fold is the sum's canonical elimination (the std.change KeyedLeafVerdictFold idiom) and owns the ONLY match over ProbeObservation; observed_is_verdict derives through it, so a per-query hand-match has no form to accumulate - a new query is a ProbeObservationFold row. Review 46075's interim carry had named exactly this fold as its dissolution trigger with the claims carrier as second consumer; a catamorphism's shape is sum-determined, so the trigger executed with review 46159 rather than waiting, and the carrier's disposition derivation consumes the same fold when it lands."
 
 type ProbeObservation
   = RefusedTyped { diagnostic_class: NonEmptyStr, count: Int }
@@ -48,14 +48,35 @@ type ProbeObservation
   | ExecutionDiverged { description: NonEmptyStr }
   | ProbeNotRunnable { cause: NonEmptyStr }
 
-fn observed_is_verdict(o: ProbeObservation) -> Bool {
+type ProbeObservationFold<R> {
+  refused: fn(NonEmptyStr, Int) -> R
+  accepted_clean: R
+  accepted_counted: fn(NonEmptyStr, Int) -> R
+  diverged: fn(NonEmptyStr) -> R
+  not_runnable: fn(NonEmptyStr) -> R
+}
+
+fn probe_observation_fold<R>(o: ProbeObservation, fold: ProbeObservationFold<R>) -> R {
   match o {
-    RefusedTyped { diagnostic_class: _, count: _ } => true
-    AcceptedClean => true
-    AcceptedCounted { diagnostic_class: _, count: _ } => true
-    ExecutionDiverged { description: _ } => true
-    ProbeNotRunnable { cause: _ } => false
+    RefusedTyped { diagnostic_class: d, count: c } => fold.refused(d, c)
+    AcceptedClean => fold.accepted_clean
+    AcceptedCounted { diagnostic_class: d, count: c } => fold.accepted_counted(d, c)
+    ExecutionDiverged { description: d } => fold.diverged(d)
+    ProbeNotRunnable { cause: c } => fold.not_runnable(c)
   }
+}
+
+fn observed_is_verdict(o: ProbeObservation) -> Bool {
+  probe_observation_fold(
+    o: o,
+    fold: ProbeObservationFold {
+      refused: fn(_, _) { true },
+      accepted_clean: true,
+      accepted_counted: fn(_, _) { true },
+      diverged: fn(_) { true },
+      not_runnable: fn(_) { false },
+    },
+  )
 }
 
 type GuaranteeMeasurementReceipt {
