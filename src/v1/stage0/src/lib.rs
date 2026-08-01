@@ -106,6 +106,7 @@ pub mod v1_compiler_infer_env;
 pub mod v1_compiler_infer_items;
 pub mod v1_compiler_infer_lookup;
 pub mod v1_compiler_infer_method;
+pub mod v1_compiler_infer_occurrence_binding;
 pub mod v1_compiler_infer_patterns;
 pub mod v1_compiler_infer_resolve;
 pub mod v1_compiler_infer_service;

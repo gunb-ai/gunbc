@@ -2,7 +2,9 @@
 // Source module: v1.compiler.infer_method
 
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_infer_types::{make_container_type, make_map_type};
+pub use crate::v1_compiler_infer_types::{
+    make_container_type, make_kernel_record_field, make_kernel_record_type, make_map_type,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
@@ -17,6 +19,25 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn filesystem_read_result_type_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "filesystem_read was registered as a bare type_variable_node, so `filesystem_read(path: p).content` established no type at all: the field lookup found nothing to look in, and the result was a fabricated Primitive() carrying no name. Downstream `.split` on that value was then accepted with no judgment behind it, which is #7479's shape one layer down — and it survived because the runtime dispatches split on the native String regardless, so nothing ever failed loudly enough to be found. The return type was never unknown; runtime_rust.dag rt_filesystem already emits `pub struct FilesystemReadResult { pub content: String }`. Declaring it here makes the seed's Rust struct and the compiler's type ONE fact rather than two (DESIGN §3), so the field's type is read from the declaration instead of invented. Any future builtin returning a product declares it the same way; a bare type variable is correct only where the result genuinely IS parametric.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn filesystem_read_result_type() -> Rc<Node> {
+    make_kernel_record_type(
+        "FilesystemReadResult".to_string(),
+        Rc::new(vec![make_kernel_record_field(
+            "content".to_string(),
+            string_type(),
+        )]),
+    )
+}
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
@@ -226,7 +247,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "filesystem_read".to_string(),
-            type_variable_node("filesystem_read_result".to_string()),
+            filesystem_read_result_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

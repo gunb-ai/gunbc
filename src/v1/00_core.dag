@@ -17,8 +17,10 @@ import std.occurrence_identity {
   OccurrenceTransportRefusal,
   MissingAuthoredOccurrenceIdentity,
   DuplicateAuthoredOccurrenceIdentity,
+  DuplicateSuppliedCandidateIdentity,
   InconsistentOccurrenceContainment,
-  WrongOccurrenceCategory,
+  WrongOccurrenceRole,
+  UnknownOccurrenceIdentity,
 }
 
 type Token {
@@ -155,6 +157,11 @@ type CompilerDiagnostic
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
   | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
   | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
+  | MethodNotFound     { method: String, receiver_type: String, span: SourceSpan }
+  | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
+  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
+  | ReceiverTypeUnestablished { method: String, span: SourceSpan }
+  | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
   | MissingField       { field: String, type_name: String, span: SourceSpan }
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
@@ -182,25 +189,32 @@ type ErrorDAG {
   errors: List<ErrorNode>
 }
 
+data occurrence_transport_refusal_span_absence_note: String = "Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored location' (review 45364).\n\nWHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in neither entries_by_id nor references_by_id (std.occurrence_binding_resolve resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the validated carrier, so at that point no authored span exists to report. This is absence by construction, not a failure to compute one.\n\nWHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been absorbed into an anonymous placeholder instead of stopping the line. It is now unreachable-by-construction rather than merely unused, because adding a variant reds the total match below AND the total match in occurrence_transport_refusal_diagnostic_message. The '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().\n\nBOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's scope. Until then no_span() is the honest rendering and the message carries the identity."
+
 fn occurrence_transport_refusal_diagnostic_span(
   refusal: OccurrenceTransportRefusal
-) -> SourceSpan {
+) -> SourceSpan? {
   match refusal {
-    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => span
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
     DuplicateAuthoredOccurrenceIdentity {
       occurrence: _,
       diagnostic_span: span,
-    } => span
+    } => Present { value: span }
+    DuplicateSuppliedCandidateIdentity {
+      occurrence: _,
+      diagnostic_span: span,
+    } => Present { value: span }
     InconsistentOccurrenceContainment {
       occurrence: _,
       diagnostic_span: span,
-    } => span
-    WrongOccurrenceCategory {
+    } => Present { value: span }
+    WrongOccurrenceRole {
       occurrence: _,
       expected: _,
       observed: _,
       diagnostic_span: span,
-    } => span
+    } => Present { value: span }
+    UnknownOccurrenceIdentity { occurrence: _ } => Absent
   }
 }
 
@@ -217,6 +231,13 @@ fn occurrence_transport_refusal_diagnostic_message(
       "occurrence transport refused: duplicate authored occurrence identity ",
       to_string(value: occurrence.value)
     )
+    DuplicateSuppliedCandidateIdentity {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence binding refused: duplicate supplied candidate identity ",
+      to_string(value: occurrence.value)
+    )
     InconsistentOccurrenceContainment {
       occurrence: occurrence,
       diagnostic_span: _,
@@ -224,15 +245,20 @@ fn occurrence_transport_refusal_diagnostic_message(
       "occurrence transport refused: inconsistent containment for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    WrongOccurrenceCategory {
+    WrongOccurrenceRole {
       occurrence: occurrence,
       expected: _,
       observed: _,
       diagnostic_span: _,
     } => concat(
-      "occurrence transport refused: wrong category for authored occurrence identity ",
+      "occurrence transport refused: wrong role for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
+    UnknownOccurrenceIdentity { occurrence: occurrence } =>
+      concat(
+        "occurrence transport refused: unknown occurrence identity ",
+        to_string(value: occurrence.value)
+      )
   }
 }
 
@@ -245,6 +271,11 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
     VariantNotFound    { variant: _, type_name: _, span: s }   => s
     FieldNotFound      { field: _, type_name: _, span: s }     => s
+    MethodNotFound     { method: _, receiver_type: _, span: s } => s
+    MethodExistenceUndecided { method: _, receiver_type: _, span: s } => s
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: s } => s
+    ReceiverTypeUnestablished { method: _, span: s } => s
+    FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
     MissingField       { field: _, type_name: _, span: s }     => s
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
@@ -262,7 +293,10 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
     OccurrenceTransportViolation { refusal: refusal } =>
-      occurrence_transport_refusal_diagnostic_span(refusal: refusal)
+      match occurrence_transport_refusal_diagnostic_span(refusal: refusal) {
+        Present { value: span } => span
+        Absent => no_span()
+      }
   }
 }
 
@@ -275,6 +309,12 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
     VariantNotFound    { variant: v, type_name: t, span: _ }      => concat("variant '", v, "' not found in type '", t, "'")
     FieldNotFound      { field: f, type_name: t, span: _ }        => concat("field '", f, "' not found in type '", t, "'")
+    MethodNotFound     { method: m, receiver_type: t, span: _ }   => concat("method '", m, "' not found on receiver type '", t, "'")
+    MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it")
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
+    ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
+    FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: _, observed: _, span: _ } =>
+      concat(concat(concat("the declared frontier row for '", m), concat("' on receiver type '", t)), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.")
     MissingField       { field: f, type_name: t, span: _ }        => concat("missing required field '", f, "' in literal of type '", t, "'")
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
@@ -308,9 +348,30 @@ fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
     || reason == "string predicate not implemented"
 }
 
+data compiler_diagnostic_seed_projection_note: String = "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\+.*\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate."
+
+type FrontierOccurrenceKey {
+  method: String
+  receiver_shape: String
+}
+
+fn diagnostic_frontier_occurrence_key(d: CompilerDiagnostic) -> FrontierOccurrenceKey? {
+  match d {
+    ReceiverTypeUnestablished { method: m, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: "Primitive()" } }
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: _, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: t } }
+    _ => none
+  }
+}
+
+data diagnostic_frontier_occurrence_key_note: String = "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins."
+
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
+    ReceiverTypeUnestablished { method: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => true
@@ -325,6 +386,8 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
     UnlistedImportUse { name: _, span: _ } => false
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
+    ReceiverTypeUnestablished { method: _, span: _ } => false
     _ => true
   }
 }
@@ -332,6 +395,8 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => true
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
+    ReceiverTypeUnestablished { method: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false

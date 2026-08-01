@@ -73,12 +73,19 @@ import gunbc.source_integration_landing_spine {
   LandingClosedResultSpaceReceipt,
   LandingClosureComplete,
   LandingClosureIncomplete,
+  LandingCaptureCompletenessCertificate,
+  LandingAffectedScopeCertificate,
+  LandingRuleClosureCertificate,
+  LandingCandidateGenerationCertificate,
+  LandingAdmissibilityCertificate,
+  LandingEquivalenceQuotientCertificate,
   LandingMultiplicityCertificate,
   LandingClosedZero,
   LandingClosedOne,
   LandingClosedMany,
   LandingUnclosed,
   LandingClosureCertificateMissing,
+  LandingSearchBoundExhausted,
   LandingEvidenceNotReady,
   LandingInvestigationContinues,
   LandingEvidenceConflictContinues,
@@ -756,6 +763,15 @@ test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
       disposition: LandingUnclosedTerminal { refusal },
     } =>
       refusal.kind == LandingEvidenceAdmissionDenied
+        && match landing_user_boundary(
+          receipt: LandingSemanticSpine { result: semantic },
+        ) {
+          LandingTerminal {
+            outcome: NativeScmTerminalCouldNotLand { refusal: presented },
+          } =>
+            presented.plain_reason == "An independent check contradicts a required guarantee."
+          _ => false
+        }
     _ => false
   }
 }
@@ -835,7 +851,21 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
     ),
   ) {
     LandingClosedMany { receipt } =>
-      match landing_resolve_question(
+      p0_primary_message_is_plain(message: receipt.question.question)
+        && match landing_resolve_question(
+        prior: receipt,
+        choice: NativeScmFirstContinuationOption,
+      ) {
+        LandingChoiceAdvanced { continuation } =>
+          continuation.selected.identity.choice == NativeScmFirstContinuationOption
+            && match continuation.processing {
+              LandingSelectedResultProcessing { result } =>
+                result.result == "first-result"
+              _ => false
+            }
+        LandingChoiceNotOffered { prior: _, choice: _ } => false
+      }
+        && match landing_resolve_question(
         prior: receipt,
         choice: NativeScmSecondContinuationOption,
       ) {
@@ -867,7 +897,9 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
   }
 }
 
-test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
+fn p0_incomplete_closure_stays_machine_owned(
+  missing: gunbc.source_integration_landing_spine.LandingClosureCertificateKind,
+) -> Bool {
   let subject = LandingClosureSubject {
     ready_evidence: p0_ready_evidence(),
     admission_contract: "p0-admission-contract",
@@ -888,8 +920,8 @@ test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
   let semantic = landing_closed_result_space(
     attempt: LandingClosureIncomplete {
       subject: subject,
-      missing: LandingMultiplicityCertificate,
-      cause: "the result-class count is not closed",
+      missing: missing,
+      cause: "one required closure receipt is absent",
     },
     zero_refusal: p0_refusal(
       kind: LandingSemanticRequirementsIncompatible,
@@ -904,13 +936,14 @@ test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
     LandingUnclosed {
       proposal: _,
       cause: LandingClosureCertificateMissing {
-        certificate: LandingMultiplicityCertificate,
+        certificate,
         cause: _,
       },
       partial_results: _,
       disposition: LandingInvestigationContinues { continuation: _ },
     } =>
-      match landing_user_boundary(
+      certificate == missing
+        && match landing_user_boundary(
         receipt: LandingSemanticSpine { result: semantic },
       ) {
         LandingMachineOwned { status, continuation: _ } =>
@@ -919,6 +952,18 @@ test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
       }
     _ => false
   }
+}
+
+test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
+  all([
+    LandingCaptureCompletenessCertificate,
+    LandingAffectedScopeCertificate,
+    LandingRuleClosureCertificate,
+    LandingCandidateGenerationCertificate,
+    LandingAdmissibilityCertificate,
+    LandingEquivalenceQuotientCertificate,
+    LandingMultiplicityCertificate,
+  ], missing => p0_incomplete_closure_stays_machine_owned(missing: missing))
 }
 
 test fn witness_p0_admission_and_transition_flow_forward() -> Bool {
@@ -1094,6 +1139,7 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
               outcome: NativeScmTerminalLanded { result_preview },
             } =>
               result_preview == "Worker was renamed and its callers were updated."
+                && p0_primary_message_is_plain(message: result_preview)
             _ => false
           }
       }
@@ -1206,6 +1252,45 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
       },
     },
   )
+  let unauthorized = landing_user_boundary(
+    receipt: LandingAdmissionSpine {
+      admission: LandingUnauthorized {
+        semantic: p0_closed_one(),
+        refusal: p0_refusal(
+          kind: LandingAuthorizationDenied,
+          reason: "You are not allowed to change this target.",
+        ),
+      },
+    },
+  )
+  let exhausted = landing_user_boundary(
+    receipt: LandingSemanticSpine {
+      result: LandingUnclosed {
+        proposal: p0_proposal(),
+        cause: LandingSearchBoundExhausted {
+          cause: "the declared search bound was exhausted",
+        },
+        partial_results: [],
+        disposition: LandingUnclosedTerminal {
+          refusal: p0_refusal(
+            kind: LandingBoundExhausted,
+            reason: "This change is outside the supported search limit.",
+          ),
+        },
+      },
+    },
+  )
+  let permanent = landing_user_boundary(
+    receipt: LandingTransitionSpine {
+      transition: LandingEffectFailed {
+        admitted: p0_admitted(),
+        refusal: p0_refusal(
+          kind: LandingPermanentEffectFailure,
+          reason: "The target permanently rejected this update.",
+        ),
+      },
+    },
+  )
   match machine {
     LandingMachineOwned { status: _, continuation: _ } =>
       match refused {
@@ -1213,10 +1298,49 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
           outcome: NativeScmTerminalCouldNotLand { refusal },
         } =>
           refusal.plain_reason == "This change cannot approve itself."
+            && match unauthorized {
+              LandingTerminal {
+                outcome: NativeScmTerminalCouldNotLand { refusal: denied },
+              } =>
+                denied.plain_reason == "You are not allowed to change this target."
+                  && match exhausted {
+                    LandingTerminal {
+                      outcome: NativeScmTerminalCouldNotLand { refusal: bounded },
+                    } =>
+                      bounded.plain_reason == "This change is outside the supported search limit."
+                        && match permanent {
+                          LandingTerminal {
+                            outcome: NativeScmTerminalCouldNotLand { refusal: effect },
+                          } =>
+                            effect.plain_reason == "The target permanently rejected this update."
+                          _ => false
+                        }
+                    _ => false
+                  }
+              _ => false
+            }
         _ => false
       }
     LandingTerminal { outcome: _ } => false
   }
+}
+
+fn p0_primary_message_is_plain(message: String) -> Bool {
+  all([
+    "candidate",
+    "closedness",
+    "evidence grade",
+    "reconciliation",
+    "constraint",
+    "unknown",
+    "contradictory",
+    "merge",
+    "rebase",
+    "cherry-pick",
+    "reset",
+    "conflict marker",
+    "force-push",
+  ], forbidden => !string_contains(s: message, pattern: forbidden))
 }
 
 test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool {
@@ -1242,6 +1366,7 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
       outcome: NativeScmTerminalCouldNotLand { refusal: presented },
     } =>
       presented.plain_reason == "The target rejected this update."
+        && p0_primary_message_is_plain(message: presented.plain_reason)
         && !string_contains(
           s: presented.plain_reason,
           pattern: "private-node-42",
@@ -1250,7 +1375,7 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
   }
 }
 
-test fn witness_p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
+fn p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
   let early = p0_proposal_with(
     submitted_at: "2026-07-29T08:00:00Z",
     guarantees: LandingRequiredClaims {
@@ -1272,4 +1397,29 @@ test fn witness_p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
     && stress.agents_per_developer == 50
     && stress.overlapping_proposals == 10
     && minute_count(stress.validation_path) == 30
+}
+
+test fn witness_p0_roadmap_acceptance_contract_holds() -> Bool {
+  witness_p0_full_claim_readiness_reaches_closed_one()
+    && witness_p0_same_claim_id_different_target_and_bound_blocks()
+    && witness_p0_unrelated_satisfied_claim_blocks()
+    && witness_p0_omitted_guarantee_blocks()
+    && witness_p0_duplicate_requirement_blocks()
+    && witness_p0_forged_readiness_without_evidence_admission_blocks()
+    && witness_p0_challenge_neither_and_both_remain_distinct()
+    && witness_p0_block_disposition_is_not_boolean_laundered()
+    && witness_p0_closed_zero_is_closure_qualified()
+    && witness_p0_closed_many_owns_material_alternatives()
+    && witness_p0_incomplete_closure_stays_machine_owned()
+    && witness_p0_admission_and_transition_flow_forward()
+    && witness_p0_cross_paired_read_back_refuses()
+    && witness_p0_cross_paired_projection_refuses()
+    && witness_p0_projection_from_another_transition_refuses_commit()
+    && witness_p0_unique_admitted_commit_lands_with_bound_git_projection()
+    && witness_p0_projection_failure_after_commit_stays_landed()
+    && witness_p0_refused_admission_cannot_advance()
+    && witness_p0_stale_parent_retries_inside_machine()
+    && witness_p0_terminal_surface_excludes_machine_progress()
+    && witness_p0_audience_projection_is_separate_from_internal_cause()
+    && p0_timestamps_are_inert_and_stress_is_explicit()
 }

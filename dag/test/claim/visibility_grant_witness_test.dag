@@ -1,0 +1,169 @@
+module test.claim.visibility_grant_witness_test
+
+import std.types { Bool, String, List }
+import std.effect_grant {
+  Verb, Reference, Publish,
+  CodeNameTree, NamespacePosition,
+  RealTransport, LifecycleByConstruction,
+  Grant,
+}
+import std.visibility_grant {
+  LegacyOpen, Declared, NodeVisibility,
+  ReferenceAdmission, ReferenceAdmitted, NameNotVisible, visible_from,
+  PublishAdmission, PublishAdmitted, PublishAudienceNotGranted, publish_to,
+  PublishAncestorCompatible, PublishAncestorNarrower, publish_ancestor_rule,
+  PublishClosureClosed, PublishClosureGap, publish_closure_rule,
+  world_audience, network_audience, org_audience, repo_audience,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn code_position(path: List<String>) -> NamespacePosition {
+  NamespacePosition { tree: CodeNameTree, path: path }
+}
+
+fn grant(verb: Verb, root: NamespacePosition) -> Grant {
+  Grant {
+    verb: verb,
+    root: root,
+    binding: RealTransport,
+    lifecycle: LifecycleByConstruction,
+  }
+}
+
+fn declared(node: NamespacePosition, grants: List<Grant>) -> NodeVisibility {
+  NodeVisibility { node: node, status: Declared { grants: grants } }
+}
+
+data helper_node: NamespacePosition = code_position(path: ["app", "internal", "helper"])
+data internal_referrer: NamespacePosition = code_position(path: ["app", "internal", "caller"])
+data sibling_referrer: NamespacePosition = code_position(path: ["app", "other", "caller"])
+data friend_root: NamespacePosition = code_position(path: ["app", "friend"])
+data friend_referrer: NamespacePosition = code_position(path: ["app", "friend", "caller"])
+
+fn reference_admitted(a: ReferenceAdmission) -> Bool {
+  match a {
+    ReferenceAdmitted => true
+    NameNotVisible { node: node, referrer: referrer } => false
+  }
+}
+
+test fn reference_visibility_green_and_red_controls() -> Bool {
+  let private_helper = declared(node: helper_node, grants: [])
+  let friend_helper = declared(node: helper_node, grants: [grant(verb: Reference, root: friend_root)])
+  reference_admitted(a: visible_from(visibility: private_helper, referrer: internal_referrer))
+    && !reference_admitted(a: visible_from(visibility: private_helper, referrer: sibling_referrer))
+    && reference_admitted(a: visible_from(visibility: friend_helper, referrer: friend_referrer))
+    && !reference_admitted(a: visible_from(visibility: friend_helper, referrer: sibling_referrer))
+}
+
+test fn reference_refusal_is_located() -> Bool {
+  match visible_from(
+    visibility: declared(node: helper_node, grants: []),
+    referrer: sibling_referrer,
+  ) {
+    NameNotVisible { node: node, referrer: referrer } =>
+      node == helper_node && referrer == sibling_referrer
+    ReferenceAdmitted => false
+  }
+}
+
+fn publish_admitted_witness(a: PublishAdmission) -> Bool {
+  match a {
+    PublishAdmitted { node: node, audience: audience } => true
+    PublishAudienceNotGranted { node: node, audience: audience } => false
+  }
+}
+
+data public_node_position: NamespacePosition = code_position(path: ["app", "public_api"])
+data private_node_position: NamespacePosition = code_position(path: ["app", "private_impl"])
+
+fn public_node() -> NodeVisibility {
+  declared(
+    node: public_node_position,
+    grants: [grant(verb: Publish, root: world_audience())],
+  )
+}
+
+fn private_node() -> NodeVisibility {
+  declared(
+    node: private_node_position,
+    grants: [grant(verb: Publish, root: repo_audience())],
+  )
+}
+
+test fn audience_tree_and_publish_grant_red_controls() -> Bool {
+  publish_admitted_witness(a: publish_to(visibility: public_node(), audience: world_audience()))
+    && publish_admitted_witness(a: publish_to(visibility: public_node(), audience: network_audience()))
+    && publish_admitted_witness(a: publish_to(visibility: public_node(), audience: org_audience()))
+    && publish_admitted_witness(a: publish_to(visibility: public_node(), audience: repo_audience()))
+    && publish_admitted_witness(a: publish_to(visibility: private_node(), audience: repo_audience()))
+    && !publish_admitted_witness(a: publish_to(visibility: private_node(), audience: org_audience()))
+    && !publish_admitted_witness(a: publish_to(visibility: private_node(), audience: world_audience()))
+}
+
+test fn publish_audience_refusal_is_located() -> Bool {
+  match publish_to(visibility: private_node(), audience: world_audience()) {
+    PublishAudienceNotGranted { node: node, audience: audience } =>
+      node == private_node_position && audience == world_audience()
+    PublishAdmitted { node: node, audience: audience } => false
+  }
+}
+
+test fn undeclared_publish_defaults_to_narrowest_audience_only() -> Bool {
+  let legacy = NodeVisibility { node: private_node_position, status: LegacyOpen }
+  publish_admitted_witness(a: publish_to(visibility: legacy, audience: repo_audience()))
+    && !publish_admitted_witness(a: publish_to(visibility: legacy, audience: org_audience()))
+    && !publish_admitted_witness(a: publish_to(visibility: legacy, audience: world_audience()))
+}
+
+test fn publish_ancestor_narrower_red_control_is_located() -> Bool {
+  match publish_ancestor_rule(
+    ancestor: private_node(),
+    child: public_node(),
+    audience: world_audience(),
+  ) {
+    PublishAncestorNarrower { ancestor: ancestor, child: child, audience: audience } =>
+      ancestor == private_node_position
+        && child == public_node_position
+        && audience == world_audience()
+    PublishAncestorCompatible => false
+  }
+}
+
+test fn publish_ancestor_compatible_green_control() -> Bool {
+  match publish_ancestor_rule(
+    ancestor: public_node(),
+    child: private_node(),
+    audience: world_audience(),
+  ) {
+    PublishAncestorCompatible => true
+    PublishAncestorNarrower { ancestor: ancestor, child: child, audience: audience } => false
+  }
+}
+
+test fn publish_closure_gap_red_control_is_located() -> Bool {
+  match publish_closure_rule(
+    referrer: public_node(),
+    referenced: private_node(),
+    audience: world_audience(),
+  ) {
+    PublishClosureGap { referrer: referrer, referenced: referenced, audience: audience } =>
+      referrer == public_node_position
+        && referenced == private_node_position
+        && audience == world_audience()
+    PublishClosureClosed => false
+  }
+}
+
+test fn publish_closure_closed_green_control() -> Bool {
+  match publish_closure_rule(
+    referrer: private_node(),
+    referenced: public_node(),
+    audience: repo_audience(),
+  ) {
+    PublishClosureClosed => true
+    PublishClosureGap { referrer: referrer, referenced: referenced, audience: audience } => false
+  }
+}
