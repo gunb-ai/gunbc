@@ -154,7 +154,7 @@ type WorkScheduling
 
 fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<String> {
   let parents = roadmap_parent_ids(edges: edges, node: rn.node)
-  let unmet = filter(xs: parents, f: pid =>
+  let unmet = filter(xs: parents, predicate: pid =>
     !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
   map(unmet, p => p as String)
 }
@@ -395,7 +395,7 @@ fn action_view(scheduling: WorkScheduling, lifecycle: WorkLifecycle) -> ActionVi
     SecondaryAction => acc
     DiagnosticAction => acc
   })
-  let secondary = filter(xs: dispatch, f: a => match a.priority {
+  let secondary = filter(xs: dispatch, predicate: a => match a.priority {
     PrimaryAction => false
     SecondaryAction => true
     DiagnosticAction => true
@@ -853,14 +853,14 @@ fn row_is_active_work(row: WorkRowView) -> Bool {
 }
 
 fn rows_with_scheduling_key(rows: List<WorkRowView>, key: String) -> List<WorkRowView> {
-  filter(xs: rows, f: r => !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == key)
+  filter(xs: rows, predicate: r => !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == key)
 }
 
 fn daily_workspace_view(rows: List<WorkRowView>, program: ProgramProgressView?, observation: ObservationImpactView) -> DailyWorkspaceView {
   DailyWorkspaceView {
     program: program,
     observation: observation,
-    active: filter(xs: rows, f: r => row_is_active_work(row: r)),
+    active: filter(xs: rows, predicate: r => row_is_active_work(row: r)),
     ready: rows_with_scheduling_key(rows: rows, key: "ready"),
     upcoming: rows_with_scheduling_key(rows: rows, key: "upcoming"),
     done: rows_with_scheduling_key(rows: rows, key: "done"),
