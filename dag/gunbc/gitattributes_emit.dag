@@ -72,20 +72,3 @@ fn gitattributes_drifted(committed: String) -> Bool {
     GitattributesGenerated { content } => !(committed == content)
   }
 }
-
-fn gitattributes_has_merge_row_for(path: String) -> Bool {
-  match expected_gitattributes() {
-    GitattributesGenerationRefused => false
-    GitattributesGenerated { content } => string_contains(
-      s: content,
-      pattern: concat(concat(path, " "), generated_projection_merge_attribute)
-    )
-  }
-}
-
-fn all_generated_projection_paths_have_merge_rows() -> Bool {
-  match deterministic_generated_projection_paths() {
-    GeneratedProjectionPathsRefused { cause: _ } => false
-    GeneratedProjectionPathsAccepted { paths } => all(paths, p => gitattributes_has_merge_row_for(path: p))
-  }
-}
