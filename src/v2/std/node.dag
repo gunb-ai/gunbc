@@ -786,8 +786,12 @@ fn combine_hash(a: Fnv1a64Structural, b: Fnv1a64Structural) -> Fnv1a64Structural
   content_hash_combine_structural(left: a, right: b)
 }
 
-fn symbol_identity_digest(sym: Symbol) -> Hash {
-  structural: content_hash_atom(value: sym)
+fn as_hash(structural: Fnv1a64Structural) -> ContentHash {
+  as_content_hash_structural(structural: structural)
+}
+
+fn symbol_identity_digest(sym: Symbol) -> ContentHash {
+  as_hash(structural: content_hash_atom(value: sym))
 }
 
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
@@ -1511,39 +1515,46 @@ fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
   byte_offset_cache_key_from_authority(auth: byte_offset_cache_digest_authority(i: i))
 }
 
-fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
+fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> ContentHash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>
-      combine_hash(
+      as_hash(
+        combine_hash(
           a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_eligible),
           b: digest
         )
+      )
     ByteOffsetCacheIneligible {
       boundary_tag: boundary_tag,
       witness: witness
     } =>
-      combine_hash(
+      as_hash(
+        combine_hash(
           a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_ineligible),
           b: combine_hash(
             a: content_hash_atom(value: boundary_tag),
             b: witness
           )
         )
+      )
   }
 }
 
-fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
-  fold(
+fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> ContentHash {
+  as_hash(
+    fold(
       sort_by(xs, fn(h) { h }),
       init: empty,
       f: fn(acc, h) {
         combine_hash(a: acc, b: h)
       }
     )
+  )
 }
 
-fn content_hash(n: Node) -> Hash {
-  fold_node_content_hash(
+fn content_hash(n: Node) -> ContentHash {
+  as_hash(
+    fold_node_content_hash(
       n: n,
       algebra: NodeFold {
         init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
@@ -1558,6 +1569,7 @@ fn content_hash(n: Node) -> Hash {
         }
       }
     )
+  )
 }
 
 type NodeQuery
