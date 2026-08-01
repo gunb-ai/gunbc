@@ -14,19 +14,23 @@
 //! diagnostics only. Compare `decision_ratio` against slice-1's membership
 //! duplication factor to see whether repeated membership becomes avoided work.
 //!
-//! Measurement only — no union implementation.
+//! Measurement only — no union implementation. Writes a detailed receipt file;
+//! stdout carries a concise aggregate summary.
 //!
 //! ```text
 //! GUNBC_CI_DIFF_BASE=<sha> measure_repeated_typecheck_attribution \
 //!   --source-root dag --source-root src/v2 \
-//!   --scan-dir dag/test/claim --max-entries 6
+//!   --scan-dir dag/test/claim --max-entries 6 \
+//!   --receipt-out target/repeated-typecheck-attribution-receipt.json
 //! ```
 
+use std::fs;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     measure_repeated_typecheck_attribution, render_repeated_typecheck_attribution_json,
-    witness_exclusion_substrings,
+    render_repeated_typecheck_attribution_receipt_json, witness_exclusion_substrings,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -46,6 +50,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut discovery_scope_dirs: Vec<String> = Vec::new();
     let mut explicit_entries: Vec<String> = Vec::new();
     let mut max_entries: Option<usize> = None;
+    let mut receipt_out: Option<PathBuf> = None;
     let mut exclude_substrings = witness_exclusion_substrings();
 
     let mut i = 1;
@@ -76,6 +81,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                     );
                     ExitCode::from(2)
                 })?);
+            }
+            "--receipt-out" => {
+                i += 1;
+                receipt_out = Some(PathBuf::from(require_value(&args, i, "--receipt-out")?));
             }
             "--exclude-subpath" => {
                 i += 1;
@@ -113,13 +122,36 @@ fn run() -> Result<ExitCode, ExitCode> {
         ExitCode::from(2)
     })?;
 
+    let receipt_path = receipt_out
+        .unwrap_or_else(|| PathBuf::from("target/repeated-typecheck-attribution-receipt.json"));
+    if let Some(parent) = receipt_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| {
+                eprintln!(
+                    "measure_repeated_typecheck_attribution: cannot create receipt dir {}: {e}",
+                    parent.display()
+                );
+                ExitCode::from(2)
+            })?;
+        }
+    }
+    let receipt_json = render_repeated_typecheck_attribution_receipt_json(&measured);
+    fs::write(&receipt_path, receipt_json).map_err(|e| {
+        eprintln!(
+            "measure_repeated_typecheck_attribution: cannot write receipt {}: {e}",
+            receipt_path.display()
+        );
+        ExitCode::from(2)
+    })?;
+
     println!(
         "[typecheck-attribution-measurement] {}",
         render_repeated_typecheck_attribution_json(&measured)
     );
     eprintln!(
-        "measure_repeated_typecheck_attribution: N={} hits={} misses={} repeated_misses={} \
-         decision_ratio={} cache_hit_ratio={} membership_duplication_factor={} peak_rss={}",
+        "measure_repeated_typecheck_attribution: receipt={} N={} hits={} misses={} repeated_misses={} \
+         decision_ratio={} cache_hit_ratio={} membership_duplication_factor={} process_vm_hwm={}",
+        receipt_path.display(),
         measured.selected_count(),
         measured.total_cache_hits,
         measured.total_cache_misses,
@@ -137,7 +169,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             .map(|f| format!("{f:.4}"))
             .unwrap_or_else(|| "n/a".to_string()),
         measured
-            .peak_rss_bytes
+            .memory
+            .process_vm_hwm_bytes
             .map(|b| b.to_string())
             .unwrap_or_else(|| "unreadable".to_string()),
     );

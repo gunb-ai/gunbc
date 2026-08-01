@@ -7225,7 +7225,7 @@ impl RepeatedTypecheckAttributionRun {
             sum_closure_memberships,
             union_modules,
             Vec::new(),
-            None,
+            RepeatedTypecheckAttributionMemoryObservation::capture_pair(None, None),
         )
     }
 
@@ -7241,7 +7241,7 @@ impl RepeatedTypecheckAttributionRun {
         sum_closure_memberships: usize,
         union_modules: usize,
         fanout_by_module: Vec<(String, usize)>,
-        peak_rss_bytes: Option<u64>,
+        memory: RepeatedTypecheckAttributionMemoryObservation,
     ) -> RepeatedTypecheckAttributionMeasurement {
         let total_cache_hits = snap
             .rows
@@ -7295,6 +7295,45 @@ impl RepeatedTypecheckAttributionRun {
         } else {
             Some(sum_closure_memberships as f64 / union_modules as f64)
         };
+        let fanout_by_path: HashMap<String, usize> = fanout_by_module
+            .iter()
+            .map(|(name, count)| (name.clone(), *count))
+            .collect();
+        let mut key_summaries_map: std::collections::HashMap<String, ModuleKeyAttributionSummary> =
+            std::collections::HashMap::new();
+        for row in &snap.rows {
+            let entry = key_summaries_map
+                .entry(row.module_key.clone())
+                .or_insert_with(|| ModuleKeyAttributionSummary {
+                    module_key: row.module_key.clone(),
+                    module_path: row.module_path.clone(),
+                    selected_entry_fanout: fanout_by_path
+                        .get(&row.module_path)
+                        .copied()
+                        .unwrap_or(0),
+                    hit_count: 0,
+                    miss_count: 0,
+                    recompute_count: 0,
+                });
+            match row.cache_disposition {
+                TypedCacheDisposition::Hit => entry.hit_count += 1,
+                TypedCacheDisposition::Miss => {
+                    entry.miss_count += 1;
+                    if row.later_requester_count > 0 {
+                        entry.recompute_count += 1;
+                    }
+                }
+                TypedCacheDisposition::Refused => {}
+            }
+        }
+        let mut key_summaries: Vec<ModuleKeyAttributionSummary> =
+            key_summaries_map.into_values().collect();
+        key_summaries.sort_by(|a, b| {
+            b.recompute_count
+                .cmp(&a.recompute_count)
+                .then_with(|| b.miss_count.cmp(&a.miss_count))
+                .then_with(|| a.module_key.cmp(&b.module_key))
+        });
         RepeatedTypecheckAttributionMeasurement {
             source_roots,
             scan_dirs,
@@ -7316,7 +7355,8 @@ impl RepeatedTypecheckAttributionRun {
             first_computation_typecheck_ns,
             repeated_typecheck_compute_ns,
             fanout_by_module,
-            peak_rss_bytes,
+            memory,
+            key_summaries,
             cache_hit_ratio,
             compute_duplication_factor,
             decision_ratio,
@@ -7382,6 +7422,98 @@ fn repeated_typecheck_attribution_armed() -> bool {
         .is_some_and(|g| g.is_some())
 }
 
+fn repeated_typecheck_attribution_begin_all_hit_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    if let Some(run) = guard.as_mut() {
+        run.all_hit_probe_active = true;
+        run.all_hit_probe_rows.clear();
+    }
+}
+
+fn repeated_typecheck_attribution_abort_all_hit_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    if let Some(run) = guard.as_mut() {
+        run.all_hit_probe_active = false;
+        run.all_hit_probe_rows.clear();
+    }
+}
+
+fn repeated_typecheck_attribution_commit_all_hit_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    run.all_hit_probe_active = false;
+    let buffered = std::mem::take(&mut run.all_hit_probe_rows);
+    for row in buffered {
+        commit_repeated_typecheck_attribution_row(run, row);
+    }
+}
+
+fn commit_repeated_typecheck_attribution_row(
+    run: &mut RepeatedTypecheckAttributionRun,
+    row: EntryModuleTypecheckRow,
+) {
+    let dedupe_key = (row.entry.clone(), row.module_key.clone());
+    if !run.observed_entry_module_keys.insert(dedupe_key) {
+        return;
+    }
+    let module_key = row.module_key.clone();
+    let disposition = row.cache_disposition;
+    if disposition == TypedCacheDisposition::Miss && !run.key_tracker.contains_key(&module_key) {
+        run.key_tracker.insert(
+            module_key.clone(),
+            ModuleKeyTracker {
+                first_computing_entry: row.entry.clone(),
+                requesters_seen: 0,
+            },
+        );
+    }
+    run.rows.push(row);
+    match disposition {
+        TypedCacheDisposition::Miss | TypedCacheDisposition::Hit => {
+            if let Some(tracker) = run.key_tracker.get_mut(&module_key) {
+                tracker.requesters_seen += 1;
+            }
+        }
+        TypedCacheDisposition::Refused => {}
+    }
+}
+
+fn build_repeated_typecheck_attribution_row(
+    run: &RepeatedTypecheckAttributionRun,
+    entry: String,
+    module_path: &str,
+    module_key: &str,
+    disposition: TypedCacheDisposition,
+    typecheck_compute_ns: u128,
+) -> EntryModuleTypecheckRow {
+    let (first_computing_entry, later_requester_count) = match run.key_tracker.get(module_key) {
+        Some(tracker) => (
+            Some(tracker.first_computing_entry.clone()),
+            tracker.requesters_seen,
+        ),
+        None if disposition == TypedCacheDisposition::Miss => (Some(entry.clone()), 0),
+        None => (None, 0),
+    };
+    EntryModuleTypecheckRow {
+        entry,
+        module_key: module_key.to_string(),
+        module_path: module_path.to_string(),
+        in_closure: true,
+        cache_disposition: disposition,
+        typecheck_compute_ns,
+        first_computing_entry,
+        later_requester_count,
+    }
+}
+
 fn observe_repeated_typecheck_attribution_module(
     module_path: &str,
     module_key: &str,
@@ -7401,46 +7533,19 @@ fn observe_repeated_typecheck_attribution_module(
     let Some(run) = guard.as_mut() else {
         return;
     };
-    let (first_computing_entry, later_requester_count) = match run.key_tracker.get(module_key) {
-        Some(tracker) => (
-            Some(tracker.first_computing_entry.clone()),
-            tracker.requesters_seen,
-        ),
-        None if disposition == TypedCacheDisposition::Miss => {
-            run.key_tracker.insert(
-                module_key.to_string(),
-                ModuleKeyTracker {
-                    first_computing_entry: entry.clone(),
-                    requesters_seen: 0,
-                },
-            );
-            (Some(entry.clone()), 0)
-        }
-        None => (None, 0),
-    };
-    run.rows.push(EntryModuleTypecheckRow {
+    let row = build_repeated_typecheck_attribution_row(
+        run,
         entry,
-        module_key: module_key.to_string(),
-        module_path: module_path.to_string(),
-        in_closure: true,
-        cache_disposition: disposition,
+        module_path,
+        module_key,
+        disposition,
         typecheck_compute_ns,
-        first_computing_entry,
-        later_requester_count,
-    });
-    match disposition {
-        TypedCacheDisposition::Miss => {
-            if let Some(tracker) = run.key_tracker.get_mut(module_key) {
-                tracker.requesters_seen += 1;
-            }
-        }
-        TypedCacheDisposition::Hit => {
-            if let Some(tracker) = run.key_tracker.get_mut(module_key) {
-                tracker.requesters_seen += 1;
-            }
-        }
-        TypedCacheDisposition::Refused => {}
+    );
+    if run.all_hit_probe_active {
+        run.all_hit_probe_rows.push(row);
+        return;
     }
+    commit_repeated_typecheck_attribution_row(run, row);
 }
 
 fn observe_repeated_typecheck_attribution_refused(module_path: &str, cause: &str) {
@@ -7457,7 +7562,7 @@ fn observe_repeated_typecheck_attribution_refused(module_path: &str, cause: &str
     let Some(run) = guard.as_mut() else {
         return;
     };
-    run.rows.push(EntryModuleTypecheckRow {
+    let row = EntryModuleTypecheckRow {
         entry,
         module_key: format!("refused:{cause}"),
         module_path: module_path.to_string(),
@@ -7466,7 +7571,12 @@ fn observe_repeated_typecheck_attribution_refused(module_path: &str, cause: &str
         typecheck_compute_ns: 0,
         first_computing_entry: None,
         later_requester_count: 0,
-    });
+    };
+    if run.all_hit_probe_active {
+        run.all_hit_probe_rows.push(row);
+        return;
+    }
+    commit_repeated_typecheck_attribution_row(run, row);
 }
 
 pub fn note_repeated_typecheck_attribution_entry_timing(
@@ -10571,6 +10681,24 @@ fn try_reconcile_all_cache_hits(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
 ) -> Result<Option<Rc<ResolvedGraph>>, String> {
+    let attribution_probe = repeated_typecheck_attribution_armed();
+    if attribution_probe {
+        repeated_typecheck_attribution_begin_all_hit_probe();
+    }
+    struct AllHitProbeAbort {
+        suppress_abort: bool,
+    }
+    impl Drop for AllHitProbeAbort {
+        fn drop(&mut self) {
+            if !self.suppress_abort {
+                repeated_typecheck_attribution_abort_all_hit_probe();
+            }
+        }
+    }
+    let mut probe_guard = attribution_probe.then(|| AllHitProbeAbort {
+        suppress_abort: false,
+    });
+
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -10680,6 +10808,13 @@ fn try_reconcile_all_cache_hits(
                 cross_tree_fork_count += 1;
             }
         }
+    }
+
+    if let Some(mut guard) = probe_guard.take() {
+        guard.suppress_abort = true;
+    }
+    if attribution_probe {
+        repeated_typecheck_attribution_commit_all_hit_probe();
     }
 
     finish_resolved_graph_assembly(
@@ -16608,14 +16743,37 @@ pub fn measure_repeated_typecheck_attribution(
     explicit_entries: &[String],
     max_entries: Option<usize>,
 ) -> Result<RepeatedTypecheckAttributionMeasurement, String> {
-    let overlap = measure_selected_entry_closure_overlap(
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-        discovery_scope_dirs,
-    )?;
+    let rss_before = current_rss_bytes();
 
-    let production_selected = overlap.selected_entries.clone();
+    let (head_sha, diff_base_override, skipped_entries, production_selected, overlap_membership) =
+        if explicit_entries.is_empty() {
+            let overlap = measure_selected_entry_closure_overlap(
+                source_roots,
+                scan_dirs,
+                exclude_substrings,
+                discovery_scope_dirs,
+            )?;
+            (
+                overlap.head_sha,
+                overlap.diff_base_override,
+                overlap.skipped_entries,
+                overlap.selected_entries.clone(),
+                Some((
+                    overlap.sum_closure_memberships,
+                    overlap.union_modules,
+                    overlap.fanout_by_module.clone(),
+                )),
+            )
+        } else {
+            (
+                git_head_sha_or_err()?,
+                std::env::var("GUNBC_CI_DIFF_BASE").ok(),
+                Vec::new(),
+                Vec::new(),
+                None,
+            )
+        };
+
     let mut selected_entries = if explicit_entries.is_empty() {
         production_selected.clone()
     } else {
@@ -16634,12 +16792,10 @@ pub fn measure_repeated_typecheck_attribution(
     }
 
     let (sum_closure_memberships, union_modules, fanout_by_module) =
-        if selected_entries == production_selected {
-            (
-                overlap.sum_closure_memberships,
-                overlap.union_modules,
-                overlap.fanout_by_module.clone(),
-            )
+        if let Some((sum, union, fanout)) = overlap_membership
+            .filter(|_| explicit_entries.is_empty() && selected_entries == production_selected)
+        {
+            (sum, union, fanout)
         } else {
             let membership_index = process_shared_index(source_roots);
             closure_overlap_membership_for_entries(&membership_index, &selected_entries)?
@@ -16661,19 +16817,22 @@ pub fn measure_repeated_typecheck_attribution(
         "repeated typecheck attribution: probe disarmed empty (internal)".to_string()
     })?;
 
+    let rss_after = current_rss_bytes();
+    let memory = RepeatedTypecheckAttributionMemoryObservation::capture_pair(rss_before, rss_after);
+
     Ok(RepeatedTypecheckAttributionRun::snapshot_into_measurement(
         snap,
         source_roots.to_vec(),
         scan_dirs.to_vec(),
-        overlap.head_sha,
-        overlap.diff_base_override,
+        head_sha,
+        diff_base_override,
         selected_entries,
-        overlap.skipped_entries,
+        skipped_entries,
         max_entries_applied,
         sum_closure_memberships,
         union_modules,
         fanout_by_module,
-        peak_rss_vhwm_bytes(),
+        memory,
     ))
 }
 
@@ -16728,11 +16887,28 @@ pub fn render_repeated_typecheck_attribution_json(
     out.push_str(&opt_f64(m.compute_duplication_factor));
     out.push_str(",\"decision_ratio\":");
     out.push_str(&opt_f64(m.decision_ratio));
-    out.push_str(",\"peak_rss_bytes\":");
-    out.push_str(&match m.peak_rss_bytes {
+    out.push_str(",\"memory\":{");
+    out.push_str("\"rss_before_measurement_bytes\":");
+    out.push_str(&match m.memory.rss_before_measurement_bytes {
         Some(b) => b.to_string(),
         None => "null".to_string(),
     });
+    out.push_str(",\"rss_after_measurement_bytes\":");
+    out.push_str(&match m.memory.rss_after_measurement_bytes {
+        Some(b) => b.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str(",\"process_vm_hwm_bytes\":");
+    out.push_str(&match m.memory.process_vm_hwm_bytes {
+        Some(b) => b.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str(",\"cgroup_memory_events_high\":");
+    out.push_str(&match m.memory.cgroup_memory_events_high {
+        Some(b) => b.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str("}");
     out.push_str("},\"entry_timings\":[");
     for (i, t) in m.entry_timings.iter().enumerate() {
         if i > 0 {
@@ -16757,6 +16933,67 @@ pub fn render_repeated_typecheck_attribution_json(
             .to_string(),
     ));
     out.push_str("\"}");
+    out
+}
+
+/// Full per-row and per-key receipt for slice-2 attribution (written to disk).
+pub fn render_repeated_typecheck_attribution_receipt_json(
+    m: &RepeatedTypecheckAttributionMeasurement,
+) -> String {
+    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
+    let disposition = |d: TypedCacheDisposition| match d {
+        TypedCacheDisposition::Hit => "Hit",
+        TypedCacheDisposition::Miss => "Miss",
+        TypedCacheDisposition::Refused => "Refused",
+    };
+    let opt_str = |o: &Option<String>| match o {
+        Some(v) => format!("\"{}\"", esc(v.clone())),
+        None => "null".to_string(),
+    };
+
+    let mut out = String::from("{\"summary\":");
+    out.push_str(&render_repeated_typecheck_attribution_json(m));
+    out.push_str(",\"rows\":[");
+    for (i, row) in m.rows.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"entry\":\"");
+        out.push_str(&esc(row.entry.clone()));
+        out.push_str("\",\"module_key\":\"");
+        out.push_str(&esc(row.module_key.clone()));
+        out.push_str("\",\"module_path\":\"");
+        out.push_str(&esc(row.module_path.clone()));
+        out.push_str("\",\"cache_disposition\":\"");
+        out.push_str(disposition(row.cache_disposition));
+        out.push_str("\",\"typecheck_compute_ns\":");
+        out.push_str(&row.typecheck_compute_ns.to_string());
+        out.push_str(",\"first_computing_entry\":");
+        out.push_str(&opt_str(&row.first_computing_entry));
+        out.push_str(",\"later_requester_count\":");
+        out.push_str(&row.later_requester_count.to_string());
+        out.push('}');
+    }
+    out.push_str("],\"key_summaries\":[");
+    for (i, key) in m.key_summaries.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"module_key\":\"");
+        out.push_str(&esc(key.module_key.clone()));
+        out.push_str("\",\"module_path\":\"");
+        out.push_str(&esc(key.module_path.clone()));
+        out.push_str("\",\"selected_entry_fanout\":");
+        out.push_str(&key.selected_entry_fanout.to_string());
+        out.push_str(",\"hit_count\":");
+        out.push_str(&key.hit_count.to_string());
+        out.push_str(",\"miss_count\":");
+        out.push_str(&key.miss_count.to_string());
+        out.push_str(",\"recompute_count\":");
+        out.push_str(&key.recompute_count.to_string());
+        out.push('}');
+    }
+    out.push_str("]}");
     out
 }
 
