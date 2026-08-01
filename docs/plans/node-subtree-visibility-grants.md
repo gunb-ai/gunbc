@@ -1,15 +1,6 @@
 # Node/subtree visibility grants — two verbs in the effect-grant algebra, not a parallel mechanism
 
-Status: **FROZEN-SUPERSEDED; DO NOT PROPAGATE** (operator authorization-kernel directive,
-2026-08-01). The `Verb::Reference` / `Verb::Publish` / `AudienceScopeTree` proposal below is
-retained only as historical rationale. Its live re-home is `std.authorization_profile`:
-`ReferenceRequest` and `PublicationAdmissionRequest` project exact request products into the
-single `std.access.AccessPolicy` decision kernel, and `AudienceSet` carries overlapping audiences
-under a set-derived partial order rather than the rejected total chain. No section below is a
-current implementation instruction where it conflicts with those symbols or DESIGN's
-one-authorization-kernel ruling.
-
-Original status: DRAFT for operator review (2026-07-21, session gentle-otter-138). Origin: private/public
+Status: DRAFT for operator review (2026-07-21, session gentle-otter-138). Origin: private/public
 toggling over the containment tree — motivated generically by (a) hiding implementation-internal
 declarations from cross-container reference, and (b) partitioning a source tree across storage
 roots of differing audience, a need any project with a public mirror and a private overlay has,

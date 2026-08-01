@@ -2,18 +2,16 @@ module test.claim.publication_placement_gate
 
 import std.types { Bool, List }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.access { Permit, Deny }
-import std.authorization_profile { EnumeratedAudience }
+import std.effect_grant { Envelope }
+import std.materialization_ladder { Frame, SharedStateFrame }
 import std.measure { percent }
 import extdeps.git {
   GitDiffStatusEntry, DiffCopiedStatus, DiffRenamedStatus,
 }
 import gunbc.publication_grant {
-  PublicationAudienceGrant,
   PublicRootPublishBaseline, PublicFilePublishGrant, PublicPublicationGrantRoster,
   public_root_publish_baseline,
   public_file_publish_grant,
-  public_publication_request, decide_publication_request,
 }
 import gunbc.ci_gate { PublicationPlacementGate }
 import gunbc.commit_workflow {
@@ -31,7 +29,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data publication_placement_acceptance_note: String = "Behavior-preservation witnesses over the real Stage-0 gate after dissolving gunbc#7541's provisional effect-grant carrier. The same baseline, missing-marker, repeated-marker, refused-marker, added, copied, and renamed cases reach the same accepted/refused gate outcomes and ProcessExit boundary. The only publication allow/deny now flows PublicationAdmissionRequest -> std.access.AccessRequest -> public_publication_policy; an empty audience grant is the discriminating RED against the universal public audience."
+data publication_placement_acceptance_note: String = "Discriminating P-B acceptance probes over the real gate decision and boundary. Advancing the roster cutover REDs against the independent fixed cutover authority before it can hide later files. The ungranted added path reaches a located AddedPathPublishGrantAbsent and an ExitFailure; adding its roster envelope reaches ExitSuccess. Ungranted copied and renamed destinations RED through the same path, closing Git's alternate encodings for a new public path. RED controls also prove that repeated file markers and marker envelopes refused by std.effect_grant.admit_effect cannot produce an honest coverage receipt. Every probe calls publication_guard_local_check, whose only publication decision is std.effect_grant.admit_effect(Publish, world_audience), then publication_guard_process_exit, the same boundary the live gate runs. Live git.Core.DiffNameStatus execution from the exact cutover to HEAD is enrolled separately as the Wet server-side floor runnable tools.floor_effect_gate_witness.publication_placement_gate_passes; it is not duplicated into the hermetic discovery corpus."
 
 data synthetic_added_path: String = "dag/example/new_public_file.dag"
 
@@ -69,10 +67,9 @@ fn refused_marker_roster() -> PublicPublicationGrantRoster {
     baseline: public_root_publish_baseline,
     file_grants: [PublicFilePublishGrant {
       path: synthetic_added_path,
-      grant: PublicationAudienceGrant {
-        resource: synthetic_added_path,
-        root: ".",
-        audience: EnumeratedAudience { members: empty_set() },
+      envelope: Envelope {
+        frame: Frame { name: "synthetic-refused-marker", kind: SharedStateFrame },
+        grants: [],
       },
     }],
   }
@@ -83,7 +80,7 @@ fn advanced_cutover_roster() -> PublicPublicationGrantRoster {
     baseline: PublicRootPublishBaseline {
       root: public_root_publish_baseline.root,
       cutover: "synthetic-advanced-cutover",
-      grant: public_root_publish_baseline.grant,
+      envelope: public_root_publish_baseline.envelope,
     },
     file_grants: [],
   }
@@ -224,33 +221,11 @@ test fn refused_publication_marker_reds_gate() -> Bool {
     PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
       violations.count() == 1
         && match violations.first() {
-          FilePublishGrantMarkerRefused { path: path, root: root, refusal: refusal } =>
-            path == synthetic_added_path
-              && root == "."
-              && refusal.location.profile == "PublicationAdmissionRequest"
+          FilePublishGrantMarkerRefused { path: path, root: root, verb: verb, target: target, frame: frame } =>
+            path == synthetic_added_path && root == "." && frame.name == "synthetic-refused-marker"
           _ => false
         }
         && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
-        && match decide_publication_request(request: public_publication_request(
-          resource: "dag/example/unrelated-public-file.dag",
-          root: ".",
-          grant: public_file_publish_grant(path: synthetic_added_path).grant,
-        )) {
-          Permit => false
-          Deny { refusal: mismatch } =>
-            mismatch.location.profile == "PublicationAdmissionRequest"
-              && mismatch.location.object == "dag/example/unrelated-public-file.dag"
-        }
-        && match decide_publication_request(request: public_publication_request(
-          resource: synthetic_added_path,
-          root: "synthetic-other-public-root",
-          grant: public_file_publish_grant(path: synthetic_added_path).grant,
-        )) {
-          Permit => false
-          Deny { refusal: mismatch } =>
-            mismatch.location.profile == "PublicationAdmissionRequest"
-              && mismatch.location.subject == "synthetic-other-public-root"
-        }
   }
 }
 
