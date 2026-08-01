@@ -53,8 +53,8 @@ import v2.compiler.self_host.frontier_probe_types {
   curated_cargo_probe_emit_assemble_refuse_reason,
   curated_cargo_probe_generic_type_render_reason,
   curated_cargo_probe_type_ref_import_missing_reason,
-  gate_a_flip_probe_witness_std_dup_reason,
   gate_a_flip_probe_unresolved_compiler_error_reason,
+  upstream_semantic_compiler_error_class,
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank,
   frontier_probe_located_stage_for_blocker,
@@ -442,12 +442,17 @@ fn knowledge_attributed_blocker_class_seed_retained_row(
   )
 }
 
+data compiler_frontier_measured_upstream_unresolved_blocker: FrontierBlockerClass = UpstreamSemanticRefusal {
+  diagnostic_class: upstream_semantic_compiler_error_class,
+  diagnostic_name: gate_a_flip_probe_unresolved_compiler_error_reason
+}
+
 data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/00_compile.dag",
   closure_reads: 102,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -456,16 +461,16 @@ data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_me
   closure_reads: 17,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/02_parse.dag",
   closure_reads: 65,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -478,9 +483,9 @@ data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = quarant
 data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_ingest.dag",
   closure_reads: 104,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -511,18 +516,18 @@ data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = execution_mea
 data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/04_infer.dag",
   closure_reads: 44,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_emit.dag",
   closure_reads: 52,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -538,18 +543,18 @@ data compiler_frontier_row_05_emit_orchestration: CompilerModuleFrontierRow = ex
 data compiler_frontier_row_05_eval: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_eval.dag",
   closure_reads: 51,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/06_translate.dag",
   closure_reads: 51,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -637,9 +642,9 @@ data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = executi
 data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/program_partition.dag",
   closure_reads: 58,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -653,9 +658,9 @@ data compiler_frontier_row_self_host: CompilerModuleFrontierRow = knowledge_attr
 data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/source_authority.dag",
   closure_reads: 87,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
+  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 

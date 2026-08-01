@@ -82,8 +82,8 @@ test fn compiler_frontier_roster_bidirectional_totality_live_survey_holds() -> B
   )
 }
 
-test fn compiler_frontier_receipt_totality_wall_live_survey_reds_until_stale_cleared_holds() -> Bool {
-  !compiler_frontier_receipt_totality_wall_holds(survey: host_frontier_probe_survey)
+test fn compiler_frontier_receipt_totality_wall_live_survey_holds() -> Bool {
+  compiler_frontier_receipt_totality_wall_holds(survey: host_frontier_probe_survey)
 }
 
 test fn compiler_frontier_wave2_emit_surface_dominates_holds() -> Bool {
