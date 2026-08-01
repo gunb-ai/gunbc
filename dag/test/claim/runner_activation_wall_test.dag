@@ -36,6 +36,7 @@ fn fully_verified_ready(host: HostIdentity, unit: NonEmptyStr) -> BuildCacheInst
 
 fn ready_pool_fixture() -> HostCompilePoolReady {
   HostCompilePoolReady {
+    host: "srv4",
     slice_unit: gunbc_managed_compile_pool_slice,
     pool_declared: true,
     pool_observed: true,
@@ -80,6 +81,7 @@ test fn witness_bare_host_admission_cannot_yield_an_enable_command() -> Bool {
     host_admission: admit_runner_host(deploy: d),
     cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: "wrong.service" as NonEmptyStr),
     pool_ready: HostCompilePoolReady {
+      host: "srv4",
       slice_unit: gunbc_managed_compile_pool_slice,
       pool_declared: false,
       pool_observed: false,
@@ -149,6 +151,7 @@ test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool
   let declared_not_observed = activation_for(
     cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
     pool_ready: HostCompilePoolReady {
+      host: "srv4",
       slice_unit: gunbc_managed_compile_pool_slice,
       pool_declared: true,
       pool_observed: false,
@@ -188,4 +191,38 @@ test fn witness_materializing_a_slot_does_not_activate_it() -> Bool {
     pool_ready: ready_pool_fixture(),
   )
   yields_command(outcome: install) && (yields_command(outcome: activate) == false)
+}
+
+data pool_receipt_binding_doc: String = "The controls review 46581 forced. The cache receipt was bound to the activation two ways -- host and intended unit -- and the pool receipt beside it was gated on two Booleans alone, so a pool observed on a DIFFERENT host, or a correctly-observed slice with some other name, admitted activation. Both are asserted here rather than only the host case, because they fail for different reasons: one receipt is about the wrong machine, the other is about the wrong cgroup on the right machine, and a wall that caught only the first would still activate a runner whose compiles are charged outside the intended pool."
+
+test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  yields_command(
+    outcome: activation_for(
+      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
+      pool_ready: HostCompilePoolReady {
+        host: "srv2",
+        slice_unit: gunbc_managed_compile_pool_slice,
+        pool_declared: true,
+        pool_observed: true,
+      },
+    ),
+  ) == false
+}
+
+test fn witness_a_pool_receipt_naming_another_slice_is_refused() -> Bool {
+  let d = srv1_deploy_fixture()
+  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  yields_command(
+    outcome: activation_for(
+      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
+      pool_ready: HostCompilePoolReady {
+        host: d.host_label as HostIdentity,
+        slice_unit: "some-other.slice" as NonEmptyStr,
+        pool_declared: true,
+        pool_observed: true,
+      },
+    ),
+  ) == false
 }
