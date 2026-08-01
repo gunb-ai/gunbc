@@ -336,6 +336,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: srv1_gunbc_repo_root,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateHostShared,
     dispatch_worktree_root: srv1_dispatch_worktree_root,
     dispatch_attempt_state_root: srv1_dispatch_attempt_state_root,
     execution_environment: dashboard_execution_environment(
@@ -360,7 +361,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
-data srv1_green_dashboard_instance_note: String = "The second production slot for the operator-signed 2026-08-01 blue/green cutover. It is a full HostDashboardInstance rather than a port override: source, binary, dispatch worktrees, attempt evidence, tmux server, unit handler and listen port move together, so preparing this idle slot cannot mutate the instance that Tailscale still serves. Provider credentials are referenced from the same admitted account binding, never copied. The slot is actuating and serves the production handler surface; it is not the pre-existing feedback lab, whose source ref and handler intentionally describe a different product."
+data srv1_green_dashboard_instance_note: String = "The second production slot for the operator-signed 2026-08-01 blue/green cutover. It is a full HostDashboardInstance rather than a port override: source, binary, unit handler and listen port move together, so preparing this idle slot cannot mutate the instance that Tailscale still serves. Provider credentials are referenced from the same admitted account binding, never copied. The slot is actuating and serves the production handler surface; it is not the pre-existing feedback lab, whose source ref and handler intentionally describe a different product.\\n\\nDISPATCH STATE AND THE TMUX SERVER DELIBERATELY DO NOT MOVE WITH THE SLOT, and an earlier revision of this note listed dispatch worktrees, attempt evidence and the tmux server among the things that do (operator ruling, 2026-08-01). Moving them was wrong twice over. It put a teardown of live dispatch evidence on the per-push cutover path, where the empty-directory wall correctly refused and reded every main push; and it meant a flip handed the dashboard to a process reading an empty attempt-state root and a differently-named tmux server, so attempts dispatched under the predecessor went invisible and their sessions unmanageable. Blue/green is sound for a stateless server, and this instance is stateful — so the stateful members are host-shared and the slot carries only what a slot may safely own."
 
 fn srv1_green_dashboard_instance() -> HostDashboardInstance {
   let root = "/opt/gunbc-green" as FilePath
@@ -374,8 +375,9 @@ fn srv1_green_dashboard_instance() -> HostDashboardInstance {
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "gunbc"),
     dispatch_base_ref: "origin/main" as NonEmptyStr,
-    dispatch_worktree_root: dashboard_instance_child(root: root, child: "dispatch-worktrees"),
-    dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
+    dispatch_state_scope: DispatchStateHostShared,
+    dispatch_worktree_root: srv1_dispatch_worktree_root,
+    dispatch_attempt_state_root: srv1_dispatch_attempt_state_root,
     execution_environment: dashboard_execution_environment(serve_binary: binary),
     provider_state: DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
@@ -389,7 +391,7 @@ fn srv1_green_dashboard_instance() -> HostDashboardInstance {
     serve_function: "roadmap_serve_handle_srv1_green" as NonEmptyStr,
     listen_host: "0.0.0.0" as NonEmptyStr,
     listen_port: 18080,
-    tmux_server: dashboard_named_tmux_server(instance_id: srv1_dashboard_green_id),
+    tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
@@ -421,6 +423,7 @@ fn isolated_dashboard_instance(
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "source"),
     dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned,
     dispatch_worktree_root: dashboard_instance_child(root: root, child: "attempts"),
     dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
     execution_environment: dashboard_execution_environment(
@@ -518,22 +521,23 @@ fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> L
   ]
 }
 
-fn dashboard_instance_owned_paths(instance: HostDashboardInstance) -> List<FilePath> {
-  match instance.dispatch_state_scope {
-    DispatchStateInstanceOwned =>
-      list_append(
-        dashboard_instance_footprint_paths(instance: instance),
-        dashboard_instance_dispatch_state_paths(instance: instance),
-      )
-    DispatchStateHostShared => dashboard_instance_footprint_paths(instance: instance)
-  }
+fn dashboard_paths_all_under(paths: List<FilePath>, root: FilePath) -> Bool {
+  all(paths, path => dashboard_path_is_under(path: path, root: root))
 }
 
 fn dashboard_instance_paths_are_owned(instance: HostDashboardInstance) -> Bool {
-  all(
-    dashboard_instance_owned_paths(instance: instance),
-    path => dashboard_path_is_under(path: path, root: instance.instance_root),
+  dashboard_paths_all_under(
+    paths: dashboard_instance_footprint_paths(instance: instance),
+    root: instance.instance_root,
   )
+    && match instance.dispatch_state_scope {
+      DispatchStateInstanceOwned =>
+        dashboard_paths_all_under(
+          paths: dashboard_instance_dispatch_state_paths(instance: instance),
+          root: instance.instance_root,
+        )
+      DispatchStateHostShared => true
+    }
 }
 
 fn dashboard_paths_are_disjoint(a: List<FilePath>, b: List<FilePath>) -> Bool {
@@ -554,9 +558,10 @@ fn dashboard_instances_have_disjoint_owned_paths(
   b: HostDashboardInstance,
 ) -> Bool {
   dashboard_paths_are_disjoint(
-    a: dashboard_instance_owned_paths(instance: a),
-    b: dashboard_instance_owned_paths(instance: b),
+    a: dashboard_instance_footprint_paths(instance: a),
+    b: dashboard_instance_footprint_paths(instance: b),
   )
+    && dashboard_instances_dispatch_state_is_consistent(a: a, b: b)
 }
 
 fn dashboard_instance_shares_dispatch_state(instance: HostDashboardInstance) -> Bool {
