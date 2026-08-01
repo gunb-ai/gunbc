@@ -12,6 +12,32 @@ fn taad_intro() -> List<MarkdownBlock> {
   ]
 }
 
+fn taad_widened_root() -> List<MarkdownBlock> {
+  [
+    h2(text: "The root, widened (operator direction, 2026-08-01)"),
+    p(text: "This plan was written about the REQUEST half only — a flag is an anemic String, so model the request and derive the argv. That is true and stays. It is also half the class, and the missing half is where the live defects have since appeared. The outcome side is anemic in exactly the same way: a process result arrives as exit_code plus success plus stdout plus stderr, every caller re-derives what the tool's failure MEANT from those, and the derivation lands in prose in a business module. Measured on the corpus: 164 exit blocks declared across extdeps and none realized at runtime, 31 sites interpreting a shell op's stderr, 302 bare-String refusal fields."),
+    quote(blocks: [p(text: "Model the operation, derive the invocation, preserve the process evidence, decode through the operation, render at the boundary.")]),
+    p(text: "The tell that produced this widening: a publication module spelled `git ls-remote --heads` inside a refusal message. A domain layer reaches for the command spelling exactly when it has no stable operation identity to name — so the raw argv in a diagnostic is not untidiness, it is the anemia reporting itself."),
+    h3(text: "Six layers, currently collapsed into two"),
+    ol(items: [
+      li(text: "DOMAIN OPERATION — what is being asked. Names no program, no flag, no stream."),
+      li(text: "BOUND INVOCATION plus EXECUTION BINDING — which operation, against which admitted repository/worktree/cwd/credentials/deadline. std.operation_argv BoundOperationInvocation already is this layer; the execution binding is the part that must stop being smuggled through argv and ambient cwd."),
+      li(text: "DERIVED REALIZATION — program plus args plus cwd. The ONLY layer that knows the spelling. It may appear in an execution receipt, redacted; it may never appear in a domain result."),
+      li(text: "PROCESS OBSERVATION — completed versus spawn-refused versus wait-refused, and exited versus signaled versus timed-out versus killed. No precomputed success Bool, no minus-one sentinel."),
+      li(text: "OPERATION DECODER — the operation's own reading of its evidence, producing typed located causes. stderr is EVIDENCE, never the classifier: no caller branches on a substring like `not a repository`."),
+      li(text: "RENDERER — the only layer that produces prose, at the UI/CLI/diagnostic boundary, from the typed cause."),
+    ]),
+    h3(text: "What this rules out, stated so it is not re-derived later"),
+    ul(items: [
+      li(text: "Activating the 164 existing exit blocks as written. Most map a code to an English sentence, so realizing them wholesale moves the prose interpretation down one layer instead of removing it. They migrate just-in-time into layer 5, per operation, with their strings replaced by typed causes."),
+      li(text: "Treating exit_code equals zero as a universal success model. The corpus already met this in ExpectedOutcome and OutcomeIsData: a probe may use its exit code as an ANSWER rather than a verdict. Process termination, operation observation, caller expectation, and log disposition are four facts, not one."),
+      li(text: "Lossy stream decoding at the process boundary. Converting both streams with from_utf8_lossy and trimming before the operation sees them is a global policy that can replace undecodable bytes, erase significant trailing delimiters, and make NUL-delimited protocols unrepresentable. The boundary preserves bytes; the operation names its decoder and a decode failure is typed and located."),
+      li(text: "A second invocation carrier. extdeps.exec.command ArgvCommand and HostEffect ThinInvocation converge ONTO BoundOperationInvocation consumer by consumer; they do not become the common abstraction and no third one is minted."),
+      li(text: "Magic transport output sources standing in for declared response semantics. A REST operation already declares its typed response table; a runtime that ignores it and instead reads a magic output field name has bypassed the authority rather than realized it. Recorded because this plan's own target list already said NOT `success: Bool from exit_success` and an implementation added exactly that shape for HTTP before this row was read."),
+    ]),
+  ]
+}
+
 fn taad_decode() -> List<MarkdownBlock> {
   [
     h2(text: "Decode the flags (§2 decompress -> map -> reduce)"),
@@ -57,6 +83,32 @@ fn taad_lanes() -> List<MarkdownBlock> {
       li(text: "Each shell tool becomes a modeled extdeps/tools/* service with typed operations — precedent already exists (sha256sum, jq, xorriso, sed, grep are modeled). The build sequence becomes typed tool ops, not a bare argv list."),
       li(text: "This is the broader §2 argv anemia and rides the shell -> intent lane (the intent IS the .dag graph; emit vs realization). Model just-in-time per real consumer, never a big-bang sweep."),
     ]),
+    h3(text: "Lane C — the outcome half: direct-process observation, decoded through the operation"),
+    p(text: "Lane C is the widened root made concrete, and it is FIRST in wall-clock because it has a live consumer waiting: Publication needs an exact remote head, and the only thing standing between it and one is a raw argv plus four untyped process fields. The exemplar is `git ls-remote --heads`, chosen because it exercises every missing seam without a general rewrite."),
+    ol(items: [
+      li(text: "E1 — the minimum process observation shape, consumed immediately rather than landed as an unused framework: completed versus spawn/wait refusal, exited versus signaled versus timed-out, streams retained faithfully, an explicit strict decoder, no global success projection."),
+      li(text: "E2 — a repository-BOUND remote-head operation. It consumes the worker's admitted repository binding (worktree, remote, forge identity, credential binding), not a free `origin` string, so one repository's forge observation cannot be cross-paired with another's worktree."),
+      li(text: "E3 — a typed advertisement decoder under extdeps.git: strict line decoding, validated object ids, full ref identity, located malformed-line refusal, duplicate-ref refusal, and NO cast from arbitrary text to CommitSha or NonEmptyStr. Witnessed by execution against a temporary local BARE repository — no network, no credentials."),
+      li(text: "E4 — Publication consumes the typed observation. gunbc.roadmap_publish_observe stops seeing success, exit_code, stderr and advertised lines; the refusal preserves the cause structurally instead of flattening it into a sentence, and the renderer moves to the boundary."),
+    ]),
+    p(text: "Discriminating cases E3 owes, none of which need live GitHub: a local bare remote advertises the expected branch and sha; the branch then moves to another sha; an unavailable remote produces a process refusal rather than an empty list; a malformed fixture refuses at the exact line; an invalid object id refuses rather than being branded; and two refs of one name cannot collapse into a first-match answer."),
+  ]
+}
+
+fn taad_growth_walls() -> List<MarkdownBlock> {
+  [
+    h2(text: "Freeze growth before migrating the corpus"),
+    p(text: "The corpus is larger than any one lane, so the migration is paced by consumers while NEW sites are walled. Each wall below is narrow and low-false-positive by construction, and each is a backstop AFTER the typed path exists for its class — a wall that fires before there is somewhere to go is a wall that gets exempted."),
+    ul(items: [
+      li(text: "No new shell.Exec.Run caller without a RetainedShellScript row."),
+      li(text: "No new HostEffect ShellCommand producer."),
+      li(text: "No new runtime use of git_shell_join_argv."),
+      li(text: "No new operation result classified by parsing stderr."),
+      li(text: "No new command spelling embedded in a domain refusal."),
+      li(text: "No new `success: Bool from exit_success` where a typed operation observation already exists for that operation."),
+      li(text: "No new string-valued exit arm once the typed outcome path is available for that operation."),
+    ]),
+    p(text: "The existing extdeps_shape_transport_policy lens has the right intent but a heuristic token policy, and the fail-closed plan records it as inert. It becomes the backstop after construction, never the primary repair."),
   ]
 }
 
@@ -74,14 +126,16 @@ fn taad_sequence() -> List<MarkdownBlock> {
 
 fn transport_argv_anemia_dissolution_body() -> List<MarkdownBlock> {
   concat(taad_intro(),
+  concat(taad_widened_root(),
   concat(taad_decode(),
   concat(taad_target(),
-  concat(taad_lanes(), taad_sequence()))))
+  concat(taad_lanes(),
+  concat(taad_growth_walls(), taad_sequence()))))))
 }
 
 data transport_argv_anemia_dissolution_plan: Plan = Plan {
   slug: "transport-argv-anemia-dissolution",
-  title: "Transport-argv anemia dissolution — model the request, derive the argv (kill the fail-open class by construction)",
+  title: "Transport invocation and outcome anemia — model the operation, derive the invocation, decode through the operation, render at the boundary",
   body: transport_argv_anemia_dissolution_body(),
-  dissolution: HasTrigger { text: "Dissolves when every HTTP operation is a declarative transport rest row (curl argv derived, fail-closed by construction, the interim --fail-with-body patches removed) AND the non-HTTP tool argv is modeled through extdeps/tools/* or emitted via the shell -> intent lane — no bare flag-string survives as load-bearing. redfish_http_hardwired_transport_note and http_client_handler_layering_note dissolve with Lane A (their shared dissolution). Tracked green by a coverage lens over argv arrays: zero unmodeled-success HTTP ops." },
+  dissolution: HasTrigger { text: "Dissolves when all three lanes close. Lane A: every HTTP operation is a declarative transport rest row whose DECLARED response table is the runtime authority for decoding a response into typed operation outcomes — curl argv derived, fail-closed by construction, the interim --fail-with-body patches removed, and no operation declaring a magic output field to observe its own response. Lane B: the non-HTTP tool argv is modeled through extdeps/tools/* or emitted via the shell -> intent lane, no bare flag-string load-bearing. Lane C: no domain module receives argv, exit code, success Bool, stdout lines or stderr; process evidence is preserved at the boundary, decoded by the operation into typed located causes, and rendered to prose only at the UI/CLI edge. redfish_http_hardwired_transport_note and http_client_handler_layering_note dissolve with Lane A. Tracked green by a coverage lens over argv arrays and by the growth walls above: zero unmodeled-success HTTP ops, zero new stderr-classified results, zero command spellings in domain refusals." },
 }
