@@ -13,6 +13,7 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Ownership, Ensured }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.git {
   shape_git_config_local_argv,
   shape_git_config_local_get_argv,
