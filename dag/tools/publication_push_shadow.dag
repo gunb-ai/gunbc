@@ -103,7 +103,7 @@ fn shadow_would_refuse_ordinary_session(
             NotTheSolePublisher { session: _, sole_publisher: _ } => true
             ProjectionNotAdmitted { session: _, detail: _ } => false
             DecisionReceiptMissing { session: _, subject_identity: _ } => false
-            UnauthorizedPublicPush { session: _, push: _, detail: _ } => false
+            UnauthorizedPublicPush { session: _, local_ref: _, local_sha: _, detail: _ } => false
           }
         PublicWriteAdmitted { authority: _ } => false
       }

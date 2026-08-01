@@ -385,7 +385,7 @@ test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
   ) {
     PublicWriteRefused { session: _, cause: cause } =>
       match cause {
-        UnauthorizedPublicPush { session: _, push: _, detail: _ } => true
+        UnauthorizedPublicPush { session: _, local_ref: _, local_sha: _, detail: _ } => true
         _ => false
       }
     PublicWriteAdmitted { authority: _ } => false

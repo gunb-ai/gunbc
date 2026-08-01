@@ -62,7 +62,8 @@ type PublicWriteRefusal
     }
   | UnauthorizedPublicPush {
       session: ModeledSessionId,
-      push: PrePushStdinRow,
+      local_ref: String,
+      local_sha: String,
       detail: String,
     }
 
@@ -199,31 +200,21 @@ fn admit_public_write(
                   },
                 }
               } else {
-                match pushed_refs.first() {
-                  Present { value: push } =>
-                    PublicWriteRefused {
-                      session: publisher,
-                      cause: UnauthorizedPublicPush {
-                        session: publisher,
-                        push: push,
-                        detail: unauthorized_push_detail(
-                          pushed_refs: pushed_refs,
-                          candidate: plan,
-                        ),
-                      },
-                    }
-                  Absent =>
-                    PublicWriteAdmitted {
-                      authority: PublicationAuthority {
-                        publisher_session: publisher,
-                        authority_id: sole_publication_authority_id,
-                        projection: AdmittedPublicProjection {
-                          plan: plan,
-                          admission: admission,
-                          decisions: decisions,
-                        },
-                      },
-                    }
+                PublicWriteRefused {
+                  session: publisher,
+                  cause: UnauthorizedPublicPush {
+                    session: publisher,
+                    local_ref: fold(pushed_refs, init: "", f: fn(acc, push) {
+                      if acc == "" { push.local_ref } else { acc }
+                    }),
+                    local_sha: fold(pushed_refs, init: "", f: fn(acc, push) {
+                      if acc == "" { push.local_sha } else { acc }
+                    }),
+                    detail: unauthorized_push_detail(
+                      pushed_refs: pushed_refs,
+                      candidate: plan,
+                    ),
+                  },
                 }
               }
           }
