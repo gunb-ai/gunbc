@@ -46,7 +46,7 @@ fn decode_dispatch_form(label: String) -> InterpreterDispatchForm {
 
 fn form_is_unknown(form: InterpreterDispatchForm) -> Bool {
   match form {
-    UnknownForm { label } => true
+    UnknownForm { label: _ } => true
     FreeCall => false
     MethodCall => false
     NativeSpecial => false
