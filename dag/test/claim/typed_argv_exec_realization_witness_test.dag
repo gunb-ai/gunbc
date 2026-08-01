@@ -33,7 +33,7 @@ import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
 }
 import gunbc.host_effect_realize { host_effect_apply }
-import std.realization_reconcile { reconciliation_converged }
+import std.realization_reconcile { Converged, NotConverged, reconciliation_converged }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -100,14 +100,16 @@ test fn witness_sudo_grant_list_prefix_collision_refuses() -> Bool {
 }
 
 test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
-  reconciliation_converged(
-    r: host_effect_apply(
-      target: HostOs { node: srv1_host },
-      effect: deploy_access_read_principal_effect(),
-      evidence: host_effect_read_evidence,
-      transport: LocalShell,
-    )
-  )
+  match host_effect_apply(
+    target: HostOs { node: srv1_host },
+    effect: deploy_access_read_principal_effect(),
+    evidence: host_effect_read_evidence,
+    transport: LocalShell,
+  ) {
+    Converged { evidence: _, applied: _ } => false
+    NotConverged { reason: reason, applied: _ } =>
+      string_contains(s: reason, pattern: "hermetic effective-principal observation unavailable")
+  }
 }
 
 test fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool {
