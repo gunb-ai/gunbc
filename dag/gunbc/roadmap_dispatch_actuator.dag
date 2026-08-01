@@ -543,11 +543,12 @@ fn dispatch_current_attempt_oracle_revision_path_for_instance(
 
 data publication_receipt_is_head_addressed_note: String = "THE HEAD IS IN THE PATH, BECAUSE ONE ATTEMPT PUBLISHES MORE THAN ONCE. The ratified Review loop is head A -> findings -> worker correction -> head B, all inside a single implementation attempt. A single attempt-level receipt file has only bad answers to that: overwrite and lose A\'s real receipt, leave it and misreport B forever, or invent an update convention nobody else follows.\n\nAddressing by head makes the rounds independent rather than competing. Writing B\'s receipt cannot destroy A\'s, a reader asking about A gets A, and idempotence has an honest key - re-running for a head that already has a receipt is a no-op, while a new head is a new round by construction rather than by remembering to bump something.\n\nThis is also what lets the subject check stay a check rather than becoming the only defence. Even with per-head addressing a receipt can be copied or retained, so publication_evidence_for still compares all six subject fields; the path narrows what can be found and the comparison decides what counts."
 
-fn dispatch_attempt_publication_receipt_path_for_instance(
+data publication_receipt_directory_is_named_once_note: String = "The directory is its own function because a reader has to establish that a receipt is ABSENT, and the only honest way to do that is to list the directory it would be in and not find it there. Filesystem.Read reports the same failure for a file that does not exist and one that cannot be read (review 46148), so absence inferred from a failed read is a guess; absence established by a successful listing is a fact. That makes the directory a load-bearing address rather than a path fragment, so it is named here once and the receipt path is built from it."
+
+fn dispatch_attempt_publication_dir_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
-  head_sha: String,
 ) -> String {
   join([
     dispatch_attempt_state_path_for_instance(
@@ -555,7 +556,25 @@ fn dispatch_attempt_publication_receipt_path_for_instance(
       node_id: node_id,
       attempt_key: attempt_key,
     ),
-    "/publication/",
+    "/publication",
+  ], "")
+}
+
+data publication_receipt_directory_segment: String = "publication"
+
+fn dispatch_attempt_publication_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    dispatch_attempt_publication_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
     head_sha,
     ".json",
   ], "")

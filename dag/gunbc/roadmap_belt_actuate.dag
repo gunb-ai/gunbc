@@ -1943,34 +1943,93 @@ fn provider_event_projection_error(
   }
 }
 
-data belt_publication_receipt_read_note: String = "THE RECEIPT IS ADDRESSED BY HEAD, SO THERE IS NO PATH TO READ UNTIL THE HEAD IS KNOWN. That ordering is the point: the other receipts on this row live at one path per attempt and can be read before anything is decided, while a publication receipt is one per head, so the subject has to exist before the address does.\\n\\nTHE UNOBSERVED ARM RETURNS AN UNREADABLE READ AND THAT IS NOT A FABRICATED ABSENCE. publication_segment refuses on an unobserved subject before it consults the receipt at all, so this value never reaches a judgment; it exists because the evidence record carries a readable/content pair for every stage and this one has nothing to put in it. If the projection ever stopped refusing first, this would become a real answer - which is why the refusal there is matched on the subject rather than inferred from an empty string here."
+data belt_publication_receipt_read_note: String = "THE RECEIPT IS ADDRESSED BY HEAD, SO THERE IS NO PATH TO READ UNTIL THE HEAD IS KNOWN. That ordering is the point: the other receipts on this row live at one path per attempt and can be read before anything is decided, while a publication receipt is one per head, so the subject has to exist before the address does.\\n\\nTHE UNOBSERVED ARM ANSWERS ReceiptSourceAbsent AND THAT IS NOT A FABRICATED ABSENCE. publication_segment refuses on an unobserved subject before it consults the source at all, so this value never reaches a judgment; it exists because the evidence record carries a source for every stage and there is no address to consult for this one. If the projection ever stopped refusing first, this would become a real answer - which is why the refusal there is matched on the subject rather than inferred here.\\n\\nEVERY OTHER ARM ESTABLISHES ITS ANSWER POSITIVELY - see publication_receipt_absence_is_established_note. No arm of this walk turns a failure into an absence, which is the whole difference between it and the read it replaced."
 
-type BeltPublicationReceiptRead {
-  success: Bool
-  content: String
+data listing_membership_is_line_exact_note: String = "Filesystem.List returns entry names joined by newlines, so a plain substring test would answer yes for a name that is merely a PREFIX or suffix of a real entry - `abc.json` would be found inside `abc.json.tmp`, and a head sha would be found inside a longer one. Wrapping both sides in newlines makes the test line-exact without needing a split the interpreter does not offer, and every conclusion drawn from it is a membership fact rather than a coincidence of spelling."
+
+fn belt_listing_names_entry(listing: String, name: String) -> Bool {
+  string_contains(
+    s: join(["\n", listing, "\n"], ""),
+    pattern: join(["\n", name, "\n"], ""),
+  )
 }
 
-fn belt_publication_receipt_read(
+data publication_receipt_absence_is_established_note: String = "ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (review 46148). Filesystem.Read answers success=false both for a receipt that does not exist and for one that exists and cannot be read, and those two worlds have opposite correct actions - observe and write, versus stop and preserve. This walk therefore never concludes absence from a failure of any kind.\\n\\nTHE LADDER STARTS AT A DIRECTORY THAT IS KNOWN TO EXIST, which is what makes each step decidable. The attempt state directory is created by dispatch when the attempt starts, and this producer only runs for an attempt whose worktree head it has already read, so a failure to list THAT directory is unambiguously a fault rather than a not-yet. From there each answer is positive: the publication directory is absent from a listing that succeeded, or the head's own file is absent from a listing that succeeded. Only when the file is listed does a read happen, and a read that then fails is unambiguously a fault because the entry was just observed to exist.\\n\\nWHAT THIS DELIBERATELY DOES NOT DO is widen on doubt. Every failure arm returns ReceiptSourceUnreadable carrying the path and the host error, which the gate turns into a typed, located, counted refusal that halts the row - it never falls back to `treat it as absent and rewrite`, which is the absorbing fallback DESIGN section 5 forbids and precisely the defect this replaced."
+
+fn belt_publication_receipt_source(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
   subject: PublicationSubjectObservation,
-) -> BeltPublicationReceiptRead {
+) -> PublicationReceiptSource {
   match subject {
-    PublicationSubjectUnobserved { reason: _ } =>
-      BeltPublicationReceiptRead { success: false, content: "" }
+    PublicationSubjectUnobserved { reason: _ } => ReceiptSourceAbsent
     PublicationSubjectObserved { subject: observed } => {
-      let read = Filesystem.Read(
-        path: dispatch_attempt_publication_receipt_path_for_instance(
+      let attempt_dir = dispatch_attempt_state_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      )
+      let attempt_listing = Filesystem.List(path: attempt_dir)
+      if !attempt_listing.success {
+        ReceiptSourceUnreadable {
+          detail: join([
+            "the attempt state directory could not be listed, so whether a publication receipt exists was not established: ",
+            attempt_dir,
+            " (",
+            attempt_listing.error,
+            ")",
+          ], ""),
+        }
+      } else if !belt_listing_names_entry(
+        listing: attempt_listing.entries,
+        name: publication_receipt_directory_segment,
+      ) {
+        ReceiptSourceAbsent
+      } else {
+        let publication_dir = dispatch_attempt_publication_dir_for_instance(
           instance: instance,
           node_id: node_id,
           attempt_key: attempt_key,
-          head_sha: observed.expected_head as String,
-        ),
-      )
-      BeltPublicationReceiptRead {
-        success: read.success,
-        content: read.content,
+        )
+        let publication_listing = Filesystem.List(path: publication_dir)
+        if !publication_listing.success {
+          ReceiptSourceUnreadable {
+            detail: join([
+              "the publication receipt directory was named by the attempt listing but could not itself be listed: ",
+              publication_dir,
+              " (",
+              publication_listing.error,
+              ")",
+            ], ""),
+          }
+        } else if !belt_listing_names_entry(
+          listing: publication_listing.entries,
+          name: join([observed.expected_head as String, ".json"], ""),
+        ) {
+          ReceiptSourceAbsent
+        } else {
+          let path = dispatch_attempt_publication_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+            head_sha: observed.expected_head as String,
+          )
+          let read = Filesystem.Read(path: path)
+          if read.success {
+            ReceiptSourcePresent { text: read.content }
+          } else {
+            ReceiptSourceUnreadable {
+              detail: join([
+                "a publication receipt for this head was listed and then could not be read, so it exists and its content is unavailable: ",
+                path,
+                " (",
+                read.error,
+                ")",
+              ], ""),
+            }
+          }
+        }
       }
     }
   }
@@ -2013,8 +2072,7 @@ fn belt_workflow_progress_for_attempt_ref(
       publication_subject: PublicationSubjectUnobserved {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
-      publication_receipt_readable: false,
-      publication_receipt: "",
+      publication_source: ReceiptSourceAbsent,
     })
   } else {
     let current_key = trim(key_read.content)
@@ -2057,7 +2115,7 @@ fn belt_workflow_progress_for_attempt_ref(
         ),
       ),
     )
-    let publication_receipt = belt_publication_receipt_read(
+    let publication_receipt = belt_publication_receipt_source(
       instance: instance,
       node_id: node_id,
       attempt_key: current_key,
@@ -2095,8 +2153,7 @@ fn belt_workflow_progress_for_attempt_ref(
       validation_receipt_readable: validation_receipt.success,
       validation_receipt: validation_receipt.content,
       publication_subject: publication_subject,
-      publication_receipt_readable: publication_receipt.success,
-      publication_receipt: publication_receipt.content,
+      publication_source: publication_receipt,
     })
   }
 }
@@ -3029,14 +3086,9 @@ type BeltPublishGate
 fn belt_publish_gate(
   node_id: String,
   subject: PublicationSubject,
-  existing_readable: Bool,
-  existing_text: String,
+  existing: PublicationReceiptSource,
 ) -> BeltPublishGate {
-  match publication_evidence_for(
-    expected: subject,
-    receipt_readable: existing_readable,
-    receipt_text: existing_text,
-  ) {
+  match publication_evidence_for(expected: subject, source: existing) {
     EvidenceAbsent => PublishProceed
     EvidenceForSubject { receipt } =>
       if publication_receipt_offers_the_expected_head(outcome: receipt.outcome) {
@@ -3054,7 +3106,7 @@ fn belt_publish_gate(
         outcome: PublishEvidenceUnreadable {
           node_id: node_id,
           detail: join([
-            "a publication receipt already exists at this head's own address and does not decode, so the belt refuses to replace evidence it cannot read: ",
+            "a publication receipt for this head could not be read or does not decode, so the belt refuses to replace evidence it cannot read: ",
             reason,
           ], ""),
         },
@@ -3128,12 +3180,15 @@ fn belt_publish_attempt_for_instance(
         attempt_key: attempt_key,
         head_sha: subject.expected_head as String,
       )
-      let existing = Filesystem.Read(path: path)
       match belt_publish_gate(
         node_id: node_id,
         subject: subject,
-        existing_readable: existing.success,
-        existing_text: existing.content,
+        existing: belt_publication_receipt_source(
+          instance: instance,
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          attempt_key: attempt_key,
+          subject: PublicationSubjectObserved { subject: subject },
+        ),
       ) {
         PublishHalted { outcome } => outcome
         PublishProceed => {

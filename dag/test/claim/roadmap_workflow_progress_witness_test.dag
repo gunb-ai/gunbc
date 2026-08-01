@@ -99,8 +99,7 @@ fn fixture_evidence(
         expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
       },
     },
-    publication_receipt_readable: false,
-    publication_receipt: "",
+    publication_source: ReceiptSourceAbsent,
   }
 }
 
@@ -340,8 +339,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
     publication_subject: base.publication_subject,
-    publication_receipt_readable: base.publication_receipt_readable,
-    publication_receipt: base.publication_receipt,
+    publication_source: base.publication_source,
   }
   let progress = workflow_attempt_progress(evidence: forged)
   segment_state(progress.segments, "environment") != "" 
@@ -370,8 +368,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
     publication_subject: base.publication_subject,
-    publication_receipt_readable: base.publication_receipt_readable,
-    publication_receipt: base.publication_receipt,
+    publication_source: base.publication_source,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -413,8 +410,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
         expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
       },
     },
-    publication_receipt_readable: false,
-    publication_receipt: "",
+    publication_source: ReceiptSourceAbsent,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
@@ -447,8 +443,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
     publication_subject: base.publication_subject,
-    publication_receipt_readable: base.publication_receipt_readable,
-    publication_receipt: base.publication_receipt,
+    publication_source: base.publication_source,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
@@ -573,8 +568,7 @@ fn pub_receipt_for(subject_head: CommitSha, pull_sha: CommitSha) -> String {
 
 fn publication_segment_of(
   subject: PublicationSubjectObservation,
-  readable: Bool,
-  receipt: String,
+  source: PublicationReceiptSource,
 ) -> WorkflowSegment {
   let base = fixture_evidence(events: "", process: WorkerProcessAbsent)
   let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
@@ -594,8 +588,7 @@ fn publication_segment_of(
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
     publication_subject: subject,
-    publication_receipt_readable: readable,
-    publication_receipt: receipt,
+    publication_source: source,
   })
   fold(progress.segments, init: WorkflowSegment {
     kind: PublicationWorkflowSegment,
@@ -608,14 +601,12 @@ fn publication_segment_of(
 
 fn publication_state_at(
   subject_head: CommitSha,
-  readable: Bool,
-  receipt: String,
+  source: PublicationReceiptSource,
 ) -> String {
   workflow_segment_state_key(
     state: publication_segment_of(
       subject: PublicationSubjectObserved { subject: pub_subject(head: subject_head) },
-      readable: readable,
-      receipt: receipt,
+      source: source,
     ).state,
   )
 }
@@ -623,19 +614,17 @@ fn publication_state_at(
 test fn publication_at_the_expected_head_completes_where_the_old_constant_could_not() -> Bool {
   publication_state_at(
     subject_head: pub_head,
-    readable: true,
-    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head),
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
   ) == "complete"
 }
 
 test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Bool {
   let receipt_for_h = pub_receipt_for(subject_head: pub_head, pull_sha: pub_head)
-  let at_h = publication_state_at(subject_head: pub_head, readable: true, receipt: receipt_for_h)
-  let at_h2 = publication_state_at(subject_head: pub_other, readable: true, receipt: receipt_for_h)
+  let at_h = publication_state_at(subject_head: pub_head, source: ReceiptSourcePresent { text: receipt_for_h })
+  let at_h2 = publication_state_at(subject_head: pub_other, source: ReceiptSourcePresent { text: receipt_for_h })
   let detail_at_h2 = publication_segment_of(
     subject: PublicationSubjectObserved { subject: pub_subject(head: pub_other) },
-    readable: true,
-    receipt: receipt_for_h,
+    source: ReceiptSourcePresent { text: receipt_for_h },
   ).detail
   at_h == "complete"
     && at_h2 == "refused"
@@ -649,30 +638,38 @@ data bound_sentence_names_one_head_note: String = "The completed sentence an ope
 test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
   let detail = publication_segment_of(
     subject: PublicationSubjectObserved { subject: pub_subject(head: pub_head) },
-    readable: true,
-    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head),
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
   ).detail
   string_contains(s: detail, pattern: pub_head as String)
     && !string_contains(s: detail, pattern: pub_other as String)
 }
 
+data unreadable_lamp_is_not_pending_note: String = "A receipt the projection could not READ is not a row nobody has published (review 46148). Pending invites a reader to wait; refused tells them something is broken. Both directions are asserted here because the defect made them the same lamp."
+
+test fn an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published() -> Bool {
+  let unreadable = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourceUnreadable { detail: "input/output error" },
+  )
+  let absent = publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent)
+  unreadable == "refused" && absent == "pending" && unreadable != absent
+}
+
 test fn publication_at_another_head_fails_rather_than_reading_as_progress() -> Bool {
   publication_state_at(
     subject_head: pub_head,
-    readable: true,
-    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other),
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other) },
   ) == "failed"
 }
 
 test fn an_absent_publication_receipt_is_pending_not_a_judgment() -> Bool {
-  publication_state_at(subject_head: pub_head, readable: false, receipt: "") == "pending"
+  publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent) == "pending"
 }
 
 test fn an_undecodable_publication_receipt_refuses_rather_than_pending() -> Bool {
   let refused = publication_state_at(
     subject_head: pub_head,
-    readable: true,
-    receipt: "not a receipt",
+    source: ReceiptSourcePresent { text: "not a receipt" },
   )
   refused == "refused" && refused != "pending"
 }
@@ -682,8 +679,7 @@ test fn an_attempt_with_no_readable_head_refuses_rather_than_pending() -> Bool {
     subject: PublicationSubjectUnobserved {
       reason: "the attempt worktree is gone",
     },
-    readable: true,
-    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head),
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
   )
   workflow_segment_state_key(state: segment.state) == "refused"
     && string_contains(s: segment.detail, pattern: "no exact head")
@@ -692,19 +688,16 @@ test fn an_attempt_with_no_readable_head_refuses_rather_than_pending() -> Bool {
 test fn the_publication_readings_are_distinct_states() -> Bool {
   let bound = publication_state_at(
     subject_head: pub_head,
-    readable: true,
-    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head),
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
   )
   let moved = publication_state_at(
     subject_head: pub_head,
-    readable: true,
-    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other),
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other) },
   )
-  let absent = publication_state_at(subject_head: pub_head, readable: false, receipt: "")
+  let absent = publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent)
   let wrong_subject = publication_state_at(
     subject_head: pub_other,
-    readable: true,
-    receipt: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head),
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
   )
   bound != moved && moved != absent && bound != absent
     && wrong_subject != bound && wrong_subject != moved && wrong_subject != absent

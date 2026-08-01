@@ -94,6 +94,8 @@ import gunbc.roadmap_publish {
   EvidenceAbsent,
   EvidenceUnreadable,
   EvidenceForAnotherSubject,
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
   publication_evidence_for,
 }
 import gunbc.worker_lifecycle {
@@ -121,8 +123,7 @@ type WorkflowAttemptEvidence {
   validation_receipt_readable: Bool
   validation_receipt: String
   publication_subject: PublicationSubjectObservation
-  publication_receipt_readable: Bool
-  publication_receipt: String
+  publication_source: PublicationReceiptSource
 }
 
 type WorkflowAttemptProgress {
@@ -449,8 +450,7 @@ fn publication_evidence_segment(
 
 fn publication_segment(
   publication_subject: PublicationSubjectObservation,
-  publication_receipt_readable: Bool,
-  publication_receipt: String,
+  publication_source: PublicationReceiptSource,
 ) -> WorkflowSegment {
   match publication_subject {
     PublicationSubjectUnobserved { reason } =>
@@ -466,8 +466,7 @@ fn publication_segment(
       publication_evidence_segment(
         evidence: publication_evidence_for(
           expected: subject,
-          receipt_readable: publication_receipt_readable,
-          receipt_text: publication_receipt,
+          source: publication_source,
         ),
       )
   }
@@ -600,8 +599,7 @@ fn workflow_segment_from_evidence(
     PublicationWorkflowSegment =>
       publication_segment(
         publication_subject: evidence.publication_subject,
-        publication_receipt_readable: evidence.publication_receipt_readable,
-        publication_receipt: evidence.publication_receipt,
+        publication_source: evidence.publication_source,
       )
     ReviewWorkflowSegment =>
       WorkflowSegment {

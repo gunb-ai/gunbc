@@ -10,6 +10,8 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_publish {
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
   PublicationSubject,
   PublicationSubjectObservation,
   PublicationSubjectObserved, PublicationSubjectUnobserved,
@@ -96,6 +98,7 @@ import gunbc.roadmap_belt_actuate {
   belt_publication_subject_for,
   BeltPublishGate, PublishProceed, PublishHalted,
   belt_publish_gate,
+  belt_listing_names_entry,
   belt_publish_write_outcome,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable,
@@ -768,8 +771,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
         expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
       },
     },
-    publication_receipt_readable: false,
-    publication_receipt: "",
+    publication_source: ReceiptSourceAbsent,
   })
 }
 
@@ -823,8 +825,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
           expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
         },
       },
-      publication_receipt_readable: false,
-      publication_receipt: "",
+      publication_source: ReceiptSourceAbsent,
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>
@@ -1034,8 +1035,7 @@ test fn an_absent_receipt_lets_the_publish_producer_proceed() -> Bool {
     gate: belt_publish_gate(
       node_id: "belt-pub-node",
       subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
-      existing_readable: false,
-      existing_text: "",
+      existing: ReceiptSourceAbsent,
     ),
   ) == "proceed"
 }
@@ -1045,8 +1045,7 @@ test fn a_receipt_for_this_head_halts_the_publish_producer() -> Bool {
     gate: belt_publish_gate(
       node_id: "belt-pub-node",
       subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
-      existing_readable: true,
-      existing_text: belt_pub_receipt(head: belt_pub_head, node_id: "belt-pub-node"),
+      existing: ReceiptSourcePresent { text: belt_pub_receipt(head: belt_pub_head, node_id: "belt-pub-node") },
     ),
   ) == "already-recorded"
 }
@@ -1055,8 +1054,7 @@ test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
   match belt_publish_gate(
     node_id: "belt-pub-node",
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
-    existing_readable: true,
-    existing_text: belt_pub_receipt(head: belt_pub_head, node_id: "another-node"),
+    existing: ReceiptSourcePresent { text: belt_pub_receipt(head: belt_pub_head, node_id: "another-node") },
   ) {
     PublishProceed => false
     PublishHalted { outcome } =>
@@ -1074,12 +1072,64 @@ test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
   }
 }
 
+data unreadable_is_not_absent_note: String = "THE DEFECT THIS REFUSES, from review 46148: an I/O failure reading an existing receipt used to arrive at the gate as `readable=false`, which the evidence layer classified as EvidenceAbsent and the gate turned into PublishProceed - so a transient read fault would have OVERWRITTEN a receipt the belt could not read. Absent and unreadable have opposite correct actions, so the two are now distinct constructors and there is no spelling for the conflation.\\n\\nThese two claims are the pair, and only the pair discriminates: absent proceeds, unreadable halts. Asserting either alone would pass under the defect - the old code proceeded on both."
+
+test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
+  match belt_publish_gate(
+    node_id: "belt-pub-node",
+    subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+    existing: ReceiptSourceUnreadable { detail: "input/output error" },
+  ) {
+    PublishProceed => false
+    PublishHalted { outcome } =>
+      match outcome {
+        PublishEvidenceUnreadable { node_id: _, detail } =>
+          string_contains(s: detail, pattern: "cannot read")
+            && string_contains(s: detail, pattern: "input/output error")
+        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        PublishWriteFailed { node_id: _, detail: _ } => false
+        PublishDeferred { node_id: _, reason: _ } => false
+      }
+  }
+}
+
+test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
+  match belt_publish_gate(
+    node_id: "belt-pub-node",
+    subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+    existing: ReceiptSourcePresent { text: "  " },
+  ) {
+    PublishProceed => false
+    PublishHalted { outcome } =>
+      match outcome {
+        PublishEvidenceUnreadable { node_id: _, detail: _ } => true
+        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        PublishWriteFailed { node_id: _, detail: _ } => false
+        PublishDeferred { node_id: _, reason: _ } => false
+      }
+  }
+}
+
+data listing_membership_note: String = "The line-exact membership test is what makes every ABSENCE conclusion in belt_publication_receipt_source a fact rather than a spelling coincidence. A plain substring test would find a head sha inside a longer one, or a receipt name inside its own .tmp sibling, and would then report a receipt PRESENT that is not there - or, worse under the opposite skew, miss one that is. The prefix and suffix cases are asserted, not just the positive."
+
+test fn listing_membership_is_line_exact_not_substring() -> Bool {
+  let listing = join(["alpha.json", "beta.json", "beta.json.tmp"], "\n")
+  belt_listing_names_entry(listing: listing, name: "alpha.json")
+    && belt_listing_names_entry(listing: listing, name: "beta.json")
+    && belt_listing_names_entry(listing: listing, name: "beta.json.tmp")
+    && !belt_listing_names_entry(listing: listing, name: "eta.json")
+    && !belt_listing_names_entry(listing: listing, name: "beta")
+    && !belt_listing_names_entry(listing: listing, name: "gamma.json")
+    && !belt_listing_names_entry(listing: "", name: "alpha.json")
+}
+
 test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
   match belt_publish_gate(
     node_id: "belt-pub-node",
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
-    existing_readable: true,
-    existing_text: "not a receipt",
+    existing: ReceiptSourcePresent { text: "not a receipt" },
   ) {
     PublishProceed => false
     PublishHalted { outcome } =>
@@ -1215,16 +1265,14 @@ test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Boo
     gate: belt_publish_gate(
       node_id: "belt-pub-node",
       subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
-      existing_readable: true,
-      existing_text: belt_pub_receipt(head: belt_pub_head, node_id: "belt-pub-node"),
+      existing: ReceiptSourcePresent { text: belt_pub_receipt(head: belt_pub_head, node_id: "belt-pub-node") },
     ),
   )
   let unsettled = belt_pub_gate_key(
     gate: belt_publish_gate(
       node_id: "belt-pub-node",
       subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
-      existing_readable: true,
-      existing_text: belt_pub_unpublished_receipt(head: belt_pub_head, node_id: "belt-pub-node"),
+      existing: ReceiptSourcePresent { text: belt_pub_unpublished_receipt(head: belt_pub_head, node_id: "belt-pub-node") },
     ),
   )
   settled == "already-recorded" && unsettled == "proceed" && settled != unsettled

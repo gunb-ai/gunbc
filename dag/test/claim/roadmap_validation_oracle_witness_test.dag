@@ -7,6 +7,8 @@ import gunbc.roadmap_workflow_progress {
   workflow_attempt_progress,
 }
 import gunbc.roadmap_publish {
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
   PublicationSubject,
   PublicationSubjectObserved,
 }
@@ -686,8 +688,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
         expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
       },
     },
-    publication_receipt_readable: false,
-    publication_receipt: "",
+    publication_source: ReceiptSourceAbsent,
   }
 }
 
