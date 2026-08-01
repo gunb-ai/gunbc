@@ -16,7 +16,6 @@ import std.types { NonEmptyStr }
 import extdeps.git.object_store {
   GitPath,
   GitIndexStage,
-  GitIndexStageNormal,
   GitIndexStageBase,
   GitIndexStageOurs,
   GitIndexStageTheirs
