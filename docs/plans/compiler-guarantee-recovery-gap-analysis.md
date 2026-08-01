@@ -649,6 +649,29 @@ added. CORRECTED — DESIGN §4's closed vocabulary said "5 behaviors" while
 denominator of the decidability argument now matches the live coproduct. EMITTED — the §1d
 provisional grid, hand-authored interim, dissolve-on the carrier-emitted projection.
 
+**Call-shape landing + dark-suite incident ledger (2026-08-01, sixth pass — all by
+execution):** LANDED (open candidate gunbc#7519, at the review tally floor) — the
+call-shape floor: `CallArgumentNameUnknown` + `CallPositionalSurplus` blocking at the
+direct-call seam, mirroring `call_function_inner`'s two refused classes; census refused 28
+live rename fossils (all one class: a declaration's parameter renamed while call sites kept
+the old label, absorbed positionally — 8× `to_string(i:)`, `arm_body(arm:)`,
+`is_import_slot_node(p:)`, 17× `fold_list(init:)`, `…refusal_reason(path:)`), +3 fixed in
+the measured `sig == none` fallthrough that the wall does not judge. The `fold_list` sites
+never failed live because the interpreter grounds that call natively (label-blind) while
+the user-fn path would refuse it — dispatch-tier-dependent meaning, the wall's sharpest
+justification. INCIDENT (found by tidy-deer-730 during the #7484 main-integration, byte-identical
+red on both parents): `rust_btree_set_ord_eligibility_requires_nominal_carrier_shape` has
+been RED on main since `d975e1001a1` (2026-07-21) moved `Symbol` from the shape-aware
+nominal-carrier representation onto the name-only opaque-alias roster, dropping the
+argument check its negative control pins (`Symbol<Float>` admitted by name) — invisible for
+ten days because the Rust unit suite left CI on 2026-07-11
+(`commit_gate_rust_suite_removed_disposition`), so an enrolled RED was executing nowhere:
+specification-without-execution one rung up, the exact state §4b's dissolution rule
+forbids. Repaired by gating the name-grain arms on childlessness
+(`rust_btree_set_ord_name_grain_note`, the method wall's name-grain lesson at the emit
+seam); the dark-suite gap itself is queue item 9, an operator decision priced by this
+incident, not silently patched.
+
 ## 11. Audit queue
 
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
@@ -686,6 +709,16 @@ provisional grid, hand-authored interim, dissolve-on the carrier-emitted project
    alias arrives as its brand, unpeeled to the base; (b) a pattern-destructured coproduct
    payload arrives typed as the variant name rather than the field type. Both gate
    method-wall promotion beyond kernel receivers (§12 Stage 2 amendment).
+9. **Dark-suite evidence gap** (measured 2026-08-01 — the ord-eligibility incident, §10
+   sixth pass): every `ct_*` wall RED in the v1 Rust unit suite executes in **no** CI leg
+   since the suite's 2026-07-11 removal, so a wall regression surfaces only when someone
+   runs `cargo test` by hand (this one sat red for ten days; the call-shape wall's own
+   RED rides the same dark suite). The removal was a deliberate operator cost ruling —
+   the decision to revisit is **which REDs must execute on an acceptance path and at what
+   cost** (the wall-witness subset runs in milliseconds; the 27-minute cost that drove
+   removal was the self-compile/profile tests). Options: a filtered fast-suite CI leg, or
+   migrating wall REDs to claim witnesses the floor already runs. Operator sign-off
+   required; priced by the incident, tracked here until dispositioned.
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
