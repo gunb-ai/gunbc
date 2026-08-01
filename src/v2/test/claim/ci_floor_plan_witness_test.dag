@@ -322,6 +322,7 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
     && (v1_claim_scoped_witness_entries.skip(n: 1).first().function == "")
     && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
     && (v1_claim_scoped_witness_batch.scan_dirs == [])
+    && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionOff)
     && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
     && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SequentialChildProcess)
     && match runnable_batch_clamp_source(r: target) {
