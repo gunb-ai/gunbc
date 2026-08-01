@@ -195,8 +195,6 @@ fn dispatch_capability_program(
 
 type DispatchBriefFields {
   node_id: String
-  title: String
-  repo: String
   displaced_cost: String
   current_state: String
   first_slice: String
@@ -208,7 +206,7 @@ type DispatchBriefFields {
   expected_artifact: String
 }
 
-data dispatch_brief_sizing_not_carried_note: String = "THE BRIEF CARRIED SIZING AS TWO WRITE-ONLY LABEL STRINGS, AND THEY ARE DELETED RATHER THAN TYPED. DispatchBriefFields declared intricacy_label and volume_label; they were assigned at three construction sites and READ NOWHERE - fill_dispatch_brief has no sizing slot, and no field access to either exists anywhere in the corpus. So the record computed a rendering, carried it across the interface, and dropped it.\\n\\nWHY DELETION IS THE FIX RATHER THAN GIVING THEM TYPES. A dead field does not become correct by becoming well-typed; the §5 preference for construction over validation applies to the modeling too, and the state that cannot be reached is better removed than described. If a brief ever needs to state sizing, node.sizing is already the typed authority one field away - Sized carrying Intricacy and Volume, or Unsized - and the renderer projects it at the template boundary. Reintroducing a String pair would be the same defect a second time.\\n\\nTWO DEFECTS RODE ON THEM, WHICH IS WHY THIS IS WORTH A NOTE. First, the Unsized arm assigned the literal `unsized` to a field whose typed counterpart Intricacy has exactly three inhabitants, so the String smuggled a coproduct discriminant that the type could not express - the model existed one field away and was flattened at the boundary. Second, this module DEFINED ITS OWN intricacy_label and volume_label, same names and same signatures as gunbc.roadmap_page, returning DIFFERENT strings (low/medium/high here against i:low/i:med/i:high there). Two functions with one name and one signature and two answers is the §3 nickname violation in its most misleading form, since a reader who greps the name gets two results and no indication which one a caller reached. Deleting the dead consumers left roadmap_page as the single authority; the precedent is reasoning_effort_label in extdeps.llm.cli, which its own note pins as the one place its wire word exists.\\n\\nWHAT SURVIVES AND SHOULD: dispatch_reasoning_effort_for_intricacy still consumes the typed Intricacy, because it derives a real provider fact rather than a label."
+data dispatch_brief_sizing_not_carried_note: String = "THE BRIEF CARRIED FOUR WRITE-ONLY FIELDS AND THEY ARE DELETED RATHER THAN TYPED. fill_dispatch_brief is the ONLY consumer of a DispatchBriefFields value and it substitutes ten placeholders; the record declared fourteen. The four it never read were intricacy_label, volume_label, title and repo - assigned at every construction site and READ NOWHERE - fill_dispatch_brief has no sizing slot, and no field access to either exists anywhere in the corpus. So the record computed a rendering, carried it across the interface, and dropped it.\\n\\nWHY DELETION IS THE FIX RATHER THAN GIVING THEM TYPES. A dead field does not become correct by becoming well-typed; the §5 preference for construction over validation applies to the modeling too, and the state that cannot be reached is better removed than described. If a brief ever needs to state sizing, node.sizing is already the typed authority one field away - Sized carrying Intricacy and Volume, or Unsized - and the renderer projects it at the template boundary. Reintroducing a String pair would be the same defect a second time.\\n\\nTWO DEFECTS RODE ON THEM, WHICH IS WHY THIS IS WORTH A NOTE. First, the Unsized arm assigned the literal `unsized` to a field whose typed counterpart Intricacy has exactly three inhabitants, so the String smuggled a coproduct discriminant that the type could not express - the model existed one field away and was flattened at the boundary. Second, this module DEFINED ITS OWN intricacy_label and volume_label, same names and same signatures as gunbc.roadmap_page, returning DIFFERENT strings (low/medium/high here against i:low/i:med/i:high there). Two functions with one name and one signature and two answers is the §3 nickname violation in its most misleading form, since a reader who greps the name gets two results and no indication which one a caller reached. Deleting the dead consumers left roadmap_page as the single authority; the precedent is reasoning_effort_label in extdeps.llm.cli, which its own note pins as the one place its wire word exists.\\n\\nWHAT SURVIVES AND SHOULD: dispatch_reasoning_effort_for_intricacy still consumes the typed Intricacy, because it derives a real provider fact rather than a label.\\n\\nTITLE AND REPO WENT WITH THE LABELS, AND THE COUNTING IS THE LESSON. The first cut of this cleanup removed only the two label fields, because those were the ones a reader NOTICES - they carried a magic `unsized` string and a forked function pair, so they announced themselves. Title and repo were quiet: ordinary names, plausibly useful, assigned without ceremony. A reviewer caught repo, and checking properly - enumerating what fill_dispatch_brief actually reads against what the record declares, rather than looking for suspicious fields - found title too. The general form is that a dead field is found by DIFFERENCING the consumer against the declaration, not by inspection, because inspection finds the ugly ones and the quiet ones are the majority.\\n\\nBoth locals survive where they are genuinely used: dispatch_slot_fields still computes title for the legacy-prose arm that repeats it into displaced_cost, and still takes repo as a parameter for carrier_paths_label. What is deleted is the STORAGE, not the value."
 
 data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
 
@@ -678,8 +676,6 @@ fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields 
     Present { value: t } =>
       DispatchBriefFields {
         node_id: node.node,
-        title: title,
-        repo: repo,
         displaced_cost: t.displaced_cost,
         current_state: t.current_state,
         first_slice: t.first_slice,
@@ -693,8 +689,6 @@ fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields 
     Absent =>
       DispatchBriefFields {
         node_id: node.node,
-        title: title,
-        repo: repo,
         displaced_cost: title,
         current_state: title,
         first_slice: title,
@@ -721,8 +715,6 @@ fn dispatch_brief_fields_for_environment(
     let f = dispatch_slot_fields(node: node, repo: repo)
     DispatchBriefFields {
       node_id: f.node_id,
-      title: f.title,
-      repo: repo,
       displaced_cost: f.displaced_cost,
       current_state: f.current_state,
       first_slice: f.first_slice,
@@ -738,8 +730,6 @@ fn dispatch_brief_fields_for_environment(
     let f = dispatch_slot_fields(node: node, repo: "")
     DispatchBriefFields {
       node_id: f.node_id,
-      title: f.title,
-      repo: "",
       displaced_cost: f.displaced_cost,
       current_state: f.current_state,
       first_slice: f.first_slice,
