@@ -90,6 +90,7 @@ data public_file_publish_grants: List<PublicFilePublishGrant> = [
   public_file_publish_grant(path: "dag/test/claim/advertising_interface_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/crm_stage_vocabulary_witness_test.dag"),
   public_file_publish_grant(path: "dag/test/claim/external_model_scope_witness_test.dag"),
+  public_file_publish_grant(path: "dag/test/claim/external_model_scope_live_cover_witness_test.dag"),
   public_file_publish_grant(path: "docs/plans/extdeps-modeling-preflight.md"),
   public_file_publish_grant(path: "src/v1/stage0/src/std_roster_frontier.rs"),
   public_file_publish_grant(path: "dag/test/claim/tailscale_serve_status_witness_test.dag"),

@@ -14,18 +14,13 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.extdeps_scope_frontier {
   scope_carrier_paths, scope_machinery_exempt_paths,
   legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
-  legacy_manifest_freeze_sha,
+  scope_cover_holds, manifest_freeze_holds, carrier_content_declares_scope,
+  PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
 }
-import extdeps.git {
-  DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
-  GitDiffNameStatusComplete, GitDiffNameStatusTruncated,
-  TwoDot, git_diff_name_status_parse,
-}
-import extdeps.git
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
 import extdeps.vendor.microsoft
 import extdeps.vendor.atlassian
-import std.types { String, Bool, Int, List, GitRef }
+import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -214,10 +209,6 @@ fn read_manifest_rows() -> List<String> {
   parse_frontier_manifest(content: r.content)
 }
 
-fn scope_roster_union() -> List<String> {
-  concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows()))
-}
-
 test fn manifest_rows_nonempty_floor() -> Bool {
   (read_manifest_rows() |> count) > 150
 }
@@ -228,36 +219,7 @@ test fn frontier_rosters_are_disjoint() -> Bool {
     && all(scope_machinery_exempt_paths, p => !strings_contain(xs: manifest, s: p))
 }
 
-type ScopeCoverWalk {
-  files: List<String>
-  walk_failures: Int
-}
-
-fn scope_cover_walk(path: String) -> ScopeCoverWalk {
-  let l = Filesystem.List(path: path)
-  if l.success {
-    if l.entries == "" {
-      ScopeCoverWalk { files: [], walk_failures: 0 }
-    } else {
-      fold(split(l.entries, separator: "\n"), init: ScopeCoverWalk { files: [], walk_failures: 0 }, f: fn(acc, name) {
-        let child = concat(path, "/", name)
-        if name.ends_with(suffix: ".dag") {
-          ScopeCoverWalk { files: concat(acc.files, [child]), walk_failures: acc.walk_failures }
-        } else {
-          let sub = scope_cover_walk(path: child)
-          ScopeCoverWalk { files: concat(acc.files, sub.files), walk_failures: acc.walk_failures + sub.walk_failures }
-        }
-      })
-    }
-  } else {
-    ScopeCoverWalk { files: [], walk_failures: 1 }
-  }
-}
-
-fn scope_cover_holds(walked: List<String>, union: List<String>) -> Bool {
-  all(walked, p => strings_contain(xs: union, s: p))
-    && all(union, p => strings_contain(xs: walked, s: p))
-}
+data wet_half_split_note: String = "The live observations (Filesystem.List directory walk of dag/extdeps; git.Core.DiffNameStatus freeze..HEAD) run in dag/test/claim/external_model_scope_live_cover_witness_test.dag — a wet-integration row, discovery-excluded per gunbc.ci_layer_roots (the d4bef96 floor red: hermetic discovery executed those service ops against the mock corpus, which publishes no operation for them). THIS file keeps everything hermetic-safe per-PR: the kernel RED/GREEN controls, the manifest/roster accounting via the filesystem_read carve-out, the carrier-content verification, and the RED controls of the shared pure decision fns (scope_cover_holds, manifest_freeze_holds on gunbc.extdeps_scope_frontier) that the wet file executes against live observations."
 
 test fn red_cover_check_refuses_unrostered_file() -> Bool {
   scope_cover_holds(
@@ -273,24 +235,6 @@ test fn red_cover_check_refuses_stale_roster_row() -> Bool {
   ) == false
 }
 
-test fn red_cover_walker_refuses_missing_root() -> Bool {
-  let w = scope_cover_walk(path: "dag/extdeps_nonexistent_probe_root")
-  w.walk_failures == 1 && (w.files |> count) == 0
-}
-
-test fn frontier_cover_of_live_extdeps_tree_holds() -> Bool {
-  let w = scope_cover_walk(path: "dag/extdeps")
-  w.walk_failures == 0
-    && scope_cover_holds(walked: w.files, union: scope_roster_union())
-    && (w.files |> count) > 150
-}
-
-data carrier_content_verification_note: String = "codex review 46215, finding half 1: carrier membership was path-asserted only, so a scope_carrier_paths row whose file never declares extdeps_model_scope passed the cover. Closed here: every carrier file's bytes must carry the declaration marker. This is a text presence scan — a declared scaffold (the v2.lens.mandatory_tag corpus_scan / language_source_scaffold_index precedent), strictly better than path assertion, dissolving with the whole storage-grain frontier into the mandatory-tag region whose parse-grain reader replaces it."
-
-fn carrier_content_declares_scope(content: String) -> Bool {
-  string_contains(s: content, pattern: "data extdeps_model_scope:")
-}
-
 test fn red_carrier_content_check_refuses_undeclared() -> Bool {
   carrier_content_declares_scope(content: "module extdeps.vendor.example\n\ndata something_else: String = \"x\"\n") == false
 }
@@ -298,48 +242,6 @@ test fn red_carrier_content_check_refuses_undeclared() -> Bool {
 test fn carriers_declare_scope_on_disk() -> Bool {
   (scope_carrier_paths |> count) > 0
     && all(scope_carrier_paths, p => carrier_content_declares_scope(content: filesystem_read(path: p).content))
-}
-
-data manifest_freeze_check_note: String = "codex review 46215, finding half 2: the manifest's remove-only lifecycle was review discipline, not mechanics. Closed here: every manifest row must name a file that already existed at legacy_manifest_freeze_sha — the witness diffs freeze..HEAD with the same git.Core.DiffNameStatus + parse the publication placement gate uses, and refuses any manifest row in the added/copied/renamed set. Diff failure and parse truncation are reds, never skips (a broken freeze probe must not report frozen)."
-
-type PostFreezeObservation
-  = PostFreezeAdded { paths: List<String> }
-  | PostFreezeDiffFailed
-  | PostFreezeParseTruncated
-
-fn post_freeze_added_paths() -> PostFreezeObservation {
-  let diff = git.Core.DiffNameStatus(
-    base: legacy_manifest_freeze_sha as GitRef,
-    head: "HEAD" as GitRef,
-    range: TwoDot,
-  )
-  if diff.success {
-    match git_diff_name_status_parse(raw: diff.raw) {
-      GitDiffNameStatusTruncated { pending: _, entries: _ } => PostFreezeParseTruncated
-      GitDiffNameStatusComplete { entries: entries } =>
-        PostFreezeAdded {
-          paths: fold(entries, init: [], f: fn(acc, entry) {
-            match entry.status {
-              DiffAddedStatus => concat(acc, [entry.path])
-              DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
-              DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
-              _ => acc
-            }
-          })
-        }
-    }
-  } else {
-    PostFreezeDiffFailed
-  }
-}
-
-fn manifest_freeze_holds(manifest: List<String>, observation: PostFreezeObservation) -> Bool {
-  match observation {
-    PostFreezeDiffFailed => false
-    PostFreezeParseTruncated => false
-    PostFreezeAdded { paths: added } =>
-      all(manifest, row => !strings_contain(xs: added, s: row))
-  }
 }
 
 test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool {
@@ -352,8 +254,4 @@ test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool {
 test fn red_manifest_freeze_refuses_failed_diff() -> Bool {
   manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeDiffFailed) == false
     && manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeParseTruncated) == false
-}
-
-test fn manifest_rows_all_predate_freeze_sha() -> Bool {
-  manifest_freeze_holds(manifest: read_manifest_rows(), observation: post_freeze_added_paths())
 }
