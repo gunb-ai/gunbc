@@ -1,0 +1,109 @@
+module extdeps.advertising.google_ads
+
+import std.types { List, NonEmptyStr }
+
+import extdeps.advertising.types { AdPriceDetermination, AuctionDetermined }
+import extdeps.securities { Securities }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.alphabet { alphabet }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "support.google.com/google-ads/answer/2472725"
+  }
+}
+
+data google_ads_subject: Vendor<Securities> = alphabet
+
+data google_ads_subject_note: String = "Subject and source are orthogonal axes (operator ruling 2026-07-25, extdeps.pricing.gitlab_subscription precedent): the anchor above is the SOURCE (Google's own product help pages under support.google.com/google-ads), and the subject edge names the ENTITY -- the SEC issuer Alphabet Inc., the filing parent whose income statement reports Google advertising revenue. The consumer-facing product brand is Google Ads; no separate legal-entity row is minted for the operating subsidiary because no fact in this module is about corporate structure."
+
+data google_ads_provenance_note: String = "Interface facts live-fetched 2026-08-01 from two Google Ads Help pages: 'Determine a bid strategy based on your goals - Google Ads Help' (answer/2472725, the anchor) and 'Auction - Google Ads Help' (answer/142918). Neither page publishes any numeric price, minimum bid, or rate floor -- the pricing interface Google documents is a per-auction mechanism plus an advertiser-set budget cap, which is why the rate row below is AuctionDetermined rather than a money amount."
+
+type GoogleAdsBillableUnit
+  = GoogleCostPerClick
+  | GoogleCostPerThousandImpressions
+  | GoogleCostPerThousandViewableImpressions
+  | GoogleCostPerView
+
+type GoogleAdsBillableUnitRow {
+  unit: GoogleAdsBillableUnit
+  unit_wire_label: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+data google_ads_billable_unit_note: String = "The four cost units the bid-strategy page names, wire labels verbatim: cost-per-click (CPC) for clicks, cost-per-thousand impressions (CPM) and cost-per-thousand viewable impressions (vCPM) for impressions, and cost-per-view (CPV) for video views. Conversions are an OPTIMIZATION target in Google's model (Target CPA, Target ROAS, Maximize Conversions), not a fifth billable unit on this page -- the strategy roster below carries those names; fusing the two axes would misstate the documented interface."
+
+data google_cpc_unit: GoogleAdsBillableUnitRow = GoogleAdsBillableUnitRow {
+  unit: GoogleCostPerClick,
+  unit_wire_label: "CPC",
+  citation: "support.google.com/google-ads/answer/2472725",
+}
+
+data google_cpm_unit: GoogleAdsBillableUnitRow = GoogleAdsBillableUnitRow {
+  unit: GoogleCostPerThousandImpressions,
+  unit_wire_label: "CPM",
+  citation: "support.google.com/google-ads/answer/2472725",
+}
+
+data google_vcpm_unit: GoogleAdsBillableUnitRow = GoogleAdsBillableUnitRow {
+  unit: GoogleCostPerThousandViewableImpressions,
+  unit_wire_label: "vCPM",
+  citation: "support.google.com/google-ads/answer/2472725",
+}
+
+data google_cpv_unit: GoogleAdsBillableUnitRow = GoogleAdsBillableUnitRow {
+  unit: GoogleCostPerView,
+  unit_wire_label: "CPV",
+  citation: "support.google.com/google-ads/answer/2472725",
+}
+
+fn google_ads_billable_unit_catalog() -> List<GoogleAdsBillableUnitRow> {
+  [
+    google_cpc_unit,
+    google_cpm_unit,
+    google_vcpm_unit,
+    google_cpv_unit,
+  ]
+}
+
+data google_ads_bid_strategy_roster_note: String = "Bid-strategy names transcribed verbatim from the anchor page 2026-08-01. Kept as a wire-label roster rather than a closed enum: this roster is product-versioned help prose, not a machine-facing API enum (the machine-facing contrast is extdeps.advertising.meta_ads, where billing_event and bid_strategy ARE published API enums). Strategies select what the auction optimizes; the billable unit stays one of the four rows above."
+
+data google_ads_bid_strategy_wire_labels: List<NonEmptyStr> = [
+  "Target cost per action (CPA)",
+  "Target return on ad spend (ROAS)",
+  "Maximize Conversions",
+  "Maximize Conversion Value",
+  "Enhanced cost per click (ECPC)",
+  "Maximize Clicks",
+  "Target CPC",
+  "Manual CPC bidding",
+  "Target Impression Share",
+  "CPM",
+  "tCPM",
+  "vCPM",
+  "CPV bidding",
+]
+
+type GoogleAdsBudgetControl
+  = | GoogleAverageDailyBudget
+
+data google_ads_budget_note: String = "The advertiser-side spend cap the page documents, quoted: 'All you have to do is set an average daily budget, and the Google Ads system automatically manages your bids to bring you the most clicks possible within your budget.' The budget is the advertiser's declared cap; the per-event price under it remains auction-determined."
+
+type GoogleAdsAuctionTimeSignal
+  = GoogleSignalDevice
+  | GoogleSignalLocation
+  | GoogleSignalTimeOfDay
+  | GoogleSignalLanguage
+  | GoogleSignalOperatingSystem
+
+data google_ads_auction_time_signal_note: String = "Coarse-grain targeting dimensions exactly as the anchor page enumerates them, quoted: Smart Bidding 'factors in a wide range of auction-time signals such as device, location, time of day, language, and operating system to capture the unique context of every search.' The page says 'such as' -- this enum models the five signals the vendor names, and is deliberately NOT claimed closed over everything the auction reads."
+
+data google_ads_media_rate: AdPriceDetermination = AuctionDetermined {
+  mechanism_citation: "support.google.com/google-ads/answer/142918",
+}
+
+data google_ads_auction_mechanism_note: String = "The cited mechanism page ('Auction - Google Ads Help') describes selection and pricing by Ad Rank, quoted: eligibility considers 'your bid, ad quality, the Ad Rank thresholds, the context of the person's search, and the expected impact of extensions and other ad formats', and 'even if your competition bids higher than you, you can still win a higher position -- at a lower price -- with highly relevant keywords and ads.' The page contains no numeric amounts, which is the fact the AuctionDetermined arm carries."

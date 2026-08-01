@@ -17646,19 +17646,29 @@ pub fn rust_btree_set_element_ord_eligible(
 ) -> bool {
     {
         let elem_name = authored_name_at(source_indices.clone(), elem_node.clone());
-        ((((((((elem_name.clone() == "String".to_string())
+        let name_grain_eligible = (((((((elem_name.clone() == "String".to_string())
             || (elem_name.clone() == "Int".to_string()))
             || (elem_name.clone() == "Bool".to_string()))
             || (elem_name.clone() == "Unit".to_string()))
             || (elem_name.clone() == "Secret".to_string()))
             || (elem_name.clone() == "Bytes".to_string()))
-            || rust_opaque_kernel_alias_type_eligible(elem_name.clone()))
+            || rust_opaque_kernel_alias_type_eligible(elem_name.clone()));
+        ((name_grain_eligible.clone() && ((elem_node.children.clone().len() as i64) == 0))
             || rust_nominal_ord_type_eligible(
                 elem_node.clone(),
                 source_indices.clone(),
                 emit_info.clone(),
             ))
     }
+}
+
+pub fn rust_btree_set_ord_name_grain_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The name-grain arms admit ONLY CHILDLESS nodes: a scalar/opaque-alias name denotes a childless carrier, and a name roster never examines type arguments, so without this gate any shape wearing an eligible name would be Ord-eligible by name alone (Symbol carrying Float must refuse; the enrolled negative control rust_btree_set_ord_eligibility_requires_nominal_carrier_shape is the discriminating RED). Shape-bearing nominal carriers are judged by rust_nominal_ord_type_eligible, which does examine structure.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_empty_set_element_type_str(
@@ -26091,7 +26101,7 @@ pub fn emit_operation_method(
                         corpus_repr.clone(),
                         env.source_indices.clone(),
                         v1_rt::rc_empty_map::<String, String>(),
-                        env.clone().clone(),
+                        env.clone(),
                     ),
                 ));
             }
@@ -28352,7 +28362,7 @@ pub fn emit_capability_method(
                         corpus_repr.clone(),
                         env.source_indices.clone(),
                         v1_rt::rc_empty_map::<String, String>(),
-                        env.clone().clone(),
+                        env.clone(),
                     ),
                 ));
             }

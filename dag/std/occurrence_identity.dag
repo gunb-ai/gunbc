@@ -41,6 +41,10 @@ type OccurrenceCategory
   | FieldOccurrence
   | MethodOccurrence
 
+type OccurrenceRole
+  = DeclarationRole
+  | ReferenceRole
+
 type OccurrenceProjection {
   occurrence: OccurrenceId
   authored_name: String
@@ -83,29 +87,31 @@ type OccurrenceIdentityConsumerRedDebt {
   dissolve_on: String
 }
 
+data occurrence_identity_consumer_red_debt_rehome_note: String = "THE SIX ROWS BELOW ALL NAMED namespace-canonical-binding AS OWNER, which was correct while that node was the single broad namespace node and is wrong now that the recut split it (operator ruling, 2026-08-01). A roadmap split leaves every row that pointed at the old node pointing at the wrong boundary, and a debt row whose owner cannot accept it is untracked in the way that matters: nobody discovering the node can tell whether the row is theirs.\n\nCLASSIFIED BY ACTUAL BOUNDARY, not by which node the row prose happens to mention. Five are parser or collector identity facts: rebuilt-reference identity preservation, one-occurrence collector dedupe, structurally-equal distinct occurrences, pattern-declaration reachability, and same-spelling parser declaration isolation. Each is decidable at the structural producer that builds candidate populations, so each is owned by namespace-reference-derived-closure. Note that one-occurrence-collector-dedupe is the SAME obligation the operator assigned to P2 candidate construction, collapsing repeated discovery of one identical full identity before the cardinality fold is called; it was already written here and simply pointed at the wrong node.\n\nONE ROW STAYS. inferred-target-anchor-identity requires an inferred target projection to stay anchored to the exact authored occurrence rather than a rebuilt shell Node, spelling, or SourceSpan. That is a property of the production projection path, not of building the candidate population, so it stays with namespace-canonical-binding, the production changeover. It is the row most likely to be re-argued, so the reasoning is written here rather than left implicit: the question that decides it is whether the receipt can execute before the production sites are switched over. For the other five it can; for this one it cannot.\n\nNo row was deleted, weakened, or given a new dissolution trigger by this rehome. Each dissolve_on still names the RED that retires it, and each still deletes in the PR that lands its receipt."
+
 data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedDebt> = [
   OccurrenceIdentityConsumerRedDebt {
     id: "rebuilt-reference-identity-preservation",
     required_receipt: "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.",
-    owner: "namespace-canonical-binding",
+    owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "one-occurrence-collector-dedupe",
     required_receipt: "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.",
-    owner: "namespace-canonical-binding",
+    owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: the occurrence-safe collector dedupe RED executes against the sidecar consumer; delete this row in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "structurally-equal-distinct-occurrences",
     required_receipt: "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.",
-    owner: "namespace-canonical-binding",
+    owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: the distinct-authored-occurrences collector RED executes against the sidecar consumer; delete this row in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "pattern-declaration-reachability",
     required_receipt: "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.",
-    owner: "namespace-canonical-binding",
+    owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
@@ -117,7 +123,7 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
   OccurrenceIdentityConsumerRedDebt {
     id: "same-spelling-parser-declaration-isolation",
     required_receipt: "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.",
-    owner: "namespace-canonical-binding",
+    owner: "namespace-reference-derived-closure",
     dissolve_on: "DISSOLVE-ON: the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR.",
   },
 ]
@@ -125,16 +131,18 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
 type OccurrenceTransportRefusal
   = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
   | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | DuplicateSuppliedCandidateIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
   | InconsistentOccurrenceContainment {
       occurrence: OccurrenceId,
       diagnostic_span: SourceSpan,
     }
-  | WrongOccurrenceCategory {
+  | WrongOccurrenceRole {
       occurrence: OccurrenceId,
-      expected: OccurrenceCategory,
-      observed: OccurrenceCategory,
+      expected: OccurrenceRole,
+      observed: OccurrenceRole,
       diagnostic_span: SourceSpan,
     }
+  | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
 
 data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority."
 
@@ -378,10 +386,10 @@ fn declaration_occurrence_refusal(
         match map_get(references_by_id, declaration.occurrence.value) {
           Present { value: reference } =>
             Present {
-              value: WrongOccurrenceCategory {
+              value: WrongOccurrenceRole {
                 occurrence: declaration.occurrence,
-                expected: declaration.category,
-                observed: reference.category,
+                expected: DeclarationRole,
+                observed: ReferenceRole,
                 diagnostic_span: declaration.diagnostic_span,
               },
             }
@@ -418,10 +426,10 @@ fn reference_occurrence_refusal(
         match map_get(declarations_by_id, reference.occurrence.value) {
           Present { value: declaration } =>
             Present {
-              value: WrongOccurrenceCategory {
+              value: WrongOccurrenceRole {
                 occurrence: reference.occurrence,
-                expected: reference.category,
-                observed: declaration.category,
+                expected: ReferenceRole,
+                observed: DeclarationRole,
                 diagnostic_span: reference.diagnostic_span,
               },
             }
@@ -438,21 +446,35 @@ fn reference_occurrence_refusal(
   }
 }
 
-fn occurrence_transport_refusal(
+type ValidatedOccurrenceTransport {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  declarations_by_id: Map<Int, DeclarationOccurrence>
+  references_by_id: Map<Int, ReferenceOccurrence>
+  declarations: List<DeclarationOccurrence>
+  references: List<ReferenceOccurrence>
+}
+
+type OccurrenceTransportValidation
+  = OccurrenceTransportValidated { transport: ValidatedOccurrenceTransport }
+  | OccurrenceTransportRefused { refusal: OccurrenceTransportRefusal }
+
+data occurrence_transport_validation_authority_note: String = "Canonical transport validity boundary: occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id, declarations_by_id, and references_by_id are the exact lookup authorities. Resolvers consume the validated carrier and never rescan OccurrenceIndex.entries or either role population per supplied identity. The declaration/reference lists remain as the authored transport order, not as lookup paths."
+
+fn occurrence_transport_validate(
   transport: OccurrenceTransport
-) -> OccurrenceTransportRefusal? {
+) -> OccurrenceTransportValidation {
   let index_build = occurrence_transport_index_build(
     index: transport.index
   )
   match index_build.refusal {
-    Present { value: refusal } => Present { value: refusal }
+    Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
     Absent =>
       let role_index_build = occurrence_transport_role_index_build(
         declarations: transport.declarations,
         references: transport.references
       )
       match role_index_build.refusal {
-        Present { value: refusal } => Present { value: refusal }
+        Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
         Absent =>
           let declaration_refusal = fold(
             transport.declarations,
@@ -468,9 +490,9 @@ fn occurrence_transport_refusal(
               }
           )
           match declaration_refusal {
-            Present { value: refusal } => Present { value: refusal }
+            Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
             Absent =>
-              fold(
+              let reference_refusal = fold(
                 transport.references,
                 init: none,
                 f: (refusal, reference) =>
@@ -483,7 +505,28 @@ fn occurrence_transport_refusal(
                     )
                   }
               )
+              match reference_refusal {
+                Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+                Absent => OccurrenceTransportValidated {
+                  transport: ValidatedOccurrenceTransport {
+                    entries_by_id: index_build.entries_by_id,
+                    declarations_by_id: role_index_build.declarations_by_id,
+                    references_by_id: role_index_build.references_by_id,
+                    declarations: transport.declarations,
+                    references: transport.references,
+                  },
+                }
+              }
           }
       }
+  }
+}
+
+fn occurrence_transport_refusal(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportRefusal? {
+  match occurrence_transport_validate(transport: transport) {
+    OccurrenceTransportRefused { refusal: refusal } => Present { value: refusal }
+    OccurrenceTransportValidated { transport: _ } => none
   }
 }

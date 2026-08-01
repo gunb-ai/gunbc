@@ -6513,10 +6513,13 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-  elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
+  let name_grain_eligible = elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
     || elem_name == "Secret" || elem_name == "Bytes" || rust_opaque_kernel_alias_type_eligible(name: elem_name)
+  (name_grain_eligible && elem_node.children |> count == 0)
     || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
 }
+
+data rust_btree_set_ord_name_grain_note: String = "The name-grain arms admit ONLY CHILDLESS nodes: a scalar/opaque-alias name denotes a childless carrier, and a name roster never examines type arguments, so without this gate any shape wearing an eligible name would be Ord-eligible by name alone (Symbol carrying Float must refuse; the enrolled negative control rust_btree_set_ord_eligibility_requires_nominal_carrier_shape is the discriminating RED). Shape-bearing nominal carriers are judged by rust_nominal_ord_type_eligible, which does examine structure."
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match set_type.children |> first {
@@ -9006,7 +9009,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv, service_item: Node) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env.clone()))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -9828,7 +9831,7 @@ fn emit_resource_def(item: Node, shared_types: Set<String>, corpus_repr: RustCor
 
 fn emit_capability_method(cap_node: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env.clone()))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {

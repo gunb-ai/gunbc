@@ -84,6 +84,7 @@ data generated_stage0_files: List<String> = [
   "v1_compiler_infer_items.rs",
   "v1_compiler_infer_lookup.rs",
   "v1_compiler_infer_method.rs",
+  "v1_compiler_infer_occurrence_binding.rs",
   "v1_compiler_infer_patterns.rs",
   "v1_compiler_infer_resolve.rs",
   "v1_compiler_infer_service.rs",
