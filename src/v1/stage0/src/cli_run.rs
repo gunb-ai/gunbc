@@ -192,6 +192,131 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
     )
 }
 
+/// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
+/// Git effects, repository policy, path normalization, and lifecycle classification stay in
+/// `.dag`; this bridge returns only the authored `[[bin]].path` facts or a typed parse refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stage0CargoManifestBinParse {
+    Parsed {
+        authored_relative_paths: Vec<String>,
+    },
+    Refused {
+        detail: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stage0CargoBinManifestParseRefusal {
+    BinTableMissingPath,
+    BinTablePathUnquoted,
+    BinTableTomlParse,
+}
+
+impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BinTableMissingPath => write!(f, "[[bin]] table missing path"),
+            Self::BinTablePathUnquoted => {
+                write!(f, "[[bin]] path value must be a TOML string")
+            }
+            Self::BinTableTomlParse => write!(f, "Cargo manifest is not valid TOML"),
+        }
+    }
+}
+
+fn stage0_cargo_bin_paths_from_manifest_text(
+    content: &str,
+) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
+    let document: toml::Table = toml::from_str(content)
+        .map_err(|_| Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+    let bins = match document.get("bin") {
+        None => return Ok(Vec::new()),
+        Some(toml::Value::Array(bins)) => bins,
+        Some(_) => return Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse),
+    };
+    let mut paths = Vec::with_capacity(bins.len());
+    for bin in bins {
+        let table = bin
+            .as_table()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+        let path = table
+            .get("path")
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)?
+            .as_str()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)?;
+        paths.push(path.to_string());
+    }
+    Ok(paths)
+}
+
+pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManifestBinParse {
+    match stage0_cargo_bin_paths_from_manifest_text(content) {
+        Ok(authored_relative_paths) => Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        },
+        Err(error) => Stage0CargoManifestBinParse::Refused {
+            detail: error.to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod stage0_cargo_manifest_parser_tests {
+    use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
+
+    #[test]
+    fn cargo_bins_parse_to_authored_relative_paths() {
+        let manifest = r#"
+[[bin]]
+name = "gunbc"
+path = "src/main.rs"
+
+[[bin]]
+name = "claim_batch"
+path = "src/bin/claim_batch.rs"
+"#;
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths(manifest),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec![
+                    "src/main.rs".to_string(),
+                    "src/bin/claim_batch.rs".to_string(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn cargo_bin_missing_path_is_typed_refusal() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\nname = \"orphan\"\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "[[bin]] table missing path".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn malformed_toml_is_typed_refusal() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"unterminated\n"),
+            Stage0CargoManifestBinParse::Refused {
+                detail: "Cargo manifest is not valid TOML".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn path_policy_is_not_applied_by_the_toml_realization() {
+        assert_eq!(
+            parse_stage0_cargo_manifest_bin_paths("[[bin]]\npath = \"../../outside.rs\"\n"),
+            Stage0CargoManifestBinParse::Parsed {
+                authored_relative_paths: vec!["../../outside.rs".to_string()],
+            }
+        );
+    }
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -674,6 +799,14 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER,
             "cli_run_selected_closure_overlap_probe"
+        );
+    }
+
+    #[test]
+    fn repeated_typecheck_attribution_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_REPEATED_TYPECHECK_ATTRIBUTION_SCAFFOLD_MARKER,
+            "cli_run_repeated_typecheck_attribution_probe"
         );
     }
 
@@ -1246,6 +1379,91 @@ fn resolve_virtual_source_with_imports(
         content: entry_content.to_string(),
     }));
     sources
+}
+
+/// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
+/// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
+/// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
+/// `CompilerDiagnostic` is the single authority for naming a variant (§3 — this is a projection,
+/// never a second diagnostic vocabulary).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileDiagnosticCensusRow {
+    pub diagnostic_class: String,
+    pub subject_name: String,
+    pub blocking: bool,
+    pub count: i64,
+}
+
+/// Result of [`compile_dag_diagnostic_census`]. `NotRunnable` is a distinct arm rather than an
+/// empty row list because an empty census is byte-identical to a clean compile: could-not-measure
+/// must never be readable as the subject passing (DESIGN §5 — ⊤-as-answer conflated with
+/// ⊤-as-ignorance). Preserving the split *here*, at the host seam, is what lets the probe layer
+/// map it to `ProbeObservation::ProbeNotRunnable` without guessing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompileDiagnosticCensus {
+    Observed(Vec<CompileDiagnosticCensusRow>),
+    NotRunnable(String),
+}
+
+/// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
+/// `.dag` program through the **same** path [`compile_dag_rust_emit_check`] takes, and report the
+/// full per-class diagnostic census the compile produced.
+///
+/// MEASUREMENT ONLY. Nothing here judges acceptance and nothing is filtered: every diagnostic the
+/// compile emitted appears, advisories included, with `blocking` carried **as data** read through
+/// the existing [`compile_clean_diagnostic_is_hard`] delegation so the severity policy keeps one
+/// home. Callers filter. The sibling builtin collapses this same information into a `bool`, which
+/// discards class identity, severity, and every advisory — the three facts a guarantee probe needs
+/// in order to state which judgment fired rather than merely that something refused.
+///
+/// Scope, stated so a receipt cannot claim coverage it does not have: this is the v1 pipeline to
+/// the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
+/// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes. It observes nothing about the
+/// interpreter's disposition of the same program and nothing about other emission targets.
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let module_index = build_module_path_index_from_witness_roots();
+        let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
+        v1_compiler_compile::compile_sources(
+            Rc::new(sources.into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        )
+    }));
+    let result = match compiled {
+        Ok(r) => r,
+        Err(_) => {
+            return CompileDiagnosticCensus::NotRunnable(
+                "compile_dag_diagnostic_census: the compile panicked before producing diagnostics"
+                    .to_string(),
+            );
+        }
+    };
+    // Aggregate on the full key INCLUDING severity: one class can legitimately occur at both
+    // severities, and folding those together would hide exactly the blocking→advisory demotion
+    // this surface exists to keep visible.
+    let mut order: Vec<(String, String, bool)> = Vec::new();
+    let mut counts: HashMap<(String, String, bool), i64> = HashMap::new();
+    for d in result.diagnostics.iter() {
+        let (class, name) = compile_clean_diagnostic_histogram_key(d);
+        let blocking = compile_clean_diagnostic_is_hard(d);
+        let key = (class, name, blocking);
+        let entry = counts.entry(key.clone()).or_insert(0);
+        if *entry == 0 {
+            order.push(key);
+        }
+        *entry += 1;
+    }
+    CompileDiagnosticCensus::Observed(
+        order
+            .into_iter()
+            .map(|key| CompileDiagnosticCensusRow {
+                diagnostic_class: key.0.clone(),
+                subject_name: key.1.clone(),
+                blocking: key.2,
+                count: counts.get(&key).copied().unwrap_or(0),
+            })
+            .collect(),
+    )
 }
 
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
@@ -6854,15 +7072,16 @@ fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
 // the process union.
 static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-// Union-resolve receipt tests reset/read the process-wide counter; `cargo test` runs
-// `#[test]` fns in parallel by default — serialize those oracles (not production use).
-static TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
+// Union-resolve receipt tests reset/read process-wide oracles (`TYPECHECK_COMPUTE_COUNT`,
+// repeated-typecheck attribution probe state). `cargo test` runs `#[test]` fns in parallel
+// by default — serialize those oracles (not production use).
+static UNION_RESOLVE_PROCESS_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
 
 /// Run a counter-based receipt test with exclusive access to `TYPECHECK_COMPUTE_COUNT`.
 pub fn with_typecheck_compute_count_receipt<R>(f: impl FnOnce() -> R) -> R {
-    let _guard = TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK
+    let _guard = UNION_RESOLVE_PROCESS_RECEIPT_LOCK
         .lock()
-        .expect("typecheck_compute_count receipt lock poisoned");
+        .expect("union resolve process receipt lock poisoned");
     f()
 }
 
@@ -6876,6 +7095,527 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+// --- Repeated typecheck attribution probe (entry-graph-union slice 2 / lane ci-cost) ---
+// ONE-SHOT INSTRUMENT: per (entry, typed module content key) records cache disposition,
+// compute wall on miss, and cross-entry first-computer / later-requester counts against
+// ONE shared `MultiEntryIndex`. Verdict taken 2026-08-01 (§F); measurement orchestration
+// deletes after merged-SHA provenance receipt — see `cli_run_repeated_typecheck_attribution_probe`
+// scaffold below for the intrinsic trigger (not #7534).
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedCacheDisposition {
+    Hit,
+    Miss,
+    Refused,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryModuleTypecheckRow {
+    pub entry: String,
+    pub module_key: String,
+    pub module_path: String,
+    pub in_closure: bool,
+    pub cache_disposition: TypedCacheDisposition,
+    pub typecheck_compute_ns: u128,
+    pub first_computing_entry: Option<String>,
+    pub later_requester_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryReconcileTiming {
+    pub entry: String,
+    pub reconcile_assembly_ns: u128,
+    pub typecheck_compute_ns: u128,
+    pub resolve_nanos: u128,
+}
+
+#[derive(Clone)]
+struct ModuleKeyTracker {
+    first_computing_entry: String,
+    requesters_seen: u64,
+}
+
+/// Captured rows from an armed attribution probe (entry-graph-union slice 2).
+#[derive(Debug, Clone)]
+pub struct RepeatedTypecheckAttributionSnapshot {
+    pub rows: Vec<EntryModuleTypecheckRow>,
+    pub entry_timings: Vec<EntryReconcileTiming>,
+    pub distinct_first_computes: usize,
+}
+
+struct RepeatedTypecheckAttributionRun {
+    key_tracker: HashMap<String, ModuleKeyTracker>,
+    rows: Vec<EntryModuleTypecheckRow>,
+    entry_timings: Vec<EntryReconcileTiming>,
+    all_hit_probe_rows: Vec<EntryModuleTypecheckRow>,
+    all_hit_probe_active: bool,
+    observed_entry_module_keys: HashSet<(String, String)>,
+}
+
+/// Aggregated repeated-typecheck attribution (entry-graph-union slice 2).
+#[derive(Debug, Clone)]
+pub struct RepeatedTypecheckAttributionMeasurement {
+    pub source_roots: Vec<String>,
+    pub scan_dirs: Vec<String>,
+    pub head_sha: String,
+    pub diff_base_override: Option<String>,
+    pub selected_entries: Vec<String>,
+    pub skipped_entries: Vec<String>,
+    pub max_entries_applied: Option<usize>,
+    /// Zero-based index into the production roster before `--max-entries` truncation.
+    pub entry_offset_applied: Option<usize>,
+    pub sum_closure_memberships: usize,
+    pub union_modules: usize,
+    pub membership_duplication_factor: Option<f64>,
+    pub rows: Vec<EntryModuleTypecheckRow>,
+    pub entry_timings: Vec<EntryReconcileTiming>,
+    pub total_cache_hits: usize,
+    pub total_cache_misses: usize,
+    pub total_cache_refusals: usize,
+    /// Sum of `typecheck_compute_ns` on every cache miss (first + repeated).
+    pub total_typecheck_compute_ns: u128,
+    /// Misses that re-paid typecheck for a module identity already computed earlier in this run.
+    pub repeated_typecheck_misses: usize,
+    /// Typecheck wall on first-computation misses only (`later_requester_count == 0`).
+    pub first_computation_typecheck_ns: u128,
+    /// Typecheck wall on repeated misses (`later_requester_count > 0` at observation).
+    pub repeated_typecheck_compute_ns: u128,
+    /// Per-module selected-entry fanout (from slice-1 overlap machinery), descending.
+    pub fanout_by_module: Vec<(String, usize)>,
+    pub memory: RepeatedTypecheckAttributionMemoryObservation,
+    pub key_summaries: Vec<ModuleKeyAttributionSummary>,
+    /// Cache hits / (hits + misses) — diagnostic only, NOT the decision metric.
+    pub cache_hit_ratio: Option<f64>,
+    /// Distinct first-computes vs total observations.
+    pub compute_duplication_factor: Option<f64>,
+    /// THE decision quantity: `repeated_typecheck_compute_ns / total_typecheck_compute_ns`.
+    pub decision_ratio: Option<f64>,
+}
+
+impl RepeatedTypecheckAttributionMeasurement {
+    pub fn selected_count(&self) -> usize {
+        self.selected_entries.len()
+    }
+}
+
+impl RepeatedTypecheckAttributionRun {
+    fn into_measurement(
+        self,
+        source_roots: Vec<String>,
+        scan_dirs: Vec<String>,
+        head_sha: String,
+        diff_base_override: Option<String>,
+        selected_entries: Vec<String>,
+        skipped_entries: Vec<String>,
+        max_entries_applied: Option<usize>,
+        entry_offset_applied: Option<usize>,
+        sum_closure_memberships: usize,
+        union_modules: usize,
+    ) -> RepeatedTypecheckAttributionMeasurement {
+        Self::snapshot_into_measurement(
+            RepeatedTypecheckAttributionSnapshot {
+                distinct_first_computes: self.key_tracker.len(),
+                rows: self.rows,
+                entry_timings: self.entry_timings,
+            },
+            source_roots,
+            scan_dirs,
+            head_sha,
+            diff_base_override,
+            selected_entries,
+            skipped_entries,
+            max_entries_applied,
+            entry_offset_applied,
+            sum_closure_memberships,
+            union_modules,
+            Vec::new(),
+            RepeatedTypecheckAttributionMemoryObservation::capture_pair(None, None),
+        )
+    }
+
+    fn snapshot_into_measurement(
+        snap: RepeatedTypecheckAttributionSnapshot,
+        source_roots: Vec<String>,
+        scan_dirs: Vec<String>,
+        head_sha: String,
+        diff_base_override: Option<String>,
+        selected_entries: Vec<String>,
+        skipped_entries: Vec<String>,
+        max_entries_applied: Option<usize>,
+        entry_offset_applied: Option<usize>,
+        sum_closure_memberships: usize,
+        union_modules: usize,
+        fanout_by_module: Vec<(String, usize)>,
+        memory: RepeatedTypecheckAttributionMemoryObservation,
+    ) -> RepeatedTypecheckAttributionMeasurement {
+        let total_cache_hits = snap
+            .rows
+            .iter()
+            .filter(|r| r.cache_disposition == TypedCacheDisposition::Hit)
+            .count();
+        let total_cache_misses = snap
+            .rows
+            .iter()
+            .filter(|r| r.cache_disposition == TypedCacheDisposition::Miss)
+            .count();
+        let total_cache_refusals = snap
+            .rows
+            .iter()
+            .filter(|r| r.cache_disposition == TypedCacheDisposition::Refused)
+            .count();
+        let mut total_typecheck_compute_ns: u128 = 0;
+        let mut first_computation_typecheck_ns: u128 = 0;
+        let mut repeated_typecheck_compute_ns: u128 = 0;
+        let mut repeated_typecheck_misses: usize = 0;
+        for row in &snap.rows {
+            if row.cache_disposition != TypedCacheDisposition::Miss {
+                continue;
+            }
+            total_typecheck_compute_ns += row.typecheck_compute_ns;
+            if row.later_requester_count > 0 {
+                repeated_typecheck_misses += 1;
+                repeated_typecheck_compute_ns += row.typecheck_compute_ns;
+            } else {
+                first_computation_typecheck_ns += row.typecheck_compute_ns;
+            }
+        }
+        let observed = total_cache_hits + total_cache_misses;
+        let cache_hit_ratio = if observed == 0 {
+            None
+        } else {
+            Some(total_cache_hits as f64 / observed as f64)
+        };
+        let decision_ratio = if total_typecheck_compute_ns == 0 {
+            None
+        } else {
+            Some(repeated_typecheck_compute_ns as f64 / total_typecheck_compute_ns as f64)
+        };
+        let compute_duplication_factor = if snap.distinct_first_computes == 0 {
+            None
+        } else {
+            Some(snap.rows.len() as f64 / snap.distinct_first_computes as f64)
+        };
+        let membership_duplication_factor = if union_modules == 0 {
+            None
+        } else {
+            Some(sum_closure_memberships as f64 / union_modules as f64)
+        };
+        let fanout_by_path: HashMap<String, usize> = fanout_by_module
+            .iter()
+            .map(|(name, count)| (name.clone(), *count))
+            .collect();
+        let mut key_summaries_map: std::collections::HashMap<String, ModuleKeyAttributionSummary> =
+            std::collections::HashMap::new();
+        for row in &snap.rows {
+            let entry = key_summaries_map
+                .entry(row.module_key.clone())
+                .or_insert_with(|| ModuleKeyAttributionSummary {
+                    module_key: row.module_key.clone(),
+                    module_path: row.module_path.clone(),
+                    selected_entry_fanout: fanout_by_path
+                        .get(&row.module_path)
+                        .copied()
+                        .unwrap_or(0),
+                    hit_count: 0,
+                    miss_count: 0,
+                    recompute_count: 0,
+                });
+            match row.cache_disposition {
+                TypedCacheDisposition::Hit => entry.hit_count += 1,
+                TypedCacheDisposition::Miss => {
+                    entry.miss_count += 1;
+                    if row.later_requester_count > 0 {
+                        entry.recompute_count += 1;
+                    }
+                }
+                TypedCacheDisposition::Refused => {}
+            }
+        }
+        let mut key_summaries: Vec<ModuleKeyAttributionSummary> =
+            key_summaries_map.into_values().collect();
+        key_summaries.sort_by(|a, b| {
+            b.recompute_count
+                .cmp(&a.recompute_count)
+                .then_with(|| b.miss_count.cmp(&a.miss_count))
+                .then_with(|| a.module_key.cmp(&b.module_key))
+        });
+        RepeatedTypecheckAttributionMeasurement {
+            source_roots,
+            scan_dirs,
+            head_sha,
+            diff_base_override,
+            selected_entries,
+            skipped_entries,
+            max_entries_applied,
+            entry_offset_applied,
+            sum_closure_memberships,
+            union_modules,
+            membership_duplication_factor,
+            rows: snap.rows,
+            entry_timings: snap.entry_timings,
+            total_cache_hits,
+            total_cache_misses,
+            total_cache_refusals,
+            total_typecheck_compute_ns,
+            repeated_typecheck_misses,
+            first_computation_typecheck_ns,
+            repeated_typecheck_compute_ns,
+            fanout_by_module,
+            memory,
+            key_summaries,
+            cache_hit_ratio,
+            compute_duplication_factor,
+            decision_ratio,
+        }
+    }
+}
+
+static REPEATED_TYPECHECK_ATTRIBUTION_RUN: Mutex<Option<RepeatedTypecheckAttributionRun>> =
+    Mutex::new(None);
+
+/// Run an attribution-probe receipt test with exclusive access to the process-wide probe
+/// and `TYPECHECK_COMPUTE_COUNT` (resolves bump the counter; same lock as counter receipts).
+pub fn with_repeated_typecheck_attribution_receipt<R>(f: impl FnOnce() -> R) -> R {
+    let _guard = UNION_RESOLVE_PROCESS_RECEIPT_LOCK
+        .lock()
+        .expect("union resolve process receipt lock poisoned");
+    f()
+}
+
+thread_local! {
+    static REPEATED_TYPECHECK_ATTRIBUTION_ENTRY: RefCell<Option<String>> =
+        const { RefCell::new(None) };
+}
+
+pub(crate) const CLI_RUN_REPEATED_TYPECHECK_ATTRIBUTION_SCAFFOLD_MARKER: &str =
+    "cli_run_repeated_typecheck_attribution_probe";
+
+pub fn arm_repeated_typecheck_attribution_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    *guard = Some(RepeatedTypecheckAttributionRun {
+        key_tracker: HashMap::new(),
+        rows: Vec::new(),
+        entry_timings: Vec::new(),
+        all_hit_probe_rows: Vec::new(),
+        all_hit_probe_active: false,
+        observed_entry_module_keys: HashSet::new(),
+    });
+}
+
+pub fn set_repeated_typecheck_attribution_entry(entry: &str) {
+    REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| {
+        *cell.borrow_mut() = Some(entry.to_string());
+    });
+}
+
+pub fn clear_repeated_typecheck_attribution_entry() {
+    REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
+}
+
+pub fn disarm_repeated_typecheck_attribution_probe() -> Option<RepeatedTypecheckAttributionSnapshot>
+{
+    clear_repeated_typecheck_attribution_entry();
+    REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned")
+        .take()
+        .map(|run| RepeatedTypecheckAttributionSnapshot {
+            distinct_first_computes: run.key_tracker.len(),
+            rows: run.rows,
+            entry_timings: run.entry_timings,
+        })
+}
+
+fn repeated_typecheck_attribution_armed() -> bool {
+    REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .ok()
+        .is_some_and(|g| g.is_some())
+}
+
+fn repeated_typecheck_attribution_begin_all_hit_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    if let Some(run) = guard.as_mut() {
+        run.all_hit_probe_active = true;
+        run.all_hit_probe_rows.clear();
+    }
+}
+
+fn repeated_typecheck_attribution_abort_all_hit_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    if let Some(run) = guard.as_mut() {
+        run.all_hit_probe_active = false;
+        run.all_hit_probe_rows.clear();
+    }
+}
+
+fn repeated_typecheck_attribution_commit_all_hit_probe() {
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    run.all_hit_probe_active = false;
+    let buffered = std::mem::take(&mut run.all_hit_probe_rows);
+    for row in buffered {
+        commit_repeated_typecheck_attribution_row(run, row);
+    }
+}
+
+fn commit_repeated_typecheck_attribution_row(
+    run: &mut RepeatedTypecheckAttributionRun,
+    row: EntryModuleTypecheckRow,
+) {
+    let dedupe_key = (row.entry.clone(), row.module_key.clone());
+    if !run.observed_entry_module_keys.insert(dedupe_key) {
+        return;
+    }
+    let module_key = row.module_key.clone();
+    let disposition = row.cache_disposition;
+    if disposition == TypedCacheDisposition::Miss && !run.key_tracker.contains_key(&module_key) {
+        run.key_tracker.insert(
+            module_key.clone(),
+            ModuleKeyTracker {
+                first_computing_entry: row.entry.clone(),
+                requesters_seen: 0,
+            },
+        );
+    }
+    run.rows.push(row);
+    match disposition {
+        TypedCacheDisposition::Miss | TypedCacheDisposition::Hit => {
+            if let Some(tracker) = run.key_tracker.get_mut(&module_key) {
+                tracker.requesters_seen += 1;
+            }
+        }
+        TypedCacheDisposition::Refused => {}
+    }
+}
+
+fn build_repeated_typecheck_attribution_row(
+    run: &RepeatedTypecheckAttributionRun,
+    entry: String,
+    module_path: &str,
+    module_key: &str,
+    disposition: TypedCacheDisposition,
+    typecheck_compute_ns: u128,
+) -> EntryModuleTypecheckRow {
+    let (first_computing_entry, later_requester_count) = match run.key_tracker.get(module_key) {
+        Some(tracker) => (
+            Some(tracker.first_computing_entry.clone()),
+            tracker.requesters_seen,
+        ),
+        None if disposition == TypedCacheDisposition::Miss => (Some(entry.clone()), 0),
+        None => (None, 0),
+    };
+    EntryModuleTypecheckRow {
+        entry,
+        module_key: module_key.to_string(),
+        module_path: module_path.to_string(),
+        in_closure: true,
+        cache_disposition: disposition,
+        typecheck_compute_ns,
+        first_computing_entry,
+        later_requester_count,
+    }
+}
+
+fn observe_repeated_typecheck_attribution_module(
+    module_path: &str,
+    module_key: &str,
+    disposition: TypedCacheDisposition,
+    typecheck_compute_ns: u128,
+) {
+    if !repeated_typecheck_attribution_armed() {
+        return;
+    }
+    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| cell.borrow().clone())
+    else {
+        return;
+    };
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    let row = build_repeated_typecheck_attribution_row(
+        run,
+        entry,
+        module_path,
+        module_key,
+        disposition,
+        typecheck_compute_ns,
+    );
+    if run.all_hit_probe_active {
+        run.all_hit_probe_rows.push(row);
+        return;
+    }
+    commit_repeated_typecheck_attribution_row(run, row);
+}
+
+fn observe_repeated_typecheck_attribution_refused(module_path: &str, cause: &str) {
+    if !repeated_typecheck_attribution_armed() {
+        return;
+    }
+    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| cell.borrow().clone())
+    else {
+        return;
+    };
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    let row = EntryModuleTypecheckRow {
+        entry,
+        module_key: format!("refused:{cause}"),
+        module_path: module_path.to_string(),
+        in_closure: true,
+        cache_disposition: TypedCacheDisposition::Refused,
+        typecheck_compute_ns: 0,
+        first_computing_entry: None,
+        later_requester_count: 0,
+    };
+    if run.all_hit_probe_active {
+        run.all_hit_probe_rows.push(row);
+        return;
+    }
+    commit_repeated_typecheck_attribution_row(run, row);
+}
+
+pub fn note_repeated_typecheck_attribution_entry_timing(
+    entry: &str,
+    stage_nanos: &ResolveStageNanos,
+    resolve_nanos: u128,
+) {
+    if !repeated_typecheck_attribution_armed() {
+        return;
+    }
+    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
+        .lock()
+        .expect("repeated typecheck attribution run lock poisoned");
+    let Some(run) = guard.as_mut() else {
+        return;
+    };
+    run.entry_timings.push(EntryReconcileTiming {
+        entry: entry.to_string(),
+        reconcile_assembly_ns: stage_nanos.reconcile_assembly,
+        typecheck_compute_ns: stage_nanos.typecheck_compute,
+        resolve_nanos,
+    });
 }
 
 fn shared_caches_read<'a>(
@@ -9268,10 +10008,17 @@ fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u128) {
         let this_entry = resolve_stage_slot_snapshot();
         RESOLVE_STAGE_BY_ENTRY.with(|m| {
             m.borrow_mut()
-                .entry(key)
+                .entry(key.clone())
                 .or_default()
                 .accumulate(&this_entry);
         });
+        if repeated_typecheck_attribution_armed() {
+            note_repeated_typecheck_attribution_entry_timing(
+                entry_file,
+                &this_entry,
+                elapsed_nanos,
+            );
+        }
     }
 }
 
@@ -9951,6 +10698,24 @@ fn try_reconcile_all_cache_hits(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
 ) -> Result<Option<Rc<ResolvedGraph>>, String> {
+    let attribution_probe = repeated_typecheck_attribution_armed();
+    if attribution_probe {
+        repeated_typecheck_attribution_begin_all_hit_probe();
+    }
+    struct AllHitProbeAbort {
+        suppress_abort: bool,
+    }
+    impl Drop for AllHitProbeAbort {
+        fn drop(&mut self) {
+            if !self.suppress_abort {
+                repeated_typecheck_attribution_abort_all_hit_probe();
+            }
+        }
+    }
+    let mut probe_guard = attribution_probe.then(|| AllHitProbeAbort {
+        suppress_abort: false,
+    });
+
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -9997,6 +10762,12 @@ fn try_reconcile_all_cache_hits(
                 resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
                 return Ok(None);
             };
+            observe_repeated_typecheck_attribution_module(
+                mod_name,
+                &typed_key,
+                TypedCacheDisposition::Hit,
+                0,
+            );
             // Record this confirmed hit's cache keys with the armed schedule retention
             // (idempotent; no-op when unarmed) — the all-hits PROBE must register keys just
             // like the slow reconcile loop at `reconcile_with_typed_cache`, else a prewarmed
@@ -10054,6 +10825,13 @@ fn try_reconcile_all_cache_hits(
                 cross_tree_fork_count += 1;
             }
         }
+    }
+
+    if let Some(mut guard) = probe_guard.take() {
+        guard.suppress_abort = true;
+    }
+    if attribution_probe {
+        repeated_typecheck_attribution_commit_all_hit_probe();
     }
 
     finish_resolved_graph_assembly(
@@ -10516,10 +11294,21 @@ fn reconcile_with_typed_cache(
                         next_pending.push(slot);
                         continue;
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        observe_repeated_typecheck_attribution_refused(&mod_name, &e);
+                        return Err(e);
+                    }
                 };
                 let cached = index_get_typed(index, &typed_key)?;
                 let was_cache_hit = cached.is_some();
+                if was_cache_hit {
+                    observe_repeated_typecheck_attribution_module(
+                        &mod_name,
+                        &typed_key,
+                        TypedCacheDisposition::Hit,
+                        0,
+                    );
+                }
                 // Record this module's cache keys with the armed schedule retention
                 // (idempotent; hit or miss) so its state can be dropped exactly when no
                 // remaining scheduled entry reaches it. Keyed by `decl_file` — the same
@@ -10610,6 +11399,12 @@ fn reconcile_with_typed_cache(
                         // threshold below — the receipt is the complete record, the render
                         // line a projection (one record, two projections).
                         note_module_typecheck_wall(&mod_name, module_tc_ms);
+                        observe_repeated_typecheck_attribution_module(
+                            &mod_name,
+                            &typed_key,
+                            TypedCacheDisposition::Miss,
+                            module_tc_elapsed.as_nanos(),
+                        );
                         if module_tc_ms >= 2_000 {
                             let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                             eprintln!(
@@ -14663,12 +15458,83 @@ pub fn wet_hermetic_discovery_outcome_divergences(
     divergences
 }
 
-/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
-pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+fn proc_status_kb_field(prefix: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
+    let line = status.lines().find(|l| l.starts_with(prefix))?;
     let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
     Some(kb.saturating_mul(1024))
+}
+
+/// Current resident set from `/proc/self/status` VmRSS, in bytes.
+pub fn current_rss_bytes() -> Option<u64> {
+    proc_status_kb_field("VmRSS")
+}
+
+/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
+pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+    proc_status_kb_field("VmHWM")
+}
+
+/// `memory.events` `high` counter from the process leaf cgroup, when readable.
+pub fn cgroup_memory_events_high() -> Option<u64> {
+    let dir = crate::memory_governor::leaf_cgroup_dir()?;
+    let raw = crate::memory_governor::read_cgroup_raw(&dir, "memory.events")?;
+    raw.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        let key = parts.next()?;
+        if key != "high" {
+            return None;
+        }
+        parts.next()?.parse().ok()
+    })
+}
+
+fn git_head_sha_or_err() -> Result<String, String> {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| format!("git rev-parse HEAD: {e}"))
+        .and_then(|o| {
+            if o.status.success() {
+                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                Err("git rev-parse HEAD failed".to_string())
+            }
+        })
+}
+
+/// Process memory readings for repeated-typecheck attribution (slice 2).
+///
+/// VmHWM is process-wide high water — it includes selector setup, index construction,
+/// and every resolved entry, not an isolated "attribution retention peak".
+#[derive(Debug, Clone)]
+pub struct RepeatedTypecheckAttributionMemoryObservation {
+    pub rss_before_measurement_bytes: Option<u64>,
+    pub rss_after_measurement_bytes: Option<u64>,
+    pub process_vm_hwm_bytes: Option<u64>,
+    pub cgroup_memory_events_high: Option<u64>,
+}
+
+impl RepeatedTypecheckAttributionMemoryObservation {
+    pub fn capture_pair(before: Option<u64>, after: Option<u64>) -> Self {
+        Self {
+            rss_before_measurement_bytes: before,
+            rss_after_measurement_bytes: after,
+            process_vm_hwm_bytes: peak_rss_vhwm_bytes(),
+            cgroup_memory_events_high: cgroup_memory_events_high(),
+        }
+    }
+}
+
+/// Per typed module content key rollup for the detailed attribution receipt.
+#[derive(Debug, Clone)]
+pub struct ModuleKeyAttributionSummary {
+    pub module_key: String,
+    pub module_path: String,
+    pub selected_entry_fanout: usize,
+    pub hit_count: usize,
+    pub miss_count: usize,
+    pub recompute_count: usize,
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
@@ -15584,6 +16450,36 @@ impl SelectedEntryClosureOverlap {
     }
 }
 
+/// Membership overlap for an explicit selected-entry list (slice-1's both-closure walk).
+fn closure_overlap_membership_for_entries(
+    index: &MultiEntryIndex,
+    selected_entries: &[String],
+) -> Result<(usize, usize, Vec<(String, usize)>), String> {
+    let mut sum_closure_memberships: usize = 0;
+    let mut fanout: HashMap<String, usize> = HashMap::new();
+    for entry in selected_entries {
+        let mut members: HashSet<String> = HashSet::new();
+        for source in load_sources_for_entry_with_pool(index, entry)? {
+            let Some(name) = extract_module_path(&source.content) else {
+                return Err(format!(
+                    "closure overlap: source '{}' in entry '{}' closure declares no module \
+                     header (fail-closed)",
+                    source.path, entry
+                ));
+            };
+            members.insert(name);
+        }
+        sum_closure_memberships += members.len();
+        for m in members {
+            *fanout.entry(m).or_insert(0) += 1;
+        }
+    }
+    let union_modules = fanout.len();
+    let mut fanout_by_module: Vec<(String, usize)> = fanout.into_iter().collect();
+    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    Ok((sum_closure_memberships, union_modules, fanout_by_module))
+}
+
 pub fn measure_selected_entry_closure_overlap(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -15658,7 +16554,8 @@ pub fn measure_selected_entry_closure_overlap(
         for source in load_sources_for_entry_with_pool(&index, entry)? {
             let Some(name) = extract_module_path(&source.content) else {
                 return Err(format!(
-                    "closure overlap: source '{}' in entry '{}' closure declares no module                      header (fail-closed)",
+                    "closure overlap: source '{}' in entry '{}' closure declares no module \
+                     header (fail-closed)",
                     source.path, entry
                 ));
             };
@@ -15835,6 +16732,314 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
             .to_string(),
     ));
     out.push_str("\"}");
+    out
+}
+
+// SCAFFOLD (§7 HAND-RUST — `cli_run_repeated_typecheck_attribution_probe`):
+// ROADMAP lane `ci-cost`, subject `entry-graph-union-construction` slice 2
+// (gunbc.roadmap_authority id `entry-graph-union-construction` — same row as slice 1).
+// VERDICT TAKEN 2026-08-01 (`entry-graph-union-slice2-typecheck-attribution.md` §F):
+// at N≤50 repeated typecheck compute is zero — union construction NO-GO on this hypothesis.
+// §4b + §G: law tests stay enrolled until deletion; measurement orchestration deletes after
+// merged-SHA provenance receipt (NOT tied to #7534 — unrelated exact-tree consumer).
+// DELETE WHEN dissolved (measurement orchestration — ~400 LOC incl. bin + probe plumbing):
+// `RepeatedTypecheckAttributionMeasurement`, `measure_repeated_typecheck_attribution`,
+// `render_repeated_typecheck_attribution_json`, `render_repeated_typecheck_attribution_receipt_json`,
+// `repeated_typecheck_attribution_arithmetic`, flag-gated `arm_*`/`observe_*`/`note_*` hooks,
+// and `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs`.
+// Trigger (intrinsic): candidate receipts accepted → merge → one representative 50-entry
+// cell + reorder control on merged main → archive receipt → delete (this lane's final commit
+// or named follow-up immediately after; never smuggled into another PR's rebase).
+// RETAIN through deletion: `repeated_typecheck_attribution_*` law tests in v1-compiler-tests
+// (once-per-content-key, later-requester hits, order-invariant distinct computes).
+// Receipt: `rg -c cli_run_repeated_typecheck_attribution_probe src/v1/stage0/src/cli_run.rs`
+// returns 4 while the scaffold stands (this block, the const, and its declaration test).
+// Not a compiler_frontier `.dag` row (seed-Rust) and not enrolled in `gunbc.ci_release_bins`.
+pub fn measure_repeated_typecheck_attribution(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+    explicit_entries: &[String],
+    max_entries: Option<usize>,
+    entry_offset: Option<usize>,
+) -> Result<RepeatedTypecheckAttributionMeasurement, String> {
+    let rss_before = current_rss_bytes();
+
+    let (head_sha, diff_base_override, skipped_entries, production_selected, overlap_membership) =
+        if explicit_entries.is_empty() {
+            let overlap = measure_selected_entry_closure_overlap(
+                source_roots,
+                scan_dirs,
+                exclude_substrings,
+                discovery_scope_dirs,
+            )?;
+            (
+                overlap.head_sha,
+                overlap.diff_base_override,
+                overlap.skipped_entries,
+                overlap.selected_entries.clone(),
+                Some((
+                    overlap.sum_closure_memberships,
+                    overlap.union_modules,
+                    overlap.fanout_by_module.clone(),
+                )),
+            )
+        } else {
+            (
+                git_head_sha_or_err()?,
+                std::env::var("GUNBC_CI_DIFF_BASE").ok(),
+                Vec::new(),
+                Vec::new(),
+                None,
+            )
+        };
+
+    let mut selected_entries = if explicit_entries.is_empty() {
+        production_selected.clone()
+    } else {
+        explicit_entries.to_vec()
+    };
+    if !explicit_entries.is_empty() && entry_offset.unwrap_or(0) > 0 {
+        return Err(
+            "repeated typecheck attribution: --entry-offset requires production selection \
+             (fail-closed)"
+                .to_string(),
+        );
+    }
+    let roster_len = selected_entries.len();
+    let offset = entry_offset.unwrap_or(0);
+    if offset > 0 {
+        if offset >= roster_len {
+            return Err(format!(
+                "repeated typecheck attribution: entry offset {offset} >= roster len \
+                 {roster_len} (fail-closed)"
+            ));
+        }
+        selected_entries = selected_entries[offset..].to_vec();
+    }
+    let entry_offset_applied = entry_offset.filter(|&o| o > 0);
+    let pre_cap_len = selected_entries.len();
+    if let Some(cap) = max_entries {
+        selected_entries.truncate(cap);
+    }
+    let max_entries_applied = max_entries.filter(|cap| *cap < pre_cap_len);
+
+    if selected_entries.is_empty() {
+        return Err(
+            "repeated typecheck attribution: zero entries to measure (fail-closed)".to_string(),
+        );
+    }
+
+    let (sum_closure_memberships, union_modules, fanout_by_module) =
+        if let Some((sum, union, fanout)) = overlap_membership
+            .filter(|_| explicit_entries.is_empty() && selected_entries == production_selected)
+        {
+            (sum, union, fanout)
+        } else {
+            let membership_index = process_shared_index(source_roots);
+            closure_overlap_membership_for_entries(&membership_index, &selected_entries)?
+        };
+
+    let index = build_multi_entry_index(source_roots);
+    arm_repeated_typecheck_attribution_probe();
+
+    for entry in &selected_entries {
+        set_repeated_typecheck_attribution_entry(entry);
+        resolve_entry_with_index(&index, entry).map_err(|e| {
+            disarm_repeated_typecheck_attribution_probe();
+            format!("repeated typecheck attribution: resolve refused for '{entry}': {e}")
+        })?;
+        clear_repeated_typecheck_attribution_entry();
+    }
+
+    let snap = disarm_repeated_typecheck_attribution_probe().ok_or_else(|| {
+        "repeated typecheck attribution: probe disarmed empty (internal)".to_string()
+    })?;
+
+    let rss_after = current_rss_bytes();
+    let memory = RepeatedTypecheckAttributionMemoryObservation::capture_pair(rss_before, rss_after);
+
+    Ok(RepeatedTypecheckAttributionRun::snapshot_into_measurement(
+        snap,
+        source_roots.to_vec(),
+        scan_dirs.to_vec(),
+        head_sha,
+        diff_base_override,
+        selected_entries,
+        skipped_entries,
+        max_entries_applied,
+        entry_offset_applied,
+        sum_closure_memberships,
+        union_modules,
+        fanout_by_module,
+        memory,
+    ))
+}
+
+/// Machine-readable projection of the repeated-typecheck attribution measurement.
+pub fn render_repeated_typecheck_attribution_json(
+    m: &RepeatedTypecheckAttributionMeasurement,
+) -> String {
+    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
+    let opt_f64 = |v: Option<f64>| match v {
+        Some(f) => format!("{f:.6}"),
+        None => "null".to_string(),
+    };
+    let opt_str = |o: &Option<String>| match o {
+        Some(v) => format!("\"{}\"", esc(v.clone())),
+        None => "null".to_string(),
+    };
+
+    let mut out = String::from("{\"subject\":{\"head_sha\":\"");
+    out.push_str(&esc(m.head_sha.clone()));
+    out.push_str("\",\"diff_base_override\":");
+    out.push_str(&opt_str(&m.diff_base_override));
+    out.push_str(",\"selected_entries\":");
+    out.push_str(&m.selected_count().to_string());
+    out.push_str(",\"max_entries_applied\":");
+    out.push_str(&match m.max_entries_applied {
+        Some(n) => n.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str(",\"entry_offset_applied\":");
+    out.push_str(&match m.entry_offset_applied {
+        Some(n) => n.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str("},\"membership\":{\"sum_closure_memberships\":");
+    out.push_str(&m.sum_closure_memberships.to_string());
+    out.push_str(",\"union_modules\":");
+    out.push_str(&m.union_modules.to_string());
+    out.push_str(",\"duplication_factor\":");
+    out.push_str(&opt_f64(m.membership_duplication_factor));
+    out.push_str("},\"attribution\":{\"total_cache_hits\":");
+    out.push_str(&m.total_cache_hits.to_string());
+    out.push_str(",\"total_cache_misses\":");
+    out.push_str(&m.total_cache_misses.to_string());
+    out.push_str(",\"total_cache_refusals\":");
+    out.push_str(&m.total_cache_refusals.to_string());
+    out.push_str(",\"total_typecheck_compute_ns\":");
+    out.push_str(&m.total_typecheck_compute_ns.to_string());
+    out.push_str(",\"repeated_typecheck_misses\":");
+    out.push_str(&m.repeated_typecheck_misses.to_string());
+    out.push_str(",\"first_computation_typecheck_ns\":");
+    out.push_str(&m.first_computation_typecheck_ns.to_string());
+    out.push_str(",\"repeated_typecheck_compute_ns\":");
+    out.push_str(&m.repeated_typecheck_compute_ns.to_string());
+    out.push_str(",\"cache_hit_ratio\":");
+    out.push_str(&opt_f64(m.cache_hit_ratio));
+    out.push_str(",\"compute_duplication_factor\":");
+    out.push_str(&opt_f64(m.compute_duplication_factor));
+    out.push_str(",\"decision_ratio\":");
+    out.push_str(&opt_f64(m.decision_ratio));
+    out.push_str(",\"memory\":{");
+    out.push_str("\"rss_before_measurement_bytes\":");
+    out.push_str(&match m.memory.rss_before_measurement_bytes {
+        Some(b) => b.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str(",\"rss_after_measurement_bytes\":");
+    out.push_str(&match m.memory.rss_after_measurement_bytes {
+        Some(b) => b.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str(",\"process_vm_hwm_bytes\":");
+    out.push_str(&match m.memory.process_vm_hwm_bytes {
+        Some(b) => b.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str(",\"cgroup_memory_events_high\":");
+    out.push_str(&match m.memory.cgroup_memory_events_high {
+        Some(b) => b.to_string(),
+        None => "null".to_string(),
+    });
+    out.push_str("}");
+    out.push_str("},\"entry_timings\":[");
+    for (i, t) in m.entry_timings.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"entry\":\"");
+        out.push_str(&esc(t.entry.clone()));
+        out.push_str("\",\"reconcile_assembly_ns\":");
+        out.push_str(&t.reconcile_assembly_ns.to_string());
+        out.push_str(",\"typecheck_compute_ns\":");
+        out.push_str(&t.typecheck_compute_ns.to_string());
+        out.push_str(",\"resolve_nanos\":");
+        out.push_str(&t.resolve_nanos.to_string());
+        out.push('}');
+    }
+    out.push_str("],\"interpretation_bound\":\"");
+    out.push_str(&esc(
+        "Per (entry, typed module content key) observations against ONE shared \
+         MultiEntryIndex. decision_ratio = repeated_typecheck_compute_ns / \
+         total_typecheck_compute_ns (NOT closure duplication). Refused rows are a \
+         third state, never folded into hits."
+            .to_string(),
+    ));
+    out.push_str("\"}");
+    out
+}
+
+/// Full per-row and per-key receipt for slice-2 attribution (written to disk).
+pub fn render_repeated_typecheck_attribution_receipt_json(
+    m: &RepeatedTypecheckAttributionMeasurement,
+) -> String {
+    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
+    let disposition = |d: TypedCacheDisposition| match d {
+        TypedCacheDisposition::Hit => "Hit",
+        TypedCacheDisposition::Miss => "Miss",
+        TypedCacheDisposition::Refused => "Refused",
+    };
+    let opt_str = |o: &Option<String>| match o {
+        Some(v) => format!("\"{}\"", esc(v.clone())),
+        None => "null".to_string(),
+    };
+
+    let mut out = String::from("{\"summary\":");
+    out.push_str(&render_repeated_typecheck_attribution_json(m));
+    out.push_str(",\"rows\":[");
+    for (i, row) in m.rows.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"entry\":\"");
+        out.push_str(&esc(row.entry.clone()));
+        out.push_str("\",\"module_key\":\"");
+        out.push_str(&esc(row.module_key.clone()));
+        out.push_str("\",\"module_path\":\"");
+        out.push_str(&esc(row.module_path.clone()));
+        out.push_str("\",\"cache_disposition\":\"");
+        out.push_str(disposition(row.cache_disposition));
+        out.push_str("\",\"typecheck_compute_ns\":");
+        out.push_str(&row.typecheck_compute_ns.to_string());
+        out.push_str(",\"first_computing_entry\":");
+        out.push_str(&opt_str(&row.first_computing_entry));
+        out.push_str(",\"later_requester_count\":");
+        out.push_str(&row.later_requester_count.to_string());
+        out.push('}');
+    }
+    out.push_str("],\"key_summaries\":[");
+    for (i, key) in m.key_summaries.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"module_key\":\"");
+        out.push_str(&esc(key.module_key.clone()));
+        out.push_str("\",\"module_path\":\"");
+        out.push_str(&esc(key.module_path.clone()));
+        out.push_str("\",\"selected_entry_fanout\":");
+        out.push_str(&key.selected_entry_fanout.to_string());
+        out.push_str(",\"hit_count\":");
+        out.push_str(&key.hit_count.to_string());
+        out.push_str(",\"miss_count\":");
+        out.push_str(&key.miss_count.to_string());
+        out.push_str(",\"recompute_count\":");
+        out.push_str(&key.recompute_count.to_string());
+        out.push('}');
+    }
+    out.push_str("]}");
     out
 }
 
@@ -34239,6 +35444,206 @@ mod selected_entry_closure_overlap_arithmetic {
         let json = render_selected_entry_closure_overlap_json(&m);
         assert!(json.contains("\"duplication_factor\":null"));
         assert!(json.contains("\"max\":null"));
+    }
+}
+
+#[cfg(test)]
+mod repeated_typecheck_attribution_arithmetic {
+    use super::*;
+
+    fn measurement_from_rows(
+        rows: Vec<EntryModuleTypecheckRow>,
+        key_tracker: HashMap<String, ModuleKeyTracker>,
+        sum_memberships: usize,
+        union_modules: usize,
+    ) -> RepeatedTypecheckAttributionMeasurement {
+        RepeatedTypecheckAttributionRun {
+            key_tracker,
+            rows,
+            entry_timings: Vec::new(),
+            all_hit_probe_rows: Vec::new(),
+            all_hit_probe_active: false,
+            observed_entry_module_keys: HashSet::new(),
+        }
+        .into_measurement(
+            vec!["dag".to_string()],
+            vec!["dag/test/claim".to_string()],
+            "0".repeat(40),
+            None,
+            vec!["a".to_string(), "b".to_string()],
+            Vec::new(),
+            None,
+            None,
+            sum_memberships,
+            union_modules,
+        )
+    }
+
+    #[test]
+    fn perfect_sharing_yields_zero_decision_ratio() {
+        // Two entries, one shared module: first miss, second hit → cache_hit_ratio 0.5,
+        // but decision_ratio 0 (no repeated typecheck compute).
+        let rows = vec![
+            EntryModuleTypecheckRow {
+                entry: "a".into(),
+                module_key: "k1".into(),
+                module_path: "std.types".into(),
+                in_closure: true,
+                cache_disposition: TypedCacheDisposition::Miss,
+                typecheck_compute_ns: 100,
+                first_computing_entry: Some("a".into()),
+                later_requester_count: 0,
+            },
+            EntryModuleTypecheckRow {
+                entry: "b".into(),
+                module_key: "k1".into(),
+                module_path: "std.types".into(),
+                in_closure: true,
+                cache_disposition: TypedCacheDisposition::Hit,
+                typecheck_compute_ns: 0,
+                first_computing_entry: Some("a".into()),
+                later_requester_count: 1,
+            },
+        ];
+        let mut tracker = HashMap::new();
+        tracker.insert(
+            "k1".to_string(),
+            ModuleKeyTracker {
+                first_computing_entry: "a".to_string(),
+                requesters_seen: 2,
+            },
+        );
+        let m = measurement_from_rows(rows, tracker, 2, 1);
+        assert_eq!(m.total_cache_hits, 1);
+        assert_eq!(m.total_cache_misses, 1);
+        assert_eq!(m.repeated_typecheck_misses, 0);
+        assert_eq!(m.cache_hit_ratio, Some(0.5));
+        assert_eq!(m.decision_ratio, Some(0.0));
+        assert_eq!(m.total_typecheck_compute_ns, 100);
+        assert_eq!(m.repeated_typecheck_compute_ns, 0);
+    }
+
+    #[test]
+    fn repeated_recompute_raises_decision_ratio() {
+        let rows = vec![
+            EntryModuleTypecheckRow {
+                entry: "a".into(),
+                module_key: "k1".into(),
+                module_path: "m1".into(),
+                in_closure: true,
+                cache_disposition: TypedCacheDisposition::Miss,
+                typecheck_compute_ns: 100,
+                first_computing_entry: Some("a".into()),
+                later_requester_count: 0,
+            },
+            EntryModuleTypecheckRow {
+                entry: "b".into(),
+                module_key: "k1".into(),
+                module_path: "m1".into(),
+                in_closure: true,
+                cache_disposition: TypedCacheDisposition::Miss,
+                typecheck_compute_ns: 50,
+                first_computing_entry: Some("a".into()),
+                later_requester_count: 1,
+            },
+        ];
+        let mut tracker = HashMap::new();
+        tracker.insert(
+            "k1".to_string(),
+            ModuleKeyTracker {
+                first_computing_entry: "a".to_string(),
+                requesters_seen: 2,
+            },
+        );
+        let m = measurement_from_rows(rows, tracker, 2, 1);
+        assert_eq!(m.repeated_typecheck_misses, 1);
+        assert_eq!(m.repeated_typecheck_compute_ns, 50);
+        assert_eq!(m.decision_ratio, Some(50.0 / 150.0));
+    }
+
+    #[test]
+    fn no_sharing_yields_zero_decision_ratio() {
+        let rows = vec![
+            EntryModuleTypecheckRow {
+                entry: "a".into(),
+                module_key: "k1".into(),
+                module_path: "m1".into(),
+                in_closure: true,
+                cache_disposition: TypedCacheDisposition::Miss,
+                typecheck_compute_ns: 50,
+                first_computing_entry: Some("a".into()),
+                later_requester_count: 0,
+            },
+            EntryModuleTypecheckRow {
+                entry: "b".into(),
+                module_key: "k2".into(),
+                module_path: "m2".into(),
+                in_closure: true,
+                cache_disposition: TypedCacheDisposition::Miss,
+                typecheck_compute_ns: 50,
+                first_computing_entry: Some("b".into()),
+                later_requester_count: 0,
+            },
+        ];
+        let mut tracker = HashMap::new();
+        tracker.insert(
+            "k1".to_string(),
+            ModuleKeyTracker {
+                first_computing_entry: "a".to_string(),
+                requesters_seen: 1,
+            },
+        );
+        tracker.insert(
+            "k2".to_string(),
+            ModuleKeyTracker {
+                first_computing_entry: "b".to_string(),
+                requesters_seen: 1,
+            },
+        );
+        let m = measurement_from_rows(rows, tracker, 2, 2);
+        assert_eq!(m.decision_ratio, Some(0.0));
+        assert_eq!(m.repeated_typecheck_misses, 0);
+        assert_eq!(m.compute_duplication_factor, Some(1.0));
+        assert_eq!(m.membership_duplication_factor, Some(1.0));
+    }
+
+    #[test]
+    fn cache_hits_carry_zero_typecheck_compute_ns() {
+        let rows = vec![EntryModuleTypecheckRow {
+            entry: "b".into(),
+            module_key: "k1".into(),
+            module_path: "m1".into(),
+            in_closure: true,
+            cache_disposition: TypedCacheDisposition::Hit,
+            typecheck_compute_ns: 0,
+            first_computing_entry: Some("a".into()),
+            later_requester_count: 1,
+        }];
+        let m = measurement_from_rows(rows, HashMap::new(), 1, 1);
+        assert!(
+            m.rows
+                .iter()
+                .filter(|r| r.cache_disposition == TypedCacheDisposition::Hit)
+                .all(|r| r.typecheck_compute_ns == 0),
+            "genuine shared-store hits must not carry typecheck wall"
+        );
+    }
+
+    #[test]
+    fn refused_rows_are_not_counted_as_hits() {
+        let rows = vec![EntryModuleTypecheckRow {
+            entry: "a".into(),
+            module_key: "refused:cause".into(),
+            module_path: "m1".into(),
+            in_closure: true,
+            cache_disposition: TypedCacheDisposition::Refused,
+            typecheck_compute_ns: 0,
+            first_computing_entry: None,
+            later_requester_count: 0,
+        }];
+        let m = measurement_from_rows(rows, HashMap::new(), 1, 1);
+        assert_eq!(m.total_cache_hits, 0);
+        assert_eq!(m.total_cache_refusals, 1);
     }
 }
 

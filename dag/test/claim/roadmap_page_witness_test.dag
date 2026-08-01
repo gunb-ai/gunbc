@@ -14,7 +14,9 @@ import gunbc.roadmap_page {
   nodes_ul,
   page_script_census,
   dispatch_client_script,
+  finish_line_row,
 }
+import gunbc.v1_deletion_plan { v1_exit_finish_lines }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_model {
   RoadmapNode,
@@ -25,6 +27,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+import extdeps.languages.json.emit { serialize_json }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -39,18 +42,23 @@ fn authority_page_html() -> String {
   }
 }
 
-data header_gained_the_sound_toggle_note: String = "The two header assertions below moved because the header genuinely gained a control: the mute toggle sits after the h1, pushed to the far edge. They are updated rather than loosened — the toggle is spelled out in the expected string, so the header's shape stays pinned exactly as tightly as before and a THIRD element appearing would still red. Loosening them to stop at </h1> would have been the easy fix and would have quietly retired the assertion."
+data header_pin_a1_note: String = "The header assertions moved TWICE at A1 (presentation recon, operator feedback 2026-08-01). First the content: the unselected site mark (candidate A, whose aria-label said gunb.ai on a gunbc tool surface) is replaced by the text wordmark, the h1 carries the PAGE name alone so it never restates the wordmark, and both toggles are server-rendered with visible content and an accessible name — the theme toggle with its parse-time-true initial state ('theme · auto': no data-theme exists until the client program runs, so prefers-color-scheme governs, which IS auto), the sound toggle with its name only (its state has no parse-time truth; see gunbc.roadmap_page.sound_toggle_placement_note). Second the SHAPE of the assertion: the former whole-header byte pin asserted the accidental composition — element order and adjacency that nobody decided — so it redded on any reorder while proving nothing semantic. Each assertion below is now ONE claim (wordmark exists; page-name h1 exists; each control is labeled before JavaScript). Header composition is deliberately NOT pinned: the A1 list layout is a provisional renderer, per the PR's own scope statement."
 
 test fn witness_authority_serializes_with_structure() -> Bool {
   let h = authority_page_html()
-  string_contains(s: h, pattern: "<header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
-    && string_contains(
-      s: h,
-      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button><button class=\"theme-toggle\" type=\"button\"></button></header>")
+  string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
+    && string_contains(s: h, pattern: "<h1>roadmap</h1>")
+    && string_contains(s: h, pattern: "<button class=\"sound-toggle\" type=\"button\">sound</button>")
+    && string_contains(s: h, pattern: "<button class=\"theme-toggle\" type=\"button\">theme · auto</button>")
+    && !string_contains(s: h, pattern: "class=\"mark mark-d1\"")
+    && !string_contains(s: h, pattern: "<h1>gunbc — roadmap</h1>")
     && string_contains(s: h, pattern: "<main class=\"roadmap\">")
     && string_contains(s: h, pattern: "class=\"roadmap-section\"")
-    && string_contains(s: h, pattern: "class=\"status status-")
+    && string_contains(s: h, pattern: "class=\"node-head\"")
+    && !string_contains(s: h, pattern: "class=\"status status-open\"")
 }
+
+data status_chip_collapse_pin_note: String = "A3 routine-state collapse flip: the former positive pin 'class=\"status status-' asserted that SOME chip serialized, which an all-open focused page satisfies only by rendering the routine default as permanent chrome. The decided rule (lifecycle_chip_renders) hides exactly the open default, so the discriminating page pins are the NEGATIVE — an open chip serialized anywhere is the collapse failing — plus node-head presence for the structural claim; the review/done chips keep their own positive pins on constructed fixtures (witness_merged_pr_is_review_evidence_not_acceptance)."
 
 test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
   string_contains(
@@ -69,12 +77,15 @@ fn empty_doc_html() -> String {
 
 test fn witness_empty_doc_is_minimal_shell() -> Bool {
   let h = empty_doc_html()
-  starts_with(s: h, prefix: "<html><head><meta charset=\"utf-8\"")
+  starts_with(s: h, prefix: "<html lang=\"en\"><head><meta charset=\"utf-8\"")
+    && string_contains(s: h, pattern: "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"")
     && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
-    && string_contains(s: h, pattern: "<body><header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
-    && string_contains(
-      s: h,
-      pattern: "</svg><h1>gunbc — roadmap</h1><button class=\"sound-toggle\" type=\"button\"></button><button class=\"theme-toggle\" type=\"button\"></button></header><main class=\"roadmap\"></main></body></html>")
+    && string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
+    && string_contains(s: h, pattern: "<h1>roadmap</h1>")
+    && string_contains(s: h, pattern: "<button class=\"sound-toggle\" type=\"button\">sound</button>")
+    && string_contains(s: h, pattern: "<button class=\"theme-toggle\" type=\"button\">theme · auto</button>")
+    && string_contains(s: h, pattern: "<main class=\"roadmap\"></main></body></html>")
+    && !string_contains(s: h, pattern: "<script")
 }
 
 test fn witness_authority_differs_from_empty() -> Bool {
@@ -86,14 +97,47 @@ test fn witness_authority_shows_finish_line_progress() -> Bool {
   let empty = empty_doc_html()
   string_contains(s: authority, pattern: "class=\"finish-line-progress\"")
     && string_contains(s: authority, pattern: "v1 exit: four finish lines")
+    && string_contains(s: authority, pattern: " of 4 complete")
     && string_contains(s: authority, pattern: "Compiler fixed point")
     && string_contains(s: authority, pattern: "Interpreter deleted")
     && string_contains(s: authority, pattern: "Products v1-free")
     && string_contains(s: authority, pattern: "Zero hand-maintained Rust")
     && string_contains(s: authority, pattern: "v1-products-v1-free")
-    && !string_contains(s: authority, pattern: "finish-line-accepted")
+    && !string_contains(s: authority, pattern: " declared · ")
     && !string_contains(s: authority, pattern: "class=\"three-gate-progress\"")
     && !string_contains(s: empty, pattern: "class=\"finish-line-progress\"")
+}
+
+data finish_line_variant_fixture_note: String = "The accepted variant is proven by FIXTURE, not by live-population absence (A1; the former !contains('finish-line-accepted') negative both redded on the stylesheet — which now legitimately carries the .finish-line-accepted rule — and was the live-state transcription class the operator ruled against: it would have reported 'a finish line was accepted', which is news, not a defect). Both reachable variants render from constructed inputs: the same spec accepted and not accepted, so the state class, the chip word, and their divergence are pinned independent of today's roadmap population."
+
+test fn witness_finish_line_variants_render_from_fixture() -> Bool {
+  let s = first(v1_exit_finish_lines()).value
+  let accepted_html = match try_serialize_html_source(node: finish_line_row(spec: s, accepted_ids: [s.node])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+  let active_html = match try_serialize_html_source(node: finish_line_row(spec: s, accepted_ids: [])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+  string_contains(s: accepted_html, pattern: "class=\"finish-line finish-line-accepted\"")
+    && string_contains(s: accepted_html, pattern: ">accepted<")
+    && string_contains(s: active_html, pattern: "class=\"finish-line finish-line-active\"")
+    && string_contains(s: active_html, pattern: ">active<")
+    && !string_contains(s: active_html, pattern: "finish-line-accepted")
+}
+
+data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — it carries the one-line program-progress summary with the LOCAL denominator, and the full narrative block lives on /roadmap only. The 'of 4' magnitude is structural, not a live-population transcription: v1_exit_finish_lines is the authored four-row design list, unlike the deleted global declared/accepted/active counts this section used to show (see live_state_count_transcription_note in test.claim.roadmap_authority)."
+
+test fn witness_daily_leads_operational_not_narrative() -> Bool {
+  let h = match try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority()) {
+    EmitOk { html: page } => page
+    EmitRejected { reason: _ } => ""
+  }
+  string_contains(s: h, pattern: "class=\"program-progress\"")
+    && string_contains(s: h, pattern: " of 4 finish lines complete")
+    && !string_contains(s: h, pattern: "class=\"finish-line-progress\"")
+    && !string_contains(s: h, pattern: "class=\"finish-line-claim\"")
 }
 
 fn depth_chain_html(fuel: Int) -> String {
@@ -180,28 +224,35 @@ fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   roadmap_page(doc: doc, merged: [])
 }
 
+data server_zero_furniture_note: String = "The attention rule's server half (A2): a rendered row carries NO workflow furniture — no pre-rendered stage chips, no lamp strip, no hidden progress container, no 'waiting' text. Activity DOM exists only when the client paints it from the decided /workflow.json view of a live attempt. The former version of this witness pinned the seven server-rendered pending chips as a POSITIVE; the same patterns are now the discriminating negatives, so reintroducing preloaded furniture reds here."
+
 test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
   let h = dispatch_doc_html_for(rn: ready_dispatch_node())
   string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
     && string_contains(s: h, pattern: "data-node=")
-    && string_contains(s: h, pattern: "class=\"workflow-progress\" hidden")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"environment\"")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"publish\"")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"review\"")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"audit\"")
+    && !string_contains(s: h, pattern: "workflow-progress")
+    && !string_contains(s: h, pattern: "data-workflow-stage=")
+    && !string_contains(s: h, pattern: "workflow-strip")
+    && !string_contains(s: h, pattern: "workflow-lamp")
+    && !string_contains(s: h, pattern: "class=\"node-activity\"")
     && string_contains(s: h, pattern: "<script src=\"/assets/roadmap-dispatch.js\"")
     && !string_contains(s: h, pattern: "querySelectorAll")
     && !string_contains(s: h, pattern: "j.status")
 }
 
+data client_reads_decided_activity_note: String = "A2 flip of the belt-B contract pins: the client consumes the DECIDED activity object (attempt.activity — arm, attention, summary, evidence) and the segment roster; the former positives provider_activity / workflow_status / remaining_obligations are now the discriminating NEGATIVES, because a client that re-derives a summary or a remaining count from the raw fields is a second projection authority. The segments receiver is pinned in its grouped spelling — (attempt.segments || []).forEach — the exact shape whose ungrouped form was the 2026-08-01 silent no-op."
+
 test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
     && string_contains(s: js, pattern: "fetch('/workflow.json')")
-    && string_contains(s: js, pattern: "provider_activity")
-    && string_contains(s: js, pattern: "workflow_status")
-    && string_contains(s: js, pattern: "remaining_obligations")
-    && string_contains(s: js, pattern: "attempt.segments.forEach")
+    && string_contains(s: js, pattern: "attempt.activity")
+    && string_contains(s: js, pattern: "av.arm")
+    && string_contains(s: js, pattern: "av.attention")
+    && string_contains(s: js, pattern: "(attempt.segments || []).forEach")
+    && !string_contains(s: js, pattern: "provider_activity")
+    && !string_contains(s: js, pattern: "workflow_status")
+    && !string_contains(s: js, pattern: "remaining_obligations")
     && string_contains(s: js, pattern: "gunbcRefreshWorkflow().finally")
     && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
@@ -262,6 +313,17 @@ test fn witness_unsized_open_node_keeps_manual_dispatch() -> Bool {
   let h = dispatch_doc_html_for(rn: unsized_open_dispatch_node())
   string_contains(s: h, pattern: "class=\"workflow-controls\"")
     && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
+data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, sizing codes, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
+
+test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
+  let h = dispatch_doc_html_for(rn: ready_dispatch_node())
+  string_contains(s: h, pattern: "<span class=\"node-mid\"><span class=\"title\">dispatch-me</span></span>")
+    && string_contains(
+      s: h,
+      pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>facts</summary><div class=\"item-body\"><div class=\"item-facts\"><span class=\"sizing\">i:low v:small gunbc</span></div></div></details>")
+    && !string_contains(s: h, pattern: "class=\"title\">dispatch-me</span><span class=\"sizing\"")
 }
 
 fn blocked_dispatch_workspace_html() -> String {
@@ -352,10 +414,14 @@ test fn witness_ticket_brief_budget_holds_and_reds() -> Bool {
     && all(planted, v => v.node == "brief-overrun-fixture" && v.words == 101)
 }
 
+data combinator_witness_repoint_note: String = "Repointed at A1: the former subject '.node-superseded > .title' was an UNREACHABLE selector — direct-child, while .title actually nests two levels down (.node-head > .node-mid > .title), so the strikethrough could never paint; the rule now uses the descendant combinator and the escape-guard witness repoints to a selector that still legitimately carries '>' (the section-fold summary). The claim under test is unchanged: a raw '>' inside emitted style text must not be entity-escaped."
+
 test fn witness_style_child_combinator_unescaped() -> Bool {
   let h = authority_page_html()
-  string_contains(s: h, pattern: ".node-superseded > .title")
-    && !string_contains(s: h, pattern: "&gt; .title")
+  string_contains(s: h, pattern: "details.section-fold > summary")
+    && !string_contains(s: h, pattern: "&gt; summary")
+    && string_contains(s: h, pattern: ".node-superseded .title")
+    && !string_contains(s: h, pattern: ".node-superseded > .title")
 }
 
 test fn witness_raw_text_close_guard_refuses() -> Bool {
@@ -409,4 +475,109 @@ test fn witness_overlong_lead_reds() -> Bool {
   v.length() == 1
     && all(v, x => x.node == "overlong-lead" && x.lead_chars > roadmap_lead_budget_chars())
     && lead_budget_violations(nodes: [ready_dispatch_node()]).length() == 0
+}
+
+data parity_witness_note: String = "The server/client semantic parity obligation (operator blocker 7, 2026-08-01), discharged over the SAME constructed facts across every executable link: (1) the SERVER realization — render_work_row over the falsifier specimen view — is serialized and its semantic regions asserted exactly (arm and attention data, the decided summary sentence, each obligation label · state — detail line, each evidence label: value row, and on the refused arm the located reason inside an OPEN disclosure); (2) the WIRE — activity_view_json_value over the same view — carries the identical summary string, so the client receives byte-what the server rendered; (3) the CLIENT realization is pinned verbatim-paint: it reads av.summary / av.arm / av.attention and composes obligation and evidence lines from the SAME seam constants (activity_state_sep / activity_detail_sep / activity_evidence_kv_sep / activity_disclosure_label are data the emitted program embeds), so its composed strings equal the server's by one-authority construction. The DOM-mutation link the interpreter cannot execute is covered by the playwright specimen receipt (falsifier fixture intercepted, real emitted client, three widths). RED directions: a server renderer that drops a region reds (1); a seam change that moves the summary reds (1) and (2) together or not at all; a client that re-derives its own composition loses the shared-constant literals and reds (3)."
+
+fn parity_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
+  [
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "admission receipt readable" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "worktree created" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+  ]
+}
+
+fn parity_specimen_activity() -> gunbc.roadmap_presentation.ActivityView {
+  gunbc.roadmap_presentation.activity_view_from_parts(
+    segments: parity_specimen_segments(),
+    remaining: 4,
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    current_activity: "Worked for 6m 34s")
+}
+
+fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
+    node_id: "parity-specimen",
+    headline: "Record which generator actually produced each result",
+    summary: none,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    superseded_by: "",
+    activity: activity,
+    action: gunbc.roadmap_presentation.action_view(
+      scheduling: gunbc.roadmap_presentation.SchedulingReady,
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle),
+    supporting_facts: [],
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
+  }
+}
+
+fn parity_row_html(activity: gunbc.roadmap_presentation.ActivityView) -> String {
+  let view = parity_specimen_view(activity: activity)
+  match try_serialize_html_source(node: Element {
+    tag: "li",
+    attributes: gunbc.roadmap_page.node_li_attributes(view: view),
+    children: gunbc.roadmap_page.render_work_row(view: view),
+  }) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+test fn witness_parity_server_realizes_decided_regions() -> Bool {
+  let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
+  let h = parity_row_html(activity: parity_specimen_activity())
+  summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
+    && string_contains(s: h, pattern: "class=\"node-activity\"")
+    && string_contains(s: h, pattern: "data-arm=\"active\"")
+    && string_contains(s: h, pattern: "data-attention=\"routine\"")
+    && string_contains(s: h, pattern: summary)
+    && string_contains(s: h, pattern: "Environment · complete — admission receipt readable")
+    && string_contains(s: h, pattern: "Verification · pending")
+    && string_contains(s: h, pattern: "session container: present")
+    && string_contains(s: h, pattern: "worker process: process exited")
+    && string_contains(s: h, pattern: ">activity</summary>")
+}
+
+test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
+  let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
+  let wire = serialize_json(
+    v: gunbc.roadmap_presentation.activity_view_json_value(view: parity_specimen_activity()))
+  string_contains(s: wire, pattern: join(["\"summary\": \"", summary, "\""], ""))
+    && string_contains(s: wire, pattern: "\"arm\": \"active\"")
+    && string_contains(s: wire, pattern: "\"attention\": \"routine\"")
+    && string_contains(s: wire, pattern: "\"remaining_obligation_count\": 4")
+}
+
+test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "av.summary")
+    && string_contains(s: js, pattern: "av.arm")
+    && string_contains(s: js, pattern: "av.attention")
+    && string_contains(s: js, pattern: "seg.label + ' · ' + seg.state")
+    && string_contains(s: js, pattern: "' — ' + seg.detail")
+    && string_contains(s: js, pattern: "row.label + ': ' + row.value")
+    && string_contains(s: js, pattern: "'activity'")
+}
+
+data parity_refused_note: String = "The refused arm's parity: the server realization carries the located reason inside an OPEN activity disclosure (the attention rule's auto-expand, realized as the open attribute at render), and the client pins the same auto-open decision through data-auto-opened. A refusal whose reason failed to reach either surface is the title-only world the anomaly witnesses forbid."
+
+test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
+  let refused = gunbc.roadmap_presentation.activity_view_from_parts(
+    segments: [
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+    ],
+    remaining: 6,
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    current_activity: "")
+  let h = parity_row_html(activity: refused)
+  string_contains(s: h, pattern: "data-arm=\"refused\"")
+    && string_contains(s: h, pattern: "class=\"activity-located-reason\"")
+    && string_contains(s: h, pattern: "turn.completed with process unobserved: no exit was established")
+    && string_contains(s: h, pattern: " open")
 }

@@ -1,51 +1,40 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
 import gunbc.stage0_cargo_manifest {
-  stage0_cargo_bin_paths_observation_ref,
-  stage0_cargo_toml_repo_path
+  stage0_cargo_bin_paths_observation_ref
+}
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation,
+  current_stage0_rust_source_observation
 }
 import gunbc.stage0_emit_model {
   generated_stage0_files,
   is_generated_stage0_file
 }
+import std.types { ContentHash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
+import gunbc.roadmap_model { RoadmapNodeId }
 import v2.compiler.self_host.frontier { hand_maintained_stage0_filenames }
 import v2.std.algebra { any, fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 
-data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument (V1FinishLine ZeroHandMaintainedRust, authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / node v1-zero-hand-maintained-rust). Stage0 seed-surface lifecycle: joins existing .dag authorities (generated_stage0_files, hand_maintained_stage0_filenames, stage0_partition_crate_rows) plus file-grain residue rows. Cargo [[bin]] paths join only after the host observation boundary (gunbc.stage0_rust_host_observation, PR B) — never hand-listed. Full-repo tracked .rs census is RustManifestUnobserved until host observation supplies path evidence with repository_revision and manifest_digest — Unobserved cannot masquerade as zero unclassified. Discovery prefix hints name where the future manifest consumer should look; they do NOT classify children."
+data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
 
-data zero_hand_maintained_rust_finish_line_attachment_note: String = "Attach to V1FinishLine ZeroHandMaintainedRust (merged #7393): acceptance requires RustManifestObserved path evidence with derived newly_unclassified=0, stale_lifecycle_rows=0, duplicate_exact_paths=0, and hand-maintained ratchet — not this scaffold's partial joins alone."
-
-data rust_source_host_observation_note: String = "Follow-on PR B: host observation boundary emits RustManifestObserved { repository_revision, manifest_digest, tracked_rust_repo_paths, prior_tracked_rust_repo_paths, cargo_bin_repo_paths } or typed ManifestReadRefused / ManifestParseRefused / GitObservationRefused. Verdict derives unclassified, stale, duplicate, and hand-maintained counts from path evidence — callers must not supply conclusions as integers."
-
-type RustSourceHostObservation
-  = RustManifestUnobserved { awaiting: String }
-  | RustManifestObserved {
-      repository_revision: String,
-      manifest_digest: String,
-      tracked_rust_repo_paths: List<String>,
-      prior_tracked_rust_repo_paths: List<String>,
-      cargo_bin_repo_paths: List<String>
-    }
-  | RustManifestReadRefused { detail: String }
-  | RustManifestParseRefused { detail: String }
-  | GitObservationRefused { detail: String }
-
-data rust_source_host_observation: RustSourceHostObservation = RustManifestUnobserved {
-  awaiting: "gunbc.stage0_rust_host_observation host boundary (PR B) — git ls-files + Cargo.toml parse with typed refusals"
-}
+data zero_hand_maintained_rust_finish_line_attachment_note: String = "Observation prerequisite only: RustManifestObserved establishes the revision-addressed subject and Cargo roles. v1-honest-frontier must separately derive maintenance disposition, product reachability, generation authority, retirement trigger, hand LOC, and typed hand obligations before V1FinishLine ZeroHandMaintainedRust can consume it."
 
 type RustSourceManifestStateVerdict
   = ManifestStateScaffoldOk
   | ManifestStateScaffoldRefused { cause: RustSourceManifestStateRefusal }
 
 type RustSourceManifestStateRefusal
-  = UnobservedTrackedManifest { awaiting: String }
-  | HostManifestReadRefused { detail: String }
+  = HostManifestReadRefused { detail: String }
   | HostManifestParseRefused { detail: String }
   | HostGitObservationRefused { detail: String }
   | DerivedNewlyUnclassified { count: Int }
@@ -54,6 +43,7 @@ type RustSourceManifestStateRefusal
   | DerivedHandMaintainedGrew { prior: Int, current: Int }
   | DerivedUnclassifiedTracked { count: Int }
   | ObservedCargoPathUntracked { path: String }
+  | CargoTargetMissingLifecycleDisposition { path: String }
 
 data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -71,10 +61,9 @@ fn path_in_list(path: String, paths: List<String>) -> Bool {
 }
 
 fn observed_classified_repo_paths(
-  file_grain_paths: List<String>,
-  cargo_bin_repo_paths: List<String>
+  file_grain_paths: List<String>
 ) -> List<String> {
-  list_concat_unique(acc: file_grain_paths, items: cargo_bin_repo_paths)
+  file_grain_paths
 }
 
 fn observed_cargo_paths_subset_of_tracked(
@@ -226,8 +215,6 @@ fn count_observed_manifest_duplicate_excess(
 
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
-    RustManifestUnobserved { awaiting: awaiting } =>
-      ManifestStateScaffoldRefused { cause: UnobservedTrackedManifest { awaiting: awaiting } }
     RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
     RustManifestParseRefused { detail: detail } =>
@@ -236,19 +223,16 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
       ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } }
     RustManifestObserved {
       repository_revision: repository_revision,
-      manifest_digest: manifest_digest,
+      manifest_content_identity: manifest_content_identity,
       tracked_rust_repo_paths: tracked_paths,
       prior_tracked_rust_repo_paths: prior_tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths
     } =>
-      if repository_revision == "" || manifest_digest == "" {
-        ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision or manifest_digest" } }
+      if repository_revision == "" {
+        ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
         let file_grain_paths = file_grain_lifecycle_repo_paths()
-        let classified_paths = observed_classified_repo_paths(
-          file_grain_paths: file_grain_paths,
-          cargo_bin_repo_paths: cargo_bin_repo_paths
-        )
+        let classified_paths = observed_classified_repo_paths(file_grain_paths: file_grain_paths)
         let lifecycle_paths = classified_paths
         let newly_unclassified = count_newly_unclassified_tracked(
           tracked_paths: tracked_paths,
@@ -268,10 +252,18 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
           cargo_bin_repo_paths: cargo_bin_repo_paths,
           tracked_paths: tracked_paths
         )
+        let cargo_without_disposition = first_untracked_cargo_path(
+          cargo_bin_repo_paths: cargo_bin_repo_paths,
+          tracked_paths: file_grain_paths
+        )
         if length(xs: cargo_bin_repo_paths) == 0 {
           ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
         } else if untracked_cargo != "" {
           ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: untracked_cargo } }
+        } else if cargo_without_disposition != "" {
+          ManifestStateScaffoldRefused {
+            cause: CargoTargetMissingLifecycleDisposition { path: cargo_without_disposition }
+          }
         } else if newly_unclassified != 0 {
           ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: newly_unclassified } }
         } else if stale != 0 {
@@ -324,17 +316,24 @@ data behavioral_oracle_carrier_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration
 }
 
-type RustSourceLifecycleObligation
-  = DerivedGenerated { authority: DeclarationRef }
-  | DerivedHandMaintainedLayout { authority: DeclarationRef }
-  | DerivedCargoBinManifest { authority: DeclarationRef }
-  | DerivedPartitionCrateRoot { authority: DeclarationRef }
-  | CitedBehavioralOracleCarrier { carrier: DeclarationRef }
-  | ResidueHandMaintenance { reason: String, dissolve_on: String }
+type RustSourceRole
+  = CargoBin
+  | CargoLib
+  | Test
+  | BehavioralOracle
+  | Tooling
+
+type RustMaintenanceDisposition
+  = Generated { authority: DeclarationRef }
+  | EmitFrom { authority: DeclarationRef }
+  | DeleteWith { roadmap_node: RoadmapNodeId }
+  | RetainedKernel { reason: String }
+  | HandScaffold { reason: String, dissolve_on: String }
 
 type RustSourceLifecycleRow {
   path: String
-  obligations: List<RustSourceLifecycleObligation>
+  roles: List<RustSourceRole>
+  maintenance_dispositions: List<RustMaintenanceDisposition>
 }
 
 fn stage0_src_repo_path(filename: String) -> String {
@@ -379,8 +378,7 @@ fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
 
 fn derived_authority_join_repo_paths() -> List<String> {
   let from_generated = derived_generated_stage0_repo_paths()
-  let with_hand = list_concat_unique(acc: from_generated, items: derived_hand_maintained_stage0_repo_paths())
-  list_concat_unique(acc: with_hand, items: derived_partition_crate_lib_repo_paths())
+  list_concat_unique(acc: from_generated, items: derived_hand_maintained_stage0_repo_paths())
 }
 
 fn path_has_prefix(path: String, prefix: String) -> Bool {
@@ -414,14 +412,13 @@ data residue_stage0_core_lib_reason: String = "src/v1/stage0_core/src/lib.rs exi
 
 data residue_stage0_core_lib_dissolve_on: String = "dissolve-on: stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes"
 
-fn residue_obligation(reason: String, dissolve_on: String) -> RustSourceLifecycleObligation {
-  ResidueHandMaintenance { reason: reason, dissolve_on: dissolve_on }
-}
-
 fn residue_row(path: String, reason: String, dissolve_on: String) -> RustSourceLifecycleRow {
   RustSourceLifecycleRow {
     path: path,
-    obligations: [residue_obligation(reason: reason, dissolve_on: dissolve_on)]
+    roles: [],
+    maintenance_dispositions: [
+      HandScaffold { reason: reason, dissolve_on: dissolve_on }
+    ]
   }
 }
 
@@ -484,12 +481,11 @@ fn file_grain_lifecycle_repo_paths() -> List<String> {
 fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
   let lifecycle_paths = file_grain_lifecycle_repo_paths()
   let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    file_grain_paths: lifecycle_paths
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: [extra_path]),
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -498,23 +494,17 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> Rust
 
 fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
   let from_generated = derived_generated_stage0_repo_paths()
-  let with_partition = list_concat_unique(
-    acc: from_generated,
-    items: derived_partition_crate_lib_repo_paths()
-  )
-  let prior_file_grain = list_concat_unique(acc: with_partition, items: residue_lifecycle_repo_paths())
+  let prior_file_grain = list_concat_unique(acc: from_generated, items: residue_lifecycle_repo_paths())
   let current_file_grain = file_grain_lifecycle_repo_paths()
   let classified = observed_classified_repo_paths(
-    file_grain_paths: current_file_grain,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    file_grain_paths: current_file_grain
   )
   let prior_classified = observed_classified_repo_paths(
-    file_grain_paths: prior_file_grain,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    file_grain_paths: prior_file_grain
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: prior_classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -524,12 +514,11 @@ fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
 fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
   let lifecycle_paths = file_grain_lifecycle_repo_paths()
   let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    file_grain_paths: lifecycle_paths
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -553,14 +542,13 @@ fn first_classified_repo_path(classified: List<String>) -> String {
 fn witness_duplicate_tracked_observation() -> RustManifestObserved {
   let lifecycle_paths = file_grain_lifecycle_repo_paths()
   let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    file_grain_paths: lifecycle_paths
   )
   let dup_path = first_classified_repo_path(classified: classified)
   let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_digest: "witness-abc123",
+    manifest_content_identity: "witness-abc123" as ContentHash,
     tracked_rust_repo_paths: tracked_with_dup,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -571,15 +559,13 @@ fn declaration_ref_populated(ref: DeclarationRef) -> Bool {
   !(ref.module_path == "") && !(ref.decl_name == "")
 }
 
-fn rust_source_lifecycle_obligation_well_formed(obligation: RustSourceLifecycleObligation) -> Bool {
-  match obligation {
-    DerivedGenerated { authority: ref } => declaration_ref_populated(ref: ref)
-    DerivedHandMaintainedLayout { authority: ref } => declaration_ref_populated(ref: ref)
-    DerivedCargoBinManifest { authority: ref } => declaration_ref_populated(ref: ref)
-    DerivedPartitionCrateRoot { authority: ref } => declaration_ref_populated(ref: ref)
-    CitedBehavioralOracleCarrier { carrier: ref } => declaration_ref_populated(ref: ref)
-    ResidueHandMaintenance { reason: reason, dissolve_on: dissolve_on } =>
-      !(reason == "") && !(dissolve_on == "")
+fn rust_maintenance_disposition_well_formed(disposition: RustMaintenanceDisposition) -> Bool {
+  match disposition {
+    Generated { authority: ref } => declaration_ref_populated(ref: ref)
+    EmitFrom { authority: ref } => declaration_ref_populated(ref: ref)
+    DeleteWith { roadmap_node: node } => !((node as String) == "")
+    RetainedKernel { reason: reason } => !(reason == "")
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } => !(reason == "") && !(dissolve_on == "")
   }
 }
 
@@ -596,12 +582,12 @@ data lifecycle_row_well_formed_query_dissolve_trigger: String = "🟡 dissolve-o
 
 fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
   !(row.path == "")
-    && length(xs: row.obligations) > 0
+    && length(xs: row.maintenance_dispositions) > 0
     && fold_list(
-      xs: row.obligations,
+      xs: row.maintenance_dispositions,
       empty: true,
-      cons: fn(ok, obligation) {
-        ok && rust_source_lifecycle_obligation_well_formed(obligation: obligation)
+      cons: fn(ok, disposition) {
+        ok && rust_maintenance_disposition_well_formed(disposition: disposition)
       }
     )
 }
@@ -684,7 +670,7 @@ fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
 }
 
 fn manifest_state_verdict_scaffold_holds() -> Bool {
-  match rust_source_manifest_state_verdict(observation: rust_source_host_observation) {
+  match rust_source_manifest_state_verdict(observation: current_stage0_rust_source_observation()) {
     ManifestStateScaffoldOk => true
     ManifestStateScaffoldRefused { cause: _ } => false
   }

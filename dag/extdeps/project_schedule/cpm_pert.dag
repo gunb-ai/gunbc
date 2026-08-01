@@ -1,0 +1,30 @@
+module extdeps.project_schedule.cpm_pert
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gao.gov/products/gao-16-89g"
+  }
+}
+
+data rcpsp_lower_bound_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doi.org/10.1016/S0377-2217(02)00763-4"
+  }
+}
+
+data schedule_method_grounding_note: String = "GAO-16-89G, Schedule Assessment Guide: Best Practices for Project Schedules, is the cited scheduling authority. Best Practice 6 defines the critical path as the longest continuous sequence of activities and the program's earliest completion/minimum duration. Its schedule-risk guidance calls for three-point duration estimates (minimum, most likely, maximum). This module names those two standard method roles only; the roadmap instantiation supplies its own observed distribution and dependency graph."
+
+data resource_capacity_lower_bound_grounding_note: String = "Baptiste and Demassey, On linear lower bounds for the resource constrained project scheduling problem, European Journal of Operational Research 149(2), 2003, DOI 10.1016/S0377-2217(02)00763-4, grounds makespan lower bounds for RCPSP. For one declared renewable slot resource, if each activity continuously occupies one slot for its modeled duration, every feasible schedule is bounded below by ceil(total slot-time / slot capacity). Taking the maximum of that work-volume bound and the precedence critical-path bound remains a lower bound; it is not a resource-leveled schedule."
+
+type CriticalPathMethod {}
+type ThreePointEstimateMethod {}
+type ResourceCapacityLowerBoundMethod {}
+
+data critical_path_method: CriticalPathMethod = CriticalPathMethod {}
+data three_point_estimate_method: ThreePointEstimateMethod = ThreePointEstimateMethod {}
+data resource_capacity_lower_bound_method: ResourceCapacityLowerBoundMethod = ResourceCapacityLowerBoundMethod {}
