@@ -1236,14 +1236,18 @@ mod tests {
         );
         let files = generated_stage0_files();
         assert!(
-            files.len() >= 101,
-            "authority list too short ({}); expected the post-#7258 generated set",
+            files.len() >= 106,
+            "authority list too short ({}); expected the post-#7515 enrollment generated set",
             files.len()
         );
         for required in [
             "std_execution_mode.rs",
+            "std_occurrence_binding.rs",
+            "std_occurrence_binding_candidates.rs",
+            "std_occurrence_binding_resolve.rs",
             "v1_compiler_closure_stub_v2_std_integer_rust.rs",
             "v1_compiler_closure_stub_v2_std_text_rust.rs",
+            "v1_gunbc_occurrence_binding_parser_walk.rs",
             "lib.rs",
             "std_algebra.rs",
         ] {

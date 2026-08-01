@@ -41,6 +41,31 @@ type OccurrenceCategory
   | FieldOccurrence
   | MethodOccurrence
 
+type OccurrenceCategoryModuleScopeExposureVerdict
+  = OccurrenceCategoryModuleScopeExposed
+  | OccurrenceCategoryModuleScopeNotExposed {
+      category: OccurrenceCategory,
+    }
+
+data occurrence_category_module_scope_exposure_verdict_note: String = "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not."
+
+fn occurrence_category_module_scope_exposure_verdict(
+  category: OccurrenceCategory
+) -> OccurrenceCategoryModuleScopeExposureVerdict {
+  match category {
+    CallableOccurrence => OccurrenceCategoryModuleScopeExposed
+    TypeOccurrence => OccurrenceCategoryModuleScopeExposed
+    ConstructorOccurrence => OccurrenceCategoryModuleScopeExposed
+    NamespaceSegmentOccurrence => OccurrenceCategoryModuleScopeExposed
+    LexicalValueOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+    FieldOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+    MethodOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+  }
+}
+
 type OccurrenceRole
   = DeclarationRole
   | ReferenceRole
@@ -213,6 +238,60 @@ fn occurrence_containment_paths_equal(
 ) -> Bool {
   left.ancestors == right.ancestors &&
   left.terminal.value == right.terminal.value
+}
+
+data occurrence_containment_path_prefix_note: String = "Canonical containment-prefix predicates for structural exposure (review 45716 single-authority): declaration containment is exposed to a reference when prefix is a prefix of path. Consumers import these from std.occurrence_identity — never reproduce locally."
+
+fn occurrence_containment_path_contains_ancestor(
+  ancestors: FreeMonoid<OccurrenceId>,
+  target: OccurrenceId
+) -> Bool {
+  fold(
+    ancestors,
+    init: false,
+    f: (found, id) => found || id.value == target.value,
+  )
+}
+
+fn occurrence_containment_ancestors_are_prefix_of(
+  prefix_ancestors: FreeMonoid<OccurrenceId>,
+  path_ancestors: FreeMonoid<OccurrenceId>
+) -> Bool {
+  match prefix_ancestors {
+    Empty => true
+    Cons { head: prefix_head, tail: prefix_tail } =>
+      match path_ancestors {
+        Empty => false
+        Cons { head: path_head, tail: path_tail } =>
+          if prefix_head.value == path_head.value {
+            occurrence_containment_ancestors_are_prefix_of(
+              prefix_ancestors: prefix_tail,
+              path_ancestors: path_tail,
+            )
+          } else {
+            false
+          }
+      }
+  }
+}
+
+fn occurrence_containment_path_is_prefix_of(
+  prefix: OccurrenceContainmentPath,
+  path: OccurrenceContainmentPath
+) -> Bool {
+  if occurrence_containment_paths_equal(left: prefix, right: path) {
+    true
+  } else if prefix.terminal.value == path.terminal.value {
+    occurrence_containment_ancestors_are_prefix_of(
+      prefix_ancestors: prefix.ancestors,
+      path_ancestors: path.ancestors,
+    )
+  } else {
+    occurrence_containment_path_contains_ancestor(
+      ancestors: path.ancestors,
+      target: prefix.terminal,
+    )
+  }
 }
 
 type OccurrenceTransportIndexBuild {

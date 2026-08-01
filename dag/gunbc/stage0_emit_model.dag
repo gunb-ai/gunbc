@@ -1,6 +1,5 @@
 module gunbc.stage0_emit_model
 
-
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",
@@ -54,6 +53,9 @@ data generated_stage0_files: List<String> = [
   "std_nat.rs",
   "std_node.rs",
   "std_occurrence_identity.rs",
+  "std_occurrence_binding.rs",
+  "std_occurrence_binding_candidates.rs",
+  "std_occurrence_binding_resolve.rs",
   "std_pareto.rs",
   "std_realization_schedule.rs",
   "std_roster_frontier.rs",

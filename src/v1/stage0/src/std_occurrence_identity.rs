@@ -3,6 +3,7 @@
 
 use self::NodeOccurrenceIdentity::*;
 use self::OccurrenceCategory::*;
+use self::OccurrenceCategoryModuleScopeExposureVerdict::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
@@ -95,6 +96,64 @@ pub enum OccurrenceCategory {
     NamespaceSegmentOccurrence,
     FieldOccurrence,
     MethodOccurrence,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceCategoryModuleScopeExposureVerdict {
+    OccurrenceCategoryModuleScopeExposed,
+    OccurrenceCategoryModuleScopeNotExposed { category: OccurrenceCategory },
+}
+impl OccurrenceCategoryModuleScopeExposureVerdict {
+    pub fn category(&self) -> OccurrenceCategory {
+        match self {
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed => panic!("no category on unit variant"),
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed { category: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn occurrence_category_module_scope_exposure_verdict_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn occurrence_category_module_scope_exposure_verdict(
+    category: OccurrenceCategory,
+) -> Rc<OccurrenceCategoryModuleScopeExposureVerdict> {
+    match category.clone() {
+        OccurrenceCategory::CallableOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
+        ),
+        OccurrenceCategory::TypeOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
+        ),
+        OccurrenceCategory::ConstructorOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
+        ),
+        OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
+        ),
+        OccurrenceCategory::LexicalValueOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed {
+                category: category.clone(),
+            },
+        ),
+        OccurrenceCategory::FieldOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed {
+                category: category.clone(),
+            },
+        ),
+        OccurrenceCategory::MethodOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed {
+                category: category.clone(),
+            },
+        ),
+    }
 }
 
 #[derive(
@@ -307,6 +366,87 @@ pub fn occurrence_containment_paths_equal(
 ) -> bool {
     ((left.ancestors.clone() == right.ancestors.clone())
         && (left.terminal.clone().value.clone() == right.terminal.clone().value.clone()))
+}
+
+pub fn occurrence_containment_path_prefix_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Canonical containment-prefix predicates for structural exposure (review 45716 single-authority): declaration containment is exposed to a reference when prefix is a prefix of path. Consumers import these from std.occurrence_identity — never reproduce locally.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn occurrence_containment_path_contains_ancestor(
+    ancestors: Rc<Vec<OccurrenceId>>,
+    target: OccurrenceId,
+) -> bool {
+    ancestors
+        .clone()
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, id: OccurrenceId| {
+            (found || (id.value.clone() == target.value.clone()))
+        })
+}
+
+pub fn occurrence_containment_ancestors_are_prefix_of(
+    mut prefix_ancestors: Rc<Vec<OccurrenceId>>,
+    mut path_ancestors: Rc<Vec<OccurrenceId>>,
+) -> bool {
+    loop {
+        {
+            let __fm = prefix_ancestors.clone();
+            if __fm.is_empty() {
+                break true;
+            } else {
+                let prefix_head = (*__fm)[0].clone();
+                let prefix_tail: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                {
+                    let __fm = path_ancestors.clone();
+                    if __fm.is_empty() {
+                        break false;
+                    } else {
+                        let path_head = (*__fm)[0].clone();
+                        let path_tail: Rc<Vec<_>> =
+                            Rc::new((*__fm).iter().skip(1).cloned().collect());
+                        if (prefix_head.value.clone() == path_head.value.clone()) {
+                            {
+                                let __tco_0 = prefix_tail.clone();
+                                let __tco_1 = path_tail.clone();
+                                prefix_ancestors = __tco_0;
+                                path_ancestors = __tco_1;
+                                continue;
+                            }
+                        } else {
+                            break false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn occurrence_containment_path_is_prefix_of(
+    prefix: Rc<OccurrenceContainmentPath>,
+    path: Rc<OccurrenceContainmentPath>,
+) -> bool {
+    if occurrence_containment_paths_equal(prefix.clone(), path.clone()) {
+        true
+    } else {
+        if (prefix.terminal.clone().value.clone() == path.terminal.clone().value.clone()) {
+            occurrence_containment_ancestors_are_prefix_of(
+                prefix.ancestors.clone(),
+                path.ancestors.clone(),
+            )
+        } else {
+            occurrence_containment_path_contains_ancestor(
+                path.ancestors.clone(),
+                prefix.terminal.clone(),
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
