@@ -16,6 +16,8 @@ import gunbc.extdeps_scope_frontier {
   legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
   scope_cover_holds, manifest_freeze_holds, carrier_content_declares_scope,
   scope_placement_refused_paths,
+  manifest_line_observation, manifest_remove_only_holds,
+  ManifestLineObservation, ManifestUntouched, ManifestIntroduced, ManifestLinesAdded, ManifestDiffUnreadable,
   PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
 }
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
@@ -241,6 +243,71 @@ test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool {
     machinery: scope_machinery_exempt_paths,
   )
   (refused |> count) == 0
+}
+
+fn synthetic_manifest_add_diff() -> String {
+  join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "index 1111111..2222222 100644",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "+++ b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "@@ -0,0 +1 @@",
+    "+dag/extdeps/vendor/reverted_module.dag",
+    "diff --git a/dag/gunbc/other.dag b/dag/gunbc/other.dag",
+    "--- a/dag/gunbc/other.dag",
+    "+++ b/dag/gunbc/other.dag",
+    "@@ -1 +1 @@",
+    "+data unrelated: String"
+  ], "\n")
+}
+
+test fn red_manifest_remove_only_refuses_added_row() -> Bool {
+  match manifest_line_observation(diff_text: synthetic_manifest_add_diff()) {
+    ManifestLinesAdded { rows: rows } =>
+      (rows |> count) == 1
+        && strings_contain(xs: rows, s: "dag/extdeps/vendor/reverted_module.dag")
+        && !manifest_remove_only_holds(observation: ManifestLinesAdded { rows: rows })
+    _ => false
+  }
+}
+
+test fn green_manifest_remove_only_admits_removal_and_unrelated_edits() -> Bool {
+  let removal_only = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "+++ b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "@@ -5 +4,0 @@",
+    "-dag/extdeps/vendor/migrated_module.dag",
+    "diff --git a/dag/extdeps/vendor/migrated_module.dag b/dag/extdeps/vendor/migrated_module.dag",
+    "--- a/dag/extdeps/vendor/migrated_module.dag",
+    "+++ b/dag/extdeps/vendor/migrated_module.dag",
+    "@@ -1 +1,2 @@",
+    "+data extdeps_model_scope: ExternalModelScope = ..."
+  ], "\n")
+  match manifest_line_observation(diff_text: removal_only) {
+    ManifestUntouched => manifest_remove_only_holds(observation: ManifestUntouched)
+    _ => false
+  }
+}
+
+test fn green_manifest_introduction_admitted_once() -> Bool {
+  let intro = join([
+    "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
+    "@@ -0,0 +1,2 @@",
+    "+dag/extdeps/a.dag",
+    "+dag/extdeps/b.dag"
+  ], "\n")
+  match manifest_line_observation(diff_text: intro) {
+    ManifestIntroduced => manifest_remove_only_holds(observation: ManifestIntroduced)
+    _ => false
+  }
+}
+
+test fn red_manifest_unreadable_refuses() -> Bool {
+  !manifest_remove_only_holds(observation: ManifestDiffUnreadable)
 }
 
 test fn frontier_rosters_are_disjoint() -> Bool {
