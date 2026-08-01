@@ -19,10 +19,11 @@ import v2.std.orchestration {
 import extdeps.git { shape_git_rev_parse_head_args }
 
 data ci_heal_expected_head_input_expr: String = "\"${{ inputs.expected_healed_sha }}\""
+data ci_heal_run_subject_head_expr: String = "\"${{ github.sha }}\""
 
 data ci_heal_revalidation_preflight_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ heal revalidation exact-head preflight emission was rejected; this marker is not valid workflow shell, so generated CI drift refuses rather than widening\n"
 
-data ci_heal_revalidation_preflight_note: String = "The workflow_dispatch ref is necessarily a moving branch/tag pointer, while expected_healed_sha is the immutable subject. Every ordinary checkout selects expected_healed_sha when present, then this preflight observes git.Core.HeadCommit through extdeps.git's argv shape and compares byte-for-byte before any witness can count. An absent input is an ordinary manual dispatch and does not claim heal revalidation. A present mismatch exits immediately: branch movement between dispatch and checkout is a refusal, never a flake whose run can authorize a different head. Control flow is v2.std.orchestration intent and bash is only the GitHub Actions foreign-executor realization."
+data ci_heal_revalidation_preflight_note: String = "The workflow_dispatch ref is necessarily a moving branch/tag pointer, while expected_healed_sha is the immutable subject. GitHub resolves that ref into github.sha, the workflow run/check subject. Every ordinary checkout selects expected_healed_sha when present, then this preflight requires BOTH github.sha and the observed git.Core.HeadCommit to equal expected_healed_sha byte-for-byte before any witness can count. An absent input is an ordinary manual dispatch and does not claim heal revalidation. If the branch advances before GitHub resolves the dispatch, the run-subject comparison refuses; if checkout diverges afterward, the checkout comparison refuses. Neither race can let witnesses executed on one tree authorize the check subject of another. Control flow is v2.std.orchestration intent and bash is only the GitHub Actions foreign-executor realization."
 
 fn ci_heal_revalidation_diag(text: String) -> PipelineStep {
   Do {
@@ -35,10 +36,20 @@ fn ci_heal_revalidation_diag(text: String) -> PipelineStep {
   }
 }
 
-fn ci_heal_revalidation_mismatch_arm() -> Pipeline {
+fn ci_heal_revalidation_checkout_mismatch_arm() -> Pipeline {
   Pipeline {
     steps: [
       ci_heal_revalidation_diag(text: "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"),
+      Exit { status: "1" }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_heal_revalidation_run_subject_mismatch_arm() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_heal_revalidation_diag(text: "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"),
       Exit { status: "1" }
     ],
     on_failure: FailFast
@@ -58,11 +69,21 @@ fn ci_heal_revalidation_expected_arm() -> Pipeline {
       If {
         cond: Not {
           inner: StrEq {
+            lhs: "\"$RUN_SUBJECT_HEAD\"",
+            rhs: "\"$EXPECTED_HEALED_SHA\""
+          }
+        },
+        then_: ci_heal_revalidation_run_subject_mismatch_arm(),
+        else_: Absent
+      },
+      If {
+        cond: Not {
+          inner: StrEq {
             lhs: "\"$ACTUAL_HEAD\"",
             rhs: "\"$EXPECTED_HEALED_SHA\""
           }
         },
-        then_: ci_heal_revalidation_mismatch_arm(),
+        then_: ci_heal_revalidation_checkout_mismatch_arm(),
         else_: Absent
       },
       ci_heal_revalidation_diag(text: "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA")
@@ -77,6 +98,10 @@ fn ci_heal_revalidation_preflight_intent() -> Pipeline {
       Let {
         name: "EXPECTED_HEALED_SHA",
         value: ExprLit { spelling: ci_heal_expected_head_input_expr }
+      },
+      Let {
+        name: "RUN_SUBJECT_HEAD",
+        value: ExprLit { spelling: ci_heal_run_subject_head_expr }
       },
       If {
         cond: StrNonempty { operand: "\"$EXPECTED_HEALED_SHA\"" },

@@ -9,7 +9,7 @@ data ci_heal_dispatch_owner: String = "gunb-ai"
 data ci_heal_dispatch_repo: String = "gunbc"
 data ci_heal_dispatch_workflow_id: String = "ci.yml"
 
-data ci_heal_dispatch_authority_note: String = "The heal job does not mint a gh-api shell call. It invokes the modeled github.Workflows.CreateDispatch operation, whose REST transport is the realization handler. The dispatch ref remains the PR branch because GitHub's endpoint requires a branch/tag ref; expected_healed_sha travels separately as the immutable input and the run refuses if checkout does not name it. GITHUB_TOKEN is resolved solely by the service's auth_source; CreateDispatch has no unused caller-supplied auth_token input and this tool passes no empty sentinel."
+data ci_heal_dispatch_authority_note: String = "The heal job does not mint a gh-api shell call. It invokes the modeled github.Workflows.CreateDispatch operation, whose REST transport is the realization handler. The dispatch ref remains the PR branch because GitHub's endpoint requires a branch/tag ref; expected_healed_sha travels separately as the immutable input and the run refuses unless BOTH its GitHub check subject (github.sha) and checkout name it. GITHUB_TOKEN is resolved solely by the service's auth_source; CreateDispatch has no unused caller-supplied auth_token input and this tool passes no empty sentinel."
 
 fn required_env(name: NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)

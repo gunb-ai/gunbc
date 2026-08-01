@@ -8,6 +8,8 @@ import v2.workflow.ci_heal_revalidation_preflight_emit {
 test fn preflight_is_exact_head_and_precedes_any_witness() -> Bool {
   let script = ci_heal_revalidation_preflight_script()
   string_contains(s: script, pattern: "EXPECTED_HEALED_SHA=\"${{ inputs.expected_healed_sha }}\"")
+    && string_contains(s: script, pattern: "RUN_SUBJECT_HEAD=\"${{ github.sha }}\"")
+    && string_contains(s: script, pattern: "[ \"$RUN_SUBJECT_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
     && string_contains(s: script, pattern: "ACTUAL_HEAD=\"$(git rev-parse HEAD)\"")
     && string_contains(s: script, pattern: "[ \"$ACTUAL_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
     && string_contains(s: script, pattern: "heal revalidation refused")
