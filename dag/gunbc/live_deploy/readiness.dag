@@ -189,7 +189,7 @@ fn show_healthz_read_for_deploy(
 ) -> ShowEffectiveRead<HealthzEffectiveRead> {
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       ReadObserved {
         value: HealthzEffectiveRead {
           body: "",
@@ -269,7 +269,7 @@ fn capture_unit_diagnosis(
 ) -> String {
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       concat("unit diagnosis capture failed: ", deploy_access_decision_reason(d: verdict))
     Permit =>
       unit_status_capture_text(

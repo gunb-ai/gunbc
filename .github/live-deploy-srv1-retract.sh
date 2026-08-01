@@ -20,6 +20,9 @@ sudo -n /usr/sbin/visudo -cf "$_gunbc_stage/gunbc-deploy.sudoers"
 sudo -n install -m 0440 "$_gunbc_stage/gunbc-deploy.sudoers" /etc/sudoers.d/gunbc-deploy
 sudo -n /usr/sbin/visudo -cf /etc/sudoers.d/gunbc-deploy
 sudo -n tailscale serve --https=443 off
+sudo -n systemctl disable --now gunbc-roadmap-belt.timer 2>/dev/null || true
+sudo -n rm -f /etc/systemd/system/gunbc-roadmap-belt.timer /etc/systemd/system/gunbc-roadmap-belt.service
+sudo -n systemctl daemon-reload
 sudo -n systemctl disable --now gunbc-roadmap.service 2>/dev/null || true
 sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service
 sudo -n systemctl daemon-reload

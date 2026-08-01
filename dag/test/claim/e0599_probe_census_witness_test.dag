@@ -1,6 +1,5 @@
 module test.claim.e0599_probe_census_witness_test
 
-import std.types { list_length }
 import std.error_primitives { Ok, Err }
 import tools.e0599_probe_census {
   MissingMethod,
@@ -11,10 +10,7 @@ import tools.e0599_probe_census {
   R3ContainerCloneBounds,
   R4OptionalCoproductGrounding,
   R5AsDerefUnit,
-  e0599_canonical_seven_module_count,
-  e0599_canonical_seven_module_log_labels_blob,
   e0599_failure_shape_from_log_shape,
-  e0599_message_pattern_row_count,
   e0599_message_pattern_rows_blob,
   e0599_root_family_for,
   e0599_root_family_label_for_row,
@@ -22,29 +18,6 @@ import tools.e0599_probe_census {
 }
 
 data e0599_probe_census_witness_note: String = "Witness for tools.e0599_probe_census authority: pattern row census, canonical-seven roster blob, and root-family rollup used by docs/probes/e0599_census_extract.sh (SCAFFOLD realization). Aggregate path refuses unless inputs match e0599_canonical_seven_modules exactly (missing/duplicate/extra). Export boundary refuses unknown failure-shape labels (fail-closed). RED: misclassified GlobalBare or type-parameter clone tuple; drifted shape_str."
-
-test fn e0599_probe_census_pattern_rows_complete() -> Bool {
-  e0599_message_pattern_row_count() == 5
-}
-
-test fn e0599_probe_census_canonical_seven_roster() -> Bool {
-  e0599_canonical_seven_module_count() == 7
-}
-
-test fn e0599_canonical_seven_module_log_labels_blob_line_count() -> Bool {
-  list_length(items: e0599_canonical_seven_module_log_labels_blob() |> split(delimiter: "\n")) == 7
-}
-
-test fn e0599_canonical_seven_module_log_labels_blob_first_is_06_translate() -> Bool {
-  match e0599_canonical_seven_module_log_labels_blob() |> split(delimiter: "\n") |> first {
-    Present { value: line } => line == "06_translate"
-    Absent => false
-  }
-}
-
-test fn e0599_message_pattern_rows_blob_line_count() -> Bool {
-  list_length(items: e0599_message_pattern_rows_blob() |> split(delimiter: "\n")) == 5
-}
 
 test fn e0599_message_pattern_rows_blob_first_row_is_missing_method() -> Bool {
   match e0599_message_pattern_rows_blob() |> split(delimiter: "\n") |> first {

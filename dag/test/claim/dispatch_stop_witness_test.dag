@@ -1,7 +1,8 @@
 module test.claim.dispatch_stop_witness
 
+import extdeps.tmux { TmuxLsEntry }
 import gunbc.roadmap_dispatch_actuator {
-  TmuxSessionScope, TmuxLsEntry, TmuxPaneEntry,
+  TmuxSessionScope, TmuxPaneEntry,
   parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
   tmux_session_observation_with_panes, dispatch_tmux_session_scope,
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
