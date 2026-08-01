@@ -16,34 +16,31 @@ fn owner_fixture() -> ProcessIdentity {
   }
 }
 
-fn observed_in_slot(slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle) -> BuildCacheEndpointObservation {
+fn observed_with_context(cgroup: NonEmptyStr, ctx: EndpointOwnerContext) -> BuildCacheEndpointObservation {
   EndpointOwnerObserved {
     instance: srv1_ci_instance_fixture(),
     owner: owner_fixture(),
     executable: "/usr/local/bin/sccache" as NonEmptyStr,
     principal: "ghrunner" as NonEmptyStr,
-    cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as NonEmptyStr,
-    unit: "actions-runner@srv1-10.service" as NonEmptyStr,
-    owning_runner_slot: Present { value: slot },
-    runner_slot_lifecycle: Present { value: lifecycle },
+    cgroup: cgroup,
+    owner_context: ctx,
     memory_limits: none,
     memory_events: none,
   }
 }
 
+fn observed_in_slot(slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle) -> BuildCacheEndpointObservation {
+  observed_with_context(
+    cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as NonEmptyStr,
+    ctx: OwnerInRunnerSlot { slot: slot, lifecycle: lifecycle },
+  )
+}
+
 fn observed_owned_by_unit(unit: NonEmptyStr) -> BuildCacheEndpointObservation {
-  EndpointOwnerObserved {
-    instance: srv1_ci_instance_fixture(),
-    owner: owner_fixture(),
-    executable: "/usr/local/bin/sccache" as NonEmptyStr,
-    principal: "ghrunner" as NonEmptyStr,
+  observed_with_context(
     cgroup: "/system.slice/some.service" as NonEmptyStr,
-    unit: unit,
-    owning_runner_slot: none,
-    runner_slot_lifecycle: none,
-    memory_limits: none,
-    memory_events: none,
-  }
+    ctx: OwnerInSystemdUnit { unit: unit },
+  )
 }
 
 test fn witness_retired_slot_owner_is_runner_owned_and_retired() -> Bool {
@@ -143,6 +140,26 @@ test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
     ServerManagedUnitOwned { unit: _ } => false
     ServerRunnerOwned { slot: _, lifecycle: _ } => false
     ServerUnsupervised { cgroup: _ } => false
+  }
+}
+
+data owner_context_coupling_doc: String = "THE CONTROL FOR THE COUPLING FIX (review 46217). The classification of an endpoint owner's cgroup was once three loose fields — a unit beside an optional slot beside an optional lifecycle — and the combination that mattered was slot-Absent with lifecycle-Present: the derivation matched the slot first, so that state skipped the runner arm entirely and reached the unit comparison, where a cgroup whose unit happened to equal intended_unit would return ServerManagedUnitOwned. A runner-owned endpoint could therefore be reported as correctly placed because two fields disagreed. There is deliberately NO witness asserting that state refuses, and its absence is the claim: EndpointOwnerContext has no arm that can express it, so it is unwritable rather than checked, and a test would have to construct a value the type does not admit (DESIGN section 4b, construction over validation). What IS witnessed below is the arm that replaced the half-filled record — a cgroup the observer could not classify is a positive OwnerContextUndecided carrying its own located reason, and it refuses."
+
+test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -> Bool {
+  let detail = "cgroup names actions-runner@srv1-XX.service; slot index did not parse" as NonEmptyStr
+  let p = placement_of_endpoint_observation(
+    observed: observed_with_context(
+      cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-XX.service" as NonEmptyStr,
+      ctx: OwnerContextUndecided { detail: detail },
+    ),
+  )
+  match p {
+    ServerPlacementUnknown { detail: d } =>
+      (d as String) == (detail as String) && refuses(placement: p)
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
   }
 }
 
