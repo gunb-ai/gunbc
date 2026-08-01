@@ -6,6 +6,7 @@ import gunbc.roadmap_document {
   project_roadmap_to_markdown,
 }
 import std.types { ContentHash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
@@ -229,7 +230,7 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
   )
 }
 
-data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINATOR, authored only after the first P1 carrier made the node's whole completion condition executable. The validation is deliberately RED: its closed capability population is the roadmap node's own bar, and this first slice supplies only the bounded candidate-generation model check. Missing behavior is derived set difference, never a hand-maintained progress count; duplicate passing rows cannot erase it, and a false row remains missing. The contract therefore cannot green on zero progress and cannot confuse a modeled carrier with an executed proof kernel. It is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots. Each later P1 slice adds an executing scenario check without weakening the aggregate. When the final capability greens, that same change removes the expect-red enrollment and promotes the witness to the ordinary discovery ratchet."
+data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINATOR, authored only after the first P1 carrier made the node's whole completion condition executable. The validation is deliberately RED: its closed capability population is the roadmap node's own bar, and this first slice supplies only the bounded candidate-generation model check. Missing behavior is derived set difference, never a hand-maintained progress count; duplicate passing rows cannot erase it, and a false row remains missing. The contract therefore cannot green on zero progress and cannot confuse a modeled carrier with an executed proof kernel. It is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots. Each later P1 slice adds an executing scenario check without weakening the aggregate. When the final capability greens, that same change removes the expect-red enrollment and promotes the witness to ordinary discovery ratchet."
 
 fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -377,6 +378,7 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 }
 
 type SeedGrowthJustification {
+  hand_authored_declarations: List<DeclarationRef>
   reason: String
   owning_dissolution_lane: RoadmapNodeId
   trigger: String
@@ -385,6 +387,23 @@ type SeedGrowthJustification {
 
 fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification {
   SeedGrowthJustification {
+    hand_authored_declarations: [
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "handle_run_with_options",
+        field: WholeDeclaration
+      },
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "capture_scoped_run_stderr",
+        field: WholeDeclaration
+      },
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "replay_scoped_run_stderr",
+        field: WholeDeclaration
+      }
+    ],
     reason: "Showing progress while a command runs has to reach the point where the old runner starts a program. It needs to know which piece of code was chosen, hold back error output until it can be shown in the right order, and report exactly one ending — and the rules for all of that live in the substrate, not in Rust.",
     owning_dissolution_lane: nid(s: "v1-hand-queue-drain"),
     trigger: "Move this reach-through into a described operation, then hollow out the corresponding part of the command-line tool so generated code does the work; the hand-written bridge is deleted at that point.",
@@ -1139,6 +1158,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_7QVX2K4M9NBTR6HDJ0FZ8SWCPE",
+      id: "v1-interpreter-primitive-roster",
+      owner: "self-host",
+      path: "dag/gunbc/v1_interpreter_primitive_surface.dag",
+      t: fields(
+        headline: "Make the interpreter's primitive surface enumerable",
+        boundary: "Every interpreter dispatch arm -- free call, method, guard-predicated bridge, native special and the one service carve-out -- has one interpreter-local identity, dispatch form and authored spelling, enumerable independently of semantic primitive identity. Adding or deleting an implementation arm without changing the roster refuses.",
+        displaced_cost: "The interpreter's primitive surface had no roster anywhere, so nobody could ask which primitives it provides. That blocks the primitive-identity join at its fifth surface, and it blocks sequencing v1 deletion honestly: you cannot show nothing still needs a capability you cannot enumerate.",
+        first_slice: "R0 -- the roster is DERIVED FROM the dispatch. Each dispatch site in the seed expands its match arms and its roster rows from one macro token list, so the two cannot disagree; the sites that are not match arms at all stay declared, counted, each naming its own dissolution trigger. R1, the step after, inverts the direction: the .dag roster GENERATES the interpreter's local dispatch identity and lookup, at which point the denominator leaves Rust, the macro authorities delete, and the declared rows delete with them. R0 is mechanically preventive for the sites it covers and is not claimed as structural: the invalid state is unwritable within a site, but a whole new dispatch site can still be added in Rust without anyone noticing, and only R1 closes that.",
+        red_control: "A dispatch arm added without a roster row, and a roster row with no arm, must both be unwritable rather than caught afterwards. A spelling reached by two different arms within one form is unreachable code and has to be named rather than silently accepted. A roster that cannot represent an arm carrying no semantic primitive identity fails this node outright, because that population is exactly what the identity join must discover.",
+        out_of_scope: "Which semantic primitive each arm realizes belongs to the primitive-identity join, not here, and no row may carry an identity field. Generating the dispatch itself from the roster is the step after this one.",
+        handback: "The roster; three derived denominators -- dispatch sites, distinct arm identities, distinct authored spellings -- rather than one conflated count; row-grain enumeration provenance, since a row's provenance is a fact about that row and not about its dispatch form; a reconciliation of every quoted dispatch line in the seed file into either a row or a named non-primitive residue; a typed disposition for the Rust the scaffold adds, naming every symbol and the exact deletion condition; and witnesses asserting exact values rather than lower bounds, with a discriminating red for each detector."
+      )
+    ),
+    active(
       identity: "rn_J4Q81A4BJ8TXN6ZE4481RMB3Y9",
       id: "v1-interpreter-quarantine",
       owner: "self-host",
@@ -1544,6 +1578,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover"),
     edge(child: "v1-emitter-delete", parent: "v1-emitter-quarantine"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-interpreter-primitive-roster"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
     edge(child: "v1-interpreter-delete", parent: "v1-emitter-delete"),
     edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
@@ -2482,12 +2517,42 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "One primitive identity: definition, per-target realization, and cost as three facts on one key",
-        boundary: "PrimitiveDefinition (invocation forms, receiver domain, parameters, result), PrimitiveRealization per target, PrimitiveCostModel — joined by one identity so a call cannot compile for target T without exactly one compatible definition and realization, and interpreter/emitter dispatch derive from realization rows instead of five independently-writable name sets (registry map, PrimitiveContract rows, algebra templates, interpreter arms, per-target templates).",
-        displaced_cost: "Closes the gunbc#7479 CLASS rather than the specimen: filter_map had a cost contract, no seed method, and a green compile. Unlocks the method ambiguity wall (sameness becomes decidable) and un-narrows the method-existence wall — the measured length/count/size dispatch fork on gunbc#7484 is why per-receiver checking stalls at kernel receivers today.",
-        first_slice: "The identity type plus the join for the collection-algebra family (map/filter/fold/flat_map/filter_map), with the registry and contract rows re-keyed onto it.",
-        red_control: "A costed-but-unrealized primitive refuses target-relatively; a realized-but-undefined name cannot be keyed; existing corpus calls all still resolve.",
-        out_of_scope: "Deleting the seed dispatch (climbs by self-host deletion); new primitives.",
-        handback: "The three carrier types, the joined family roster, the derived-dispatch receipt."
+        boundary: "PrimitiveDefinition (identity + PrimitiveSemanticContract), PrimitiveInvocationSurface, PrimitiveRealization per RealizationTarget, PrimitiveCostFact, and PrimitiveTraversalOrderFact — five separate carriers joined by PrimitiveIdentity, never one mega-row. TERMINAL acceptance: every primitive-bearing surface across all five authorities (registry, PrimitiveContract rows, algebra templates, interpreter dispatch, emit handlers) joins exactly one identity; population-wide join and realization refusals are the closing contract. D0 is a first slice only — not the closing contract. Namespace supplies declaration identity; this node supplies semantic primitive identity across invocation and realization.",
+        displaced_cost: "Proves the determinism denominator is open (#7532 honest rung) and begins closing it: four surfaces feed primitive_surface_census_derived at runtime; mutation control is CLOSED on AlgebraTemplate and EmitHandler, PARTIAL on BuiltinRegistry and PrimitiveContractRow (parallel hand rosters — primitive_d0_derived_surface_drift_audit_note), NOT DISCOVERED on InterpreterDispatch. fold_list spelling fork and index_by registry+algebra dual absence are named specimens proving the denominator is not closed. Unlocks method ambiguity wall and D1 determinism consumption through PrimitiveIdentity rather than raw symbol.",
+        first_slice: "D0 first slice (NOT closing contract): std.primitive_identity carriers; primitive_surface_census_derived from four authorities; primitive_interpreter_dispatch_measurement_rows (MeasurementOnly) for specimens; refusal predicate machinery; slice witness receipt. Denominator NOT closed — interpreter blind until interpreter-primitive-roster lands.",
+        red_control: "TERMINAL (population-wide): every derived census row joins exactly one PrimitiveIdentity; surfaces joining two identities refuse; realizations naming unknown primitives refuse; duplicate semantic definitions refuse. D0 SLICE ONLY: derived census exceeds specimen count; four named specimen findings (map_keys five-surface join, fold_list spelling fork, fold_list registry gap, index_by registry+algebra gap); planted missing-identity and unknown-realization RED controls — these witnesses do not substitute for terminal acceptance.",
+        out_of_scope: "D1 determinism gate consumption (child determinism-denominator-closure); deleting v1 seed dispatch tables; namespace declaration identity.",
+        handback: "D0: std.primitive_identity carriers, primitive_surface_census_derived, measurement specimen rows, refusal predicates, slice witness receipt. TERMINAL (after interpreter-primitive-roster): population-wide join closure across all five surfaces."
+      )
+    ),
+    active_sized(identity: "rn_DETERMINISM_DENOMINATOR_CLOSURE", id: "determinism-denominator-closure",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Determinism denominator closure: every primitive carries one traversal-order classification",
+        boundary: "v2.std.determinism and v2.lens.determinism consume std.primitive_identity: every PrimitiveDefinition carries exactly one PrimitiveTraversalOrderFact, unclassified refuses, HostUnspecifiedOrder derives a determinism root, aliases resolve through PrimitiveIdentity not raw symbol. Adding a new invokable primitive realization without a traversal-order fact reds before any caller uses it.",
+        displaced_cost: "Dissolves the interim two-root registry (#7532) into a closed denominator — the gate can tell an alias from a distinct operation, and keys/values false-positive class is eliminated by identity not spelling.",
+        first_slice: "Wire determinism_compile_gate to PrimitiveTraversalOrderFact over the primitive_identity census rather than determinism_root_registry symbol matching.",
+        red_control: "A new primitive realization without traversal-order fact refuses at gate enrollment before corpus reach; map_keys and map_values classify HostUnspecifiedOrder through identity; generic keys/values symbols do not false-positive unrelated functions.",
+        out_of_scope: "D0 census and join carriers (parent primitive-identity-join); deleting v1 seed dispatch.",
+        handback: "Identity-keyed determinism classification, closed denominator receipt, deleted interim symbol registry."
+      )
+    ),
+    active_sized(identity: "rn_INTERPRETER_PRIMITIVE_ROSTER", id: "interpreter-primitive-roster",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Interpreter primitive roster: the fifth surface becomes readable from .dag",
+        boundary: "Land interpreter-primitive-roster across all six v1_interpreter dispatch sites (eval_builtin_inner, eval_algebra_method_inner, eval_call, try_v2_std_collection_map_primitive_grounding, try_parse_table_memo_dispatch, eval_method_call lookup short-circuit — 158 arms / 169 spellings). clever-crab-111 macro authority: eval_builtin_inner arms expand from interpreter_free_call_arm_spellings with construction wall (arm without roster entry unwritable). primitive_surface_census_derived absorbs InterpreterDispatch instead of primitive_interpreter_dispatch_measurement_rows. Prerequisite for primitive-identity-join terminal acceptance.",
+        displaced_cost: "Closes the fifth blind spot in D1 mutation control across all six dispatch sites. Dissolves MeasurementOnly specimen rows into derived surfaces.",
+        first_slice: "Roster authority for six sites; eval_builtin_inner via interpreter_free_call_arm_spellings macro; primitive_surface_census_derived absorbs interpreter dispatch; measurement rows deleted.",
+        red_control: "A new dispatch arm without a roster row refuses; a roster row without a matching arm refuses; fold_list via eval_call intercept and lookup dual-realization join through derived census.",
+        out_of_scope: "D0 slice carriers and four-surface derivation (parent primitive-identity-join first slice); deleting seed dispatch implementation.",
+        handback: "Modeled interpreter roster authority, derived fifth surface on primitive_surface_census_derived, deleted measurement scaffold."
       )
     ),
     active_sized(identity: "rn_JPU4RUV5DNELDCZI4JUQGWHICM", id: "compiler-source-exemption-removal",
@@ -2584,6 +2649,8 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "v2-node-kind-derivation-coverage", parent: "v2-inferred-tree-completeness"),
     edge(child: "v2-target-realization-gate", parent: "v2-node-kind-derivation-coverage"),
     edge(child: "v2-target-realization-gate", parent: "primitive-identity-join"),
+    edge(child: "determinism-denominator-closure", parent: "primitive-identity-join"),
+    edge(child: "primitive-identity-join", parent: "interpreter-primitive-roster"),
     edge(child: "accepted-obligation-door-mechanism", parent: "ladder-claims-carrier"),
     edge(child: "accepted-floor-obligation-closure", parent: "accepted-obligation-door-mechanism"),
     edge(child: "accepted-floor-obligation-closure", parent: "call-missing-and-duplicate-wall"),
