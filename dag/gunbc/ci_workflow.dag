@@ -588,7 +588,9 @@ fn ci_heal_commit_push_step() -> Step {
     id: none,
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -596,7 +598,7 @@ fn ci_heal_commit_push_step() -> Step {
   }
 }
 
-data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci, because the drift gate that triggers it can stop ci's dependent witness population. When regeneration changes a registered artifact, the job pushes the new PR head and explicitly workflow_dispatches CI with expected_healed_sha. The old run is SupersededByHealedHead and deliberately remains non-success; the dispatched run requires both its GitHub check subject (github.sha) and checkout HEAD to equal the immutable SHA before any gate. A dispatch or subject refusal leaves revalidation required and fails loudly. contents:write and actions:write are scoped to this job: contents is needed for the repair push, and Actions write is the narrowest GitHub permission that can invoke CreateWorkflowDispatch (it can start workflows, so it is not granted to build/regen/ci or the workflow default). The heal job is excluded from workflow_dispatch, preventing a dispatch loop. Main is not auto-healed. Judgment-class reds and the separate compile timeout are untouched."
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci, because the drift gate that triggers it can stop ci's dependent witness population. When regeneration changes a registered artifact, the job pushes the new PR head and explicitly workflow_dispatches CI with expected_healed_sha. The old run is SupersededByHealedHead and deliberately remains non-success; the dispatched run requires both its GitHub check subject (github.sha) and checkout HEAD to equal the immutable SHA before any gate. A dispatch or subject refusal leaves revalidation required and fails loudly. contents:write and actions:write are scoped to this job: contents is needed for the repair push, and Actions write is the narrowest GitHub permission that can invoke CreateWorkflowDispatch (it can start workflows, so it is not granted to build/regen/ci or the workflow default). The dispatching step explicitly binds `${{ github.token }}` into GITHUB_TOKEN, the sole environment authority consumed by github.Workflows; GitHub Actions does not implicitly export that context value as a process variable. The heal job is excluded from workflow_dispatch, preventing a dispatch loop. Main is not auto-healed. Judgment-class reds and the separate compile timeout are untouched."
 
 fn ci_heal_generated_artifacts_job() -> Job {
   Job {

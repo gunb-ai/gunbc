@@ -502,4 +502,6 @@ jobs:
             echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
             exit 1
           fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         timeout-minutes: 5

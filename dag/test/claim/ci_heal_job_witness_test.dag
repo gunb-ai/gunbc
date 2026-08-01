@@ -169,6 +169,42 @@ test fn dispatch_failure_is_loud_and_has_no_push_event_fallback() -> Bool {
     && !string_contains(s: script, pattern: "workflow will be triggered by push")
 }
 
+fn yaml_value_is_github_token_context(v: YamlValue) -> Bool {
+  match v {
+    YamlString { value: s } => s == "${{ github.token }}"
+    YamlNull => false
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlSequence { elements: _ } => false
+    YamlMapping { entries: _ } => false
+  }
+}
+
+fn env_binds_github_token(kvs: List<YamlKeyValue>) -> Bool {
+  fold(kvs, init: false, f: (found, row) =>
+    found || (row.key == "GITHUB_TOKEN" && yaml_value_is_github_token_context(v: row.value)))
+}
+
+fn dispatch_step_binds_github_token(s: Step) -> Bool {
+  match s {
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    RunStep { name: _, id: _, run, shell: _, env, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      run == gunbc_ci_heal_commit_push_script() && match env {
+        Present { value: kvs } => env_binds_github_token(kvs: kvs)
+        Absent => false
+      }
+  }
+}
+
+test fn heal_dispatch_step_exports_github_token_authority() -> Bool {
+  fold(
+    ci_heal_generated_artifacts_job().steps,
+    init: false,
+    f: (found, step) => found || dispatch_step_binds_github_token(s: step)
+  )
+}
+
 fn yaml_value_is_branch_ref(v: YamlValue) -> Bool {
   match v {
     YamlString { value: s } => s == ci_heal_branch_ref_expr
