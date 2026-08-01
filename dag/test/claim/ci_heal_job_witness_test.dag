@@ -17,9 +17,12 @@ import gunbc.ci_spec {
   ci_heal_dispatch_entry,
   ci_heal_repo_local_git_config_entry,
   ci_heal_repo_local_git_config_function,
+  ci_heal_repo_local_git_config_shell_emit_scaffold,
+  ci_heal_repo_local_git_config_shell_emit_dissolution_trigger,
   gunbc_ci_heal_commit_push_script,
   gunbc_ci_heal_repo_local_git_config_invoke,
 }
+import std.disposition { Scaffold }
 import gunbc.generated_artifact { committed_generated_artifact_paths, CiYamlArtifact, artifact_path }
 import gunbc.ci_workflow_expressions { ci_regen_heal_if }
 import extdeps.github.actions {
@@ -139,12 +142,23 @@ test fn heal_converges_repo_local_git_config() -> Bool {
     && (ci_heal_repo_local_git_config_entry == "dag/gunbc/repo_local_git_config.dag")
     && string_contains(
       s: gunbc_ci_heal_repo_local_git_config_invoke(),
+      pattern: ci_heal_repo_local_git_config_shell_emit_dissolution_trigger
+    )
+    && string_contains(
+      s: gunbc_ci_heal_repo_local_git_config_invoke(),
       pattern: "repo_local_git_config.dag"
     )
     && string_contains(
       s: gunbc_ci_heal_repo_local_git_config_invoke(),
       pattern: "--function converge"
     )
+}
+
+test fn heal_repo_local_git_config_shell_emit_is_scaffold() -> Bool {
+  match ci_heal_repo_local_git_config_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
 }
 
 test fn heal_commit_scope_is_artifact_only() -> Bool {
