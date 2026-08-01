@@ -1,0 +1,25 @@
+module v2.test.claim.manual.vacuity_probe
+
+data probe_return_src: String = "module probe.mod\nfn f(x: Int) -> Int {\n  return x\n}\n"
+
+data probe_testfn_src: String = "module probe.mod2\ntest fn probe_case() -> Bool {\n  return 1 == 1\n}\n"
+
+fn probe_ingest_ok(source_text: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: ^probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+test fn vacuity_probe_return_stmt_parses() -> Bool {
+  probe_ingest_ok(source_text: probe_return_src)
+}
+
+test fn vacuity_probe_testfn_return_eq_parses() -> Bool {
+  probe_ingest_ok(source_text: probe_testfn_src)
+}
