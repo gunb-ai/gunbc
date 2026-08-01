@@ -109,9 +109,36 @@ fn absent_exit_code_becomes_killed_not_minus_one() -> Bool {
   }
 }
 
+fn signaled_termination_is_not_exited_zero() -> Bool {
+  match direct_process_observation_from_shell(
+    spawn_ok: true,
+    wait_ok: true,
+    timed_out: false,
+    exit_code: 0,
+    signaled: true,
+    signal: 9,
+    exit_code_present: false,
+    stdout: utf8_encode_bytes(s: ""),
+    stderr: utf8_encode_bytes(s: ""),
+    spawn_detail: "",
+    wait_detail: "",
+  ) {
+    ProcessCompleted { termination, streams: _ } =>
+      match termination {
+        ProcessSignaled { signal } => signal == 9
+        ProcessExited { code: _ } => false
+        ProcessTimedOut => false
+        ProcessKilled => false
+      }
+    ProcessSpawnRefused { detail: _ } => false
+    ProcessWaitRefused { detail: _ } => false
+  }
+}
+
 test fn direct_process_observation_keystone_holds() -> Bool {
   spawn_refusal_is_typed()
     && wait_refusal_is_typed()
     && exited_termination_carries_code_without_sentinel()
     && absent_exit_code_becomes_killed_not_minus_one()
+    && signaled_termination_is_not_exited_zero()
 }

@@ -43,7 +43,7 @@ fn taad_target() -> List<MarkdownBlock> {
 
 fn taad_lanes() -> List<MarkdownBlock> {
   [
-    h2(text: "Three lanes"),
+    h2(text: "Two lanes"),
     h3(text: "Lane A — HTTP transport dissolution (curl argv -> transport rest)"),
     ol(items: [
       li(text: "Extend the rest model with the 4 items above (3 axes + modeled success)."),
@@ -56,13 +56,6 @@ fn taad_lanes() -> List<MarkdownBlock> {
       li(text: "The non-HTTP bare argv: the busybox build sequence (mkdir / tar / make / sed / cp — dag/gunbc/busybox_bmc_build.dag) and the broader 262 argv-lines across 37 transport-shell files."),
       li(text: "Each shell tool becomes a modeled extdeps/tools/* service with typed operations — precedent already exists (sha256sum, jq, xorriso, sed, grep are modeled). The build sequence becomes typed tool ops, not a bare argv list."),
       li(text: "This is the broader §2 argv anemia and rides the shell -> intent lane (the intent IS the .dag graph; emit vs realization). Model just-in-time per real consumer, never a big-bang sweep."),
-    ]),
-    h3(text: "Lane C — direct-process observation substrate (E1–E3)"),
-    ol(items: [
-      li(text: "E1 — minimum process observation shape in gunbc.direct_process_observation: completed vs spawn-refused vs wait-refused; exited vs signaled vs timed-out vs killed; no success Bool; no -1 exit sentinel; faithful byte streams at the boundary."),
-      li(text: "E2 — repository-bound remote-head operation in gunbc.repository_remote_head on v2.std.operation_argv BoundOperationInvocation (worktree + remote URL + forge identity + credential binding)."),
-      li(text: "E3 — typed ls-remote advertisement decoder in extdeps.git.ls_remote_advertisement with validated object ids, duplicate-ref refusal, and located malformed-line refusal."),
-      li(text: "Land consumed: E2/E3 are the first consumers of E1 in the same stack; witness by execution against a temporary local bare repository."),
     ]),
   ]
 }

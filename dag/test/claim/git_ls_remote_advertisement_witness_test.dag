@@ -10,6 +10,10 @@ import extdeps.git.ls_remote_advertisement {
   GitAdvertisedRefObjectIdRefused,
   GitAdvertisedRefDuplicate,
   GitAdvertisedRefEmptyBranchProjection,
+  GitAdvertisedRefLineAtObjectIdRefused,
+  GitAdvertisedRefLineAtMalformed,
+  GitAdvertisedRefLineAtEmptyBranchProjection,
+  GitAdvertisedRefLineDecoded,
   git_decode_ls_remote_stdout,
   git_decode_advertised_ref_line,
 }
@@ -52,20 +56,22 @@ fn malformed_line_refuses_at_index() -> Bool {
   }
 }
 
+data fixture_sha_invalid: String = "gggggggggggggggggggggggggggggggggggggggg"
+
 fn invalid_object_id_refuses_not_brands() -> Bool {
   match git_decode_advertised_ref_line(
-    line: line_of(sha: "not-hex", ref_name: "refs/heads/main"),
+    line: line_of(sha: fixture_sha_invalid, ref_name: "refs/heads/main"),
     line_index: 0,
     format: GitObjectFormatSha1,
   ) {
-    GitAdvertisedRefObjectIdRefused { cause, line_index: _, line: _ } =>
+    GitAdvertisedRefLineAtObjectIdRefused { cause, line_index: _, line: _ } =>
       match cause {
         GitObjectIdTextNonHexadecimal => true
         _ => false
       }
     GitAdvertisedRefLineDecoded { row: _ } => false
-    GitAdvertisedRefLineMalformed { line_index: _, line: _ } => false
-    GitAdvertisedRefEmptyBranchProjection { line_index: _, ref_name: _ } => false
+    GitAdvertisedRefLineAtMalformed { line_index: _, line: _ } => false
+    GitAdvertisedRefLineAtEmptyBranchProjection { line_index: _, ref_name: _ } => false
   }
 }
 

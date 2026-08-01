@@ -5731,6 +5731,26 @@ fn shell_stdout_string_lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
+fn shell_exit_succeeded(result: &ShellResult) -> bool {
+    !result.signaled && result.exit_code == Some(0)
+}
+
+fn shell_declared_exit_code(result: &ShellResult) -> InterpResult<i64> {
+    match result.exit_code {
+        Some(code) => Ok(i64::from(code)),
+        None => Err(InterpError::TypeError {
+            msg: if result.signaled {
+                format!(
+                    "declared shell exit_code is absent: process terminated by signal {}",
+                    result.signal
+                )
+            } else {
+                "declared shell exit_code is absent".to_string()
+            },
+        }),
+    }
+}
+
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
         Value::Str(s) => {
@@ -7014,7 +7034,6 @@ fn map_shell_outputs(
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
-        let exit_code_i64 = result.exit_code.map(i64::from).unwrap_or(0);
         let process_failed = result.signaled || result.exit_code != Some(0);
         let stdout_str = shell_stdout_string_lossy(&result.stdout_raw);
         let stderr_str = shell_stdout_string_lossy(&result.stderr_raw);
@@ -7025,8 +7044,8 @@ fn map_shell_outputs(
             Some("stderr") => Value::Str(stderr_str.clone()),
             Some("stdout_bytes") => bytes_to_value(&result.stdout_raw),
             Some("stderr_bytes") => bytes_to_value(&result.stderr_raw),
-            Some("exit_success") => Value::Bool(result.exit_code == Some(0)),
-            Some("exit_code") => Value::Int(exit_code_i64),
+            Some("exit_success") => Value::Bool(shell_exit_succeeded(result)),
+            Some("exit_code") => Value::Int(shell_declared_exit_code(result)?),
             Some("exit_code_present") => Value::Bool(result.exit_code.is_some()),
             Some("signaled") => Value::Bool(result.signaled),
             Some("signal") => Value::Int(result.signal as i64),
@@ -7038,8 +7057,8 @@ fn map_shell_outputs(
                 list_value((lines))
             }
             _ => match field_name.as_str() {
-                "success" => Value::Bool(result.exit_code == Some(0)),
-                "exit_code" => Value::Int(exit_code_i64),
+                "success" => Value::Bool(shell_exit_succeeded(result)),
+                "exit_code" => Value::Int(shell_declared_exit_code(result)?),
                 "exit_code_present" => Value::Bool(result.exit_code.is_some()),
                 "signaled" => Value::Bool(result.signaled),
                 "signal" => Value::Int(result.signal as i64),
@@ -7047,7 +7066,7 @@ fn map_shell_outputs(
                 "stderr" => Value::Str(stderr_str.clone()),
                 "stdout_bytes" => bytes_to_value(&result.stdout_raw),
                 "stderr_bytes" => bytes_to_value(&result.stderr_raw),
-                "exists" => Value::Bool(result.exit_code == Some(0)),
+                "exists" => Value::Bool(shell_exit_succeeded(result)),
                 _ => Value::Null,
             },
         };
