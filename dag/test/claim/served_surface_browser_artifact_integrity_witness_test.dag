@@ -13,6 +13,7 @@ import extdeps.tools.wc {
 import gunbc.served_surface_browser_observation {
   ScreenshotArtifact,
   playwright_chromium_151_linux_arm64_headless_navigation_run,
+  navigation_specimen_screenshot,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -31,7 +32,7 @@ fn screenshot_artifact_matches_live_bytes(artifact: ScreenshotArtifact) -> Bool 
 
 test fn witness_checked_in_screenshots_match_receipts() -> Bool {
   let specimens = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens
-  screenshot_artifact_matches_live_bytes(artifact: specimens.first().screenshot)
-    && screenshot_artifact_matches_live_bytes(artifact: specimens.skip(n: 1).first().screenshot)
-    && screenshot_artifact_matches_live_bytes(artifact: specimens.skip(n: 2).first().screenshot)
+  screenshot_artifact_matches_live_bytes(artifact: navigation_specimen_screenshot(specimen: specimens.first()))
+    && screenshot_artifact_matches_live_bytes(artifact: navigation_specimen_screenshot(specimen: specimens.skip(n: 1).first()))
+    && screenshot_artifact_matches_live_bytes(artifact: navigation_specimen_screenshot(specimen: specimens.skip(n: 2).first()))
 }

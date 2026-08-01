@@ -15,9 +15,9 @@ import extdeps.automation.playwright {
   playwright_1_62_1,
 }
 import gunbc.served_surface_browser_observation {
-  ConnectionRefusedSpecimen,
-  EmptyBody502Specimen,
-  SentinelBody502Specimen,
+  ConnectionRefusedPresentationSpecimen,
+  EmptyBody502PresentationSpecimen,
+  SentinelBody502PresentationSpecimen,
   TcpConnectionRefusedStimulus,
   HttpResponseStimulus,
   EmptyNavigationResponseBody,
@@ -27,12 +27,16 @@ import gunbc.served_surface_browser_observation {
   NavigationReturnedHttpResponse,
   ChromiumInternalPresentedDocument,
   NetworkResponsePresentedDocument,
-  ExactSpecimenCoverage,
+  EmptyBody502ExactCoverage,
   ExplicitReload,
   HealthyResponseDocumentObserved,
   PlaywrightDefaultChromiumLaunch,
   playwright_chromium_151_linux_arm64_headless_navigation_run,
   local_http_url,
+  navigation_specimen_stimulus,
+  navigation_specimen_outcome,
+  navigation_specimen_document,
+  navigation_specimen_recovery_trials,
   navigation_specimen_coverage,
 }
 
@@ -50,13 +54,13 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
 
 test fn witness_connection_refusal_is_exact_specimen() -> Bool {
   let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.first()
-  specimen.id == ConnectionRefusedSpecimen
-    && match specimen.stimulus {
+  specimen == ConnectionRefusedPresentationSpecimen
+    && match navigation_specimen_stimulus(specimen: specimen) {
       TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == LocalSyntheticHarness
       _ => false
     }
-    && specimen.navigation == ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
-    && specimen.document == ChromiumInternalPresentedDocument {
+    && navigation_specimen_outcome(specimen: specimen) == ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
+    && navigation_specimen_document(specimen: specimen) == ChromiumInternalPresentedDocument {
       document: ChromiumWebDataErrorDocument,
       final_url: ChromiumWebDataErrorUrl,
     }
@@ -64,22 +68,20 @@ test fn witness_connection_refusal_is_exact_specimen() -> Bool {
 
 test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
   let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.skip(n: 1).first()
-  specimen.id == EmptyBody502Specimen
-    && navigation_specimen_coverage(specimen: specimen) == ExactSpecimenCoverage {
-      specimen: EmptyBody502Specimen,
-    }
-    && match specimen.stimulus {
+  specimen == EmptyBody502PresentationSpecimen
+    && navigation_specimen_coverage(specimen: specimen) == EmptyBody502ExactCoverage
+    && match navigation_specimen_stimulus(specimen: specimen) {
       HttpResponseStimulus { requested_url: _, origin, status, configured_headers: _, body } =>
         origin == LocalSyntheticHarness && status == 502 && body == EmptyNavigationResponseBody
       _ => false
     }
-    && specimen.navigation == ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
+    && navigation_specimen_outcome(specimen: specimen) == ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
 }
 
 test fn witness_bodied_502_retains_network_document() -> Bool {
   let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.skip(n: 2).first()
-  specimen.id == SentinelBody502Specimen
-    && match specimen.stimulus {
+  specimen == SentinelBody502PresentationSpecimen
+    && match navigation_specimen_stimulus(specimen: specimen) {
       HttpResponseStimulus { requested_url: _, origin, status, configured_headers: _, body } =>
         origin == LocalSyntheticHarness && status == 502 && body == Utf8NavigationResponseBody {
           text: "GUNBC_TYPED_ERROR_SENTINEL",
@@ -87,16 +89,15 @@ test fn witness_bodied_502_retains_network_document() -> Bool {
         }
       _ => false
     }
-    && specimen.navigation == NavigationReturnedHttpResponse { status: 502 }
-    && specimen.document == NetworkResponsePresentedDocument {
+    && navigation_specimen_outcome(specimen: specimen) == NavigationReturnedHttpResponse { status: 502 }
+    && navigation_specimen_document(specimen: specimen) == NetworkResponsePresentedDocument {
       final_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
-      response_specimen: SentinelBody502Specimen,
     }
 }
 
 test fn witness_reload_trial_claims_sufficiency_not_necessity() -> Bool {
   let specimen = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.first()
-  let trial = specimen.recovery_trials.first()
+  let trial = navigation_specimen_recovery_trials(specimen: specimen).first()
   trial.action == ExplicitReload
     && trial.outcome == HealthyResponseDocumentObserved
 }
