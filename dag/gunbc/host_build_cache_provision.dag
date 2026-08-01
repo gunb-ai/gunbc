@@ -306,8 +306,6 @@ fn daemon_absent_refuses_fail_closed() -> Bool {
   }
 }
 
-data srv1_stranded_server_cgroup_fixture: NonEmptyStr = "/system.slice/system-ghrunner.slice/ghrunner@srv1-10.service"
-
 data managed_compile_pool_slice_fixture: NonEmptyStr = gunbc_managed_compile_pool_slice
 
 fn stats_ok_lazy_spawned_refuses() -> Bool {
