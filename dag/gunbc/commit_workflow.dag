@@ -743,30 +743,30 @@ fn commit_writer_blob_coverage_refusals(
       []
     } else {
       let index_entry = matching_index.first()
-      append(
-        if git_object_id_eq(left: index_entry.oid, right: blob.indexed_oid) {
-          []
-        } else {
-          [CommitWriterIndexBlobIdentityMismatchRefusal {
-            path: blob.path,
-            index_oid: index_entry.oid,
-            observed_index_oid: blob.indexed_oid,
-          }]
-        },
-        items: if git_object_id_eq(left: blob.indexed_oid, right: blob.content_oid) {
-          []
-        } else {
-          [CommitWriterBlobContentMismatchRefusal {
-            path: blob.path,
-            indexed_oid: blob.indexed_oid,
-            content_oid: blob.content_oid,
-          }]
-        },
-      )
+      if git_object_id_eq(left: index_entry.oid, right: blob.indexed_oid) {
+        []
+      } else {
+        [CommitWriterIndexBlobIdentityMismatchRefusal {
+          path: blob.path,
+          index_oid: index_entry.oid,
+          observed_index_oid: blob.indexed_oid,
+        }]
+      }
     },
-    items: commit_writer_blob_classification_refusals(
-      blob: blob,
-      module_storage: observation.module_storage,
+    items: append(
+      if git_object_id_eq(left: blob.indexed_oid, right: blob.content_oid) {
+        []
+      } else {
+        [CommitWriterBlobContentMismatchRefusal {
+          path: blob.path,
+          indexed_oid: blob.indexed_oid,
+          content_oid: blob.content_oid,
+        }]
+      },
+      items: commit_writer_blob_classification_refusals(
+        blob: blob,
+        module_storage: observation.module_storage,
+      ),
     ),
   )
 }

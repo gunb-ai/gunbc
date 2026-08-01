@@ -576,3 +576,40 @@ test fn identity_content_and_classification_fail_closed() -> Bool {
     _ => false
   }
 }
+
+test fn extra_population_and_content_mismatch_refusals_accumulate() -> Bool {
+  let storage = module_storage_for(artifact: source_artifact())
+  let good = classified_text_blob(
+    path: publication_grant_path(),
+    oid: blob_oid(),
+    text: "clean\n",
+    grammar: marker_grammar(size: 7),
+    artifact: source_artifact(),
+    module_storage: storage,
+  )
+  let mismatched = CommitWriterStagedBlobObservation {
+    path: good.path,
+    indexed_oid: good.indexed_oid,
+    content_oid: other_blob_oid(),
+    classification: good.classification,
+  }
+  match admit_commit_writer(
+    writer: HumanGitCommit,
+    observation: CompleteStagedCommitObservation {
+      index: [],
+      blobs: [mismatched],
+      module_storage: storage,
+    },
+  ) {
+    CommitWriterAdmitted { writer: _, coverage: _ } => false
+    CommitWriterRefused { writer: _, refusals } =>
+      (count(filter(refusals, refusal => match refusal {
+        CommitWriterExtraBlobObservationRefusal { path: _, indexed_oid: _ } => true
+        _ => false
+      })) == 1)
+        && (count(filter(refusals, refusal => match refusal {
+          CommitWriterBlobContentMismatchRefusal { path: _, indexed_oid: _, content_oid: _ } => true
+          _ => false
+        })) == 1)
+  }
+}
