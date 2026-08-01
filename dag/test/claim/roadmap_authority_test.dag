@@ -680,10 +680,3 @@ test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
 test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
   roadmap_altered_copy_red_probe_count() == 1
 }
-
-test fn probe_lms_digest() -> String {
-  match declared_node(id: "ladder-measurement-schema") |> first {
-    Present { value: rn } => digest_or_zero(rn: rn) as String
-    Absent => "node-not-found"
-  }
-}

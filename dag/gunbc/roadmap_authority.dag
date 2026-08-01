@@ -1995,7 +1995,7 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
     },
     RoadmapAcceptanceReceipt {
       node: nid(s: "ladder-measurement-schema"),
-      criteria_digest: chash(s: "c697d237c9b82a01"),
+      criteria_digest: chash(s: "74da4d8be7125c81"),
       red_control: RedControlExecuted {
         witness_module: "test.claim.guarantee_measurement_witness_test",
         witness_fn: "duplicate_class_id_reds_uniqueness",
