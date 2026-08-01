@@ -730,21 +730,23 @@ it splits by scrutinee path, and the row's attribution of the silence to `Patter
 []` is wrong on the carrier, since `pattern_subject_from_node` reaches that arm only where the
 scrutinee's inferred type `is_compiler_error` (a diagnostic already exists). The silent arm is
 `PatternDynamic { span: _ } => []`. `PatternLookupBlocked`'s own silence remains **unestablished**
-— no probe here reproduced it, and it is not asserted as though one had. **`AcceptedCounted` is
-representable but has no producer, and the carrier stage must know it** (lane-level state, not a
-PR detail): the census carries `blocking` in both directions structurally, but only
-`blocking=true` has a live specimen — the reachable non-blocking arm is #7484's
-`MethodExistenceUndecided`/`MethodExistenceFrontierAdmitted` frontier admission, and that PR's own
-witness records why admission is checked against the declared frontier rows rather than a
-synthetic source (the residual receiver shapes are upstream resolution defects that cannot be
-produced on demand). Three candidates were attempted — a where-refinement alias, an
-unlisted-import shape, an unresolved method on a bare type parameter — and each either compiled
-silent or refused *blocking*, so none is an advisory and none is recorded as one. Consequence for
-Stage 1b: a `FrontierAccepted` disposition has **no executing probe evidence** today even though
-the vocabulary and the surface both admit it, so deriving one from probe receipts would be
-deriving from an empty population. Dissolve-on: the first reproducible advisory specimen — most
-likely the frontier admission once `method-receiver-normalization` lands — becomes the probe
-corpus's advisory row.
+— no probe here reproduced it, and it is not asserted as though one had. **`AcceptedCounted` has a
+producer, and the route to that finding is itself a measurement lesson.** An earlier draft of this
+entry recorded the opposite — that the census could *represent* a counted advisory but no probe
+could *produce* one, so a `FrontierAccepted` disposition would be derived from an empty population.
+That was **wrong, and wrong because of the harness rather than the compiler**: the three candidate
+probes (a where-refinement alias, an unlisted-import shape, an unresolved method on a bare type
+parameter) were run through a fixture-only CLI compile whose single source root contains no `std`,
+so the refinement never resolved *to* a refinement and the negative result measured the closure.
+`compile_dag_diagnostic_census` resolves against the witness roots, and the same where-refinement
+source class fires `WhereRefinementUnenforced` as a counted advisory through it
+(`census_reports_advisory_severity_as_data`, green by execution). What prompted the recheck was a
+corpus reading rather than a hunch: the whole-tree census carries **1,981** `where-refinement`
+advisories, so the class was demonstrably reachable and a probe finding none was evidence against
+the probe. The general rule this pays for, and the one the baseline stage should carry: **a
+synthetic-probe negative is only as good as its closure** — a "class is unreachable" finding
+measured under a narrower source root than the class needs is an artifact, and the corpus
+prevalence is the cheap cross-check that catches it.
 
 ## 11. Audit queue
 
