@@ -49,6 +49,7 @@ import gunbc.roadmap_belt_actuate {
   belt_spawn_session_uuid,
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
+  belt_workflow_attempt_presentation_json,
   BeltVerifyOutcome,
   VerifyDeferred,
   VerifyRecorded,
@@ -731,6 +732,24 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     validation_receipt_readable: false,
     validation_receipt: "",
   })
+}
+
+data attempt_wire_carries_decided_activity_note: String = "The A2 single-projection-authority receipt at the wire: each attempt object on /workflow.json carries the DECIDED activity view beside the progress members, so the client paints without composing. The fixture is a completed agent turn with process exited and four pending obligations — the falsifier's own shape — and the assertions pin the decided fields (arm, the consequence-first summary composed by gunbc.roadmap_presentation, the reconcile-derived remaining count, the evidence rows) landing as JSON, plus the progress members surviving beside them. A client that had to rebuild any of these from segments would have nothing to rebuild them FROM being asserted here — the decided strings are the contract."
+
+test fn attempt_wire_carries_decided_activity() -> Bool {
+  let j = serialize_json(v: belt_workflow_attempt_presentation_json(
+    progress: completed_attempt_progress(node_id: "belt-wire-activity-node")))
+  string_contains(s: j, pattern: "\"activity\": {")
+    && string_contains(s: j, pattern: "\"arm\": \"active\"")
+    && string_contains(s: j, pattern: "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining")
+    && string_contains(s: j, pattern: "\"remaining_obligation_count\": 4")
+    && string_contains(s: j, pattern: "\"attention\": \"routine\"")
+    && string_contains(s: j, pattern: "\"label\": \"session container\"")
+    && string_contains(s: j, pattern: "\"value\": \"present\"")
+    && string_contains(s: j, pattern: "\"label\": \"worker process\"")
+    && string_contains(s: j, pattern: "\"value\": \"process exited\"")
+    && string_contains(s: j, pattern: "\"node_id\": \"belt-wire-activity-node\"")
+    && string_contains(s: j, pattern: "\"segments\": [")
 }
 
 test fn unreadable_validation_receipt_refuses_instead_of_rerunning() -> Bool {
