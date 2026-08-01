@@ -82,7 +82,19 @@ test fn scaffold_note_cites_zero_hand_maintained_rust_roadmap_row() -> Bool {
 
 
 test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
-  length(xs: stage0_rust_observation_seed_growth_justification.hand_authored_declarations) == 7
+  let refs = stage0_rust_observation_seed_growth_justification.hand_authored_declarations
+  let named = refs |> map(r => r.decl_name)
+  let expected = [
+    "Stage0CargoManifestBinParse",
+    "Stage0CargoBinManifestParseRefusal",
+    "stage0_cargo_bin_paths_from_manifest_text",
+    "parse_stage0_cargo_manifest_bin_paths",
+    "stage0_cargo_manifest_parser_tests",
+    "eval_builtin_inner"
+  ]
+  length(xs: refs) == 7
+    && (refs |> all(r => !(r.module_path == "") && !(r.decl_name == "")))
+    && (expected |> all(e => named |> any(n => n == e)))
     && stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as String == "v1-hand-queue-drain"
     && match stage0_cargo_manifest_parser_seed_scaffold {
       Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>

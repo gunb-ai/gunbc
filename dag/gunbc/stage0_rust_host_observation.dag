@@ -13,7 +13,7 @@ import gunbc.stage0_cargo_manifest {
   stage0_package_root
 }
 import std.content_hash { content_hash_atom }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { GitRef, String }
 import v2.std.algebra { fold_list, list_snoc_item }
@@ -244,8 +244,8 @@ data stage0_rust_observation_seed_growth_justification: SeedGrowthJustification 
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run",
-      decl_name: "Stage0CargoBinManifestParseRefusal_Display",
-      field: WholeDeclaration
+      decl_name: "Stage0CargoBinManifestParseRefusal",
+      field: NamedField { field_name: "fmt" }
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run",
@@ -268,7 +268,7 @@ data stage0_rust_observation_seed_growth_justification: SeedGrowthJustification 
       field: WholeDeclaration
     }
   ],
-  reason: "The substrate can execute modeled Git operations and own path policy, but it cannot yet decode Cargo TOML into typed [[bin]] facts. The seed parser and value projection are the bounded compatibility bridge; generated builtin registry output is not hand-authored growth, which is why the v1_compiler_infer_method.rs delta is absent from this census -- that file is on gunbc.stage0_emit_model generated_stage0_files and is regenerated from src/v1/04_method.dag rather than authored.\n\nAN EARLIER REVISION OF THIS ROW LISTED TWO DECLARATIONS AND WAS WRONG. The count is recorded here rather than quietly corrected because it is the precise failure this receipt exists to prevent. It named the two declarations someone had looked at -- the seed parser entry point and the interpreter arm -- and omitted the coproduct Stage0CargoManifestBinParse, the refusal enum Stage0CargoBinManifestParseRefusal, the Display realization on that refusal enum, the private helper stage0_cargo_bin_paths_from_manifest_text, and the stage0_cargo_manifest_parser_tests module. A witness then pinned the census at exactly two, so the understatement was enshrined as the contract instead of being exposed by it. The census is now taken by ENUMERATING every hand-authored declaration this change adds to the seed, which is the only method that does not silently understate: counting the declarations one happens to have touched is how a census goes wrong twice.",
+  reason: "The substrate can execute modeled Git operations and own path policy, but it cannot yet decode Cargo TOML into typed [[bin]] facts. The seed parser and value projection are the bounded compatibility bridge; generated builtin registry output is not hand-authored growth, which is why the v1_compiler_infer_method.rs delta is absent from this census -- that file is on gunbc.stage0_emit_model generated_stage0_files and is regenerated from src/v1/04_method.dag rather than authored.\n\nAN EARLIER REVISION OF THIS ROW LISTED TWO DECLARATIONS AND WAS WRONG. The count is recorded here rather than quietly corrected because it is the precise failure this receipt exists to prevent. It named the two declarations someone had looked at -- the seed parser entry point and the interpreter arm -- and omitted the coproduct Stage0CargoManifestBinParse, the refusal enum Stage0CargoBinManifestParseRefusal, the Display realization on that refusal enum (cited as the enum plus its fmt member, since the impl block itself has no name to cite -- an earlier revision of this row invented the symbol Stage0CargoBinManifestParseRefusal_Display, which resolves to nothing and is exactly the fabricated citation DESIGN 3 cite-the-symbol exists to forbid; caught in review 46351), the private helper stage0_cargo_bin_paths_from_manifest_text, and the stage0_cargo_manifest_parser_tests module. A witness then pinned the census at exactly two, so the understatement was enshrined as the contract instead of being exposed by it. The census is now taken by ENUMERATING every hand-authored declaration this change adds to the seed, which is the only method that does not silently understate: counting the declarations one happens to have touched is how a census goes wrong twice.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete all seven declarations when a modeled Cargo-manifest grammar/ingestion realization produces CargoManifestBinParse, or when the v1 interpreter and cli_run seed retire.",
   current_boundary: "gunbc.stage0_cargo_manifest CargoManifestBinParse -> v1_compiler.cli_run parse_stage0_cargo_manifest_bin_paths -> v1_compiler.v1_interpreter eval_builtin_inner"
