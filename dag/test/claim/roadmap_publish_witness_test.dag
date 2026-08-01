@@ -16,7 +16,6 @@ import gunbc.roadmap_publish {
   adjudicate_publication,
   publication_detail,
   publication_offers_the_expected_head,
-  publication_outcome_key,
   PublicationSubject,
   PublicationReceipt,
   PublicationReceiptOutcome,

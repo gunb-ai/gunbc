@@ -1,6 +1,7 @@
 module gunbc.roadmap_publish_observe
 
 import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, Secret }
+import std.credentials { CredentialSource, EnvVar }
 import extdeps.git
 import extdeps.git {
   AdvertisedRef,
@@ -99,7 +100,7 @@ fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
 data pull_observation_transport_bound_note: String = "THE FAILURE PATH IS CLOSED ON THE SIDE THAT IS DECIDABLE HERE AND OPEN ON THE SIDE THAT IS NOT, and the boundary between them is stated rather than blurred.\\n\\nCLOSED: NO CREDENTIAL. A publication read without a usable token is not a failed read, it is a read that must not be attempted. Sending an empty bearer token produces a 401 whose only content is that we sent nothing, so calling in order to discover what we already know converts a decidable local fact into a transport failure - and the REST path turns transport failures into raises, so the decidable fact would arrive as the least tractable kind of event. PublicationCredential makes the fact a value before the call, and the arm is reachable in a hermetic witness by construction. This is the failure mode a fresh host actually hits.\\n\\nOPEN: NON-2XX FROM A REAL CALL. github.Pulls.List declares 200/401/404/422/5xx, and the realization honours only 200. dispatch_rest in the v1 seed returns Err(InterpError::TypeError) for any status at or above 400, so control never returns to this function and PullRequestsUnreadable cannot be constructed from a failed call - only by a caller that already holds one. That is a REALIZATION gap, not a modeling gap: the response table is declared and the handler ignores it.\\n\\nWHY IT IS NOT CLOSED HERE. Two moves would close it and both are worse than the gap. Realizing the response table is a v1 seed change, which is the direction the seed is supposed to shrink in and does not belong inside a publication slice. Reading pull requests through a second operation whose failure IS a value - a gh CLI shell op beside the REST op - forks one dependency operation once per transport, which is the exact N-transport fork DESIGN 3 names; the corpus has no gh model today and this lane must not be the reason it gains a forked one.\\n\\nSo the residual is one class, named: a non-2xx pull-request read raises instead of refusing. Dissolve-on: the REST response-table realization, after which observe_pull_requests matches the declared statuses and this note's OPEN half deletes.\\n\\nWhy the arm still exists in the type: a caller CAN hold a refusal - an absent credential, a prior read that failed, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it through one transport would push the ignorance-as-answer conflation back into every other producer."
 
 type PublicationCredential
-  = PublicationCredentialPresent { token: Secret }
+  = PublicationCredentialPresent { source: CredentialSource }
   | PublicationCredentialAbsent { reason: String }
 
 fn observe_pull_requests(
@@ -116,9 +117,9 @@ fn observe_pull_requests(
           reason,
         ], ""),
       }
-    PublicationCredentialPresent { token } => {
+    PublicationCredentialPresent { source } => {
       let result = github.Pulls.List(
-        auth_token: token,
+        auth_token: source,
         owner: repo.owner,
         repo: repo.name,
       )

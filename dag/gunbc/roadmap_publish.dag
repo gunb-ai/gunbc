@@ -356,22 +356,7 @@ fn publication_detail(outcome: PublicationOutcome) -> String {
   }
 }
 
-data offers_the_expected_head_note: String = "The single question a downstream obligation asks of Publication: is the commit I am about to judge the one actually on offer? Exactly ONE arm answers yes, and it is the arm that saw a pull request at the expected head. A remote ref at the expected head is deliberately NOT enough — there is nothing to review, and the review lane's subject is a pull request. Every divergence, ambiguity and refusal answers no, so ignorance never becomes permission."
-
-fn publication_offers_the_expected_head(outcome: PublicationOutcome) -> Bool {
-  match outcome {
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => true
-    PublicationHeadDiverged {
-      branch: _, pr_number: _, pr_head: _, expected_head: _, url: _,
-    } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    PublicationObservationRefused { detail: _ } => false
-  }
-}
+data offers_the_expected_head_note: String = "The single question a downstream obligation asks of Publication: is the commit I am about to judge the one actually on offer? Exactly ONE arm answers yes, and it is the arm that saw a pull request at the expected head. A remote ref at the expected head is deliberately NOT enough — there is nothing to review, and the review lane's subject is a pull request. Every divergence, ambiguity and refusal answers no, so ignorance never becomes permission.\\n\\nIT IS ANSWERED ONCE, ON THE RECEIPT OUTCOME, AND THE LIVE OUTCOME DELEGATES. Two functions answering one question over two shapes of the same coproduct is how the two drift: a ninth arm added to one and defaulted in the other, and the disagreement shows up as a lamp that completes while the producer keeps re-observing. So the receipt-side answer is the authority and the live-side one is a projection through publication_receipt_outcome_of, which is total.\\n\\nAND THE CONSUMERS ARE NOT SYMMETRIC, which is why the question is worth naming rather than inlining. A downstream obligation asks it to decide whether it may proceed. The belt's publish gate asks it to decide whether a receipt is SETTLED - because every other outcome is a snapshot of remote state that has not stopped moving, and halting on one would pin the row to a negative answer that can no longer be revised."
 
 data publication_subject_note: String = "ONE SUBJECT VALUE, CARRIED BY EVERY STAGE, BECAUSE THE ALTERNATIVE ALREADY FAILED HERE. A publication judgment is about one exact commit, on one branch, of one repository, for one attempt of one node. Before this type those six facts travelled as separate parameters that each stage re-derived, which is how the receipt consumer came to hold a stored head and a rendered sentence and no way to tell whether either was about the row it was painting.\\n\\nTHE REPOSITORY IS THE GITHUB IDENTITY, not the derived clone URL. The URL is one projection of owner and name (extdeps.github.github repository_remote_url_note) and projecting it is lossy in the direction that matters: two Repository values can share a URL spelling, and a consumer that stored the URL could not ask the pull-request API anything. The subject stores what identifies the repository and derives the URL where a git remote is needed.\\n\\nWHY expected_base IS PART OF THE SUBJECT and not a loose argument: adjudicate_publication uses it to decide which pull requests are even candidates, so two runs with different bases can reach different outcomes about the same head. A receipt that did not record it would be unfalsifiable about the question it answered."
 
@@ -449,6 +434,28 @@ fn publication_receipt_outcome_key(outcome: PublicationReceiptOutcome) -> NonEmp
     ReceiptObservationRefused { detail: _ } => "publication-observation-refused"
   }
 }
+
+fn publication_receipt_offers_the_expected_head(
+  outcome: PublicationReceiptOutcome,
+) -> Bool {
+  match outcome {
+    ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => true
+    ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
+    ReceiptBindingAmbiguous { pr_numbers: _ } => false
+    ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+    ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+    ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+    ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+    ReceiptObservationRefused { detail: _ } => false
+  }
+}
+
+fn publication_offers_the_expected_head(outcome: PublicationOutcome) -> Bool {
+  publication_receipt_offers_the_expected_head(
+    outcome: publication_receipt_outcome_of(outcome: outcome),
+  )
+}
+
 
 type PublicationReceipt {
   subject: PublicationSubject

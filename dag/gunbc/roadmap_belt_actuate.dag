@@ -130,6 +130,7 @@ import gunbc.roadmap_execution_contract {
   modeled_validation_command_wire,
   execution_contract_validation_summary,
 }
+import std.credentials { CredentialSource }
 import gunbc.roadmap_publish {
   PublicationSubject,
   PublicationSubjectObservation,
@@ -141,6 +142,7 @@ import gunbc.roadmap_publish {
   publication_receipt_of,
   publication_receipt_json,
   publication_receipt_outcome_key,
+  publication_receipt_offers_the_expected_head,
 }
 import gunbc.roadmap_publish_observe {
   PublicationCredential,
@@ -239,7 +241,7 @@ type BeltExecOutcome
 
 data belt_program_available_note: String = "program-on-PATH probe via shell.Which.Check exit_success (Bool), NOT its .path field: the Which .path realization is a bare-stdout string wet (the Optional-over-Value::Null realization fork — DESIGN open thread), so the belt keys on the exit Bool and lets WitnessBin.Run's `env -C \{workdir\} \{bin_path\} args` resolve the bare program name via PATH (env execvp searches PATH). This keeps 'program missing' (refuse) distinct from 'program present, exited nonzero' (fail) without touching the Optional straddle."
 
-data belt_outcome_is_data_note: String = "The three probes in this module are annotated OutcomeIsData (operator ruling 2026-07-25): their exit codes are ANSWERS the belt adjudicates, not faults. belt_program_available's which-miss is the 'program missing' pole this module's belt_program_available_note already keeps deliberately distinct from 'present but exited nonzero'; belt_exec's nonzero exit becomes ExecFailed; belt_observe's becomes a typed BeltObserve arm. In every case the belt renders the fault loudly through its own per-variant status mapping, so the effect layer's anomaly glyph was a second, cruder judgment of an event that already has a real adjudicator. ADMISSIBILITY (§5 guard, gunbc.output_policy outcome_is_data_note): each annotated fn returns a typed value whose arms ARE the adjudication — Bool for the availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome, BeltObserve — never unit. Dispatch failure stays anomalous: it is not an exit code and does not travel this arm."
+data belt_outcome_is_data_note: String = "The probes in this module are annotated OutcomeIsData (operator ruling 2026-07-25): their exit codes are ANSWERS the belt adjudicates, not faults. belt_program_available's which-miss is the 'program missing' pole this module's belt_program_available_note already keeps deliberately distinct from 'present but exited nonzero'; belt_exec's nonzero exit becomes ExecFailed; belt_observe's becomes a typed BeltObserve arm. In every case the belt renders the fault loudly through its own per-variant status mapping, so the effect layer's anomaly glyph was a second, cruder judgment of an event that already has a real adjudicator. ADMISSIBILITY (§5 guard, gunbc.output_policy outcome_is_data_note): each annotated fn returns a typed value whose arms ARE the adjudication — Bool for the availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome, BeltObserve, PublicationCredential — never unit. Dispatch failure stays anomalous: it is not an exit code and does not travel this arm."
 
 fn belt_program_available(program: String) -> Bool {
   shell.Which.Check(command: program as NonEmptyStr, expect: OutcomeIsData).exists
@@ -1452,6 +1454,7 @@ type BeltTickResult {
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
   verify_outcomes: List<BeltVerifyOutcome>,
+  publish_outcomes: List<BeltPublishOutcome>,
 }
 
 fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
@@ -1483,6 +1486,7 @@ fn belt_tick(
         spawn_outcomes: [],
         teardown_outcomes: [],
         verify_outcomes: [],
+        publish_outcomes: [],
       }
     Observed { live: live } => {
       let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
@@ -1493,6 +1497,7 @@ fn belt_tick(
         spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir)),
         teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m)),
         verify_outcomes: belt_verify_attempts(),
+        publish_outcomes: belt_publish_attempts(),
       }
     }
   }
@@ -3015,7 +3020,7 @@ fn belt_publication_subject_for(
   }
 }
 
-data belt_publish_gate_note: String = "THE GATE DECIDES WHETHER TO OBSERVE AT ALL, WHICH IS WHY IT IS PURE AND WHY IT RUNS FIRST. Three of the five outcomes are settled entirely by what is already on disk - the head is recorded, the record does not decode, the record is about someone else - and none of them should cost a network read or risk a write. Deciding them before the effect is what makes them reachable in a witness from constructed values; deciding them after would make the arms untestable and would perform a GitHub read to learn something the filesystem already said.\\n\\nA RECEIPT ABOUT ANOTHER SUBJECT AT THIS HEAD'S OWN ADDRESS IS NOT OVERWRITTEN. The address contains the head, so a mismatch here means something wrote a receipt for a different node, attempt, repository or base into this head's slot. That is unexplained state, and the belt's move on unexplained state is to stop rather than to correct it - overwriting would destroy the only evidence that it happened."
+data belt_publish_gate_note: String = "THE GATE DECIDES WHETHER TO OBSERVE AT ALL, WHICH IS WHY IT IS PURE AND WHY IT RUNS FIRST. Three of the five outcomes are settled entirely by what is already on disk - the head is on offer, the record does not decode, the record is about someone else - and none of them should cost a network read or risk a write. Deciding them before the effect is what makes them reachable in a witness from constructed values; deciding them after would make the arms untestable and would perform a GitHub read to learn something the filesystem already said.\\n\\nONLY A SETTLED RECEIPT HALTS, AND GETTING THIS WRONG WOULD HAVE FROZEN THE LAMP. The obvious idempotence key is `a receipt exists for this head`, and it is wrong: the belt ticks continuously, so the FIRST observation of a head usually happens before the worker has pushed. That observation is a perfectly good judgment - branch-not-published - and storing it as final would pin the row to `not published` forever, with every later tick halting on the very receipt that recorded the branch's absence. The negative answer would outlive the fact it described.\\n\\nSo the key is whether the receipt says the head is ON OFFER (publication_receipt_offers_the_expected_head, the same predicate a downstream obligation asks). Every other outcome is a snapshot of remote state that has not stopped moving, so the next tick re-observes and replaces it. That is not destroying evidence: it is the same question re-asked, and nothing downstream builds on a snapshot that answered no.\\n\\nA RECEIPT ABOUT ANOTHER SUBJECT AT THIS HEAD'S OWN ADDRESS IS NOT OVERWRITTEN, and that halt is unconditional. The address contains the head, so a mismatch here means something wrote a receipt for a different node, attempt, repository or base into this head's slot. That is unexplained state, and the belt's move on unexplained state is to stop rather than to correct it - overwriting would destroy the only evidence that it happened."
 
 type BeltPublishGate
   = PublishProceed
@@ -3033,12 +3038,16 @@ fn belt_publish_gate(
     receipt_text: existing_text,
   ) {
     EvidenceAbsent => PublishProceed
-    EvidenceForSubject { receipt: _ } =>
-      PublishHalted {
-        outcome: PublishAlreadyRecorded {
-          node_id: node_id,
-          head_sha: subject.expected_head as String,
-        },
+    EvidenceForSubject { receipt } =>
+      if publication_receipt_offers_the_expected_head(outcome: receipt.outcome) {
+        PublishHalted {
+          outcome: PublishAlreadyRecorded {
+            node_id: node_id,
+            head_sha: subject.expected_head as String,
+          },
+        }
+      } else {
+        PublishProceed
       }
     EvidenceUnreadable { reason } =>
       PublishHalted {
@@ -3150,4 +3159,59 @@ fn belt_publish_attempt_for_instance(
       }
     }
   }
+}
+
+data belt_publish_credential_note: String = "THE CREDENTIAL IS PROBED FOR PRESENCE AND CARRIED AS A SOURCE, NEVER AS A VALUE. github.Pulls.List takes a CredentialSource - the same EnvVar row gunbc.tools.review_codex already passes - and the transport resolves it at the boundary, so the token itself never becomes a value in this graph. What this function establishes is only whether resolving it would find anything.\\n\\nWHY THE PROBE EXISTS AT ALL, rather than assuming presence: a publication read without a usable token is not a failed read, it is a read that must not be attempted. Sending an empty bearer produces a 401 whose only content is that we sent nothing - and the REST realization turns a 401 into a raise, so the most decidable failure on a fresh host would arrive as the least tractable kind of event. Probing turns it into an ordinary value that becomes a recorded refusal.\\n\\nTHE VALUE DOES TRANSIT, and pretending otherwise would be the overclaim. shell.Env.Get returns the variable's contents, so the token is briefly a String inside this process; only its emptiness escapes this function, and nothing stores or renders it. A presence probe that never read the value would need `test -n` against a variable this layer would have to name into a shell string, which is the composed-command shape the shell-to-intent lane exists to remove. Dissolve-on: a modeled presence-only environment probe, at which point this reads nothing.\\n\\nOutcomeIsData ADMISSIBILITY: printenv exits 1 when the variable is unset, and that exit IS the answer this function is asking for, not a fault. The result is a PublicationCredential whose two arms ARE the adjudication - never unit - which is the shape belt_outcome_is_data_note requires of every annotated probe here."
+
+data belt_publication_credential_source: CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
+
+fn belt_publication_credential() -> PublicationCredential {
+  match shell.Env.Get(name: "GITHUB_TOKEN" as NonEmptyStr, expect: OutcomeIsData).value {
+    Present { value } =>
+      if trim(value) == "" {
+        PublicationCredentialAbsent {
+          reason: "GITHUB_TOKEN is set to an empty value in the belt's environment",
+        }
+      } else {
+        PublicationCredentialPresent { source: belt_publication_credential_source }
+      }
+    Absent =>
+      PublicationCredentialAbsent {
+        reason: "GITHUB_TOKEN is not set in the belt's environment",
+      }
+  }
+}
+
+data belt_publish_pass_note: String = "PUBLICATION RUNS ON THE SAME TICK AS SPAWN, TEARDOWN AND VERIFY, because it is the same kind of fact: a desired obligation reconciled against an observed one. A producer nobody calls is the defect this lane keeps producing - every piece of the publication path existed before this pass and none of it ever ran - so the wiring is the deliverable, not the type.\\n\\nIT RUNS PER ATTEMPT, OVER THE SAME OBSERVED LEDGER VERIFY USES, and it does NOT wait for the agent to finish. That is the difference from the verify pass and it is deliberate: verification is an action taken ON the attempt, so running it early would burn a validation against an unfinished tree, while publication is an OBSERVATION of the remote, so running it early records the true state - the branch is not published yet - and the next tick revises it. The gate is what makes that safe, since only a receipt saying the head is on offer stops the revisions.\\n\\nONE CREDENTIAL PROBE PER TICK, not one per attempt. The environment does not change between attempts within a tick, and probing per attempt would multiply a process spawn by the attempt count for an answer that cannot differ."
+
+fn belt_publish_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<BeltPublishOutcome> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [
+        PublishDeferred {
+          node_id: "",
+          reason: join([
+            "the attempts ledger is unobservable, so no attempt's publication can be adjudicated: ",
+            reason,
+          ], ""),
+        },
+      ]
+    WorkflowAttemptsObserved { attempts } => {
+      let credential = belt_publication_credential()
+      map(attempts, progress => belt_publish_attempt_for_instance(
+        instance: instance,
+        node_id: progress.node_id,
+        attempt_key: progress.attempt_key,
+        credential: credential,
+      ))
+    }
+  }
+}
+
+fn belt_publish_attempts() -> List<BeltPublishOutcome> {
+  belt_publish_attempts_for_instance(
+    instance: srv1_live_dashboard_instance(),
+  )
 }
