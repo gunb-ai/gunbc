@@ -11,6 +11,8 @@ import v2.extdeps.languages.gha_workflow_yaml_fold {
   gha_fold_job_emitted_witness,
   gha_fold_job_wrong_production_emitted,
   gha_fold_job_wrong_production_target_model_witness,
+  gha_fold_prod_kind_sentinel,
+  gha_fold_scalar_kind_sentinel,
   gha_fold_target_model_for_job_witness
 }
 import v2.std.compilers.target_model { TargetModel }
@@ -55,7 +57,9 @@ fn gha_fold_fold_matches_oracle(job: Job) -> Bool {
 }
 
 test fn gha_fold_pilot_job_byte_identical_holds() -> Bool {
-  gha_fold_fold_matches_oracle(job: gha_fold_pilot_job)
+  gha_fold_prod_kind_sentinel == from_code_point(cp: 2)
+    && gha_fold_scalar_kind_sentinel == from_code_point(cp: 0)
+    && gha_fold_fold_matches_oracle(job: gha_fold_pilot_job)
 }
 
 test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
@@ -87,4 +91,3 @@ test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
     Violates { diagnostic: _ } => true
   }
 }
-

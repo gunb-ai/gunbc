@@ -776,6 +776,12 @@ fn bash_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
+data bash_fold_stmt_kind_sentinel: String = "\u{0002}"
+data bash_fold_word_lit_sentinel: String = "\u{0000}"
+data bash_fold_word_var_sentinel: String = "\u{0001}"
+data bash_fold_word_concat_sentinel: String = "\u{0003}"
+data bash_fold_word_cmdsubst_sentinel: String = "\u{0004}"
+
 fn bash_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -791,11 +797,11 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_token_if_kw, text: "if "),
       bash_fold_lex_rule(token_class: ^bash_token_if_then, text: "; then "),
       bash_fold_lex_rule(token_class: ^bash_token_if_fi, text: "; fi"),
-      bash_fold_lex_rule(token_class: ^bash_fold_stmt_kind_tag, text: "\u{0002}"),
-      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_lit, text: "\u{0000}"),
-      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_var, text: "\u{0001}"),
-      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_concat, text: "\u{0003}"),
-      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_cmdsubst, text: "\u{0004}"),
+      bash_fold_lex_rule(token_class: ^bash_fold_stmt_kind_tag, text: bash_fold_stmt_kind_sentinel),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_lit, text: bash_fold_word_lit_sentinel),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_var, text: bash_fold_word_var_sentinel),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_concat, text: bash_fold_word_concat_sentinel),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_cmdsubst, text: bash_fold_word_cmdsubst_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_open, text: "$("),
       bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_close, text: ")"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stderr_null, text: " 2>/dev/null"),

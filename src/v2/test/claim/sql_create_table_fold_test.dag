@@ -18,6 +18,7 @@ import v2.extdeps.formats.sql_create_table_fold {
   sql_fold_operation_emitted_witness,
   sql_fold_relation_row_witness,
   sql_fold_schema_operation_bundle_witness,
+  sql_fold_stmt_kind_sentinel,
   sql_fold_target_model_for_operation_witness,
   sql_fold_tasks_pk_table,
   sql_fold_tasks_single_col_table,
@@ -238,5 +239,6 @@ test fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
 }
 
 test fn sql_fold_direct_serialize_tier_holds() -> Bool {
-  sql_fold_direct_serialize_single_col_holds()
+  sql_fold_stmt_kind_sentinel == from_code_point(cp: 2)
+    && sql_fold_direct_serialize_single_col_holds()
 }
