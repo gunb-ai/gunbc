@@ -56,35 +56,33 @@ test fn repository_remote_head_bare_repo_by_real_execution() -> Bool {
     bindings: inv.bindings,
   )
   let observed = observe_repository_remote_heads(binding: binding)
-  let moved =
-    run(script: concat("cd ", work, " && echo file2 >> f && git add f && git commit -m move && git push"))
-      && observe_repository_remote_heads(binding: binding)
+  let pushed = run(script: concat("cd ", work, " && echo file2 >> f && git add f && git commit -m move && git push"))
+  let moved = observe_repository_remote_heads(binding: binding)
   let unavailable = observe_repository_remote_heads(
     binding: witness_binding(remote_url: concat(bare, "-missing"), worktree: work),
   )
   let cleaned = shell.Remove.RecursiveForce(path: root.path)
-  match materialized {
+  let argv_ok = match materialized {
     ArgvMaterializationRefused { at: _, cause: _ } => false
     ArgvMaterialized { argv } =>
       count(argv) >= 3 && argv.first() == "git"
   }
-    && setup
-    && match observed {
-      RepositoryRemoteHeadsRead { heads } => count(heads) == 1
-      RepositoryRemoteHeadProcessRefused { observation: _ } => false
-      RepositoryRemoteHeadDecodeRefused { cause: _ } => false
-    }
-    && match moved {
-      RepositoryRemoteHeadsRead { heads } => count(heads) == 1
-      RepositoryRemoteHeadProcessRefused { observation: _ } => false
-      RepositoryRemoteHeadDecodeRefused { cause: _ } => false
-    }
-    && match unavailable {
-      RepositoryRemoteHeadProcessRefused { observation: _ } => true
-      RepositoryRemoteHeadsRead { heads: _ } => false
-      RepositoryRemoteHeadDecodeRefused { cause: _ } => false
-    }
-    && cleaned.success
+  let observed_ok = match observed {
+    RepositoryRemoteHeadsRead { heads } => count(heads) == 1
+    RepositoryRemoteHeadProcessRefused { observation: _ } => false
+    RepositoryRemoteHeadDecodeRefused { cause: _ } => false
+  }
+  let moved_ok = match moved {
+    RepositoryRemoteHeadsRead { heads } => count(heads) == 1
+    RepositoryRemoteHeadProcessRefused { observation: _ } => false
+    RepositoryRemoteHeadDecodeRefused { cause: _ } => false
+  }
+  let unavailable_ok = match unavailable {
+    RepositoryRemoteHeadProcessRefused { observation: _ } => true
+    RepositoryRemoteHeadsRead { heads: _ } => false
+    RepositoryRemoteHeadDecodeRefused { cause: _ } => false
+  }
+  setup && pushed && argv_ok && observed_ok && moved_ok && unavailable_ok && cleaned.success
 }
 
 test fn repository_remote_head_keystone_holds_by_real_execution() -> Bool {
