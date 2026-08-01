@@ -4,8 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, ContentHash 
 import gunbc.guarantee_measurement {
   GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
   SubjectGrain, SyntheticProgram,
-  AcceptanceBoundary, CompileAccept, InterpreterRun, InferToEval, InferToTranslate,
-  CompileMode, V1Pipeline, V2SelfCompile,
+  AcceptanceBoundary, CompileAccept, RuntimeRun, InferToEval, InferToTranslate,
   PathRealization, InterpreterRealization, EmittedTarget,
   GuaranteePath,
   ProbeObservation, RefusedTyped, AcceptedClean, AcceptedCounted, ExecutionDiverged, ProbeNotRunnable,
@@ -27,7 +26,6 @@ fn synth_path(id: String) -> GuaranteePath {
     id: id as GuaranteePathId,
     subject_grain: SyntheticProgram,
     acceptance_boundary: CompileAccept,
-    compile_mode: V1Pipeline,
     realization_target: EmittedTarget { language: "rust" as GuaranteeTargetName },
   }
 }
@@ -36,8 +34,7 @@ fn synth_interp_path(id: String) -> GuaranteePath {
   GuaranteePath {
     id: id as GuaranteePathId,
     subject_grain: SyntheticProgram,
-    acceptance_boundary: InterpreterRun,
-    compile_mode: V1Pipeline,
+    acceptance_boundary: RuntimeRun,
     realization_target: InterpreterRealization,
   }
 }
@@ -47,7 +44,6 @@ fn synth_phase_path(id: String, boundary: AcceptanceBoundary) -> GuaranteePath {
     id: id as GuaranteePathId,
     subject_grain: SyntheticProgram,
     acceptance_boundary: boundary,
-    compile_mode: V2SelfCompile,
     realization_target: InterpreterRealization,
   }
 }

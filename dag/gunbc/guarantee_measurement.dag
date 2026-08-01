@@ -6,7 +6,7 @@ import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_c
 
 data guarantee_measurement_charter_note: String = "STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else (operator spine verdict 2026-08-01; roadmap node ladder-measurement-schema; gap analysis sec 12 Stage 0). Without this stage the probe corpus and the claims carrier each invent the receipt shape and meet in a protocol cycle - probes cannot emit rows the carrier has not defined, the carrier cannot derive dispositions from receipts that do not exist. So this module carries identity brands, the path row, the receipt row, and the joins that make a receipt REFUSE when it names an unknown subject - and deliberately nothing that claims anything about the compiler: no class population, no probe executes here, no disposition, no rung. Those arrive with ladder-probe-corpus and ladder-claims-carrier, which consume this vocabulary instead of minting temporary string keys."
 
-data guarantee_measurement_axis_discipline_note: String = "The axis enums are CLOSED AND MINIMAL, grounded on the paths real measurements exercise (DESIGN 4b names source-to-interpretation, source-to-each-emission-target, and phase-carrier-to-phase-carrier as independently measured paths): CompileAccept and InterpreterRun are the merged v1 walls' seams; InferToEval is the phase boundary gunbc#7485 landed (Eval refuses underived facts) and InferToTranslate is the boundary the containment workstream closes (operator verdict 2026-08-01: the fact stays grounding-was-not-derived, and the phase that consumes it is named by the PATH, never by a second diagnostic). A new variant lands WITH the first real path row that needs it, never speculatively - an earlier draft carried a generic PhaseCarrierAcceptance arm, deleted for exactly that reason: an unused axis variant is vocabulary claiming coverage nothing measures. GuaranteeTargetName is a receipt-vocabulary brand, not a language authority: it keeps a target name from being passed where a probe id belongs, and its grounding to the real per-language authority is deliberately deferred - dissolve-on the primitive-identity join reaching target-realization rows (v2-target-realization-gate lane), at which point this brand re-grounds on that authority and this sentence deletes."
+data guarantee_measurement_axis_discipline_note: String = "The axis enums are CLOSED AND MINIMAL, grounded on the paths real measurements exercise (DESIGN 4b names source-to-interpretation, source-to-each-emission-target, and phase-carrier-to-phase-carrier as independently measured paths): CompileAccept and RuntimeRun are the merged v1 walls' seams - RuntimeRun is deliberately realization-agnostic: the run happens IN the path's realization, so WHICH runtime (the interpreter arm or an emitted binary) is the realization axis's fact, never the boundary's, and an emitted-run path (the divergence probes' subject) is expressible rather than contradictory; InferToEval is the phase boundary gunbc#7485 landed (Eval refuses underived facts) and InferToTranslate is the boundary the containment workstream closes (operator verdict 2026-08-01: the fact stays grounding-was-not-derived, and the phase that consumes it is named by the PATH, never by a second diagnostic). A new variant lands WITH the first real path row that needs it, never speculatively - an earlier draft carried a generic PhaseCarrierAcceptance arm, deleted for exactly that reason: an unused axis variant is vocabulary claiming coverage nothing measures. The same rule deleted the compile_mode axis (review 46308): every landed control determines its pipeline from its boundary (the v1 walls' seams are v1, the phase boundaries are v2), so a stored mode was a second representation of a derivable fact (DESIGN 2) whose only writable novelty was the contradiction, and the axes that remain are fully orthogonal - the two constructible contradictions the review named are now unwritable, one dissolved by the RuntimeRun reading, one by this deletion. The axis returns as a stored fact WITH the first path row measured under two pipelines at one boundary, and enumerating valid families as a coproduct was rejected for that future: family rows restate the orthogonal axes per combination (the N-by-M shape DESIGN 2 folds into axes). GuaranteeTargetName is a receipt-vocabulary brand, not a language authority: it keeps a target name from being passed where a probe id belongs, and its grounding to the real per-language authority is deliberately deferred - dissolve-on the primitive-identity join reaching target-realization rows (v2-target-realization-gate lane), at which point this brand re-grounds on that authority and this sentence deletes."
 
 type GuaranteeClassId = NonEmptyStr where brand("GuaranteeClassId")
 type GuaranteePathId = NonEmptyStr where brand("GuaranteePathId")
@@ -20,13 +20,9 @@ type SubjectGrain
 
 type AcceptanceBoundary
   = CompileAccept
-  | InterpreterRun
+  | RuntimeRun
   | InferToEval
   | InferToTranslate
-
-type CompileMode
-  = V1Pipeline
-  | V2SelfCompile
 
 type PathRealization
   = InterpreterRealization
@@ -36,7 +32,6 @@ type GuaranteePath {
   id: GuaranteePathId
   subject_grain: SubjectGrain
   acceptance_boundary: AcceptanceBoundary
-  compile_mode: CompileMode
   realization_target: PathRealization
 }
 
