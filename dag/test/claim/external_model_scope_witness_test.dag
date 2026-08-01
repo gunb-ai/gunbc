@@ -158,6 +158,8 @@ test fn adopted_vendor_scopes_admitted_by_execution() -> Bool {
     && (external_model_scope_citations(scope: extdeps.vendor.atlassian.extdeps_model_scope) |> count) == 1
     && extdeps.vendor.microsoft.extdeps_model_scope.subject.name == "Microsoft Corporation"
     && extdeps.vendor.atlassian.extdeps_model_scope.subject.name == "Atlassian Corporation"
+    && extdeps.vendor.microsoft.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=MSFT"
+    && extdeps.vendor.atlassian.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=TEAM"
 }
 
 test fn preflight_rows_counted() -> Bool {

@@ -16,12 +16,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef { name: "Atlassian Corporation" },
   revision: none,
-  first_citation: ExternalAuthority {
-    uri: Uri {
-      scheme: Https
-      locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=TEAM"
-    }
-  },
+  first_citation: extdeps.vendor.atlassian.extdeps_external_authority_anchor,
   further_citations: []
 }
 
