@@ -8,7 +8,7 @@ import test.claim.heal_revalidation_witness {
   refused_dispatch_stays_required_and_located,
   only_exact_healed_head_complete_coverage_admits,
   manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidation,
-  expected_sha_preflight_matches_or_refuses_exactly
+  expected_sha_preflight_binds_run_subject_and_checkout_exactly
 }
 import test.claim.workflow_dispatch_input_witness {
   workflow_dispatch_nonempty_inputs_are_realized_not_dropped,
@@ -33,7 +33,7 @@ test fn heal_revalidation_integration_witnesses_hold() -> Bool {
     && refused_dispatch_stays_required_and_located()
     && only_exact_healed_head_complete_coverage_admits()
     && manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidation()
-    && expected_sha_preflight_matches_or_refuses_exactly()
+    && expected_sha_preflight_binds_run_subject_and_checkout_exactly()
     && workflow_dispatch_nonempty_inputs_are_realized_not_dropped()
     && workflow_dispatch_empty_inputs_preserve_null_projection()
     && actions_write_is_scoped_to_heal_only()
