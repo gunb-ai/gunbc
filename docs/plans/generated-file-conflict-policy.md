@@ -140,9 +140,11 @@ The commit writer consumes the regeneration receipt as a precondition — otherw
 can write a merge commit containing the provisional "ours" bytes and the drift gate
 merely detects the bad transition after it exists.
 
-**Documentation correction rides in the same change:** `docs/plans/invert-hand-maintained.md`
-line-52 row says `.gitattributes` must NOT be inverted (sound under its premise — no
-upstream authority existed then). The premise is superseded by this ruling; amend the row
+**Documentation correction rides in the same change:** the `.gitattributes` row of
+`gunbc.plans.invert_hand_maintained` `invert_hand_maintained_body` (projected into
+`docs/plans/invert-hand-maintained.md`) says `.gitattributes` must NOT be inverted (sound
+under its premise — no upstream authority existed then). The premise is superseded by
+this ruling; amend the row
 to record that `.gitattributes` is now an emitted Git compatibility projection whose
 non-default rows derive from repository artifact/storage/integration authorities, with no
 independently authored classification.
