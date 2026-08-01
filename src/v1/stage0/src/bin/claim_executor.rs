@@ -4653,6 +4653,7 @@ fn arm_population_budget_watchdog(
     population: &'static str,
     plan_site: &str,
     budget_ms: Option<u64>,
+    progress: PopulationBudgetProgress,
 ) -> Arc<std::sync::atomic::AtomicBool> {
     let armed = Arc::new(std::sync::atomic::AtomicBool::new(budget_ms.is_some()));
     let Some(budget_ms) = budget_ms else {
@@ -4660,24 +4661,120 @@ fn arm_population_budget_watchdog(
     };
     let watchdog_armed = armed.clone();
     let site = plan_site.to_string();
+    let started = Instant::now();
     let _ = std::thread::Builder::new()
         .name(format!("{population}-budget-watchdog"))
         .spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(budget_ms));
             if watchdog_armed.load(std::sync::atomic::Ordering::Acquire) {
-                let body = format!(
-                    "population={population}\nplan_site={site}\nbudget_ms={budget_ms}\noutcome=refused\n"
+                let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+                let locus = progress.snapshot();
+                let receipt = PopulationBudgetRefusal {
+                    population,
+                    plan_site: &site,
+                    population_index: locus.population_index,
+                    active_unit: &locus.active_unit,
+                    elapsed_ms,
+                    budget_ms,
+                };
+                let receipt_path = write_population_budget_refusal_at(Path::new("target"), &receipt)
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
+                use std::io::Write as _;
+                let mut stderr = std::io::stderr().lock();
+                let _ = writeln!(
+                    stderr,
+                    "claim_executor: {}-OVER-BUDGET — plan_site={} population_index={} active_unit={} elapsed_ms={} budget_ms={} receipt={}; executor refusing inside the population boundary",
+                    population.to_ascii_uppercase().replace('_', "-"),
+                    site,
+                    locus.population_index,
+                    locus.active_unit,
+                    elapsed_ms,
+                    budget_ms,
+                    receipt_path,
                 );
-                let _ = fs::create_dir_all("target");
-                let _ = fs::write("target/floor-population-budget-refusal.txt", body);
-                eprintln!(
-                    "claim_executor: {}-OVER-BUDGET — plan_site={site} budget_ms={budget_ms}; executor refusing inside the population boundary",
-                    population.to_ascii_uppercase().replace('_', "-")
-                );
+                let _ = stderr.flush();
                 std::process::exit(1);
             }
         });
     armed
+}
+
+#[derive(Clone, Debug)]
+struct PopulationBudgetLocus {
+    population_index: usize,
+    active_unit: String,
+}
+
+#[derive(Clone)]
+struct PopulationBudgetProgress(Arc<std::sync::Mutex<PopulationBudgetLocus>>);
+
+impl PopulationBudgetProgress {
+    fn before_first_unit() -> Self {
+        Self(Arc::new(std::sync::Mutex::new(PopulationBudgetLocus {
+            population_index: 0,
+            active_unit: "<before first unit>".to_string(),
+        })))
+    }
+
+    fn enter(&self, population_index: usize, active_unit: String) {
+        let mut locus = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        *locus = PopulationBudgetLocus {
+            population_index,
+            active_unit,
+        };
+    }
+
+    fn snapshot(&self) -> PopulationBudgetLocus {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+}
+
+struct PopulationBudgetRefusal<'a> {
+    population: &'a str,
+    plan_site: &'a str,
+    population_index: usize,
+    active_unit: &'a str,
+    elapsed_ms: u64,
+    budget_ms: u64,
+}
+
+fn population_budget_refusal_body(receipt: &PopulationBudgetRefusal<'_>) -> String {
+    format!(
+        "population={}\nplan_site={}\npopulation_index={}\nactive_unit={}\nelapsed_ms={}\nbudget_ms={}\noutcome=refused\n",
+        receipt.population,
+        receipt.plan_site,
+        receipt.population_index,
+        receipt.active_unit,
+        receipt.elapsed_ms,
+        receipt.budget_ms,
+    )
+}
+
+fn write_population_budget_refusal_at(
+    base: &Path,
+    receipt: &PopulationBudgetRefusal<'_>,
+) -> std::io::Result<PathBuf> {
+    fs::create_dir_all(base)?;
+    let path = base.join("floor-population-budget-refusal.txt");
+    fs::write(&path, population_budget_refusal_body(receipt))?;
+    Ok(path)
+}
+
+fn budget_unit_label(stage: &[Runnable]) -> String {
+    stage
+        .iter()
+        .map(|runnable| match runnable {
+            Runnable::SingleClaim {
+                entry, function, ..
+            } => format!("{entry}::{function}"),
+            Runnable::DiscoveryBatch { .. } => "<discovery batch>".to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn run_walk(
@@ -4710,8 +4807,13 @@ fn run_walk(
     let mut infra_faults: Vec<InfraFault> = Vec::new();
     let walk_start = Instant::now();
     let ordinary_start = Instant::now();
-    let ordinary_budget_armed =
-        arm_population_budget_watchdog("ordinary_floor", plan_site, ordinary_budget_ms);
+    let ordinary_budget_progress = PopulationBudgetProgress::before_first_unit();
+    let ordinary_budget_armed = arm_population_budget_watchdog(
+        "ordinary_floor",
+        plan_site,
+        ordinary_budget_ms,
+        ordinary_budget_progress.clone(),
+    );
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
@@ -4741,6 +4843,7 @@ fn run_walk(
             break;
         }
         batches_run = bi + 1;
+        ordinary_budget_progress.enter(bi + 1, budget_unit_label(batch));
         let StageRun {
             results: batch_results,
             label,
@@ -4976,8 +5079,13 @@ fn run_walk(
             }
         } else {
             let on_success_start = Instant::now();
-            let on_success_budget_armed =
-                arm_population_budget_watchdog("on_success", plan_site, on_success_budget_ms);
+            let on_success_budget_progress = PopulationBudgetProgress::before_first_unit();
+            let on_success_budget_armed = arm_population_budget_watchdog(
+                "on_success",
+                plan_site,
+                on_success_budget_ms,
+                on_success_budget_progress.clone(),
+            );
             let mut stage_rows: Vec<(usize, bool)> = Vec::new();
             let mut stage_resolves: u64 = 0;
             let mut stage_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
@@ -5006,6 +5114,7 @@ fn run_walk(
                     );
                     break;
                 }
+                on_success_budget_progress.enter(si + 1, budget_unit_label(stage));
                 let run = run_stage(
                     source_roots,
                     stage,
