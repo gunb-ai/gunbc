@@ -417,12 +417,6 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/generated_artifact_gate.dag --function main_wet
         timeout-minutes: 5
-      - name: Converge repository-local Git integration bindings (repo_local_git_config converge)
-        run: |
-          # 🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/repo_local_git_config.dag --function converge
-        timeout-minutes: 5
       - name: Commit + push regenerated artifacts to the triggering branch (only when drifted; byte-idempotent fixed point terminates the loop)
         run: |
           git config user.name "gunbc-ci-auto-heal"
@@ -514,4 +508,10 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        timeout-minutes: 5
+      - name: Converge repository-local Git integration bindings (repo_local_git_config converge)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/repo_local_git_config.dag --function converge
         timeout-minutes: 5
