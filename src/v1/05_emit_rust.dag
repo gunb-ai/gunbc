@@ -6513,10 +6513,13 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-  elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
+  let name_grain_eligible = elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
     || elem_name == "Secret" || elem_name == "Bytes" || rust_opaque_kernel_alias_type_eligible(name: elem_name)
+  (name_grain_eligible && elem_node.children |> count == 0)
     || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
 }
+
+data rust_btree_set_ord_name_grain_note: String = "The name-grain arms admit ONLY CHILDLESS nodes: a scalar/opaque-alias name denotes a childless carrier, and a name roster never examines type arguments, so without this gate any shape wearing an eligible name would be Ord-eligible by name alone (Symbol carrying Float must refuse; the enrolled negative control rust_btree_set_ord_eligibility_requires_nominal_carrier_shape is the discriminating RED). Shape-bearing nominal carriers are judged by rust_nominal_ord_type_eligible, which does examine structure."
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match set_type.children |> first {
