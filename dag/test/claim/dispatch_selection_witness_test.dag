@@ -1,6 +1,6 @@
 module test.claim.dispatch_selection_witness
 
-import std.types { Bool }
+import std.types { Bool, String }
 import gunbc.roadmap_model {
   IntricacyHigh,
   IntricacyLow,
@@ -31,12 +31,22 @@ import gunbc.dispatch_selection {
   SelectAutomatically,
   SelectCodex,
   SelectCursor,
+  CodexCredentialBinding,
+  CodexProviderControl,
+  DispatchModelNamed,
+  DispatchTemporalUnobserved,
+  DispatchUsageUnobserved,
+  DispatchAttemptUnassigned,
+  DispatchResolvedExecution,
   default_provider_selection_request,
   dispatch_selection_for_instance,
   provider_inventory_for_instance,
   automatic_codex_behavior_preservation_holds,
   inventory_includes_provider_kind,
   dispatch_codex_default_model,
+  dispatch_deep_selection_heuristic_note,
+  dispatch_execution_preference_alias_note,
+  dispatch_execution_receipt_bar_note,
 }
 
 test fn witness_automatic_codex_preserves_medium_effort() -> Bool {
@@ -141,12 +151,42 @@ test fn witness_receipt_records_requested_and_resolved() -> Bool {
               s.effort == ReasoningMedium
                 && receipt.applied_effort == ReasoningMedium
                 && receipt.provider_kind == CodexCliProvider
+                && match receipt.resolved_execution {
+                  DispatchResolvedExecution {
+                    provider_instance: inst,
+                    credential_binding: CodexCredentialBinding { binding: _ },
+                    model_identity: DispatchModelNamed { model: m },
+                    provider_control: CodexProviderControl { effort: e },
+                    provider_version: _,
+                    temporal_bounds: DispatchTemporalUnobserved { reason: _ },
+                    usage_observations: DispatchUsageUnobserved { reason: _ },
+                    attempt_identity: DispatchAttemptUnassigned { reason: _ },
+                  } =>
+                    inst.kind == CodexCliProvider
+                      && m == dispatch_codex_default_model
+                      && e == ReasoningMedium
+                }
             _ => false
           }
         _ => false
       }
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
+}
+
+test fn witness_carrier_notes_record_directive_addendum() -> Bool {
+  string_contains(
+    s: dispatch_execution_preference_alias_note,
+    pattern: "ExecutionPreference",
+  )
+    && string_contains(
+      s: dispatch_deep_selection_heuristic_note,
+      pattern: "RISK/JUDGMENT",
+    )
+    && string_contains(
+      s: dispatch_execution_receipt_bar_note,
+      pattern: "REQUESTED",
+    )
 }
 
 test fn witness_wrong_selection_shape_refuses() -> Bool {
@@ -184,6 +224,7 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_srv2_inventory_includes_cursor()
     && witness_srv2_cursor_selection_resolves()
     && witness_receipt_records_requested_and_resolved()
+    && witness_carrier_notes_record_directive_addendum()
     && witness_wrong_selection_shape_refuses()
     && witness_exact_override_requires_explicit_provider_arm()
 }
