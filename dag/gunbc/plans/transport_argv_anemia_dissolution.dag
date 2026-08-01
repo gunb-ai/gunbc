@@ -95,6 +95,25 @@ fn taad_lanes() -> List<MarkdownBlock> {
   ]
 }
 
+fn taad_mechanism_taxonomy() -> List<MarkdownBlock> {
+  [
+    h2(text: "The execution-mechanism taxonomy (landed on PR 7526, bright-dove-771)"),
+    p(text: "One declaration form, `transport shell`, was realized by five materially different mechanisms with nothing in the row to tell them apart. That is why a wall written against the spelling is always either too broad or too narrow: most rows saying `transport shell` are not shell at all. The seed's `dispatch_shell` calls `std::process::Command::new` on argv[0], so an ordinary executable is a direct exec and a shell is involved only when the executable IS a shell interpreter, or when the path is OpenSSH and the far side reinterprets."),
+    ul(items: [
+      li(text: "LocalProcess — direct local process execution (git, cargo, systemctl)."),
+      li(text: "LocalShellScript — a local shell interpreter reads a script (sh, bash, dash, ksh, zsh)."),
+      li(text: "RemoteShellCommand — OpenSSH, whose remote command is reconstructed and interpreted by the far-side shell. This is why the portable-character allowlist in extdeps.ssh.session exists, and why that operation is remote-shell execution rather than structured argv."),
+      li(text: "RemoteStructuredExecution — deliberately DISTINCT and currently uninhabited by any handler. It names the future gunbc receiver that accepts a structured invocation and calls exec without shell reinterpretation, so the absence is visible instead of silently folded into the SSH arm."),
+      li(text: "ForeignShellArtifact — not execution by this runtime at all: shell TEXT emitted for GitHub Actions run steps, cron, or git hooks. It shared a spelling with direct exec, which is the sharpest instance of the conflation."),
+    ]),
+    h3(text: "Why this is construction and not a label"),
+    p(text: "The carrier is `v2.std.execution_mechanism`: `ExecutionMechanism` is the five-arm coproduct and `execution_mechanism_from_evidence` derives it from `ExecutionMechanismEvidence` — spawn-an-executable, send-a-structured-invocation, or emit-shell-text. Nothing hand-labels a site, which matters because a hand-written label is the same anemia one layer up: a row could then claim a mechanism it does not use and nothing would catch it. Enrollment is likewise derived — `shell_transport_operation_rows` enumerates every shell-transport operation from the DECLARATIONS under dag and src/v2, so a newly authored operation enrolls by existing rather than by being added to a roster, which would be the parallel-ledger form of the same fact."),
+    p(text: "The wall is fail-closed rather than best-effort: classification answers `ShellTransportMechanismClassified` or `ShellTransportMechanismRefused`, so a new site whose executable is not a literal REFUSES instead of being guessed into the nearest arm. A guess here would be the absorbing fallback — the taxonomy would stay green by construction while saying nothing true."),
+    p(text: "Orthogonality worth keeping: mechanism is independent of `Placement` and `Materialization` in std.realization. Where work occurs and whether it is shared do not determine how an operation crosses its execution boundary."),
+    p(text: "Bound on this row, stated rather than implied: the executed receipt lives on PR 7526 — a live-tree witness with per-mechanism RED controls and an ambiguity-wall control — and was read here rather than re-run, so this section reports the shape it verified by reading and cites that PR for the execution."),
+  ]
+}
+
 fn taad_growth_walls() -> List<MarkdownBlock> {
   [
     h2(text: "Freeze growth before migrating the corpus"),
@@ -130,7 +149,8 @@ fn transport_argv_anemia_dissolution_body() -> List<MarkdownBlock> {
   concat(taad_decode(),
   concat(taad_target(),
   concat(taad_lanes(),
-  concat(taad_growth_walls(), taad_sequence()))))))
+  concat(taad_mechanism_taxonomy(),
+  concat(taad_growth_walls(), taad_sequence())))))))
 }
 
 data transport_argv_anemia_dissolution_plan: Plan = Plan {
