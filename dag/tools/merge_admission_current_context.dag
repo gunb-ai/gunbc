@@ -1,0 +1,138 @@
+module tools.merge_admission_current_context
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { NonEmptyStr, GitRef }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.git.object_store {
+  GitObjectIdTextDecoded,
+  GitObjectIdTextRefused,
+  git_decode_object_id_text,
+  git_object_id_format,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.merge_admission {
+  WalkAttemptId,
+  MergeAdmissionVerdict,
+  MergeAdmitted,
+  MergeDeniedStaleBase,
+  MergeDeniedStaleRoster,
+  MergeDeniedNotSuccess,
+  MergeDeniedWrongAttempt,
+  MergeDeniedSubjectMismatch,
+  classify_merge_admission_verdict_v2,
+  current_gate_roster_hash,
+  merge_admission_verdict_label,
+}
+import gunbc.merge_admission_produce {
+  compose_walk_attempt_id,
+  compose_explicit_walk_attempt_id,
+  merge_admission_tested_subject_path,
+  merge_admission_floor_receipt_path,
+  parse_tested_subject_wire,
+  parse_receipt_wire_v2,
+  merge_admission_merge_base_ref,
+  merge_admission_gate_fetch_parts,
+  shell_stdout_line,
+}
+
+fn optional_env(name: NonEmptyStr) -> String? {
+  let observed = shell.Env.Get(name: name)
+  match observed.value {
+    Present { value: raw } =>
+      let value = trim(raw)
+      if value == "" { none } else { Present { value: value } }
+    Absent => none
+  }
+}
+
+fn current_walk_attempt_id() -> WalkAttemptId? {
+  match optional_env(name: "GUNBC_WALK_ATTEMPT_ID") {
+    Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
+    Absent =>
+      compose_walk_attempt_id(
+        run_id: match optional_env(name: "GITHUB_RUN_ID") {
+          Present { value: value } => value
+          Absent => ""
+        },
+        run_attempt: match optional_env(name: "GITHUB_RUN_ATTEMPT") {
+          Present { value: value } => value
+          Absent => ""
+        },
+        job: match optional_env(name: "GITHUB_JOB") {
+          Present { value: value } => value
+          Absent => ""
+        },
+      )
+  }
+}
+
+fn denied_exit(verdict: MergeAdmissionVerdict) -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "merge_admission_current_context: blocked (",
+      concat(merge_admission_verdict_label(v: verdict), ")")
+    )
+  )
+}
+
+func main() -> ProcessExit {
+  let attempt = match current_walk_attempt_id() {
+    Present { value: value } => value
+    Absent => return exit_failure(reason: "merge_admission_current_context: walk attempt identity absent or invalid")
+  }
+  let root = git.Inspect.Toplevel().path as String
+  let subject_read = Filesystem.Read(
+    path: merge_admission_tested_subject_path(root: root, attempt_id: attempt)
+  )
+  if !subject_read.success {
+    return exit_failure(reason: "merge_admission_current_context: tested-subject wire missing")
+  }
+  let subject = match parse_tested_subject_wire(text: subject_read.content) {
+    Present { value: value } => value
+    Absent => return exit_failure(reason: "merge_admission_current_context: tested-subject wire invalid")
+  }
+  let receipt_read = Filesystem.Read(
+    path: merge_admission_floor_receipt_path(root: root, attempt_id: attempt)
+  )
+  if !receipt_read.success {
+    return exit_failure(reason: "merge_admission_current_context: floor-receipt wire missing")
+  }
+  let receipt = match parse_receipt_wire_v2(text: receipt_read.content) {
+    Present { value: value } => value
+    Absent => return exit_failure(reason: "merge_admission_current_context: floor-receipt wire invalid")
+  }
+  let fetch_parts = merge_admission_gate_fetch_parts()
+  let fetched = git.Core.FetchNoTags(remote: fetch_parts.remote, ref: fetch_parts.ref_name)
+  if !fetched.success {
+    return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
+  }
+  let observed = git.Inspect.ShowTree(ref: merge_admission_merge_base_ref as GitRef)
+  if !observed.success {
+    return exit_failure(reason: "merge_admission_current_context: current merge target tree observation refused")
+  }
+  let target = match git_decode_object_id_text(
+    format: git_object_id_format(oid: receipt.tested_base_tree),
+    text: shell_stdout_line(raw: observed.tree),
+  ) {
+    GitObjectIdTextDecoded { oid: oid } => oid
+    GitObjectIdTextRefused { cause: _ } =>
+      return exit_failure(reason: "merge_admission_current_context: current merge target object id refused")
+  }
+  let verdict = classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt,
+    tested_subject: subject,
+    receipt: receipt,
+    merge_target_tree: target,
+    current_roster_hash: current_gate_roster_hash,
+  )
+  match verdict {
+    MergeAdmitted => ExitSuccess
+    MergeDeniedStaleBase => denied_exit(verdict: verdict)
+    MergeDeniedStaleRoster => denied_exit(verdict: verdict)
+    MergeDeniedNotSuccess => denied_exit(verdict: verdict)
+    MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
+    MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
+  }
+}
