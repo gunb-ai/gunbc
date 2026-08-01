@@ -3,6 +3,16 @@ module test.claim.operation_argv_corpus_witness
 import std.types { String, List, Bool, Int }
 import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.execution_mechanism {
+  LocalProcess,
+  LocalShellScript,
+  RemoteShellCommand,
+  RemoteStructuredExecution,
+  ForeignShellArtifact,
+  SendStructuredInvocationToRemoteReceiver,
+  EmitShellTextForForeignExecutor,
+  execution_mechanism_from_evidence,
+}
 import v2.std.operation_argv {
   ArgvMaterialization,
   ArgvMaterialized,
@@ -17,6 +27,9 @@ import v2.std.operation_argv {
   operation_argv_classify,
   operation_argv_refusal_label,
   operation_argv_row_bindings,
+  ShellTransportMechanismClassified,
+  ShellTransportMechanismRefused,
+  shell_transport_operation_mechanism,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -132,6 +145,87 @@ test fn operation_argv_corpus_outside_legacy_vocabulary_now_materializes() -> Bo
 test fn operation_argv_corpus_outside_legacy_vocabulary_is_the_majority() -> Bool {
   let t = operation_argv_corpus_tally()
   t.outside_legacy >= 96 && (t.outside_legacy + t.outside_legacy) > t.rows
+}
+
+fn operation_mechanism_is(path: String, service: String, operation: String, expected: String) -> Bool {
+  any(
+    xs: shell_transport_operation_rows(),
+    predicate: fn(row) {
+      if row.at.path == path && row.at.service == service && row.at.operation == operation {
+        match shell_transport_operation_mechanism(row: row) {
+          ShellTransportMechanismClassified { mechanism: mechanism } => match mechanism {
+            LocalProcess => expected == "LocalProcess"
+            LocalShellScript => expected == "LocalShellScript"
+            RemoteShellCommand => expected == "RemoteShellCommand"
+            RemoteStructuredExecution => expected == "RemoteStructuredExecution"
+            ForeignShellArtifact => expected == "ForeignShellArtifact"
+          }
+          ShellTransportMechanismRefused { at: _ } => false
+        }
+      } else {
+        false
+      }
+    }
+  )
+}
+
+test fn operation_execution_mechanism_RED_direct_exec_is_not_shell() -> Bool {
+  operation_mechanism_is(
+    path: "dag/extdeps/git/git.dag",
+    service: "git.Core",
+    operation: "CurrentBranch",
+    expected: "LocalProcess"
+  )
+}
+
+test fn operation_execution_mechanism_RED_local_interpreter_is_script() -> Bool {
+  operation_mechanism_is(
+    path: "dag/extdeps/shell/exec.dag",
+    service: "shell.Exec",
+    operation: "Run",
+    expected: "LocalShellScript"
+  )
+}
+
+test fn operation_execution_mechanism_RED_openssh_is_remote_shell() -> Bool {
+  operation_mechanism_is(
+    path: "dag/extdeps/ssh/session.dag",
+    service: "ssh.Session",
+    operation: "ExecArgv",
+    expected: "RemoteShellCommand"
+  )
+}
+
+test fn operation_execution_mechanism_future_structured_and_foreign_artifact_stay_distinct() -> Bool {
+  let structured = execution_mechanism_from_evidence(
+    evidence: SendStructuredInvocationToRemoteReceiver
+  )
+  let foreign = execution_mechanism_from_evidence(
+    evidence: EmitShellTextForForeignExecutor
+  )
+  match structured {
+    RemoteStructuredExecution => match foreign {
+      ForeignShellArtifact => true
+      LocalProcess => false
+      LocalShellScript => false
+      RemoteShellCommand => false
+      RemoteStructuredExecution => false
+    }
+    LocalProcess => false
+    LocalShellScript => false
+    RemoteShellCommand => false
+    ForeignShellArtifact => false
+  }
+}
+
+test fn operation_execution_mechanism_new_ambiguous_site_wall_holds() -> Bool {
+  let refused = shell_transport_operation_rows()
+    |> filter(row => match shell_transport_operation_mechanism(row: row) {
+      ShellTransportMechanismClassified { mechanism: _ } => false
+      ShellTransportMechanismRefused { at: _ } => true
+    })
+  length(xs: refused) == 1
+    && any(xs: refused, predicate: fn(row) { row.at.path == operation_argv_fixture_path })
 }
 
 test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool {

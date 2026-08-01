@@ -9946,6 +9946,13 @@ fn eval_builtin_inner(
                                     .collect::<Vec<_>>(),
                             ),
                         ),
+                        (
+                            ctx.sym("executable"),
+                            match row.executable {
+                                Some(executable) => optional_present(Value::Str(executable), ctx),
+                                None => optional_absent(ctx),
+                            },
+                        ),
                     ])),
                 });
             }

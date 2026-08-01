@@ -31963,6 +31963,22 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
+    /// The literal program passed to `Command::new` by `dispatch_shell`.
+    /// None is the already-refused bindable-executable fixture, never an
+    /// invitation to guess a mechanism from the legacy `transport shell` word.
+    pub executable: Option<String>,
+}
+
+fn literal_transport_executable(transport: &Rc<crate::v1_std_core::Node>) -> Option<String> {
+    use crate::v1_std_core::{ExprData, LiteralValue};
+    let first = transport.children.first()?;
+    match first.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => Some(value.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn collect_argv_input_refs(
@@ -32072,6 +32088,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         .map(|(name, _)| name)
                         .collect(),
                     argv_input_refs,
+                    executable: literal_transport_executable(&transport),
                 });
             }
         }

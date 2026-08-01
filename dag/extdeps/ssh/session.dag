@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ssh_typed_argv_exec_note: String = "Structured remote argv dispatch: ssh host -- argv... (OpenSSH end-of-options separator). ExecArgv splices a List<String> remote argv without embedding a shell command string. Portable-argv allowlist is enforced at the gunbc realization edge before calling this transport (Wave C5 / bash-emit #5828 slice)."
+data ssh_remote_shell_exec_note: String = "Remote-shell command dispatch: ssh host -- words... (OpenSSH end-of-options separator). This is NOT structured argv end to end: OpenSSH reconstructs a command for the remote shell, which reinterprets the words. The portable-word allowlist at gunbc.typed_argv_exec is therefore the near-term fail-closed wall. A future receiver that accepts a structured invocation and calls exec on the far side is the distinct RemoteStructuredExecution mechanism; ssh.Session does not claim it."
 
 fn shape_scp_copy_to_argv(
   host: NonEmptyStr,
@@ -18,7 +18,7 @@ fn shape_scp_copy_to_argv(
   [local_path as String, join([host as String, ":", remote_path as String], "")]
 }
 
-type SshSessionExecResult {
+type RemoteShellOutcome {
   exit_code: Int
   success: Bool
   stdout: String
@@ -101,8 +101,8 @@ fn ssh_session_exec_result_from_service(
   success: Bool,
   stdout: String,
   stderr: String,
-) -> SshSessionExecResult {
-  SshSessionExecResult {
+) -> RemoteShellOutcome {
+  RemoteShellOutcome {
     exit_code: exit_code,
     success: success,
     stdout: stdout,
@@ -110,7 +110,7 @@ fn ssh_session_exec_result_from_service(
   }
 }
 
-fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecResult {
+fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> RemoteShellOutcome {
   let result = ssh.Session.Exec(host: host, command: command)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
@@ -120,7 +120,7 @@ fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecRe
   )
 }
 
-fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>) -> SshSessionExecResult {
+fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>) -> RemoteShellOutcome {
   let result = ssh.Session.ExecArgv(host: host, argv: argv)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
@@ -130,7 +130,7 @@ fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>) -> SshSessionExe
   )
 }
 
-fn ssh_session_exec_script(host: NonEmptyStr, script: String) -> SshSessionExecResult {
+fn ssh_session_exec_script(host: NonEmptyStr, script: String) -> RemoteShellOutcome {
   let result = ssh.Session.ExecScript(host: host, script: script)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
