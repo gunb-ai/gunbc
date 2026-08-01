@@ -46,8 +46,7 @@ import gunbc.stage0_rust_host_observation {
   RustManifestObserved,
   stage0_cargo_manifest_parser_seed_scaffold,
   stage0_cargo_manifest_projection_seed_scaffold,
-  stage0_rust_observation_seed_growth_justification,
-  rust_source_host_observation
+  stage0_rust_observation_seed_growth_justification
 }
 import gunbc.stage0_emit_model { generated_stage0_file_count }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
