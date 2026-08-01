@@ -8,6 +8,11 @@ import gunbc.commit_workflow {
   CommitWriterNormalTextObservation,
   CommitWriterNormalNonTextObservation,
   CommitWriterUnmergedObservation,
+  CommitWriterUnmergedStagePopulation,
+  CommitWriterIndexStageBase,
+  CommitWriterIndexStageOurs,
+  CommitWriterIndexStageTheirs,
+  commit_writer_unmerged_git_index_stages,
   CommitWriterPathObservation,
   CommitWriterAdmitted,
   CommitWriterRefused,
@@ -22,7 +27,6 @@ import extdeps.git.object_store {
   GitTreeEntryName,
   GitTreeEntryNameOctetAfterSlash,
   GitTreeEntryNameAfterSlashValue,
-  GitIndexStageNormal,
   GitIndexStageBase,
   GitIndexStageOurs,
   GitIndexStageTheirs,
@@ -69,7 +73,6 @@ fn test_artifact() -> Artifact {
 fn clean_observation() -> CommitWriterPathObservation {
   CommitWriterNormalTextObservation {
     path: publication_grant_path(),
-    stage: GitIndexStageNormal,
     text: "data public_file_publish_grants: List<PublicFilePublishGrant> = []\n",
     provenance: source_artifact(),
   }
@@ -78,7 +81,10 @@ fn clean_observation() -> CommitWriterPathObservation {
 fn unmerged_218dea6_observation() -> CommitWriterPathObservation {
   CommitWriterUnmergedObservation {
     path: publication_grant_path(),
-    stages: [GitIndexStageBase, GitIndexStageOurs, GitIndexStageTheirs],
+    stages: CommitWriterUnmergedStagePopulation {
+      first: CommitWriterIndexStageBase,
+      rest: [CommitWriterIndexStageOurs, CommitWriterIndexStageTheirs],
+    },
   }
 }
 
@@ -89,7 +95,6 @@ fn staged_marker_218dea6_text() -> String {
 fn staged_marker_observation(provenance: Artifact) -> CommitWriterPathObservation {
   CommitWriterNormalTextObservation {
     path: publication_grant_path(),
-    stage: GitIndexStageNormal,
     text: staged_marker_218dea6_text(),
     provenance: provenance,
   }
@@ -119,9 +124,11 @@ test fn unmerged_index_218dea6_shape_refuses_typed_and_located() -> Bool {
       (count(refusals) == 1) && match first(refusals) {
         Absent => false
         Present { value: refusal } => match refusal {
-          CommitWriterUnmergedIndexRefusal { path, stages } =>
+          CommitWriterUnmergedIndexRefusal { path, stages } => {
+            let observed_stages = commit_writer_unmerged_git_index_stages(stages: stages)
             (path == publication_grant_path())
-              && (stages == [GitIndexStageBase, GitIndexStageOurs, GitIndexStageTheirs])
+              && (observed_stages == [GitIndexStageBase, GitIndexStageOurs, GitIndexStageTheirs])
+          }
           CommitWriterConflictMarkerTextRefusal { location: _ } => false
         }
       }
@@ -165,7 +172,6 @@ test fn both_refusal_arms_are_independent_and_accumulate() -> Bool {
 test fn isolated_marker_token_red_control_admits() -> Bool {
   let observation = CommitWriterNormalTextObservation {
     path: publication_grant_path(),
-    stage: GitIndexStageNormal,
     text: "a legitimate explanation can mention <<<<<<< HEAD without carrying a separator and end",
     provenance: source_artifact(),
   }
@@ -178,7 +184,6 @@ test fn isolated_marker_token_red_control_admits() -> Bool {
 test fn out_of_order_marker_red_control_admits() -> Bool {
   let observation = CommitWriterNormalTextObservation {
     path: publication_grant_path(),
-    stage: GitIndexStageNormal,
     text: "<<<<<<< HEAD\nleft\n>>>>>>> origin/main\n=======\nright\n",
     provenance: source_artifact(),
   }
@@ -201,7 +206,6 @@ test fn typed_test_artifact_provenance_exempts_complete_fixture() -> Bool {
 test fn non_text_normal_blob_admits_without_fabricating_text() -> Bool {
   let observation = CommitWriterNormalNonTextObservation {
     path: publication_grant_path(),
-    stage: GitIndexStageNormal,
   }
   match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
     CommitWriterAdmitted { writer: _ } => true

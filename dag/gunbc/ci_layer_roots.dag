@@ -113,6 +113,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "the frontier reaches zero — at which point this row is a still-red expectation against a green witness and MUST be deleted in the same change that lands the last migration, promoting the witness to ordinary DiscoverySelection as a standing regression ratchet (the counted un-quarantine event of std.witness_admission)"
   },
   WitnessExclusionRow {
+    pattern: "commit_writer_test_artifact_provenance_ceiling_test.dag",
+    classification: QuarantineProbeExpectRed,
+    reason: "PAIRED with the known_red_probe_entries row below. This is the expecting-red proof of commit-writer fixture-provenance's honest attainable ceiling: v2.std.artifact Artifact remains publicly constructible, so a caller can mint TestClaimArtifact and bypass marker refusal. Production writer bindings must stamp provenance at their trusted staged-blob observer boundary; this row prevents that boundary obligation from being mislabeled structural impossibility.",
+    dissolve_on: "the unforgeable-construction capability's sole_constructor completeness audit lands and seals test-artifact provenance construction; this unchanged witness greens, this row and its known_red_probe_entries row delete, and the witness promotes to ordinary DiscoverySelection as the permanent regression control"
+  },
+  WitnessExclusionRow {
     pattern: "source_integration_proof_kernel_acceptance_test.dag",
     classification: QuarantineProbeExpectRed,
     reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node 2-scm-p1-proof-kernel, RED BY DESIGN while the derived KernelAcceptanceCapability frontier is nonzero. The first slice supplies the bounded candidate-generation model check; the one public fold, occurrence dedup, context transport, commuting squares, batch invariance, n-way safety, order honesty, all seven closure certificates, and data-only invariant extension stay missing until executing scenarios establish them. The validation cannot pass on zero progress and is bound directly by scm_p1_proof_kernel_execution_contract.",
@@ -755,6 +761,7 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds"),
   probe_red(entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag", f: "compiler_closure_scoped_ingest_module_count_ok_holds"),
   probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
+  probe_red(entry: "dag/test/claim/commit_writer_test_artifact_provenance_ceiling_test.dag", f: "caller_minted_test_artifact_cannot_bypass_marker_refusal"),
   probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds")
 ]
 

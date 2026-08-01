@@ -1,0 +1,53 @@
+module test.claim.commit_writer_test_artifact_provenance_ceiling_test
+
+import gunbc.commit_workflow {
+  HumanGitCommit,
+  CommitWriterNormalTextObservation,
+  CommitWriterAdmitted,
+  CommitWriterRefused,
+  admit_commit_writer
+}
+import extdeps.git.object_store {
+  GitPath,
+  GitPathDecoded,
+  GitPathDecodeRefused,
+  GitTreeEntryName,
+  GitTreeEntryNameOctetAfterSlash,
+  GitTreeEntryNameAfterSlashValue,
+  git_decode_path_octets
+}
+import v2.std.artifact { Artifact, TestClaimArtifact }
+
+data commit_writer_test_artifact_provenance_ceiling_note: String = "EXPECTING RED: Artifact is publicly constructible today, so a commit caller can forge kind: TestClaimArtifact and make complete marker grammar admit. Production policy does not accept caller provenance: the heal and dashboard bindings named by gunbc.commit_workflow commit_writer_admission_note must stamp provenance in their trusted staged-blob observation transports. Honest DESIGN safety rung is mechanically preventive at that boundary, not structural impossibility. Attainable ceiling and next-rung trigger: the unforgeable-construction capability's sole_constructor completeness audit; when the Artifact/test-provenance construction wall lands, this unchanged witness greens and becomes the permanent regression control while its QuarantineProbeExpectRed enrollment deletes."
+
+fn ceiling_fixture_path() -> GitPath {
+  match git_decode_path_octets(octets: [102, 105, 120, 116, 117, 114, 101, 46, 100, 97, 103]) {
+    GitPathDecoded { path } => path
+    GitPathDecodeRefused { cause: _ } => GitPath {
+      first: GitTreeEntryName {
+        first: GitTreeEntryNameOctetAfterSlash {
+          value: 120 as GitTreeEntryNameAfterSlashValue,
+        },
+        rest: [],
+      },
+      rest: [],
+    }
+  }
+}
+
+test fn caller_minted_test_artifact_cannot_bypass_marker_refusal() -> Bool {
+  let caller_minted = Artifact {
+    kind: TestClaimArtifact,
+    id: ^caller_minted_test_claim_artifact,
+    file_path: "not stamped by a trusted staged-blob observer",
+  }
+  let observation = CommitWriterNormalTextObservation {
+    path: ceiling_fixture_path(),
+    text: "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> origin/main\n",
+    provenance: caller_minted,
+  }
+  match admit_commit_writer(writer: HumanGitCommit, paths: [observation]) {
+    CommitWriterAdmitted { writer: _ } => false
+    CommitWriterRefused { writer: _, refusals: _ } => true
+  }
+}
