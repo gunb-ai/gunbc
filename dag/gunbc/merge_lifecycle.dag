@@ -14,7 +14,7 @@ data merge_lifecycle_authority_note: String = "Lifecycle DYNAMICS over the gunbc
 
 data merge_lifecycle_incident_note: String = "Grounding incident (2026-07-16, the #6663 x #6686 main-red): PR #6663 went green on run 29459154549 against a pre-#6686 base; #6686 landed during that window; the squash union — never tested — reddened every main push at floor resolve with 28 missing-field errors (first red: run 29461044828) until the root fix #6701. In this module's vocabulary: RunPrCi(#6663) minted a receipt at tip0; MergePr(#6686) advanced the tip; MergePr(#6663) then landed squash_result_tree(#6663, tip1) with only a tip0 receipt — admitted under PerPrGateOnly (the live policy: GitHub strict_required_status_checks false, no merge queue), refused under KeyedReceipt as MergeDeniedStaleBase. The incident trace is the permanent RED fixture in test.claim.merge_lifecycle_interleaving_witness."
 
-data merge_lifecycle_window_note: String = "The interleaving witness enumerates EVERY event sequence of exact length 4 over its alphabet (no sampling, no silent cap — the witness asserts the full 625 count so truncation cannot read as coverage, DESIGN 5). The violation flag LATCHES in LifecycleState, so every shorter lifecycle is covered as a prefix of some length-4 sequence. 4 suffices for the grounded incident (4 events) and for the roster axis (3 events: RunPrCi, RosterBump, MergePr); widening the window or alphabet is a cheap follow-on, priced only when a concrete interleaving class needs it (DESIGN 6)."
+data merge_lifecycle_window_note: String = "The interleaving witness enumerates EVERY event sequence of exact length 4 over its alphabet (no sampling, no silent cap — the witness asserts the full count so truncation cannot read as coverage, DESIGN 5). The alphabet includes the same PR number at two different heads: the ordinary auto-heal transition where generated artifacts are committed after an earlier head earned evidence. The violation flag LATCHES in LifecycleState, so every shorter lifecycle is covered as a prefix of some length-4 sequence. 4 suffices for the grounded incident (4 events), for the roster axis (3 events: RunPrCi, RosterBump, MergePr), and for the heal axis (2 events: RunPrCi(old head), MergePr(healed head)); widening the window or alphabet is priced only when a concrete interleaving class needs it (DESIGN 6)."
 
 type PrIdentity {
   number: Int
@@ -56,29 +56,29 @@ fn initial_lifecycle_state() -> LifecycleState {
   }
 }
 
-fn receipt_is_for_pr(r: MergeAdmissionReceipt, pr_number: Int) -> Bool {
+fn receipt_is_for_pr_head(r: MergeAdmissionReceipt, pr: PrIdentity) -> Bool {
   match r.pr_number {
-    Present { value } => value == pr_number
+    Present { value } => value == pr.number && r.head_sha == pr.head_sha
     Absent => false
   }
 }
 
-fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr_number: Int) -> List<MergeAdmissionReceipt> {
+fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr: PrIdentity) -> List<MergeAdmissionReceipt> {
   fold(receipts, init: [], f: fn(acc, r) {
-    if receipt_is_for_pr(r: r, pr_number: pr_number) { [r] } else { acc }
+    if receipt_is_for_pr_head(r: r, pr: pr) { [r] } else { acc }
   })
 }
 
-data latest_receipt_semantics_note: String = "latest_receipt_for keeps the LAST minted receipt for the PR — faithful to GitHub required checks, which consult the most recent run of the required context on the head, not any historical green."
+data latest_receipt_semantics_note: String = "latest_receipt_for keeps the LAST minted receipt for the exact (PR number, head SHA) pair. GitHub required checks attach evidence to a commit, not to a mutable PR number: after auto-heal pushes a new head, the old head's green is historical evidence and the new head has no admissible receipt until CI re-runs. Joining on number alone admitted RunPrCi(old head) then MergePr(healed head), the exact stale-evidence class the heal transition creates."
 
 fn merge_enabled(
   policy: AdmissionPolicy,
   receipts: List<MergeAdmissionReceipt>,
-  pr_number: Int,
+  pr: PrIdentity,
   tip: ContentHash,
   roster: ContentHash,
 ) -> Bool {
-  fold(latest_receipt_for(receipts: receipts, pr_number: pr_number), init: false, f: fn(acc, r) {
+  fold(latest_receipt_for(receipts: receipts, pr: pr), init: false, f: fn(acc, r) {
     acc || policy_admits(
       policy: policy,
       receipt: r,
@@ -113,7 +113,7 @@ fn apply_lifecycle_event(policy: AdmissionPolicy, state: LifecycleState, ev: Lif
         unverified_tip_seen: state.unverified_tip_seen,
       }
     MergePr { pr } =>
-      if merge_enabled(policy: policy, receipts: state.receipts, pr_number: pr.number, tip: state.main_tip, roster: state.current_roster) {
+      if merge_enabled(policy: policy, receipts: state.receipts, pr: pr, tip: state.main_tip, roster: state.current_roster) {
         let landed = squash_result_tree(pr: pr, base: state.main_tip)
         LifecycleState {
           main_tip: landed,
