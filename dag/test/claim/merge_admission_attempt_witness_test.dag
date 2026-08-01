@@ -17,7 +17,10 @@ import gunbc.merge_admission {
   MergeDeniedSubjectMismatch,
   classify_merge_admission_verdict_v2,
   merge_admission_verdict_would_block,
+  gate_roster_content_hash,
+  current_gate_roster_hash,
 }
+import gunbc.commit_workflow { commit_gate_roster }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
   merge_admission_tested_subject_schema,
@@ -94,6 +97,55 @@ test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
     merge_target_tree: base_tree_fx(),
     current_roster_hash: roster_fx,
   ) { MergeAdmitted => true  _ => false }
+}
+
+fn publication_pre_activation_roster_hash() -> ContentHash {
+  gate_roster_content_hash(
+    roster: concat(commit_gate_roster.take(n: 5), commit_gate_roster.skip(n: 6))
+  )
+}
+
+test fn pre_publication_wall_receipt_refuses_against_live_roster() -> Bool {
+  let receipt = MergeAdmissionReceiptV2 {
+    attempt_id: attempt_a(),
+    pr_number: Present { value: 7544 },
+    tested_head_sha: head_sha_fx,
+    tested_base_tree: base_tree_fx(),
+    gate_roster_hash: publication_pre_activation_roster_hash(),
+    conclusion: Success,
+  }
+  (publication_pre_activation_roster_hash() != current_gate_roster_hash)
+    && match classify_merge_admission_verdict_v2(
+      current_attempt_id: attempt_a(),
+      tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+      receipt: receipt,
+      merge_target_tree: base_tree_fx(),
+      current_roster_hash: current_gate_roster_hash,
+    ) {
+      MergeDeniedStaleRoster => true
+      _ => false
+    }
+}
+
+test fn current_publication_wall_receipt_admits_against_live_roster() -> Bool {
+  let receipt = MergeAdmissionReceiptV2 {
+    attempt_id: attempt_a(),
+    pr_number: Present { value: 7544 },
+    tested_head_sha: head_sha_fx,
+    tested_base_tree: base_tree_fx(),
+    gate_roster_hash: current_gate_roster_hash,
+    conclusion: Success,
+  }
+  match classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a(),
+    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    receipt: receipt,
+    merge_target_tree: base_tree_fx(),
+    current_roster_hash: current_gate_roster_hash,
+  ) {
+    MergeAdmitted => true
+    _ => false
+  }
 }
 
 test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {

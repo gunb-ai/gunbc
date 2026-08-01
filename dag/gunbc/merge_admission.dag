@@ -496,6 +496,21 @@ fn classify_merge_admission_verdict_v2(
   }
 }
 
+fn merge_admission_verdict_label(v: MergeAdmissionVerdict) -> String {
+  match v {
+    MergeAdmitted => "admitted"
+    MergeDeniedStaleBase => "stale base tree — re-run CI against current main"
+    MergeDeniedStaleRoster => "stale gate roster — re-run CI after criteria change"
+    MergeDeniedNotSuccess => "receipt conclusion is not success"
+    MergeDeniedWrongAttempt => "receipt belongs to a different walk attempt — not the subject; re-run CI"
+    MergeDeniedSubjectMismatch => "receipt describes a different head or base tree than this attempt captured — not the subject; re-run CI"
+  }
+}
+
+data merge_admission_current_context_consumer_note: String = "LIVE CONSUMER, NOT YET A MERGE ACTUATOR (incident 2026-08-01). tools.merge_admission_current_context fetches the current merge target, reads the attempt-scoped TestedSubject and MergeAdmissionReceiptV2 wires, and consumes classify_merge_admission_verdict_v2 against current_gate_roster_hash. This closes the modeled-without-a-wet-consumer gap: a receipt evaluated before PublicationPlacementGate joined commit_gate_roster classifies MergeDeniedStaleRoster against the post-cutover roster, while a receipt minted under the current roster classifies MergeAdmitted. The operator currently merges manually, so this entry is not described as enforcement: a correctly displayed verdict that a human may ignore is a warning, not a wall."
+
+data merge_admission_required_check_binding_dissolution_trigger: String = "DISSOLVE-ON operator selects the merge-time required-check binding for tools.merge_admission_current_context.main. Until that binding exists, the entry produces the typed current-context verdict but does not claim to prevent a manual merge. The later policy-content increment is already declared by gate_content_hash_variant_tag_scaffold: replacing gate_content_hash's variant-tag placeholder fires that SingleAuthority dissolution; it is not part of this consumer increment."
+
 fn merge_admission_verdict_would_block(v: MergeAdmissionVerdict) -> Bool {
   match v {
     MergeAdmitted => false
