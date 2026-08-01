@@ -84,7 +84,7 @@ import gunbc.landing_workflow_runtime {
   landing_queue_observe, landing_queue_json, landing_queue_http_status,
   landing_pr_detail_json, landing_pr_detail_http_status,
   landing_review_artifact_observe, landing_review_artifact_http_status, landing_review_artifact_body,
-  landing_merge_pr, landing_merge_disabled,
+  landing_merge_intent_token_observe, landing_merge_with_intent, landing_merge_disabled,
   landing_merge_result_json, landing_merge_result_http_status,
 }
 import gunbc.landing_workflow_page { landing_queue_page }
@@ -349,7 +349,7 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
   }
 }
 
-data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a future body-reading POST handler would have silently seen the empty string — a latent widen). No handler consumes request.body today; when one does, the plumbing is already honest, and ServeHttpRequest gains its executing consumer here instead of sitting inert in extdeps."
+data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a body-reading POST handler would have silently seen the empty string — a latent widen). LandingMergeHandler consumes request.body as the operator-intent proof before any admission observation or GitHub actuation."
 
 fn roadmap_serve_invoke_for_instance(
   instance: HostDashboardInstance,
@@ -388,7 +388,7 @@ fn roadmap_serve_invoke_for_instance(
     LandingQueueHandler => {
       let observed = landing_queue_observe()
       serve_page_response_with_status(
-        page: landing_queue_page(observation: observed),
+        page: landing_queue_page(observation: observed, intent_token: landing_merge_intent_token_observe()),
         status: landing_queue_http_status(o: observed),
       )
     }
@@ -413,7 +413,7 @@ fn roadmap_serve_invoke_for_instance(
         Present { value: pr_number } => {
           let result = match instance.actuation {
             DashboardObserveOnly => landing_merge_disabled(instance_id: instance.instance_id)
-            DashboardActuating => landing_merge_pr(pr_number: pr_number)
+            DashboardActuating => landing_merge_with_intent(pr_number: pr_number, request_body: request.body)
           }
           serve_text_response(
             status: landing_merge_result_http_status(r: result),

@@ -1,8 +1,11 @@
 module test.claim.landing_workflow_witness_test
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present }
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.session_dashboard {
+  dashboard_base_url, dashboard_relative_path,
+}
 import gunbc.source_integration_landing_spine { LandingActorAuthorityHandle }
 import gunbc.landing_workflow {
   DashboardRequirementKey,
@@ -33,11 +36,16 @@ import gunbc.landing_workflow {
   LandingMergeActionResult,
   LandingMergeActuated,
   LandingMergeRefused,
+  LandingMergeIntentToken,
   LandingMergeHeadMoved,
   landing_queue_projection,
   project_landing_decision,
   landing_merge_action_result,
   landing_merge_refusal_result,
+}
+import gunbc.landing_workflow_runtime {
+  LandingMergeIntentDecision, LandingMergeIntentProven, LandingMergeIntentRejected,
+  landing_merge_intent_decision, landing_duplicate_tracked_pr,
 }
 import gunbc.landing_workflow_observe {
   LandingSummaryDecode, LandingSummaryRead, LandingSummaryDecodeRefused,
@@ -48,6 +56,58 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data stale_head: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 data witness_actor: LandingActorAuthorityHandle = "tailnet-operator" as LandingActorAuthorityHandle
+
+test fn dashboard_transport_accepts_only_https_base_and_root_relative_path() -> Bool {
+  match dashboard_base_url(raw: "https://dashboard.operator.test:3737") {
+    Absent => false
+    Present { value: _ } => match dashboard_relative_path(raw: "/api/reviews/pr?repo=gunb-ai/gunbc&pr=42") {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
+}
+
+test fn dashboard_transport_refuses_unbounded_or_authority_replacing_inputs() -> Bool {
+  let insecure_base_refused = match dashboard_base_url(raw: "http://dashboard.operator.test:3737") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let absolute_url_refused = match dashboard_relative_path(raw: "https://unrelated.example/api/sessions") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let network_path_refused = match dashboard_relative_path(raw: "//unrelated.example/api/sessions") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  insecure_base_refused && absolute_url_refused && network_path_refused
+}
+
+test fn landing_merge_requires_the_server_issued_intent_token() -> Bool {
+  let token = "witness-intent-7f4a" as LandingMergeIntentToken
+  let admitted = match landing_merge_intent_decision(
+    expected: token,
+    request_body: "landing_merge_intent=witness-intent-7f4a",
+  ) {
+    LandingMergeIntentProven => true
+    LandingMergeIntentRejected { reason: _ } => false
+  }
+  let forged = match landing_merge_intent_decision(
+    expected: token,
+    request_body: "landing_merge_intent=attacker-chosen",
+  ) {
+    LandingMergeIntentProven => true
+    LandingMergeIntentRejected { reason: _ } => false
+  }
+  admitted && !forged
+}
+
+test fn duplicate_dashboard_bindings_are_ambiguous_not_first_row_wins() -> Bool {
+  match landing_duplicate_tracked_pr(rows: [witness_pr(), witness_pr()]) {
+    Present { value } => value.pr_number == 42
+    Absent => false
+  }
+}
 
 fn witness_pr() -> LandingPullRequestProjection {
   LandingPullRequestProjection {

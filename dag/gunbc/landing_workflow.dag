@@ -137,6 +137,11 @@ type LandingQueueProjection {
   untracked: List<UntrackedPullRequest>
 }
 
+type LandingDecisionQueueFold {
+  ready: List<LandingMergeAdmission>
+  blocked: List<LandingDecision>
+}
+
 fn landing_blocker_location(
   pr: LandingPullRequestProjection,
   criteria: DashboardMergeCriteriaSnapshot,
@@ -307,19 +312,28 @@ fn landing_queue_projection(
   decisions: List<LandingDecision>,
   untracked: List<UntrackedPullRequest>,
 ) -> LandingQueueProjection {
+  let folded = fold(decisions, init: LandingDecisionQueueFold { ready: [], blocked: [] }, f: (acc, decision) =>
+    match decision {
+      LandingAtDecisionBoundary { admission } => LandingDecisionQueueFold {
+        ready: append(acc.ready, items: [admission]),
+        blocked: acc.blocked,
+      }
+      LandingBlocked { pull_request: _, criteria: _, blockers: _, evidence: _ } => LandingDecisionQueueFold {
+        ready: acc.ready,
+        blocked: append(acc.blocked, items: [decision]),
+      }
+      LandingSummaryDiverged { pull_request: _, criteria: _, projected_blocker_count: _, reason: _ } => LandingDecisionQueueFold {
+        ready: acc.ready,
+        blocked: append(acc.blocked, items: [decision]),
+      }
+      LandingObservationRefused { pull_request: _, reason: _ } => LandingDecisionQueueFold {
+        ready: acc.ready,
+        blocked: append(acc.blocked, items: [decision]),
+      }
+    })
   LandingQueueProjection {
-    ready: flat_map(decisions, decision => match decision {
-      LandingAtDecisionBoundary { admission } => [admission]
-      LandingBlocked { pull_request: _, criteria: _, blockers: _, evidence: _ } => []
-      LandingSummaryDiverged { pull_request: _, criteria: _, projected_blocker_count: _, reason: _ } => []
-      LandingObservationRefused { pull_request: _, reason: _ } => []
-    }),
-    blocked: filter(decisions, decision => match decision {
-      LandingAtDecisionBoundary { admission: _ } => false
-      LandingBlocked { pull_request: _, criteria: _, blockers: _, evidence: _ } => true
-      LandingSummaryDiverged { pull_request: _, criteria: _, projected_blocker_count: _, reason: _ } => true
-      LandingObservationRefused { pull_request: _, reason: _ } => true
-    }),
+    ready: folded.ready,
+    blocked: folded.blocked,
     untracked: untracked,
   }
 }
@@ -327,8 +341,26 @@ fn landing_queue_projection(
 type LandingMergeActionRefusal
   = LandingMergeNotAdmitted { repo: NonEmptyStr, pr_number: Int }
   | LandingMergeDisabled { instance_id: NonEmptyStr, reason: String }
+  | LandingMergeIntentUnproven { reason: String }
   | LandingMergeHeadMoved { admitted: CommitSha, observed: CommitSha }
   | LandingMergeActuationFailed { detail: String }
+
+type LandingMergeIntentToken = NonEmptyStr where brand("LandingMergeIntentToken")
+
+fn landing_merge_intent_token(raw: String) -> LandingMergeIntentToken? {
+  if raw != ""
+    && !string_contains(s: raw, pattern: "&")
+    && !string_contains(s: raw, pattern: "=")
+    && !string_contains(s: raw, pattern: "%")
+    && !string_contains(s: raw, pattern: "+")
+    && !string_contains(s: raw, pattern: " ")
+    && !string_contains(s: raw, pattern: "\n")
+    && !string_contains(s: raw, pattern: "\r") {
+    Present { value: raw as LandingMergeIntentToken }
+  } else {
+    none
+  }
+}
 
 type LandingMergeReceipt {
   repo: NonEmptyStr

@@ -7,6 +7,10 @@ import extdeps.shell
 import extdeps.clock
 import extdeps.github.pulls
 import extdeps.session_dashboard
+import extdeps.session_dashboard {
+  DashboardBaseUrl, DashboardRelativePath,
+  dashboard_base_url, dashboard_relative_path,
+}
 import extdeps.languages.json.emit {
   JsonValue, serialize_json, json_object, json_kv, json_string, json_int, json_bool, json_array,
 }
@@ -35,14 +39,16 @@ import gunbc.landing_workflow {
   LandingSummaryDiverged, LandingObservationRefused,
   UntrackedPullRequest, LandingQueueProjection,
   LandingMergeActionRefusal, LandingMergeNotAdmitted, LandingMergeDisabled, LandingMergeHeadMoved,
-  LandingMergeActuationFailed, LandingMergeReceipt,
+  LandingMergeIntentUnproven, LandingMergeIntentToken, LandingMergeActuationFailed, LandingMergeReceipt,
   LandingMergeActionResult, LandingMergeActuated, LandingMergeRefused,
   project_landing_decision, landing_queue_projection,
   landing_merge_action_result, landing_merge_refusal_result,
+  landing_merge_intent_token,
 }
 
 data gunbc_landing_repo: NonEmptyStr = "gunb-ai/gunbc"
 data landing_dashboard_url_env: NonEmptyStr = "DASHBOARD_URL"
+data landing_merge_intent_token_env: NonEmptyStr = "LANDING_MERGE_INTENT_TOKEN"
 data srv1_tailnet_operator_authority: LandingActorAuthorityHandle = "srv1-tailnet-operator" as LandingActorAuthorityHandle
 
 data landing_runtime_authority_note: String = "This server-side seam observes dashboard-tracked sessions and the dashboard-owned reviews merge_criteria object at request time. GitHub CLI is used only to enumerate otherwise-untracked open PRs and to execute the admitted exact-head squash merge. The authenticated tailnet operator role is projected into the existing LandingActorAuthorityHandle; it is an authorization handle, not a canonical Actor or a claim about a person's identity. Any unavailable/ambiguous observation refuses."
@@ -50,15 +56,56 @@ data landing_runtime_authority_note: String = "This server-side seam observes da
 type LandingQueueObservation
   = LandingQueueObserved { projection: LandingQueueProjection }
   | LandingQueueObserveRefused { reason: String }
+  | LandingTrackedBindingAmbiguous { repo: NonEmptyStr, pr_number: Int, binding_count: Int }
 
 type LandingReviewArtifactObservation
   = LandingReviewArtifactObserved { body: String }
   | LandingReviewArtifactObserveRefused { reason: String }
 
-fn landing_dashboard_base_url() -> session_dashboard.DashboardBaseUrl? {
+type LandingMergeIntentDecision
+  = LandingMergeIntentProven
+  | LandingMergeIntentRejected { reason: String }
+
+fn landing_dashboard_base_url() -> DashboardBaseUrl? {
   match shell.Env.Get(name: landing_dashboard_url_env).value {
-    Present { value } => session_dashboard.dashboard_base_url(raw: value)
+    Present { value } => dashboard_base_url(raw: value)
     Absent => none
+  }
+}
+
+fn landing_merge_intent_token_observe() -> LandingMergeIntentToken? {
+  match shell.Env.Get(name: landing_merge_intent_token_env).value {
+    Present { value } => landing_merge_intent_token(raw: value)
+    Absent => none
+  }
+}
+
+fn landing_merge_intent_form_body(token: LandingMergeIntentToken) -> String {
+  concat("landing_merge_intent=", token as String)
+}
+
+fn landing_merge_intent_decision(
+  expected: LandingMergeIntentToken,
+  request_body: String,
+) -> LandingMergeIntentDecision {
+  if request_body == landing_merge_intent_form_body(token: expected) {
+    LandingMergeIntentProven
+  } else {
+    LandingMergeIntentRejected { reason: "request body does not carry the server-issued landing merge intent token" }
+  }
+}
+
+fn landing_merge_with_intent(pr_number: Int, request_body: String) -> LandingMergeActionResult {
+  match landing_merge_intent_token_observe() {
+    Absent => LandingMergeRefused { refusal: LandingMergeIntentUnproven {
+      reason: "LANDING_MERGE_INTENT_TOKEN is absent or empty; merge actuation is disabled",
+    } }
+    Present { value: expected } => match landing_merge_intent_decision(expected: expected, request_body: request_body) {
+      LandingMergeIntentProven => landing_merge_pr(pr_number: pr_number)
+      LandingMergeIntentRejected { reason } => LandingMergeRefused {
+        refusal: LandingMergeIntentUnproven { reason: reason },
+      }
+    }
   }
 }
 
@@ -74,19 +121,21 @@ fn tracked_has_pr(tracked: List<LandingPullRequestProjection>, number: Int) -> B
   any(tracked, pr => pr.pr_number == number)
 }
 
-fn landing_unique_tracked_prs(rows: List<LandingPullRequestProjection>) -> List<LandingPullRequestProjection> {
-  fold(rows, init: [], f: (acc, pr) =>
-    if tracked_has_pr(tracked: acc, number: pr.pr_number) { acc } else { append(acc, items: [pr]) })
+fn landing_duplicate_tracked_pr(rows: List<LandingPullRequestProjection>) -> LandingPullRequestProjection? {
+  list_at_optional(
+    xs: filter(rows, pr => count(filter(rows, other => other.pr_number == pr.pr_number)) > 1),
+    index: 0,
+  )
 }
 
-fn landing_reviews_path(pr_number: Int) -> session_dashboard.DashboardRelativePath? {
-  session_dashboard.dashboard_relative_path(raw: join([
+fn landing_reviews_path(pr_number: Int) -> DashboardRelativePath? {
+  dashboard_relative_path(raw: join([
     "/api/reviews/pr?repo=", gunbc_landing_repo as String, "&pr=", to_string(pr_number),
   ], ""))
 }
 
 fn landing_decision_observe(
-  base: session_dashboard.DashboardBaseUrl,
+  base: DashboardBaseUrl,
   pr: LandingPullRequestProjection,
 ) -> LandingDecision {
   match landing_reviews_path(pr_number: pr.pr_number) {
@@ -123,7 +172,7 @@ fn landing_review_artifact_observe(artifact_id: Int) -> LandingReviewArtifactObs
   match landing_dashboard_base_url() {
     Absent => LandingReviewArtifactObserveRefused { reason: "DASHBOARD_URL is absent or empty" }
     Present { value: base } => {
-      match session_dashboard.dashboard_relative_path(raw: join([
+      match dashboard_relative_path(raw: join([
         "/api/reviews/", to_string(artifact_id), "/artifacts/stdout.log",
       ], "")) {
         Absent => LandingReviewArtifactObserveRefused { reason: "dashboard review artifact path construction refused" }
@@ -158,36 +207,46 @@ fn landing_queue_observe() -> LandingQueueObservation {
   match landing_dashboard_base_url() {
     Absent => LandingQueueObserveRefused { reason: "DASHBOARD_URL is absent or empty" }
     Present { value: base } => {
-      match session_dashboard.dashboard_relative_path(raw: "/api/sessions") {
+      match dashboard_relative_path(raw: "/api/sessions") {
         Absent => LandingQueueObserveRefused { reason: "dashboard sessions path construction refused" }
         Present { value: sessions_path } => {
           let sessions = session_dashboard.Api.GetFromDashboard(base: base, path: sessions_path)
           if !sessions.success {
             LandingQueueObserveRefused { reason: "dashboard sessions GET failed" }
-          } else match landing_tracked_population_decode(body: sessions.body, repo_name: gunbc_landing_repo as String) {
-          LandingTrackedPopulationRefused { issues } => LandingQueueObserveRefused {
-            reason: concat("dashboard tracked population decode refused: ", landing_issues_text(issues: issues)),
-          }
-          LandingTrackedPopulationRead { pull_requests } => {
-            let tracked = landing_unique_tracked_prs(rows: pull_requests)
-            let repository = github.CliPulls.ListOpenJson(repo: gunbc_landing_repo)
-            if !repository.success {
-              LandingQueueObserveRefused { reason: concat("GitHub open PR observation failed: ", repository.stderr) }
-            } else {
-              match landing_repository_population_decode(body: repository.stdout, repo_name: gunbc_landing_repo) {
-                LandingRepositoryPopulationRefused { issues } => LandingQueueObserveRefused {
-                  reason: concat("GitHub open PR population decode refused: ", landing_issues_text(issues: issues)),
-                }
-                LandingRepositoryPopulationRead { pull_requests: repository_prs } => {
-                  let untracked = filter(repository_prs, pr => !tracked_has_pr(tracked: tracked, number: pr.pr_number))
-                  let decisions = map(tracked, pr => landing_decision_observe(base: base, pr: pr))
-                  LandingQueueObserved {
-                    projection: landing_queue_projection(decisions: decisions, untracked: untracked),
+          } else {
+            match landing_tracked_population_decode(body: sessions.body, repo_name: gunbc_landing_repo as String) {
+              LandingTrackedPopulationRefused { issues } => LandingQueueObserveRefused {
+                reason: concat("dashboard tracked population decode refused: ", landing_issues_text(issues: issues)),
+              }
+              LandingTrackedPopulationRead { pull_requests } => {
+                match landing_duplicate_tracked_pr(rows: pull_requests) {
+                  Present { value: duplicate } => LandingTrackedBindingAmbiguous {
+                    repo: duplicate.repo,
+                    pr_number: duplicate.pr_number,
+                    binding_count: count(filter(pull_requests, pr => pr.pr_number == duplicate.pr_number)),
+                  }
+                  Absent => {
+                    let repository = github.CliPulls.ListOpenJson(repo: gunbc_landing_repo)
+                    if !repository.success {
+                      LandingQueueObserveRefused { reason: concat("GitHub open PR observation failed: ", repository.stderr) }
+                    } else {
+                      match landing_repository_population_decode(body: repository.stdout, repo_name: gunbc_landing_repo) {
+                        LandingRepositoryPopulationRefused { issues } => LandingQueueObserveRefused {
+                          reason: concat("GitHub open PR population decode refused: ", landing_issues_text(issues: issues)),
+                        }
+                        LandingRepositoryPopulationRead { pull_requests: repository_prs } => {
+                          let untracked = filter(repository_prs, pr => !tracked_has_pr(tracked: pull_requests, number: pr.pr_number))
+                          let decisions = map(pull_requests, pr => landing_decision_observe(base: base, pr: pr))
+                          LandingQueueObserved {
+                            projection: landing_queue_projection(decisions: decisions, untracked: untracked),
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
             }
-          }
           }
         }
       }
@@ -213,6 +272,12 @@ fn landing_merge_pr(pr_number: Int) -> LandingMergeActionResult {
   match landing_queue_observe() {
     LandingQueueObserveRefused { reason } => LandingMergeRefused {
       refusal: LandingMergeActuationFailed { detail: concat("fresh admission observation refused: ", reason) },
+    }
+    LandingTrackedBindingAmbiguous { repo: _, pr_number: ambiguous_pr, binding_count } => LandingMergeRefused {
+      refusal: LandingMergeActuationFailed { detail: join([
+        "fresh admission observation refused: duplicate dashboard bindings for PR #",
+        to_string(ambiguous_pr), " (", to_string(binding_count), ")",
+      ], "") },
     }
     LandingQueueObserved { projection } => match landing_find_decision(projection: projection, pr_number: pr_number) {
       Absent => LandingMergeRefused { refusal: LandingMergeNotAdmitted { repo: gunbc_landing_repo, pr_number: pr_number } }
@@ -242,6 +307,7 @@ fn landing_merge_pr(pr_number: Int) -> LandingMergeActionResult {
                 _ => admission.head_sha
               }
             LandingQueueObserveRefused { reason: _ } => admission.head_sha
+            LandingTrackedBindingAmbiguous { repo: _, pr_number: _, binding_count: _ } => admission.head_sha
           }
           landing_merge_refusal_result(
             admission: admission,
@@ -408,6 +474,13 @@ fn landing_queue_json_value(o: LandingQueueObservation) -> JsonValue {
       json_kv(key: "ok", value: json_bool(b: false)),
       json_kv(key: "reason", value: json_string(s: reason)),
     ])
+    LandingTrackedBindingAmbiguous { repo, pr_number, binding_count } => json_object(members: [
+      json_kv(key: "ok", value: json_bool(b: false)),
+      json_kv(key: "state", value: json_string(s: "LandingTrackedBindingAmbiguous")),
+      json_kv(key: "repo", value: json_string(s: repo as String)),
+      json_kv(key: "pr_number", value: json_int(n: pr_number)),
+      json_kv(key: "binding_count", value: json_int(n: binding_count)),
+    ])
     LandingQueueObserved { projection } => json_object(members: [
       json_kv(key: "ok", value: json_bool(b: true)),
       json_kv(key: "ready", value: json_array(elements: map(projection.ready, a => landing_admission_json(a: a)))),
@@ -428,7 +501,11 @@ fn landing_queue_json(o: LandingQueueObservation) -> String {
 }
 
 fn landing_queue_http_status(o: LandingQueueObservation) -> HttpStatus {
-  match o { LandingQueueObserved { projection: _ } => 200 LandingQueueObserveRefused { reason: _ } => 503 }
+  match o {
+    LandingQueueObserved { projection: _ } => 200
+    LandingQueueObserveRefused { reason: _ } => 503
+    LandingTrackedBindingAmbiguous { repo: _, pr_number: _, binding_count: _ } => 409
+  }
 }
 
 fn landing_pr_detail_json(o: LandingQueueObservation, pr_number: Int) -> String {
@@ -436,6 +513,13 @@ fn landing_pr_detail_json(o: LandingQueueObservation, pr_number: Int) -> String 
     LandingQueueObserveRefused { reason } => serialize_json(v: json_object(members: [
       json_kv(key: "ok", value: json_bool(b: false)),
       json_kv(key: "reason", value: json_string(s: reason)),
+    ]))
+    LandingTrackedBindingAmbiguous { repo, pr_number: ambiguous_pr, binding_count } => serialize_json(v: json_object(members: [
+      json_kv(key: "ok", value: json_bool(b: false)),
+      json_kv(key: "state", value: json_string(s: "LandingTrackedBindingAmbiguous")),
+      json_kv(key: "repo", value: json_string(s: repo as String)),
+      json_kv(key: "pr_number", value: json_int(n: ambiguous_pr)),
+      json_kv(key: "binding_count", value: json_int(n: binding_count)),
     ]))
     LandingQueueObserved { projection } => match landing_find_decision(projection: projection, pr_number: pr_number) {
       Present { value: decision } => serialize_json(v: landing_decision_json(d: decision))
@@ -458,6 +542,7 @@ fn landing_pr_detail_json(o: LandingQueueObservation, pr_number: Int) -> String 
 fn landing_pr_detail_http_status(o: LandingQueueObservation, pr_number: Int) -> HttpStatus {
   match o {
     LandingQueueObserveRefused { reason: _ } => 503
+    LandingTrackedBindingAmbiguous { repo: _, pr_number: _, binding_count: _ } => 409
     LandingQueueObserved { projection } => match landing_find_decision(projection: projection, pr_number: pr_number) {
       Present { value: _ } => 200
       Absent => 404
@@ -483,12 +568,14 @@ fn landing_merge_result_json_value(r: LandingMergeActionResult) -> JsonValue {
       json_kv(key: "state", value: json_string(s: match refusal {
         LandingMergeNotAdmitted { repo: _, pr_number: _ } => "not-admitted"
         LandingMergeDisabled { instance_id: _, reason: _ } => "disabled"
+        LandingMergeIntentUnproven { reason: _ } => "intent-unproven"
         LandingMergeHeadMoved { admitted: _, observed: _ } => "head-moved"
         LandingMergeActuationFailed { detail: _ } => "actuation-failed"
       })),
       json_kv(key: "reason", value: json_string(s: match refusal {
         LandingMergeNotAdmitted { repo: _, pr_number: _ } => "pull request is not at the dashboard decision boundary"
         LandingMergeDisabled { instance_id, reason } => join(["instance ", instance_id as String, ": ", reason], "")
+        LandingMergeIntentUnproven { reason } => reason
         LandingMergeHeadMoved { admitted, observed } => join(["head moved: admitted ", admitted as String, " observed ", observed as String], "")
         LandingMergeActuationFailed { detail } => detail
       })),
@@ -505,6 +592,7 @@ fn landing_merge_result_http_status(r: LandingMergeActionResult) -> HttpStatus {
     LandingMergeActuated { receipt: _ } => 200
     LandingMergeRefused { refusal: LandingMergeNotAdmitted { repo: _, pr_number: _ } } => 409
     LandingMergeRefused { refusal: LandingMergeDisabled { instance_id: _, reason: _ } } => 403
+    LandingMergeRefused { refusal: LandingMergeIntentUnproven { reason: _ } } => 403
     LandingMergeRefused { refusal: LandingMergeHeadMoved { admitted: _, observed: _ } } => 409
     LandingMergeRefused { refusal: LandingMergeActuationFailed { detail: _ } } => 502
   }

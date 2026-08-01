@@ -1,25 +1,27 @@
 module gunbc.landing_workflow_page
 
 import std.types { Int, List, String }
+import v2.std.optional { Present, Absent }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { txt, el, el_attrs }
 import gunbc.landing_workflow {
   LandingMergeAdmission, LandingDecision, LandingBlocked,
   LandingSummaryDiverged, LandingObservationRefused, LandingAtDecisionBoundary,
-  UntrackedPullRequest,
+  UntrackedPullRequest, LandingMergeIntentToken,
 }
 import gunbc.landing_workflow_runtime {
   LandingQueueObservation, LandingQueueObserved, LandingQueueObserveRefused,
+  LandingTrackedBindingAmbiguous,
   landing_blocker_label,
 }
 
-data landing_dashboard_page_note: String = "The landing dashboard is a thin HTML projection over LandingQueueObservation. Its form is only an affordance: POST /landing/merge/\{number\} repeats fresh server-side admission and exact-head actuation, so hiding or forging a button cannot widen authority. Evidence links resolve through the dedicated detail endpoint and the review/check URLs carried by the observation."
+data landing_dashboard_page_note: String = "The landing dashboard is a thin HTML projection over LandingQueueObservation. A merge form is emitted only when the server has a LandingMergeIntentToken; POST /landing/merge/\{number\} must return that token and then repeats fresh server-side admission and exact-head actuation. Evidence links resolve through the dedicated detail endpoint and the review/check URLs carried by the observation."
 
 fn landing_evidence_href(number: Int) -> String {
   concat("/landing/pr/", to_string(number))
 }
 
-fn landing_ready_row(admission: LandingMergeAdmission) -> Fragment {
+fn landing_ready_row(admission: LandingMergeAdmission, intent_token: LandingMergeIntentToken?) -> Fragment {
   let number = admission.pull_request.pr_number
   el("li", [
     el("strong", [txt(join(["#", to_string(number), " ", admission.pull_request.pr_title], ""))]),
@@ -28,16 +30,24 @@ fn landing_ready_row(admission: LandingMergeAdmission) -> Fragment {
     txt(" "),
     el_attrs("a", [attr(name: "href", value: landing_evidence_href(number: number))], [txt("inspect evidence")]),
     txt(" "),
-    el_attrs("form", [
-      attr(name: "method", value: "post"),
-      attr(name: "action", value: concat("/landing/merge/", to_string(number))),
-    ], [
-      el_attrs("button", [attr(name: "type", value: "submit")], [txt("Squash merge admitted head")]),
-    ]),
+    match intent_token {
+      Absent => el("span", [txt("merge action disabled: operator-intent token unavailable")])
+      Present { value: token } => el_attrs("form", [
+        attr(name: "method", value: "post"),
+        attr(name: "action", value: concat("/landing/merge/", to_string(number))),
+      ], [
+        el_attrs("input", [
+          attr(name: "type", value: "hidden"),
+          attr(name: "name", value: "landing_merge_intent"),
+          attr(name: "value", value: token as String),
+        ], []),
+        el_attrs("button", [attr(name: "type", value: "submit")], [txt("Squash merge admitted head")]),
+      ])
+    },
   ])
 }
 
-fn landing_blocked_row(decision: LandingDecision) -> Fragment {
+fn landing_blocked_row(decision: LandingDecision, intent_token: LandingMergeIntentToken?) -> Fragment {
   match decision {
     LandingBlocked { pull_request, criteria: _, blockers, evidence: _ } => el("li", [
       el("strong", [txt(join(["#", to_string(pull_request.pr_number), " ", pull_request.pr_title], ""))]),
@@ -52,7 +62,7 @@ fn landing_blocked_row(decision: LandingDecision) -> Fragment {
       el("strong", [txt(concat("observation refused #", to_string(pull_request.pr_number)))]),
       txt(concat(": ", reason)),
     ])
-    LandingAtDecisionBoundary { admission } => landing_ready_row(admission: admission)
+    LandingAtDecisionBoundary { admission } => landing_ready_row(admission: admission, intent_token: intent_token)
   }
 }
 
@@ -63,19 +73,29 @@ fn landing_untracked_row(pr: UntrackedPullRequest) -> Fragment {
   ])
 }
 
-fn landing_queue_page(observation: LandingQueueObservation) -> Fragment {
+fn landing_queue_page(
+  observation: LandingQueueObservation,
+  intent_token: LandingMergeIntentToken?,
+) -> Fragment {
   let content = match observation {
     LandingQueueObserveRefused { reason } => [
       el("h1", [txt("Landing dashboard — observation refused")]),
       el("p", [txt(reason)]),
     ]
+    LandingTrackedBindingAmbiguous { repo, pr_number, binding_count } => [
+      el("h1", [txt("Landing dashboard — tracked binding ambiguous")]),
+      el("p", [txt(join([
+        repo as String, " PR #", to_string(pr_number), " has ", to_string(binding_count),
+        " dashboard bindings; the queue and merge admission are refused",
+      ], ""))]),
+    ]
     LandingQueueObserved { projection } => [
       el("h1", [txt("Landing dashboard")]),
       el("p", [txt("Only dashboard-admitted current heads appear in the merge-ready queue. Every action is re-admitted server-side.")]),
       el("h2", [txt(concat("Merge-ready (", concat(to_string(count(projection.ready)), ")")))]),
-      el("ul", map(projection.ready, admission => landing_ready_row(admission: admission))),
+      el("ul", map(projection.ready, admission => landing_ready_row(admission: admission, intent_token: intent_token))),
       el("h2", [txt(concat("Blocked (", concat(to_string(count(projection.blocked)), ")")))]),
-      el("ul", map(projection.blocked, decision => landing_blocked_row(decision: decision))),
+      el("ul", map(projection.blocked, decision => landing_blocked_row(decision: decision, intent_token: intent_token))),
       el("h2", [txt(concat("Untracked (", concat(to_string(count(projection.untracked)), ")")))]),
       el("ul", map(projection.untracked, pr => landing_untracked_row(pr: pr))),
     ]
