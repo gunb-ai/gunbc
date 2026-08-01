@@ -1,0 +1,760 @@
+module std.primitive_identity
+
+import std.algebra {
+  CostShape,
+  ShapeIterateBody,
+  ShapeLinearScan,
+  all_algebra_field_templates,
+  all_algebra_template_names,
+}
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.languages.rust.emit { rt_function_registry }
+
+data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join mechanism across five carriers, five refusal variants typed, three refusal detectors executing with witnesses (see primitive_d0_refusal_execution_note), derived census across four surfaces. OPEN at fifth surface (InterpreterDispatch): closure fires when interpreter-primitive-roster lands (primitive_interpreter_dispatch_derivation_next_trigger). Four-of-five derived is honest interim state, not completion."
+
+data primitive_d0_refusal_execution_note: String = "Five PrimitiveJoinViolation variants typed at D0. Three detectors execute with RED witnesses: primitive_surface_missing_identity_violation, primitive_realization_unknown_primitive_violation, primitive_duplicate_semantic_definition_violation. Two scaffold detectors execute on planted inputs only (terminal join expands population-wide detection): primitive_surface_joins_two_identities_violation, primitive_incompatible_invocation_assignment_violation."
+
+data primitive_identity_d0_note: String = "D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract. primitive_surface_census_derived reads four live authorities. primitive_interpreter_dispatch_measurement_rows is an interim measurement scaffold, NOT an authority (see primitive_interpreter_dispatch_measurement_scaffold_note). Open denominator receipt: primitive_d0_open_denominator_receipt. Dissolve-on: feature:primitive-realization-single-authority."
+
+data primitive_interpreter_dispatch_measurement_scaffold_note: String = "SCAFFOLD — interim measurement, NOT an authority: primitive_interpreter_dispatch_measurement_rows carries four join specimens with provenance MeasurementOnly. Dissolution trigger: interpreter-primitive-roster lands on clever-crab-111 v1 lane (interpreter_free_call_arm_spellings macro + six-site roster); primitive_surface_census_derived absorbs InterpreterDispatch; delete primitive_interpreter_dispatch_measurement_rows and this note."
+
+data primitive_d0_derived_surface_drift_audit_note: String = "Derived-surface drift audit (review 45947 class): AlgebraTemplate — CLOSED, all_algebra_field_templates flat_maps all_algebra_profiles (2c9c01351). EmitHandler — single authority, rt_function_registry with derived rt_functions/rt_ref_map_functions projections (no parallel roster). BuiltinRegistry — OPEN parallel enumeration: builtin_registry_surface_names hand list beside builtin_function_registry Map (witness cannot map_keys Node at runtime; builtin_registry_surface_names_note). PrimitiveContractRow — OPEN parallel enumeration: primitive_contract_roster hand list beside *_contract data rows (primitive_contract_roster_note). D0 mutation control on those two surfaces discovers drift only when the hand list is updated, not when the primary authority grows alone."
+
+data primitive_d0_open_denominator_receipt_note: String = "Typed located counted open denominator (rung-honesty receipt): derived_surface_authority_count=4 (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler); open_surface_authority_count=1 (InterpreterDispatch at primitive_interpreter_dispatch_derivation_next_trigger); interpreter_dispatch_arm_count=158; interpreter_dispatch_spelling_count=169 across six v1_interpreter sites; interpreter_measurement_specimen_count=4 (NOT 158). derived_census_rows_missing_identity_count is measured live by primitive_d0_derived_rows_missing_identity_count — ranks join work remaining on derived surfaces. See primitive_d0_derived_surface_drift_audit_note for per-surface drift status."
+
+data primitive_d0_derived_surface_authority_count: Int = 4
+
+data primitive_d0_open_surface_authority_count: Int = 1
+
+data primitive_interpreter_dispatch_arm_count: Int = 158
+
+data primitive_interpreter_dispatch_spelling_count: Int = 169
+
+data primitive_d0_parallel_roster_surface_authority_count: Int = 2
+
+data primitive_d0_mutation_control_coverage_note: String = "Exact D1 mutation-control coverage after D0: DISCOVERED on AlgebraTemplate and EmitHandler — new template or emit-handler row without identity join appears on primitive_surface_census_derived and can refuse. PARTIAL on BuiltinRegistry and PrimitiveContractRow (parallel_roster_surface_authority_count=2) — mutation control fires when the hand roster (builtin_registry_surface_names, primitive_contract_roster) is updated, NOT when builtin_function_registry or a *_contract data row grows alone; see primitive_d0_derived_surface_drift_audit_note. NOT DISCOVERED on InterpreterDispatch — new arm on any of the six v1_interpreter dispatch sites is blind until primitive_interpreter_dispatch_derivation_next_trigger lands. Counted: open_surface_authority_count=1. Derived does not mean complete; parallel roster does not mean single-authority."
+
+data primitive_interpreter_dispatch_six_sites_note: String = "Interpreter dispatch is SIX sites in v1_interpreter (clever-crab-111 census, parent-verified): eval_builtin_inner 112 arms/115 spellings free calls; eval_algebra_method_inner 39 arms/46 spellings methods; eval_call 2 arms fold_list and fold_list_right native intercept BEFORE eval_builtin_inner; try_v2_std_collection_map_primitive_grounding 2 arms; try_parse_table_memo_dispatch 2 arms; eval_method_call 1 arm lookup short-circuit. Total 158 arms / 169 spellings. D0 primitive_interpreter_dispatch_measurement_rows covers four join specimens only — NOT this six-site population. A census reading only eval_builtin_inner sees about two thirds."
+
+data primitive_interpreter_dispatch_derivation_next_trigger: String = "Next rung trigger: land interpreter-primitive-roster — modeled roster authority for all six v1_interpreter dispatch sites. clever-crab-111 macro authority makes eval_builtin_inner arms and interpreter_free_call_arm_spellings roster unwritable-by-construction (arm without roster entry and roster entry without arm both refuse); other five sites are hand-declared rows with the macro as dissolution trigger. Coordinate roster shape with clever-crab before building join consumption. No roster row carries identity — arms that join to nothing stay representable for SurfaceMissingPrimitiveIdentity."
+
+data primitive_interpreter_surface_unenumerable_finding_note: String = "Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/05_eval.dag) is a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner — explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable sooner; five other sites remain hand-declared until macro dissolves them."
+
+data primitive_fold_list_spelling_fork_note: String = "Named finding — SPELLING FORK, not alias: contract/algebra carry fold while interpreter/emit carry fold_list. Distinct from alias groups (length/count/size are one eval_builtin_inner arm with three spellings — aliases sharing an arm cannot disagree). fold and fold_list are separate surfaces that CAN disagree; fold_list additionally lives on eval_call intercept before eval_builtin_inner, so it never reaches builtin_function_registry."
+
+data primitive_lookup_dual_realization_note: String = "Named finding — first two-realizations-one-name specimen: lookup has eval_method_call short-circuit AND an algebra template arm; the short-circuit shadows the algebra arm. Better join specimen than index_by for SurfaceJoinsTwoIdentities / realization reconciliation. keys and values DO have algebra template arms — determinism undetectability is about the lens view of unqualified symbols, not absence of algebra arms."
+
+data primitive_interpreter_dispatch_derivation_blocked_note: String = "Interpreter dispatch derivation blocked pending primitive_interpreter_dispatch_derivation_next_trigger. Measurement rows use provenance MeasurementOnly and cover four join specimens only; see primitive_interpreter_dispatch_six_sites_note."
+
+type PrimitiveIdentity {
+  slug: NonEmptyStr
+}
+
+type PrimitiveSemanticContract {
+  canonical_name: NonEmptyStr
+}
+
+type PrimitiveDefinition {
+  identity: PrimitiveIdentity
+  semantic_contract: PrimitiveSemanticContract
+}
+
+type InvocationForm
+  = FreeCall
+  | MethodCall { receiver_domain: NonEmptyStr }
+  | OperatorCall
+
+type PrimitiveInvocationSurface {
+  primitive: PrimitiveIdentity
+  form: InvocationForm
+  authored_symbol: NonEmptyStr
+}
+
+type RealizationTarget
+  = InterpreterHost
+  | EmitRust
+  | EmitTypeScript
+
+type PrimitiveRealization {
+  primitive: PrimitiveIdentity
+  target: RealizationTarget
+  handler: DeclarationRef
+}
+
+type PrimitiveCostFact {
+  primitive: PrimitiveIdentity
+  cost: CostShape
+}
+
+type TraversalOrder
+  = HostUnspecifiedOrder
+  | CanonicalOrder
+  | SourcePreservingOrder
+  | TraversalOrderUnclassified
+
+type PrimitiveTraversalOrderFact {
+  primitive: PrimitiveIdentity
+  order: TraversalOrder
+}
+
+type PrimitiveSurfaceAuthority
+  = BuiltinRegistry
+  | PrimitiveContractRow
+  | AlgebraTemplate
+  | InterpreterDispatch
+  | EmitHandler
+
+type PrimitiveSurfaceCensusProvenance
+  = DerivedFromAuthority
+  | MeasurementOnly
+
+type PrimitiveSurfaceRow {
+  authority: PrimitiveSurfaceAuthority
+  authored_symbol: NonEmptyStr
+  authority_ref: DeclarationRef
+  primitive: PrimitiveIdentity?
+  provenance: PrimitiveSurfaceCensusProvenance
+}
+
+type PrimitiveJoinViolation
+  = SurfaceMissingPrimitiveIdentity {
+      authority: PrimitiveSurfaceAuthority
+      authored_symbol: NonEmptyStr
+    }
+  | SurfaceJoinsTwoIdentities {
+      authority: PrimitiveSurfaceAuthority
+      authored_symbol: NonEmptyStr
+      first: PrimitiveIdentity
+      second: PrimitiveIdentity
+    }
+  | IncompatibleInvocationAssignment {
+      authored_symbol: NonEmptyStr
+      first: PrimitiveIdentity
+      second: PrimitiveIdentity
+    }
+  | RealizationNamesUnknownPrimitive {
+      target: RealizationTarget
+      handler: DeclarationRef
+    }
+  | DuplicateSemanticDefinition { identity: PrimitiveIdentity }
+
+fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
+  PrimitiveIdentity { slug: concat("primitive.", name) as NonEmptyStr }
+}
+
+fn primitive_identity_eq(left: PrimitiveIdentity, right: PrimitiveIdentity) -> Bool {
+  left.slug == right.slug
+}
+
+fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn decl_field_ref(module_path: String, decl_name: String, field_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: NamedField { field_name: field_name as NonEmptyStr },
+  }
+}
+
+data primitive_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "map_keys")
+data primitive_map_values: PrimitiveIdentity = primitive_identity_slug(name: "map_values")
+data primitive_fold_list: PrimitiveIdentity = primitive_identity_slug(name: "fold_list")
+data primitive_index_by: PrimitiveIdentity = primitive_identity_slug(name: "index_by")
+
+data primitive_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_map_keys,
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_keys" as NonEmptyStr },
+}
+
+data primitive_map_values_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_map_values,
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_values" as NonEmptyStr },
+}
+
+data primitive_fold_list_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_fold_list,
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "fold_list" as NonEmptyStr },
+}
+
+data primitive_index_by_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_index_by,
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "index_by" as NonEmptyStr },
+}
+
+data primitive_d0_definitions: List<PrimitiveDefinition> = [
+  primitive_map_keys_definition,
+  primitive_map_values_definition,
+  primitive_fold_list_definition,
+  primitive_index_by_definition,
+]
+
+fn surface_row(
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+  authority_ref: DeclarationRef,
+  primitive: PrimitiveIdentity?,
+  provenance: PrimitiveSurfaceCensusProvenance
+) -> PrimitiveSurfaceRow {
+  PrimitiveSurfaceRow {
+    authority: authority,
+    authored_symbol: authored_symbol as NonEmptyStr,
+    authority_ref: authority_ref,
+    primitive: primitive,
+    provenance: provenance,
+  }
+}
+
+type PrimitiveSurfaceAliasBinding {
+  authority: PrimitiveSurfaceAuthority
+  authored_symbol: NonEmptyStr
+  identity: PrimitiveIdentity
+}
+
+data primitive_d0_surface_alias_bindings_note: String = "D0 specimen alias table — single (authority × authored_symbol) → PrimitiveIdentity authority consumed by primitive_identity_lookup and all census row builders. Dissolve-on: population-wide join replaces this hand table at terminal acceptance."
+
+data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
+  PrimitiveSurfaceAliasBinding {
+    authority: BuiltinRegistry,
+    authored_symbol: "map_keys" as NonEmptyStr,
+    identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: BuiltinRegistry,
+    authored_symbol: "map_values" as NonEmptyStr,
+    identity: primitive_map_values,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: PrimitiveContractRow,
+    authored_symbol: "map_keys" as NonEmptyStr,
+    identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: PrimitiveContractRow,
+    authored_symbol: "map_values" as NonEmptyStr,
+    identity: primitive_map_values,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: PrimitiveContractRow,
+    authored_symbol: "fold" as NonEmptyStr,
+    identity: primitive_fold_list,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: PrimitiveContractRow,
+    authored_symbol: "index_by" as NonEmptyStr,
+    identity: primitive_index_by,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: AlgebraTemplate,
+    authored_symbol: "map_keys" as NonEmptyStr,
+    identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: AlgebraTemplate,
+    authored_symbol: "map_values" as NonEmptyStr,
+    identity: primitive_map_values,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: AlgebraTemplate,
+    authored_symbol: "fold" as NonEmptyStr,
+    identity: primitive_fold_list,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: EmitHandler,
+    authored_symbol: "map_keys" as NonEmptyStr,
+    identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: EmitHandler,
+    authored_symbol: "map_values" as NonEmptyStr,
+    identity: primitive_map_values,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: EmitHandler,
+    authored_symbol: "index_by" as NonEmptyStr,
+    identity: primitive_index_by,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "map_keys" as NonEmptyStr,
+    identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "map_values" as NonEmptyStr,
+    identity: primitive_map_values,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "fold_list" as NonEmptyStr,
+    identity: primitive_fold_list,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "index_by" as NonEmptyStr,
+    identity: primitive_index_by,
+  },
+]
+
+fn primitive_identity_lookup(
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+) -> PrimitiveIdentity? {
+  primitive_d0_surface_alias_bindings
+    |> fold(init: none, f: fn(acc, binding) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if binding.authority == authority
+            && (binding.authored_symbol as String) == authored_symbol {
+            Present { value: binding.identity }
+          } else {
+            none
+          }
+      }
+    })
+}
+
+fn registry_contains_symbol(sym: String) -> Bool {
+  builtin_registry_surface_names() |> any(name => name == sym)
+}
+
+fn algebra_contains_template_name(name: String) -> Bool {
+  all_algebra_template_names() |> any(template_name => template_name == name)
+}
+
+fn emit_contains_symbol(sym: String) -> Bool {
+  rt_function_registry |> any(entry => entry.name == sym)
+}
+
+fn contract_contains_name(name: String) -> Bool {
+  primitive_contract_roster() |> any(contract => contract.name == name)
+}
+
+fn primitive_registry_surface_rows() -> List<PrimitiveSurfaceRow> {
+  builtin_registry_surface_names()
+    |> map(sym =>
+      surface_row(
+        authority: BuiltinRegistry,
+        authored_symbol: sym,
+        authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
+        primitive: primitive_identity_lookup(authority: BuiltinRegistry, authored_symbol: sym),
+        provenance: DerivedFromAuthority,
+      )
+    )
+}
+
+fn primitive_contract_surface_rows() -> List<PrimitiveSurfaceRow> {
+  primitive_contract_roster()
+    |> map(contract =>
+      surface_row(
+        authority: PrimitiveContractRow,
+        authored_symbol: contract.name,
+        authority_ref: decl_field_ref(
+          module_path: "std.primitives",
+          decl_name: concat(contract.name, "_contract"),
+          field_name: "name",
+        ),
+        primitive: primitive_identity_lookup(
+          authority: PrimitiveContractRow,
+          authored_symbol: contract.name,
+        ),
+        provenance: DerivedFromAuthority,
+      )
+    )
+}
+
+fn primitive_algebra_surface_rows() -> List<PrimitiveSurfaceRow> {
+  all_algebra_field_templates()
+    |> map(template =>
+      surface_row(
+        authority: AlgebraTemplate,
+        authored_symbol: template.name,
+        authority_ref: decl_ref(module_path: "std.algebra", decl_name: "all_algebra_field_templates"),
+        primitive: primitive_identity_lookup(authority: AlgebraTemplate, authored_symbol: template.name),
+        provenance: DerivedFromAuthority,
+      )
+    )
+}
+
+fn primitive_emit_surface_rows() -> List<PrimitiveSurfaceRow> {
+  rt_function_registry
+    |> map(entry =>
+      surface_row(
+        authority: EmitHandler,
+        authored_symbol: entry.name,
+        authority_ref: decl_ref(module_path: "extdeps.languages.rust.emit", decl_name: "rt_function_registry"),
+        primitive: primitive_identity_lookup(authority: EmitHandler, authored_symbol: entry.name),
+        provenance: DerivedFromAuthority,
+      )
+    )
+}
+
+fn primitive_interpreter_dispatch_measurement_rows() -> List<PrimitiveSurfaceRow> {
+  [
+    surface_row(
+      authority: InterpreterDispatch,
+      authored_symbol: "map_keys",
+      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
+      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "map_keys"),
+      provenance: MeasurementOnly,
+    ),
+    surface_row(
+      authority: InterpreterDispatch,
+      authored_symbol: "map_values",
+      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_builtin_inner"),
+      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "map_values"),
+      provenance: MeasurementOnly,
+    ),
+    surface_row(
+      authority: InterpreterDispatch,
+      authored_symbol: "fold_list",
+      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_call"),
+      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "fold_list"),
+      provenance: MeasurementOnly,
+    ),
+    surface_row(
+      authority: InterpreterDispatch,
+      authored_symbol: "index_by",
+      authority_ref: decl_ref(module_path: "v1_interpreter", decl_name: "eval_algebra_method_inner"),
+      primitive: primitive_identity_lookup(authority: InterpreterDispatch, authored_symbol: "index_by"),
+      provenance: MeasurementOnly,
+    ),
+  ]
+}
+
+fn primitive_surface_census_derived() -> List<PrimitiveSurfaceRow> {
+  concat(
+    concat(
+      concat(primitive_registry_surface_rows(), primitive_contract_surface_rows()),
+      primitive_algebra_surface_rows()
+    ),
+    primitive_emit_surface_rows()
+  )
+}
+
+fn primitive_d0_surface_census() -> List<PrimitiveSurfaceRow> {
+  concat(
+    primitive_surface_census_derived(),
+    primitive_interpreter_dispatch_measurement_rows()
+  )
+}
+
+data primitive_map_keys_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
+  primitive: primitive_map_keys,
+  order: HostUnspecifiedOrder,
+}
+
+data primitive_map_values_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
+  primitive: primitive_map_values,
+  order: HostUnspecifiedOrder,
+}
+
+data primitive_fold_list_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
+  primitive: primitive_fold_list,
+  order: SourcePreservingOrder,
+}
+
+data primitive_index_by_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
+  primitive: primitive_index_by,
+  order: TraversalOrderUnclassified,
+}
+
+data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
+  primitive_map_keys_traversal,
+  primitive_map_values_traversal,
+  primitive_fold_list_traversal,
+  primitive_index_by_traversal,
+]
+
+data primitive_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_map_keys,
+  cost: ShapeLinearScan,
+}
+
+data primitive_map_values_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_map_values,
+  cost: ShapeLinearScan,
+}
+
+data primitive_fold_list_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_fold_list,
+  cost: ShapeIterateBody,
+}
+
+data primitive_index_by_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_index_by,
+  cost: ShapeIterateBody,
+}
+
+fn primitive_surface_missing_identity_violation(row: PrimitiveSurfaceRow) -> PrimitiveJoinViolation? {
+  match row.primitive {
+    Present { value: _ } => none
+    Absent =>
+      Present {
+        value: SurfaceMissingPrimitiveIdentity {
+          authority: row.authority,
+          authored_symbol: row.authored_symbol,
+        },
+      }
+  }
+}
+
+fn primitive_surface_row_identity_violation(
+  row: PrimitiveSurfaceRow,
+  expected: PrimitiveIdentity,
+) -> PrimitiveJoinViolation? {
+  match row.primitive {
+    Present { value: id } =>
+      if primitive_identity_eq(left: id, right: expected) {
+        none
+      } else {
+        Present {
+          value: IncompatibleInvocationAssignment {
+            authored_symbol: row.authored_symbol,
+            first: id,
+            second: expected,
+          },
+        }
+      }
+    Absent =>
+      Present {
+        value: SurfaceMissingPrimitiveIdentity {
+          authority: row.authority,
+          authored_symbol: row.authored_symbol,
+        },
+      }
+  }
+}
+
+fn primitive_surface_joins_two_identities_violation(
+  left: PrimitiveSurfaceRow,
+  right: PrimitiveSurfaceRow,
+) -> PrimitiveJoinViolation? {
+  if (left.authored_symbol as String) != (right.authored_symbol as String) {
+    none
+  } else {
+    match left.primitive {
+      Present { value: first } =>
+        match right.primitive {
+          Present { value: second } =>
+            if primitive_identity_eq(left: first, right: second) {
+              none
+            } else if left.authority == right.authority {
+              Present {
+                value: SurfaceJoinsTwoIdentities {
+                  authority: left.authority,
+                  authored_symbol: left.authored_symbol,
+                  first: first,
+                  second: second,
+                },
+              }
+            } else {
+              Present {
+                value: IncompatibleInvocationAssignment {
+                  authored_symbol: left.authored_symbol,
+                  first: first,
+                  second: second,
+                },
+              }
+            }
+          Absent => none
+        }
+      Absent => none
+    }
+  }
+}
+
+fn primitive_incompatible_invocation_assignment_violation(
+  authored_symbol: String,
+  first: PrimitiveIdentity,
+  second: PrimitiveIdentity,
+) -> PrimitiveJoinViolation? {
+  if primitive_identity_eq(left: first, right: second) {
+    none
+  } else {
+    Present {
+      value: IncompatibleInvocationAssignment {
+        authored_symbol: authored_symbol as NonEmptyStr,
+        first: first,
+        second: second,
+      },
+    }
+  }
+}
+
+fn primitive_surface_rows_missing_identity_violations(
+  rows: List<PrimitiveSurfaceRow>
+) -> List<PrimitiveJoinViolation> {
+  rows |> fold(init: [], f: fn(acc, row) {
+    match primitive_surface_missing_identity_violation(row: row) {
+      Present { value: violation } => concat([violation], acc)
+      Absent => acc
+    }
+  })
+}
+
+fn primitive_definition_identity(definition: PrimitiveDefinition) -> PrimitiveIdentity {
+  definition.identity
+}
+
+fn primitive_duplicate_semantic_definition_violation(
+  definitions: List<PrimitiveDefinition>,
+  target: PrimitiveIdentity
+) -> PrimitiveJoinViolation? {
+  if count(
+    definitions |> filter(fn(d) { primitive_identity_eq(left: d.identity, right: target) })
+  ) > 1 {
+    Present { value: DuplicateSemanticDefinition { identity: target } }
+  } else {
+    none
+  }
+}
+
+fn primitive_realization_unknown_primitive_violation(
+  realization: PrimitiveRealization,
+  definitions: List<PrimitiveDefinition>
+) -> PrimitiveJoinViolation? {
+  let known = definitions
+    |> any(fn(d) { primitive_identity_eq(left: d.identity, right: realization.primitive) })
+  if known {
+    none
+  } else {
+    Present {
+      value: RealizationNamesUnknownPrimitive {
+        target: realization.target,
+        handler: realization.handler,
+      },
+    }
+  }
+}
+
+fn primitive_d0_derived_rows_missing_identity_count() -> Int {
+  count(primitive_surface_rows_missing_identity_violations(rows: primitive_surface_census_derived()))
+}
+
+fn primitive_d0_interpreter_measurement_row_count() -> Int {
+  count(primitive_interpreter_dispatch_measurement_rows())
+}
+
+fn primitive_d0_open_denominator_receipt_holds() -> Bool {
+  primitive_d0_derived_surface_authority_count == 4
+    && primitive_d0_open_surface_authority_count == 1
+    && primitive_interpreter_dispatch_arm_count == 158
+    && primitive_interpreter_dispatch_spelling_count == 169
+    && primitive_d0_interpreter_measurement_row_count() == 4
+    && primitive_d0_derived_rows_missing_identity_count() > 0
+}
+
+fn primitive_d0_surface_census_row_count() -> Int {
+  count(primitive_d0_surface_census())
+}
+
+fn primitive_d0_surface_census_derived_row_count() -> Int {
+  count(primitive_surface_census_derived())
+}
+
+fn primitive_d0_surface_census_missing_identity_count() -> Int {
+  count(primitive_surface_rows_missing_identity_violations(rows: primitive_d0_surface_census()))
+}
+
+fn primitive_d0_surface_census_rows_for(
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+) -> List<PrimitiveSurfaceRow> {
+  primitive_d0_surface_census()
+    |> filter(fn(row) {
+      row.authority == authority && (row.authored_symbol as String) == authored_symbol
+    })
+}
+
+fn primitive_d0_surface_census_row_identity_coherent(
+  authority: PrimitiveSurfaceAuthority,
+  authored_symbol: String,
+  expected: PrimitiveIdentity,
+) -> Bool {
+  let rows = primitive_d0_surface_census_rows_for(
+    authority: authority,
+    authored_symbol: authored_symbol,
+  )
+  count(rows) == 1
+    && match rows |> first {
+      Present { value: row } =>
+        match primitive_surface_row_identity_violation(row: row, expected: expected) {
+          Absent => true
+          Present { value: _ } => false
+        }
+      Absent => false
+    }
+}
+
+fn primitive_d0_fold_list_spelling_fork_holds() -> Bool {
+  primitive_d0_surface_census_row_identity_coherent(
+    authority: PrimitiveContractRow,
+    authored_symbol: "fold",
+    expected: primitive_fold_list,
+  )
+    && primitive_d0_surface_census_row_identity_coherent(
+      authority: InterpreterDispatch,
+      authored_symbol: "fold_list",
+      expected: primitive_fold_list,
+    )
+    && !registry_contains_symbol(sym: "fold_list")
+}
+
+fn primitive_d0_index_by_registry_algebra_gap_holds() -> Bool {
+  !registry_contains_symbol(sym: "index_by")
+    && !algebra_contains_template_name(name: "index_by")
+    && contract_contains_name(name: "index_by")
+    && emit_contains_symbol(sym: "index_by")
+}
+
+fn primitive_d0_fold_list_registry_gap_holds() -> Bool {
+  !registry_contains_symbol(sym: "fold_list")
+    && primitive_d0_surface_census_row_identity_coherent(
+      authority: InterpreterDispatch,
+      authored_symbol: "fold_list",
+      expected: primitive_fold_list,
+    )
+}
+
+fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
+  let rows = primitive_d0_surface_census()
+    |> filter(fn(row) { (row.authored_symbol as String) == "map_keys" })
+  count(rows) == 5
+    && rows |> all(fn(row) {
+      match primitive_surface_row_identity_violation(row: row, expected: primitive_map_keys) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    })
+}
+
+fn primitive_d0_interpreter_rows_are_measurement_only() -> Bool {
+  primitive_interpreter_dispatch_measurement_rows()
+    |> all(fn(row) { row.provenance == MeasurementOnly })
+}
+
+fn primitive_d0_derived_rows_are_from_authority() -> Bool {
+  primitive_surface_census_derived()
+    |> all(fn(row) { row.provenance == DerivedFromAuthority })
+}
+
+fn primitive_d0_host_unspecified_traversal_classified() -> Bool {
+  primitive_d0_traversal_facts
+    |> all(fn(fact) {
+      if primitive_identity_eq(left: fact.primitive, right: primitive_map_keys)
+        || primitive_identity_eq(left: fact.primitive, right: primitive_map_values) {
+        fact.order == HostUnspecifiedOrder
+      } else {
+        true
+      }
+    })
+}

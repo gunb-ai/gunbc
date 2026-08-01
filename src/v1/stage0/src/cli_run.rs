@@ -1373,6 +1373,91 @@ fn resolve_virtual_source_with_imports(
     sources
 }
 
+/// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
+/// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
+/// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
+/// `CompilerDiagnostic` is the single authority for naming a variant (§3 — this is a projection,
+/// never a second diagnostic vocabulary).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileDiagnosticCensusRow {
+    pub diagnostic_class: String,
+    pub subject_name: String,
+    pub blocking: bool,
+    pub count: i64,
+}
+
+/// Result of [`compile_dag_diagnostic_census`]. `NotRunnable` is a distinct arm rather than an
+/// empty row list because an empty census is byte-identical to a clean compile: could-not-measure
+/// must never be readable as the subject passing (DESIGN §5 — ⊤-as-answer conflated with
+/// ⊤-as-ignorance). Preserving the split *here*, at the host seam, is what lets the probe layer
+/// map it to `ProbeObservation::ProbeNotRunnable` without guessing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompileDiagnosticCensus {
+    Observed(Vec<CompileDiagnosticCensusRow>),
+    NotRunnable(String),
+}
+
+/// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
+/// `.dag` program through the **same** path [`compile_dag_rust_emit_check`] takes, and report the
+/// full per-class diagnostic census the compile produced.
+///
+/// MEASUREMENT ONLY. Nothing here judges acceptance and nothing is filtered: every diagnostic the
+/// compile emitted appears, advisories included, with `blocking` carried **as data** read through
+/// the existing [`compile_clean_diagnostic_is_hard`] delegation so the severity policy keeps one
+/// home. Callers filter. The sibling builtin collapses this same information into a `bool`, which
+/// discards class identity, severity, and every advisory — the three facts a guarantee probe needs
+/// in order to state which judgment fired rather than merely that something refused.
+///
+/// Scope, stated so a receipt cannot claim coverage it does not have: this is the v1 pipeline to
+/// the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
+/// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes. It observes nothing about the
+/// interpreter's disposition of the same program and nothing about other emission targets.
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let module_index = build_module_path_index_from_witness_roots();
+        let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
+        v1_compiler_compile::compile_sources(
+            Rc::new(sources.into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        )
+    }));
+    let result = match compiled {
+        Ok(r) => r,
+        Err(_) => {
+            return CompileDiagnosticCensus::NotRunnable(
+                "compile_dag_diagnostic_census: the compile panicked before producing diagnostics"
+                    .to_string(),
+            );
+        }
+    };
+    // Aggregate on the full key INCLUDING severity: one class can legitimately occur at both
+    // severities, and folding those together would hide exactly the blocking→advisory demotion
+    // this surface exists to keep visible.
+    let mut order: Vec<(String, String, bool)> = Vec::new();
+    let mut counts: HashMap<(String, String, bool), i64> = HashMap::new();
+    for d in result.diagnostics.iter() {
+        let (class, name) = compile_clean_diagnostic_histogram_key(d);
+        let blocking = compile_clean_diagnostic_is_hard(d);
+        let key = (class, name, blocking);
+        let entry = counts.entry(key.clone()).or_insert(0);
+        if *entry == 0 {
+            order.push(key);
+        }
+        *entry += 1;
+    }
+    CompileDiagnosticCensus::Observed(
+        order
+            .into_iter()
+            .map(|key| CompileDiagnosticCensusRow {
+                diagnostic_class: key.0.clone(),
+                subject_name: key.1.clone(),
+                blocking: key.2,
+                count: counts.get(&key).copied().unwrap_or(0),
+            })
+            .collect(),
+    )
+}
+
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics

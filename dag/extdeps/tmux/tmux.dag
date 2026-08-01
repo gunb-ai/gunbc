@@ -11,6 +11,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data tmux_client_connect_error_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/tmux/tmux/blob/master/client.c"
+  }
+}
+
+data tmux_client_connect_error_note: String = "Upstream tmux client.c client_connect passes connect(2) failures through errno. The client prints `error connecting to <socket> (<errno string>)` for errors other than ECONNREFUSED; ENOENT is rendered as `No such file or directory` and means the selected Unix socket path does not exist, so no tmux server owns that socket and its session set is empty. ECONNREFUSED is deliberately distinct: tmux renders it as `no server running`, while a literal `error connecting ... (Connection refused)` is not the cited ENOENT fact and must not be classified from this row."
+
 type TmuxServerScope
   = DefaultTmuxServer
   | NamedTmuxServer { socket_name: NonEmptyStr }
