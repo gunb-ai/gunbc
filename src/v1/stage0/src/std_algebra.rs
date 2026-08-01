@@ -1558,22 +1558,13 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 pub fn algebra_method_template_name(name: String) -> bool {
     {
         let mut __found = false;
-        for p in Rc::new(vec![
-            AlgebraProfile::OrderedRingProfile,
-            AlgebraProfile::ApproximateFieldProfile,
-            AlgebraProfile::BooleanAlgebraProfile,
-            AlgebraProfile::BooleanAlgebraCollectionProfile,
-            AlgebraProfile::PointwisePowerCollectionProfile,
-            AlgebraProfile::FreeMonoidScalarProfile,
-            AlgebraProfile::FreeMonoidCollectionProfile,
-            AlgebraProfile::PartialFunctionProfile,
-        ])
-        .iter()
-        .cloned()
-        {
+        for profile in all_algebra_profiles().iter().cloned() {
             if {
                 let mut __found = false;
-                for t in algebra_templates_for_profile(p.clone()).iter().cloned() {
+                for t in algebra_templates_for_profile(profile.clone())
+                    .iter()
+                    .cloned()
+                {
                     if (t.name.clone() == name.clone()) {
                         __found = true;
                         break;
@@ -1613,6 +1604,43 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
         AlgebraProfile::FreeMonoidCollectionProfile => Rc::new(vec!["T".to_string()]),
         AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
     }
+}
+
+pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
+    Rc::new(vec![
+        AlgebraProfile::OrderedRingProfile,
+        AlgebraProfile::ApproximateFieldProfile,
+        AlgebraProfile::BooleanAlgebraProfile,
+        AlgebraProfile::BooleanAlgebraCollectionProfile,
+        AlgebraProfile::PointwisePowerCollectionProfile,
+        AlgebraProfile::FreeMonoidScalarProfile,
+        AlgebraProfile::FreeMonoidCollectionProfile,
+        AlgebraProfile::PartialFunctionProfile,
+    ])
+}
+
+pub fn all_algebra_field_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for profile in all_algebra_profiles().iter().cloned() {
+            __result.extend(
+                (*algebra_templates_for_profile(profile.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn all_algebra_template_names() -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for template in all_algebra_field_templates().iter().cloned() {
+            __result.push(template.name.clone());
+        }
+        __result
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
