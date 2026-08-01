@@ -13,6 +13,8 @@ import gunbc.repo_local_git_config {
   generated_artifact_merge_driver_value,
   core_hooks_path_key,
   core_hooks_path_value,
+  repo_local_git_config_converge_entry,
+  repo_local_git_config_converge_function,
 }
 import gunbc.membership_reconcile {
   membership_upsert_count,
@@ -32,6 +34,11 @@ data witness_note: String = "Lane 2 model witnesses for repository-local Git con
 
 test fn witness_desired_binding_count_holds() -> Bool {
   count(desired_repo_local_git_config_bindings()) == 2
+}
+
+test fn witness_converge_entry_is_declared() -> Bool {
+  repo_local_git_config_converge_function == "converge"
+    && repo_local_git_config_converge_entry == "dag/gunbc/repo_local_git_config.dag"
 }
 
 test fn witness_empty_observed_reconcile_upserts_holds() -> Bool {

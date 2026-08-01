@@ -479,6 +479,24 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   )
 }
 
+data ci_heal_repo_local_git_config_entry: String = "dag/gunbc/repo_local_git_config.dag"
+data ci_heal_repo_local_git_config_function: String = "converge"
+
+data ci_heal_repo_local_git_config_note: String = "After artifact regen, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) on the checkout via the modeled repo_local_git_config actuator — same entry developers run per clone. Idempotent: already-converged checkouts are a no-op."
+
+fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: ci_heal_repo_local_git_config_entry,
+      function: ci_heal_repo_local_git_config_function,
+      rooted: true,
+      claim_run: false
+    )
+  )
+}
+
 data ci_heal_dispatch_entry: String = "dag/tools/ci_heal_dispatch.dag"
 data ci_heal_dispatch_function: String = "main"
 

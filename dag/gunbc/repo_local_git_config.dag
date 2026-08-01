@@ -1,5 +1,6 @@
 module gunbc.repo_local_git_config
 
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { FilePath }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -43,6 +44,10 @@ data generated_artifact_merge_driver_key: String = "merge.generated-artifact.dri
 data generated_artifact_merge_driver_value: String = "true"
 data core_hooks_path_key: String = "core.hooksPath"
 data core_hooks_path_value: String = ".githooks"
+
+data repo_local_git_config_converge_entry: String = "dag/gunbc/repo_local_git_config.dag"
+data repo_local_git_config_converge_function: String = "converge"
+data repo_local_git_config_clone_setup_note: String = "Per-clone setup: gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/repo_local_git_config.dag --function converge — idempotent actuator installing merge.generated-artifact.driver=true and core.hooksPath=.githooks with local-scope read-back. CI heal job invokes the same entry after artifact regen (gunbc.ci_spec gunbc_ci_heal_repo_local_git_config_invoke)."
 
 fn desired_repo_local_git_config_bindings() -> List<RepoLocalGitConfigBinding> {
   [
@@ -228,4 +233,12 @@ fn repo_local_git_config_converge_actuate_at(
 fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
   let root = git.Inspect.Toplevel()
   repo_local_git_config_converge_actuate_at(repo: root.path)
+}
+
+func converge() -> ProcessExit {
+  match repo_local_git_config_converge_actuate() {
+    Converged { evidence: _, applied: _ } => ExitSuccess
+    NotConverged { reason: r, applied: _ } =>
+      exit_failure(reason: concat("repo local git config converge refused: ", r))
+  }
 }
