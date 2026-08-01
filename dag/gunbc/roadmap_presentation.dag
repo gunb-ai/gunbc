@@ -10,7 +10,12 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
   item_superseded_by, item_is_done, signoff_accepts,
+  line_ticket, TicketFields, TicketUpdate,
 }
+import gunbc.roadmap_spawner {
+  node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
+}
+import gunbc.roadmap_provider_events { provider_execution_activity }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -35,11 +40,10 @@ data roadmap_presentation_note: String = "THE PRESENTATION SEAM (A2, operator-di
 
 data single_projection_authority_note: String = "ONE projection authority across server and client (operator constraint 1, 2026-08-01). The dangerous shape is two presentation authorities: the server folding facts to HTML here while the client TypeScript separately hand-decides which segment becomes the summary, which evidence is routine, when an anomaly expands, or whether an action is prominent. The rule: every presentation DECISION lives in this module's pure fns; the dynamic endpoint serializes the DECIDED view fields (summary text, attention key, remaining count, evidence rows, action availability x priority), and the client program PAINTS them without policy. The obligation is discharged by a parity witness — a server-rendered activity state and the client-updated realization of the same constructed facts produce the same semantic regions and labels — which lands with the client-realization slice, not as prose."
 
-data activity_attention_note: String = "The attention axis drives the renderer's expand/collapse per the attention rule (routine collapses, active work is legible, anomaly expands): Routine renders the one-line summary with the ledger behind disclosure; NeedsUser marks a state waiting on a human decision; Anomalous auto-expands the located evidence. This is the row-level twin of gunbc.roadmap_altitude's section law."
+data activity_attention_note: String = "The attention axis drives the renderer's expand/collapse per the attention rule (routine collapses, active work is legible, anomaly expands): Routine renders the one-line summary with the ledger behind disclosure; Anomalous auto-expands the located evidence. This is the row-level twin of gunbc.roadmap_altitude's section law. A NeedsUser arm existed in the first cut and was REMOVED (operator review 2026-08-01, minimality): no producer in the corpus yields a waiting-on-human decision fact yet, and an attention state nothing can construct is future vocabulary — the arm returns WITH its producer."
 
 type ActivityAttention
   = ActivityRoutine
-  | ActivityNeedsUser
   | ActivityAnomalous
 
 type ActivityEvidenceRow {
@@ -76,12 +80,10 @@ data work_attempt_facts_note: String = "The EXACT constructor over typed attempt
 
 type WorkAttemptFacts
   = NoActiveAttempt
-  | ActiveAttempt {
-      progress: WorkflowAttemptProgress
-      process: WorkerProcessEvidence
-      current_activity: String
-    }
+  | ActiveAttempt { progress: WorkflowAttemptProgress }
   | AttemptUnobservable { reason: String }
+
+data one_progress_authority_note: String = "ActiveAttempt carries the progress projection ALONE (operator blocker 3, 2026-08-01): the first cut also took process and current_activity as separate parameters, which made disagreement writable — a caller could pass a progress whose reconciliation was derived under WorkerProcessRunning while asserting WorkerProcessExited beside it. WorkflowAttemptProgress already carries process (the shared worker_lifecycle evidence) and provider (whose provider_execution_activity IS the canonical current-activity projection), so the seam reads both from the one carrier and the fork is unwritable."
 
 data action_axes_note: String = "Availability and priority are ORTHOGONAL axes (the A1 recon's 'ten equally loud pills' defect): that an operation is legally available establishes nothing about how loudly it renders. Availability is a fact about the admission contract (belt_dispatch_node refuses signoff-Done but not Ready — manual out-of-order dispatch on blocked/unsized rows is a deliberately preserved override, dispatch_button_note); priority is a presentation decision this seam owns. The renderer derives prominence from BOTH: an AvailableAsOverride action renders quiet even though it is fully operable. Availability must never imply visual primacy."
 
@@ -97,7 +99,6 @@ type ActionPriority
 
 type WorkActionKind
   = DispatchAction
-  | StopAction
   | ClearSessionAction
 
 type WorkAction {
@@ -139,6 +140,52 @@ fn work_lifecycle_key(l: WorkLifecycle) -> String {
     ReviewLifecycle => "review"
     DoneLifecycle => "done"
     SupersededLifecycle => "superseded"
+  }
+}
+
+data work_scheduling_note: String = "The scheduling axis as a TYPED position, not a Bool (operator blocker 2, 2026-08-01: ready: Bool was anemic and caller-assertable — a caller could pass true for an upcoming node and the view had no typed distinction among the frontier positions). The arms are projected from the SAME predicates spawn_frontier filters — node_is_spawnable / node_is_upcoming / node_is_frontier_done / superseded — so scheduling equals frontier-bucket membership by construction (witnessed against spawn_frontier on the live authority, not asserted). SchedulingUpcoming carries its blockers: the unmet parents, the fact that explains why an open row is not dispatchable-now. SchedulingUnplanned is the honest arm for a node outside every bucket (unsized, or otherwise not yet admitted to the frontier) — collapsing it into Upcoming would fabricate a blocked-on claim with no blockers."
+
+type WorkScheduling
+  = SchedulingReady
+  | SchedulingUpcoming { blockers: List<String> }
+  | SchedulingDone
+  | SchedulingSuperseded
+  | SchedulingUnplanned
+
+fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<String> {
+  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
+  let unmet = filter(xs: parents, f: pid =>
+    !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
+  map(unmet, p => p as String)
+}
+
+fn work_scheduling(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> WorkScheduling {
+  if !(item_superseded_by(item: rn.line) == "") {
+    SchedulingSuperseded
+  } else {
+    if node_is_frontier_done(n: rn) {
+      SchedulingDone
+    } else {
+      if node_is_spawnable(n: rn, nodes: nodes, edges: edges) {
+        SchedulingReady
+      } else {
+        if node_is_upcoming(n: rn, nodes: nodes, edges: edges) {
+          SchedulingUpcoming { blockers: scheduling_blockers(rn: rn, nodes: nodes, edges: edges) }
+        } else {
+          SchedulingUnplanned
+        }
+      }
+    }
+  }
+}
+
+fn work_scheduling_key(s: WorkScheduling) -> String {
+  match s {
+    SchedulingReady => "ready"
+    SchedulingUpcoming { blockers: _ } => "upcoming"
+    SchedulingDone => "done"
+    SchedulingSuperseded => "superseded"
+    SchedulingUnplanned => "unplanned"
   }
 }
 
@@ -241,47 +288,41 @@ fn row_summary(line: RoadmapItem) -> String? {
   none
 }
 
-data action_derivation_note: String = "The action derivation, both axes decided here. Availability mirrors the admission contract the page already respects (dispatch renders on every non-done, non-superseded row; Ready rows are Available, everything else dispatchable is AvailableAsOverride — the preserved manual out-of-order path). Priority: a Ready row's dispatch is the row's PrimaryAction; an override dispatch is SecondaryAction (operable, quiet); stop is SecondaryAction while work runs; clearing a retained session is DiagnosticAction. The renderer derives prominence from priority and NEVER from availability alone."
+data action_derivation_note: String = "The action derivation, both axes decided here. Availability mirrors the admission contract the page already respects (dispatch renders on every non-done, non-superseded row; a SchedulingReady row is Available, everything else dispatchable is AvailableAsOverride — the preserved manual out-of-order path, dispatch_button_note). Priority: a Ready row's dispatch is the row's PrimaryAction; an override dispatch is SecondaryAction (operable, quiet); clearing a retained session is DiagnosticAction. The renderer derives prominence from priority and NEVER from availability alone. WHAT THIS FN NO LONGER FABRICATES (operator blocker 4, 2026-08-01): the first cut minted an ActionAvailable ClearSessionAction for every active/refused/completed activity — but cleanup admission is an OBSERVED fact the sessions channel owns (cleanup_action / cleanup_allowed / cleanup_detail), and an active attempt does not prove a cleanup operation is currently allowed. The session action therefore arrives only through session_action_view over the observed admission, and this fn derives dispatch alone; a StopAction kind existed in the first cut with no producer and was removed with it."
 
-fn dispatch_action(ready: Bool, lifecycle: WorkLifecycle) -> List<WorkAction> {
+fn dispatch_action(scheduling: WorkScheduling, lifecycle: WorkLifecycle) -> List<WorkAction> {
   match lifecycle {
     DoneLifecycle => []
     SupersededLifecycle => []
     OpenLifecycle =>
-      if ready {
-        [ WorkAction { kind: DispatchAction, availability: ActionAvailable, priority: PrimaryAction } ]
-      } else {
-        [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
+      match scheduling {
+        SchedulingReady =>
+          [ WorkAction { kind: DispatchAction, availability: ActionAvailable, priority: PrimaryAction } ]
+        SchedulingUpcoming { blockers: _ } =>
+          [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
+        SchedulingUnplanned =>
+          [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
+        SchedulingDone =>
+          [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
+        SchedulingSuperseded => []
       }
     ReviewLifecycle =>
       [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
   }
 }
 
-fn action_view(ready: Bool, lifecycle: WorkLifecycle, activity: ActivityView) -> ActionView {
-  let dispatch = dispatch_action(ready: ready, lifecycle: lifecycle)
-  let session_actions = match activity {
-    NoActiveWork => []
-    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
-      [ WorkAction { kind: ClearSessionAction, availability: ActionAvailable, priority: DiagnosticAction } ]
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } =>
-      [ WorkAction { kind: ClearSessionAction, availability: ActionAvailable, priority: DiagnosticAction } ]
-    CompletedWork { outcome: _, evidence: _ } =>
-      [ WorkAction { kind: ClearSessionAction, availability: ActionAvailable, priority: DiagnosticAction } ]
-    ActivityUnobservable { reason: _ } => []
-  }
+fn action_view(scheduling: WorkScheduling, lifecycle: WorkLifecycle) -> ActionView {
+  let dispatch = dispatch_action(scheduling: scheduling, lifecycle: lifecycle)
   let primary = fold(dispatch, init: none, f: (acc, a) => match a.priority {
     PrimaryAction => Present { value: a }
     SecondaryAction => acc
     DiagnosticAction => acc
   })
-  let secondary = concat(
-    filter(xs: dispatch, f: a => match a.priority {
-      PrimaryAction => false
-      SecondaryAction => true
-      DiagnosticAction => true
-    }),
-    session_actions)
+  let secondary = filter(xs: dispatch, f: a => match a.priority {
+    PrimaryAction => false
+    SecondaryAction => true
+    DiagnosticAction => true
+  })
   ActionView { primary_action: primary, secondary_actions: secondary }
 }
 
