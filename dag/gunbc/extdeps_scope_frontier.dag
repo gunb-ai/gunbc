@@ -31,7 +31,7 @@ data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/test/mock_corpus.dag"
 ]
 
-data extdeps_scope_frontier_declared_count: Int = 397
+data extdeps_scope_frontier_declared_count: Int = 399
 
 data extdeps_scope_frontier_paths: List<String> = [
   "dag/extdeps/access/aws_iam.dag",
@@ -163,6 +163,7 @@ data extdeps_scope_frontier_paths: List<String> = [
   "dag/extdeps/git/git.dag",
   "dag/extdeps/git/gitignore.dag",
   "dag/extdeps/git/hooks.dag",
+  "dag/extdeps/git/inspect.dag",
   "dag/extdeps/github/actions.dag",
   "dag/extdeps/github/auth.dag",
   "dag/extdeps/github/checks_contracts.dag",
@@ -184,6 +185,7 @@ data extdeps_scope_frontier_paths: List<String> = [
   "dag/extdeps/github/pulls.dag",
   "dag/extdeps/github/workflow_runs_contracts.dag",
   "dag/extdeps/github/workflow_runs.dag",
+  "dag/extdeps/github/workflows.dag",
   "dag/extdeps/git/object_store.dag",
   "dag/extdeps/git/versioning.dag",
   "dag/extdeps/gpu/apple.dag",
