@@ -212,8 +212,9 @@ type LeanOverflowSemanticsAdmission
       reason: Symbol
     }
 
-data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> =
-  OverflowReturns { value_rule: ReturnWrapping }
+data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9): v1 parse_let and parse_data_after_kw call parse_expr immediately after ExpectEq without skip_newlines, so a binding initializer that continues on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline. CI reproduced on lean_overflow_semantics_witness_test.dag line 32 (typed let, generic annotation, coproduct-variant RHS OverflowReturns) and originally on lean.dag line 215 (typed data, generic annotation, same RHS shape). Multiline data with generic annotation and record constructor RHS is ordinary corpus-wide and not the discriminator; multiline-ness alone is refuted (3390 instances). This site uses single-line initializers until parse_let and parse_data_after_kw skip newlines after = or a continuation-aware initializer parse lands. Dissolve-on: either parser fix plus restore multi-line witnesses, or a typed located refusal at authoring time."
+
+data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
 
 fn lean_admit_fixed_width_overflow_semantics(
   semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>

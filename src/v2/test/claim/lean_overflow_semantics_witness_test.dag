@@ -26,13 +26,11 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data lean_overflow_semantics_witness_note: String = "P3b cluster-2 receipt (lean end-to-end): std.integer.IntegerOverflowSemantics<E> keeps return, raise, and undefined as separate arms; LeanOverflowPanics and LeanOverflowTraps are distinct E inhabitants. Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: OverflowUndefined and OverflowRaises refuse at lean_admit_fixed_width_overflow_semantics; catalog int32 carries ReturnWrapping, not raises or undefined."
+data lean_overflow_semantics_witness_note: String = "P3b cluster-2 receipt (lean end-to-end): std.integer.IntegerOverflowSemantics<E> keeps return, raise, and undefined as separate arms; LeanOverflowPanics and LeanOverflowTraps are distinct E inhabitants. Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: OverflowUndefined and OverflowRaises refuse at lean_admit_fixed_width_overflow_semantics; catalog int32 carries ReturnWrapping, not raises or undefined. Typed let initializers stay single-line per lean_overflow_parse_continuation_note."
 
 test fn overflow_semantics_three_arms_distinguishable() -> Bool {
-  let returns: IntegerOverflowSemantics<LeanOverflowRaiseEffect> =
-    OverflowReturns { value_rule: ReturnWrapping }
-  let raises: IntegerOverflowSemantics<LeanOverflowRaiseEffect> =
-    OverflowRaises { effect: LeanOverflowPanics }
+  let returns: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: ReturnWrapping }
+  let raises: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowPanics }
   let undefined: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowUndefined
   lean_overflow_semantics_arm_tag(semantics: returns) == ^lean_overflow_arm_returns
     && lean_overflow_semantics_arm_tag(semantics: raises) == ^lean_overflow_arm_raises
@@ -75,8 +73,7 @@ test fn lean_admit_refuses_undefined_for_fixed_width_catalog() -> Bool {
 }
 
 test fn lean_admit_refuses_raises_panic_for_fixed_width_catalog() -> Bool {
-  let raises_panic: IntegerOverflowSemantics<LeanOverflowRaiseEffect> =
-    OverflowRaises { effect: LeanOverflowPanics }
+  let raises_panic: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowRaises { effect: LeanOverflowPanics }
   match lean_admit_fixed_width_overflow_semantics(semantics: raises_panic) {
     LeanOverflowRefused { observed: _, reason: reason } =>
       reason == ^lean_overflow_refuse_raises_not_fixed_width_catalog
