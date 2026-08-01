@@ -10136,8 +10136,11 @@ fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> 
         ResolvedGraphProviderOutcome::Miss => {
             Some("resolved-graph-cache provider refused disk hit: probe miss".to_string())
         }
-        ResolvedGraphProviderOutcome::Hit
-        | ResolvedGraphProviderOutcome::RefusedIncomplete { .. } => None,
+        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Some(format!(
+            "resolved-graph-cache provider refused disk hit: incomplete artifact (missing: {})",
+            missing.join(", ")
+        )),
+        ResolvedGraphProviderOutcome::Hit => None,
     }
 }
 
@@ -10236,7 +10239,12 @@ fn resolved_graph_from_sources_with_index(
                             faithful_probe_unavailable_gap()
                         ));
                     }
-                    if let Some(parts) = probe.parts {
+                    if probe.parts.is_none() {
+                        // LegacyFormatMiss: pre-v3 on-disk encoding (v1 today). Cold
+                        // rebuild is the declared migration disposition — never route
+                        // through the v3 provider probe.
+                    } else {
+                        let parts = probe.parts.expect("v3 faithful probe carries parts");
                         let closure_digest = closure_content_digest(&sources);
                         let compiler_digest = transform_content_digest();
                         match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
@@ -10264,7 +10272,6 @@ fn resolved_graph_from_sources_with_index(
                                     }
                                 }
                             }
-                            Ok(ResolvedGraphProviderOutcome::RefusedIncomplete { .. }) => {}
                             Ok(other) => {
                                 if let Some(msg) = provider_integrity_refusal_message(other) {
                                     return Err(msg);
