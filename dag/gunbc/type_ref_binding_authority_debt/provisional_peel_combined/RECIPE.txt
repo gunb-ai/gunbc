@@ -1,0 +1,7 @@
+PROVISIONAL combined census (NOT a freeze pin)
+recipe: session/swift-fox-347@df4c428366e (N1 refusal arm + provisional debt)
+      + cherry-pick b7dfcef3465 (peel #7630 tip: propagate alias peel resolution diagnostics)
+scratch_sha: d8a5a37c283b0677ce05310ca23e6d2c8bd109f6
+admit: GUNBC_TYPE_REF_DEBT_ADMIT=0 (raw UnresolvedType)
+baseline_pin: type_ref_census_sha=89dbea7d896b3ae95195117374a8c0c9454f341e (arm only, 1927 UnresolvedType)
+freeze: still post-merge at pinned main SHA — this run sizes revealed delta only

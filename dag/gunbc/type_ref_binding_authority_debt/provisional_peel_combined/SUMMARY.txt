@@ -1,0 +1,22 @@
+PROVISIONAL combined census summary — NOT a freeze pin
+=======================================================
+recipe: session/swift-fox-347@df4c428366e + cherry-pick b7dfcef3465 (peel #7630 tip)
+scratch_sha: d8a5a37c283b0677ce05310ca23e6d2c8bd109f6
+admit: GUNBC_TYPE_REF_DEBT_ADMIT=0
+baseline_pin: 89dbea7d896b3ae95195117374a8c0c9454f341e (arm-only unique UnresolvedType ≈1926)
+
+combined unique UnresolvedType sites: 2155
+baseline unique: 1926
+REVEALED_DELTA (unique identity TYPE×file×span): 229
+retired_delta: 0
+raw SITE lines combined: 2998 (dup_extra 843 — peel re-resolves amplify fire count; identity grain is 2155)
+revealed raw fire count: 821
+
+Classification of the 229 revealed (same discriminator; additive):
+  incidental_by_construction (outside unbound-vocab subset): 228
+  incidental_via_exec (vocab hit, no control depends on unbound): 1
+    (Time @ dag/std/realization_schedule.dag — same prose shape as before)
+  deliberate expect-red: 0
+  unclassified: 0
+
+Freeze still post-merge at pinned main SHA. This run only sizes + preclassifies.
