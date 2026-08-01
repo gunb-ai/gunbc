@@ -1,0 +1,68 @@
+module extdeps.github.workflows
+
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import std.credentials { EnvVar }
+import std.types { CommitSha, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
+  }
+}
+
+type WorkflowDispatchReceipt {
+  workflow_run_id: Int
+  run_url: NonEmptyStr
+  html_url: NonEmptyStr
+}
+
+service github.Workflows {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+
+    retry: { max_attempts: 1, backoff: none, retry_on: [] }
+  }
+
+  operation CreateDispatch {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      workflow_id: String
+      ref: String
+      expected_healed_sha: CommitSha
+    }
+    output {
+      workflow_run_id: Int
+      run_url: NonEmptyStr
+      html_url: NonEmptyStr
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/actions/workflows/\{workflow_id\}/dispatches",
+      body: {
+        ref: ref,
+        inputs: { expected_healed_sha: expected_healed_sha }
+      }
+    }
+    response {
+      200 => WorkflowDispatchReceipt
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      429 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+data create_dispatch_retry_policy_note: String = "CreateDispatch is intentionally single-attempt. Once the heal push has created a new subject, a dispatch refusal must be visible as HealDispatchRefused and leave revalidation required; silently retrying a permission, rate-limit, or server refusal into apparent success would erase the classification operators need. The owning workflow may be retriggered deliberately after diagnosis, but this operation never assumes that the GITHUB_TOKEN push created a run."
