@@ -3,6 +3,9 @@
 
 use self::NodeOccurrenceIdentity::*;
 use self::OccurrenceCategory::*;
+use self::OccurrenceIdentityClosingRefusal::*;
+use self::OccurrenceIdentityClosingVerdict::*;
+use self::OccurrenceIdentityReceiptExecution::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
@@ -164,6 +167,595 @@ pub struct OccurrenceIdentityReceiptEnrollmentDebt {
     pub dissolve_on: String,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityAcceptanceLaw {
+    pub id: String,
+    pub required_receipt: String,
+}
+
+pub fn occurrence_identity_acceptance_law_rebuilt_reference() -> Rc<OccurrenceIdentityAcceptanceLaw>
+{
+    thread_local! {
+        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+            serde_json::from_value(serde_json::json!({"id": "rebuilt-reference-identity-preservation", "required_receipt": "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED."}))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+}
+
+pub fn occurrence_identity_acceptance_law_collector_dedupe() -> Rc<OccurrenceIdentityAcceptanceLaw>
+{
+    thread_local! {
+        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+            serde_json::from_value(serde_json::json!({"id": "one-occurrence-collector-dedupe", "required_receipt": "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure."}))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+}
+
+pub fn occurrence_identity_acceptance_law_distinct_occurrences(
+) -> Rc<OccurrenceIdentityAcceptanceLaw> {
+    thread_local! {
+        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+            serde_json::from_value(serde_json::json!({"id": "structurally-equal-distinct-occurrences", "required_receipt": "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries."}))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+}
+
+pub fn occurrence_identity_acceptance_law_pattern_reachability(
+) -> Rc<OccurrenceIdentityAcceptanceLaw> {
+    thread_local! {
+        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+            serde_json::from_value(serde_json::json!({"id": "pattern-declaration-reachability", "required_receipt": "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders."}))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+}
+
+pub fn occurrence_identity_acceptance_law_parser_isolation() -> Rc<OccurrenceIdentityAcceptanceLaw>
+{
+    thread_local! {
+        static CACHED: Rc<OccurrenceIdentityAcceptanceLaw> = {
+            serde_json::from_value(serde_json::json!({"id": "same-spelling-parser-declaration-isolation", "required_receipt": "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite."}))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<OccurrenceIdentityAcceptanceLaw>| c.clone())
+}
+
+pub fn occurrence_identity_acceptance_laws() -> Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>> = {
+            Rc::new(vec![occurrence_identity_acceptance_law_rebuilt_reference(), occurrence_identity_acceptance_law_collector_dedupe(), occurrence_identity_acceptance_law_distinct_occurrences(), occurrence_identity_acceptance_law_pattern_reachability(), occurrence_identity_acceptance_law_parser_isolation()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceIdentityReceiptExecution {
+    OccurrenceIdentityReceiptPassed,
+    OccurrenceIdentityReceiptFailed,
+    OccurrenceIdentityReceiptNotExecuted,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityExecutingReceipt {
+    pub law_id: String,
+    pub required_receipt: String,
+    pub consumer: String,
+    pub execution: OccurrenceIdentityReceiptExecution,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityAdmittedDeferral {
+    pub law_id: String,
+    pub required_receipt: String,
+    pub reason: String,
+    pub next_trigger: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceIdentityClosingRefusal {
+    DuplicateAcceptanceLaw { law_id: String },
+    UnknownReceiptLaw { law_id: String },
+    DuplicateReceiptLaw { law_id: String },
+    StaleReceiptLaw { law_id: String },
+    ReceiptDidNotPass { law_id: String },
+    UnknownDeferralLaw { law_id: String },
+    DuplicateDeferralLaw { law_id: String },
+    StaleDeferralLaw { law_id: String },
+    ReceiptDeferralOverlap { law_id: String },
+}
+impl OccurrenceIdentityClosingRefusal {
+    pub fn law_id(&self) -> String {
+        match self {
+            OccurrenceIdentityClosingRefusal::DuplicateAcceptanceLaw { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::UnknownReceiptLaw { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::DuplicateReceiptLaw { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::StaleReceiptLaw { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::ReceiptDidNotPass { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::UnknownDeferralLaw { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::DuplicateDeferralLaw { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::StaleDeferralLaw { law_id: __val, .. } => {
+                __val.clone()
+            }
+            OccurrenceIdentityClosingRefusal::ReceiptDeferralOverlap { law_id: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceIdentityClosingVerdict {
+    OccurrenceIdentityClosingCovered {
+        deferred_law_ids: Rc<Vec<String>>,
+    },
+    OccurrenceIdentityClosingOpen {
+        missing_law_ids: Rc<Vec<String>>,
+    },
+    OccurrenceIdentityClosingRefused {
+        refusals: Rc<Vec<Rc<OccurrenceIdentityClosingRefusal>>>,
+    },
+}
+
+pub fn occurrence_identity_closing_check_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The closing verdict is derived from the permanent acceptance-law roster, scoped-batch execution observations, and admitted deferrals. Deleting a debt row cannot delete its law. A receipt counts only when its law id and exact required_receipt still match and its execution observation is Passed; the scoped witness batch must supply that observation from execution, never from a roster entry asserting its own success. Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty deferred population closes the node.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn occurrence_identity_law_id_known(
+    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
+    law_id: String,
+) -> bool {
+    {
+        let mut __found = false;
+        for law in laws.clone().iter().cloned() {
+            if (law.id.clone() == law_id.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn occurrence_identity_law_exact(
+    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
+    law_id: String,
+    required_receipt: String,
+) -> bool {
+    {
+        let mut __found = false;
+        for law in laws.clone().iter().cloned() {
+            if ((law.id.clone() == law_id.clone())
+                && (law.required_receipt.clone() == required_receipt.clone()))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn occurrence_identity_receipt_passed(receipt: Rc<OccurrenceIdentityExecutingReceipt>) -> bool {
+    match receipt.execution.clone() {
+        OccurrenceIdentityReceiptExecution::OccurrenceIdentityReceiptPassed => true,
+        _ => false,
+    }
+}
+
+pub fn occurrence_identity_closing_refusal_concat(
+    left: Rc<Vec<Rc<OccurrenceIdentityClosingRefusal>>>,
+    right: Rc<Vec<Rc<OccurrenceIdentityClosingRefusal>>>,
+) -> Rc<Vec<Rc<OccurrenceIdentityClosingRefusal>>> {
+    v1_rt::concat(left.clone(), right.clone())
+}
+
+pub fn occurrence_identity_closing_refusals(
+    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
+    receipts: Rc<Vec<Rc<OccurrenceIdentityExecutingReceipt>>>,
+    deferrals: Rc<Vec<Rc<OccurrenceIdentityAdmittedDeferral>>>,
+) -> Rc<Vec<Rc<OccurrenceIdentityClosingRefusal>>> {
+    {
+        let duplicate_laws = Rc::new({
+            let mut __result = Vec::new();
+            for law in laws.clone().iter().cloned() {
+                __result.extend(
+                    (*if ((Rc::new({
+                        let mut __result = Vec::new();
+                        for other in laws.clone().iter().cloned() {
+                            if (other.id.clone() == law.id.clone()) {
+                                __result.push(other);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        > 1)
+                    {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::DuplicateAcceptanceLaw {
+                                law_id: law.id.clone(),
+                            },
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let unknown_receipts = Rc::new({
+            let mut __result = Vec::new();
+            for receipt in receipts.clone().iter().cloned() {
+                __result.extend(
+                    (*if occurrence_identity_law_id_known(laws.clone(), receipt.law_id.clone()) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::UnknownReceiptLaw {
+                                law_id: receipt.law_id.clone(),
+                            },
+                        )])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let duplicate_receipts = Rc::new({
+            let mut __result = Vec::new();
+            for law in laws.clone().iter().cloned() {
+                __result.extend(
+                    (*if ((Rc::new({
+                        let mut __result = Vec::new();
+                        for receipt in receipts.clone().iter().cloned() {
+                            if (receipt.law_id.clone() == law.id.clone()) {
+                                __result.push(receipt);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        > 1)
+                    {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::DuplicateReceiptLaw {
+                                law_id: law.id.clone(),
+                            },
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let stale_receipts = Rc::new({
+            let mut __result = Vec::new();
+            for receipt in receipts.clone().iter().cloned() {
+                __result.extend(
+                    (*if (occurrence_identity_law_id_known(laws.clone(), receipt.law_id.clone())
+                        && !occurrence_identity_law_exact(
+                            laws.clone(),
+                            receipt.law_id.clone(),
+                            receipt.required_receipt.clone(),
+                        ))
+                    {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::StaleReceiptLaw {
+                                law_id: receipt.law_id.clone(),
+                            },
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let non_green_receipts = Rc::new({
+            let mut __result = Vec::new();
+            for receipt in receipts.clone().iter().cloned() {
+                __result.extend(
+                    (*if occurrence_identity_receipt_passed(receipt.clone()) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::ReceiptDidNotPass {
+                                law_id: receipt.law_id.clone(),
+                            },
+                        )])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let unknown_deferrals = Rc::new({
+            let mut __result = Vec::new();
+            for deferral in deferrals.clone().iter().cloned() {
+                __result.extend(
+                    (*if occurrence_identity_law_id_known(laws.clone(), deferral.law_id.clone()) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::UnknownDeferralLaw {
+                                law_id: deferral.law_id.clone(),
+                            },
+                        )])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let duplicate_deferrals = Rc::new({
+            let mut __result = Vec::new();
+            for law in laws.clone().iter().cloned() {
+                __result.extend(
+                    (*if ((Rc::new({
+                        let mut __result = Vec::new();
+                        for deferral in deferrals.clone().iter().cloned() {
+                            if (deferral.law_id.clone() == law.id.clone()) {
+                                __result.push(deferral);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        > 1)
+                    {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::DuplicateDeferralLaw {
+                                law_id: law.id.clone(),
+                            },
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let stale_deferrals = Rc::new({
+            let mut __result = Vec::new();
+            for deferral in deferrals.clone().iter().cloned() {
+                __result.extend(
+                    (*if (occurrence_identity_law_id_known(laws.clone(), deferral.law_id.clone())
+                        && !occurrence_identity_law_exact(
+                            laws.clone(),
+                            deferral.law_id.clone(),
+                            deferral.required_receipt.clone(),
+                        ))
+                    {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::StaleDeferralLaw {
+                                law_id: deferral.law_id.clone(),
+                            },
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let overlaps = Rc::new({
+            let mut __result = Vec::new();
+            for law in laws.clone().iter().cloned() {
+                __result.extend(
+                    (*if ({
+                        let mut __found = false;
+                        for receipt in receipts.clone().iter().cloned() {
+                            if (receipt.law_id.clone() == law.id.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } && {
+                        let mut __found = false;
+                        for deferral in deferrals.clone().iter().cloned() {
+                            if (deferral.law_id.clone() == law.id.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) {
+                        Rc::new(vec![Rc::new(
+                            OccurrenceIdentityClosingRefusal::ReceiptDeferralOverlap {
+                                law_id: law.id.clone(),
+                            },
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        occurrence_identity_closing_refusal_concat(
+            occurrence_identity_closing_refusal_concat(
+                occurrence_identity_closing_refusal_concat(
+                    occurrence_identity_closing_refusal_concat(
+                        duplicate_laws.clone(),
+                        unknown_receipts.clone(),
+                    ),
+                    duplicate_receipts.clone(),
+                ),
+                stale_receipts.clone(),
+            ),
+            occurrence_identity_closing_refusal_concat(
+                occurrence_identity_closing_refusal_concat(
+                    non_green_receipts.clone(),
+                    unknown_deferrals.clone(),
+                ),
+                occurrence_identity_closing_refusal_concat(
+                    occurrence_identity_closing_refusal_concat(
+                        duplicate_deferrals.clone(),
+                        stale_deferrals.clone(),
+                    ),
+                    overlaps.clone(),
+                ),
+            ),
+        )
+    }
+}
+
+pub fn occurrence_identity_closing_verdict(
+    laws: Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>,
+    receipts: Rc<Vec<Rc<OccurrenceIdentityExecutingReceipt>>>,
+    deferrals: Rc<Vec<Rc<OccurrenceIdentityAdmittedDeferral>>>,
+) -> Rc<OccurrenceIdentityClosingVerdict> {
+    {
+        let refusals =
+            occurrence_identity_closing_refusals(laws.clone(), receipts.clone(), deferrals.clone());
+        if ((refusals.clone().len() as i64) > 0) {
+            Rc::new(
+                OccurrenceIdentityClosingVerdict::OccurrenceIdentityClosingRefused {
+                    refusals: refusals.clone(),
+                },
+            )
+        } else {
+            {
+                let missing_law_ids = Rc::new({
+                    let mut __result = Vec::new();
+                    for law in Rc::new({
+                        let mut __result = Vec::new();
+                        for law in laws.clone().iter().cloned() {
+                            if (!{
+                                let mut __found = false;
+                                for receipt in receipts.clone().iter().cloned() {
+                                    if (receipt.law_id.clone() == law.id.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } && !{
+                                let mut __found = false;
+                                for deferral in deferrals.clone().iter().cloned() {
+                                    if (deferral.law_id.clone() == law.id.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            }) {
+                                __result.push(law);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(law.id.clone());
+                    }
+                    __result
+                });
+                if ((missing_law_ids.clone().len() as i64) > 0) {
+                    Rc::new(
+                        OccurrenceIdentityClosingVerdict::OccurrenceIdentityClosingOpen {
+                            missing_law_ids: missing_law_ids.clone(),
+                        },
+                    )
+                } else {
+                    Rc::new(
+                        OccurrenceIdentityClosingVerdict::OccurrenceIdentityClosingCovered {
+                            deferred_law_ids: Rc::new({
+                                let mut __result = Vec::new();
+                                for law in Rc::new({
+                                    let mut __result = Vec::new();
+                                    for law in laws.clone().iter().cloned() {
+                                        if {
+                                            let mut __found = false;
+                                            for deferral in deferrals.clone().iter().cloned() {
+                                                if (deferral.law_id.clone() == law.id.clone()) {
+                                                    __found = true;
+                                                    break;
+                                                }
+                                            }
+                                            __found
+                                        } {
+                                            __result.push(law);
+                                        }
+                                    }
+                                    __result
+                                })
+                                .iter()
+                                .cloned()
+                                {
+                                    __result.push(law.id.clone());
+                                }
+                                __result
+                            }),
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+pub fn occurrence_identity_closing_complete(verdict: Rc<OccurrenceIdentityClosingVerdict>) -> bool {
+    match (*verdict.clone()).clone() {
+        OccurrenceIdentityClosingVerdict::OccurrenceIdentityClosingCovered {
+            deferred_law_ids: deferred_law_ids,
+            ..
+        } => ((deferred_law_ids.clone().len() as i64) == 0),
+        _ => false,
+    }
+}
+
 pub fn occurrence_identity_consumer_red_debt_rehome_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -176,7 +768,7 @@ pub fn occurrence_identity_consumer_red_debt_rehome_note() -> String {
 pub fn occurrence_identity_consumer_red_debts() -> Rc<Vec<Rc<OccurrenceIdentityConsumerRedDebt>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<OccurrenceIdentityConsumerRedDebt>>> = {
-            serde_json::from_value(serde_json::json!([{"id": "rebuilt-reference-identity-preservation", "required_receipt": "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_rebuilt_reference_identity_preservation_executes_holds per PR, and the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR."}, {"id": "one-occurrence-collector-dedupe", "required_receipt": "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.", "owner": "namespace-reference-derived-closure", "dissolve_on": "NEXT-RUNG TRIGGER: a production occurrence-aware discovery collector must expose a seam where one exact authored OccurrenceId can be observed twice before candidate supply. merge_occurrence_transports is not that seam: it concatenates complete authored transports and duplicate authored rows must refuse. P1 candidate supply is not that seam: duplicate supplied identities must refuse. The structural producer's one-pass bucket over validated declarations is not that seam either. DISSOLVE-ON: once a design-required production collector exposes repeated observation, its exact-identity dedupe RED executes through the sidecar consumer and this row deletes in the same PR."}, {"id": "structurally-equal-distinct-occurrences", "required_receipt": "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_structurally_equal_distinct_occurrences_execute_holds per PR, and the distinct-authored-occurrences RED executes against the sidecar consumer; delete this row in the same PR."}, {"id": "pattern-declaration-reachability", "required_receipt": "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_pattern_declaration_reachability_executes_holds per PR, and the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR."}, {"id": "inferred-target-anchor-identity", "required_receipt": "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR."}, {"id": "same-spelling-parser-declaration-isolation", "required_receipt": "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_same_spelling_parser_declaration_isolation_executes_holds per PR, and the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR."}]))
+            serde_json::from_value(serde_json::json!([{"id": "rebuilt-reference-identity-preservation", "required_receipt": "compile_error!(unsupported mock expression)", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_rebuilt_reference_identity_preservation_executes_holds per PR, and the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR."}, {"id": "one-occurrence-collector-dedupe", "required_receipt": "compile_error!(unsupported mock expression)", "owner": "namespace-reference-derived-closure", "dissolve_on": "NEXT-RUNG TRIGGER: a production occurrence-aware discovery collector must expose a seam where one exact authored OccurrenceId can be observed twice before candidate supply. merge_occurrence_transports is not that seam: it concatenates complete authored transports and duplicate authored rows must refuse. P1 candidate supply is not that seam: duplicate supplied identities must refuse. The structural producer's one-pass bucket over validated declarations is not that seam either. DISSOLVE-ON: once a design-required production collector exposes repeated observation, its exact-identity dedupe RED executes through the sidecar consumer and this row deletes in the same PR."}, {"id": "structurally-equal-distinct-occurrences", "required_receipt": "compile_error!(unsupported mock expression)", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_structurally_equal_distinct_occurrences_execute_holds per PR, and the distinct-authored-occurrences RED executes against the sidecar consumer; delete this row in the same PR."}, {"id": "pattern-declaration-reachability", "required_receipt": "compile_error!(unsupported mock expression)", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_pattern_declaration_reachability_executes_holds per PR, and the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR."}, {"id": "inferred-target-anchor-identity", "required_receipt": "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR."}, {"id": "same-spelling-parser-declaration-isolation", "required_receipt": "compile_error!(unsupported mock expression)", "owner": "namespace-reference-derived-closure", "dissolve_on": "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_same_spelling_parser_declaration_isolation_executes_holds per PR, and the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR."}]))
                 .expect("valid data definition")
         };
     }
@@ -700,3 +1292,9 @@ pub struct MethodOccurrence;
 pub struct DeclarationRole;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceRole;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityReceiptPassed;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityReceiptFailed;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityReceiptNotExecuted;

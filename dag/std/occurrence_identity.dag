@@ -194,6 +194,13 @@ fn occurrence_identity_receipt_passed(
   }
 }
 
+fn occurrence_identity_closing_refusal_concat(
+  left: List<OccurrenceIdentityClosingRefusal>,
+  right: List<OccurrenceIdentityClosingRefusal>
+) -> List<OccurrenceIdentityClosingRefusal> {
+  concat(left, right)
+}
+
 fn occurrence_identity_closing_refusals(
   laws: List<OccurrenceIdentityAcceptanceLaw>,
   receipts: List<OccurrenceIdentityExecutingReceipt>,
@@ -282,19 +289,28 @@ fn occurrence_identity_closing_refusals(
         []
       }
     )
-  append(
-    append(
-      append(
-        append(duplicate_laws, items: unknown_receipts),
-        items: duplicate_receipts,
+  occurrence_identity_closing_refusal_concat(
+    left: occurrence_identity_closing_refusal_concat(
+      left: occurrence_identity_closing_refusal_concat(
+        left: occurrence_identity_closing_refusal_concat(
+          left: duplicate_laws,
+          right: unknown_receipts,
+        ),
+        right: duplicate_receipts,
       ),
-      items: stale_receipts,
+      right: stale_receipts,
     ),
-    items: append(
-      append(non_green_receipts, items: unknown_deferrals),
-      items: append(
-        append(duplicate_deferrals, items: stale_deferrals),
-        items: overlaps,
+    right: occurrence_identity_closing_refusal_concat(
+      left: occurrence_identity_closing_refusal_concat(
+        left: non_green_receipts,
+        right: unknown_deferrals,
+      ),
+      right: occurrence_identity_closing_refusal_concat(
+        left: occurrence_identity_closing_refusal_concat(
+          left: duplicate_deferrals,
+          right: stale_deferrals,
+        ),
+        right: overlaps,
       ),
     ),
   )
