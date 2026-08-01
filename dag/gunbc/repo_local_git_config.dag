@@ -47,7 +47,7 @@ data core_hooks_path_value: String = ".githooks"
 
 data repo_local_git_config_converge_entry: String = "dag/gunbc/repo_local_git_config.dag"
 data repo_local_git_config_converge_function: String = "converge"
-data repo_local_git_config_clone_setup_note: String = "Per-clone setup: gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/repo_local_git_config.dag --function converge — idempotent actuator installing merge.generated-artifact.driver=true and core.hooksPath=.githooks with local-scope read-back. CI heal job invokes the same entry after artifact regen (gunbc.ci_spec gunbc_ci_heal_repo_local_git_config_invoke)."
+data repo_local_git_config_clone_setup_note: String = "One-time manual seed per clone: set core.hooksPath=.githooks (DESIGN Building & checks). Generated pre-commit/pre-push hooks then run idempotent local binding convergence on every invocation — argv derived from reconcile_install_argv (merge.generated-artifact.driver=true and core.hooksPath re-assertion). gunbc run … repo_local_git_config converge remains the explicit actuator/CI entry. Safe degradation: clones that never set hooksPath get vanilla git text-merge for generated-artifact paths; drift gate still guards at CI; merge-driver binding is not self-healed until hooks run."
 
 fn desired_repo_local_git_config_bindings() -> List<RepoLocalGitConfigBinding> {
   [

@@ -3,6 +3,11 @@
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+# Idempotent repository-local Git integration bindings (gunbc.repo_local_git_config).
+# repo-local git config: merge.generated-artifact.driver
+git config --local merge.generated-artifact.driver true
+# repo-local git config: core.hooksPath
+git config --local core.hooksPath .githooks
 echo "[pre-push] cargo fmt --all --check"
 fmt_rc=0
 cargo fmt --all --check || fmt_rc=$?
