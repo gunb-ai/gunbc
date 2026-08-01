@@ -1,6 +1,6 @@
 module v1.compiler.tokenize
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, unicode_scalar }
 
 import v1.std.core {
   make_file_span,
@@ -405,11 +405,11 @@ fn code_point_at(chars: List<Int>, pos: Int) -> Int {
 
 data escape_code_point_table_note: String = "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL, 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file."
 
-data escape_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, and it is counted here rather than left silent. WHAT IT CARRIES, GATING: the byte and Unicode-scalar escape decode tables plus located refusals for malformed and unknown productions — all deterministic. WHAT IT CARRIES, NON-GATING: the cost separation that reds at 14.2x against the pre-migration implementation, the discriminating half of this lane's oracle, which a corpus equivalence check cannot supply because equivalence is satisfied by changing nothing. That half is an `#[ignore]`d benchmark rather than a required test, because gating correctness on wall clock can fail correct code when the larger run catches contention (review 45416), and the deterministic alternative does not rescue it: the only work counter in the tree sits behind the non-default `text_lookup_work_counter` feature and does not instrument `char_at`/`string_length` at all, so a counter-based test would be equally non-gating while also changing a core primitive. The oracle was still discharged BY EXECUTION in the landing PR — observed red before, green after — which is the DESIGN §5 bar; what is deferred is the standing regression GUARD, and the repo's native form for that is a structural lens over the Node tree, as v2.lens.complexity_accumulator_copy is for the copied-accumulator class. WHY HAND RUST AND NOT A .dag WITNESS: the .dag form is a claim witness, and enrolling one bumps gunbc.ci_spec's ci_floor_declared_resolve_count, which that gate's own note reserves for an operator-signed line; a session cannot raise it for its own receipt. So this is a DEFERRAL with a named owner, not a preference. It does not enter the hand-maintained stage0 ratchet: hand_maintained_stage0_filenames is built from seed-retained and emitter-produced `pub mod` basenames under src/v1/stage0/src/, and a tests/ target is not a crate module. DISSOLVES ON either trigger, whichever comes first: the resolve-count line is signed and these claims move to a dag/test/claim witness over the same tokenize entry point; or the v1 terminal deletion path reaches this tree, at which point the coverage must be carried per the v1-test-migration bar and the file deletes with src/v1. SEPARATE, SMALLER TRIGGER for the benchmark half alone: a structural lens that reds a per-character raw-String index walk (char_at / string_length in a loop) supersedes it, and would also cover the ~30 sites this lane's audit found still carrying that shape — at which point the `#[ignore]`d test deletes rather than being promoted. Precedent for this shape: namespace_occurrence_serde_seed_test_dissolution."
+data escape_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, counted here rather than left silent. The discovery-enrolled .dag wall in test.claim.string_brace_escape_witness_test constructs malformed source at runtime and executes the production v1 compile path, so malformed and unknown escape refusal is enforced in CI. The Rust receipt retains finer token identity, spelling, file and full-span assertions plus the decode table. Its wall-clock cost separation stays #[ignore]d because contention can fail correct code and the available work counter does not instrument char_at/string_length. This file does not enter the hand-maintained stage0 module ratchet because tests/ is not a crate module. DISSOLVES ON the v1 terminal deletion path, when the coverage moves under the v1-test-migration bar and this hand-written receipt deletes with src/v1. The benchmark half can dissolve earlier when a structural lens rejects per-character raw-String index walks."
 
 data hex_escape_note: String = "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies)."
 
-data unicode_escape_note: String = "\\u\{H...\} decodes one to six hexadecimal digits to one Unicode scalar value. The scalar boundary is checked here, before chars_to_string: values above 0x10FFFF and the UTF-16 surrogate interval are not Unicode scalar values and therefore refuse instead of disappearing in the runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation and scalar validation remain owned by this decoder rather than duplicated into the span scan."
+data unicode_escape_note: String = "\\u\{H...\} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.types.unicode_scalar authority used by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan."
 
 data unknown_escape_refusal_note: String = "An escape marker has already entered a closed grammar production, so an unrecognized or malformed escape refuses as one located ShUnknown string token; it never returns a successfully decoded prefix and never copies unsupported syntax into an accepted value. A literal backslash is spelled \\\\. The former passthrough arm made unsupported syntax indistinguishable from supported syntax and was the root class behind the inert Unicode escapes. Its 142-site regex-heavy corpus frontier migrated with this close, and the whole corpus is the receipt because every source passes through this tokenizer."
 
@@ -444,10 +444,6 @@ type UnicodeEscape {
   next_pos: Int
 }
 
-fn is_unicode_scalar(code_point: Int) -> Bool {
-  code_point <= 1114111 && !(code_point >= 55296 && code_point <= 57343)
-}
-
 fn unicode_escape_at(
   source: List<Int>,
   pos: Int,
@@ -459,7 +455,7 @@ fn unicode_escape_at(
   } else {
     let ch = code_point_at(chars: source, pos: pos)
     if ch == 125 {
-      if digit_count > 0 && is_unicode_scalar(code_point: value) {
+      if digit_count > 0 && unicode_scalar(code_point: value) {
         Present { value: UnicodeEscape { code_point: value, next_pos: pos + 1 } }
       } else {
         none

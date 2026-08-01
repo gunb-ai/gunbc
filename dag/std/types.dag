@@ -101,6 +101,12 @@ type Unit
 type Json
 type Bytes
 
+fn unicode_scalar(code_point: Int) -> Bool {
+  code_point >= 0
+    && code_point <= 1114111
+    && !(code_point >= 55296 && code_point <= 57343)
+}
+
 type Char = Int where unicode_scalar, brand("Char")
 
 type List<element> = FreeMonoid<element>

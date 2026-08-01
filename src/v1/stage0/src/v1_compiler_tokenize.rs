@@ -4,6 +4,7 @@
 use self::EscapeProcessResult::*;
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
+pub use crate::std_types::unicode_scalar;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;
@@ -901,7 +902,7 @@ pub fn escape_code_point_table_note() -> String {
 pub fn escape_receipt_seed_growth_mark() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, and it is counted here rather than left silent. WHAT IT CARRIES, GATING: the byte and Unicode-scalar escape decode tables plus located refusals for malformed and unknown productions — all deterministic. WHAT IT CARRIES, NON-GATING: the cost separation that reds at 14.2x against the pre-migration implementation, the discriminating half of this lane's oracle, which a corpus equivalence check cannot supply because equivalence is satisfied by changing nothing. That half is an `#[ignore]`d benchmark rather than a required test, because gating correctness on wall clock can fail correct code when the larger run catches contention (review 45416), and the deterministic alternative does not rescue it: the only work counter in the tree sits behind the non-default `text_lookup_work_counter` feature and does not instrument `char_at`/`string_length` at all, so a counter-based test would be equally non-gating while also changing a core primitive. The oracle was still discharged BY EXECUTION in the landing PR — observed red before, green after — which is the DESIGN §5 bar; what is deferred is the standing regression GUARD, and the repo's native form for that is a structural lens over the Node tree, as v2.lens.complexity_accumulator_copy is for the copied-accumulator class. WHY HAND RUST AND NOT A .dag WITNESS: the .dag form is a claim witness, and enrolling one bumps gunbc.ci_spec's ci_floor_declared_resolve_count, which that gate's own note reserves for an operator-signed line; a session cannot raise it for its own receipt. So this is a DEFERRAL with a named owner, not a preference. It does not enter the hand-maintained stage0 ratchet: hand_maintained_stage0_filenames is built from seed-retained and emitter-produced `pub mod` basenames under src/v1/stage0/src/, and a tests/ target is not a crate module. DISSOLVES ON either trigger, whichever comes first: the resolve-count line is signed and these claims move to a dag/test/claim witness over the same tokenize entry point; or the v1 terminal deletion path reaches this tree, at which point the coverage must be carried per the v1-test-migration bar and the file deletes with src/v1. SEPARATE, SMALLER TRIGGER for the benchmark half alone: a structural lens that reds a per-character raw-String index walk (char_at / string_length in a loop) supersedes it, and would also cover the ~30 sites this lane's audit found still carrying that shape — at which point the `#[ignore]`d test deletes rather than being promoted. Precedent for this shape: namespace_occurrence_serde_seed_test_dissolution.".to_string()
+            "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, counted here rather than left silent. The discovery-enrolled .dag wall in test.claim.string_brace_escape_witness_test constructs malformed source at runtime and executes the production v1 compile path, so malformed and unknown escape refusal is enforced in CI. The Rust receipt retains finer token identity, spelling, file and full-span assertions plus the decode table. Its wall-clock cost separation stays #[ignore]d because contention can fail correct code and the available work counter does not instrument char_at/string_length. This file does not enter the hand-maintained stage0 module ratchet because tests/ is not a crate module. DISSOLVES ON the v1 terminal deletion path, when the coverage moves under the v1-test-migration bar and this hand-written receipt deletes with src/v1. The benchmark half can dissolve earlier when a structural lens rejects per-character raw-String index walks.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -919,7 +920,7 @@ pub fn hex_escape_note() -> String {
 pub fn unicode_escape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "\\u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The scalar boundary is checked here, before chars_to_string: values above 0x10FFFF and the UTF-16 surrogate interval are not Unicode scalar values and therefore refuse instead of disappearing in the runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation and scalar validation remain owned by this decoder rather than duplicated into the span scan.".to_string()
+            "\\u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.types.unicode_scalar authority used by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -966,11 +967,6 @@ pub struct UnicodeEscape {
     pub next_pos: i64,
 }
 
-pub fn is_unicode_scalar(code_point: i64) -> bool {
-    ((code_point.clone() <= 1114111)
-        && !((code_point.clone() >= 55296) && (code_point.clone() <= 57343)))
-}
-
 pub fn unicode_escape_at(
     mut source: Rc<Vec<i64>>,
     mut pos: i64,
@@ -983,7 +979,7 @@ pub fn unicode_escape_at(
         } else {
             let ch = code_point_at(source.clone(), pos.clone());
             if (ch.clone() == 125) {
-                if ((digit_count.clone() > 0) && is_unicode_scalar(value.clone())) {
+                if ((digit_count.clone() > 0) && unicode_scalar(value.clone())) {
                     break Some(UnicodeEscape {
                         code_point: value.clone(),
                         next_pos: (pos.clone() + 1),
