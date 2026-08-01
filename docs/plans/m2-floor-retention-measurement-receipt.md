@@ -8,7 +8,7 @@
 
 **Binary snapshot:** `target/release/claim_executor-m2-45e7a8c` (copied before probes; `cargo build` during a long run would invalidate resolve-cache content-addressing).
 
-**Host regime (honesty):** dashboard session container, **uncapped** cgroup `memory.max` ≈ 31.27 GiB (`33578549248` B), `memory.high` absent. This is **not** the fleet 16 GiB slot with a 15 GiB `memory.high` throttle line. Comparisons to the M2 landed width-1 fleet receipt (9.24 GB RSS / 10.7 GB cgroup under 15 GiB) are **regime-relative** — the bound claimed here is “fits comfortably inside a 16 GiB envelope,” not byte-identical cgroup physics.
+**Host regime (honesty):** dashboard session container, **uncapped** cgroup `memory.max` ≈ 31.27 GiB (`33578549248` B), `memory.high` absent. This is **not** the fleet 16 GiB slot with a 15 GiB `memory.high` throttle line. Comparisons to the M2 landed width-1 fleet receipt (9.24 GB RSS / 10.7 GB cgroup under 15 GiB) are **regime-relative** — width-1 peak observed here is **not** the throughline’s width > 1 exit metric and does not byte-match fleet cgroup physics.
 
 **No shipped orchestration script** (operator precedent #7533 / valiant-lark: checked-in `run_matrix.sh` deleted — complete invocations live here as documentation, not as executable wrappers).
 
@@ -181,25 +181,28 @@ The throughline exit metric names **completion within step budget at governor wi
 
 ## 5 — Handback decision
 
-### (a) M2 path bounded comfortably at production scale → **YES**
+**Scope honesty:** This receipt is an **incomplete width-1 measurement**. The throughline exit metric (§0 / §1) is **completion within the step budget at governor width > 1** — not width-1 peak RSS alone. Width > 1 was **not measured** here; main-push `SelectionApplied` was **not completed** (§6). **Do not record handback (a)** from this slice.
 
-Evidence:
+### (a) M2 path bounded comfortably at production scale → **NOT RECORDED**
 
-1. **Whole-corpus falsifier shape** (842 entries / 5818 witnesses): **PASS**, peak RSS **6.27 GiB**, `schedule_evictions=2094`, `retention_unknown=0`, no retention refusals.
-2. **Fleet envelope:** peak **< 16 GiB** with **~9.7 GiB headroom** vs the 15 GiB throttle line — contrasts with pre-M2 censored ≥15 GiB peaks and valiant-lark’s **32 GiB OOM** on the **wrong instrument path**.
-3. **M2 landed receipt** (throughline): 9.24 GB / 10.7 GB at width 1 on fleet — this measurement is **consistent** (lower entry count here still whole-corpus; lower peak on uncapped host).
+Partial width-1 evidence (does not satisfy the authoritative exit metric):
 
-**Named M2 follow-ups do NOT rank for capacity relief now:**
+1. **Whole-corpus falsifier shape** (842 entries / 5818 witnesses): **PASS**, peak RSS **6.27 GiB**, `schedule_evictions=2094`, `retention_unknown=0`, no retention refusals — **width 1 only**.
+2. **Fleet envelope (regime-relative):** peak **< 16 GiB** with headroom vs the 15 GiB throttle line on an **uncapped** host — contrasts with pre-M2 censored ≥15 GiB peaks, but is **not** a width > 1 fleet receipt.
+3. **M2 landed width-1 receipt** (throughline BANKED block): 9.24 GB / 10.7 GB — this measurement is **consistent** at the same width-1 regime.
 
-| Follow-up | Why not ranked (from receipts) |
+**Width > 1 fleet bar remains NEXT** (throughline BANKED block): per-worker index sharing / outer-ring scheduling must be measured before handback (a) or the §0 exit metric can be claimed closed.
+
+| Follow-up | Status after this receipt |
 |---|---|
-| width > 1 fleet receipt | Width latch is a **cost-shape** gate (per-worker index), not evidence that M2 retention is insufficient at width 1; batch 1 green at 6.3 GiB. |
-| outer-ring `SpacePacked` eviction | `typed_cache_evictions=0`; schedule eviction is **active** (`2094`); host cap never engaged. |
-| resident-accounting split | No capacity-bound symptom to attach a accounting migration to. |
+| width > 1 fleet receipt | **Still required** — authoritative success metric; not measured here. |
+| main-push `SelectionApplied` (~602 entries) | **Not measured** — probe stopped in prelude (§6). |
+| outer-ring `SpacePacked` eviction | **Open** — not exercised; schedule eviction active at width 1 only. |
+| resident-accounting split | **Open** — no width > 1 receipt to attach accounting to. |
 
-### (b) Capacity-bound → which follow-up — **NOT triggered**
+### (b) Capacity-bound → which follow-up — **NOT triggered at width 1**
 
-No measured boundary on the **real M2 floor path** at production entry counts executed here.
+No measured boundary on the **width-1** M2 floor path executed here. Does not adjudicate the width > 1 fleet bar.
 
 ---
 
@@ -207,6 +210,7 @@ No measured boundary on the **real M2 floor path** at production entry counts ex
 
 | Claim | Status |
 |---|---|
+| handback (a) “bounded comfortably” / follow-ups deprioritized | **RETRACTED** — incomplete width-1 slice; width > 1 bar remains authoritative (§5) |
 | valiant-lark 32 GiB OOM as floor fact | **RETRACTED** (instrument path; stated in brief) |
 | main-push ~602-entry `SelectionApplied` peak | **NOT MEASURED** (probe stopped in prelude; superset argument only) |
 | `memory.events` high on fleet throttle line | **NOT MEASURED** (uncapped host) |
