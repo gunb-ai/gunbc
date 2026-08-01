@@ -2,12 +2,14 @@ module gunbc.build_cache_instance
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
-import std.measure { ByteSize }
+import std.measure { ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size }
 import std.cache_identity { CacheInterfaceId }
 import std.disposition { Disposition, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, sccache_local_id }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
 import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 
 data build_cache_instance_scope_disposition: Disposition = SingleAuthority
@@ -167,7 +169,7 @@ fn unavailable_reason_detail(reason: EndpointObservationUnavailableReason) -> No
   }
 }
 
-data build_cache_desired_instances_note: String = "THE DESIRED DEPLOYED INSTANCES, one row per (host, consumer class). These state INTENT and are deliberately not a description of the live hosts: the whole point of the observer is that intent and observation are different things and their difference is refusable. As of the 2026-08-01 receipt NO host satisfies intended_unit for its CI instance — on srv1, srv2 and srv3 alike the CI endpoint is owned by a runner-slot process, never by a managed unit — so every row below currently refuses, which is the correct and intended reading rather than a defect in the rows. intended_capacity is left Absent for CI on purpose: the live 10 GiB is sccache's built-in default rather than a chosen number, and choosing it is explicitly a later increment, so declaring one here would fabricate a decision nobody has made. The session instances carry the 50G the ctrl unit actually sets."
+data build_cache_desired_instances_note: String = "THE DESIRED DEPLOYED INSTANCES, one row per (host, consumer class). These state INTENT and are deliberately not a description of the live hosts: the whole point of the observer is that intent and observation are different things and their difference is refusable. As of the 2026-08-01 reads NO host satisfies intended_unit for its CI instance, and the four hosts fail in four DIFFERENT ways rather than along one ladder — srv1's endpoint is owned by a 31-day process in RETIRED slot srv1-10, srv2's by a process in an ACTIVE slot, srv3 had an owner in an active slot that later vanished with its runner cgroup, and srv4 has no owner at all because a stale socket makes every new server fail to bind. Every row below therefore currently refuses, which is the correct and intended reading rather than a defect in the rows.\n\nCI intended_capacity stays Absent on purpose and that is now the ONLY Absent here: the live 10 GiB is sccache's built-in default rather than a chosen number, and choosing one is a later increment, so declaring it would fabricate a decision nobody has made. The session rows previously carried Absent too while this note claimed they carried 50G — the note and the value disagreed, and the note was the true half: ctrl-sccache.service really does set 50G, so the value now states it. An Absent capacity cannot be read back or converged against, which is exactly why the CI Absent is a tracked gap rather than a resting state."
 
 fn ci_cache_instance(host: HostIdentity) -> BuildCacheInstance {
   BuildCacheInstance {
@@ -198,7 +200,7 @@ fn session_cache_instance(host: HostIdentity) -> BuildCacheInstance {
     intended_unit: "gunbc-build-cache-session.service" as NonEmptyStr,
     intended_principal: "briansrls" as NonEmptyStr,
     intended_storage: "/var/lib/ctrl/sccache" as NonEmptyStr,
-    intended_capacity: none,
+    intended_capacity: Present { value: gibibyte_to_byte_size(g: gibibyte(50)) },
     intended_compile_pool: gunbc_managed_compile_pool_slice,
   }
 }
@@ -209,4 +211,7 @@ data build_cache_desired_instances: List<BuildCacheInstance> = [
   ci_cache_instance(host: operator_host_srv2),
   session_cache_instance(host: operator_host_srv2),
   ci_cache_instance(host: operator_host_srv3),
+  ci_cache_instance(host: operator_host_srv4),
 ]
+
+data srv4_desired_instance_admission_note: String = "srv4 JOINED THE DESIRED ROSTER ON AN OBSERVATION, and the sequence is the argument for the row. When this authority first landed, srv4 was unreachable (ssh returned Permission denied (publickey)) and it appeared in this module only as diagnostic prose — so the fleet's intent was silently four-fifths stated, and a typed unavailability had no SUBJECT to attach to. That is the state-space conflation one level up: a host absent from the desired roster is indistinguishable from a host with nothing desired on it, and only one of those was true.\n\nThe reachability was never the blocker it looked like. srv4 carries exactly the two declared fleet keys and deliberately NOT the session-bootstrap keys other hosts were hand-keyed with, so it is the CONVERGED control of gunbc.host_authorized_keys_reconcile, not a mis-keyed host; the missing piece was materializing the fleet-automation private key for a session, which is the A1 gap in gunbc.plans.fleet_subsumption_manual_gaps. Once the operator supplied it the read took under a minute over the ordinary route.\n\nWHAT THAT READ FOUND, recorded because it is the reason this row is not a formality: srv4 holds NO listener on its configured endpoint, runs no sccache process and has no unit, yet a STALE server.sock remains on disk and its error log's entire contents are one line, Address in use (os error 98). A server born in a runner cgroup died with that cgroup without unlinking its socket, so every later server fails to bind and every compile since has run uncached — the whole cache tree holds one file. Its placement therefore derives ServerPlacementAbsent and refuses, which is correct, but the CAUSE is a distinct defect from srv1's stranded owner and the managed unit must clear a stale endpoint on start or it will inherit the same trap."
