@@ -1,0 +1,7 @@
+module test.claim.rest_response_table_witness_test
+
+import tools.rest_response_table_witness_transport { run_rest_response_table_witness }
+
+test fn rest_response_table_realization_witness_holds() -> Bool {
+  run_rest_response_table_witness()
+}

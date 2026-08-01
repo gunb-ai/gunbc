@@ -377,6 +377,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_bin_wet_dissolve
   },
   WitnessExclusionRow {
+    pattern: "rest_response_table_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_bin_wet_reason,
+    dissolve_on: excl_bin_wet_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "floor_skip_discovery_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: excl_rehomed_bin_wet_reason,
@@ -783,6 +789,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_constructor_owner_walls_hold"),
   bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_record_field_walls_hold"),
   bin_wet(entry: "dag/test/claim/effects_rest_transport_parse_witness_test.dag", f: "effects_rest_transport_parse_keystone_holds"),
+  bin_wet(entry: "src/v2/test/claim/rest_response_table_witness_test.dag", f: "rest_response_table_realization_witness_holds"),
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_golden_is_nonempty_holds"),
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_golden_length_matches_declared_count_holds"),
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_content_equality_discriminates_count_identical_bytes_holds"),

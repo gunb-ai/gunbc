@@ -774,6 +774,21 @@ pub enum InterpError {
         callee: String,
         detail: String,
     },
+    /// A declared REST response-table error arm matched: the body was decoded to a Value
+    /// before refusing. Disposition still refuses; only the payload is richer than a
+    /// format-string discard. Shape (a) from the lane decision — callers unchanged.
+    RestResponseRefused {
+        status: i64,
+        body_type: String,
+        decoded: Value,
+        detail: String,
+    },
+    /// HTTP status arrived but no declared response-table arm matches. Fail-closed:
+    /// never widen to the nearest wildcard or pass through as success.
+    RestUndeclaredStatus {
+        status: i64,
+        operation: String,
+    },
 }
 
 impl fmt::Display for InterpError {
@@ -854,6 +869,11 @@ impl fmt::Display for InterpError {
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
                 name
+            ),
+            InterpError::RestResponseRefused { detail, .. } => write!(f, "{}", detail),
+            InterpError::RestUndeclaredStatus { status, operation } => write!(
+                f,
+                "HTTP {status} is undeclared for operation {operation} — the response table has no matching arm"
             ),
         }
     }
@@ -7315,6 +7335,128 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
     config_auth_resolved && has_auth_basic
 }
 
+struct RestResponseArm {
+    pattern_key: String,
+    body_type: String,
+}
+
+fn collect_rest_response_arms(
+    op_node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Vec<RestResponseArm> {
+    let mut arms = Vec::new();
+    for prop in op_node.properties.iter() {
+        let name = field_init_node_name_at(prop.clone(), si.clone());
+        if name.len() <= 9 || !name.starts_with("response_") {
+            continue;
+        }
+        let pattern_key = name[9..].to_string();
+        let val = field_init_node_value(prop.clone());
+        let body_type = authored_name_at(si.clone(), val);
+        if body_type.is_empty() {
+            continue;
+        }
+        arms.push(RestResponseArm {
+            pattern_key,
+            body_type,
+        });
+    }
+    arms
+}
+
+fn rest_status_key_matches(pattern_key: &str, status: u16) -> bool {
+    let bytes = pattern_key.as_bytes();
+    if bytes.len() == 3 && bytes[1] == b'x' && bytes[2] == b'x' {
+        if let Some(digit) = pattern_key.chars().next().and_then(|c| c.to_digit(10)) {
+            let lo = (digit * 100) as u16;
+            let hi = lo + 99;
+            return status >= lo && status <= hi;
+        }
+        return false;
+    }
+    pattern_key
+        .parse::<u16>()
+        .map(|code| code == status)
+        .unwrap_or(false)
+}
+
+fn rest_arm_is_success(pattern_key: &str) -> bool {
+    pattern_key
+        .chars()
+        .next()
+        .map(|c| c == '2')
+        .unwrap_or(false)
+}
+
+fn match_rest_response_arm<'a>(
+    arms: &'a [RestResponseArm],
+    status: u16,
+) -> Option<&'a RestResponseArm> {
+    arms.iter()
+        .find(|arm| rest_status_key_matches(&arm.pattern_key, status))
+}
+
+fn format_rest_error_refusal(status: u16, body_type: &str, body: &str) -> String {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(msg) = json.get("message").and_then(|v| v.as_str()) {
+            return format!("HTTP {status} ({body_type}): message={msg}");
+        }
+    }
+    format!("HTTP {status} ({body_type}): {body}")
+}
+
+fn realize_rest_response_body(
+    status: u16,
+    body: &str,
+    response_format: &str,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+    arms: &[RestResponseArm],
+) -> InterpResult<Value> {
+    if arms.is_empty() {
+        if status >= 400 {
+            return Err(InterpError::TypeError {
+                msg: format!("HTTP {}: {}", status, body),
+            });
+        }
+        if response_format == "Text" {
+            return map_response_to_value(body, None, op_node, ctx);
+        }
+        let json: serde_json::Value =
+            serde_json::from_str(body).unwrap_or(serde_json::Value::String(body.to_string()));
+        return map_response_to_value_json(&json, op_node, ctx);
+    }
+
+    let arm = match_rest_response_arm(arms, status).ok_or_else(|| {
+        let op_name = authored_name_at(ctx.si(), op_node.clone());
+        InterpError::RestUndeclaredStatus {
+            status: status as i64,
+            operation: op_name,
+        }
+    })?;
+
+    if rest_arm_is_success(&arm.pattern_key) {
+        if response_format == "Text" {
+            map_response_to_value(body, None, op_node, ctx)
+        } else {
+            let json: serde_json::Value =
+                serde_json::from_str(body).unwrap_or(serde_json::Value::String(body.to_string()));
+            map_response_to_value_json(&json, op_node, ctx)
+        }
+    } else {
+        let json: serde_json::Value =
+            serde_json::from_str(body).unwrap_or(serde_json::Value::String(body.to_string()));
+        let decoded = json_to_value(&json);
+        let detail = format_rest_error_refusal(status, &arm.body_type, body);
+        Err(InterpError::RestResponseRefused {
+            status: status as i64,
+            body_type: arm.body_type.clone(),
+            decoded,
+            detail,
+        })
+    }
+}
+
 fn dispatch_rest(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -7574,29 +7716,31 @@ fn dispatch_rest(
         request.call()
     };
 
+    let response_arms = collect_rest_response_arms(op_node, &si);
+
     match response {
         Ok(resp) => {
             let status = resp.status();
-            if status >= 400 {
-                let body = resp.into_string().unwrap_or_default();
-                return Err(InterpError::TypeError {
-                    msg: format!("HTTP {}: {}", status, body),
-                });
-            }
-            if response_format == "Text" {
-                let body = resp.into_string().unwrap_or_default();
-                return map_response_to_value(&body, None, op_node, ctx);
-            }
             let body = resp.into_string().unwrap_or_default();
-            let json: serde_json::Value =
-                serde_json::from_str(&body).unwrap_or(serde_json::Value::String(body));
-            map_response_to_value_json(&json, op_node, ctx)
+            realize_rest_response_body(
+                status,
+                &body,
+                &response_format,
+                op_node,
+                ctx,
+                &response_arms,
+            )
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
-            Err(InterpError::TypeError {
-                msg: format!("HTTP {}: {}", status, body),
-            })
+            realize_rest_response_body(
+                status,
+                &body,
+                &response_format,
+                op_node,
+                ctx,
+                &response_arms,
+            )
         }
         Err(e) => Err(InterpError::TypeError {
             msg: format!("HTTP request failed: {}", e),

@@ -1,0 +1,11 @@
+module tools.rest_response_table_witness_transport
+
+import tools.host_prelude { run_witness_bin }
+
+fn run_rest_response_table_witness() -> Bool {
+  run_witness_bin(
+    var_name: "REST_RESPONSE_TABLE_WITNESS",
+    bin_name: "rest_response_table_witness",
+    args: []
+  )
+}

@@ -64,6 +64,17 @@ fn rest_response_arm_is_success(pattern: RestResponseStatusPattern) -> Bool {
   }
 }
 
+type HttpTransportRefused {
+  cause: String
+}
+
+type HttpResponded {
+  status: HttpStatus
+  body: String
+}
+
+data rest_transport_observation_note: String = "Total observation at the REST transport seam (operator directive): every dispatch ends in HttpResponded { status, body } when bytes arrived, or HttpTransportRefused { cause } when the transport itself failed (connection refused, DNS, timeout). Status classification is http_status_class; body decoding is the operation's declared response table. Success arms map into the operation output; error arms refuse with the decoded body type carried on InterpError::RestResponseRefused — the caller surface is unchanged."
+
 type TlsPosture
   = VerifyPeer
   | InsecureAcceptAnyCert
