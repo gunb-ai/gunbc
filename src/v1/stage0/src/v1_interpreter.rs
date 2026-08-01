@@ -8890,29 +8890,38 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
 /// run argv with typed argv (no shell), and return exit/stdout/stderr/build-log as data.
 /// Wet-mode only — hermetic execution refuses instead of mocking (no fabricated receipt).
 /// The effects flip (build_transport_admission.dag: the intrinsic "runs only on an
-/// Admitted verdict"): host builds are admitted by the modeled build_workspace_grant
+/// Permit verdict"): host builds are admitted by the modeled build_workspace_grant
 /// envelope, not by execution mode — the verdict is path containment, mode-independent,
-/// so the same law holds hermetic and wet. Anything but Admitted is a typed refusal;
+/// so the same law holds hermetic and wet. Anything but Permit is a typed refusal;
 /// the per-file escape guard below stays as the realization-side belt.
-fn require_admitted_transport(
+fn require_permitted_transport(
     admission_arg: Option<&Value>,
     ctx: &InterpContext,
     intrinsic: &str,
 ) -> InterpResult<()> {
     match admission_arg {
-        Some(Value::Variant { variant_name, .. }) if ctx.sym_eq(*variant_name, "Admitted") => {
+        Some(Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        }) if ctx.sym_eq(*type_name, "AccessDecision") && ctx.sym_eq(*variant_name, "Permit") => {
             Ok(())
         }
-        Some(Value::Variant { variant_name, .. }) => Err(InterpError::TypeError {
+        Some(Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        }) => Err(InterpError::TypeError {
             msg: format!(
-                "{intrinsic} refuses: transport not admitted (verdict {}, expected Admitted \
-                 from build_transport_admissible)",
+                "{intrinsic} refuses: transport not permitted (decision {}::{}, expected \
+                 AccessDecision::Permit from build_transport_admissible)",
+                ctx.resolve(*type_name),
                 ctx.resolve(*variant_name)
             ),
         }),
         _ => Err(InterpError::TypeError {
             msg: format!(
-                "{intrinsic} refuses: missing admission verdict (EffectAdmission required; \
+                "{intrinsic} refuses: missing authorization decision (AccessDecision required; \
                  route through run_host_process_admitted)"
             ),
         }),
@@ -8928,7 +8937,7 @@ fn eval_emit_host_run_transport_builtin(
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
-    require_admitted_transport(admission_arg, ctx, "emit_host_run_transport")?;
+    require_permitted_transport(admission_arg, ctx, "emit_host_run_transport")?;
 
     let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
         msg: "emit_host_run_transport requires (files, build, run) arguments".to_string(),
@@ -9137,7 +9146,7 @@ fn eval_emit_host_run_transport_cached_builtin(
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
-    require_admitted_transport(admission_arg, ctx, "emit_host_run_transport_cached")?;
+    require_permitted_transport(admission_arg, ctx, "emit_host_run_transport_cached")?;
 
     let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
         InterpError::TypeError {
@@ -12739,7 +12748,7 @@ mod emit_host_admission_flip_test {
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
-    use super::{require_admitted_transport, ExecutionMode, InterpContext, Value};
+    use super::{require_permitted_transport, ExecutionMode, InterpContext, Value};
 
     fn ctx_in(mode: ExecutionMode) -> InterpContext {
         let graph = ResolvedGraph {
@@ -12753,47 +12762,59 @@ mod emit_host_admission_flip_test {
 
     fn verdict(ctx: &InterpContext, variant: &str) -> Value {
         Value::Variant {
-            type_name: ctx.sym("EffectAdmission"),
+            type_name: ctx.sym("AccessDecision"),
             variant_name: ctx.sym(variant),
             fields: Rc::new(vec![]),
         }
     }
 
-    /// The flip: an Admitted verdict runs in EVERY mode — hermetic included — because
+    /// The flip: a Permit decision runs in EVERY mode — hermetic included — because
     /// the law is path containment, not a mode bit. The old blanket is_hermetic()
     /// refusal is gone; this is its replacement's discriminating input.
     #[test]
-    fn admitted_passes_in_hermetic_mode() {
+    fn permitted_passes_in_hermetic_mode() {
         let ctx = ctx_in(ExecutionMode::Hermetic);
-        let v = verdict(&ctx, "Admitted");
-        assert!(require_admitted_transport(Some(&v), &ctx, "emit_host_run_transport").is_ok());
+        let v = verdict(&ctx, "Permit");
+        assert!(require_permitted_transport(Some(&v), &ctx, "emit_host_run_transport").is_ok());
     }
 
     #[test]
     fn outside_grant_refuses_typed_in_every_mode() {
         for mode in [ExecutionMode::Hermetic, ExecutionMode::Wet] {
             let ctx = ctx_in(mode);
-            let v = verdict(&ctx, "EffectOutsideGrant");
-            let err = require_admitted_transport(Some(&v), &ctx, "emit_host_run_transport")
+            let v = verdict(&ctx, "Deny");
+            let err = require_permitted_transport(Some(&v), &ctx, "emit_host_run_transport")
                 .expect_err("outside-grant transport must refuse");
             let msg = format!("{err:?}");
             assert!(
-                msg.contains("not admitted"),
+                msg.contains("not permitted"),
                 "typed refusal names the cause: {msg}"
             );
-            assert!(
-                msg.contains("EffectOutsideGrant"),
-                "refusal locates the verdict: {msg}"
-            );
+            assert!(msg.contains("Deny"), "refusal locates the verdict: {msg}");
         }
+    }
+
+    #[test]
+    fn permit_arm_from_another_carrier_refuses() {
+        let ctx = ctx_in(ExecutionMode::Wet);
+        let forged = Value::Variant {
+            type_name: ctx.sym("UnrelatedDecision"),
+            variant_name: ctx.sym("Permit"),
+            fields: Rc::new(vec![]),
+        };
+        let err = require_permitted_transport(Some(&forged), &ctx, "emit_host_run_transport")
+            .expect_err("a Permit arm outside AccessDecision must not authorize a host effect");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("UnrelatedDecision::Permit"), "{msg}");
+        assert!(msg.contains("AccessDecision::Permit"), "{msg}");
     }
 
     #[test]
     fn missing_verdict_refuses() {
         let ctx = ctx_in(ExecutionMode::Wet);
-        let err = require_admitted_transport(None, &ctx, "emit_host_run_transport_cached")
+        let err = require_permitted_transport(None, &ctx, "emit_host_run_transport_cached")
             .expect_err("missing admission must refuse");
-        assert!(format!("{err:?}").contains("missing admission verdict"));
+        assert!(format!("{err:?}").contains("missing authorization decision"));
     }
 }
 

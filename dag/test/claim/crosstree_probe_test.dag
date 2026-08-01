@@ -12,7 +12,7 @@ fn probe_v2_tree() -> v2.std.lens_verdict.LensVerdict {
 }
 
 test fn crosstree_dag_ref_resolves() -> Bool {
-  match probe_dag_tree() { Permit => true  Deny { reason: _ } => false }
+  match probe_dag_tree() { Permit => true  Deny { refusal: _ } => false }
 }
 
 test fn crosstree_v2_ref_resolves() -> Bool {

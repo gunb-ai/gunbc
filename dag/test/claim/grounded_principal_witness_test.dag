@@ -107,7 +107,7 @@ test fn witness_ci_runner_grounded_access_gate_permits() -> Bool {
     fixture_host: Present { value: srv1_host_observation() }
   ) {
     Permit => true
-    Deny { reason: _ } => false
+    Deny { refusal: _ } => false
   }
 }
 
@@ -120,7 +120,7 @@ test fn witness_operator_grounded_access_gate_permits() -> Bool {
     fixture_host: Present { value: srv1_host_observation() }
   ) {
     Permit => true
-    Deny { reason: _ } => false
+    Deny { refusal: _ } => false
   }
 }
 
@@ -145,8 +145,8 @@ test fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
     access: ci_deploy_srv1_access,
     cmd: deploy_access_apt_get_privileged_command()
   ) {
-    Admitted { via_root: _ } => true
-    EffectOutsideGrant { verb: _, target: _, frame: _ } => false
+    Permit => true
+    Deny { refusal: _ } => false
   }
 }
 
@@ -160,8 +160,8 @@ test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
       }
     }
   ) {
-    Admitted { via_root: _ } => false
-    EffectOutsideGrant { verb: _, target: _, frame: _ } => true
+    Permit => false
+    Deny { refusal: _ } => true
   }
 }
 

@@ -16,6 +16,6 @@ data stage0_package_root: String = "src/v1/stage0/"
 
 data stage0_cargo_bin_paths_observation_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.stage0_rust_host_observation",
-  decl_name: "rust_source_host_observation",
+  decl_name: "current_stage0_rust_source_observation",
   field: WholeDeclaration
 }
