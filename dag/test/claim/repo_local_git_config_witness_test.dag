@@ -89,6 +89,7 @@ test fn witness_red_global_get_argv_not_read_back_authority_holds() -> Bool {
 
 test fn witness_holds() -> Bool {
   witness_desired_binding_count_holds()
+    && witness_converge_entry_is_declared()
     && witness_empty_observed_reconcile_upserts_holds()
     && witness_matching_observed_converged_holds()
     && witness_read_back_all_desired_holds()
