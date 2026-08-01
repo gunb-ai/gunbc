@@ -1,0 +1,67 @@
+module gunbc.publication_grant
+
+import std.types { CommitSha, FilePath, List, String }
+import std.effect_grant {
+  Publish, AudienceScopeTree, NamespacePosition,
+  Envelope, Grant, RealTransport, LifecycleByConstruction,
+}
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.visibility_grant { world_audience }
+
+data publication_grant_note: String = "Stage-0 public-root publication roster (docs/plans/node-subtree-visibility-grants.md section 6, P-B public half). The one baseline row bulk-stamps every path already present at its exact cutover commit Publish World; it does not mint thousands of per-file declarations. Each file first added after that commit needs one explicit PublicFilePublishGrant row. Both baseline and file rows carry the existing std.effect_grant.Envelope, and the placement gate asks std.effect_grant.admit_effect(Publish, world_audience) -- this carrier never owns a second admission rule. The public checkout is the only mounted root in this stage. Private-root and composed-graph closure are deliberately absent and arrive at P-C."
+
+type PublicRootPublishBaseline {
+  root: FilePath
+  cutover: CommitSha
+  envelope: Envelope
+}
+
+type PublicFilePublishGrant {
+  path: FilePath
+  envelope: Envelope
+}
+
+type PublicPublicationGrantRoster {
+  baseline: PublicRootPublishBaseline
+  file_grants: List<PublicFilePublishGrant>
+}
+
+fn publication_frame(name: String) -> Frame {
+  Frame { name: name, kind: SharedStateFrame }
+}
+
+fn publish_world_envelope(frame_name: String) -> Envelope {
+  Envelope {
+    frame: publication_frame(name: frame_name),
+    grants: [Grant {
+      verb: Publish,
+      root: world_audience(),
+      binding: RealTransport,
+      lifecycle: LifecycleByConstruction,
+    }],
+  }
+}
+
+data public_root_publish_baseline: PublicRootPublishBaseline = PublicRootPublishBaseline {
+  root: ".",
+  cutover: "7ead65c60397231ac50b55898300f17191ad931f",
+  envelope: publish_world_envelope(frame_name: "public-root-cutover"),
+}
+
+fn public_file_publish_grant(path: FilePath) -> PublicFilePublishGrant {
+  PublicFilePublishGrant {
+    path: path,
+    envelope: publish_world_envelope(frame_name: path),
+  }
+}
+
+data public_file_publish_grants: List<PublicFilePublishGrant> = [
+  public_file_publish_grant(path: "dag/gunbc/publication_grant.dag"),
+  public_file_publish_grant(path: "dag/tools/publication_placement_gate.dag"),
+  public_file_publish_grant(path: "dag/test/claim/publication_placement_gate_test.dag"),
+]
+
+data public_publication_grant_roster: PublicPublicationGrantRoster = PublicPublicationGrantRoster {
+  baseline: public_root_publish_baseline,
+  file_grants: public_file_publish_grants,
+}
