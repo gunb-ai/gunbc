@@ -351,7 +351,7 @@ fn parser_transport_batch_index(batches: List<List<Runnable>>) -> Int {
 
 test fn witness_parser_transport_clamp_position_precedes_emit_host() -> Bool {
   let batches = gunbc_ci_floor_ordinary_batches()
-  (parser_transport_batch_index(batches: batches) == 4)
+  (parser_transport_batch_index(batches: batches) == 3)
     && (batch_index_of(batches: batches, target: "emit_host_gate_passes") == 5)
     && (length(xs: gunbc_ci_floor_batch_clamp_params) == 6)
 }

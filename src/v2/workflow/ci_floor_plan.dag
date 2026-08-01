@@ -601,7 +601,29 @@ data parser_transport_witness_corpus_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data parser_transport_witness_corpus_note: String = "The separate scoped Hermetic batch for parser-reaching witnesses. Its source_roots are exactly parser_transport_witness_source_roots (dag plus src/v1), scan_dirs and exclusions are empty, and parser_transport_witness_entries is a nonempty explicit roster. This preserves gunbc.ci_layer_roots witness_layer_roots as the ordinary dag plus src/v2 discovery authority instead of making unrelated witnesses co-resolve the v1 seed. The substantial-memory, heavy-resolve profile states the real shape: resolving v1.compiler reaches the parser/compiler seed closure, but the claims execute inside the interpreter and spawn no host compiler. parser_transport_witness_batch_enrolled ties the batch to live discovery, so synthetic and regeneration specs do not acquire it. floor_corpus_exclusion_resource_edges orders every other enrolled substantial corpus node before this node, preventing it from co-residing with the ordinary, execution, or bin corpus batches."
+type ParserTransportStopBeforeDependentsMaskedLane
+  = ParserTransportMasksExecutionCorpus
+  | ParserTransportMasksBinWitnessCorpus
+  | ParserTransportMasksEmitHostTail
+
+data parser_transport_stop_before_dependents_masked_lanes: List<ParserTransportStopBeforeDependentsMaskedLane> = [
+  ParserTransportMasksExecutionCorpus,
+  ParserTransportMasksBinWitnessCorpus,
+  ParserTransportMasksEmitHostTail,
+]
+
+type ResourceExclusionStopPolicyConflationDissolutionTrigger
+  = StopWalkConsultsDependencyKind
+  | StopWalkConsultsDependencyReachability
+
+data resource_exclusion_stop_policy_conflation_dissolve_on: List<ResourceExclusionStopPolicyConflationDissolutionTrigger> = [
+  StopWalkConsultsDependencyKind,
+  StopWalkConsultsDependencyReachability,
+]
+
+data resource_exclusion_stop_policy_conflation_finding: String = "ResourceDependsOn and DataDependsOn both enter v2.workflow.realization_runner parallel_executor_plan_from_dependencies and become ordered ExecutorBatch layers. The v1 claim_executor run_walk consumer applies StopBeforeDependents to any failed earlier batch without consulting the dependency kind or actual descendant reachability, so a resource-exclusion fact silently acquires success-precondition semantics and the plan cannot express non-co-residence without predecession. resource_exclusion_stop_policy_conflation_dissolve_on names the two typed exits: make the stop-walk consult dependency kind, or make it halt only batches reachable as actual dependents."
+
+data parser_transport_witness_corpus_note: String = "The separate scoped Hermetic batch for parser-reaching witnesses. Its source_roots are exactly parser_transport_witness_source_roots (dag plus src/v1), scan_dirs and exclusions are empty, and parser_transport_witness_entries is a nonempty explicit roster. This preserves gunbc.ci_layer_roots witness_layer_roots as the ordinary dag plus src/v2 discovery authority instead of making unrelated witnesses co-resolve the v1 seed. The substantial-memory, heavy-resolve profile states the real shape: resolving v1.compiler reaches the parser/compiler seed closure, but the claims execute inside the interpreter and spawn no host compiler. parser_transport_witness_batch_enrolled ties the batch to live discovery, so synthetic and regeneration specs do not acquire it. floor_corpus_exclusion_resource_edges orders the ordinary discovery corpus before this node, then orders the execution and bin corpora after it, preventing co-residence while giving parser transport an executable slot before the variable wet tail. Under StopBeforeDependents, a parser-transport red therefore stops exactly parser_transport_stop_before_dependents_masked_lanes: the wet execution corpus, wet bin-witness corpus, and emit-host tail. That bounded masking is accepted to obtain real execution after run 30689615953 showed the prior wet-first order could starve this batch; it is an artifact of resource_exclusion_stop_policy_conflation_finding, not a claim that parser transport is a semantic prerequisite of those lanes."
 
 fn parser_transport_witness_corpus_runnable_for() -> Runnable {
   RunnableDiscoveryBatch {
@@ -663,12 +685,20 @@ fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
     fold(corpus_nodes, init: after_floor_corpus, f: fn(acc, source) {
       if source == parser_transport_witness_corpus_node {
         acc
+      } else if source == floor_corpus_node {
+        list_snoc_item(
+          xs: acc,
+          item: floor_resource_depends_on(
+            source: floor_corpus_node,
+            dependent: parser_transport_witness_corpus_node
+          )
+        )
       } else {
         list_snoc_item(
           xs: acc,
           item: floor_resource_depends_on(
-            source: source,
-            dependent: parser_transport_witness_corpus_node
+            source: parser_transport_witness_corpus_node,
+            dependent: source
           )
         )
       }
