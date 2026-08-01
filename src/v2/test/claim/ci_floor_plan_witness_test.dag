@@ -69,7 +69,7 @@ import std.realization_schedule {
   RunnableOwnsBatchClamp, runnable_batch_clamp_source,
   SequentialChildProcess,
   ScopedWitnessExecutionReceiptDecoded, ScopedWitnessExecutionReceiptRefused,
-  ScopedWitnessExecuted, scoped_witness_execution_receipt_decode,
+  ScopedWitnessExecuted, ScopedWitnessSelectionSkipped, scoped_witness_execution_receipt_decode,
   FloorWorkerObservation, OrdinaryFloorWorker, FloorWorkerExited, FloorWorkerSignaled,
   FloorWorkerTerminalReceiptObserved, FloorWorkerReportedCompleted,
   FloorWorkerCompleted, FloorWorkerFailed, floor_worker_observation_outcome,
@@ -322,7 +322,7 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
     && (v1_claim_scoped_witness_entries.skip(n: 1).first().function == "")
     && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
     && (v1_claim_scoped_witness_batch.scan_dirs == [])
-    && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionOff)
+    && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
     && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
     && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SequentialChildProcess)
     && match runnable_batch_clamp_source(r: target) {
@@ -357,6 +357,18 @@ test fn scoped_witness_execution_receipt_decoder_refuses_empty_ledger() -> Bool 
   match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\n") {
     ScopedWitnessExecutionReceiptDecoded { rows: _ } => false
     ScopedWitnessExecutionReceiptRefused { detail: detail } => detail != ""
+  }
+}
+
+test fn scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance() -> Bool {
+  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\tdigest\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\tselection-skipped\tskip-before-resolve-fast-path\n") {
+    ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
+      length(xs: rows) == 1
+        && match rows.first().outcome {
+          ScopedWitnessSelectionSkipped { provenance: provenance } => provenance == "skip-before-resolve-fast-path"
+          _ => false
+        }
+    ScopedWitnessExecutionReceiptRefused { detail: _ } => false
   }
 }
 

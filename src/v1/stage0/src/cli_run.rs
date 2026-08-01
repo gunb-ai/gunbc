@@ -14879,6 +14879,13 @@ pub struct DiscoveryWitnessOutcome {
     pub execution_leg: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionSkippedDiscoveryRow {
+    pub entry: String,
+    pub function: String,
+    pub provenance: String,
+}
+
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
 /// Counted and logged at roster build — never a silent skip (§5 deferred-and-detected).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14907,8 +14914,9 @@ pub struct DiscoverySummary {
     pub deferred_rows: Vec<DeferredDiscoveryRow>,
     /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
     pub predicted_unaffected: Vec<(String, String)>,
-    /// Applied mode: enrolled rows retained when affected-set selection declined execution.
-    pub selection_skipped_rows: Vec<(String, String)>,
+    /// Applied mode: enrolled rows retained with the provenance by which affected-set
+    /// selection declined execution. This is an honest nonfailure, never absence-as-pass.
+    pub selection_skipped_rows: Vec<SelectionSkippedDiscoveryRow>,
     /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
     /// counted, typed attribution of a missing selection edge (never a rerun trigger).
     pub divergences: Vec<String>,
@@ -20440,7 +20448,11 @@ fn run_discovery_rows(
             summary.skipped += 1;
             summary
                 .selection_skipped_rows
-                .push((row.entry.clone(), row.function.clone()));
+                .push(SelectionSkippedDiscoveryRow {
+                    entry: row.entry.clone(),
+                    function: row.function.clone(),
+                    provenance: "skip-before-resolve-fast-path".to_string(),
+                });
             if floor_verbose() {
                 eprintln!(
                     "SKIP [assumed-green node-frontier] {} ({})",
@@ -20555,7 +20567,11 @@ fn run_discovery_rows(
                     summary.skipped += 1;
                     summary
                         .selection_skipped_rows
-                        .push((row.entry.clone(), row.function.clone()));
+                        .push(SelectionSkippedDiscoveryRow {
+                            entry: row.entry.clone(),
+                            function: row.function.clone(),
+                            provenance: "node-frontier-selection".to_string(),
+                        });
                     if floor_verbose() {
                         eprintln!(
                             "SKIP [assumed-green node-frontier] {} ({})",

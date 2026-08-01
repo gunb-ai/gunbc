@@ -223,7 +223,7 @@ fn scoped_witness_batch(
 
 type ScopedWitnessExecutionOutcome
   = ScopedWitnessExecuted { ok: Bool }
-  | ScopedWitnessSelectionRefused { detail: String }
+  | ScopedWitnessSelectionSkipped { provenance: String }
   | ScopedWitnessSchedulingRefused { detail: String }
   | ScopedWitnessBudgetKilled { detail: String }
 
@@ -247,7 +247,7 @@ data scoped_witness_execution_receipt_path: ScopedWitnessExecutionReceiptPath = 
 
 data scoped_witness_execution_receipt_header: String = "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail"
 
-data scoped_witness_execution_receipt_wire_note: String = "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface."
+data scoped_witness_execution_receipt_wire_note: String = "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. Every scheduled head carries one row per expanded roster entry: ScopedWitnessExecuted is execution evidence, while ScopedWitnessSelectionSkipped is a typed nonfailure retaining the selection provenance — never absence-as-pass and never coverage. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface."
 
 fn scoped_witness_kind_label(kind: WitnessKind) -> String {
   match kind {
@@ -269,7 +269,7 @@ fn scoped_witness_kind_from_label(label: String) -> WitnessKind? {
 fn scoped_witness_execution_outcome_label(outcome: ScopedWitnessExecutionOutcome) -> String {
   match outcome {
     ScopedWitnessExecuted { ok: _ } => "executed"
-    ScopedWitnessSelectionRefused { detail: _ } => "selection-refused"
+    ScopedWitnessSelectionSkipped { provenance: _ } => "selection-skipped"
     ScopedWitnessSchedulingRefused { detail: _ } => "scheduling-refused"
     ScopedWitnessBudgetKilled { detail: _ } => "budget-killed"
   }
@@ -278,7 +278,7 @@ fn scoped_witness_execution_outcome_label(outcome: ScopedWitnessExecutionOutcome
 fn scoped_witness_execution_outcome_detail(outcome: ScopedWitnessExecutionOutcome) -> String {
   match outcome {
     ScopedWitnessExecuted { ok: ok } => if ok { "true" } else { "false" }
-    ScopedWitnessSelectionRefused { detail: detail } => detail
+    ScopedWitnessSelectionSkipped { provenance: provenance } => provenance
     ScopedWitnessSchedulingRefused { detail: detail } => detail
     ScopedWitnessBudgetKilled { detail: detail } => detail
   }
@@ -302,8 +302,8 @@ fn scoped_witness_execution_outcome_from_wire(label: String, detail: String) -> 
     Present { value: ScopedWitnessExecuted { ok: true } }
   } else if label == "executed" && detail == "false" {
     Present { value: ScopedWitnessExecuted { ok: false } }
-  } else if label == "selection-refused" && detail != "" {
-    Present { value: ScopedWitnessSelectionRefused { detail: detail } }
+  } else if label == "selection-skipped" && detail != "" {
+    Present { value: ScopedWitnessSelectionSkipped { provenance: detail } }
   } else if label == "scheduling-refused" && detail != "" {
     Present { value: ScopedWitnessSchedulingRefused { detail: detail } }
   } else if label == "budget-killed" && detail != "" {
@@ -563,11 +563,11 @@ All four profile restrictions are conditional on mechanisms stages do not yet ha
 
 Every plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading."
 
-data walk_plan_run_stage_claim_executor_seed_deferral: String = "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining selection-refused discovery rows is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.
+data walk_plan_run_stage_claim_executor_seed_deferral: String = "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining typed selection-skipped discovery rows is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.
 
 WHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.
 
-WHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, and SequentialChildProcess selection. `scoped_witness_execution_receipt_decoder_accepts_writer_projection` and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder in both directions. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, and `floor_worker_signal_overrules_a_completed_terminal_report` pin the coordinator's typed observation boundary and the derived-verdict law. Deleting or flattening the modeled arms, accepting receipt absence, normalizing a signal into success, storing an authored outcome, or restoring the old isolation spelling makes one of those controls red.
+WHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, affected-set selection, and SequentialChildProcess isolation. `scoped_witness_execution_receipt_decoder_accepts_writer_projection`, `scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance`, and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder across execution, honest nonexecution, and refusal. The Rust control `scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome` pins the seed projection so an unaffected row remains present without failing the worker. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, and `floor_worker_signal_overrules_a_completed_terminal_report` pin the coordinator's typed observation boundary and the derived-verdict law. Deleting or flattening the modeled arms, dropping a selection-skipped roster row, accepting receipt absence, normalizing a signal into success, storing an authored outcome, or restoring the old isolation spelling makes one of those controls red.
 
 MIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for."
 

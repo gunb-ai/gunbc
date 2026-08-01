@@ -2226,6 +2226,43 @@ fn scoped_wire_text(text: &str) -> String {
     text.replace(['\t', '\r', '\n'], " ")
 }
 
+fn scoped_witness_summary_outcome(
+    summary: &DiscoverySummary,
+    entry: &str,
+    function: &str,
+) -> Option<(&'static str, String)> {
+    if let Some(found) = summary
+        .witness_outcomes
+        .iter()
+        .find(|row| row.entry == entry && row.function == function)
+    {
+        return Some(match &found.outcome {
+            ClaimOutcome::Pass => ("executed", "true".to_string()),
+            ClaimOutcome::Fail
+            | ClaimOutcome::NotBool { .. }
+            | ClaimOutcome::RuntimeError { .. } => ("executed", "false".to_string()),
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => (
+                "budget-killed",
+                format!(
+                    "{} elapsed_ms={} budget_ms={}",
+                    kind.label(),
+                    elapsed_ms,
+                    budget_ms
+                ),
+            ),
+        });
+    }
+    summary
+        .selection_skipped_rows
+        .iter()
+        .find(|row| row.entry == entry && row.function == function)
+        .map(|row| ("selection-skipped", row.provenance.clone()))
+}
+
 fn append_scoped_witness_receipt_rows(
     batch_id: &str,
     source_roots_digest: &str,
@@ -2250,39 +2287,10 @@ fn append_scoped_witness_receipt_rows(
             })?;
         let (outcome, detail) = if let Some(reason) = scheduling_detail {
             ("scheduling-refused", reason.to_string())
-        } else if let Some(found) = summary.and_then(|s| {
-            s.witness_outcomes
-                .iter()
-                .find(|row| row.entry == entry && row.function == function)
-        }) {
-            match &found.outcome {
-                ClaimOutcome::Pass => ("executed", "true".to_string()),
-                ClaimOutcome::Fail
-                | ClaimOutcome::NotBool { .. }
-                | ClaimOutcome::RuntimeError { .. } => ("executed", "false".to_string()),
-                ClaimOutcome::TimedOut {
-                    elapsed_ms,
-                    budget_ms,
-                    kind,
-                } => (
-                    "budget-killed",
-                    format!(
-                        "{} elapsed_ms={} budget_ms={}",
-                        kind.label(),
-                        elapsed_ms,
-                        budget_ms
-                    ),
-                ),
-            }
-        } else if summary.is_some_and(|s| {
-            s.selection_skipped_rows
-                .iter()
-                .any(|row| row.0 == entry && row.1 == function)
-        }) {
-            (
-                "selection-refused",
-                "affected-set selection declined execution".to_string(),
-            )
+        } else if let Some(outcome) =
+            summary.and_then(|s| scoped_witness_summary_outcome(s, &entry, &function))
+        {
+            outcome
         } else {
             (
                 "scheduling-refused",
@@ -2523,18 +2531,6 @@ fn run_discovery_batch_node(
             }
             if let Ok(rows) = &projected {
                 emit_slowest_witness_attribution(&source_roots, rows);
-            }
-            if scoped_receipt.is_some() && !summary.selection_skipped_rows.is_empty() {
-                return discovery_claim_result(
-                    label,
-                    false,
-                    format!(
-                        "selection refused {} scoped witness row(s); every enrolled row must execute at exact head",
-                        summary.selection_skipped_rows.len()
-                    ),
-                    &summary,
-                    projected,
-                );
             }
             if expect_red && summary.total > 0 {
                 // All green on an expect-red probe = stale quarantine (dissolve-on fired).
@@ -8969,6 +8965,46 @@ mod tests {
             result.detail.contains("witness row-cost receipt refused"),
             "receipt refusal must also be present, got: {}",
             result.detail
+        );
+    }
+
+    #[test]
+    fn scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome() {
+        use v1_compiler::cli_run::{
+            DiscoverySummary, EntryResolveReceipt, ResolveStageNanos, SelectionSkippedDiscoveryRow,
+        };
+        let summary = DiscoverySummary {
+            total: 0,
+            passed: 0,
+            skipped: 1,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
+                entry: "src/v1/tests/claim/caret_parse_smoke_test.dag".into(),
+                function: "w_caret_tokenizes_as_sh_caret".into(),
+                provenance: "skip-before-resolve-fast-path".into(),
+            }],
+            divergences: Vec::new(),
+            failures: Vec::new(),
+            witness_outcomes: Vec::new(),
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+        };
+        let (label, provenance) = scoped_witness_summary_outcome(
+            &summary,
+            "src/v1/tests/claim/caret_parse_smoke_test.dag",
+            "w_caret_tokenizes_as_sh_caret",
+        )
+        .expect("an unaffected enrolled row must remain present in the receipt");
+        assert_eq!(label, "selection-skipped");
+        assert_eq!(provenance, "skip-before-resolve-fast-path");
+        assert!(
+            summary.failures.is_empty(),
+            "selection skip is not a refusal"
         );
     }
 
