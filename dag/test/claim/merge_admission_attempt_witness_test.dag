@@ -258,6 +258,17 @@ test fn tested_subject_wire_roundtrips() -> Bool {
   }
 }
 
+data tested_subject_wire_move_byte_lock_note: String = "MOVE-not-fork control for the gunbc.merge_admission_subject de-fusion: this is the exact five-line byte sequence emitted before the move. A round-trip alone would miss a coordinated writer/reader drift; this literal makes any schema, ordering, object-family prefix, newline, or field-byte change red."
+
+test fn tested_subject_wire_bytes_are_unchanged_by_subject_defusion() -> Bool {
+  render_tested_subject_wire(
+    subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx)
+  ) == concat(
+    "gunbc.merge_admission_tested_subject.v1\n12345-1-ci\norigin/main\nsha1:1111111111111111111111111111111111111111\n",
+    head_sha_fx
+  )
+}
+
 test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
   let subj = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
   let rec = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
