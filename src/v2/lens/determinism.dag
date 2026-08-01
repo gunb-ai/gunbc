@@ -37,14 +37,29 @@ fn map_keys_leak_source() -> DeclarationRef {
   }
 }
 
+fn map_values_leak_source() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v1.runtime_rust",
+    decl_name: "map_values",
+    field: WholeDeclaration
+  }
+}
+
 data determinism_root_map_keys: DeterminismRoot = DeterminismRoot {
   signature: ^map_keys,
   source: map_keys_leak_source(),
-  citation: "map_keys iterates hash-ordered keys (src/v1/runtime_rust.dag:176), a host-nondeterministic root; sorted_map_keys is its deterministic sibling. Grounds the single std.determinism.NonDeterministic leaf; unregistered callees contribute std.determinism.Deterministic at the within-function boundary (map_keys is always a readable atom, never missed). Extend with clock/entropy roots when Phase B grounds kind:Observation."
+  citation: "map_keys exposes host-unspecified Map key iteration."
+}
+
+data determinism_root_map_values: DeterminismRoot = DeterminismRoot {
+  signature: ^map_values,
+  source: map_values_leak_source(),
+  citation: "map_values exposes host-unspecified Map value iteration."
 }
 
 data determinism_root_registry: List<DeterminismRoot> = [
-  determinism_root_map_keys
+  determinism_root_map_keys,
+  determinism_root_map_values
 ]
 
 fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: Symbol) -> Optional<DeterminismRoot> {
@@ -117,7 +132,7 @@ fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<v2.std.de
   }
 }
 
-data compile_gate_law: String = "The determinism lens as a compile citizen (mirrors accumulator_copy_compile_gate, #6527): a nondeterministic-root reach into the compiled tree FAILS COMPILATION, inheriting compile's affected-set scoping — the reach_witness lane is the red control, never the enforcement. This is the construction replacement for the x2 sampling emit gate (tools.emit_determinism_gate): the sampling gate proved 'two runs coincided' post-hoc over the corpus (~12m, corpus-denominated); this gate makes a bare map_keys reach into output UNWRITABLE by construction over the floor compile scope (dag + src/v2). Grain: root — this is a single rooted whole-tree findings walk (fold_node collecting one located diagnostic per nondeterministic-root call node); running it per subtree node would re-walk each subtree O(n^2). It enrolls in always_required_root_lenses, not the per-node roster. Scope is the floor compile scope by construction, not a narrowed roster; v1 05_emit_rust.dag is out of scope (the floor does not compile src/v1) and is deterministic by construction (map_keys-free, #6576) — operator ruling 2026-07-14 (b): a dying §7 seed carries no active guard. Every leak a typed, located diagnostic (determinism_nondeterministic_root_reach), batched, never absorbed."
+data compile_gate_law: String = "INTERIM CONTAINMENT, mechanically preventive for uniquely named registered roots — not repository-complete structural determinism. The former one-row registry asserted map_keys was the one readable nondeterministic atom and therefore could not miss a root. That premise was false: v1.runtime_rust map_values exposes the same host-unspecified Map iteration and was silently classified deterministic. The uniquely named map_keys and map_values hazards are directly registered, so a reach from either fails compilation over the floor compile scope. The aliases keys and values remain undetectable: determinism_root_for_symbol sees only an unqualified Symbol, v2 Node carries neither receiver domain nor resolved declaration identity, and method/free-call lowering erases their distinction; registering those generic symbols would fabricate failures for unrelated same-named functions. The broader denominator is also open because operations reach compiled trees through at least algebra templates, v1.compiler.infer_method builtin_function_registry, native v1_interpreter dispatch arms, PrimitiveContract rows, and target emit handlers. One PrimitiveDefinition identity join must close the denominator, disambiguate aliases, and give every root a resolvable identity. Until that lands, an unregistered future helper is not claimed safe, absence from this registry is not evidence of determinism, and absence of a diagnostic does not establish that no order-exposing operation was reached. Prefer retaining meaningful first-seen order beside a membership map, as PR 7515 does, over reconstructing a value order from the map; there is no universal sorted_map_values operation. Grain: root — one rooted whole-tree findings walk collects one located diagnostic per uniquely named registered call node. Every registered leak is typed, located, batched, and never absorbed."
 
 fn local_determinism_findings(n: Node) -> List<Diagnostic> {
   match local_determinism_axis(n: n) {

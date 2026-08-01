@@ -14,8 +14,9 @@ Roadmap carrier: ROADMAP §2, “SCM — source-intent integration, visibility-f
 grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Visibility authority:
 [node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
 [module identity vs storage](module-identity-storage-binding-design.md). Product wedge, design
-partner, hosted-authority promotion, and adjacent-product sequencing:
-[SCM product strategy](dag-scm-product-strategy.md). That strategy cannot weaken this document's
+partner, hosted-authority promotion, and adjacent-product sequencing are owned by the operator's
+product-strategy record, which is not published in this repo (moved to the private overlay root,
+2026-08-01). That strategy cannot weaken this document's
 semantic, evidence, admission, or compatibility-fidelity contract; this document cannot promote a
 product stage merely because its technical carrier exists. Git is the first adoption realization,
 not the interface from which the native model is derived.
@@ -1254,10 +1255,10 @@ does not wait for a native store:
    wait for an executing realization.
    R0 and P−1 may proceed in parallel because neither is allowed to infer the other. R1 waits for
    all three R0 models; the proof kernel waits for P−1.
-   **Status 2026-07-29:** the three R0 receipts, P−1 receipt, and R1 receipt are accepted in
-   `roadmap_authority.dag`. The active source-intent row is now P0. Its first carrier is
-   `gunbc.source_integration_landing_spine`; it consumes the accepted evidence and compatibility
-   shapes but deliberately does not claim the P1 proof kernel or P3 write transport.
+   **Status 2026-08-01:** the three R0 receipts, P−1 receipt, R1 receipt, and P0 receipt are accepted
+   in `roadmap_authority.dag`. P0's `gunbc.source_integration_landing_spine` consumes the accepted
+   evidence and compatibility shapes but deliberately does not claim the P1 proof kernel or P3
+   write transport; those later lanes remain parked.
 5. **P0 — user contract, cost, and layered scenario model:** carry the §0
    `Landed | ChoiceRequired | CouldNotLand` surface, stress profile, proposal contract roles,
    evidence profiles, semantic

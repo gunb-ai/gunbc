@@ -9,7 +9,7 @@ import std.numerical_contract {
   FmaContractionRefused,
   FmaContractionPermitted,
 }
-import std.bytes { pure_dag_seam_unreachable }
+import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -101,7 +101,7 @@ fn contiguous_loop_elementwise_float_kernel(
   b: List<Float>,
   c: List<Float>
 ) -> List<Float> {
-  [pure_dag_seam_unreachable()]
+  [pure_dag_seam_unreachable_float()]
 }
 
 data simd_kernel_int_execution_host_realization_marker: Disposition = Scaffold {

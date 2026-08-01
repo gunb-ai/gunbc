@@ -279,6 +279,7 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
     && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
     && (accepted |> any(a => a == "2-claim-indexed-evidence"))
     && (accepted |> any(a => a == "2-scm-compatibility-shape"))
+    && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
     && count(active_nodes()) == count(nodes()) - count(accepted)
     && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
     && all(accepted, a => id_exists(id: a))
@@ -525,22 +526,12 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
     && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
 }
 
-data scm_prerequisite_witness_focus_note: String = "Projected UNFOCUSED deliberately. This claim is about which lanes the AUTHORITY declares active, and it happens to read the markdown to check it. Left on the focused projection it would silently become a claim about the current view — going red whenever someone focused the page, reporting a roadmap defect where none exists. NoFocus keeps the claim measuring what it names."
+data scm_prerequisite_witness_focus_note: String = "The accepted SCM sequence is checked against the authority rather than the focused markdown projection. Once P0 is accepted there is deliberately no active SCM slice to render: P1 and later work remain parked until an operator authors or activates them. Carrier-path checks stay over the declared node population so accepting a node cannot erase its authority link."
 
-test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
+test fn witness_accepted_scm_sequence_has_no_active_slice() -> Bool {
   let accepted = accepted_roadmap_node_ids()
-  let out = serialize_markdown_source(
-    doc: project_roadmap_to_markdown(
-      doc: roadmap_authority_for(focus: NoFocus),
-      merged: authored_merged_prs()
-    )
-  )
-  string_contains(s: out, pattern: "(docs/plans/dag-scm-design.md)")
-    && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
-    && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
-    && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
+  node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
     && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 6
-    && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
     && id_exists(id: "2-scm-git-upstream-model")
     && id_exists(id: "2-scm-mercurial-upstream-model")
@@ -553,12 +544,13 @@ test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
     && !active_id_exists(id: "2-scm-pijul-upstream-model")
     && !active_id_exists(id: "2-claim-indexed-evidence")
     && !active_id_exists(id: "2-scm-compatibility-shape")
-    && active_id_exists(id: "2-scm-p0-landing-spine")
+    && !active_id_exists(id: "2-scm-p0-landing-spine")
     && (accepted |> any(id => id == "2-scm-git-upstream-model"))
     && (accepted |> any(id => id == "2-scm-mercurial-upstream-model"))
     && (accepted |> any(id => id == "2-scm-pijul-upstream-model"))
     && (accepted |> any(id => id == "2-claim-indexed-evidence"))
     && (accepted |> any(id => id == "2-scm-compatibility-shape"))
+    && (accepted |> any(id => id == "2-scm-p0-landing-spine"))
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
 }

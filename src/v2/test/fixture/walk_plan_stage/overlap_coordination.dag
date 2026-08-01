@@ -1,0 +1,32 @@
+module v2.test.fixture.walk_plan_stage.overlap_coordination
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+type OverlapPeer =
+    OverlapPeerA
+  | OverlapPeerB
+
+data walk_plan_stage_overlap_dir: String = "target/walk_plan_stage_overlap"
+
+data walk_plan_stage_overlap_note: String = "Production-path stage-1 multi-member control aligned to std.realization_schedule walk_plan_note (review 2026-07-31): siblings within a stage MAY overlap subject to admission, but no sibling order or wall-time concurrency is guaranteed — governor width 1 may legitimately admit one spawned claim at a time. Each peer writes its marker independently and returns; stage-1 GREEN requires both PASS. Spawn/join overlap is the unit latch stage_members_actually_overlap in claim_executor; stage-2 receipt readback is the production-path barrier control."
+
+fn walk_plan_stage_overlap_marker_path(peer: OverlapPeer) -> String {
+  match peer {
+    OverlapPeerA => concat(walk_plan_stage_overlap_dir, "/peer_a")
+    OverlapPeerB => concat(walk_plan_stage_overlap_dir, "/peer_b")
+  }
+}
+
+fn walk_plan_stage_overlap_record_peer(peer: OverlapPeer) -> Bool {
+  let dir_ready = shell.Mkdir.Parents(path: walk_plan_stage_overlap_dir)
+  if !dir_ready.success {
+    false
+  } else {
+    let marker = Filesystem.Write(
+      path: walk_plan_stage_overlap_marker_path(peer: peer),
+      content: ""
+    )
+    marker.success
+  }
+}
