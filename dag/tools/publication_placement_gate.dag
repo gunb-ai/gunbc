@@ -1,6 +1,6 @@
 module tools.publication_placement_gate
 
-import std.types { FilePath, GitRef, Int, List, String }
+import std.types { CommitSha, FilePath, GitRef, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.effect_grant {
   Publish, NamespacePosition, EffectAdmission, Admitted, EffectOutsideGrant,
@@ -21,8 +21,11 @@ import gunbc.publication_grant {
   PublicRootPublishBaseline, PublicFilePublishGrant, PublicPublicationGrantRoster,
   public_publication_grant_roster,
 }
+import gunbc.publication_cutover {
+  public_publication_root, public_publication_cutover_sha,
+}
 
-data publication_placement_gate_note: String = "Server-side Stage-0 publication wall. It observes ONLY the mounted public checkout, computes new public paths whose cutover-to-HEAD git status is Added, Copied, or Renamed, locates each path's roster envelope, and delegates the Publish World decision to std.effect_grant.admit_effect. Missing/ambiguous markers, refused grants, git failures, truncated parses, and unknown statuses are distinct typed PublishGuardLocalViolation causes; none widens to a scan or proceeds. The coverage receipt names exactly the public mount, the roster markers, and new paths checked. It makes no PublishClosureGap/PublishAncestorNarrower or private-root claim. This becomes the enforcement wall when the operator makes the CI check required in branch protection; no client hook is an authority."
+data publication_placement_gate_note: String = "Server-side Stage-0 publication wall. Before observing a diff it validates the roster baseline against the fixed gunbc.publication_cutover authority, so a roster edit cannot advance the grandfathered corpus. It observes ONLY the mounted public checkout, computes new public paths whose cutover-to-HEAD git status is Added, Copied, or Renamed, locates each path's roster envelope, and delegates the Publish World decision to std.effect_grant.admit_effect. A changed baseline, missing/ambiguous markers, refused grants, git failures, truncated parses, and unknown statuses are distinct typed PublishGuardLocalViolation causes; none widens to a scan or proceeds. The coverage receipt names exactly the public mount, the roster markers, and new paths checked. It makes no PublishClosureGap/PublishAncestorNarrower or private-root claim. This becomes the enforcement wall when the operator makes the CI check required in branch protection; no client hook is an authority."
 
 type PublishGuardPublicRootOnly {}
 
@@ -42,7 +45,13 @@ type PublishGuardLocalCoverageReceipt {
 }
 
 type PublishGuardLocalViolation
-  = BaselinePublishGrantRefused {
+  = BaselinePlacementPolicyNotPinned {
+      declared_root: FilePath,
+      pinned_root: FilePath,
+      declared_cutover: CommitSha,
+      pinned_cutover: CommitSha,
+    }
+  | BaselinePublishGrantRefused {
       root: FilePath,
       cutover: String,
       verb: std.effect_grant.Verb,
@@ -149,6 +158,22 @@ fn admission_refusal_for_baseline(
   }
 }
 
+fn baseline_policy_violations(
+  baseline: PublicRootPublishBaseline,
+) -> List<PublishGuardLocalViolation> {
+  if baseline.root == public_publication_root
+    && baseline.cutover == public_publication_cutover_sha {
+    []
+  } else {
+    [BaselinePlacementPolicyNotPinned {
+      declared_root: baseline.root,
+      pinned_root: public_publication_root,
+      declared_cutover: baseline.cutover,
+      pinned_cutover: public_publication_cutover_sha,
+    }]
+  }
+}
+
 fn admission_refusal_for_path(
   path: FilePath,
   root: FilePath,
@@ -242,9 +267,12 @@ fn publication_guard_local_check(
   head: String,
 ) -> PublishGuardLocalOutcome {
   let audience = world_audience()
-  let baseline_violations = admission_refusal_for_baseline(
-    baseline: roster.baseline,
-    admission: admit_effect(env: roster.baseline.envelope, verb: Publish, target: audience),
+  let baseline_violations = append(
+    baseline_policy_violations(baseline: roster.baseline),
+    items: admission_refusal_for_baseline(
+      baseline: roster.baseline,
+      admission: admit_effect(env: roster.baseline.envelope, verb: Publish, target: audience),
+    ),
   )
   let marker_audit = file_marker_audit(
     grants: roster.file_grants,
@@ -309,12 +337,16 @@ fn observe_publication_guard_local(
   head: String,
 ) -> PublishGuardLocalOutcome {
   let baseline = roster.baseline
-  let diff = git.Core.DiffNameStatus(
-    base: baseline.cutover as GitRef,
-    head: head as GitRef,
-    range: TwoDot,
-  )
-  if !diff.success {
+  let policy_violations = baseline_policy_violations(baseline: baseline)
+  if policy_violations.count() > 0 {
+    PublishGuardLocalRefused { receipt: Absent, violations: policy_violations }
+  } else {
+    let diff = git.Core.DiffNameStatus(
+      base: public_publication_cutover_sha as GitRef,
+      head: head as GitRef,
+      range: TwoDot,
+    )
+    if !diff.success {
     PublishGuardLocalRefused {
       receipt: Absent,
       violations: [PublicRootDiffReadFailure {
@@ -323,8 +355,8 @@ fn observe_publication_guard_local(
         head: head,
       }],
     }
-  } else {
-    match git_diff_name_status_parse(raw: diff.raw) {
+    } else {
+      match git_diff_name_status_parse(raw: diff.raw) {
       GitDiffNameStatusTruncated { pending: pending, entries: entries } => PublishGuardLocalRefused {
         receipt: Absent,
         violations: [PublicRootDiffParseTruncated {
@@ -346,6 +378,7 @@ fn observe_publication_guard_local(
           )
         }
       }
+      }
     }
   }
 }
@@ -361,6 +394,8 @@ fn render_diff_parse_pending(pending: GitDiffNameStatusParsePending) -> String {
 
 fn render_publish_guard_local_violation(violation: PublishGuardLocalViolation) -> String {
   match violation {
+    BaselinePlacementPolicyNotPinned { declared_root, pinned_root, declared_cutover, pinned_cutover } =>
+      join(["publication baseline is not the pinned policy: declared_root=", declared_root, " pinned_root=", pinned_root, " declared_cutover=", declared_cutover, " pinned_cutover=", pinned_cutover], "")
     BaselinePublishGrantRefused { root, cutover, verb, target, frame } =>
       join(["baseline Publish World grant refused: root=", root, " cutover=", cutover, " frame=", frame.name], "")
     AddedPathPublishGrantAbsent { path, root, audience } =>

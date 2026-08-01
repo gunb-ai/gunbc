@@ -7,6 +7,9 @@ import std.effect_grant {
 }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.visibility_grant { world_audience }
+import gunbc.publication_cutover {
+  public_publication_root, public_publication_cutover_sha,
+}
 
 data publication_grant_note: String = "Stage-0 public-root publication roster (docs/plans/node-subtree-visibility-grants.md section 6, P-B public half). The one baseline row bulk-stamps every path already present at its exact cutover commit Publish World; it does not mint thousands of per-file declarations. Each file first added after that commit needs one explicit PublicFilePublishGrant row. Both baseline and file rows carry the existing std.effect_grant.Envelope, and the placement gate asks std.effect_grant.admit_effect(Publish, world_audience) -- this carrier never owns a second admission rule. PROVISIONAL CARRIER DISPOSITION (operator directive 2026-08-01): the Publish verb and audience-tree request shape consumed here are frozen provisional, not the permanent publication authorization ontology; this placement gate is expected to re-home its request onto a PublicationAdmissionRequest profile over the std.access AccessRequest/AccessPolicy/decision_meet kernel when the kernel/profile grounding pass lands. This roster remains only the declared-placement-policy input and introduces no identity, principal, role, or broader audience model. The public checkout is the only mounted root in this stage. Private-root and composed-graph closure are deliberately absent and arrive at P-C."
 
@@ -43,8 +46,8 @@ fn publish_world_envelope(frame_name: String) -> Envelope {
 }
 
 data public_root_publish_baseline: PublicRootPublishBaseline = PublicRootPublishBaseline {
-  root: ".",
-  cutover: "7ead65c60397231ac50b55898300f17191ad931f",
+  root: public_publication_root,
+  cutover: public_publication_cutover_sha,
   envelope: publish_world_envelope(frame_name: "public-root-cutover"),
 }
 
@@ -56,6 +59,7 @@ fn public_file_publish_grant(path: FilePath) -> PublicFilePublishGrant {
 }
 
 data public_file_publish_grants: List<PublicFilePublishGrant> = [
+  public_file_publish_grant(path: "dag/gunbc/publication_cutover.dag"),
   public_file_publish_grant(path: "dag/gunbc/publication_grant.dag"),
   public_file_publish_grant(path: "dag/tools/publication_placement_gate.dag"),
   public_file_publish_grant(path: "dag/test/claim/publication_placement_gate_test.dag"),

@@ -9,7 +9,7 @@ import extdeps.git {
   GitDiffStatusEntry, DiffCopiedStatus, DiffRenamedStatus,
 }
 import gunbc.publication_grant {
-  PublicFilePublishGrant, PublicPublicationGrantRoster,
+  PublicRootPublishBaseline, PublicFilePublishGrant, PublicPublicationGrantRoster,
   public_root_publish_baseline,
   public_file_publish_grant,
 }
@@ -20,7 +20,8 @@ import gunbc.commit_workflow {
 }
 import tools.publication_placement_gate {
   PublishGuardLocalOutcome, PublishGuardLocalAccepted, PublishGuardLocalRefused,
-  PublishGuardLocalViolation, AddedPathPublishGrantAbsent,
+  PublishGuardLocalViolation, BaselinePlacementPolicyNotPinned,
+  AddedPathPublishGrantAbsent,
   FilePublishGrantMarkerRepeated, FilePublishGrantMarkerRefused,
   added_paths_from, publication_guard_local_check, publication_guard_process_exit,
 }
@@ -28,7 +29,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data publication_placement_acceptance_note: String = "Discriminating P-B acceptance probes over the real gate decision and boundary. The ungranted added path reaches a located AddedPathPublishGrantAbsent and an ExitFailure; adding its roster envelope reaches ExitSuccess. Ungranted copied and renamed destinations RED through the same path, closing Git's alternate encodings for a new public path. RED controls also prove that repeated file markers and marker envelopes refused by std.effect_grant.admit_effect cannot produce an honest coverage receipt. Every probe calls publication_guard_local_check, whose only publication decision is std.effect_grant.admit_effect(Publish, world_audience), then publication_guard_process_exit, the same boundary the live gate runs. Live git.Core.DiffNameStatus execution from the exact cutover to HEAD is enrolled separately as the Wet server-side floor runnable tools.floor_effect_gate_witness.publication_placement_gate_passes; it is not duplicated into the hermetic discovery corpus."
+data publication_placement_acceptance_note: String = "Discriminating P-B acceptance probes over the real gate decision and boundary. Advancing the roster cutover REDs against the independent fixed cutover authority before it can hide later files. The ungranted added path reaches a located AddedPathPublishGrantAbsent and an ExitFailure; adding its roster envelope reaches ExitSuccess. Ungranted copied and renamed destinations RED through the same path, closing Git's alternate encodings for a new public path. RED controls also prove that repeated file markers and marker envelopes refused by std.effect_grant.admit_effect cannot produce an honest coverage receipt. Every probe calls publication_guard_local_check, whose only publication decision is std.effect_grant.admit_effect(Publish, world_audience), then publication_guard_process_exit, the same boundary the live gate runs. Live git.Core.DiffNameStatus execution from the exact cutover to HEAD is enrolled separately as the Wet server-side floor runnable tools.floor_effect_gate_witness.publication_placement_gate_passes; it is not duplicated into the hermetic discovery corpus."
 
 data synthetic_added_path: String = "dag/example/new_public_file.dag"
 
@@ -74,6 +75,17 @@ fn refused_marker_roster() -> PublicPublicationGrantRoster {
   }
 }
 
+fn advanced_cutover_roster() -> PublicPublicationGrantRoster {
+  PublicPublicationGrantRoster {
+    baseline: PublicRootPublishBaseline {
+      root: public_root_publish_baseline.root,
+      cutover: "synthetic-advanced-cutover",
+      envelope: public_root_publish_baseline.envelope,
+    },
+    file_grants: [],
+  }
+}
+
 test fn added_ungranted_public_path_reds_gate() -> Bool {
   let outcome = publication_guard_local_check(
     roster: ungranted_roster(),
@@ -87,6 +99,28 @@ test fn added_ungranted_public_path_reds_gate() -> Bool {
         && match violations.first() {
           AddedPathPublishGrantAbsent { path: path, root: root, audience: audience } =>
             path == synthetic_added_path && root == "."
+          _ => false
+        }
+        && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+  }
+}
+
+test fn advanced_cutover_reds_gate() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: advanced_cutover_roster(),
+    added_paths: [],
+    head: "synthetic-head",
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } => false
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
+      violations.count() == 1
+        && match violations.first() {
+          BaselinePlacementPolicyNotPinned { declared_root: declared_root, pinned_root: pinned_root, declared_cutover: declared_cutover, pinned_cutover: pinned_cutover } =>
+            declared_root == "."
+              && pinned_root == "."
+              && declared_cutover == "synthetic-advanced-cutover"
+              && pinned_cutover == "7ead65c60397231ac50b55898300f17191ad931f"
           _ => false
         }
         && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
