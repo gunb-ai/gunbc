@@ -1552,6 +1552,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 data criteria_digest_reword_note: String = "Both digests below moved on 2026-07-29 because every row was rewritten in plain language, and the digest covers the brief, the pass/fail test, and what gets handed back. Worth being blunt about the limit this exposes: the digest cannot tell a rewording from a genuine change to the bar — it only knows the words moved. Nothing about what these two rows had to prove changed, and the evidence each names is the same run and the same files as before, so re-pinning is correct here. But that judgement was a person's, not the mechanism's, and a reviewer should treat any digest change as a prompt to re-read the row rather than as a formality. This is the same gap roadmap_acceptance_receipt_note already names: until a row's pass/fail test points at the test that discharges it, the link between words and evidence is asserted rather than derived."
 
+data namespace_binding_kernel_acceptance_note: String = "STATUS RECONCILIATION, NOT NEW WORK (operator ruling 2026-08-01). PR #7508 merged the supplied-candidate binding kernel, so the IMPLEMENTATION dependency for namespace-reference-derived-closure was resolved, but no acceptance receipt existed — leaving the roadmap saying its own prerequisite was unaccepted while the code depended on it. Two different truths for the same fact, which is exactly what node_is_startable reads, so P2a was being worked on while not honestly startable under the roadmap's own definition. The digest 2eba4715cdef42eb is the POST-#7530 value: #7530 rewrote this node's boundary, red_control and out_of_scope to cut authority from retirement, and roadmap_criteria_digest covers brief plus red_control plus handback, so the pre-amendment digest is stale by construction. It was DERIVED BY EXECUTION rather than transcribed — node_criteria_digest was run against the live node on this tree, not copied from a prior receipt or computed by hand. The red control names the malformed-transport refusal because that is the first arm #7530's amended row requires; the sibling arms (absent versus wrong-role identity distinct, duplicate supplied identity refused, wrong-category excluded, zero/one/two giving unbound/bound/ambiguous, exact declaration identity surviving, canonical fold invoked once) all execute in the same witness module and were green on the exact-head run that merged #7508."
+
 data scm_prerequisite_acceptance_note: String = "The operator explicitly accepted the three independent R0 models and the separate P−1 evidence carrier, then accepted R1 after merging its three-realization compatibility extraction. R1 depends only on the three R0 receipts; P0 is the first source-intent slice that consumes both accepted R1 and accepted P−1. These receipts preserve every prerequisite and handback as durable facts. Replacing accepted rows with their child would erase history and violate roadmap_acceptance_receipt_note."
 
 fn chash(s: String) -> ContentHash { s }
@@ -1669,6 +1671,24 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-28",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "namespace-binding-kernel"),
+      criteria_digest: chash(s: "2eba4715cdef42eb"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.occurrence_binding_resolve_witness_test",
+        witness_fn: "occurrence_binding_resolve_malformed_transport_refuses_holds",
+        executed_on: "2026-08-01",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/std/occurrence_binding_resolve.dag",
+        further_artifacts: [
+          "dag/test/claim/occurrence_binding_resolve_witness_test.dag",
+          "src/v1/04_occurrence_binding.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-08-01",
     },
     RoadmapAcceptanceReceipt {
       node: nid(s: "pderive-typesafe-nullary-reflection"),
