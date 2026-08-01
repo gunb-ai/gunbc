@@ -1,7 +1,5 @@
 module test.claim.grounded_principal_witness
 
-import std.access { Permit, Deny }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_runner_fiction_not_in_roster() -> Bool {
