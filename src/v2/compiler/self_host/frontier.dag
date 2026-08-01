@@ -907,11 +907,11 @@ fn compiler_frontier_roster_stale_located_reason_count_holds() -> Bool {
 }
 
 fn compiler_frontier_roster_module_paths() -> List<String> {
-  fold_list(
-    xs: compiler_frontier_roster,
-    empty: [],
-    cons: fn(paths, row) {
-      list_snoc_item(xs: paths, item: row.module_path)
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      list_snoc_item(xs: acc, item: row.module_path)
     }
   )
 }
