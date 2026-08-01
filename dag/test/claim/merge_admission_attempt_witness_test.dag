@@ -22,8 +22,6 @@ import gunbc.merge_admission {
 }
 import gunbc.commit_workflow {
   commit_gate_roster,
-  CommitCheckEnrollment,
-  CommitCargoFmtCheck,
 }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
@@ -104,18 +102,13 @@ test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
 }
 
 fn synthetic_changed_roster_hash() -> ContentHash {
-  gate_roster_content_hash(
-    roster: concat(commit_gate_roster, [CommitCheckEnrollment {
-      check: CommitCargoFmtCheck,
-      surfaces: [],
-    }])
-  )
+  gate_roster_content_hash(roster: reverse(commit_gate_roster))
 }
 
-data roster_staleness_control_recut_note: String = "RECUT AFTER #7591 INVALIDATED #7583. The 2026-08-01 incident motivates the roster-identity law, but this control does not reconstruct that incident by execution. Its stale roster is the live roster plus one synthetic, surface-less check enrollment, so the two hashes differ without naming any production gate or asserting any historical roster content. The prior control named PublicationPlacementGate; that coupled the regression control to one volatile roster member's continued existence, and the member's operator-ordered deletion invalidated the entire PR from a direction its original evidence did not watch. A control for a roster-identity law must exercise the SHAPE of a roster change, never a particular member, or its lifetime is bounded by the least stable thing it mentions. A description of a control's shape must live with that control or derive from it, so an implementation change cannot leave a remote carrier describing evidence that no longer executes. The stale arm must classify MergeDeniedStaleRoster and the live arm must classify MergeAdmitted, so an always-admit or always-refuse implementation fails one control."
+data roster_staleness_control_recut_note: String = "RECUT AFTER #7591 INVALIDATED #7583. The 2026-08-01 incident motivates the roster-identity law, but this control does not reconstruct that incident by execution. Its alternative revision reverses the exact live enrollments: identical members and surfaces, still unique and otherwise valid, but with a different order-sensitive roster hash. It names no particular production gate and asserts no historical roster content. The prior control named PublicationPlacementGate; that coupled the regression control to one volatile roster member's continued existence, and the member's operator-ordered deletion invalidated the entire PR from a direction its original evidence did not watch. A control for a roster-identity law must exercise the SHAPE of a roster change, never a particular member, or its lifetime is bounded by the least stable thing it mentions. A description of a control's shape must live with that control or derive from it, so an implementation change cannot leave a remote carrier describing evidence that no longer executes. The discriminator proves staleness rather than malformedness: the alternative-revision receipt refuses against the live revision and the identical receipt admits when that alternative revision is supplied as current. The live-revision receipt also admits, so an always-admit or always-refuse implementation fails a control."
 
-test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
-  let receipt = MergeAdmissionReceiptV2 {
+fn synthetic_changed_roster_receipt() -> MergeAdmissionReceiptV2 {
+  MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
@@ -123,11 +116,14 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
     gate_roster_hash: synthetic_changed_roster_hash(),
     conclusion: Success,
   }
+}
+
+test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
   (synthetic_changed_roster_hash() != current_gate_roster_hash)
     && match classify_merge_admission_verdict_v2(
       current_attempt_id: attempt_a(),
       tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-      receipt: receipt,
+      receipt: synthetic_changed_roster_receipt(),
       merge_target_tree: base_tree_fx(),
       current_roster_hash: current_gate_roster_hash,
     ) {
@@ -138,6 +134,23 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
       MergeDeniedWrongAttempt => false
       MergeDeniedSubjectMismatch => false
     }
+}
+
+test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bool {
+  match classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a(),
+    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    receipt: synthetic_changed_roster_receipt(),
+    merge_target_tree: base_tree_fx(),
+    current_roster_hash: synthetic_changed_roster_hash(),
+  ) {
+    MergeAdmitted => true
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
+  }
 }
 
 test fn current_roster_receipt_admits_against_live_roster() -> Bool {
