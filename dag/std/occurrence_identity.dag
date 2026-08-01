@@ -87,44 +87,20 @@ type OccurrenceIdentityConsumerRedDebt {
   dissolve_on: String
 }
 
-data occurrence_identity_consumer_red_debt_rehome_note: String = "THE SIX ROWS BELOW ALL NAMED namespace-canonical-binding AS OWNER, which was correct while that node was the single broad namespace node and is wrong now that the recut split it (operator ruling, 2026-08-01). A roadmap split leaves every row that pointed at the old node pointing at the wrong boundary, and a debt row whose owner cannot accept it is untracked in the way that matters: nobody discovering the node can tell whether the row is theirs.\n\nCLASSIFIED BY ACTUAL BOUNDARY, not by which node the row prose happens to mention. Five are parser or collector identity facts: rebuilt-reference identity preservation, one-occurrence collector dedupe, structurally-equal distinct occurrences, pattern-declaration reachability, and same-spelling parser declaration isolation. Each is decidable at the structural producer that builds candidate populations, so each is owned by namespace-reference-derived-closure. Note that one-occurrence-collector-dedupe is the SAME obligation the operator assigned to P2 candidate construction, collapsing repeated discovery of one identical full identity before the cardinality fold is called; it was already written here and simply pointed at the wrong node.\n\nONE ROW STAYS. inferred-target-anchor-identity requires an inferred target projection to stay anchored to the exact authored occurrence rather than a rebuilt shell Node, spelling, or SourceSpan. That is a property of the production projection path, not of building the candidate population, so it stays with namespace-canonical-binding, the production changeover. It is the row most likely to be re-argued, so the reasoning is written here rather than left implicit: the question that decides it is whether the receipt can execute before the production sites are switched over. For the other five it can; for this one it cannot.\n\nNo row was deleted, weakened, or given a new dissolution trigger by this rehome. Each dissolve_on still names the RED that retires it, and each still deletes in the PR that lands its receipt."
+data occurrence_identity_consumer_red_debt_rehome_note: String = "PR 7530 rehomed five rows from namespace-canonical-binding to namespace-reference-derived-closure by their actual acceptance boundary. Four now execute and their debt rows have dissolved: rebuilt-reference-identity-preservation, structurally-equal-distinct-occurrences, pattern-declaration-reachability, and same-spelling-parser-declaration-isolation are permanent regression receipts in test.manual.occurrence_identity_debt_receipt_test, with the production rebuild half carried by pipeline_occurrence_sidecar_serde_round_trip. inferred-target-anchor-identity still belongs to namespace-canonical-binding because its receipt cannot execute before the production projection sites switch over.\n\none-occurrence-collector-dedupe remains on namespace-reference-derived-closure but cannot yet climb: the rehome test asked whether it conceptually precedes production changeover and missed that no production occurrence-aware repeated-discovery collector exists to observe. merge_occurrence_transports concatenates complete authored transports and validation correctly refuses duplicate authored rows; std.occurrence_binding_resolve P1 correctly refuses duplicate supplied candidate ids; the open structural producer buckets each already-validated declaration once and exposes no repeated-observation seam. None is the collector this receipt requires. The retained row names that missing seam as its next-rung trigger rather than fabricating a test-local deduper."
 
 data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedDebt> = [
-  OccurrenceIdentityConsumerRedDebt {
-    id: "rebuilt-reference-identity-preservation",
-    required_receipt: "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.",
-    owner: "namespace-reference-derived-closure",
-    dissolve_on: "DISSOLVE-ON: the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR.",
-  },
   OccurrenceIdentityConsumerRedDebt {
     id: "one-occurrence-collector-dedupe",
     required_receipt: "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.",
     owner: "namespace-reference-derived-closure",
-    dissolve_on: "DISSOLVE-ON: the occurrence-safe collector dedupe RED executes against the sidecar consumer; delete this row in the same PR.",
-  },
-  OccurrenceIdentityConsumerRedDebt {
-    id: "structurally-equal-distinct-occurrences",
-    required_receipt: "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.",
-    owner: "namespace-reference-derived-closure",
-    dissolve_on: "DISSOLVE-ON: the distinct-authored-occurrences collector RED executes against the sidecar consumer; delete this row in the same PR.",
-  },
-  OccurrenceIdentityConsumerRedDebt {
-    id: "pattern-declaration-reachability",
-    required_receipt: "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.",
-    owner: "namespace-reference-derived-closure",
-    dissolve_on: "DISSOLVE-ON: the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR.",
+    dissolve_on: "NEXT-RUNG TRIGGER: a production occurrence-aware discovery collector must expose a seam where one exact authored OccurrenceId can be observed twice before candidate supply. merge_occurrence_transports is not that seam: it concatenates complete authored transports and duplicate authored rows must refuse. P1 candidate supply is not that seam: duplicate supplied identities must refuse. The structural producer's one-pass bucket over validated declarations is not that seam either. DISSOLVE-ON: once a design-required production collector exposes repeated observation, its exact-identity dedupe RED executes through the sidecar consumer and this row deletes in the same PR.",
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "inferred-target-anchor-identity",
     required_receipt: "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.",
     owner: "namespace-canonical-binding",
     dissolve_on: "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR.",
-  },
-  OccurrenceIdentityConsumerRedDebt {
-    id: "same-spelling-parser-declaration-isolation",
-    required_receipt: "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.",
-    owner: "namespace-reference-derived-closure",
-    dissolve_on: "DISSOLVE-ON: the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR.",
   },
 ]
 
