@@ -1,6 +1,20 @@
 #![allow(clippy::disallowed_macros)]
 
 //! Executed .dag-side witness for `RestOutcome` in the interpreter REST kernel.
+//!
+//! This binary is a transitional seed scaffold. A hermetic `.dag` `mock_response`
+//! returns before `dispatch_rest`, so it cannot discriminate the status and body
+//! projection implemented by that kernel. The scaffold therefore provisions a
+//! real HTTP peer on IPv4 loopback; binding `127.0.0.1:0` keeps it local and lets
+//! the OS allocate a free port for parallel runs. The behavioral claim remains in
+//! `src/v2/test/claim/rest_outcome_witness_test.dag`; this Rust only supplies the
+//! currently missing host fixture and invokes that caller.
+//!
+//! Dissolve-on: REST transport realization moves out of the v1 interpreter and
+//! the witness-realization lane can emit and schedule this `.dag` caller with a
+//! provisioned loopback HTTP fixture. Then delete this binary, its Cargo/CI bin
+//! enrollment, and `dag/tools/rest_outcome_witness_transport.dag`; retain the
+//! `.dag` claim on the emitted-native execution path.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
