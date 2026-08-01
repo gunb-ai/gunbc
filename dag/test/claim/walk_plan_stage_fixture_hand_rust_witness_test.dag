@@ -11,9 +11,9 @@ import gunbc.walk_plan_stage_fixture_scaffold {
 }
 import v2.test.fixture.walk_plan_stage.common {
   walk_plan_stage_attempt_id,
-  walk_plan_stage_overlap_barrier_recipe,
   walk_plan_stage_stage1_receipt_path
 }
+import v2.test.fixture.walk_plan_stage.plan { walk_plan_stage_overlap_barrier_recipe }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
 import v2.std.algebra { length }
