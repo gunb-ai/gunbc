@@ -1,0 +1,3 @@
+module probe.row1b.nes
+import std.types { NonEmptyStr }
+fn f(x: NonEmptyStr) -> NonEmptyStr { x }

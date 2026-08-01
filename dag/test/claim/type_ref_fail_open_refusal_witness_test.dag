@@ -1,0 +1,64 @@
+module test.claim.type_ref_fail_open_refusal_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import gunbc.type_ref_binding_authority_debt {
+  type_ref_binding_authority_debt_dissolve_trigger
+}
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data type_ref_fail_open_witness_note: String = "import-strip section 14.1 acceptance probes as synthetic census sources (same observation surface as compile_diagnostic_census_witness). Row 1 GREEN (own import). Rows 3/4/5 RED blocking UnresolvedType: absent-from-pool, pool-present bare unreachable, and pool-present qualified unreachable share one refusal shape. Row 2 (transitive) stays a fixture-level control under dag/test/fixture/type_ref_fail_open_probe — advisory UnlistedImportUse is orthogonal. Admission predicate is type_ref_has_binding_authority (swappable; interim import/local)."
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn unresolved_blocking_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(
+        rows: census_rows_of_class(
+          rows: census_blocking_rows(rows: rows),
+          wanted: "UnresolvedType"
+        )
+      )
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data row1_own_import_source: String = "module type_ref_row1\nimport std.types { ContentHash }\nfn f(x: ContentHash) -> ContentHash { x }\n"
+
+data row3_absent_source: String = "module type_ref_row3\nfn f(x: NoSuchTypeNameAnywhereZzz) -> NoSuchTypeNameAnywhereZzz { x }\n"
+
+data row4_bare_pool_present_source: String = "module type_ref_row4\nfn f(x: ContentHash) -> ContentHash { x }\n"
+
+data row5_qualified_pool_present_source: String = "module type_ref_row5\nfn f(x: std.types.ContentHash) -> std.types.ContentHash { x }\n"
+
+test fn row1_own_import_stays_green() -> Bool {
+  unresolved_blocking_count(source: row1_own_import_source) == 0
+}
+
+test fn row3_absent_is_blocking_unresolved_type() -> Bool {
+  unresolved_blocking_count(source: row3_absent_source) >= 1
+}
+
+test fn row4_bare_pool_present_unreachable_matches_row3_shape() -> Bool {
+  unresolved_blocking_count(source: row4_bare_pool_present_source) >= 1
+}
+
+test fn row5_qualified_pool_present_unreachable_matches_row3_shape() -> Bool {
+  unresolved_blocking_count(source: row5_qualified_pool_present_source) >= 1
+}
+
+test fn debt_dissolve_trigger_names_n2() -> Bool {
+  string_contains(s: type_ref_binding_authority_debt_dissolve_trigger, pattern: "N2 containment")
+}

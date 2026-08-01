@@ -1,0 +1,3 @@
+module probe.row2.entry
+import probe.row2.middle { pass }
+fn f(x: ContentHash) -> ContentHash { pass(x: x) }

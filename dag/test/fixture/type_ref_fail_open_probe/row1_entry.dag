@@ -1,0 +1,3 @@
+module probe.row1.entry
+import probe.shared.types { ContentHash }
+fn f(x: ContentHash) -> ContentHash { x }

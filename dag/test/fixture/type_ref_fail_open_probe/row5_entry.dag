@@ -1,0 +1,4 @@
+module probe.row5.entry
+import probe.row5.sibling { Marker }
+fn f(x: probe.shared.types.ContentHash) -> probe.shared.types.ContentHash { x }
+fn g(m: Marker) -> Marker { m }

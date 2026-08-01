@@ -1,0 +1,2 @@
+module probe.shared.types
+type ContentHash = String

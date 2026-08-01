@@ -1,0 +1,2 @@
+module probe.row3.entry
+fn f(x: ContentHash) -> ContentHash { x }

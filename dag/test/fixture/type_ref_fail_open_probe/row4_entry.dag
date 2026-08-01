@@ -1,0 +1,4 @@
+module probe.row4.entry
+import probe.row4.sibling { Marker }
+fn f(x: ContentHash) -> ContentHash { x }
+fn g(m: Marker) -> Marker { m }

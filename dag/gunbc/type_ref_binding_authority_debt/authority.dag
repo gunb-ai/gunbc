@@ -1,0 +1,30 @@
+module gunbc.type_ref_binding_authority_debt
+
+import std.types { String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type TypeRefDebtRosterFreezeState
+  = ProvisionalUnfrozen
+  | Frozen
+
+data type_ref_debt_roster_freeze_state: TypeRefDebtRosterFreezeState = ProvisionalUnfrozen
+
+data type_ref_binding_authority_debt_charter_note: String = "N1 (import-strip section 14 / swift-fox-347): pool-present type refs without binding authority refuse as UnresolvedType (same shape as absent-from-pool). The ARM REFUSES — never FloorNotYet / advisory-only class enforcement (UnlistedImportUse trap). Compile-clean stays green via an identity-grain debt roster, not by disabling the gate. Dissolve direction on this carrier: N2 containment grant replaces type_ref_has_binding_authority's interim import-local body; bulk type-keyed rows dissolve as a measurable event (e.g. NonEmptyStr's site set), never per-site import additions (N5: residue repair, no import lines). Honest asymmetry: values/fns bind namespace-only since #7178; types refuse-unless-imported until N2."
+
+data type_ref_debt_freeze_sequencing_note: String = "FREEZE STATE = ProvisionalUnfrozen until witty-badger-200's peel_alias_once_for_field_access diagnostics-drop fix lands AND a census re-run closes the universe. Rationale (quiet-hawk-219): the hard UnresolvedType census is a LOWER BOUND (peel-suppressed sites excluded); freezing new-sites-refuse against a short denominator would red PRs whose authors added nothing when peel reveals pre-existing sites. Revealed sites are additive to classification. PR-ready flip waits on Frozen. Meanwhile: arm, deliberate-vs-incidental classification, and debt machinery proceed."
+
+data type_ref_debt_site_disposition_note: String = "Per-site disposition discriminator is DELIBERATE vs INCIDENTAL — NOT path prefix (a path is a discriminator, not gospel). Deliberate = the test's assertion DEPENDS on the reference being unbound → expect-red control (assert the refusal); NOT debt (recording as debt is harmful: fixing debt would break the control). Incidental = ordinary unbound use → provisional debt row, identical treatment wherever the file lives. Unclassifiable = refuses both buckets (defaulted-to-debt silently retires a control; defaulted-to-control silently retires a defect). Carriers: provisional_debt_roster.tsv (incidental), expect_red_controls.tsv (deliberate), unclassified_sites.tsv (neither)."
+
+data type_ref_debt_roster_keying_note: String = "Rows keyed TYPE x site (file, span_start, span_end), not site alone. Ranking in provisional_debt_by_type.tsv makes N2 grant dissolution a checkable event ('this grant dissolved these N rows of type T') and ranks which single grounding buys the most. Gate loader matches the flat TYPE\\tfile\\tstart\\tend identity; type blocks in the TSV are documentation for bulk dissolve."
+
+data type_ref_binding_authority_debt_dissolve_trigger: String = "dissolve-on: (1) witty-badger-200 peel fix + re-census → flip type_ref_debt_roster_freeze_state to Frozen and arm new-sites-refuse; (2) N2 containment binding authority for type positions swaps type_ref_has_binding_authority body → type-keyed roster shrinks by typed disposition to empty → delete carriers + this scaffold. Partial type-keyed shrinks are legitimate monotone progress. No import additions."
+
+data type_ref_binding_authority_debt_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.type_ref_binding_authority_debt",
+    decl_name: "type_ref_binding_authority_debt_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}

@@ -2410,9 +2410,129 @@ fn compile_clean_policy_read_refuses_gate() -> bool {
     compile_clean_unlisted_import_use_blocks_cached().is_err()
 }
 
+/// Type-ref binding-authority debt (N1 / import-strip §14).
+///
+/// PROVISIONAL_UNFROZEN until witty-badger-200 peel fix + census re-run freezes the
+/// universe (quiet-hawk-219 sequencing). The arm always emits typed UnresolvedType
+/// (never FloorNotYet class-wide advisory). Compile-clean admits:
+///   - incidental sites on `provisional_debt_roster.tsv` (TYPE×site identity)
+///   - deliberate expect-red controls on `expect_red_controls.tsv`
+/// New-sites-refuse against a closed universe arms only when freeze flips to Frozen.
+/// Census is a LOWER BOUND (peel-suppressed sites excluded). Same TSVs feed N5.
+const TYPE_REF_BINDING_AUTHORITY_DEBT_ROSTER_REL: &str =
+    "dag/gunbc/type_ref_binding_authority_debt/provisional_debt_roster.tsv";
+const TYPE_REF_BINDING_AUTHORITY_EXPECT_RED_REL: &str =
+    "dag/gunbc/type_ref_binding_authority_debt/expect_red_controls.tsv";
+
+fn normalize_repo_relative_path_for_debt(path: &str) -> String {
+    let p = path.replace('\\', "/");
+    if let Ok(root) = workspace_root().canonicalize() {
+        if let Ok(abs) = Path::new(&p).canonicalize() {
+            if let Ok(rel) = abs.strip_prefix(&root) {
+                return rel.to_string_lossy().replace('\\', "/");
+            }
+        }
+    }
+    // Already-relative paths (and uncanonicalizable host paths) stay as normalized.
+    if let Some(idx) = p.find("dag/") {
+        return p[idx..].to_string();
+    }
+    if let Some(idx) = p.find("src/") {
+        return p[idx..].to_string();
+    }
+    p
+}
+
+fn load_type_ref_site_identity_tsv(rel: &str) -> HashSet<(String, String, i64, i64)> {
+    let path = workspace_root().join(rel);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        eprintln!(
+            "type-ref binding-authority: refused to read {rel} at {}; \
+             failing closed for that set",
+            path.display()
+        );
+        return HashSet::new();
+    };
+    let mut set = HashSet::new();
+    for (lineno, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        // TYPE\tfile\tstart\tend  (+ optional reason column for expect-red)
+        if parts.len() < 4 {
+            eprintln!(
+                "type-ref binding-authority: {rel} line {} malformed \
+                 (want TYPE\\tfile\\tstart\\tend); skipping",
+                lineno + 1
+            );
+            continue;
+        }
+        let Ok(start) = parts[2].parse::<i64>() else {
+            continue;
+        };
+        let Ok(end) = parts[3].parse::<i64>() else {
+            continue;
+        };
+        set.insert((
+            parts[0].to_string(),
+            normalize_repo_relative_path_for_debt(parts[1]),
+            start,
+            end,
+        ));
+    }
+    set
+}
+
+fn type_ref_binding_authority_debt_roster() -> &'static HashSet<(String, String, i64, i64)> {
+    static ROSTER: OnceLock<HashSet<(String, String, i64, i64)>> = OnceLock::new();
+    ROSTER
+        .get_or_init(|| load_type_ref_site_identity_tsv(TYPE_REF_BINDING_AUTHORITY_DEBT_ROSTER_REL))
+}
+
+fn type_ref_binding_authority_expect_red() -> &'static HashSet<(String, String, i64, i64)> {
+    static ROSTER: OnceLock<HashSet<(String, String, i64, i64)>> = OnceLock::new();
+    ROSTER
+        .get_or_init(|| load_type_ref_site_identity_tsv(TYPE_REF_BINDING_AUTHORITY_EXPECT_RED_REL))
+}
+
+fn type_ref_site_identity_covers(
+    set: &HashSet<(String, String, i64, i64)>,
+    d: &Rc<ErrorNode>,
+) -> bool {
+    use crate::v1_std_core::{diagnostic_to_span, CompilerDiagnostic};
+    let CompilerDiagnostic::UnresolvedType { name, .. } = d.diagnostic.as_ref() else {
+        return false;
+    };
+    let span = diagnostic_to_span(d.diagnostic.clone());
+    let file = normalize_repo_relative_path_for_debt(&span.file);
+    set.contains(&(name.clone(), file, span.start, span.end))
+}
+
+/// True when this UnresolvedType identity is provisional incidental debt
+/// (compile-clean admits; diagnostic stays typed/located/counted).
+pub fn type_ref_binding_authority_debt_covers(d: &Rc<ErrorNode>) -> bool {
+    type_ref_site_identity_covers(type_ref_binding_authority_debt_roster(), d)
+}
+
+/// True when this UnresolvedType identity is a deliberate expect-red control
+/// (assertion depends on unbound — NOT debt).
+pub fn type_ref_binding_authority_expect_red_covers(d: &Rc<ErrorNode>) -> bool {
+    type_ref_site_identity_covers(type_ref_binding_authority_expect_red(), d)
+}
+
+/// Gate admission for UnresolvedType under the type-ref refusal arm: incidental debt
+/// or deliberate expect-red. Neither is FloorNotYet — the arm still refuses.
+fn type_ref_unresolved_admitted_for_compile_clean(d: &Rc<ErrorNode>) -> bool {
+    type_ref_binding_authority_debt_covers(d) || type_ref_binding_authority_expect_red_covers(d)
+}
+
 /// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
-/// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
+/// `UnresolvedType` admitted by type-ref debt / expect-red identity sets is non-blocking
+/// for the gate only (arm still refuses); all other classes delegate to
+/// `00_core.dag` `is_interpreter_blocking_diagnostic`.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     match d.diagnostic.as_ref() {
@@ -2420,6 +2540,13 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
             match compile_clean_unlisted_import_use_blocks_cached() {
                 Ok(blocks) => blocks,
                 Err(_) => true,
+            }
+        }
+        CompilerDiagnostic::UnresolvedType { .. } => {
+            if type_ref_unresolved_admitted_for_compile_clean(d) {
+                false
+            } else {
+                crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
             }
         }
         _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
@@ -2431,7 +2558,7 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
 /// does not print advisories as hard errors when the policy row says FloorNotYet.
 pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
     !compile_clean_diagnostic_is_hard(d)
-        && matches!(
+        && (matches!(
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
@@ -2445,7 +2572,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
                 // the same reason WhereRefinementUnenforced does.
                 | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
-        )
+        ) || type_ref_unresolved_admitted_for_compile_clean(d))
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {

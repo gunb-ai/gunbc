@@ -1,0 +1,3 @@
+module probe.row2.middle
+import probe.shared.types { ContentHash }
+fn pass(x: ContentHash) -> ContentHash { x }
