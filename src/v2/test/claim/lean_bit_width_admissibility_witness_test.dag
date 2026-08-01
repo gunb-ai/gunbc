@@ -3,8 +3,12 @@ module v2.test.claim.lean_bit_width_admissibility_witness
 
 import v2.extdeps.languages.lean {
   lean_admit_bit_width,
+  lean_catalog_fixed_width,
   LeanBitWidthAccepted,
-  LeanBitWidthRefused
+  LeanBitWidthRefused,
+  LeanFixedWidth,
+  LeanFixedWidthAdmissionRefused,
+  LeanPlatformWord
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -42,5 +46,13 @@ test fn lean_admit_refuses_bits128() -> Bool {
   match lean_admit_bit_width(width: w128) {
     LeanBitWidthRefused { width: refused } => bit_width_count(refused) == 128
     LeanBitWidthAccepted { width: _ } => false
+  }
+}
+
+test fn lean_catalog_refuses_bits128_not_platform_word() -> Bool {
+  match lean_catalog_fixed_width(count: 128) {
+    LeanFixedWidthAdmissionRefused { width: refused } => bit_width_count(refused) == 128
+    LeanFixedWidth { width: _ } => false
+    LeanPlatformWord => false
   }
 }

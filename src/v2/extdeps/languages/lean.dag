@@ -195,6 +195,7 @@ type LeanBitWidthAdmission
 
 type LeanIntegerWidth
   = LeanFixedWidth { width: LeanAdmittedBitWidth }
+  | LeanFixedWidthAdmissionRefused { width: BitWidth }
   | LeanPlatformWord
 
 type LeanScalar
@@ -210,7 +211,8 @@ type LeanPrimitiveFacts {
 fn lean_catalog_fixed_width(count: Nat) -> LeanIntegerWidth {
   match lean_admit_bit_width(width: bit_width(count: count)) {
     LeanBitWidthAccepted { width: admitted } => LeanFixedWidth { width: admitted }
-    LeanBitWidthRefused { width: _ } => LeanPlatformWord
+    LeanBitWidthRefused { width: refused } =>
+      LeanFixedWidthAdmissionRefused { width: refused }
   }
 }
 
@@ -358,6 +360,8 @@ fn lean_admitted_bit_width_node(admitted: LeanAdmittedBitWidth) -> Node {
 fn lean_integer_width_node(width: LeanIntegerWidth) -> Node {
   match width {
     LeanFixedWidth { width: admitted } => lean_admitted_bit_width_node(admitted: admitted)
+    LeanFixedWidthAdmissionRefused { width: _ } =>
+      lean_inhabitant_atom(id: ^lean_tag_width_inadmissible)
     LeanPlatformWord => lean_platform_word_width_node()
   }
 }
