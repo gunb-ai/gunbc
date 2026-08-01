@@ -1,6 +1,6 @@
 module test.claim.served_surface_browser_artifact_integrity_witness
 
-import std.types { NonEmptyStr }
+import std.types { FilePath, NonEmptyStr, String }
 import std.measure { byte_size }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.tools.sha256sum {
@@ -27,7 +27,7 @@ fn screenshot_artifact_matches_live_bytes(artifact: ScreenshotArtifact) -> Bool 
   let digest = sha256sum_verify_via_shell(
     path: artifact.path as NonEmptyStr,
     expected_digest: artifact.digest.hex)
-  let bytes = file_byte_count_via_wc(path: artifact.path)
+  let bytes = file_byte_count_via_wc(path: artifact.path as String as FilePath)
   digest == Sha256Matches
     && verify_file_byte_count(read: bytes, expected: artifact.bytes) == FileByteCountMatches
 }
