@@ -1907,7 +1907,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
   }
 }
 
-data guarantee_ladder_lane_note: String = "STATE vs WORK, and IN-GRAPH vs BESIDE-IT. Rung STATE has one authority — the guarantee claims carrier (ladder-claims-carrier node), its dispositions DERIVED from execution receipts and EMITTED by ladder-census-emitters — never a ticket; a climb node names its target transition and lets the census/carrier say where the class stands today (the 2026-07-31 operator verdict on gunbc#7489 caught headlines transcribing rungs, the third rung-inflation catch in this lane's own artifacts). The WORK rows below are ordinary declared roadmap nodes under lane owner compiler-guarantee: the first cut rendered them from a section-local list beside the graph, which minted a second roadmap universe — uncounted, receipt-unreachable, invisible to the identity/endpoint/acyclicity witnesses and to active_roadmap_nodes() (same verdict; review 45356 independently flagged the owner-less rows the placement forced). Owner here is the LANE's identity, not an assignee: nodes are unbound until dispatch binds a session and a closing contract, exactly like every other lane. Page visibility is the typed focus policy in roadmap_focus_selection (the lane is selected so the unstaffed backlog stays on the page), and rendered-node containment is witnessed — see roadmap_rendered_containment_note. Post-merge verdict (2026-07-31, on the merged gunbc#7489): v2-phase-carriers split into five staged nodes (its identity is the registry's first tombstone, superseded by v2-self-grounding-frontier); floor-parse-formation-wall, floor-record-construction-wall, and the compiler-accepted-obligation-closure terminal added; baseline anchored to the merge commit; and the standing discipline that an OPEN PR is candidate evidence, never main's rung — tickets cite open work as 'open candidate', and the census states main's disposition separately. Spine verdict (2026-08-01, seventh pass): the ladder-measurement-schema node now precedes probes and carrier (the receipt protocol both meet through); the three merged P0 slices are recut at their actual grain with tombstoned identities (floor-call-shape-wall, floor-method-existence-wall, floor-inhabitance-wall each split into an ACCEPTED fragment node plus open siblings); the Accepted door is split mechanism/floor/extended (compiler-accepted-obligation-closure tombstoned) so the audit form lands with the carrier; exemption removal re-grounded on the two grounding nodes; emitters parallel with the baseline; the baseline a two-revision execution. Sequencing: everything outside the spine's first increment (schema, then probes + carrier) and the authorized parallel containment workstream WAITS."
+data guarantee_ladder_lane_note: String = "STATE vs WORK, and IN-GRAPH vs BESIDE-IT. Rung STATE has one authority — the guarantee claims carrier (ladder-claims-carrier node), its dispositions DERIVED from execution receipts and EMITTED by ladder-census-emitters — never a ticket; a climb node names its target transition and lets the census/carrier say where the class stands today (the 2026-07-31 operator verdict on gunbc#7489 caught headlines transcribing rungs, the third rung-inflation catch in this lane's own artifacts). The WORK rows below are ordinary declared roadmap nodes under lane owner compiler-guarantee: the first cut rendered them from a section-local list beside the graph, which minted a second roadmap universe — uncounted, receipt-unreachable, invisible to the identity/endpoint/acyclicity witnesses and to active_roadmap_nodes() (same verdict; review 45356 independently flagged the owner-less rows the placement forced). Owner here is the LANE's identity, not an assignee: nodes are unbound until dispatch binds a session and a closing contract, exactly like every other lane. Page visibility is the typed focus policy in roadmap_focus_selection (the lane is selected so the unstaffed backlog stays on the page), and rendered-node containment is witnessed — see roadmap_rendered_containment_note. Post-merge verdict (2026-07-31, on the merged gunbc#7489): v2-phase-carriers split into five staged nodes (its identity is the registry's first tombstone, superseded by v2-self-grounding-frontier); floor-parse-formation-wall, floor-record-construction-wall, and the compiler-accepted-obligation-closure terminal added; baseline anchored to the merge commit; and the standing discipline that an OPEN PR is candidate evidence, never main's rung — tickets cite open work as 'open candidate', and the census states main's disposition separately. Spine verdict (2026-08-01, seventh pass): the ladder-measurement-schema node now precedes probes and carrier (the receipt protocol both meet through); the three merged P0 slices are recut at their actual grain with tombstoned identities (floor-call-shape-wall, floor-method-existence-wall, floor-inhabitance-wall each split into an ACCEPTED fragment node plus open siblings); the Accepted door is split mechanism/floor/extended (compiler-accepted-obligation-closure tombstoned) so the audit form lands with the carrier; exemption removal re-grounded on the two grounding nodes; emitters parallel with the baseline; the baseline a two-revision execution. Correction on the split (review 45918): the first extended-activation cut kept requires-all edges on one node while its prose promised class-by-class widening — the graph would have deferred every admission behind the slowest climb; recut as four per-class admission nodes (each ready the day its own climb lands) with accepted-extended-obligation-closure the terminal roster-completeness certification, where requires-all honestly belongs. Sequencing: everything outside the spine's first increment (schema, then probes + carrier) and the authorized parallel containment workstream WAITS."
 
 fn guarantee_ladder_nodes() -> List<RoadmapNode> {
   [
@@ -2331,19 +2331,79 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The flip receipt and the zero-census reading.",
       )
     ),
+    active_sized(identity: "rn_FAF4MACL7ZXJMZ3GX6DJIR4E5S", id: "extended-admission-cardinality",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Cardinality joins the contract: the seam class flips to Required-blocking",
+        boundary: "Admit the cardinality-seam class into the door's blocking Required set — one class, one flip (per-class admission nodes replace the monolithic extended activation, review 45918: an admission becomes ready the day its OWN climb lands instead of every extended class waiting on the slowest). After the flip, acceptance refuses a program whose cardinality judgment is Unmeasured, BelowFloor, FrontierAccepted, or consumer-less.",
+        displaced_cost: "The first differentiating class stops being observability and becomes contract.",
+        first_slice: "The Required-roster row plus the planted possibly-empty-into-nonempty violation refusing at acceptance.",
+        red_control: "The planted seam violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The climb itself (cardinality-vertical-slice); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
+    active_sized(identity: "rn_7OIWVA5MTJIGEEJOBPJOKJTEQ2", id: "extended-admission-ambiguity",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Method ambiguity joins the contract",
+        boundary: "Admit the method-ambiguity class into the door's blocking Required set once its wall lands (per-class admission, review 45918). After the flip, a program with a more-than-one-resolution judgment left Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
+        displaced_cost: "The silent-first-hit dispatch class becomes contract, not census.",
+        first_slice: "The Required-roster row plus the planted two-candidate violation refusing at acceptance.",
+        red_control: "The planted ambiguous-dispatch violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The wall itself (floor-method-ambiguity-wall); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
+    active_sized(identity: "rn_QXI4FCLYEUMTP66BKPEGYLNPLV", id: "extended-admission-v2-realization",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Target realization joins the contract",
+        boundary: "Admit the target-relative realization class into the door's blocking Required set once its gate lands (per-class admission, review 45918). After the flip, a program accepted for target T with a realization judgment left Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
+        displaced_cost: "The costed-but-unrealized dispatch failure class becomes contract.",
+        first_slice: "The Required-roster row plus the planted unrealized-operation violation refusing at acceptance.",
+        red_control: "The planted unrealized-for-T violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The gate itself (v2-target-realization-gate); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
+    active_sized(identity: "rn_VAKMHRHJ64DJLMKHHSEKTXYLNP", id: "extended-admission-v2-translate",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Translate containment joins the contract",
+        boundary: "Admit the Translate-containment class into the door's blocking Required set once the refusal lands (per-class admission, review 45918). After the flip, a program whose underived-fact judgment is Unmeasured, BelowFloor, FrontierAccepted, or consumer-less refuses at acceptance.",
+        displaced_cost: "The documented Translate fail-open, once closed, stays closed by contract rather than vigilance.",
+        first_slice: "The Required-roster row plus the planted swallowed-refusal violation refusing at acceptance.",
+        red_control: "The planted underived-fact violation refuses; whole-tree stays green at the flip.",
+        out_of_scope: "The containment itself (v2-translate-underived-refusal); other classes' admissions.",
+        handback: "The admission receipt and the flip's green whole-tree run.",
+      )
+    ),
     active_sized(identity: "rn_DOFYQJV7FMMCLMNWGE4EUDJSOY", id: "accepted-extended-obligation-closure",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
       intricacy: IntricacyMedium,
       volume: VolumeSmall,
       t: fields(
-        headline: "Extended activation: cardinality, realization, and the structural extensions join the contract",
-        boundary: "The door widens past the floor to the differentiating classes as each reaches Required: the cardinality seam, method ambiguity, target-relative realization, and the v2 carrier chain — the full recovered P0.0 contract, class by class, never before its climb lands.",
+        headline: "Extended closure: the full contract roster certified complete",
+        boundary: "The terminal certification over the per-class admissions (recut per review 45918 — requires-all belongs HERE, on the completion receipt, never on the admission work, which is per-class and ready as each climb lands): every extended admission receipt present, the door's Required roster equal to the declared extended set — nothing climbed-but-unadmitted, nothing admitted-but-unclimbed — the full recovered P0.0 contract in force.",
         displaced_cost: "The thesis promise — if it compiles, declared intent is sound inside the modeled system — becomes the shipping contract.",
-        first_slice: "Cardinality-seam admission once its vertical slice lands.",
-        red_control: "Per admitted class: the planted violation refuses; whole-tree stays green at each widening.",
-        out_of_scope: "Classes whose climbs have not landed (the door never front-runs them).",
-        handback: "Per-class admission receipts and the final contract roster.",
+        first_slice: "The roster-completeness fold over admission receipts with a planted climbed-but-unadmitted RED.",
+        red_control: "A climbed-but-unadmitted class reds the roster check; an admitted-but-unclimbed row reds it; whole-tree stays green.",
+        out_of_scope: "New admissions (the per-class nodes own them); new walls.",
+        handback: "The contract roster receipt handed to residual prevalence.",
       )
     ),
     active_sized(identity: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A", id: "primitive-identity-join",
@@ -2467,11 +2527,18 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "accepted-floor-obligation-closure", parent: "floor-generic-field-constraint-wall"),
     edge(child: "accepted-floor-obligation-closure", parent: "floor-parse-formation-wall"),
     edge(child: "accepted-floor-obligation-closure", parent: "floor-record-construction-wall"),
-    edge(child: "accepted-extended-obligation-closure", parent: "accepted-floor-obligation-closure"),
-    edge(child: "accepted-extended-obligation-closure", parent: "cardinality-vertical-slice"),
-    edge(child: "accepted-extended-obligation-closure", parent: "floor-method-ambiguity-wall"),
-    edge(child: "accepted-extended-obligation-closure", parent: "v2-target-realization-gate"),
-    edge(child: "accepted-extended-obligation-closure", parent: "v2-translate-underived-refusal"),
+    edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
+    edge(child: "extended-admission-ambiguity", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-ambiguity", parent: "floor-method-ambiguity-wall"),
+    edge(child: "extended-admission-v2-realization", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-v2-realization", parent: "v2-target-realization-gate"),
+    edge(child: "extended-admission-v2-translate", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-v2-translate", parent: "v2-translate-underived-refusal"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-cardinality"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-ambiguity"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-realization"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-translate"),
     edge(child: "guarantee-residual-prevalence", parent: "accepted-extended-obligation-closure"),
   ]
 }

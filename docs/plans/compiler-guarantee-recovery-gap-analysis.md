@@ -695,7 +695,10 @@ measurement-schema stage ahead of probes and carrier (class/path/probe identitie
 receipt schema carrying subject revision × harness revision × probe-set digest), breaking
 the probes⇄carrier protocol cycle; the baseline is a two-revision execution (the anchor's
 compiler artifacts under the new content-addressed probe set — running "the baseline at
-commit X" is otherwise ambiguous three ways).
+commit X" is otherwise ambiguous three ways). CORRECTED in-flight (review 45918, on the
+reconciliation PR itself): the extended activation's first cut was one requires-all node
+whose prose promised class-by-class widening — recut as four per-class admission nodes
+plus a terminal roster-completeness certification (§12 Stage 6b carries the shape).
 
 ## 11. Audit queue
 
@@ -913,6 +916,16 @@ class-by-class (cardinality, ambiguity, v2 target realization, Translate contain
 each climb lands. Review 45545's substance survives in the activation nodes — refusal
 never turns on over a known-open required judgment; what changed is that the non-blocking
 audit no longer waits (residual prevalence now depends on the extended closure).
+**Correction (review 45918, on the first cut of this split):** the extended activation as
+one node carried requires-all edges on all four climbs while its prose promised
+class-by-class widening — the graph semantics would have deferred every admission behind
+the slowest climb, preserving exactly the monolithic deferral the split dissolves. Recut:
+**four per-class admission nodes** (`extended-admission-cardinality` / `-ambiguity` /
+`-v2-realization` / `-v2-translate`, each ← floor-closure + its own climb, so each becomes
+ready the day its climb lands), and `accepted-extended-obligation-closure` is the terminal
+**roster-completeness certification** (every admission receipt present; nothing
+climbed-but-unadmitted, nothing admitted-but-unclimbed) — requires-all belongs on the
+completion receipt, never on the admission work.
 
 **Stage 7 — residual prevalence, measured last** (the baseline half moved to Stage 1c per
 the operator's verdict, anchored at `anchor_commit 6c6e2dcb8587` — the #7489 merge — so it
