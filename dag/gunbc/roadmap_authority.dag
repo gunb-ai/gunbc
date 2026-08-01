@@ -5,7 +5,11 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.types { ContentHash }
+import std.content_hash {
+  fnv1a64_structural_hex_digest,
+  Fnv1a64Structural,
+  structural_content_hash,
+}
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
@@ -1574,7 +1578,15 @@ data scm_prerequisite_acceptance_note: String = "The operator explicitly accepte
 
 data scm_p0_acceptance_evidence_note: String = "P0 acceptance maps the roadmap clauses through test.claim.source_integration_landing_spine_witness witness_p0_roadmap_acceptance_contract_holds: all seven removed closure receipts stay machine-owned; evidence support/challenge/neither/conflict and terminal blocking do not become a preference question; both material alternatives resume by structural position; authorization, self-amendment, exhausted-bound, and permanent-effect failures keep their typed internal refusal and plain terminal projection; stale-parent work retries internally; a committed independently read-back transition stays Landed through projection failure; the audience projection excludes internal theory and manual Git-repair vocabulary; and the successful path retains its ordinary Git compatibility receipt. The same aggregate executes the explicit 50-agent/10-overlap/30-minute stress profile and timestamp non-authority. Handback remains bounded exactly at P0: gunbc.source_integration_landing_spine names the absent P1 proof kernel, P2 capture/edit lens, and P3 effect transport; none is claimed or activated by this receipt."
 
-fn chash(s: String) -> ContentHash { s }
+fn chash(s: String) -> Fnv1a64Structural {
+  match fnv1a64_structural_hex_digest(hex: s) {
+    Present { value: digest } => digest
+    Absent =>
+      structural_content_hash(
+        digest: s as Fnv1a64StructuralDigestHex,
+      )
+  }
+}
 
 fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
   [

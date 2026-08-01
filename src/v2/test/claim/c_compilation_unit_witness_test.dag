@@ -1,7 +1,7 @@
 module v2.test.claim.c_compilation_unit_witness
 
 import std.algebra { Empty }
-import std.types { ContentHash, NonEmptyStr, List }
+import std.types { NonEmptyStr, List }
 import v2.extdeps.languages.c {
   c_include_directive_for_dep,
   c_partition_fold_outcome,
@@ -52,10 +52,10 @@ data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
 data witness_mod_a1: ModuleId = "mod.a1" as NonEmptyStr
 data witness_mod_a2: ModuleId = "mod.a2" as NonEmptyStr
 
-data witness_unit_one: CompilationUnitId = "cu-one" as ContentHash
-data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
-data witness_unit_a: CompilationUnitId = "cu-a" as ContentHash
-data witness_unit_b: CompilationUnitId = "cu-b" as ContentHash
+data witness_unit_one: CompilationUnitId = "cu-one" as CompilationUnitId
+data witness_unit_two: CompilationUnitId = "cu-two" as CompilationUnitId
+data witness_unit_a: CompilationUnitId = "cu-a" as CompilationUnitId
+data witness_unit_b: CompilationUnitId = "cu-b" as CompilationUnitId
 
 data witness_type_struct_a: Symbol = ^witness_cu_struct_a
 data witness_type_struct_b: Symbol = ^witness_cu_struct_b

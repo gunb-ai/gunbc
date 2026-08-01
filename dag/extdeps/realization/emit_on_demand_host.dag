@@ -2,9 +2,16 @@ module extdeps.realization.emit_on_demand_host
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { ContentHash, String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  as_content_hash_structural,
+  serialize_content_hash,
+}
 import std.integer { NonNegativeInt }
-import std.content_hash { content_hash_atom, content_hash_combine }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import v2.std.optional { Present, Absent }
 
@@ -37,15 +44,96 @@ type ResolvedBuildContext {
   cargo_configuration_identity: ContentHash
 }
 
-fn toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
+type EmitHostStructuralIdentityOutcome
+  = EmitHostStructuralIdentityPresent { structural: Fnv1a64Structural }
+  | EmitHostStructuralIdentityRefusedCrypto {
+      component: NonEmptyStr
+      identity: ContentHash
+    }
+
+type ResolvedBuildContextIdentityOutcome
+  = ResolvedBuildContextIdentityPresent { identity: ContentHash }
+  | ResolvedBuildContextIdentityRefusedCrypto {
+      component: NonEmptyStr
+      identity: ContentHash
+    }
+
+type ToolchainIdentityOutcome
+  = ToolchainIdentityPresent { identity: ContentHash }
+  | ToolchainIdentityRefusedCrypto {
+      component: NonEmptyStr
+      identity: ContentHash
+    }
+
+data emit_host_structural_identity_refusal_note: String = "emit_host_structural_identity_outcome refuses cryptographic ContentHash families at the structural projection boundary (review 45661). Sha256Hash and Sha1Hash cannot collapse to a shared fnv1a64 sentinel — that was an absorbing fallback hiding distinct digests behind one cache key. Structural-only inputs proceed; crypto arms return EmitHostStructuralIdentityRefusedCrypto with component and identity (family is derived via content_hash_family, not stored in parallel — review 45721)."
+
+fn emit_host_structural_identity_outcome(
+  component: NonEmptyStr,
+  identity: ContentHash,
+) -> EmitHostStructuralIdentityOutcome {
+  match identity {
+    Fnv1a64(s) => EmitHostStructuralIdentityPresent { structural: s }
+    Sha256Hash(_) =>
+      EmitHostStructuralIdentityRefusedCrypto {
+        component: component,
+        identity: identity
+      }
+    Sha1Hash(_) =>
+      EmitHostStructuralIdentityRefusedCrypto {
+        component: component,
+        identity: identity
+      }
+  }
+}
+
+fn toolchain_identity_structural_outcome(
+  context: ResolvedBuildContext,
+) -> EmitHostStructuralIdentityOutcome {
   fold(
     context.observed_tool_identities,
-    init: content_hash_atom(value: "emit-host-resolved-build-toolchain-v1"),
-    f: (acc, observed_tool_identity) => content_hash_combine(
-      left: acc,
-      right: observed_tool_identity.observed_identity
-    )
+    init: EmitHostStructuralIdentityPresent {
+      structural: content_hash_atom(value: "emit-host-resolved-build-toolchain-v1")
+    },
+    f: (acc, observed_tool_identity) => match acc {
+      EmitHostStructuralIdentityPresent { structural: acc_structural } =>
+        match emit_host_structural_identity_outcome(
+          component: observed_tool_identity.tool_name,
+          identity: observed_tool_identity.observed_identity,
+        ) {
+          EmitHostStructuralIdentityPresent { structural: right } =>
+            EmitHostStructuralIdentityPresent {
+              structural: content_hash_combine_structural(
+                left: acc_structural,
+                right: right
+              )
+            }
+          EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
+            EmitHostStructuralIdentityRefusedCrypto {
+              component: c,
+              identity: i
+            }
+        }
+      EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
+        EmitHostStructuralIdentityRefusedCrypto {
+          component: c,
+          identity: i
+        }
+    }
   )
+}
+
+fn toolchain_identity_outcome(context: ResolvedBuildContext) -> ToolchainIdentityOutcome {
+  match toolchain_identity_structural_outcome(context: context) {
+    EmitHostStructuralIdentityPresent { structural: s } =>
+      ToolchainIdentityPresent {
+        identity: as_content_hash_structural(structural: s)
+      }
+    EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
+      ToolchainIdentityRefusedCrypto {
+        component: c,
+        identity: i
+      }
+  }
 }
 
 fn observed_tool_identity(
@@ -65,39 +153,77 @@ fn observed_tool_identity(
   }
 }
 
-fn resolved_build_context_identity(context: ResolvedBuildContext) -> ContentHash {
-  artifact_realization_digest(inputs: [
-    ArtifactRealizationInput {
-      identity: "resolved-build-toolchain",
-      content_digest: toolchain_identity(context: context)
-    },
-    ArtifactRealizationInput {
-      identity: "constructed-build-environment",
-      content_digest: context.environment_identity
-    },
-    ArtifactRealizationInput {
-      identity: "cargo-configuration",
-      content_digest: context.cargo_configuration_identity
-    },
-  ])
+fn resolved_build_context_identity_outcome(
+  context: ResolvedBuildContext,
+) -> ResolvedBuildContextIdentityOutcome {
+  match toolchain_identity_structural_outcome(context: context) {
+    EmitHostStructuralIdentityPresent { structural: toolchain } =>
+      match emit_host_structural_identity_outcome(
+        component: "constructed-build-environment",
+        identity: context.environment_identity,
+      ) {
+        EmitHostStructuralIdentityPresent { structural: environment } =>
+          match emit_host_structural_identity_outcome(
+            component: "cargo-configuration",
+            identity: context.cargo_configuration_identity,
+          ) {
+            EmitHostStructuralIdentityPresent { structural: cargo_configuration } =>
+              ResolvedBuildContextIdentityPresent {
+                identity: artifact_realization_digest(inputs: [
+                  ArtifactRealizationInput {
+                    identity: "resolved-build-toolchain",
+                    content_digest: toolchain
+                  },
+                  ArtifactRealizationInput {
+                    identity: "constructed-build-environment",
+                    content_digest: environment
+                  },
+                  ArtifactRealizationInput {
+                    identity: "cargo-configuration",
+                    content_digest: cargo_configuration
+                  },
+                ])
+              }
+            EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
+              ResolvedBuildContextIdentityRefusedCrypto {
+                component: c,
+                identity: i
+              }
+          }
+        EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
+          ResolvedBuildContextIdentityRefusedCrypto {
+            component: c,
+            identity: i
+          }
+      }
+    EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
+      ResolvedBuildContextIdentityRefusedCrypto {
+        component: c,
+        identity: i
+      }
+  }
 }
 
 fn native_cache_workspace_root(cache_root: String, key: ContentHash) -> String {
-  concat(cache_root, "/", key as String)
+  concat(cache_root, "/", serialize_content_hash(hash: key) as String)
 }
 
 fn native_cache_realization_workspace_root(
   workspace_root: String,
   realization_digest: ContentHash
 ) -> String {
-  concat(workspace_root, "/", realization_digest as String)
+  concat(workspace_root, "/", serialize_content_hash(hash: realization_digest) as String)
 }
 
 fn native_cache_resolved_build_context_workspace_root(
   realization_workspace_root: String,
   resolved_build_context_identity: ContentHash
 ) -> String {
-  concat(realization_workspace_root, "/", resolved_build_context_identity as String)
+  concat(
+    realization_workspace_root,
+    "/",
+    serialize_content_hash(hash: resolved_build_context_identity) as String
+  )
 }
 
 fn emit_on_demand_evict_native_cache(cache_root: String, key: ContentHash) -> Bool {

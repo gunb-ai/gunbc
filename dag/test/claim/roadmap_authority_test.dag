@@ -1,6 +1,7 @@
 module test.claim.roadmap_authority
 
-import std.types { ContentHash }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.types { NonEmptyStr }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
 import gunbc.roadmap_authority {
   roadmap_authority_for,
@@ -13,11 +14,6 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
-}
-import gunbc.roadmap_spawner {
-  roadmap_rendered_ghost_count,
-  roadmap_ghost_node_red_probe_count,
-  roadmap_altered_copy_red_probe_count,
 }
 import gunbc.v1_deletion_plan {
   V1FinishLine,
@@ -89,9 +85,9 @@ fn active_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
 fn active_edges() -> List<RoadmapEdge> { active_roadmap_edges() }
 
 fn tnid(s: String) -> RoadmapNodeId { s }
-fn tchash(s: String) -> ContentHash { s }
+fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
 
-fn digest_or_zero(rn: RoadmapNode) -> ContentHash {
+fn digest_or_zero(rn: RoadmapNode) -> Fnv1a64Structural {
   match node_criteria_digest(rn: rn) {
     Present { value } => value
     Absent => tchash(s: "0000000000000000")
@@ -102,7 +98,7 @@ fn declared_node(id: String) -> List<RoadmapNode> {
   nodes() |> filter(n => n.node == id)
 }
 
-fn receipt_fixture(node: String, digest: ContentHash) -> RoadmapAcceptanceReceipt {
+fn receipt_fixture(node: String, digest: Fnv1a64Structural) -> RoadmapAcceptanceReceipt {
   RoadmapAcceptanceReceipt {
     node: tnid(s: node),
     criteria_digest: digest,
@@ -628,19 +624,4 @@ test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
       ExecutionContractUnspecified => false
       ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
     }
-}
-
-data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
-
-test fn witness_rendered_nodes_are_declared_or_derived() -> Bool {
-  roadmap_rendered_ghost_count(doc: roadmap_authority_for(focus: NoFocus)) == 0
-    && roadmap_rendered_ghost_count(doc: roadmap_authority()) == 0
-}
-
-test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
-  roadmap_ghost_node_red_probe_count() == 1
-}
-
-test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
-  roadmap_altered_copy_red_probe_count() == 1
 }

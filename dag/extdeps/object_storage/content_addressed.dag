@@ -1,6 +1,6 @@
 module extdeps.object_storage.content_addressed
 
-import std.types { ContentHash }
+import std.content_hash { ContentHash }
 import std.cache_interface { KeyDerivationClass, CacheWriteSemantics }
 import extdeps.object_storage { ObjectContainer }
 import extdeps.external_authority { ExternalAuthority }

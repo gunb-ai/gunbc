@@ -4,7 +4,7 @@ import std.emit_on_demand {
   EmitOnDemandLookup, EmitOnDemandHit, EmitOnDemandMiss,
   EmitOnDemandCacheReceipt, materialization_for_lookup
 }
-import std.types { ContentHash }
+import std.content_hash { ContentHash }
 import std.content_hash { content_hash_atom }
 import std.realization { Materialization, Share, Recompute }
 import v2.std.logic { Bool }

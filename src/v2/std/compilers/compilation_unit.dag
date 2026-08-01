@@ -1,7 +1,8 @@
 module v2.std.compilers.compilation_unit
 
 import std.algebra { Empty }
-import std.types { ContentHash, NonEmptyStr, List, Bool, String, Int }
+import std.types { NonEmptyStr, List, Bool, String, Int }
+import std.content_hash { Fnv1a64Structural }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
@@ -30,8 +31,8 @@ import v2.std.node {
 }
 
 type ModuleId = NonEmptyStr where brand("ModuleId")
-type CompilationUnitId = ContentHash where brand("CompilationUnitId")
-type CompilationUnitArtifactId = ContentHash where brand("CompilationUnitArtifactId")
+type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")
+type CompilationUnitArtifactId = NonEmptyStr where brand("CompilationUnitArtifactId")
 
 type PartitionProvenance
   = HandExplicit
@@ -245,7 +246,7 @@ fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUni
     |> sort_by(id => id)
 }
 
-fn node_sort_key(n: Node) -> ContentHash {
+fn node_sort_key(n: Node) -> Fnv1a64Structural {
   content_hash(n: n)
 }
 

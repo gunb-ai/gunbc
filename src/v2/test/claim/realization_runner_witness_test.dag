@@ -37,6 +37,8 @@ import v2.workflow.realization_runner {
   runner_walk_batches
 }
 import std.measure { byte_size, byte_size_count }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -144,28 +146,37 @@ test fn witness_runner_blocks_when_prerequisite_missing() -> Bool {
   }
 }
 
+data graph_hash_c: ContentHash = content_hash_of_value(value: "hash_c" as NonEmptyStr)
+data graph_hash_a: ContentHash = content_hash_of_value(value: "hash_a" as NonEmptyStr)
+data graph_hash_b: ContentHash = content_hash_of_value(value: "hash_b" as NonEmptyStr)
+data graph_hash_root: ContentHash = content_hash_of_value(value: "hash_root" as NonEmptyStr)
+data graph_hash_store_node: ContentHash = content_hash_of_value(value: "hash_store_node" as NonEmptyStr)
+data graph_hash_dangling_root: ContentHash = content_hash_of_value(value: "hash_dangling_root" as NonEmptyStr)
+data graph_hash_never_encoded: ContentHash = content_hash_of_value(value: "hash_never_encoded" as NonEmptyStr)
+data graph_hash_absent: ContentHash = content_hash_of_value(value: "hash_absent" as NonEmptyStr)
+
 data graph_artifact_row_c: NodeKeyedGraphRow = NodeKeyedGraphRow {
-  content_hash: "hash_c",
+  content_hash: graph_hash_c,
   encoded_length: byte_size(count: 7),
   child_refs: []
 }
 
 data graph_artifact_row_a: NodeKeyedGraphRow = NodeKeyedGraphRow {
-  content_hash: "hash_a",
+  content_hash: graph_hash_a,
   encoded_length: byte_size(count: 3),
-  child_refs: ["hash_c"]
+  child_refs: [graph_hash_c]
 }
 
 data graph_artifact_row_b: NodeKeyedGraphRow = NodeKeyedGraphRow {
-  content_hash: "hash_b",
+  content_hash: graph_hash_b,
   encoded_length: byte_size(count: 5),
-  child_refs: ["hash_c"]
+  child_refs: [graph_hash_c]
 }
 
 data graph_artifact_row_root: NodeKeyedGraphRow = NodeKeyedGraphRow {
-  content_hash: "hash_root",
+  content_hash: graph_hash_root,
   encoded_length: byte_size(count: 10),
-  child_refs: ["hash_a", "hash_b"]
+  child_refs: [graph_hash_a, graph_hash_b]
 }
 
 data graph_artifact_diamond: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
@@ -176,16 +187,16 @@ data graph_artifact_diamond: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
     graph_artifact_row_root
   ],
   entries: [
-    NodeKeyedGraphArtifactEntry { store_node: "hash_store_node", value_root: "hash_root" }
+    NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_root }
   ]
 }
 
 data graph_artifact_dangling: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
   rows: [
     NodeKeyedGraphRow {
-      content_hash: "hash_dangling_root",
+      content_hash: graph_hash_dangling_root,
       encoded_length: byte_size(count: 4),
-      child_refs: ["hash_never_encoded"]
+      child_refs: [graph_hash_never_encoded]
     }
   ],
   entries: []
@@ -197,7 +208,7 @@ data graph_artifact_duplicated: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact 
 }
 
 test fn witness_graph_artifact_shared_row_counted_once() -> Bool {
-  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: "hash_root") {
+  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_root) {
     NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
       byte_size_count(b: bytes) == 25
     NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
@@ -206,7 +217,7 @@ test fn witness_graph_artifact_shared_row_counted_once() -> Bool {
 }
 
 test fn witness_graph_artifact_subgraph_bytes() -> Bool {
-  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: "hash_a") {
+  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_a) {
     NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
       byte_size_count(b: bytes) == 10
     NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
@@ -221,7 +232,7 @@ test fn witness_graph_artifact_total_matches_fully_reachable_root() -> Bool {
 test fn witness_graph_artifact_entry_binds_value_root() -> Bool {
   match node_keyed_graph_entry_value_bytes(
     artifact: graph_artifact_diamond,
-    entry: NodeKeyedGraphArtifactEntry { store_node: "hash_store_node", value_root: "hash_b" }
+    entry: NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_b }
   ) {
     NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
       byte_size_count(b: bytes) == 12
@@ -233,19 +244,19 @@ test fn witness_graph_artifact_entry_binds_value_root() -> Bool {
 test fn witness_graph_artifact_missing_child_ref_refuses() -> Bool {
   match node_keyed_graph_transitive_bytes(
     artifact: graph_artifact_dangling,
-    root: "hash_dangling_root"
+    root: graph_hash_dangling_root
   ) {
     NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
-      missing == "hash_never_encoded"
+      missing == graph_hash_never_encoded
     NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
     NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
 }
 
 test fn witness_graph_artifact_missing_root_refuses() -> Bool {
-  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: "hash_absent") {
+  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_absent) {
     NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
-      missing == "hash_absent"
+      missing == graph_hash_absent
     NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
     NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }

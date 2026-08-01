@@ -1,7 +1,8 @@
 module extdeps.provisioning.ubuntu_seeded_install_media
 
-import std.types { NonEmptyStr, String, ContentHash }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.types { NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged }
 import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   ubuntu_install_media_artifacts_dir,
@@ -50,9 +51,9 @@ fn seeded_install_media_content_hash(
 ) -> ContentHash {
   content_hash_tagged(
     tag: "ubuntu-seeded-install-media/v2",
-    payload: content_hash_combine(
-      content_hash_combine(
-        content_hash_combine(
+    payload: content_hash_combine_structural(
+      content_hash_combine_structural(
+        content_hash_combine_structural(
           content_hash_atom(value: stock_content_sha256),
           content_hash_atom(value: autoinstall_user_data_body),
         ),

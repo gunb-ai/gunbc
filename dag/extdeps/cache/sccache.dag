@@ -9,7 +9,7 @@ import extdeps.cache.types {
 }
 import std.cache_identity { CacheInterfaceId }
 import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line, sha256_digest_content_hash }
-import std.types { ContentHash }
+import std.content_hash { ContentHash }
 import std.cache_interface {
   NativeInternalLookup,
   OverwriteAllowed,
@@ -123,7 +123,7 @@ fn sccache_binary_artifact_authority_digest(artifact: SccacheBinaryArtifact) -> 
   }
 }
 
-fn sccache_binary_artifact_content_identity(artifact: SccacheBinaryArtifact) -> ContentHash {
+fn sccache_binary_artifact_content_identity(artifact: SccacheBinaryArtifact) -> ContentHash? {
   sha256_digest_content_hash(
     digest: sccache_binary_artifact_authority_digest(artifact: artifact),
   )
