@@ -6,6 +6,8 @@
 
 **The measurement is allowed to conclude the program is worth less than assumed.** Three claims an earlier draft of this receipt asserted were RETRACTED by further execution (§A.6, §A.7, § Verdict); they are kept visible rather than edited out, because the way they failed is the reusable part. See § Verdict for what survives.
 
+**Successor (slice 2):** [repeated-typecheck attribution receipt](entry-graph-union-slice2-typecheck-attribution.md) (PR #7533).
+
 ---
 
 ## A — the exclusive cost partition

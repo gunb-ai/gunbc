@@ -857,15 +857,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_9WD4YB1TQK6RXA0PJM7N5GHVC2",
       id: "entry-graph-union-construction",
       owner: "ci-cost",
-      path: "docs/plans/inner-cost-lanes-scoping.md",
+      path: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md",
       t: fields(
-        headline: "Prove repeated typechecking exists before building a shared entry graph",
-        boundary: "BANKED: slice 1 merged as #7483 (b5191426479ddec5f9a80b60dc6264ca168b42b6) and eliminated loading as the union graph's target: the corpus-wide edge index is already paid once per shared index. Selected closures repeat membership heavily, but that does not prove their typecheck computations are reusable. NEXT: attribute typecheck work per entry against one shared environment before choosing any implementation; implementation remains gated on that receipt and on fleet memory.",
-        displaced_cost: "Across six entries sharing one index, typecheck_compute grew 2.86x while the fixed loading row grew only 1.08x; selected closures repeat membership 35.9–38.4x by module count and 43.0–49.3x by bytes. Those are candidate bounds, not a saving: no receipt yet converts repeated membership into repeated computation.",
-        first_slice: "Measure per-entry typecheck attribution against one shared environment and report repeated typecheck compute / total typecheck compute. Close or recut the row if that decision ratio does not justify an architecture move.",
-        red_control: "The attribution must reconcile on one exclusive basis and must not infer computation from closure membership. Any later implementation requires identical verdicts plus fleet receipts showing no material increase in peak, hard backoff, or throttle wall at the real slot budget; local timing is not acceptance.",
-        out_of_scope: "No eviction redesign, and no forking of the entry-closure memo already in flight — sharing more while holding more live collides with retention, which is the axis the floor already fails on.",
-        handback: "The repeated-typecheck attribution receipt; an implementation proposal only if that receipt and fleet memory justify one."
+        headline: "Repeated typecheck attribution adjudicated — union construction no-go at N≤50",
+        boundary: "CLOSED (operator adjudication 2026-08-01, PR #7533). Slice 1 (#7483) eliminated loading as the union-graph target. Slice 2 measured per-entry typecheck attribution against one shared typed cache at N≤50 across disjoint production windows: decision_ratio=0 at every cell — the existing typed cache already enforces once-per-content-key, so a union/shared typed-computation graph is not justified by this hypothesis. Do not begin union construction. Per-entry assembly decomposition is a separate hypothesis with a new denominator.",
+        displaced_cost: "Across six entries sharing one index, typecheck_compute grew 2.86x while the fixed loading row grew only 1.08x; selected closures repeat membership 35.9–38.4x by module count and 43.0–49.3x by bytes. Slice 2 converted that membership duplication into a decision ratio and found zero repeated typecheck compute at every measured cell — the priced benefit of union construction is absent at N≤50.",
+        first_slice: "Delivered: slice-2 attribution matrix, controls in docs/plans/entry-graph-union-slice2-typecheck-attribution.md §C–F, operator no-go verdict §F.",
+        red_control: "Satisfied by execution: attribution reconciles on exclusive (entry,module_key) basis without inferring computation from closure membership; reorder preserves distinct-compute set; decision_ratio=0 at every measured N≤50 cell (perfect_sharing_yields_zero_decision_ratio).",
+        out_of_scope: "No union graph implementation, no eviction redesign, and no forking of the entry-closure memo already in flight — sharing more while holding more live collides with retention.",
+        handback: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md §F verdict plus committed measurement receipts under docs/plans/receipts/entry-graph-union-slice2/; no implementation proposal (no-go)."
       )
     ),
     active_small(
@@ -1614,6 +1614,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 data criteria_digest_reword_note: String = "Both digests below moved on 2026-07-29 because every row was rewritten in plain language, and the digest covers the brief, the pass/fail test, and what gets handed back. Worth being blunt about the limit this exposes: the digest cannot tell a rewording from a genuine change to the bar — it only knows the words moved. Nothing about what these two rows had to prove changed, and the evidence each names is the same run and the same files as before, so re-pinning is correct here. But that judgement was a person's, not the mechanism's, and a reviewer should treat any digest change as a prompt to re-read the row rather than as a formality. This is the same gap roadmap_acceptance_receipt_note already names: until a row's pass/fail test points at the test that discharges it, the link between words and evidence is asserted rather than derived."
 
+data entry_graph_union_construction_acceptance_note: String = "CLOSED NO-GO (operator adjudication 2026-08-01). Slice 2 PR #7533 delivered the repeated-typecheck attribution receipt slice 1 required before any union implementation. decision_ratio=0 at every measured cell at N≤50 — priced benefit absent. Digest 4442f95272011c70 derived by execution via node_criteria_digest on this tree after amending boundary/red_control/handback to record the verdict. Red control names perfect_sharing_yields_zero_decision_ratio as the discriminating decision-quantity witness; sibling controls in slice-2 receipt §C execute in the same test modules."
+
 data namespace_binding_kernel_acceptance_note: String = "STATUS RECONCILIATION, NOT NEW WORK (operator ruling 2026-08-01). PR #7508 merged the supplied-candidate binding kernel, so the IMPLEMENTATION dependency for namespace-reference-derived-closure was resolved, but no acceptance receipt existed — leaving the roadmap saying its own prerequisite was unaccepted while the code depended on it. Two different truths for the same fact, which is exactly what node_is_startable reads, so P2a was being worked on while not honestly startable under the roadmap's own definition. The digest 2eba4715cdef42eb is the POST-#7530 value: #7530 rewrote this node's boundary, red_control and out_of_scope to cut authority from retirement, and roadmap_criteria_digest covers brief plus red_control plus handback, so the pre-amendment digest is stale by construction. It was DERIVED BY EXECUTION rather than transcribed — node_criteria_digest was run against the live node on this tree, not copied from a prior receipt or computed by hand. The red control names the malformed-transport refusal because that is the first arm #7530's amended row requires; the sibling arms (absent versus wrong-role identity distinct, duplicate supplied identity refused, wrong-category excluded, zero/one/two giving unbound/bound/ambiguous, exact declaration identity surviving, canonical fold invoked once) all execute in the same witness module and were green on the exact-head run that merged #7508."
 
 data scm_prerequisite_acceptance_note: String = "The operator explicitly accepted the three independent R0 models and the separate P−1 evidence carrier, then accepted R1 after merging its three-realization compatibility extraction, and accepted P0 after its layered landing spine and twenty-two executing journey witnesses landed. R1 depends only on the three R0 receipts; P0 consumes both accepted R1 and accepted P−1. These receipts preserve every prerequisite and handback as durable facts. Replacing accepted rows with their child would erase history and violate roadmap_acceptance_receipt_note."
@@ -1775,6 +1777,25 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       accepted_on: "2026-08-01",
     },
     RoadmapAcceptanceReceipt {
+      node: nid(s: "entry-graph-union-construction"),
+      criteria_digest: chash(s: "4442f95272011c70"),
+      red_control: RedControlExecuted {
+        witness_module: "v1-compiler.cli_run.repeated_typecheck_attribution_arithmetic",
+        witness_fn: "perfect_sharing_yields_zero_decision_ratio",
+        executed_on: "2026-08-01",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md",
+        further_artifacts: [
+          "docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json",
+          "src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs",
+          "src/v1/tests/src/union_resolve_receipts_test.rs",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-08-01",
+    },
+    RoadmapAcceptanceReceipt {
       node: nid(s: "pderive-typesafe-nullary-reflection"),
       criteria_digest: chash(s: "dac83172a613e659"),
       red_control: RedControlExecuted {
@@ -1926,8 +1947,24 @@ fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
   }
 }
 
+data closing_contract_family_claim_note: String = "The family claim, stated once (presentation family-once grouping): every closing-contract task shares this claim, and each generated ticket's fused headline ('Write the closing check for: X') repeats it per row. The pair surface below exposes the DISCRIMINATING SUBJECT (the gated node's own typed ticket headline) beside each generated task so a projection can state the claim once and never recover the subject by parsing the fused headline. The generated ticket itself is unchanged — ROADMAP.md rendering and dispatch briefs keep the full self-contained headline."
+
+data closing_contract_family_claim: String = "Write the closing check — one executable done-condition for each gated node below"
+
+type ClosingContractTaskPair {
+  task: RoadmapNode
+  subject: String
+}
+
+fn closing_contract_task_pairs() -> List<ClosingContractTaskPair> {
+  startable_nodes_missing_closing_contract() |> map(n => ClosingContractTaskPair {
+    task: closing_contract_task_for(n: n),
+    subject: ticket_headline_of(n: n),
+  })
+}
+
 fn closing_contract_task_nodes() -> List<RoadmapNode> {
-  startable_nodes_missing_closing_contract() |> map(n => closing_contract_task_for(n: n))
+  closing_contract_task_pairs() |> map(p => p.task)
 }
 
 fn closing_contract_task_edges() -> List<RoadmapEdge> {

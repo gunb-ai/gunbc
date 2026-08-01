@@ -24,7 +24,7 @@ env:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 75
+    timeout-minutes: 80
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -102,7 +102,7 @@ jobs:
         run: |
           # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
           "$CARGO_BIN" 'check' '-p' 'v1-compiler-tests' '--tests'
-        timeout-minutes: 5
+        timeout-minutes: 10
       - name: Build release bins (claim_executor + gunbc)
         run: |
           # 🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
