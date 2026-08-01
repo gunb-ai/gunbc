@@ -1,0 +1,79 @@
+module extdeps.github.pull_timing_history
+
+import std.types { EpochMs, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/pulls/pulls#get-a-pull-request"
+  }
+}
+
+data pull_timing_history_provenance_note: String = "One-time GitHub REST pull on 2026-08-01. Each row is the created_at and merged_at pair returned by GET /repos/gunb-ai/gunbc/pulls/NUMBER, normalized once to Unix epoch milliseconds so the roadmap consumer can subtract instants without pretending std.types.Timestamp's bare String is arithmetical. The source_url remains on every row and the fetched_on date makes staleness inspectable. These are upstream pull-request observations only: which roadmap node a pull delivered is business policy and deliberately does not live in extdeps."
+
+type CitedPullTiming {
+  pull_number: Int
+  opened_at: EpochMs
+  merged_at: EpochMs
+  source_url: NonEmptyStr
+  fetched_on: NonEmptyStr
+}
+
+fn cited_pull_timing(
+  pull_number: Int,
+  opened_at: EpochMs,
+  merged_at: EpochMs,
+  source_url: NonEmptyStr,
+) -> CitedPullTiming {
+  CitedPullTiming {
+    pull_number: pull_number,
+    opened_at: opened_at,
+    merged_at: merged_at,
+    source_url: source_url,
+    fetched_on: "2026-08-01",
+  }
+}
+
+data gunbc_pr_7393_timing: CitedPullTiming = cited_pull_timing(
+  pull_number: 7393,
+  opened_at: 1785284539000,
+  merged_at: 1785298702000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7393",
+)
+
+data gunbc_pr_7405_timing: CitedPullTiming = cited_pull_timing(
+  pull_number: 7405,
+  opened_at: 1785294084000,
+  merged_at: 1785357921000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7405",
+)
+
+data gunbc_pr_7429_timing: CitedPullTiming = cited_pull_timing(
+  pull_number: 7429,
+  opened_at: 1785356295000,
+  merged_at: 1785358865000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7429",
+)
+
+data gunbc_pr_7431_timing: CitedPullTiming = cited_pull_timing(
+  pull_number: 7431,
+  opened_at: 1785358812000,
+  merged_at: 1785397720000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7431",
+)
+
+data gunbc_pr_7441_timing: CitedPullTiming = cited_pull_timing(
+  pull_number: 7441,
+  opened_at: 1785362512000,
+  merged_at: 1785370233000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7441",
+)
+
+data gunbc_pr_7542_timing: CitedPullTiming = cited_pull_timing(
+  pull_number: 7542,
+  opened_at: 1785552700000,
+  merged_at: 1785557096000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7542",
+)

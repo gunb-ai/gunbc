@@ -1,0 +1,19 @@
+module extdeps.project_schedule.cpm_pert
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gao.gov/products/gao-16-89g"
+  }
+}
+
+data schedule_method_grounding_note: String = "GAO-16-89G, Schedule Assessment Guide: Best Practices for Project Schedules, is the cited scheduling authority. Best Practice 6 defines the critical path as the longest continuous sequence of activities and the program's earliest completion/minimum duration. Its schedule-risk guidance calls for three-point duration estimates (minimum, most likely, maximum). This module names those two standard method roles only; the roadmap instantiation supplies its own observed distribution and dependency graph."
+
+type CriticalPathMethod {}
+type ThreePointEstimateMethod {}
+
+data critical_path_method: CriticalPathMethod = CriticalPathMethod {}
+data three_point_estimate_method: ThreePointEstimateMethod = ThreePointEstimateMethod {}
