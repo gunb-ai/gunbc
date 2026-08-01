@@ -74,7 +74,7 @@ import gunbc.roadmap_dispatch_actuator {
   git_for_each_ref_dispatch_argv,
   git_for_each_ref_dispatch_argv_for_instance,
   dispatch_tmux_session_scope,
-  DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider,
+  DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
   dispatch_cli_provider, dispatch_provider_label, dispatch_codex_home,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
@@ -949,6 +949,11 @@ fn belt_provider_preflight_for_instance(
         CodexPreflightOk { auth_method: _ } => ProviderPreflightOk
         CodexPreflightRefused { step: st, detail: d } =>
           ProviderPreflightRefused { step: st, detail: d }
+      }
+    CursorDispatchProvider =>
+      ProviderPreflightRefused {
+        step: "cursor-provider-preflight",
+        detail: "cursor dispatch is not yet wired on this actuator path",
       }
   }
 }
