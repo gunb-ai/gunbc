@@ -1,13 +1,14 @@
 module tools.publication_placement_gate
 
-import std.types { CommitSha, FilePath, GitRef, Int, List, String }
+import std.types { Bool, CommitSha, FilePath, GitRef, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.effect_grant {
   Publish, NamespacePosition, EffectAdmission, Admitted, EffectOutsideGrant,
-  admit_effect,
+  admit_effect, position_under,
 }
 import std.materialization_ladder { Frame }
 import std.visibility_grant { world_audience }
+import std.filesystem_path_grant { absolute_path_segments, repo_rel_path_position }
 import extdeps.git {
   GitDiffStatusEntry, DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
   DiffUnknownGitStatus,
@@ -18,29 +19,29 @@ import extdeps.git {
 }
 import extdeps.git
 import gunbc.publication_grant {
-  PublicRootPublishBaseline, PublicFilePublishGrant, PublicPublicationGrantRoster,
+  PublicRootPublishBaseline, SubtreePublishGrant, PublicPublicationGrantRoster,
   public_publication_grant_roster,
 }
 import gunbc.publication_cutover {
   public_publication_root, public_publication_cutover_sha,
 }
 
-data publication_placement_gate_note: String = "Server-side Stage-0 publication wall. Before observing a diff it validates the roster baseline against the fixed gunbc.publication_cutover authority, so a roster edit cannot advance the grandfathered corpus. It observes ONLY the mounted public checkout, computes new public paths whose cutover-to-HEAD git status is Added, Copied, or Renamed, locates each path's roster envelope, and delegates the Publish World decision to std.effect_grant.admit_effect. A changed baseline, missing/ambiguous markers, refused grants, git failures, truncated parses, and unknown statuses are distinct typed PublishGuardLocalViolation causes; none widens to a scan or proceeds. The coverage receipt names exactly the public mount, the roster markers, and new paths checked. It makes no PublishClosureGap/PublishAncestorNarrower or private-root claim. This becomes the enforcement wall when the operator makes the CI check required in branch protection; no client hook is an authority."
+data publication_placement_gate_note: String = "Server-side Stage-0 publication wall. Before observing a diff it validates the roster baseline against the fixed gunbc.publication_cutover authority, so a roster edit cannot advance the grandfathered corpus. It observes ONLY the mounted public checkout, computes new public paths whose cutover-to-HEAD git status is Added, Copied, or Renamed, resolves each path's nearest covering SubtreePublishGrant through the filesystem containment authority, and delegates the Publish World decision to std.effect_grant.admit_effect. Subtree defaults flow downward; a descendant may narrow its inherited audience, while a descendant that widens below a narrower ancestor is the local Rule 2 refusal SubtreePublishGrantWidensAncestor. A changed baseline, missing/ambiguous subtree defaults, duplicate roots, downward-closure violations, refused grants, git failures, truncated parses, and unknown statuses are distinct typed PublishGuardLocalViolation causes; none widens to a scan or proceeds. The coverage receipt names exactly the public mount, subtree defaults, and new paths checked. It makes no composed-graph PublishClosureGap claim. This becomes the enforcement wall when the operator makes the CI check required in branch protection; no client hook is an authority."
 
 type PublishGuardPublicRootOnly {}
 
-type PublishGuardOwnMarkersAndAddedPathsOnly {}
+type PublishGuardOwnSubtreeDefaultsAndAddedPathsOnly {}
 
 type PublishGuardBaselineMarkerChecked {}
 
 type PublishGuardLocalCoverageReceipt {
   mount: PublishGuardPublicRootOnly
-  coverage: PublishGuardOwnMarkersAndAddedPathsOnly
+  coverage: PublishGuardOwnSubtreeDefaultsAndAddedPathsOnly
   root: FilePath
   cutover: String
   head: String
   baseline_marker: PublishGuardBaselineMarkerChecked
-  file_marker_paths: List<FilePath>
+  subtree_grant_roots: List<FilePath>
   added_paths: List<FilePath>
 }
 
@@ -58,21 +59,19 @@ type PublishGuardLocalViolation
       target: NamespacePosition,
       frame: Frame,
     }
-  | AddedPathPublishGrantAbsent {
+  | AddedPathSubtreeGrantAbsent {
       path: FilePath,
       root: FilePath,
       audience: NamespacePosition,
     }
-  | FilePublishGrantMarkerRepeated {
-      path: FilePath,
+  | SubtreePublishGrantRootRepeated {
+      subtree_root: FilePath,
       root: FilePath,
     }
-  | FilePublishGrantMarkerRefused {
-      path: FilePath,
+  | SubtreePublishGrantWidensAncestor {
+      subtree_root: FilePath,
+      ancestor_root: FilePath,
       root: FilePath,
-      verb: std.effect_grant.Verb,
-      target: NamespacePosition,
-      frame: Frame,
     }
   | AddedPathPublishGrantAmbiguous {
       path: FilePath,
@@ -113,28 +112,56 @@ type PublishGuardLocalOutcome
       violations: List<PublishGuardLocalViolation>,
     }
 
-type PublicFileGrantLookup
-  = PublicFileGrantAbsent
-  | PublicFileGrantFound { grant: PublicFilePublishGrant }
-  | PublicFileGrantAmbiguous { marker_count: Int }
+type SubtreePublishGrantLookup
+  = SubtreePublishGrantAbsent
+  | SubtreePublishGrantFound { grant: SubtreePublishGrant, depth: Int }
+  | SubtreePublishGrantAmbiguous { subtree_root: FilePath, marker_count: Int, depth: Int }
 
-type FileMarkerAuditState {
-  seen_paths: List<FilePath>
+type SubtreeGrantAuditState {
+  seen_roots: List<FilePath>
   violations: List<PublishGuardLocalViolation>
 }
 
-fn public_file_grant_lookup(
+fn subtree_publish_grant_lookup(
   path: FilePath,
-  grants: List<PublicFilePublishGrant>,
-) -> PublicFileGrantLookup {
-  fold(grants, init: PublicFileGrantAbsent, f: fn(state, row) {
-    if !(row.path == path) {
+  grants: List<SubtreePublishGrant>,
+  exclude_exact: Bool,
+) -> SubtreePublishGrantLookup {
+  fold(grants, init: SubtreePublishGrantAbsent, f: fn(state, row) {
+    let covers = position_under(
+      target: repo_rel_path_position(rel: path),
+      root: repo_rel_path_position(rel: row.root),
+    )
+    if !covers || (exclude_exact && row.root == path) {
       state
     } else {
+      let depth = absolute_path_segments(path: row.root).count()
       match state {
-        PublicFileGrantAbsent => PublicFileGrantFound { grant: row }
-        PublicFileGrantFound { grant: prior } => PublicFileGrantAmbiguous { marker_count: 2 }
-        PublicFileGrantAmbiguous { marker_count: n } => PublicFileGrantAmbiguous { marker_count: n + 1 }
+        SubtreePublishGrantAbsent => SubtreePublishGrantFound { grant: row, depth: depth }
+        SubtreePublishGrantFound { grant: prior, depth: prior_depth } =>
+          if depth > prior_depth {
+            SubtreePublishGrantFound { grant: row, depth: depth }
+          } else if depth == prior_depth {
+            SubtreePublishGrantAmbiguous {
+              subtree_root: row.root,
+              marker_count: 2,
+              depth: depth,
+            }
+          } else {
+            state
+          }
+        SubtreePublishGrantAmbiguous { subtree_root: prior_root, marker_count: n, depth: prior_depth } =>
+          if depth > prior_depth {
+            SubtreePublishGrantFound { grant: row, depth: depth }
+          } else if depth == prior_depth {
+            SubtreePublishGrantAmbiguous {
+              subtree_root: prior_root,
+              marker_count: n + 1,
+              depth: prior_depth,
+            }
+          } else {
+            state
+          }
       }
     }
   })
@@ -193,40 +220,49 @@ fn admission_refusal_for_path(
   }
 }
 
-fn admission_refusal_for_marker(
-  grant: PublicFilePublishGrant,
-  root: FilePath,
-) -> List<PublishGuardLocalViolation> {
+fn envelope_publishes_world(grant: SubtreePublishGrant) -> Bool {
   match admit_effect(env: grant.envelope, verb: Publish, target: world_audience()) {
-    Admitted { via_root: via_root } => []
-    EffectOutsideGrant { verb: verb, target: target, frame: frame } => [
-      FilePublishGrantMarkerRefused {
-        path: grant.path,
-        root: root,
-        verb: verb,
-        target: target,
-        frame: frame,
-      }
-    ]
+    Admitted { via_root: via_root } => true
+    EffectOutsideGrant { verb: verb, target: target, frame: frame } => false
   }
 }
 
-fn file_marker_audit(
-  grants: List<PublicFilePublishGrant>,
+fn downward_closure_violations(
+  grant: SubtreePublishGrant,
+  grants: List<SubtreePublishGrant>,
   root: FilePath,
-) -> FileMarkerAuditState {
-  fold(grants, init: FileMarkerAuditState { seen_paths: [], violations: [] }, f: fn(state, grant) {
-    let repeated = any(state.seen_paths, seen => seen == grant.path)
+) -> List<PublishGuardLocalViolation> {
+  match subtree_publish_grant_lookup(path: grant.root, grants: grants, exclude_exact: true) {
+    SubtreePublishGrantFound { grant: ancestor, depth: depth } =>
+      if envelope_publishes_world(grant: grant) && !envelope_publishes_world(grant: ancestor) {
+        [SubtreePublishGrantWidensAncestor {
+          subtree_root: grant.root,
+          ancestor_root: ancestor.root,
+          root: root,
+        }]
+      } else {
+        []
+      }
+    _ => []
+  }
+}
+
+fn subtree_grant_audit(
+  grants: List<SubtreePublishGrant>,
+  root: FilePath,
+) -> SubtreeGrantAuditState {
+  fold(grants, init: SubtreeGrantAuditState { seen_roots: [], violations: [] }, f: fn(state, grant) {
+    let repeated = any(state.seen_roots, seen => seen == grant.root)
     let repeated_violation = if repeated {
-      [FilePublishGrantMarkerRepeated { path: grant.path, root: root }]
+      [SubtreePublishGrantRootRepeated { subtree_root: grant.root, root: root }]
     } else {
       []
     }
-    FileMarkerAuditState {
-      seen_paths: if repeated { state.seen_paths } else { append(state.seen_paths, items: [grant.path]) },
+    SubtreeGrantAuditState {
+      seen_roots: if repeated { state.seen_roots } else { append(state.seen_roots, items: [grant.root]) },
       violations: append(
         append(state.violations, items: repeated_violation),
-        items: admission_refusal_for_marker(grant: grant, root: root),
+        items: downward_closure_violations(grant: grant, grants: grants, root: root),
       ),
     }
   })
@@ -237,19 +273,19 @@ fn added_path_violations(
   roster: PublicPublicationGrantRoster,
 ) -> List<PublishGuardLocalViolation> {
   let audience = world_audience()
-  match public_file_grant_lookup(path: path, grants: roster.file_grants) {
-    PublicFileGrantAbsent => [AddedPathPublishGrantAbsent {
+  match subtree_publish_grant_lookup(path: path, grants: roster.subtree_grants, exclude_exact: false) {
+    SubtreePublishGrantAbsent => [AddedPathSubtreeGrantAbsent {
       path: path,
       root: roster.baseline.root,
       audience: audience,
     }]
-    PublicFileGrantAmbiguous { marker_count: marker_count } => [AddedPathPublishGrantAmbiguous {
+    SubtreePublishGrantAmbiguous { subtree_root: subtree_root, marker_count: marker_count, depth: depth } => [AddedPathPublishGrantAmbiguous {
       path: path,
       root: roster.baseline.root,
       audience: audience,
       marker_count: marker_count,
     }]
-    PublicFileGrantFound { grant: grant } => admission_refusal_for_path(
+    SubtreePublishGrantFound { grant: grant, depth: depth } => admission_refusal_for_path(
       path: path,
       root: roster.baseline.root,
       admission: admit_effect(env: grant.envelope, verb: Publish, target: audience),
@@ -257,8 +293,8 @@ fn added_path_violations(
   }
 }
 
-fn public_file_grant_paths(grants: List<PublicFilePublishGrant>) -> List<FilePath> {
-  map(grants, row => row.path)
+fn subtree_publish_grant_roots(grants: List<SubtreePublishGrant>) -> List<FilePath> {
+  map(grants, row => row.root)
 }
 
 fn publication_guard_local_check(
@@ -274,8 +310,8 @@ fn publication_guard_local_check(
       admission: admit_effect(env: roster.baseline.envelope, verb: Publish, target: audience),
     ),
   )
-  let marker_audit = file_marker_audit(
-    grants: roster.file_grants,
+  let marker_audit = subtree_grant_audit(
+    grants: roster.subtree_grants,
     root: roster.baseline.root,
   )
   let path_violations = fold(added_paths, init: [], f: fn(acc, path) {
@@ -287,12 +323,12 @@ fn publication_guard_local_check(
   )
   let receipt = PublishGuardLocalCoverageReceipt {
     mount: PublishGuardPublicRootOnly {},
-    coverage: PublishGuardOwnMarkersAndAddedPathsOnly {},
+    coverage: PublishGuardOwnSubtreeDefaultsAndAddedPathsOnly {},
     root: roster.baseline.root,
     cutover: roster.baseline.cutover,
     head: head,
     baseline_marker: PublishGuardBaselineMarkerChecked {},
-    file_marker_paths: public_file_grant_paths(grants: roster.file_grants),
+    subtree_grant_roots: subtree_publish_grant_roots(grants: roster.subtree_grants),
     added_paths: added_paths,
   }
   if violations.count() == 0 {
@@ -398,14 +434,14 @@ fn render_publish_guard_local_violation(violation: PublishGuardLocalViolation) -
       join(["publication baseline is not the pinned policy: declared_root=", declared_root, " pinned_root=", pinned_root, " declared_cutover=", declared_cutover, " pinned_cutover=", pinned_cutover], "")
     BaselinePublishGrantRefused { root, cutover, verb, target, frame } =>
       join(["baseline Publish World grant refused: root=", root, " cutover=", cutover, " frame=", frame.name], "")
-    AddedPathPublishGrantAbsent { path, root, audience } =>
-      join(["added public path has no publication grant: path=", path, " root=", root], "")
+    AddedPathSubtreeGrantAbsent { path, root, audience } =>
+      join(["added public path has no covering publication subtree: path=", path, " root=", root], "")
     AddedPathPublishGrantAmbiguous { path, root, audience, marker_count } =>
       join(["added public path has ambiguous publication grants: path=", path, " root=", root, " markers=", to_string(marker_count)], "")
-    FilePublishGrantMarkerRepeated { path, root } =>
-      join(["publication grant marker is repeated: path=", path, " root=", root], "")
-    FilePublishGrantMarkerRefused { path, root, verb, target, frame } =>
-      join(["publication grant marker is not granted Publish World: path=", path, " root=", root, " frame=", frame.name], "")
+    SubtreePublishGrantRootRepeated { subtree_root, root } =>
+      join(["publication subtree root is repeated: subtree_root=", subtree_root, " root=", root], "")
+    SubtreePublishGrantWidensAncestor { subtree_root, ancestor_root, root } =>
+      join(["publication subtree widens its nearest ancestor: subtree_root=", subtree_root, " ancestor_root=", ancestor_root, " root=", root], "")
     AddedPathPublishGrantRefused { path, root, verb, target, frame } =>
       join(["added public path is not granted Publish World: path=", path, " root=", root, " frame=", frame.name], "")
     PublicRootDiffReadFailure { root, cutover, head } =>
@@ -423,8 +459,8 @@ fn render_publish_guard_receipt(receipt: PublishGuardLocalCoverageReceipt) -> St
     " cutover=", receipt.cutover,
     " head=", receipt.head,
     " baseline_marker=checked",
-    " file_markers=", to_string(receipt.file_marker_paths.count()),
-    " file_marker_paths=[", join(receipt.file_marker_paths, ","), "]",
+    " subtree_defaults=", to_string(receipt.subtree_grant_roots.count()),
+    " subtree_grant_roots=[", join(receipt.subtree_grant_roots, ","), "]",
     " additions=", to_string(receipt.added_paths.count()),
     " added_paths=[", join(receipt.added_paths, ","), "]",
     " composed_graph_closure=not_checked",
