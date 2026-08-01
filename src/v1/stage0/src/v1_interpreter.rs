@@ -8300,11 +8300,14 @@ fn dispatch_rest(
         request = request.query(name, val);
     }
 
+    // Bind replay identity to the HTTP client's fully realized target, including
+    // its encoded query string, rather than the pre-query service/path join.
+    let realized_target = request.url().to_string();
     let invocation = rest_bound_invocation_value(
         service_node,
         op_node,
         &method,
-        &url,
+        &realized_target,
         param_env,
         &auth,
         basic_auth_header.as_deref(),
