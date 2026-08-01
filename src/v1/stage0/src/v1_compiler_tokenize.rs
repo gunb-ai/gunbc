@@ -769,13 +769,32 @@ pub fn scan_string_body(
                     if ((pos.clone() + 1) < source_len(source.clone())) {
                         let escaped =
                             source.source_chars.clone()[(pos.clone() + 1) as usize].clone();
+                        if (((escaped.clone() == 117)
+                            && ((pos.clone() + 2) < source_len(source.clone())))
+                            && (source.source_chars.clone()[(pos.clone() + 2) as usize].clone()
+                                == 123))
                         {
-                            let __tco_0 = (pos + 2);
-                            let __tco_1 =
-                                v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), escaped.clone());
-                            pos = __tco_0;
-                            acc = __tco_1;
-                            continue;
+                            {
+                                let __tco_0 = (pos + 3);
+                                let __tco_1 = v1_rt::rc_list_push(
+                                    v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), 117),
+                                    123,
+                                );
+                                pos = __tco_0;
+                                acc = __tco_1;
+                                continue;
+                            }
+                        } else {
+                            {
+                                let __tco_0 = (pos + 2);
+                                let __tco_1 = v1_rt::rc_list_push(
+                                    v1_rt::rc_list_push(acc, 92),
+                                    escaped.clone(),
+                                );
+                                pos = __tco_0;
+                                acc = __tco_1;
+                                continue;
+                            }
                         }
                     } else {
                         break Rc::new(StringScanResult::UnterminatedString {
@@ -846,7 +865,7 @@ pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
 pub fn escape_code_point_table_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 92 backslash, 110 `n`, 116 `t`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO are 10 line-feed and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
+            "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 92 backslash, 110 `n`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO are 10 line-feed and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -855,7 +874,7 @@ pub fn escape_code_point_table_note() -> String {
 pub fn escape_receipt_seed_growth_mark() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, and it is counted here rather than left silent. WHAT IT CARRIES, GATING: the escape decode table, the malformed-\\x decline, and the retained unknown-escape passthrough — all deterministic. WHAT IT CARRIES, NON-GATING: the cost separation that reds at 14.2x against the pre-migration implementation, the discriminating half of this lane's oracle, which a corpus equivalence check cannot supply because equivalence is satisfied by changing nothing. That half is an `#[ignore]`d benchmark rather than a required test, because gating correctness on wall clock can fail correct code when the larger run catches contention (review 45416), and the deterministic alternative does not rescue it: the only work counter in the tree sits behind the non-default `text_lookup_work_counter` feature and does not instrument `char_at`/`string_length` at all, so a counter-based test would be equally non-gating while also changing a core primitive. The oracle was still discharged BY EXECUTION in the landing PR — observed red before, green after — which is the DESIGN §5 bar; what is deferred is the standing regression GUARD, and the repo's native form for that is a structural lens over the Node tree, as v2.lens.complexity_accumulator_copy is for the copied-accumulator class. WHY HAND RUST AND NOT A .dag WITNESS: the .dag form is a claim witness, and enrolling one bumps gunbc.ci_spec's ci_floor_declared_resolve_count, which that gate's own note reserves for an operator-signed line; a session cannot raise it for its own receipt. So this is a DEFERRAL with a named owner, not a preference. It does not enter the hand-maintained stage0 ratchet: hand_maintained_stage0_filenames is built from seed-retained and emitter-produced `pub mod` basenames under src/v1/stage0/src/, and a tests/ target is not a crate module. DISSOLVES ON either trigger, whichever comes first: the resolve-count line is signed and these claims move to a dag/test/claim witness over the same tokenize entry point; or the v1 terminal deletion path reaches this tree, at which point the coverage must be carried per the v1-test-migration bar and the file deletes with src/v1. SEPARATE, SMALLER TRIGGER for the benchmark half alone: a structural lens that reds a per-character raw-String index walk (char_at / string_length in a loop) supersedes it, and would also cover the ~30 sites this lane's audit found still carrying that shape — at which point the `#[ignore]`d test deletes rather than being promoted. Precedent for this shape: namespace_occurrence_serde_seed_test_dissolution.".to_string()
+            "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, and it is counted here rather than left silent. WHAT IT CARRIES, GATING: the byte and Unicode-scalar escape decode tables, the malformed-\\x and malformed-Unicode declines, and the retained unknown-escape passthrough — all deterministic. WHAT IT CARRIES, NON-GATING: the cost separation that reds at 14.2x against the pre-migration implementation, the discriminating half of this lane's oracle, which a corpus equivalence check cannot supply because equivalence is satisfied by changing nothing. That half is an `#[ignore]`d benchmark rather than a required test, because gating correctness on wall clock can fail correct code when the larger run catches contention (review 45416), and the deterministic alternative does not rescue it: the only work counter in the tree sits behind the non-default `text_lookup_work_counter` feature and does not instrument `char_at`/`string_length` at all, so a counter-based test would be equally non-gating while also changing a core primitive. The oracle was still discharged BY EXECUTION in the landing PR — observed red before, green after — which is the DESIGN §5 bar; what is deferred is the standing regression GUARD, and the repo's native form for that is a structural lens over the Node tree, as v2.lens.complexity_accumulator_copy is for the copied-accumulator class. WHY HAND RUST AND NOT A .dag WITNESS: the .dag form is a claim witness, and enrolling one bumps gunbc.ci_spec's ci_floor_declared_resolve_count, which that gate's own note reserves for an operator-signed line; a session cannot raise it for its own receipt. So this is a DEFERRAL with a named owner, not a preference. It does not enter the hand-maintained stage0 ratchet: hand_maintained_stage0_filenames is built from seed-retained and emitter-produced `pub mod` basenames under src/v1/stage0/src/, and a tests/ target is not a crate module. DISSOLVES ON either trigger, whichever comes first: the resolve-count line is signed and these claims move to a dag/test/claim witness over the same tokenize entry point; or the v1 terminal deletion path reaches this tree, at which point the coverage must be carried per the v1-test-migration bar and the file deletes with src/v1. SEPARATE, SMALLER TRIGGER for the benchmark half alone: a structural lens that reds a per-character raw-String index walk (char_at / string_length in a loop) supersedes it, and would also cover the ~30 sites this lane's audit found still carrying that shape — at which point the `#[ignore]`d test deletes rather than being promoted. Precedent for this shape: namespace_occurrence_serde_seed_test_dissolution.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -865,6 +884,15 @@ pub fn hex_escape_note() -> String {
     thread_local! {
         static CACHED: String = {
             "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn unicode_escape_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "\\u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The scalar boundary is checked here, before chars_to_string: values above 0x10FFFF and the UTF-16 surrogate interval are not Unicode scalar values and therefore decline instead of disappearing in the runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation and scalar validation remain owned by this decoder rather than duplicated into the span scan.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -905,6 +933,61 @@ pub fn hex_escape_char(hi: i64, lo: i64) -> Option<i64> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UnicodeEscape {
+    pub code_point: i64,
+    pub next_pos: i64,
+}
+
+pub fn is_unicode_scalar(code_point: i64) -> bool {
+    ((code_point.clone() <= 1114111)
+        && !((code_point.clone() >= 55296) && (code_point.clone() <= 57343)))
+}
+
+pub fn unicode_escape_at(
+    mut source: Rc<Vec<i64>>,
+    mut pos: i64,
+    mut digit_count: i64,
+    mut value: i64,
+) -> Option<UnicodeEscape> {
+    loop {
+        if (pos.clone() >= (source.clone().len() as i64)) {
+            break None;
+        } else {
+            let ch = code_point_at(source.clone(), pos.clone());
+            if (ch.clone() == 125) {
+                if ((digit_count.clone() > 0) && is_unicode_scalar(value.clone())) {
+                    break Some(UnicodeEscape {
+                        code_point: value.clone(),
+                        next_pos: (pos.clone() + 1),
+                    });
+                } else {
+                    break None;
+                }
+            } else {
+                if (digit_count.clone() >= 6) {
+                    break None;
+                } else {
+                    match hex_digit_value(ch.clone()) {
+                        Some(digit) => {
+                            let __tco_0 = (pos + 1);
+                            let __tco_1 = (digit_count + 1);
+                            let __tco_2 = ((value * 16) + digit.clone());
+                            pos = __tco_0;
+                            digit_count = __tco_1;
+                            value = __tco_2;
+                            continue;
+                        }
+                        None => {
+                            break None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn process_escapes_loop(
     mut source: Rc<Vec<i64>>,
     mut pos: i64,
@@ -938,40 +1021,63 @@ pub fn process_escapes_loop(
                         }
                     }
                 } else {
-                    let acc_with_escape = if (next.clone() == 34) {
-                        v1_rt::rc_list_push(acc.clone(), 34)
+                    if (((next.clone() == 117)
+                        && ((pos.clone() + 2) < (source.clone().len() as i64)))
+                        && (code_point_at(source.clone(), (pos.clone() + 2)) == 123))
+                    {
+                        match unicode_escape_at(source.clone(), (pos.clone() + 3), 0, 0) {
+                            Some(decoded) => {
+                                let __tco_0 = decoded.next_pos.clone();
+                                let __tco_1 = v1_rt::rc_list_push(acc, decoded.code_point.clone());
+                                pos = __tco_0;
+                                acc = __tco_1;
+                                continue;
+                            }
+                            None => {
+                                let __tco_0 = (pos + 2);
+                                let __tco_1 =
+                                    v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), next.clone());
+                                pos = __tco_0;
+                                acc = __tco_1;
+                                continue;
+                            }
+                        }
                     } else {
-                        if (next.clone() == 92) {
-                            v1_rt::rc_list_push(acc.clone(), 92)
+                        let acc_with_escape = if (next.clone() == 34) {
+                            v1_rt::rc_list_push(acc.clone(), 34)
                         } else {
-                            if (next.clone() == 110) {
-                                v1_rt::rc_list_push(acc.clone(), 10)
+                            if (next.clone() == 92) {
+                                v1_rt::rc_list_push(acc.clone(), 92)
                             } else {
-                                if (next.clone() == 116) {
-                                    v1_rt::rc_list_push(acc.clone(), 9)
+                                if (next.clone() == 110) {
+                                    v1_rt::rc_list_push(acc.clone(), 10)
                                 } else {
-                                    if (next.clone() == 123) {
-                                        v1_rt::rc_list_push(acc.clone(), 123)
+                                    if (next.clone() == 116) {
+                                        v1_rt::rc_list_push(acc.clone(), 9)
                                     } else {
-                                        if (next.clone() == 125) {
-                                            v1_rt::rc_list_push(acc.clone(), 125)
+                                        if (next.clone() == 123) {
+                                            v1_rt::rc_list_push(acc.clone(), 123)
                                         } else {
-                                            v1_rt::rc_list_push(
-                                                v1_rt::rc_list_push(acc.clone(), 92),
-                                                next.clone(),
-                                            )
+                                            if (next.clone() == 125) {
+                                                v1_rt::rc_list_push(acc.clone(), 125)
+                                            } else {
+                                                v1_rt::rc_list_push(
+                                                    v1_rt::rc_list_push(acc.clone(), 92),
+                                                    next.clone(),
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
+                        };
+                        {
+                            let __tco_0 = (pos + 2);
+                            let __tco_1 = acc_with_escape.clone();
+                            pos = __tco_0;
+                            acc = __tco_1;
+                            continue;
                         }
-                    };
-                    {
-                        let __tco_0 = (pos + 2);
-                        let __tco_1 = acc_with_escape.clone();
-                        pos = __tco_0;
-                        acc = __tco_1;
-                        continue;
                     }
                 }
             } else {

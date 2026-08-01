@@ -94,7 +94,7 @@ fn escape_decode_table() {
     assert_eq!(
         decode_literal(r"\u{000d}"),
         "\r",
-        "\\u{000d} must decode to one carriage return"
+        "\\u{{000d}} must decode to one carriage return"
     );
     assert_eq!(
         decode_literal(r"\u{0}"),
