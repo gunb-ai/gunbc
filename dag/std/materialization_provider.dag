@@ -485,16 +485,83 @@ fn serve_resolved_graph_v2_disk_probe(
     closure_digest: closure_digest,
     compiler: compiler_identity_input(digest: compiler_digest)
   }
+  serve_resolved_graph_stored_disk_probe(
+    closure_digest: closure_digest,
+    compiler_digest: compiler_digest,
+    stored_request_key: request_key(req: req),
+    stored_semantic_digest: resolved_graph_parts_semantic_digest(
+      graph_digest: graph_digest,
+      graph_bytes: graph_bytes,
+      indices_digest: indices_digest,
+      indices_bytes: indices_bytes,
+      union_digest: union_digest,
+      union_bytes: union_bytes
+    ),
+    graph_digest: graph_digest,
+    graph_bytes: graph_bytes,
+    indices_digest: indices_digest,
+    indices_bytes: indices_bytes,
+    union_digest: union_digest,
+    union_bytes: union_bytes
+  )
+}
+
+fn resolve_closure_request_key_from_digests(
+  closure_digest: ContentHash,
+  compiler_digest: ContentHash
+) -> ContentHash {
+  request_key(
+    req: ResolveClosureRequest {
+      closure_digest: closure_digest,
+      compiler: compiler_identity_input(digest: compiler_digest)
+    }
+  )
+}
+
+fn resolved_graph_parts_semantic_digest(
+  graph_digest: ContentHash,
+  graph_bytes: ByteSize,
+  indices_digest: ContentHash,
+  indices_bytes: ByteSize,
+  union_digest: ContentHash,
+  union_bytes: ByteSize
+) -> ContentHash {
+  artifact_content_digest(
+    artifact: ResolvedGraphArtifact {
+      request_key: content_hash_atom(value: "semantic-digest-placeholder"),
+      resolved_graph: ArtifactPart { digest: graph_digest, bytes: graph_bytes },
+      source_indices: ArtifactPart { digest: indices_digest, bytes: indices_bytes },
+      compile_clean_diagnostic_union: ArtifactPart { digest: union_digest, bytes: union_bytes }
+    }
+  )
+}
+
+fn serve_resolved_graph_stored_disk_probe(
+  closure_digest: ContentHash,
+  compiler_digest: ContentHash,
+  stored_request_key: ContentHash,
+  stored_semantic_digest: ContentHash,
+  graph_digest: ContentHash,
+  graph_bytes: ByteSize,
+  indices_digest: ContentHash,
+  indices_bytes: ByteSize,
+  union_digest: ContentHash,
+  union_bytes: ByteSize
+) -> ProviderLookup {
+  let req = ResolveClosureRequest {
+    closure_digest: closure_digest,
+    compiler: compiler_identity_input(digest: compiler_digest)
+  }
   let artifact = ResolvedGraphArtifact {
-    request_key: request_key(req: req),
+    request_key: stored_request_key,
     resolved_graph: ArtifactPart { digest: graph_digest, bytes: graph_bytes },
     source_indices: ArtifactPart { digest: indices_digest, bytes: indices_bytes },
     compile_clean_diagnostic_union: ArtifactPart { digest: union_digest, bytes: union_bytes }
   }
-  let observed = artifact_content_digest(artifact: artifact)
+  let observed_from_parts = artifact_content_digest(artifact: artifact)
   provider_serve(
     req: req,
-    probe: ProbeFound { artifact: artifact, observed_digest: observed }
+    probe: ProbeFound { artifact: artifact, observed_digest: observed_from_parts }
   )
 }
 

@@ -112,10 +112,12 @@ fn lookup_fold_outcome(
     }
 }
 
-fn serve_resolved_graph_v2_disk_probe_in_ctx(
+fn serve_resolved_graph_stored_disk_probe_in_ctx(
     ctx: &InterpContext,
     closure_digest: &str,
     compiler_digest: &str,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
     parts: &FaithfulResolvedGraphProbeParts,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
     let args = [
@@ -126,6 +128,14 @@ fn serve_resolved_graph_v2_disk_probe_in_ctx(
         (
             Some("compiler_digest".to_string()),
             Value::Str(compiler_digest.to_string()),
+        ),
+        (
+            Some("stored_request_key".to_string()),
+            Value::Str(stored_request_key.to_string()),
+        ),
+        (
+            Some("stored_semantic_digest".to_string()),
+            Value::Str(stored_semantic_digest.to_string()),
         ),
         (
             Some("graph_digest".to_string()),
@@ -154,17 +164,99 @@ fn serve_resolved_graph_v2_disk_probe_in_ctx(
     ];
     let lookup = v1_interpreter::run_in_context_with_args(
         ctx,
-        "serve_resolved_graph_v2_disk_probe",
+        "serve_resolved_graph_stored_disk_probe",
         &args,
         false,
     )
-    .map_err(|e| format!("serve_resolved_graph_v2_disk_probe: {e}"))?;
+    .map_err(|e| format!("serve_resolved_graph_stored_disk_probe: {e}"))?;
     lookup_fold_outcome(ctx, &lookup)
 }
 
-pub fn serve_resolved_graph_v2_disk_probe(
+pub fn resolve_closure_request_key_from_digests(
     closure_digest: &str,
     compiler_digest: &str,
+) -> Result<String, String> {
+    let ctx = materialization_provider_ctx()?;
+    let args = [
+        (
+            Some("closure_digest".to_string()),
+            Value::Str(closure_digest.to_string()),
+        ),
+        (
+            Some("compiler_digest".to_string()),
+            Value::Str(compiler_digest.to_string()),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "resolve_closure_request_key_from_digests",
+        &args,
+        false,
+    ) {
+        Ok(Value::Str(key)) => Ok(key),
+        Ok(other) => Err(format!(
+            "resolve_closure_request_key_from_digests returned `{}`, expected String",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("resolve_closure_request_key_from_digests: {e}")),
+    }
+}
+
+pub fn resolved_graph_parts_semantic_digest(
+    graph_digest: &str,
+    graph_bytes: u64,
+    indices_digest: &str,
+    indices_bytes: u64,
+    union_digest: &str,
+    union_bytes: u64,
+) -> Result<String, String> {
+    let ctx = materialization_provider_ctx()?;
+    let args = [
+        (
+            Some("graph_digest".to_string()),
+            Value::Str(graph_digest.to_string()),
+        ),
+        (
+            Some("graph_bytes".to_string()),
+            Value::Int(graph_bytes as i64),
+        ),
+        (
+            Some("indices_digest".to_string()),
+            Value::Str(indices_digest.to_string()),
+        ),
+        (
+            Some("indices_bytes".to_string()),
+            Value::Int(indices_bytes as i64),
+        ),
+        (
+            Some("union_digest".to_string()),
+            Value::Str(union_digest.to_string()),
+        ),
+        (
+            Some("union_bytes".to_string()),
+            Value::Int(union_bytes as i64),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "resolved_graph_parts_semantic_digest",
+        &args,
+        false,
+    ) {
+        Ok(Value::Str(digest)) => Ok(digest),
+        Ok(other) => Err(format!(
+            "resolved_graph_parts_semantic_digest returned `{}`, expected String",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("resolved_graph_parts_semantic_digest: {e}")),
+    }
+}
+
+pub fn serve_resolved_graph_stored_disk_probe(
+    closure_digest: &str,
+    compiler_digest: &str,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
     parts: &FaithfulResolvedGraphProbeParts,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
     if !supports_faithful_probe() {
@@ -173,16 +265,44 @@ pub fn serve_resolved_graph_v2_disk_probe(
             faithful_probe_unavailable_gap()
         ));
     }
+    let observed_semantic_digest = resolved_graph_parts_semantic_digest(
+        &parts.graph_digest,
+        parts.graph_bytes,
+        &parts.indices_digest,
+        parts.indices_bytes,
+        &parts.union_digest,
+        parts.union_bytes,
+    )?;
+    if stored_semantic_digest != observed_semantic_digest {
+        return Err(format!(
+            "resolved-graph-cache refused artifact: stored semantic digest mismatch (header={stored_semantic_digest}, observed={observed_semantic_digest})"
+        ));
+    }
     let ctx = materialization_provider_ctx()?;
-    serve_resolved_graph_v2_disk_probe_in_ctx(&ctx, closure_digest, compiler_digest, parts)
+    serve_resolved_graph_stored_disk_probe_in_ctx(
+        &ctx,
+        closure_digest,
+        compiler_digest,
+        stored_request_key,
+        stored_semantic_digest,
+        parts,
+    )
 }
 
-pub fn serve_resolved_graph_v2_disk_probe_for_test(
+pub fn serve_resolved_graph_stored_disk_probe_for_test(
     closure_digest: &str,
     compiler_digest: &str,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
     parts: &FaithfulResolvedGraphProbeParts,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    serve_resolved_graph_v2_disk_probe(closure_digest, compiler_digest, parts)
+    serve_resolved_graph_stored_disk_probe(
+        closure_digest,
+        compiler_digest,
+        stored_request_key,
+        stored_semantic_digest,
+        parts,
+    )
 }
 
 #[doc(hidden)]

@@ -34,21 +34,49 @@ impl Drop for CacheEnvGuard {
     }
 }
 
+use im::HashMap;
 use im::Vector;
 use std::rc::Rc;
 use v1_compiler::cli_run::{
-    build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
-    resolve_entry_with_index, run_claim, ClaimOutcome,
+    build_multi_entry_index, load_sources_for_entry, make_eval_context,
+    resolve_closure_request_key_from_digests, resolve_entry_graph, resolve_entry_with_index,
+    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
-    build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup, probe,
-    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult,
+    build_valid_artifact_bytes, closure_content_digest, decode_count, derive_subject_digest,
+    encode_resolved_graph_parts, lookup, probe, subject_digest_for_closure,
+    transform_content_digest, write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult,
     CacheRejectReason, KeyInputMaterials,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn empty_compile_clean_diags() -> Vector<Rc<v1_compiler::v1_std_core::ErrorNode>> {
     Vector::new()
+}
+
+fn provider_keys_for_graph(
+    roots: &[String],
+    entry: &str,
+    graph: &v1_compiler::v1_compiler_infer_items::ResolvedGraph,
+    si: &HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
+    diags: &Vector<Rc<v1_compiler::v1_std_core::ErrorNode>>,
+) -> (String, String) {
+    let sources = load_sources_for_entry(roots, entry).expect("sources");
+    let closure_digest = closure_content_digest(&sources);
+    let compiler_digest = transform_content_digest();
+    let encoded = encode_resolved_graph_parts(graph, si, diags).expect("encode");
+    let request_key = resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)
+        .expect("request key");
+    let semantic = resolved_graph_parts_semantic_digest(
+        &encoded.graph_digest,
+        encoded.graph_bytes.len() as u64,
+        &encoded.indices_digest,
+        encoded.indices_bytes.len() as u64,
+        &encoded.union_digest,
+        encoded.union_bytes.len() as u64,
+    )
+    .expect("semantic digest");
+    (request_key, semantic)
 }
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
@@ -209,9 +237,22 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let valid =
-        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
-            .expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let valid = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     let decodes_before = decode_count();
     let mut poisoned = valid;
@@ -257,9 +298,22 @@ fn malformed_header_probe_refuses_as_backend_key_malformed() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut bytes =
-        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
-            .expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     bytes[0] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
 
@@ -290,9 +344,22 @@ fn malformed_header_truncated_read_refuses_as_backend_key_malformed() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut bytes =
-        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
-            .expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     bytes.truncate(7);
     write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
 
@@ -323,9 +390,22 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut poisoned =
-        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
-            .expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut poisoned = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     let subject_off = 8 + 4;
     poisoned[subject_off] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");
@@ -343,6 +423,91 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
             "subject poison must refuse before rebuilding: {err}"
         );
     });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn trailing_payload_bytes_refuse_as_backend_key_malformed() {
+    let dir = temp_dir("trailing-payload");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    bytes.extend_from_slice(b"extra");
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("trailing write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed lookup, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn declared_payload_len_over_cap_refuses_before_large_allocation() {
+    let dir = temp_dir("oversized-decl");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    // payload_len field sits after magic+version+four 16-byte digests (offset 76).
+    let payload_len_off = 76;
+    let bogus_len = u64::MAX;
+    bytes[payload_len_off..payload_len_off + 8].copy_from_slice(&bogus_len.to_le_bytes());
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("oversized write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed lookup, got {other:?}"),
+    }
 
     let _ = fs::remove_dir_all(&dir);
 }

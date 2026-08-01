@@ -51,9 +51,8 @@ pub(crate) mod test_module_hygiene_bridge;
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
-};
-pub use materialization_provider_consumer::{
-    serve_resolved_graph_v2_disk_probe, serve_resolved_graph_v2_disk_probe_for_test,
+    resolve_closure_request_key_from_digests, resolved_graph_parts_semantic_digest,
+    serve_resolved_graph_stored_disk_probe, serve_resolved_graph_stored_disk_probe_for_test,
     ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
@@ -10240,9 +10239,11 @@ fn resolved_graph_from_sources_with_index(
                     if let Some(parts) = probe.parts {
                         let closure_digest = closure_content_digest(&sources);
                         let compiler_digest = transform_content_digest();
-                        match materialization_provider_consumer::serve_resolved_graph_v2_disk_probe(
+                        match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
                             &closure_digest,
                             &compiler_digest,
+                            &probe.stored_request_key,
+                            &probe.stored_semantic_digest,
                             &parts,
                         ) {
                             Ok(ResolvedGraphProviderOutcome::Hit) => {
@@ -10494,12 +10495,31 @@ fn resolved_graph_from_sources_with_index(
         // the swallowed error hid that big closures never landed on disk (only
         // the prelude artifact ever existed), which mis-shaped a whole OOM
         // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
+        let closure_digest = closure_content_digest(&sources);
+        let compiler_digest = transform_content_digest();
+        let encoded = crate::resolved_graph_cache::encode_resolved_graph_parts(
+            &typed,
+            source_indices.as_ref(),
+            &compile_clean_diags,
+        )?;
+        let stored_request_key =
+            resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)?;
+        let stored_semantic_digest = resolved_graph_parts_semantic_digest(
+            &encoded.graph_digest,
+            encoded.graph_bytes.len() as u64,
+            &encoded.indices_digest,
+            encoded.indices_bytes.len() as u64,
+            &encoded.union_digest,
+            encoded.union_bytes.len() as u64,
+        )?;
         if let Err(e) = cross_process_write(
             &cache_root,
             &subject,
             &typed,
             source_indices.as_ref(),
             &compile_clean_diags,
+            &stored_request_key,
+            &stored_semantic_digest,
         ) {
             eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
         }
