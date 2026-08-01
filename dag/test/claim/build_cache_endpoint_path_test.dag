@@ -1,0 +1,113 @@
+module test.claim.build_cache_endpoint_path
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data endpoint_path_wall_doc: String = "THE UNLINK ADMISSION'S ACCEPTANCE SET. The subject is srv4, observed 2026-08-01: a stale server.sock with no listener behind it, every new server failing with 'Address in use (os error 98)', the host uncached since roughly 2026-07-26. Exactly one of the five path states licenses removing that file, and the controls below assert the other four refuse — but the load-bearing ones are the two that assert a DIFFERENCE from ExecStartPre=rm -f, because a wall that refuses where the naive fix would also have been harmless has not been shown to be worth anything."
+
+fn srv4_instance() -> BuildCacheInstance {
+  ci_cache_instance(host: "srv4")
+}
+
+fn current() -> ObservationCurrency {
+  ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr }
+}
+
+fn live_owner() -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    pid: 3975946,
+    start_time: "79870020" as NonEmptyStr,
+  }
+}
+
+fn unlinks(observed: EndpointPathState, currency: ObservationCurrency) -> Bool {
+  admission_yields_unlink(
+    admission: admit_stale_socket_unlink(
+      instance: srv4_instance(),
+      observed: observed,
+      currency: currency,
+    ),
+  )
+}
+
+fn srv4_stale() -> EndpointPathState {
+  EndpointStaleSocket {
+    detail: "server.sock present, no listening entry in /proc/net/unix, no fd owner; sccache error log reads 'Address in use (os error 98)'" as NonEmptyStr,
+  }
+}
+
+test fn witness_the_srv4_stale_socket_is_the_one_state_that_unlinks() -> Bool {
+  unlinks(observed: srv4_stale(), currency: current())
+}
+
+test fn witness_a_live_listener_is_never_unlinked() -> Bool {
+  let refused = unlinks(observed: EndpointListening { owner: live_owner() }, currency: current())
+  let naive = unconditional_unlink_sketch(observed: EndpointListening { owner: live_owner() })
+  (refused == false) && naive
+}
+
+test fn witness_a_non_socket_path_is_never_unlinked() -> Bool {
+  let conflict = EndpointPathConflict {
+    detail: "path exists and stat reports a regular file, not a socket" as NonEmptyStr,
+  }
+  let refused = unlinks(observed: conflict, currency: current())
+  let naive = unconditional_unlink_sketch(observed: conflict)
+  (refused == false) && naive
+}
+
+test fn witness_an_absent_path_refuses_rather_than_no_ops() -> Bool {
+  unlinks(observed: EndpointPathAbsent, currency: current()) == false
+}
+
+test fn witness_an_unreadable_path_does_not_default_to_stale() -> Bool {
+  unlinks(
+    observed: EndpointPathObservationUnavailable {
+      reason: EndpointPathUnreadable { detail: "permission denied reading /proc/net/unix" as NonEmptyStr },
+    },
+    currency: current(),
+  ) == false
+}
+
+test fn witness_a_stale_read_cannot_license_an_unlink() -> Bool {
+  let stale_read = unlinks(
+    observed: srv4_stale(),
+    currency: ObservationStale { detail: "observation predates a reboot" as NonEmptyStr },
+  )
+  let unknown_currency = unlinks(
+    observed: srv4_stale(),
+    currency: ObservationCurrencyUnknown { detail: "boot id could not be read" as NonEmptyStr },
+  )
+  (stale_read == false) && (unknown_currency == false)
+}
+
+data currency_arms_are_not_graded_doc: String = "ObservationStale and ObservationCurrencyUnknown must BOTH refuse, and they are asserted together rather than separately because the tempting shape is to grade them — to treat 'I do not know if this read is current' as weaker evidence than 'I know it is old' and let it through. It is the same evidence. An arm that admitted Unknown would be the absorbing fallback, and it would fire exactly when /proc is least readable, which is when a bind race is most likely."
+
+test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
+  let tcp = BuildCacheInstance {
+    identity: srv4_instance().identity,
+    implementation: srv4_instance().implementation,
+    endpoint: SccacheServerTcpPort { port: 4226 },
+    intended_unit: srv4_instance().intended_unit,
+    intended_principal: srv4_instance().intended_principal,
+    intended_storage: srv4_instance().intended_storage,
+    intended_capacity: srv4_instance().intended_capacity,
+    intended_compile_pool: srv4_instance().intended_compile_pool,
+  }
+  admission_yields_unlink(
+    admission: admit_stale_socket_unlink(
+      instance: tcp,
+      observed: srv4_stale(),
+      currency: current(),
+    ),
+  ) == false
+}
+
+data red_control_doc: String = "The RED control asserted as a whole rather than per-state. unconditional_unlink_sketch is ExecStartPre=rm -f written as a predicate; it answers true in all five path states. This witness asserts that it disagrees with the admission in at least the two destructive states, so if someone later 'simplifies' the admission into an unconditional yes, this reds. Asserting the sketch alone would not: a control that only describes the bad behaviour never fails."
+
+test fn witness_the_unconditional_sketch_differs_where_it_is_destructive() -> Bool {
+  let states = [
+    EndpointListening { owner: live_owner() },
+    EndpointPathConflict { detail: "regular file" as NonEmptyStr },
+  ]
+  states |> all(s => unconditional_unlink_sketch(observed: s) && (unlinks(observed: s, currency: current()) == false))
+}

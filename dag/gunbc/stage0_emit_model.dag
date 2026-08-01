@@ -57,6 +57,7 @@ data generated_stage0_files: List<String> = [
   "std_occurrence_identity.rs",
   "std_pareto.rs",
   "std_realization_schedule.rs",
+  "std_roster_frontier.rs",
   "std_serialization.rs",
   "std_syntax.rs",
   "std_termination.rs",
