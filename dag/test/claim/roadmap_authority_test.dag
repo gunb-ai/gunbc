@@ -532,7 +532,6 @@ test fn witness_accepted_scm_sequence_has_no_active_slice() -> Bool {
   let accepted = accepted_roadmap_node_ids()
   node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
     && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 6
-    && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
     && id_exists(id: "2-scm-git-upstream-model")
     && id_exists(id: "2-scm-mercurial-upstream-model")

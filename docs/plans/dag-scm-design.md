@@ -14,8 +14,9 @@ Roadmap carrier: ROADMAP §2, “SCM — source-intent integration, visibility-f
 grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Visibility authority:
 [node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
 [module identity vs storage](module-identity-storage-binding-design.md). Product wedge, design
-partner, hosted-authority promotion, and adjacent-product sequencing:
-[SCM product strategy](dag-scm-product-strategy.md). That strategy cannot weaken this document's
+partner, hosted-authority promotion, and adjacent-product sequencing are owned by the operator's
+product-strategy record, which is not published in this repo (moved to the private overlay root,
+2026-08-01). That strategy cannot weaken this document's
 semantic, evidence, admission, or compatibility-fidelity contract; this document cannot promote a
 product stage merely because its technical carrier exists. Git is the first adoption realization,
 not the interface from which the native model is derived.
