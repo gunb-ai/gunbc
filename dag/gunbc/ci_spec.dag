@@ -491,7 +491,7 @@ fn gunbc_ci_heal_regen_invoke() -> String {
 data ci_heal_repo_local_git_config_entry: String = "dag/gunbc/repo_local_git_config.dag"
 data ci_heal_repo_local_git_config_function: String = "converge"
 
-data ci_heal_repo_local_git_config_note: String = "After artifact regen, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) on the checkout via the modeled repo_local_git_config actuator — same entry developers run per clone. Idempotent: already-converged checkouts are a no-op."
+data ci_heal_repo_local_git_config_note: String = "After artifact regen and heal push, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) on the checkout via the modeled repo_local_git_config actuator — same entry developers run per clone. Ordering is AFTER commit-push: converge sets core.hooksPath, which would make git push invoke the generated pre-push hook (cargo fmt) in an environment where cargo is not on PATH during the hook — a heal push refusal, not a formatting finding. Idempotent: already-converged checkouts are a no-op."
 
 data ci_heal_repo_local_git_config_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
