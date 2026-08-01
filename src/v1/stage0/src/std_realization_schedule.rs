@@ -5,6 +5,7 @@ use self::CostBasis::*;
 use self::NoWalkFinalization::*;
 use self::NodeFrontierSelection::*;
 use self::OnSuccessRunnableDisposition::*;
+use self::PreWalkExecution::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
 use self::WitnessKind::*;
@@ -397,7 +398,76 @@ pub enum NoWalkFinalization {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PreWalkExecution {
+    NoPreWalkExecution,
+    TypedClaimSubprocess {
+        transport_entry: String,
+        transport_function: String,
+        source_roots: Rc<Vec<String>>,
+        claim_entry: String,
+        claim_function: String,
+    },
+}
+impl PreWalkExecution {
+    pub fn transport_entry(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no transport_entry on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                transport_entry: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn transport_function(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no transport_function on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                transport_function: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn source_roots(&self) -> Rc<Vec<String>> {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no source_roots on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                source_roots: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn claim_entry(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no claim_entry on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                claim_entry: __val, ..
+            } => __val.clone(),
+        }
+    }
+    pub fn claim_function(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no claim_function on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                claim_function: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn pre_walk_execution_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A WalkPlan may carry one typed execution before its ordinary population. NoPreWalkExecution is explicit absence. TypedClaimSubprocess is a modeled argv-host-effect transport: the executor resolves transport_entry, calls transport_function with the authored source_roots/claim identity, and requires a true result before arming the ordinary floor. The transport function must realize the child through gunbc.WitnessBin.Run (the existing typed bin-invocation service), never through a shell program or an executor-minted command. This placement exists for small identity captures whose result must precede the floor but whose evaluator arena must die with a child address space; a refusal is located to both transport and claim and blocks batch 1.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WalkPlan<F> {
+    pub pre_walk_execution: Rc<PreWalkExecution>,
     pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
     pub finalization: F,
     pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,

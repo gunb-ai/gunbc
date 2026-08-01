@@ -1004,9 +1004,7 @@ fn pre_walk_execution_from_value(
         .ok_or_else(|| "TypedClaimSubprocess.source_roots is missing".to_string())?;
     let source_roots = str_list_from_value(roots, ctx)?;
     if source_roots.is_empty() || source_roots.iter().any(|root| root.trim().is_empty()) {
-        return Err(
-            "TypedClaimSubprocess.source_roots must contain non-empty paths".to_string(),
-        );
+        return Err("TypedClaimSubprocess.source_roots must contain non-empty paths".to_string());
     }
     Ok(PreWalkExecution::TypedClaimSubprocess {
         transport_entry: string_field("transport_entry")?,
@@ -5592,6 +5590,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+    let pre_walk_execution = walk_plan.pre_walk_execution;
     let batches = walk_plan.batches;
     let on_success_stages = walk_plan.on_success_stages;
     let ordinary_budget_ms = walk_plan.ordinary_budget_ms;
@@ -5811,6 +5810,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     drop(plan_graph);
+    if let Err(msg) = run_pre_walk_execution(
+        &source_roots,
+        &format!("{plan_entry}::{plan_function}"),
+        &pre_walk_execution,
+    ) {
+        eprintln!("claim_executor: {msg}");
+        return Err(ExitCode::from(1));
+    }
+    phase_mark("pre-walk execution");
     // Adaptive width: no plan-evaluated spawn width and no pinned per-shard constants —
     // the governor admits workers against the slot's own declared budget (AIMD), so the
     // width story for the run is its announce line here plus its end-of-run receipt.
