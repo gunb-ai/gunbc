@@ -1,0 +1,18 @@
+module tools.kernel_digest_probe
+
+import std.types { ContentHash }
+import gunbc.roadmap_authority { active_roadmap_nodes }
+import gunbc.roadmap_model { RoadmapNode, node_criteria_digest }
+
+fn digest_for(id: String) -> List<ContentHash> {
+  active_roadmap_nodes()
+    |> filter(n => n.node == id)
+    |> map(n => match node_criteria_digest(rn: n) {
+      Present { value } => value
+      Absent => "ABSENT"
+    })
+}
+
+fn main() -> List<ContentHash> {
+  digest_for(id: "namespace-binding-kernel")
+}
