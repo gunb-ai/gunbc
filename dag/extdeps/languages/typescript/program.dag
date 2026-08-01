@@ -302,19 +302,27 @@ fn serialize_ts_operand(e: TsExpr, parent_op: String, is_right: Bool) -> String 
   ts_group_if(text: serialize_ts_expr(e: e), needed: needed)
 }
 
+data receiver_grouping_note: String = "A member access, index, or call binds tighter than any operator, so a receiver that IS an operator expression must be grouped or the emitted bytes re-associate: `ts_member(ts_binop(a, '||', b), 'forEach')` serialized as `a || b.forEach(...)`, which is not a syntax error but a SILENT no-op when `a` is truthy — the fabricated-plausible-output shape at the emitter layer, found live when the roadmap client's `(attempt.segments || []).forEach` ledger fill appended nothing and no console error fired. The receiver is grouped exactly when it is not an atom: atoms (identifiers, literals, calls, members) have nothing to re-associate, per atom_operand_never_grouped_note."
+
+fn serialize_ts_receiver(e: TsExpr) -> String {
+  ts_group_if(
+    text: serialize_ts_expr(e: e),
+    needed: ts_expr_precedence(e: e) != ts_atom_precedence)
+}
+
 fn serialize_ts_expr(e: TsExpr) -> String {
   match e {
     LitStr { value: v, quote: q } => serialize_string_literal(value: v, quote: q)
     LitNum { text: t } => t
     LitRegex { source: s } => concat("/", concat(s, "/"))
     Ident { name: n } => n
-    Member { object: o, property: p } => concat(serialize_ts_expr(e: o), concat(".", p))
+    Member { object: o, property: p } => concat(serialize_ts_receiver(e: o), concat(".", p))
     Index { object: o, index: i } =>
-      concat(serialize_ts_expr(e: o), concat("[", concat(serialize_ts_expr(e: i), "]")))
+      concat(serialize_ts_receiver(e: o), concat("[", concat(serialize_ts_expr(e: i), "]")))
     Call { callee: c, args: a } =>
-      concat(serialize_ts_expr(e: c), concat("(", concat(join_expr_args(args: a), ")")))
+      concat(serialize_ts_receiver(e: c), concat("(", concat(join_expr_args(args: a), ")")))
     New { callee: c, args: a } =>
-      concat("new ", concat(serialize_ts_expr(e: c), concat("(", concat(join_expr_args(args: a), ")"))))
+      concat("new ", concat(serialize_ts_receiver(e: c), concat("(", concat(join_expr_args(args: a), ")"))))
     ArrowFn { params: ps, body: b } =>
       concat("(", concat(join(ps, ", "), concat(") => ", serialize_ts_stmt_body(s: b))))
     BinOp { left: l, op: o, right: r } =>
