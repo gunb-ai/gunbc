@@ -1,0 +1,154 @@
+module std.visibility_grant
+
+import std.types { Bool, String, List }
+import std.effect_grant {
+  Verb, Reference, Publish,
+  NamespacePosition, AudienceScopeTree,
+  Grant, grant_covers, position_under,
+}
+
+data visibility_grant_note: String = "P-A model for node/subtree visibility grants (docs/plans/node-subtree-visibility-grants.md, section 6). Reference and Publish are two readings of the existing (verb x subtree) Grant algebra, never a parallel permission mechanism. This module is PURE and changes no resolver, storage, or publication behavior. Reference asks whether a code-name edge may be formed. Publish asks whether source may inhabit an audience projection. Audience breadth is encoded as one fixed containment tree so the existing position_under/grant_covers fold remains the comparison authority. P-B supplies the first file-grain storage consumer; P-C later checks the composed graph."
+
+fn world_audience() -> NamespacePosition {
+  NamespacePosition { tree: AudienceScopeTree, path: [] }
+}
+
+fn network_audience() -> NamespacePosition {
+  NamespacePosition { tree: AudienceScopeTree, path: ["network"] }
+}
+
+fn org_audience() -> NamespacePosition {
+  NamespacePosition { tree: AudienceScopeTree, path: ["network", "org"] }
+}
+
+fn repo_audience() -> NamespacePosition {
+  NamespacePosition { tree: AudienceScopeTree, path: ["network", "org", "repo"] }
+}
+
+type VisibilityStatus
+  = LegacyOpen
+  | Declared { grants: List<Grant> }
+
+type NodeVisibility {
+  node: NamespacePosition
+  status: VisibilityStatus
+}
+
+fn declared_grant_covers_go(
+  grants: List<Grant>,
+  verb: Verb,
+  target: NamespacePosition,
+) -> Bool {
+  if grants.count() == 0 {
+    false
+  } else {
+    grant_covers(grant: grants.first(), verb: verb, target: target)
+      || declared_grant_covers_go(
+           grants: grants.skip(n: 1),
+           verb: verb,
+           target: target,
+         )
+  }
+}
+
+fn declaring_container(node: NamespacePosition) -> NamespacePosition {
+  NamespacePosition {
+    tree: node.tree,
+    path: node.path.take(n: node.path.count() - 1)
+  }
+}
+
+type ReferenceAdmission
+  = ReferenceAdmitted
+  | NameNotVisible { node: NamespacePosition, referrer: NamespacePosition }
+
+fn visible_from(visibility: NodeVisibility, referrer: NamespacePosition) -> ReferenceAdmission {
+  match visibility.status {
+    LegacyOpen => ReferenceAdmitted
+    Declared { grants: grants } =>
+      if position_under(target: referrer, root: declaring_container(node: visibility.node))
+        || declared_grant_covers_go(grants: grants, verb: Reference, target: referrer) {
+        ReferenceAdmitted
+      } else {
+        NameNotVisible { node: visibility.node, referrer: referrer }
+      }
+  }
+}
+
+type PublishAdmission
+  = PublishAdmitted
+  | PublishAudienceNotGranted { node: NamespacePosition, audience: NamespacePosition }
+
+fn publish_to(visibility: NodeVisibility, audience: NamespacePosition) -> PublishAdmission {
+  match visibility.status {
+    LegacyOpen =>
+      if position_under(target: audience, root: repo_audience()) {
+        PublishAdmitted
+      } else {
+        PublishAudienceNotGranted { node: visibility.node, audience: audience }
+      }
+    Declared { grants: grants } =>
+      if declared_grant_covers_go(grants: grants, verb: Publish, target: audience) {
+        PublishAdmitted
+      } else {
+        PublishAudienceNotGranted { node: visibility.node, audience: audience }
+      }
+  }
+}
+
+fn publish_admitted(a: PublishAdmission) -> Bool {
+  match a {
+    PublishAdmitted => true
+    PublishAudienceNotGranted { node: node, audience: audience } => false
+  }
+}
+
+type PublishAncestorVerdict
+  = PublishAncestorCompatible
+  | PublishAncestorNarrower {
+      ancestor: NamespacePosition,
+      child: NamespacePosition,
+      audience: NamespacePosition,
+    }
+
+fn publish_ancestor_rule(
+  ancestor: NodeVisibility,
+  child: NodeVisibility,
+  audience: NamespacePosition,
+) -> PublishAncestorVerdict {
+  if publish_admitted(a: publish_to(visibility: child, audience: audience))
+    && !publish_admitted(a: publish_to(visibility: ancestor, audience: audience)) {
+    PublishAncestorNarrower {
+      ancestor: ancestor.node,
+      child: child.node,
+      audience: audience,
+    }
+  } else {
+    PublishAncestorCompatible
+  }
+}
+
+type PublishClosureVerdict
+  = PublishClosureClosed
+  | PublishClosureGap {
+      referrer: NamespacePosition,
+      referenced: NamespacePosition,
+      audience: NamespacePosition,
+    }
+
+fn publish_closure_rule(
+  referrer: NodeVisibility,
+  referenced: NodeVisibility,
+  audience: NamespacePosition,
+) -> PublishClosureVerdict {
+  if publish_admitted(a: publish_to(visibility: referrer, audience: audience))
+    && !publish_admitted(a: publish_to(visibility: referenced, audience: audience)) {
+    PublishClosureGap {
+      referrer: referrer.node,
+      referenced: referenced.node,
+      audience: audience,
+    }
+  } else {
+    PublishClosureClosed
+  }
+}
