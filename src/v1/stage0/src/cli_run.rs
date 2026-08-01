@@ -34894,7 +34894,7 @@ mod peel_alias_fixpoint_termination {
         assert_eq!(name, "PeelFixpointProbe");
         assert_eq!(
             quiet_diagnostic_count, 0,
-            "a legitimate fixed-point probe miss must stay quiet"
+            "a legitimate non-alias probe miss must stay quiet"
         );
         assert_eq!(
             refusal_count, 2,
