@@ -556,13 +556,15 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
         ),
         lean_named_edge(
           name: ^lean_scalar_field_overflow,
-          target: lean_overflow_semantics_node(semantics: overflow)
+          target: lean_overflow_semantics_node(semantics: overflow.semantics)
         )
       ],
       occurrence_id: SyntheticOccurrence
 }
     LeanWidthAdmissionRefused { width: _ } =>
       lean_inhabitant_atom(id: ^lean_tag_width_inadmissible)
+    LeanOverflowAdmissionRefused { semantics: _ } =>
+      lean_inhabitant_atom(id: ^lean_tag_overflow_inadmissible)
     BoolScalar => lean_inhabitant_atom(id: ^lean_tag_scalar_bool)
   }
 }
@@ -610,7 +612,7 @@ fn lean_fixed_int_spec_facts(
   facts: LeanPrimitiveFacts,
   signedness: Signedness,
   width: LeanIntegerWidth,
-  overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+  overflow: LeanAdmittedOverflowSemantics
 ) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
@@ -623,7 +625,7 @@ fn lean_fixed_int_spec_facts(
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: overflow) }
+          v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: overflow.semantics) }
       } else {
           v2.std.optional.Absent
       }
@@ -659,6 +661,20 @@ fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Sym
   }
 }
 
+fn lean_overflow_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
+      } else {
+          v2.std.optional.Absent
+      }
+    }
+  }
+}
+
 fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactBundle {
   match facts.scalar {
     LeanIntegerScalar { signedness, width, overflow } => PrimitiveFactBundle {
@@ -677,6 +693,10 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
     LeanWidthAdmissionRefused { width: _ } => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_width_admission_refused_spec_facts(facts: facts)
+    }
+    LeanOverflowAdmissionRefused { semantics: _ } => PrimitiveFactBundle {
+      substrate_carrier: lean_primitive_facts_node(facts: facts),
+      spec_facts: lean_overflow_admission_refused_spec_facts(facts: facts)
     }
   }
 }
@@ -925,6 +945,11 @@ fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabita
       witness: lean_bool_algebra_witness_node()
     }
     LeanWidthAdmissionRefused { width: _ } => AlgebraInhabitanceDecl {
+      algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: lean_bool_algebra_witness_node()
+    }
+    LeanOverflowAdmissionRefused { semantics: _ } => AlgebraInhabitanceDecl {
       algebra: boolean_algebra_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: lean_bool_algebra_witness_node()

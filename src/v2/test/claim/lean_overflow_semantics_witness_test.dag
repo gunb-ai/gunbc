@@ -8,6 +8,7 @@ import v2.extdeps.languages.lean {
   lean_overflow_raise_effect_tag,
   lean_overflow_semantics_arm_tag,
   LeanIntegerScalar,
+  LeanAdmittedOverflowSemantics,
   LeanOverflowAccepted,
   LeanOverflowPanics,
   LeanOverflowRaiseEffect,
@@ -75,8 +76,8 @@ test fn lean_admit_refuses_raises_panic_for_fixed_width_catalog() -> Bool {
 
 test fn lean_catalog_int32_carries_wrapping_not_raises() -> Bool {
   match lean_facts_int32().scalar {
-    LeanIntegerScalar { overflow, signedness: _, width: _ } =>
-      match overflow {
+    LeanIntegerScalar { overflow: admitted, signedness: _, width: _ } =>
+      match admitted.semantics {
         OverflowReturns { value_rule: ReturnWrapping } => true
         OverflowReturns { value_rule: ReturnSaturating } => false
         OverflowRaises { effect: _ } => false
