@@ -1,0 +1,117 @@
+module test.claim.host_compile_pool
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data compile_pool_producer_doc: String = "THE DERIVATION'S ACCEPTANCE SET. The load-bearing witness is the first one: against the fleet's ACTUAL declared topology, the derivation refuses on every host, which is the correct answer today and the one a hand-written all-true receipt would have silently contradicted. The rest assert that each not-ready reason is reachable and distinct, because five reasons that cannot be told apart are one reason with five names."
+
+fn observed_slice(name: String) -> CompilePoolObservation {
+  CompilePoolSliceObserved {
+    slice_unit: name as NonEmptyStr,
+    limits: CgroupMemoryLimits {
+      memory_max: byte_size(0),
+      memory_high: byte_size(0),
+      memory_current: byte_size(0),
+    },
+  }
+}
+
+fn sized() -> CompilePoolResolution {
+  CompilePoolDerived { bytes: byte_size(1024) }
+}
+
+fn readiness_for(
+  placement: CompilePoolPlacement,
+  sizing: CompilePoolResolution,
+  observed: CompilePoolObservation,
+) -> Bool {
+  receipt_admits_pool(
+    receipt: compile_pool_ready_receipt(
+      readiness: derive_compile_pool_readiness(
+        placement: placement,
+        sizing: sizing,
+        observed: observed,
+      ),
+      intended_slice: gunbc_managed_compile_pool_slice,
+      host: "srv1",
+    ),
+  )
+}
+
+test fn witness_the_live_fleet_topology_yields_no_ready_pool() -> Bool {
+  readiness_for(
+    placement: gunbc_compile_pool_placement,
+    sizing: sized(),
+    observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
+  ) == false
+}
+
+data live_topology_doc: String = "This reads the REAL gunbc_compile_pool_placement row rather than a fixture, so it is a claim about the fleet and not about a constructed example. It asserts false: the row is CompilePoolInRunnerSlots, no managed slice is declared, so no host can present a ready pool and activation refuses fleet-wide. When the topology flips to CompilePoolSliceDeclared in the same change that shrinks runner_pool, this witness reds — deliberately. It is the tripwire that the flip cannot land silently, and at that point it becomes an assertion that the pool IS ready rather than being deleted."
+
+test fn witness_a_declared_and_observed_slice_is_ready() -> Bool {
+  readiness_for(
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
+    observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
+  )
+}
+
+test fn witness_an_absent_slice_on_a_declaring_fleet_is_not_ready() -> Bool {
+  readiness_for(
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+  ) == false
+}
+
+test fn witness_unresolved_sizing_refuses_rather_than_defaulting() -> Bool {
+  readiness_for(
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: CompilePoolUnresolved { reason: "jobserver config citation absent" },
+    observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
+  ) == false
+}
+
+test fn witness_an_unobservable_pool_is_not_ready() -> Bool {
+  readiness_for(
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
+    observed: CompilePoolObservationUnavailable {
+      reason: ReachRefused { detail: "Permission denied (publickey)" as NonEmptyStr },
+    },
+  ) == false
+}
+
+test fn witness_a_differently_named_slice_is_not_the_intended_pool() -> Bool {
+  readiness_for(
+    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
+    observed: observed_slice(name: "some-other.slice"),
+  ) == false
+}
+
+data not_declared_versus_absent_doc: String = "The two reasons whose collapse this asserts against. Both are not-ready and both would project to the same pair of Bools if pool_declared did not distinguish them, so the receipt carries the distinction: an undeclared topology yields pool_declared false, while a declared topology whose host lacks the slice yields pool_declared TRUE with pool_observed false. Their remedies differ — one is a fleet-wide topology change that must shrink runner_pool in the same motion, the other is provisioning one host — so a reader that could not tell them apart would treat a fleet decision as a per-host chore."
+
+test fn witness_undeclared_and_unprovisioned_are_distinguishable_in_the_receipt() -> Bool {
+  let undeclared = compile_pool_ready_receipt(
+    readiness: derive_compile_pool_readiness(
+      placement: CompilePoolInRunnerSlots,
+      sizing: sized(),
+      observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
+    ),
+    intended_slice: gunbc_managed_compile_pool_slice,
+      host: "srv1",
+  )
+  let unprovisioned = compile_pool_ready_receipt(
+    readiness: derive_compile_pool_readiness(
+      placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+      sizing: sized(),
+      observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+    ),
+    intended_slice: gunbc_managed_compile_pool_slice,
+      host: "srv1",
+  )
+  (undeclared.pool_declared == false)
+    && unprovisioned.pool_declared
+    && (undeclared.pool_observed == false)
+    && (unprovisioned.pool_observed == false)
+}
