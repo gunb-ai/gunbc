@@ -31,7 +31,7 @@ import gunbc.landing_workflow {
   UntrackedPullRequest,
 }
 
-data landing_dashboard_summary_authority_note: String = "The wire authority is the existing dashboard reviews summary: GET /api/reviews/pr?repo=OWNER/REPO&pr=N, the same object printed by `dashboard-ops reviews`. This decoder does not count reviews or decide readiness. It reads merge_criteria.ready and projects merge_criteria.requirements into the typed blocker vocabulary in gunbc.landing_workflow. Reviews are read only for their evidence artifacts. Duplicate, absent, or wrong-shaped identity fields refuse the entire PR observation; they never become zero approvals, no blockers, or an empty evidence set."
+data landing_dashboard_summary_authority_note: String = "The wire authority is the existing dashboard reviews summary: GET /api/reviews/pr?repo=OWNER/REPO&pr=N, the same object printed by `dashboard-ops reviews`. This decoder does not count reviews or decide readiness. It reads merge_criteria.ready and projects the complete canonical merge_criteria.requirements roster into the typed blocker vocabulary in gunbc.landing_workflow. Missing, duplicate, unclassified, absent, or wrong-shaped authority fields refuse the entire PR observation; they never become zero approvals, no blockers, or an empty evidence set. Reviews are read only for their evidence artifacts."
 
 type LandingJsonIssue {
   path: String
@@ -142,6 +142,46 @@ fn dashboard_requirement_key(raw: String) -> DashboardRequirementKey {
   else { DashboardUnclassifiedRequirement { key: raw } }
 }
 
+fn dashboard_canonical_requirement_keys() -> List<String> {
+  ["approvals", "request_changes", "active_reviews", "open", "draft", "mergeable", "checks"]
+}
+
+fn dashboard_requirement_key_count(requirements: List<JsonValue>, key: String) -> Int {
+  count(requirements |> filter(requirement => json_string_or_empty(v: requirement, key: "key") == key))
+}
+
+fn dashboard_requirement_population_issues(requirements: List<JsonValue>) -> List<LandingJsonIssue> {
+  let canonical = dashboard_canonical_requirement_keys()
+  let canonical_issues = canonical |> flat_map(key => {
+    let occurrences = dashboard_requirement_key_count(requirements: requirements, key: key)
+    if occurrences == 0 {
+      [LandingJsonIssue {
+        path: "merge_criteria.requirements",
+        reason: concat("missing canonical requirement key: ", key),
+      }]
+    } else if occurrences > 1 {
+      [LandingJsonIssue {
+        path: "merge_criteria.requirements",
+        reason: concat("duplicate canonical requirement key: ", key),
+      }]
+    } else {
+      []
+    }
+  })
+  let unclassified_issues = requirements |> flat_map(requirement => {
+    let raw = json_string_or_empty(v: requirement, key: "key")
+    if any(canonical, key => key == raw) {
+      []
+    } else {
+      [LandingJsonIssue {
+        path: "merge_criteria.requirements[].key",
+        reason: concat("unclassified requirement key: ", raw),
+      }]
+    }
+  })
+  concat(canonical_issues, unclassified_issues)
+}
+
 fn dashboard_requirement_issues(v: JsonValue) -> List<LandingJsonIssue> {
   let prefix = "merge_criteria.requirements[]"
   map(concat(
@@ -237,11 +277,12 @@ fn landing_summary_decode(body: String) -> LandingSummaryDecode {
         requirements,
         requirement => dashboard_requirement_issues(v: requirement),
       )
+      let requirement_population_issues = dashboard_requirement_population_issues(requirements: requirements)
       let review_issues = flat_map(
         reviews,
         review => landing_review_artifact_issues(v: review),
       )
-      let issues = concat(scalar_issues, requirement_issues, review_issues)
+      let issues = concat(scalar_issues, requirement_issues, requirement_population_issues, review_issues)
       if count(issues) > 0 {
         LandingSummaryDecodeRefused { issues: issues }
       } else {

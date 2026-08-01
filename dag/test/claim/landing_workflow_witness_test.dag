@@ -412,7 +412,7 @@ test fn admitted_exact_head_merge_carries_authority_snapshot_receipt() -> Bool {
   }
 }
 
-data dashboard_summary_fixture: String = "{\"merge_criteria\":{\"ready\":false,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":1,\"approval_providers\":[\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":1,\"stale_providers\":[\"cursor\"],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[{\"key\":\"approvals\",\"label\":\"2 distinct dashboard approvals\",\"ok\":false,\"actual\":\"1/2\"}]},\"reviews\":[{\"id\":123,\"provider\":\"codex\",\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"verdict\":\"approve\",\"artifact_url\":\"/api/reviews/123/artifacts/stdout.log\"}]}"
+data dashboard_summary_fixture: String = "{\"merge_criteria\":{\"ready\":false,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":1,\"approval_providers\":[\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":1,\"stale_providers\":[\"cursor\"],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[{\"key\":\"approvals\",\"label\":\"2 distinct dashboard approvals\",\"ok\":false,\"actual\":\"1/2\"},{\"key\":\"request_changes\",\"label\":\"no request changes\",\"ok\":true,\"actual\":\"0\"},{\"key\":\"active_reviews\",\"label\":\"no active reviews\",\"ok\":true,\"actual\":\"0\"},{\"key\":\"open\",\"label\":\"pull request is open\",\"ok\":true,\"actual\":\"open\"},{\"key\":\"draft\",\"label\":\"pull request is not draft\",\"ok\":true,\"actual\":\"false\"},{\"key\":\"mergeable\",\"label\":\"mergeable clean\",\"ok\":true,\"actual\":\"CLEAN\"},{\"key\":\"checks\",\"label\":\"checks passing\",\"ok\":true,\"actual\":\"passing\"}]},\"reviews\":[{\"id\":123,\"provider\":\"codex\",\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"verdict\":\"approve\",\"artifact_url\":\"/api/reviews/123/artifacts/stdout.log\"}]}"
 
 test fn dashboard_summary_decoder_projects_authority_and_evidence_without_recounting() -> Bool {
   match landing_summary_decode(body: dashboard_summary_fixture) {
@@ -420,10 +420,34 @@ test fn dashboard_summary_decoder_projects_authority_and_evidence_without_recoun
       !criteria.ready
         && criteria.approval_count == 1
         && count(criteria.stale_providers) == 1
-        && count(criteria.requirements) == 1
+        && count(criteria.requirements) == 7
         && count(artifacts) == 1
         && any(artifacts, artifact => artifact.artifact_id == 123)
     LandingSummaryDecodeRefused { issues: _ } => false
+  }
+}
+
+data incomplete_requirement_roster_fixture: String = "{\"merge_criteria\":{\"ready\":true,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":2,\"approval_providers\":[\"claude\",\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":0,\"stale_providers\":[],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[]},\"reviews\":[]}"
+
+data incomplete_requirement_roster_red_note: String = "The dashboard ready bit is authoritative only together with its complete canonical requirement receipts. An omitted approvals, review, lifecycle, mergeability, or checks row must refuse before a merge admission can be constructed."
+
+test fn incomplete_requirement_roster_cannot_admit_ready_summary() -> Bool {
+  match landing_summary_decode(body: incomplete_requirement_roster_fixture) {
+    LandingSummaryDecodeRefused { issues } => any(issues, issue =>
+      issue.path == "merge_criteria.requirements"
+        && issue.reason == "missing canonical requirement key: approvals")
+    LandingSummaryRead { criteria: _, artifacts: _ } => false
+  }
+}
+
+data duplicate_requirement_roster_fixture: String = "{\"merge_criteria\":{\"ready\":true,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":2,\"approval_providers\":[\"claude\",\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":0,\"stale_providers\":[],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[{\"key\":\"approvals\",\"label\":\"approvals\",\"ok\":true,\"actual\":\"2/2\"},{\"key\":\"approvals\",\"label\":\"approvals duplicate\",\"ok\":true,\"actual\":\"2/2\"},{\"key\":\"request_changes\",\"label\":\"request changes\",\"ok\":true,\"actual\":\"0\"},{\"key\":\"active_reviews\",\"label\":\"active reviews\",\"ok\":true,\"actual\":\"0\"},{\"key\":\"open\",\"label\":\"open\",\"ok\":true,\"actual\":\"open\"},{\"key\":\"draft\",\"label\":\"draft\",\"ok\":true,\"actual\":\"false\"},{\"key\":\"mergeable\",\"label\":\"mergeable\",\"ok\":true,\"actual\":\"CLEAN\"},{\"key\":\"checks\",\"label\":\"checks\",\"ok\":true,\"actual\":\"passing\"}]},\"reviews\":[]}"
+
+test fn duplicate_requirement_key_refuses_summary() -> Bool {
+  match landing_summary_decode(body: duplicate_requirement_roster_fixture) {
+    LandingSummaryDecodeRefused { issues } => any(issues, issue =>
+      issue.path == "merge_criteria.requirements"
+        && issue.reason == "duplicate canonical requirement key: approvals")
+    LandingSummaryRead { criteria: _, artifacts: _ } => false
   }
 }
 
@@ -438,7 +462,7 @@ test fn duplicate_dashboard_ready_member_refuses_fail_closed() -> Bool {
   }
 }
 
-data malformed_review_evidence_fixture: String = "{\"merge_criteria\":{\"ready\":false,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":1,\"approval_providers\":[\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":0,\"stale_providers\":[],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[{\"key\":\"approvals\",\"label\":\"2 distinct dashboard approvals\",\"ok\":false,\"actual\":\"1/2\"}]},\"reviews\":[{\"id\":124,\"provider\":\"codex\",\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"verdict\":\"approve\",\"artifact_url\":null}]}"
+data malformed_review_evidence_fixture: String = "{\"merge_criteria\":{\"ready\":false,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":1,\"approval_providers\":[\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":0,\"stale_providers\":[],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[{\"key\":\"approvals\",\"label\":\"2 distinct dashboard approvals\",\"ok\":false,\"actual\":\"1/2\"},{\"key\":\"request_changes\",\"label\":\"no request changes\",\"ok\":true,\"actual\":\"0\"},{\"key\":\"active_reviews\",\"label\":\"no active reviews\",\"ok\":true,\"actual\":\"0\"},{\"key\":\"open\",\"label\":\"pull request is open\",\"ok\":true,\"actual\":\"open\"},{\"key\":\"draft\",\"label\":\"pull request is not draft\",\"ok\":true,\"actual\":\"false\"},{\"key\":\"mergeable\",\"label\":\"mergeable clean\",\"ok\":true,\"actual\":\"CLEAN\"},{\"key\":\"checks\",\"label\":\"checks passing\",\"ok\":true,\"actual\":\"passing\"}]},\"reviews\":[{\"id\":124,\"provider\":\"codex\",\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"verdict\":\"approve\",\"artifact_url\":null}]}"
 
 data malformed_review_evidence_red_note: String = "A present review row may never disappear into an empty evidence list. Null, absent, duplicated, wrongly shaped, or empty artifact identity fields refuse the whole dashboard summary before admission projection."
 
