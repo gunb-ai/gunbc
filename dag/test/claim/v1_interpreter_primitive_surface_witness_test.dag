@@ -1,26 +1,89 @@
 module test.claim.v1_interpreter_primitive_surface_witness_test
 
 import gunbc.v1_interpreter_primitive_surface {
+  ArmEnumeration,
+  DeclaredHere,
+  DerivedFromDispatch,
   FreeCall,
   InterpreterPrimitiveArmId,
   InterpreterPrimitiveDispatchArm,
+  MethodCall,
+  NativeSpecial,
+  ServiceDispatch,
+  authored_spelling_count,
+  decode_dispatch_form,
+  dispatch_site_count,
+  distinct_arm_identity_count,
+  duplicate_row_keys,
   form_has_no_shadowed_spelling,
+  form_is_unknown,
   shadowed_spellings,
   v1_interpreter_cross_form_spellings,
   v1_interpreter_declared_arm_count,
+  v1_interpreter_declared_arms,
   v1_interpreter_derived_arm_count,
+  v1_interpreter_derived_arms,
   v1_interpreter_free_call_arms,
   v1_interpreter_method_call_arms,
   v1_interpreter_primitive_arms,
+  v1_interpreter_row_count,
+  v1_interpreter_unknown_form_arms,
 }
 
-test fn derived_free_call_surface_is_populated() -> Bool {
-  v1_interpreter_derived_arm_count() > 100
+fn planted_row(identity: String, spelling: String, symbol: String) -> InterpreterPrimitiveDispatchArm {
+  InterpreterPrimitiveDispatchArm {
+    arm: InterpreterPrimitiveArmId { identity: identity },
+    form: FreeCall,
+    authored_spelling: spelling,
+    realization_module: "planted",
+    dispatch_symbol: symbol,
+    enumeration: DerivedFromDispatch,
+  }
+}
+
+test fn every_dispatch_site_is_enumerated() -> Bool {
+  dispatch_site_count() == 7
+}
+
+test fn the_surface_is_almost_entirely_derived() -> Bool {
+  v1_interpreter_derived_arm_count() == 181 && v1_interpreter_declared_arm_count() == 2
+}
+
+test fn derived_and_declared_partition_the_surface() -> Bool {
+  v1_interpreter_row_count() == v1_interpreter_derived_arm_count() + v1_interpreter_declared_arm_count()
+}
+
+test fn the_three_denominators_are_derived_and_distinct() -> Bool {
+  dispatch_site_count() == 7 && distinct_arm_identity_count() == 172 && authored_spelling_count() == 159
+}
+
+test fn identities_are_fewer_than_rows_and_spellings_fewer_than_identities() -> Bool {
+  distinct_arm_identity_count() < v1_interpreter_row_count() && authored_spelling_count() < distinct_arm_identity_count()
 }
 
 test fn derived_surface_includes_its_own_reading_arm() -> Bool {
-  v1_interpreter_free_call_arms()
-    |> any(r => r.authored_spelling == "interpreter_free_call_arm_rows")
+  v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+}
+
+test fn every_derived_site_contributes_rows() -> Bool {
+  let symbols = [
+    "eval_builtin_inner",
+    "eval_algebra_method_inner",
+    "eval_call",
+    "try_v2_std_collection_map_primitive_grounding",
+    "try_parse_table_memo_dispatch",
+  ]
+  symbols |> all(s => v1_interpreter_derived_arms() |> any(r => r.dispatch_symbol == s))
+}
+
+test fn method_rows_are_derived_rather_than_transcribed() -> Bool {
+  let rows = v1_interpreter_method_call_arms() |> filter(r => r.dispatch_symbol == "eval_algebra_method_inner")
+  count(rows) == 46 && (rows |> all(r => r.enumeration == DerivedFromDispatch))
+}
+
+test fn v4_bridge_rows_are_derived_rather_than_transcribed() -> Bool {
+  let rows = v1_interpreter_derived_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == FreeCall)
+  count(rows) == 12 && (rows |> all(r => r.enumeration == DerivedFromDispatch))
 }
 
 test fn alias_spellings_share_one_arm_identity() -> Bool {
@@ -30,70 +93,88 @@ test fn alias_spellings_share_one_arm_identity() -> Bool {
   count(a) == 1 && count(b) == 1 && (a |> all(x => b |> any(y => y == x)))
 }
 
-test fn derived_free_call_arms_have_no_internal_shadow() -> Bool {
-  form_has_no_shadowed_spelling(rows: v1_interpreter_free_call_arms())
+test fn every_row_is_unique_on_site_identity_and_spelling() -> Bool {
+  count(duplicate_row_keys(rows: v1_interpreter_primitive_arms())) == 0
 }
 
-test fn free_call_form_shadowing_is_exactly_the_two_inert_lens_bridges() -> Bool {
+test fn duplicate_detector_catches_a_row_repeated_under_one_identity() -> Bool {
+  let planted = [
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+  ]
+  count(duplicate_row_keys(rows: planted)) == 1
+}
+
+test fn duplicate_detector_admits_one_spelling_at_two_distinct_sites() -> Bool {
+  let planted = [
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_one"),
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_two"),
+  ]
+  count(duplicate_row_keys(rows: planted)) == 0
+}
+
+test fn free_call_shadowing_is_exactly_the_two_inert_lens_bridges() -> Bool {
   let s = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == FreeCall))
-  count(s) > 0 && (s |> all(x => x == "inert_lens_unreached_module_count" || x == "inert_lens_top_level_module_count"))
+  count(s) == 2 && (s |> any(x => x == "inert_lens_unreached_module_count")) && (s |> any(x => x == "inert_lens_top_level_module_count"))
 }
 
-test fn method_call_form_shadowing_is_exactly_the_known_lookup_case() -> Bool {
-  let s = shadowed_spellings(rows: v1_interpreter_method_call_arms())
-  count(s) > 0 && (s |> all(x => x == "lookup"))
+test fn method_call_shadowing_is_exactly_the_known_lookup_case() -> Bool {
+  let s = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == MethodCall))
+  count(s) == 1 && (s |> all(x => x == "lookup"))
 }
 
-test fn lookup_carries_three_independent_dispatch_rows() -> Bool {
-  count(v1_interpreter_primitive_arms() |> filter(r => r.authored_spelling == "lookup")) == 3
+test fn native_special_form_carries_no_shadow_at_all() -> Bool {
+  form_has_no_shadowed_spelling(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == NativeSpecial))
+}
+
+test fn the_two_shadowed_arm_identities_under_lookup_are_exactly_the_expected_pair() -> Bool {
+  let ids = v1_interpreter_primitive_arms()
+    |> filter(r => r.authored_spelling == "lookup" && r.form == MethodCall)
+    |> map(r => r.arm.identity)
+  count(ids) == 2 && (ids |> any(x => x == "method_call.lookup")) && (ids |> any(x => x == "method_call_short_circuit.lookup"))
 }
 
 test fn shadow_detector_catches_a_planted_duplicate() -> Bool {
   let planted = [
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "planted:alpha" },
-      form: FreeCall,
-      authored_spelling: "alpha",
-      realization_module: "planted",
-      dispatch_symbol: "planted_dispatch",
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "planted:beta" },
-      form: FreeCall,
-      authored_spelling: "alpha",
-      realization_module: "planted",
-      dispatch_symbol: "planted_dispatch",
-    },
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
   ]
-  !form_has_no_shadowed_spelling(rows: planted) && (shadowed_spellings(rows: planted) |> any(s => s == "alpha"))
+  !form_has_no_shadowed_spelling(rows: planted) && count(shadowed_spellings(rows: planted)) == 1
 }
 
 test fn shadow_detector_admits_a_real_alias_pair() -> Bool {
   let alias = [
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "planted:shared" },
-      form: FreeCall,
-      authored_spelling: "alpha",
-      realization_module: "planted",
-      dispatch_symbol: "planted_dispatch",
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "planted:shared" },
-      form: FreeCall,
-      authored_spelling: "beta",
-      realization_module: "planted",
-      dispatch_symbol: "planted_dispatch",
-    },
+    planted_row(identity: "planted.shared", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.shared", spelling: "beta", symbol: "planted_dispatch"),
   ]
   form_has_no_shadowed_spelling(rows: alias)
 }
 
-test fn lookup_is_dispatched_under_more_than_one_form() -> Bool {
+test fn lookup_is_dispatched_under_more_than_one_site() -> Bool {
   v1_interpreter_cross_form_spellings() |> any(s => s == "lookup")
 }
 
-test fn derived_and_declared_partition_the_surface() -> Bool {
-  count(v1_interpreter_primitive_arms()) == v1_interpreter_derived_arm_count() + v1_interpreter_declared_arm_count()
+test fn no_live_row_carries_an_undecodable_form() -> Bool {
+  count(v1_interpreter_unknown_form_arms()) == 0
 }
 
-data witness_control_pairing_note: String = "THE CONTROLS ARE A PAIR AND NEITHER IS OPTIONAL. shadow_detector_catches_a_planted_duplicate is the discriminating RED: without it a detector that always answered clean would pass both live-corpus witnesses and establish nothing. shadow_detector_admits_a_real_alias_pair is the positive control: two spellings under ONE arm identity is a legitimate alias, so a detector that refused it would be refusing the language rather than the defect. The live witnesses execute against the DERIVED free-call rows, which project the interpreter dispatch itself, so they read the tree rather than a transcript."
+test fn an_unrecognised_form_label_refuses_rather_than_defaulting() -> Bool {
+  form_is_unknown(form: decode_dispatch_form(label: "NotAFormLabel")) && !form_is_unknown(form: decode_dispatch_form(label: "FreeCall"))
+}
+
+test fn every_declared_row_names_its_own_dissolution_trigger() -> Bool {
+  v1_interpreter_declared_arms() |> all(r =>
+    match r.enumeration {
+      DeclaredHere { dissolve_on } => length(dissolve_on) > 80
+      DerivedFromDispatch => false
+    })
+}
+
+test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
+  let symbols = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
+  count(symbols) == 2 && (symbols |> any(s => s == "eval_method_call")) && (symbols |> any(s => s == "eval_service_call"))
+}
+
+data witness_control_pairing_note: String = "THE CONTROLS ARE PAIRS AND NEITHER HALF IS OPTIONAL. Each detector here has a discriminating RED and a positive control, because a detector that always answered clean would pass every live-corpus witness and establish nothing, and a detector that refused legitimate structure would be refusing the language rather than the defect. shadow_detector_catches_a_planted_duplicate is paired with shadow_detector_admits_a_real_alias_pair -- two spellings under ONE arm identity is a legitimate alias, which is exactly why length, count and size cannot disagree. duplicate_detector_catches_a_row_repeated_under_one_identity is paired with duplicate_detector_admits_one_spelling_at_two_distinct_sites -- one spelling reached at two different dispatch symbols is the real structure of map_insert and lookup, not a defect. an_unrecognised_form_label_refuses_rather_than_defaulting asserts BOTH directions so that a decode which answered UnknownForm for everything would fail. The live witnesses execute against DERIVED rows projected from the interpreter's own dispatch tokens, so they read the tree rather than a transcript of it."
+
+data exact_count_witness_note: String = "WHY THESE ARE EXACT EQUALITIES RATHER THAN LOWER BOUNDS. A witness reading count(rows) > 100 passes whether the surface has 181 rows or 181 rows with one silently dropped, so it cannot detect the failure this carrier exists to prevent. The three denominators are asserted at their measured values -- 7 dispatch sites, 172 distinct arm identities, 159 distinct authored spellings, over 183 rows -- so ADDING a dispatch arm reds this file, which is the point: the roster is not allowed to change without someone stating the new number. identities_are_fewer_than_rows_and_spellings_fewer_than_identities additionally pins the ORDERING of the three, so a refactor that collapsed them into one quantity would red even if it happened to preserve a value."

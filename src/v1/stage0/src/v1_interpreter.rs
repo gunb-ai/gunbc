@@ -3155,12 +3155,7 @@ pub fn v1_bridge_arm_spellings() -> &'static [(&'static str, &'static str, &'sta
 
 /// One guard for every bridge family. This replaced nine byte-identical
 /// predicates that differed only in their name list and module string.
-fn is_v4_bridge_family(
-    ctx: &InterpContext,
-    func_name: &str,
-    names: &[&str],
-    module: &str,
-) -> bool {
+fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], module: &str) -> bool {
     if !names.contains(&func_name) {
         return false;
     }
@@ -3242,7 +3237,6 @@ pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
 pub fn std_qualified_name_bridge_fn_names() -> &'static [&'static str] {
     STD_QUALIFIED_NAME_BRIDGE_FNS
 }
-
 
 fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
     if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
