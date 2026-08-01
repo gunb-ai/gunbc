@@ -5,8 +5,8 @@ use self::ScopeDecision::*;
 use self::ScopeFinding::*;
 use crate::extdeps_uri::UriScheme::File;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-use crate::std_decl_ref::DeclField::{NamedField, WholeDeclaration};
-pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_roster_frontier::declaration_ref_eq;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -75,25 +75,6 @@ pub fn external_model_scope_citations(
         Rc::new(vec![scope.first_citation.clone()]),
         scope.further_citations.clone(),
     )
-}
-
-pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
-    match (*a.clone()).clone() {
-        DeclField::WholeDeclaration => match (*b.clone()).clone() {
-            DeclField::WholeDeclaration => true,
-            DeclField::NamedField { field_name: _, .. } => false,
-        },
-        DeclField::NamedField { field_name: fa, .. } => match (*b.clone()).clone() {
-            DeclField::WholeDeclaration => false,
-            DeclField::NamedField { field_name: fb, .. } => (fa.clone() == fb.clone()),
-        },
-    }
-}
-
-pub fn declaration_ref_eq(a: Rc<DeclarationRef>, b: Rc<DeclarationRef>) -> bool {
-    (((a.module_path.clone() == b.module_path.clone())
-        && (a.decl_name.clone() == b.decl_name.clone()))
-        && decl_field_eq(a.field.clone(), b.field.clone()))
 }
 
 pub fn external_subject_ref_eq(a: Rc<ExternalSubjectRef>, b: Rc<ExternalSubjectRef>) -> bool {
