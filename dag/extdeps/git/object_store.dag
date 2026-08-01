@@ -38,6 +38,13 @@ data git_ls_files_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data git_gitattributes_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/gitattributes#_conflict_marker_size"
+  }
+}
+
 data git_update_ref_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -521,6 +528,14 @@ type GitIndexStage
   | GitIndexStageBase
   | GitIndexStageOurs
   | GitIndexStageTheirs
+
+type GitEffectiveConflictMarkerGrammar {
+  begin: String
+  separator: String
+  end: String
+}
+
+data git_effective_conflict_marker_grammar_note: String = "Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another width for a path; consumers must observe the effective value rather than assume the default. The three tokens travel together so begin/separator/end cannot be sourced from different attribute observations."
 
 type GitIndexEntry {
   path: GitPath

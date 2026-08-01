@@ -5,7 +5,6 @@ import gunbc.commit_workflow {
   CommitWriterNormalTextObservation,
   CommitWriterAdmitted,
   CommitWriterRefused,
-  ConflictMarkerGrammar,
   admit_commit_writer
 }
 import extdeps.git.object_store {
@@ -15,6 +14,7 @@ import extdeps.git.object_store {
   GitTreeEntryName,
   GitTreeEntryNameOctetAfterSlash,
   GitTreeEntryNameAfterSlashValue,
+  GitEffectiveConflictMarkerGrammar,
   git_decode_path_octets
 }
 import v2.std.artifact { Artifact, TestClaimArtifact }
@@ -46,7 +46,7 @@ test fn caller_minted_test_artifact_cannot_bypass_marker_refusal() -> Bool {
     path: ceiling_fixture_path(),
     text: "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> origin/main\n",
     provenance: caller_minted,
-    marker_grammar: ConflictMarkerGrammar {
+    marker_grammar: GitEffectiveConflictMarkerGrammar {
       begin: "<<<<<<<",
       separator: "=======",
       end: ">>>>>>>",

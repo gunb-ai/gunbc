@@ -18,7 +18,8 @@ import extdeps.git.object_store {
   GitIndexStage,
   GitIndexStageBase,
   GitIndexStageOurs,
-  GitIndexStageTheirs
+  GitIndexStageTheirs,
+  GitEffectiveConflictMarkerGrammar
 }
 import v2.std.artifact { Artifact, TestClaimArtifact }
 import std.realization_schedule {
@@ -40,7 +41,7 @@ type CommitWriterPathObservation
       path: GitPath,
       text: String,
       provenance: Artifact,
-      marker_grammar: ConflictMarkerGrammar,
+      marker_grammar: GitEffectiveConflictMarkerGrammar,
     }
   | CommitWriterNormalNonTextObservation {
       path: GitPath,
@@ -58,12 +59,6 @@ type CommitWriterUnmergedStage
 type CommitWriterUnmergedStagePopulation {
   first: CommitWriterUnmergedStage
   rest: List<CommitWriterUnmergedStage>
-}
-
-type ConflictMarkerGrammar {
-  begin: String
-  separator: String
-  end: String
 }
 
 type ConflictMarkerLocation {
@@ -144,7 +139,7 @@ fn conflict_marker_parse_line(
   path: GitPath,
   line: String,
   line_number: Int,
-  grammar: ConflictMarkerGrammar,
+  grammar: GitEffectiveConflictMarkerGrammar,
 ) -> ConflictMarkerParseFold {
   if conflict_marker_line_has_prefix(line: line, marker: grammar.begin) {
     ConflictMarkerParseFold {
@@ -202,7 +197,7 @@ fn conflict_marker_locations_from_lines_at(
   lines: List<String>,
   index: Int,
   path: GitPath,
-  grammar: ConflictMarkerGrammar,
+  grammar: GitEffectiveConflictMarkerGrammar,
   parsed: ConflictMarkerParseFold,
 ) -> List<ConflictMarkerLocation> {
   if index >= count(lines) {
@@ -227,7 +222,7 @@ fn conflict_marker_locations_from_lines_at(
 fn conflict_marker_locations_from_lines(
   lines: List<String>,
   path: GitPath,
-  grammar: ConflictMarkerGrammar,
+  grammar: GitEffectiveConflictMarkerGrammar,
 ) -> List<ConflictMarkerLocation> {
   conflict_marker_locations_from_lines_at(
     lines: lines,
@@ -245,7 +240,7 @@ fn commit_writer_text_marker_refusals(
   path: GitPath,
   text: String,
   provenance: Artifact,
-  grammar: ConflictMarkerGrammar,
+  grammar: GitEffectiveConflictMarkerGrammar,
 ) -> List<CommitWriterRefusal> {
   match provenance.kind {
     TestClaimArtifact => []

@@ -13,7 +13,6 @@ import gunbc.commit_workflow {
   CommitWriterIndexStageOurs,
   CommitWriterIndexStageTheirs,
   commit_writer_unmerged_git_index_stages,
-  ConflictMarkerGrammar,
   CommitWriterPathObservation,
   CommitWriterAdmitted,
   CommitWriterRefused,
@@ -31,6 +30,7 @@ import extdeps.git.object_store {
   GitIndexStageBase,
   GitIndexStageOurs,
   GitIndexStageTheirs,
+  GitEffectiveConflictMarkerGrammar,
   git_decode_path_octets
 }
 import v2.std.artifact { Artifact, SourceFile, TestClaimArtifact }
@@ -63,16 +63,16 @@ fn source_artifact() -> Artifact {
   }
 }
 
-fn default_conflict_marker_grammar() -> ConflictMarkerGrammar {
-  ConflictMarkerGrammar {
+fn default_conflict_marker_grammar() -> GitEffectiveConflictMarkerGrammar {
+  GitEffectiveConflictMarkerGrammar {
     begin: "<<<<<<<",
     separator: "=======",
     end: ">>>>>>>",
   }
 }
 
-fn nine_character_conflict_marker_grammar() -> ConflictMarkerGrammar {
-  ConflictMarkerGrammar {
+fn nine_character_conflict_marker_grammar() -> GitEffectiveConflictMarkerGrammar {
+  GitEffectiveConflictMarkerGrammar {
     begin: "<<<<<<<<<",
     separator: "=========",
     end: ">>>>>>>>>",
