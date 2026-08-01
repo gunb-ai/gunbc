@@ -1143,6 +1143,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_7QVX2K4M9NBTR6HDJ0FZ8SWCPE",
+      id: "v1-interpreter-primitive-roster",
+      owner: "self-host",
+      path: "dag/gunbc/v1_interpreter_primitive_surface.dag",
+      t: fields(
+        headline: "Make the interpreter's primitive surface enumerable",
+        boundary: "Every interpreter dispatch arm -- free call, method, guard-predicated bridge, native special and the one service carve-out -- has one interpreter-local identity, dispatch form and authored spelling, enumerable independently of semantic primitive identity. Adding or deleting an implementation arm without changing the roster refuses.",
+        displaced_cost: "The interpreter's primitive surface had no roster anywhere, so nobody could ask which primitives it provides. That blocks the primitive-identity join at its fifth surface, and it blocks sequencing v1 deletion honestly: you cannot show nothing still needs a capability you cannot enumerate.",
+        first_slice: "R0 -- the roster is DERIVED FROM the dispatch. Each dispatch site in the seed expands its match arms and its roster rows from one macro token list, so the two cannot disagree; the sites that are not match arms at all stay declared, counted, each naming its own dissolution trigger. R1, the step after, inverts the direction: the .dag roster GENERATES the interpreter's local dispatch identity and lookup, at which point the denominator leaves Rust, the macro authorities delete, and the declared rows delete with them. R0 is mechanically preventive for the sites it covers and is not claimed as structural: the invalid state is unwritable within a site, but a whole new dispatch site can still be added in Rust without anyone noticing, and only R1 closes that.",
+        red_control: "A dispatch arm added without a roster row, and a roster row with no arm, must both be unwritable rather than caught afterwards. A spelling reached by two different arms within one form is unreachable code and has to be named rather than silently accepted. A roster that cannot represent an arm carrying no semantic primitive identity fails this node outright, because that population is exactly what the identity join must discover.",
+        out_of_scope: "Which semantic primitive each arm realizes belongs to the primitive-identity join, not here, and no row may carry an identity field. Generating the dispatch itself from the roster is the step after this one.",
+        handback: "The roster; three derived denominators -- dispatch sites, distinct arm identities, distinct authored spellings -- rather than one conflated count; row-grain enumeration provenance, since a row's provenance is a fact about that row and not about its dispatch form; a reconciliation of every quoted dispatch line in the seed file into either a row or a named non-primitive residue; a typed disposition for the Rust the scaffold adds, naming every symbol and the exact deletion condition; and witnesses asserting exact values rather than lower bounds, with a discriminating red for each detector."
+      )
+    ),
+    active(
       identity: "rn_J4Q81A4BJ8TXN6ZE4481RMB3Y9",
       id: "v1-interpreter-quarantine",
       owner: "self-host",
@@ -1548,6 +1563,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover"),
     edge(child: "v1-emitter-delete", parent: "v1-emitter-quarantine"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-interpreter-primitive-roster"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
     edge(child: "v1-interpreter-delete", parent: "v1-emitter-delete"),
     edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
