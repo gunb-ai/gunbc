@@ -50,6 +50,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut discovery_scope_dirs: Vec<String> = Vec::new();
     let mut explicit_entries: Vec<String> = Vec::new();
     let mut max_entries: Option<usize> = None;
+    let mut entry_offset: Option<usize> = None;
     let mut receipt_out: Option<PathBuf> = None;
     let mut exclude_substrings = witness_exclusion_substrings();
 
@@ -78,6 +79,16 @@ fn run() -> Result<ExitCode, ExitCode> {
                 max_entries = Some(raw.parse().map_err(|_| {
                     eprintln!(
                         "measure_repeated_typecheck_attribution: --max-entries must be a usize"
+                    );
+                    ExitCode::from(2)
+                })?);
+            }
+            "--entry-offset" => {
+                i += 1;
+                let raw = require_value(&args, i, "--entry-offset")?;
+                entry_offset = Some(raw.parse().map_err(|_| {
+                    eprintln!(
+                        "measure_repeated_typecheck_attribution: --entry-offset must be a usize"
                     );
                     ExitCode::from(2)
                 })?);
@@ -116,6 +127,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         &discovery_scope_dirs,
         &explicit_entries,
         max_entries,
+        entry_offset,
     )
     .map_err(|e| {
         eprintln!("measure_repeated_typecheck_attribution: REFUSED — {e}");
