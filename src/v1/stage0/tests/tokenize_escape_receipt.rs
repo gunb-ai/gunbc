@@ -2,9 +2,10 @@
 //!
 //! Two halves, per the Lane A oracle in docs/plans/inner-cost-lanes-scoping.md.
 //!
-//! EQUIVALENCE (`escape_decode_table`, `unknown_escape_passthrough_is_retained`): the decode
-//! is unchanged. These are green on both sides of the migration; on their own they prove
-//! nothing about cost, because they are satisfied by changing nothing.
+//! EQUIVALENCE (`escape_decode_table`): the recognized decode vocabulary is unchanged. On its
+//! own it proves nothing about cost, because it is satisfied by changing nothing. The refusal
+//! table is the language-safety receipt: once a backslash enters the escape production,
+//! unsupported or malformed syntax becomes one located `ShUnknown` token.
 //!
 //! SEPARATION (`escape_cost_is_linear_in_literal_length`): the discriminating half, and it is
 //! deliberately **`#[ignore]`d — a benchmark, not a gate**. It reds against the pre-migration
@@ -48,6 +49,40 @@ fn decode_literal(body: &str) -> String {
     lit.text.clone()
 }
 
+/// Assert that an invalid escape refuses the complete literal as one located unknown token.
+/// In particular, no decoded prefix may escape as a successful string token.
+fn assert_literal_refuses(body: &str) {
+    let source = format!("data x: String = \"{}\"", body);
+    let literal_start = source
+        .find('"')
+        .expect("probe must contain a string literal") as i64;
+    let toks = tokenize(source.clone(), "escape_refusal.dag".to_string());
+    assert!(
+        !toks.iter().any(|t| {
+            t.shape == TokenShape::ShLitStr
+                || t.shape == TokenShape::ShStrBegin
+                || t.shape == TokenShape::ShStrMid
+                || t.shape == TokenShape::ShStrEnd
+        }),
+        "invalid escape must not emit a successful string token: {body:?}"
+    );
+    let refused = toks
+        .iter()
+        .find(|t| t.shape == TokenShape::ShUnknown)
+        .unwrap_or_else(|| panic!("no ShUnknown refusal token for body {body:?}"));
+    assert_eq!(
+        refused.text, body,
+        "refusal must retain the authored spelling"
+    );
+    assert_eq!(refused.span.file, "escape_refusal.dag");
+    assert_eq!(refused.span.start, literal_start);
+    assert_eq!(
+        refused.span.end,
+        source.len() as i64,
+        "refusal span must locate the complete quoted literal"
+    );
+}
+
 #[test]
 fn escape_decode_table() {
     // The recognized escape vocabulary, exactly as `process_escapes_loop` declares it.
@@ -57,6 +92,12 @@ fn escape_decode_table() {
         "\\n must decode to line feed"
     );
     assert_eq!(decode_literal(r"a\tb"), "a\tb", "\\t must decode to tab");
+    assert_eq!(
+        decode_literal(r"a\rb"),
+        "a\rb",
+        "\\r must decode to carriage return"
+    );
+    assert_eq!(decode_literal(r"a\0b"), "a\0b", "\\0 must decode to NUL");
     assert_eq!(
         decode_literal(r"a\\b"),
         r"a\b",
@@ -97,9 +138,24 @@ fn escape_decode_table() {
         "\\u{{000d}} must decode to one carriage return"
     );
     assert_eq!(
-        decode_literal(r"\u{0}"),
+        decode_literal(r"\u{0000}"),
         "\u{0}",
-        "a one-digit Unicode escape must decode to NUL"
+        "Unicode NUL must decode to the actual scalar"
+    );
+    assert_eq!(
+        decode_literal(r"\u{000d}"),
+        decode_literal(r"\x0d"),
+        "Unicode and byte spellings of carriage return must agree"
+    );
+    assert_eq!(
+        decode_literal(r"\u{0080}"),
+        char::from_u32(0x80).unwrap().to_string(),
+        "C1 U+0080 must retain scalar identity"
+    );
+    assert_eq!(
+        decode_literal(r"\u{009f}"),
+        char::from_u32(0x9f).unwrap().to_string(),
+        "C1 U+009F must retain scalar identity"
     );
     assert_eq!(
         decode_literal(r"\u{A7}"),
@@ -107,9 +163,14 @@ fn escape_decode_table() {
         "an A-F-leading body must remain part of the escape, not start interpolation"
     );
     assert_eq!(
-        decode_literal(r"\u{1F7E1}"),
-        "🟡",
-        "an astral Unicode scalar must decode as one character"
+        decode_literal(r"\u{1f642}"),
+        "🙂",
+        "a non-BMP Unicode scalar must retain scalar identity"
+    );
+    assert_eq!(
+        decode_literal(r"\\u{000d}"),
+        r"\u{000d}",
+        "a doubled backslash must leave literal backslash-u text"
     );
 
     // Non-ASCII passes through untouched, and -- the point of the migration -- mixing it with
@@ -126,31 +187,20 @@ fn escape_decode_table() {
     );
 }
 
-/// The `\xNN` arm decodes only when BOTH digits are hex; otherwise it declines and the
-/// backslash survives. This is the discriminating pair for the hex arm: an implementation
-/// that fabricated a value for malformed input, or that dropped the backslash, fails here
-/// while `escape_decode_table` alone would still pass.
+/// The `\xNN` arm decodes only when BOTH digits are hex; malformed forms refuse the complete
+/// literal rather than fabricating a value or falling back to literal text.
 #[test]
-fn malformed_hex_escape_declines_rather_than_fabricating() {
-    assert_eq!(
-        decode_literal(r"\xzz"),
-        r"\xzz",
-        "non-hex digits must not decode"
-    );
-    assert_eq!(
-        decode_literal(r"\x1z"),
-        r"\x1z",
-        "a single bad digit must not decode"
-    );
-    // Truncated at end of literal: no digits to read at all.
-    assert_eq!(decode_literal(r"\x"), r"\x", "a bare \\x must not decode");
+fn malformed_hex_escape_refuses() {
+    for malformed in [r"\xzz", r"\x1z", r"\x"] {
+        assert_literal_refuses(malformed);
+    }
 }
 
-/// A syntactically or semantically invalid `\u{...}` remains on the tokenizer's declared
-/// unknown-escape passthrough frontier. In particular, an invalid scalar must not be pushed
-/// into `chars_to_string`, whose conversion skips invalid code points and would silently erase it.
+/// A syntactically or semantically invalid `\u{...}` refuses at its string-literal span. An
+/// invalid scalar must never reach `chars_to_string`, whose conversion skips invalid code points
+/// and would silently erase it.
 #[test]
-fn malformed_unicode_escape_declines_rather_than_disappearing() {
+fn malformed_unicode_escape_refuses_located() {
     for malformed in [
         r"\u{}",
         r"\u{xyz}",
@@ -159,22 +209,15 @@ fn malformed_unicode_escape_declines_rather_than_disappearing() {
         r"\u{110000}",
         r"\u{41",
     ] {
-        assert_eq!(
-            decode_literal(malformed),
-            malformed,
-            "malformed Unicode escape must remain visible: {malformed:?}"
-        );
+        assert_literal_refuses(malformed);
     }
 }
 
-/// `\s` is not in the vocabulary and today resolves to backslash-s. That is a knowingly
-/// RETAINED closed-vocabulary violation, not an accepted one -- `unknown_escape_passthrough_frontier`
-/// in src/v1/01_tokenize.dag carries the census and the dissolution trigger. Pinned here so the
-/// migration cannot change it silently; this assertion flips when that frontier closes.
+/// Unknown escapes are closed-vocabulary violations. A literal backslash must be doubled.
 #[test]
-fn unknown_escape_passthrough_is_retained() {
-    assert_eq!(decode_literal(r"a\sb"), r"a\sb");
-    assert_eq!(decode_literal(r"\."), r"\.");
+fn unknown_escape_refuses_located() {
+    assert_literal_refuses(r"\q");
+    assert_literal_refuses(r"prefix\qsuffix");
 }
 
 /// Best-of-`n` wall time for tokenizing one literal of `repeats` units. Minimum, not mean:

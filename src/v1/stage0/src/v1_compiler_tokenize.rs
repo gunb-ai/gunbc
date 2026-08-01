@@ -892,7 +892,7 @@ pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
 pub fn escape_code_point_table_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 92 backslash, 110 `n`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO are 10 line-feed and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
+            "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL, 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1071,22 +1071,30 @@ pub fn process_escapes_loop(
                             let decoded = if (next.clone() == 34) {
                                 Some(34)
                             } else {
-                                if (next.clone() == 92) {
-                                    Some(92)
+                                if (next.clone() == 48) {
+                                    Some(0)
                                 } else {
-                                    if (next.clone() == 110) {
-                                        Some(10)
+                                    if (next.clone() == 92) {
+                                        Some(92)
                                     } else {
-                                        if (next.clone() == 116) {
-                                            Some(9)
+                                        if (next.clone() == 110) {
+                                            Some(10)
                                         } else {
-                                            if (next.clone() == 123) {
-                                                Some(123)
+                                            if (next.clone() == 114) {
+                                                Some(13)
                                             } else {
-                                                if (next.clone() == 125) {
-                                                    Some(125)
+                                                if (next.clone() == 116) {
+                                                    Some(9)
                                                 } else {
-                                                    None
+                                                    if (next.clone() == 123) {
+                                                        Some(123)
+                                                    } else {
+                                                        if (next.clone() == 125) {
+                                                            Some(125)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
