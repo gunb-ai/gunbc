@@ -18,6 +18,8 @@ use im::Vector;
 
 const FORMAT_VERSION: u32 = 3;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
+/// v3 header sentinel: union output not persisted in payload (semantically incomplete).
+pub const UNION_PART_ABSENT_DIGEST: &str = "ffffffffffffffff";
 const PART_COUNT: usize = 3;
 const PART_DESCRIPTOR_LEN: usize = 8 + 8 + 16; // offset, length, digest
 const V3_HEADER_LEN: usize =
