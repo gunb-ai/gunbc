@@ -422,7 +422,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
         && b == "dispatch/ready-node-afeedfacefeedface"
         && string_contains(s: br, pattern: "Ready")
-        && reasoning_effort_label(effort: e) == "high"
+        && reasoning_effort_label(effort: e) == "medium"
     _ => false
   }
 }
