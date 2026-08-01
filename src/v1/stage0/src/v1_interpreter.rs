@@ -10246,8 +10246,15 @@ fn eval_builtin_inner(
                 positional.get(1).copied(),
                 "observe_stage0_rust_manifest package_root",
             )?;
-            let observation =
-                crate::cli_run::observe_stage0_rust_manifest(&manifest_repo_path, &package_root);
+            let base_ref = expect_str(
+                positional.get(2).copied(),
+                "observe_stage0_rust_manifest base_ref",
+            )?;
+            let observation = crate::cli_run::observe_stage0_rust_manifest(
+                &manifest_repo_path,
+                &package_root,
+                &base_ref,
+            );
             let variant = match observation {
                 crate::cli_run::Stage0RustHostObservation::Observed {
                     repository_revision,

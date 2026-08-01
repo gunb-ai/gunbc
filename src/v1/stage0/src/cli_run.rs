@@ -348,6 +348,7 @@ fn stage0_nul_rust_paths(bytes: Vec<u8>, subject: &str) -> Result<Vec<String>, S
 pub fn observe_stage0_rust_manifest(
     manifest_repo_path: &str,
     package_root: &str,
+    base_ref: &str,
 ) -> Stage0RustHostObservation {
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
@@ -363,27 +364,39 @@ pub fn observe_stage0_rust_manifest(
         Ok(root) => PathBuf::from(root),
         Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
     };
+    observe_stage0_rust_manifest_at(&root, manifest_repo_path, package_root, base_ref)
+}
+
+fn observe_stage0_rust_manifest_at(
+    root: &Path,
+    manifest_repo_path: &str,
+    package_root: &str,
+    base_ref: &str,
+) -> Stage0RustHostObservation {
     let revision = match stage0_git_output(&root, &["rev-parse", "HEAD"])
         .and_then(|bytes| stage0_utf8_line(bytes, "repository revision"))
     {
         Ok(revision) => revision,
         Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
     };
-    let prior_revision = match stage0_git_output(&root, &["rev-parse", "HEAD^"])
-        .and_then(|bytes| stage0_utf8_line(bytes, "prior repository revision"))
+    let baseline_revision = match stage0_git_output(root, &["merge-base", "HEAD", base_ref])
+        .and_then(|bytes| stage0_utf8_line(bytes, "merge-base repository revision"))
     {
         Ok(revision) => revision,
         Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
     };
-    let tracked_rust_repo_paths = match stage0_git_output(&root, &["ls-files", "-z"])
-        .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-files"))
+    let tracked_rust_repo_paths = match stage0_git_output(
+        root,
+        &["ls-tree", "-rz", "--name-only", &revision],
+    )
+    .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree HEAD"))
     {
         Ok(paths) => paths,
         Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
     };
     let prior_tracked_rust_repo_paths =
-        match stage0_git_output(&root, &["ls-tree", "-rz", "--name-only", &prior_revision])
-            .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree"))
+        match stage0_git_output(root, &["ls-tree", "-rz", "--name-only", &baseline_revision])
+            .and_then(|bytes| stage0_nul_rust_paths(bytes, "git ls-tree merge-base"))
         {
             Ok(paths) => paths,
             Err(detail) => return Stage0RustHostObservation::GitObservationRefused { detail },
@@ -398,12 +411,16 @@ pub fn observe_stage0_rust_manifest(
                 }
             }
         };
-    let manifest_path = root.join(manifest_rel);
-    let manifest = match std::fs::read_to_string(&manifest_path) {
+    let manifest_repo_path = manifest_rel.to_string_lossy().replace('\\', "/");
+    let manifest_object = format!("{revision}:{manifest_repo_path}");
+    let manifest = match stage0_git_output(root, &["show", &manifest_object]).and_then(|bytes| {
+        String::from_utf8(bytes)
+            .map_err(|error| format!("manifest object {manifest_object} was not UTF-8: {error}"))
+    }) {
         Ok(content) => content,
-        Err(error) => {
+        Err(detail) => {
             return Stage0RustHostObservation::ManifestReadRefused {
-                detail: format!("failed to read {}: {error}", manifest_path.display()),
+                detail,
             }
         }
     };
@@ -430,8 +447,14 @@ pub fn observe_stage0_rust_manifest(
 #[cfg(test)]
 mod stage0_rust_host_observation_tests {
     use super::{
-        stage0_cargo_bin_repo_paths_from_manifest_text, Stage0CargoBinManifestParseRefusal,
+        observe_stage0_rust_manifest_at, stage0_cargo_bin_repo_paths_from_manifest_text,
+        Stage0CargoBinManifestParseRefusal, Stage0RustHostObservation,
     };
+    use sha2::{Digest, Sha256};
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     const PACKAGE_ROOT: &str = "src/v1/stage0/";
 
@@ -485,6 +508,125 @@ path = "src/bin/claim_batch.rs"
                 PACKAGE_ROOT,
             ),
             Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot)
+        );
+    }
+
+    fn git(root: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .expect("git starts");
+        assert!(
+            output.status.success(),
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("git stdout is UTF-8")
+            .trim()
+            .to_string()
+    }
+
+    #[test]
+    fn observation_uses_merge_base_and_revision_objects_not_first_parent_or_dirty_state() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time after epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-stage0-rust-observation-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("src/v1/stage0/src")).expect("fixture dirs");
+        git(&root, &["init", "-b", "main"]);
+        git(&root, &["config", "user.name", "fixture"]);
+        git(&root, &["config", "user.email", "fixture@example.invalid"]);
+        git(&root, &["config", "commit.gpgsign", "false"]);
+
+        let committed_manifest =
+            "[[bin]]\nname = \"base\"\npath = \"src/base.rs\"\n";
+        fs::write(root.join("src/v1/stage0/Cargo.toml"), committed_manifest)
+            .expect("base manifest");
+        fs::write(root.join("src/v1/stage0/src/base.rs"), "fn base() {}\n")
+            .expect("base Rust");
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "base"]);
+
+        git(&root, &["checkout", "-b", "feature"]);
+        fs::write(
+            root.join("src/v1/stage0/src/feature.rs"),
+            "fn feature() {}\n",
+        )
+        .expect("feature Rust");
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "feature"]);
+
+        git(&root, &["checkout", "main"]);
+        fs::write(
+            root.join("src/v1/stage0/src/base_unrelated.rs"),
+            "fn base_unrelated() {}\n",
+        )
+        .expect("base advance Rust");
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "base advance"]);
+        git(&root, &["checkout", "feature"]);
+        git(&root, &["merge", "--no-ff", "main", "-m", "merge base"]);
+        let head = git(&root, &["rev-parse", "HEAD"]);
+
+        fs::write(
+            root.join("src/v1/stage0/Cargo.toml"),
+            "[[bin]]\nname = \"dirty\"\npath = \"src/dirty.rs\"\n",
+        )
+        .expect("dirty manifest");
+        fs::write(root.join("src/v1/stage0/src/dirty.rs"), "fn dirty() {}\n")
+            .expect("dirty Rust");
+        git(&root, &["add", "src/v1/stage0/src/dirty.rs"]);
+
+        let observation = observe_stage0_rust_manifest_at(
+            &root,
+            "src/v1/stage0/Cargo.toml",
+            PACKAGE_ROOT,
+            "main",
+        );
+        fs::remove_dir_all(&root).expect("fixture cleanup");
+
+        let Stage0RustHostObservation::Observed {
+            repository_revision,
+            manifest_digest,
+            tracked_rust_repo_paths,
+            prior_tracked_rust_repo_paths,
+            cargo_bin_repo_paths,
+        } = observation
+        else {
+            panic!("fixture observation refused")
+        };
+        assert_eq!(repository_revision, head);
+        assert_eq!(
+            manifest_digest,
+            format!("{:x}", Sha256::digest(committed_manifest.as_bytes()))
+        );
+        assert_eq!(
+            cargo_bin_repo_paths,
+            vec!["src/v1/stage0/src/base.rs".to_string()]
+        );
+        assert!(tracked_rust_repo_paths.iter().any(|p| p.ends_with("feature.rs")));
+        assert!(
+            tracked_rust_repo_paths
+                .iter()
+                .any(|p| p.ends_with("base_unrelated.rs"))
+        );
+        assert!(!tracked_rust_repo_paths.iter().any(|p| p.ends_with("dirty.rs")));
+        assert!(
+            prior_tracked_rust_repo_paths
+                .iter()
+                .any(|p| p.ends_with("base_unrelated.rs"))
+        );
+        assert!(
+            !prior_tracked_rust_repo_paths
+                .iter()
+                .any(|p| p.ends_with("feature.rs"))
         );
     }
 }

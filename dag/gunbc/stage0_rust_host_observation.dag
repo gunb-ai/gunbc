@@ -4,13 +4,14 @@ import gunbc.stage0_cargo_manifest {
   stage0_cargo_toml_repo_path,
   stage0_package_root
 }
+import gunbc.repo_identity { gunbc_merge_target_ref }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { Int }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_host_observation_note: String = "Live tracked-Rust host boundary for the stage0 lifecycle carrier. The .dag model owns the complete result space and supplies the manifest and package-root paths from gunbc.stage0_cargo_manifest; the shrinking Rust seed realizes only the Git/filesystem/TOML effects. Success carries the exact HEAD revision, SHA-256 digest of the bytes parsed, current tracked .rs paths from git ls-files, prior tracked .rs paths from HEAD^, and normalized Cargo [[bin]] paths. Git, manifest read, and manifest parse failures are distinct typed refusals; none can become an empty list or RustManifestObserved. The prior tree is the exact parent of repository_revision, so the newly-unclassified ratchet compares one repository transition rather than a caller-selected baseline."
+data stage0_rust_host_observation_note: String = "Live tracked-Rust host boundary for the stage0 lifecycle carrier. The .dag model owns the complete result space and supplies the manifest/package paths from gunbc.stage0_cargo_manifest and the comparison ref from the single repo identity authority gunbc.repo_identity. The shrinking Rust seed realizes only Git-object/TOML effects. Success carries the exact HEAD revision; current tracked .rs paths and Cargo bytes are both read from that revision's tree, never the mutable index or worktree; manifest_digest identifies those exact parsed bytes; prior_tracked_rust_repo_paths comes from git merge-base(HEAD, gunbc_merge_target_ref), never first-parent history. Git, manifest-object read, and manifest parse failures are distinct typed refusals; none can become an empty list or RustManifestObserved."
 
 type RustSourceHostObservation
   = RustManifestObserved {
@@ -26,7 +27,8 @@ type RustSourceHostObservation
 
 data rust_source_host_observation: RustSourceHostObservation = observe_stage0_rust_manifest(
   manifest_repo_path: stage0_cargo_toml_repo_path,
-  package_root: stage0_package_root
+  package_root: stage0_package_root,
+  base_ref: gunbc_merge_target_ref as String
 )
 
 data stage0_rust_host_observation_hand_rust_scaffold: Disposition = Scaffold {
