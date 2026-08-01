@@ -25,7 +25,7 @@ import closures testing whether `std.<b>` and `v2.std.<b>` co-occur in one closu
 | basename | shared type-names | structural verdict | floor co-occurrence | category | unify status |
 | --- | --- | --- | --- | --- | --- |
 | **algebra** | 16 (13 differ; 3 byte-identical `Lattice`/`Magma`/`Ordering`) | same concept, divergent **encoding** (dag flat records vs v2 compositional/coproduct) | **LIVE — 75 entries** | grounding (Root-A: v2 coproduct authority RULED 2026-06-22) | cant-unify-yet, **has path** (de-fork-resolved, not exempted) |
-| **nat** | 1 (`Nat`: `= CommutativeSemiring<Magnitude>` vs `= Zero \| Succ`) | same concept, divergent **model** | **LIVE — 4 entries** | grounding (#5428 numeric tower; escalated smart-ant-466) | cant-unify-yet, has path; BLOCKED + LAST |
+| **nat** | 1 (`Nat`: `= CommutativeSemiring<Magnitude>` vs `= Zero \| Succ`) | same concept, divergent **model** | **LIVE — 138 floor entries** (946 scanned; was 4 @ 351 entries, 2026-06-23) | grounding (#5428 numeric tower; escalated smart-ant-466) | cant-unify-yet, has path; BLOCKED + LAST · census [nat-grounding-unification-design.md](nat-grounding-unification-design.md) |
 | **effects** | 3 (`EffectShape`/`KeySource`/`CreateCause`; `EffectShape` body re-modeled on a different axis) | divergent **axis** (operation-kind vs idempotency-class) | latent (0) | grounding | cant-unify-yet, has path (axis-authority decision) |
 | **float** | 3 (2 differ; 1 byte-identical `Float = Float64`) | same concept, divergent encoding | latent (0) | grounding (#5428) | cant-unify-yet, has path |
 | **integer** | 14 (11 differ only on `MachineWidth<8>` vs `<Word8>`; 3 byte-identical) | same concept, near-identical (token diff) | latent (0) | grounding (#5428) | cant-unify-yet, has path (mechanical once the tower lands) |
@@ -45,7 +45,7 @@ unqualified **type name** within one closure, so it never fires on them; their d
 itself a §5 smell. Recommend marking the roster entry explicitly "Route-C basename, non-firing"
 or dropping it from the guard model.
 2. **The guard's real lands-green gate is the grounding de-fork of the shared-type-name basenames**,
-fronted by the LIVE pair `{algebra (75 floor entries), nat (4)}` — they silently fail-open today
+fronted by the LIVE pair `{algebra (75 floor entries), nat (138)}` — they silently fail-open today
 (benign only because they shadow record-with-record, not the coproduct-variant-drop that broke
 `verification` under A1), and a flag-ANY wall reds them on landing. `{effects, float, integer}`
 are latent (no co-occurrence today) but re-arm risks (exactly how verification went latent→LIVE
