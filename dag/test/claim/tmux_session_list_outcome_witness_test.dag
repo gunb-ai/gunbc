@@ -8,6 +8,9 @@ import extdeps.tmux {
   TmuxSessionsListed,
   TmuxNoServer,
   TmuxListUnknowable,
+  TmuxListStdoutRefused,
+  TmuxLsParsed,
+  TmuxLsParseRefused,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
 }
@@ -21,6 +24,7 @@ test fn witness_no_server_running_classifies_empty() -> Bool {
     TmuxNoServer { evidence: _ } => true
     TmuxSessionsListed { entries: _ } => false
     TmuxListUnknowable { stderr: _ } => false
+    TmuxListStdoutRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
@@ -33,6 +37,7 @@ test fn witness_no_sessions_classifies_empty() -> Bool {
     TmuxNoServer { evidence: _ } => true
     TmuxSessionsListed { entries: _ } => false
     TmuxListUnknowable { stderr: _ } => false
+    TmuxListStdoutRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
@@ -86,8 +91,44 @@ test fn witness_exit_ok_parses_sessions() -> Bool {
 
 test fn witness_ls_output_parse_matches_classifier() -> Bool {
   let output = "gunbc-dispatch-node-4: 2 windows (created Fri Jul  3 04:15:00 2026)\n"
-  count(parse_tmux_ls_output(output: output)) == 1
-    && parse_tmux_ls_output(output: output).first().session_name == "gunbc-dispatch-node-4"
+  match parse_tmux_ls_output(output: output) {
+    TmuxLsParsed { entries } =>
+      count(entries) == 1
+        && entries.first().session_name == "gunbc-dispatch-node-4"
+    TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
+  }
+}
+
+test fn witness_malformed_stdout_line_refuses() -> Bool {
+  match classify_tmux_session_list(
+    exit_ok: true,
+    stdout: "gunbc-dispatch-a: not-a-window-count\n",
+    stderr: "",
+  ) {
+    TmuxListStdoutRefused { line_number, raw, reason } =>
+      line_number == 1
+        && string_contains(s: raw, pattern: "not-a-window-count")
+        && string_contains(s: reason, pattern: "windows")
+    TmuxSessionsListed { entries: _ } => false
+    TmuxNoServer { evidence: _ } => false
+    TmuxListUnknowable { stderr: _ } => false
+  }
+}
+
+test fn witness_truncated_stdout_refuses_not_empty_listed() -> Bool {
+  match classify_tmux_session_list(
+    exit_ok: true,
+    stdout: "gunbc-dispatch-a: 1 windows (created ...)\npartial-line-without-colon\n",
+    stderr: "",
+  ) {
+    TmuxListStdoutRefused { line_number, raw, reason } =>
+      line_number == 2
+        && string_contains(s: raw, pattern: "partial-line-without-colon")
+        && string_contains(s: reason, pattern: "windows")
+    TmuxSessionsListed { entries: _ } => false
+    TmuxNoServer { evidence: _ } => false
+    TmuxListUnknowable { stderr: _ } => false
+  }
 }
 
 test fn witness_attempt_panes_parse_alive_and_exit() -> Bool {

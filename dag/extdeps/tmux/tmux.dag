@@ -18,21 +18,40 @@ data tmux_client_connect_error_authority: ExternalAuthority = ExternalAuthority 
   }
 }
 
-data tmux_session_list_outcome_note: String = "THE ONE CLASSIFIER for tmux list-sessions (`tmux ls`) and any other tmux client command that shares client_connect's stderr vocabulary. Authority: tmux_client_connect_error_authority (upstream client.c client_connect); tmux.Session.List exit contract (`0 => Unit`, `1 => Unit \"No sessions\"`). On exit success the stdout grammar is parsed into TmuxLsEntry rows (`session_name: <windows> windows ...` per line). On exit failure only three documented no-server spellings classify TmuxNoServer: stderr containing `no server running`, `no sessions`, or the conjunctive ENOENT spelling (`error connecting to ` AND `(No such file or directory)`). Upstream renders connect(2) ENOENT that way when the selected Unix socket path does not exist — no tmux server owns that socket and its session set is empty. `(Connection refused)` is deliberately distinct from ENOENT and classifies TmuxListUnknowable, as do permission errors and every other nonzero exit. TmuxListUnknowable must never widen to an empty session set."
+data tmux_session_list_outcome_note: String = "THE ONE CLASSIFIER for tmux list-sessions (`tmux ls`) and any other tmux client command that shares client_connect's stderr vocabulary. Authority: tmux_client_connect_error_authority (upstream client.c client_connect); tmux.Session.List exit contract (`0 => Unit`, `1 => Unit \"No sessions\"`). On exit success the stdout grammar is parsed into TmuxLsEntry rows (`session_name: <windows> windows ...` per line) by parse_tmux_ls_output, which is total and fail-closed: the first malformed non-empty line refuses the whole observation with its 1-based line and raw evidence as TmuxListStdoutRefused — a truncated or corrupted successful response must never widen to an empty or partial session set. On exit failure only three documented no-server spellings classify TmuxNoServer: stderr containing `no server running`, `no sessions`, or the conjunctive ENOENT spelling (`error connecting to ` AND `(No such file or directory)`). `(Connection refused)` is deliberately distinct from ENOENT and classifies TmuxListUnknowable, as do permission errors and every other nonzero exit. TmuxListUnknowable and TmuxListStdoutRefused must never widen to an empty session set."
 
 type TmuxLsEntry {
   session_name: String
   windows: Int
 }
 
-fn parse_tmux_ls_windows(rest: String) -> Int {
-  let parts = split(s: rest, delimiter: " ")
-  match parts.first() {
-    Present { value: s } => match parse_int(s) {
-      Present { value: n } => n
-      Absent => 0
+type TmuxLsParse
+  = TmuxLsParsed { entries: List<TmuxLsEntry> }
+  | TmuxLsParseRefused {
+      line_number: Int,
+      raw: String,
+      reason: String,
     }
-    Absent => 0
+
+type TmuxLsParseFold {
+  entries: List<TmuxLsEntry>
+  next_line_number: Int
+  refused: Bool
+  refused_line_number: Int
+  refused_raw: String
+  refused_reason: String
+}
+
+fn parse_tmux_ls_windows(rest: String) -> Int? {
+  let trimmed = trim(rest)
+  if !string_contains(s: trimmed, pattern: " windows") {
+    none
+  } else {
+    let parts = split(s: trimmed, delimiter: " ")
+    match parts.first() {
+      Present { value: s } => parse_int(s)
+      Absent => none
+    }
   }
 }
 
@@ -53,31 +72,86 @@ fn parse_tmux_ls_line(line: String) -> TmuxLsEntry? {
         Present { value: s } => trim(s)
         Absent => ""
       }
-      Present {
-        value: TmuxLsEntry {
-          session_name: name,
-          windows: parse_tmux_ls_windows(rest: rest),
-        },
+      match parse_tmux_ls_windows(rest: rest) {
+        Present { value: windows } =>
+          Present {
+            value: TmuxLsEntry {
+              session_name: name,
+              windows: windows,
+            },
+          }
+        Absent => none
       }
     }
   }
 }
 
-fn parse_tmux_ls_output(output: String) -> List<TmuxLsEntry> {
-  fold(
-    split(s: output, delimiter: "\n"),
-    init: [],
-    f: (acc, line) => match parse_tmux_ls_line(line: line) {
-      Present { value: e } => append(acc, [e])
-      Absent => acc
+fn parse_tmux_ls_output(output: String) -> TmuxLsParse {
+  let lines = split(s: output, delimiter: "\n")
+  let state = fold(
+    lines,
+    init: TmuxLsParseFold {
+      entries: [],
+      next_line_number: 1,
+      refused: false,
+      refused_line_number: 0,
+      refused_raw: "",
+      refused_reason: "",
+    },
+    f: fn(acc, line) {
+      if acc.refused || trim(line) == "" {
+        TmuxLsParseFold {
+          entries: acc.entries,
+          next_line_number: acc.next_line_number + 1,
+          refused: acc.refused,
+          refused_line_number: acc.refused_line_number,
+          refused_raw: acc.refused_raw,
+          refused_reason: acc.refused_reason,
+        }
+      } else {
+        match parse_tmux_ls_line(line: line) {
+          Present { value: entry } =>
+            TmuxLsParseFold {
+              entries: append(acc.entries, [entry]),
+              next_line_number: acc.next_line_number + 1,
+              refused: false,
+              refused_line_number: 0,
+              refused_raw: "",
+              refused_reason: "",
+            }
+          Absent =>
+            TmuxLsParseFold {
+              entries: acc.entries,
+              next_line_number: acc.next_line_number + 1,
+              refused: true,
+              refused_line_number: acc.next_line_number,
+              refused_raw: line,
+              refused_reason: "expected session_name: <windows> windows ...",
+            }
+        }
+      }
     },
   )
+  if state.refused {
+    TmuxLsParseRefused {
+      line_number: state.refused_line_number,
+      raw: state.refused_raw,
+      reason: state.refused_reason,
+    }
+  } else {
+    TmuxLsParsed { entries: state.entries }
+  }
 }
 
 type TmuxSessionListOutcome
   = TmuxSessionsListed { entries: List<TmuxLsEntry> }
   | TmuxNoServer { evidence: String }
   | TmuxListUnknowable { stderr: String }
+  | TmuxListStdoutRefused {
+      line_number: Int,
+      raw: String,
+      reason: String,
+    }
 
 fn tmux_session_list_stderr_is_no_server(stderr: String) -> Bool {
   string_contains(s: stderr, pattern: "no server running")
@@ -94,7 +168,16 @@ fn classify_tmux_session_list(
   stderr: String,
 ) -> TmuxSessionListOutcome {
   if exit_ok {
-    TmuxSessionsListed { entries: parse_tmux_ls_output(output: stdout) }
+    match parse_tmux_ls_output(output: stdout) {
+      TmuxLsParsed { entries } =>
+        TmuxSessionsListed { entries: entries }
+      TmuxLsParseRefused { line_number, raw, reason } =>
+        TmuxListStdoutRefused {
+          line_number: line_number,
+          raw: raw,
+          reason: reason,
+        }
+    }
   } else if tmux_session_list_stderr_is_no_server(stderr: stderr) {
     TmuxNoServer { evidence: stderr }
   } else {
