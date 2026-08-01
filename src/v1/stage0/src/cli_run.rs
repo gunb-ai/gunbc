@@ -7147,6 +7147,9 @@ struct RepeatedTypecheckAttributionRun {
     key_tracker: HashMap<String, ModuleKeyTracker>,
     rows: Vec<EntryModuleTypecheckRow>,
     entry_timings: Vec<EntryReconcileTiming>,
+    all_hit_probe_rows: Vec<EntryModuleTypecheckRow>,
+    all_hit_probe_active: bool,
+    observed_entry_module_keys: HashSet<(String, String)>,
 }
 
 /// Aggregated repeated-typecheck attribution (entry-graph-union slice 2).
@@ -7177,7 +7180,8 @@ pub struct RepeatedTypecheckAttributionMeasurement {
     pub repeated_typecheck_compute_ns: u128,
     /// Per-module selected-entry fanout (from slice-1 overlap machinery), descending.
     pub fanout_by_module: Vec<(String, usize)>,
-    pub peak_rss_bytes: Option<u64>,
+    pub memory: RepeatedTypecheckAttributionMemoryObservation,
+    pub key_summaries: Vec<ModuleKeyAttributionSummary>,
     /// Cache hits / (hits + misses) — diagnostic only, NOT the decision metric.
     pub cache_hit_ratio: Option<f64>,
     /// Distinct first-computes vs total observations.
@@ -7339,6 +7343,9 @@ pub fn arm_repeated_typecheck_attribution_probe() {
         key_tracker: HashMap::new(),
         rows: Vec::new(),
         entry_timings: Vec::new(),
+        all_hit_probe_rows: Vec::new(),
+        all_hit_probe_active: false,
+        observed_entry_module_keys: HashSet::new(),
     });
 }
 
@@ -15299,12 +15306,83 @@ pub fn wet_hermetic_discovery_outcome_divergences(
     divergences
 }
 
-/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
-pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+fn proc_status_kb_field(prefix: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
+    let line = status.lines().find(|l| l.starts_with(prefix))?;
     let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
     Some(kb.saturating_mul(1024))
+}
+
+/// Current resident set from `/proc/self/status` VmRSS, in bytes.
+pub fn current_rss_bytes() -> Option<u64> {
+    proc_status_kb_field("VmRSS")
+}
+
+/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
+pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+    proc_status_kb_field("VmHWM")
+}
+
+/// `memory.events` `high` counter from the process leaf cgroup, when readable.
+pub fn cgroup_memory_events_high() -> Option<u64> {
+    let dir = crate::memory_governor::leaf_cgroup_dir()?;
+    let raw = crate::memory_governor::read_cgroup_raw(&dir, "memory.events")?;
+    raw.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        let key = parts.next()?;
+        if key != "high" {
+            return None;
+        }
+        parts.next()?.parse().ok()
+    })
+}
+
+fn git_head_sha_or_err() -> Result<String, String> {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| format!("git rev-parse HEAD: {e}"))
+        .and_then(|o| {
+            if o.status.success() {
+                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                Err("git rev-parse HEAD failed".to_string())
+            }
+        })
+}
+
+/// Process memory readings for repeated-typecheck attribution (slice 2).
+///
+/// VmHWM is process-wide high water — it includes selector setup, index construction,
+/// and every resolved entry, not an isolated "attribution retention peak".
+#[derive(Debug, Clone)]
+pub struct RepeatedTypecheckAttributionMemoryObservation {
+    pub rss_before_measurement_bytes: Option<u64>,
+    pub rss_after_measurement_bytes: Option<u64>,
+    pub process_vm_hwm_bytes: Option<u64>,
+    pub cgroup_memory_events_high: Option<u64>,
+}
+
+impl RepeatedTypecheckAttributionMemoryObservation {
+    pub fn capture_pair(before: Option<u64>, after: Option<u64>) -> Self {
+        Self {
+            rss_before_measurement_bytes: before,
+            rss_after_measurement_bytes: after,
+            process_vm_hwm_bytes: peak_rss_vhwm_bytes(),
+            cgroup_memory_events_high: cgroup_memory_events_high(),
+        }
+    }
+}
+
+/// Per typed module content key rollup for the detailed attribution receipt.
+#[derive(Debug, Clone)]
+pub struct ModuleKeyAttributionSummary {
+    pub module_key: String,
+    pub module_path: String,
+    pub selected_entry_fanout: usize,
+    pub hit_count: usize,
+    pub miss_count: usize,
+    pub recompute_count: usize,
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
