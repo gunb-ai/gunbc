@@ -1255,10 +1255,10 @@ does not wait for a native store:
    wait for an executing realization.
    R0 and P−1 may proceed in parallel because neither is allowed to infer the other. R1 waits for
    all three R0 models; the proof kernel waits for P−1.
-   **Status 2026-07-29:** the three R0 receipts, P−1 receipt, and R1 receipt are accepted in
-   `roadmap_authority.dag`. The active source-intent row is now P0. Its first carrier is
-   `gunbc.source_integration_landing_spine`; it consumes the accepted evidence and compatibility
-   shapes but deliberately does not claim the P1 proof kernel or P3 write transport.
+   **Status 2026-08-01:** the three R0 receipts, P−1 receipt, R1 receipt, and P0 receipt are accepted
+   in `roadmap_authority.dag`. P0's `gunbc.source_integration_landing_spine` consumes the accepted
+   evidence and compatibility shapes but deliberately does not claim the P1 proof kernel or P3
+   write transport; those later lanes remain parked.
 5. **P0 — user contract, cost, and layered scenario model:** carry the §0
    `Landed | ChoiceRequired | CouldNotLand` surface, stress profile, proposal contract roles,
    evidence profiles, semantic
