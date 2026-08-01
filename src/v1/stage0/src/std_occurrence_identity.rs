@@ -62,7 +62,7 @@ pub struct OccurrenceId {
 pub fn occurrence_containment_storage_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. It exists because the generic carrier cannot yet be emitted by the v1 stage0 backend without invented generic derive and match-clone obligations.".to_string()
+            "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. It exists because generic stage0 emission of ContainmentPath<OccurrenceId> was blocked until v1.compiler.trait_derive_emit wired item-level generic Clone bounds for #[derive] carriers.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

@@ -65,6 +65,15 @@ pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Item-level Clone bound: a generic type parameter needs N: Clone on the struct or enum declaration when it appears in any field or variant-payload type expression and the item emits #[derive] attributes that require Clone on type parameters. Unused phantom-only parameters are not field types and therefore receive no bound.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructCapabilityEmit {
     pub derive_attr: String,
@@ -290,6 +299,74 @@ pub fn v1_generic_params_needing_clone_bound(
                 ret_name.clone(),
                 body_is_param_ref.clone(),
                 value_params.clone(),
+                source_indices.clone(),
+            ) {
+                __result.push(g);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_type_expr_mentions_param_name(
+    type_expr: Rc<Node>,
+    param_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (authored_name_at(source_indices.clone(), type_expr.clone()) == param_name.clone()) {
+            true
+        } else {
+            {
+                let mut __found = false;
+                for c in type_expr.children.clone().iter().cloned() {
+                    if v1_type_expr_mentions_param_name(
+                        c.clone(),
+                        param_name.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        }
+    })
+}
+
+pub fn v1_item_type_param_needs_clone_bound(
+    param_name: String,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for te in field_type_exprs.clone().iter().cloned() {
+            if v1_type_expr_mentions_param_name(
+                te.clone(),
+                param_name.clone(),
+                source_indices.clone(),
+            ) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn v1_generic_params_needing_clone_bound_for_item(
+    generic_param_names: Rc<Vec<String>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for g in generic_param_names.clone().iter().cloned() {
+            if v1_item_type_param_needs_clone_bound(
+                g.clone(),
+                field_type_exprs.clone(),
                 source_indices.clone(),
             ) {
                 __result.push(g);

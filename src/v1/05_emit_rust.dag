@@ -4643,7 +4643,7 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
 fn enum_variant_field_type_exprs(variants: List<Node>) -> List<Node> {
   variants |> fold(init: [], f: (acc, variant) =>
     variant.children |> fold(init: acc, f: (inner, field) =>
-      concat(inner, [field_node_type_expr(n: field)])
+      concat(inner, [resolved_type(n: field)])
     )
   )
 }
@@ -4666,7 +4666,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
-    let field_type_exprs = item.children |> map(c => field_node_type_expr(n: c))
+    let field_type_exprs = item.children |> map(c => resolved_type(n: c))
     let type_params = emit_item_type_params(params: item.params, field_type_exprs: field_type_exprs, source_indices: env.source_indices)
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
