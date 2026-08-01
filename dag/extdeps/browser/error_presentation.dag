@@ -79,7 +79,8 @@ type BrowserHttpHeader {
 }
 
 type BrowserResponseBodyBytes
-  = EmptyResponseBodyBytes
+  = NoResponseBodyBytes
+  | EmptyResponseBodyBytes
   | Utf8ResponseBodyBytes { body: NonEmptyStr, byte_count: Int }
 
 type BrowserHttpStatusReceipt
@@ -164,7 +165,7 @@ data google_chrome_error_presentation: BrowserPresentationProfile = BrowserPrese
       },
       http_status: NoHttpResponseStatus,
       response_headers: [],
-      response_body_bytes: EmptyResponseBodyBytes,
+      response_body_bytes: NoResponseBodyBytes,
       navigation_result: NavigationRejected {
         error: "net::ERR_CONNECTION_REFUSED" as NonEmptyStr,
       },

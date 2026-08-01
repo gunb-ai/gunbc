@@ -7,6 +7,7 @@ import extdeps.browser.error_presentation {
   BrowserPresentationProfile,
   BrowserPresentationObserved,
   BrowserPresentationUnobserved,
+  NoResponseBodyBytes,
   EmptyResponseBodyBytes,
   Utf8ResponseBodyBytes,
   NoHttpResponseStatus,
@@ -226,7 +227,7 @@ test fn witness_execution_receipt_retains_full_specimens() -> Bool {
         && receipt.connection_refused.browser_build.exact_version == "151.0.7922.34"
         && receipt.connection_refused.http_status == NoHttpResponseStatus
         && count(receipt.connection_refused.response_headers) == 0
-        && receipt.connection_refused.response_body_bytes == EmptyResponseBodyBytes
+        && receipt.connection_refused.response_body_bytes == NoResponseBodyBytes
         && receipt.connection_refused.navigation_result == NavigationRejected {
           error: "net::ERR_CONNECTION_REFUSED" as NonEmptyStr,
         }
