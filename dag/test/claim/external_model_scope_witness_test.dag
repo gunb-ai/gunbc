@@ -14,11 +14,18 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.extdeps_scope_frontier {
   scope_carrier_paths, scope_machinery_exempt_paths,
   legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
+  legacy_manifest_freeze_sha,
 }
+import extdeps.git {
+  DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
+  GitDiffNameStatusComplete, GitDiffNameStatusTruncated,
+  TwoDot, git_diff_name_status_parse,
+}
+import extdeps.git
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
 import extdeps.vendor.microsoft
 import extdeps.vendor.atlassian
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, GitRef }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -276,4 +283,77 @@ test fn frontier_cover_of_live_extdeps_tree_holds() -> Bool {
   w.walk_failures == 0
     && scope_cover_holds(walked: w.files, union: scope_roster_union())
     && (w.files |> count) > 150
+}
+
+data carrier_content_verification_note: String = "codex review 46215, finding half 1: carrier membership was path-asserted only, so a scope_carrier_paths row whose file never declares extdeps_model_scope passed the cover. Closed here: every carrier file's bytes must carry the declaration marker. This is a text presence scan — a declared scaffold (the v2.lens.mandatory_tag corpus_scan / language_source_scaffold_index precedent), strictly better than path assertion, dissolving with the whole storage-grain frontier into the mandatory-tag region whose parse-grain reader replaces it."
+
+fn carrier_content_declares_scope(content: String) -> Bool {
+  string_contains(s: content, pattern: "data extdeps_model_scope:")
+}
+
+test fn red_carrier_content_check_refuses_undeclared() -> Bool {
+  carrier_content_declares_scope(content: "module extdeps.vendor.example\n\ndata something_else: String = \"x\"\n") == false
+}
+
+test fn carriers_declare_scope_on_disk() -> Bool {
+  (scope_carrier_paths |> count) > 0
+    && all(scope_carrier_paths, p => carrier_content_declares_scope(content: filesystem_read(path: p).content))
+}
+
+data manifest_freeze_check_note: String = "codex review 46215, finding half 2: the manifest's remove-only lifecycle was review discipline, not mechanics. Closed here: every manifest row must name a file that already existed at legacy_manifest_freeze_sha — the witness diffs freeze..HEAD with the same git.Core.DiffNameStatus + parse the publication placement gate uses, and refuses any manifest row in the added/copied/renamed set. Diff failure and parse truncation are reds, never skips (a broken freeze probe must not report frozen)."
+
+type PostFreezeObservation
+  = PostFreezeAdded { paths: List<String> }
+  | PostFreezeDiffFailed
+  | PostFreezeParseTruncated
+
+fn post_freeze_added_paths() -> PostFreezeObservation {
+  let diff = git.Core.DiffNameStatus(
+    base: legacy_manifest_freeze_sha as GitRef,
+    head: "HEAD" as GitRef,
+    range: TwoDot,
+  )
+  if diff.success {
+    match git_diff_name_status_parse(raw: diff.raw) {
+      GitDiffNameStatusTruncated { pending: _, entries: _ } => PostFreezeParseTruncated
+      GitDiffNameStatusComplete { entries: entries } =>
+        PostFreezeAdded {
+          paths: fold(entries, init: [], f: fn(acc, entry) {
+            match entry.status {
+              DiffAddedStatus => concat(acc, [entry.path])
+              DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
+              DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
+              _ => acc
+            }
+          })
+        }
+    }
+  } else {
+    PostFreezeDiffFailed
+  }
+}
+
+fn manifest_freeze_holds(manifest: List<String>, observation: PostFreezeObservation) -> Bool {
+  match observation {
+    PostFreezeDiffFailed => false
+    PostFreezeParseTruncated => false
+    PostFreezeAdded { paths: added } =>
+      all(manifest, row => !strings_contain(xs: added, s: row))
+  }
+}
+
+test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool {
+  manifest_freeze_holds(
+    manifest: ["dag/extdeps/a.dag", "dag/extdeps/smuggled_new_module.dag"],
+    observation: PostFreezeAdded { paths: ["dag/extdeps/smuggled_new_module.dag"] }
+  ) == false
+}
+
+test fn red_manifest_freeze_refuses_failed_diff() -> Bool {
+  manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeDiffFailed) == false
+    && manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeParseTruncated) == false
+}
+
+test fn manifest_rows_all_predate_freeze_sha() -> Bool {
+  manifest_freeze_holds(manifest: read_manifest_rows(), observation: post_freeze_added_paths())
 }
