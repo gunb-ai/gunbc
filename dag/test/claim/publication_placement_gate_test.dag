@@ -1,0 +1,95 @@
+module test.claim.publication_placement_gate
+
+import std.types { Bool, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.publication_grant {
+  PublicPublicationGrantRoster,
+  public_root_publish_baseline,
+  public_file_publish_grant,
+}
+import gunbc.ci_gate { PublicationPlacementGate }
+import gunbc.commit_workflow {
+  CommitSpecGate, GithubActionsCiJob,
+  commit_gate_roster, commit_workflow_surface_eq, gate_eq,
+}
+import tools.publication_placement_gate {
+  PublishGuardLocalOutcome, PublishGuardLocalAccepted, PublishGuardLocalRefused,
+  PublishGuardLocalViolation, AddedPathPublishGrantAbsent,
+  publication_guard_local_check, publication_guard_process_exit,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data publication_placement_acceptance_note: String = "Discriminating P-B acceptance probes over the real gate decision and boundary. The ungranted added path reaches a located AddedPathPublishGrantAbsent and an ExitFailure; adding its roster envelope reaches ExitSuccess. Both call publication_guard_local_check, whose only publication decision is std.effect_grant.admit_effect(Publish, world_audience), then publication_guard_process_exit, the same boundary the live gate runs. Live git.Core.DiffNameStatus execution from the exact cutover to HEAD is enrolled separately as the Wet server-side floor runnable tools.floor_effect_gate_witness.publication_placement_gate_passes; it is not duplicated into the hermetic discovery corpus."
+
+data synthetic_added_path: String = "dag/example/new_public_file.dag"
+
+fn exit_is_success(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    ExitFailure { code: code, reason: reason } => false
+  }
+}
+
+fn ungranted_roster() -> PublicPublicationGrantRoster {
+  PublicPublicationGrantRoster {
+    baseline: public_root_publish_baseline,
+    file_grants: [],
+  }
+}
+
+fn granted_roster() -> PublicPublicationGrantRoster {
+  PublicPublicationGrantRoster {
+    baseline: public_root_publish_baseline,
+    file_grants: [public_file_publish_grant(path: synthetic_added_path)],
+  }
+}
+
+test fn added_ungranted_public_path_reds_gate() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: ungranted_roster(),
+    added_paths: [synthetic_added_path],
+    head: "synthetic-head",
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } => false
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
+      violations.count() == 1
+        && match violations.first() {
+          AddedPathPublishGrantAbsent { path: path, root: root, audience: audience } =>
+            path == synthetic_added_path && root == "."
+          _ => false
+        }
+        && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+  }
+}
+
+test fn added_granted_public_path_greens_gate() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: granted_roster(),
+    added_paths: [synthetic_added_path],
+    head: "synthetic-head",
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } =>
+      receipt.root == "."
+        && receipt.file_marker_paths == [synthetic_added_path]
+        && receipt.added_paths == [synthetic_added_path]
+        && exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } => false
+  }
+}
+
+test fn publication_placement_gate_is_server_side_only() -> Bool {
+  let rows = filter(commit_gate_roster, row => match row.check {
+    CommitSpecGate { gate: gate } => gate_eq(a: gate, b: PublicationPlacementGate)
+    _ => false
+  })
+  rows.count() == 1
+    && rows.first().surfaces.count() == 1
+    && commit_workflow_surface_eq(
+      a: rows.first().surfaces.first(),
+      b: GithubActionsCiJob,
+    )
+}

@@ -1,9 +1,9 @@
 module tools.publication_placement_gate
 
-import std.types { Bool, FilePath, GitRef, Int, List, String, join, map, to_string }
+import std.types { FilePath, GitRef, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.effect_grant {
-  Publish, NamespacePosition, Envelope, EffectAdmission, Admitted, EffectOutsideGrant,
+  Publish, NamespacePosition, EffectAdmission, Admitted, EffectOutsideGrant,
   admit_effect,
 }
 import std.materialization_ladder { Frame }
@@ -11,6 +11,8 @@ import std.visibility_grant { world_audience }
 import extdeps.git {
   GitDiffStatusEntry, DiffAddedStatus, DiffUnknownGitStatus,
   GitDiffNameStatusComplete, GitDiffNameStatusTruncated,
+  GitDiffNameStatusParsePending,
+  AwaitingStatusToken, AwaitingSinglePath, AwaitingOldPath, AwaitingNewPath,
   TwoDot, git_diff_name_status_parse,
 }
 import extdeps.git
@@ -21,17 +23,20 @@ import gunbc.publication_grant {
 
 data publication_placement_gate_note: String = "Server-side Stage-0 publication wall. It observes ONLY the mounted public checkout, computes paths whose cutover-to-HEAD git status is Added, locates each path's roster envelope, and delegates the Publish World decision to std.effect_grant.admit_effect. Missing/ambiguous markers, refused grants, git failures, truncated parses, and unknown statuses are distinct typed PublishGuardLocalViolation causes; none widens to a scan or proceeds. The coverage receipt names exactly the public mount, the roster markers, and additions checked. It makes no PublishClosureGap/PublishAncestorNarrower or private-root claim. This becomes the enforcement wall when the operator makes the CI check required in branch protection; no client hook is an authority."
 
-type PublishGuardMount = PublishGuardPublicRootOnly
+type PublishGuardPublicRootOnly {}
 
-type PublishGuardCoverage = PublishGuardOwnMarkersAndAddedPathsOnly
+type PublishGuardOwnMarkersAndAddedPathsOnly {}
+
+type PublishGuardBaselineMarkerChecked {}
 
 type PublishGuardLocalCoverageReceipt {
-  mount: PublishGuardMount
-  coverage: PublishGuardCoverage
+  mount: PublishGuardPublicRootOnly
+  coverage: PublishGuardOwnMarkersAndAddedPathsOnly
   root: FilePath
   cutover: String
   head: String
-  marker_paths: List<FilePath>
+  baseline_marker: PublishGuardBaselineMarkerChecked
+  file_marker_paths: List<FilePath>
   added_paths: List<FilePath>
 }
 
@@ -70,6 +75,7 @@ type PublishGuardLocalViolation
       root: FilePath,
       cutover: String,
       head: String,
+      pending: GitDiffNameStatusParsePending,
     }
   | PublicRootDiffStatusUnknown {
       path: FilePath,
@@ -189,12 +195,13 @@ fn publication_guard_local_check(
   })
   let violations = append(baseline_violations, items: path_violations)
   let receipt = PublishGuardLocalCoverageReceipt {
-    mount: PublishGuardPublicRootOnly,
-    coverage: PublishGuardOwnMarkersAndAddedPathsOnly,
+    mount: PublishGuardPublicRootOnly {},
+    coverage: PublishGuardOwnMarkersAndAddedPathsOnly {},
     root: roster.baseline.root,
     cutover: roster.baseline.cutover,
     head: head,
-    marker_paths: public_file_grant_paths(grants: roster.file_grants),
+    baseline_marker: PublishGuardBaselineMarkerChecked {},
+    file_marker_paths: public_file_grant_paths(grants: roster.file_grants),
     added_paths: added_paths,
   }
   if violations.count() == 0 {
@@ -259,6 +266,7 @@ fn observe_publication_guard_local(
           root: baseline.root,
           cutover: baseline.cutover,
           head: head,
+          pending: pending,
         }],
       }
       GitDiffNameStatusComplete { entries: entries } => {
@@ -277,6 +285,15 @@ fn observe_publication_guard_local(
   }
 }
 
+fn render_diff_parse_pending(pending: GitDiffNameStatusParsePending) -> String {
+  match pending {
+    AwaitingStatusToken => "AwaitingStatusToken"
+    AwaitingSinglePath { status: status } => "AwaitingSinglePath"
+    AwaitingOldPath { status: status } => "AwaitingOldPath"
+    AwaitingNewPath { status: status, old_path: old_path } => "AwaitingNewPath"
+  }
+}
+
 fn render_publish_guard_local_violation(violation: PublishGuardLocalViolation) -> String {
   match violation {
     BaselinePublishGrantRefused { root, cutover, verb, target, frame } =>
@@ -289,8 +306,8 @@ fn render_publish_guard_local_violation(violation: PublishGuardLocalViolation) -
       join(["added public path is not granted Publish World: path=", path, " root=", root, " frame=", frame.name], "")
     PublicRootDiffReadFailure { root, cutover, head } =>
       join(["public-root git.Core.DiffNameStatus failed: root=", root, " cutover=", cutover, " head=", head], "")
-    PublicRootDiffParseTruncated { root, cutover, head } =>
-      join(["public-root name-status parse truncated: root=", root, " cutover=", cutover, " head=", head], "")
+    PublicRootDiffParseTruncated { root, cutover, head, pending } =>
+      join(["public-root name-status parse truncated: root=", root, " cutover=", cutover, " head=", head, " pending=", render_diff_parse_pending(pending: pending)], "")
     PublicRootDiffStatusUnknown { path, root, cutover, head, raw_status } =>
       join(["public-root name-status unknown: path=", path, " root=", root, " cutover=", cutover, " head=", head, " status=", raw_status], "")
   }
@@ -301,8 +318,11 @@ fn render_publish_guard_receipt(receipt: PublishGuardLocalCoverageReceipt) -> St
     "checked public mount only: root=", receipt.root,
     " cutover=", receipt.cutover,
     " head=", receipt.head,
-    " own_markers=", to_string(receipt.marker_paths.count()),
+    " baseline_marker=checked",
+    " file_markers=", to_string(receipt.file_marker_paths.count()),
+    " file_marker_paths=[", join(receipt.file_marker_paths, ","), "]",
     " additions=", to_string(receipt.added_paths.count()),
+    " added_paths=[", join(receipt.added_paths, ","), "]",
     " composed_graph_closure=not_checked",
   ], "")
 }

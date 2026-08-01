@@ -2,7 +2,7 @@ module gunbc.publication_grant
 
 import std.types { CommitSha, FilePath, List, String }
 import std.effect_grant {
-  Publish, AudienceScopeTree, NamespacePosition,
+  Publish,
   Envelope, Grant, RealTransport, LifecycleByConstruction,
 }
 import std.materialization_ladder { Frame, SharedStateFrame }
