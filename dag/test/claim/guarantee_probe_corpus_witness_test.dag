@@ -4,6 +4,7 @@ import gunbc.guarantee_probe_corpus {
   guarantee_probe_corpus_charter_note,
   v1_compile_rust_path_id,
   v2_infer_eval_path_id,
+  v2_infer_translate_path_id,
   guarantee_probe_paths,
   guarantee_probe_class_ids,
   guarantee_probe_ids,
@@ -11,6 +12,7 @@ import gunbc.guarantee_probe_corpus {
   method_established_surface_class,
   declared_conformance_ground_class,
   v2_self_grounding_frontier_class,
+  v2_translate_underived_refusal_class,
   call_mislabel_red_probe,
   call_surplus_red_probe,
   call_shape_green_probe,
@@ -20,19 +22,26 @@ import gunbc.guarantee_probe_corpus {
   conformance_green_probe,
   v2_frontier_red_probe,
   v2_frontier_green_probe,
+  v2_translate_underived_red_probe,
+  v2_translate_underived_green_probe,
   ProbeExpectation,
   ExpectBlockingRefusal,
   ExpectZeroDiagnostics,
   probe_expectation_holds,
+  probe_observation_from_census,
+  observation_is_blocking_refusal,
+  observation_is_clean,
   build_v1_compile_receipt,
+  build_v2_phase_receipt,
   receipt_joins_v1_compile_path,
   census_blocking_count_for_class,
   census_any_count_for_class,
+  probe_ids_match_canonical_order,
 }
 import gunbc.guarantee_measurement {
   GuaranteeMeasurementReceipt,
   ProbeObservation, RefusedTyped, AcceptedClean, AcceptedCounted, ExecutionDiverged, ProbeNotRunnable,
-  AcceptanceBoundary, InferToEval,
+  AcceptanceBoundary, InferToEval, InferToTranslate,
   observed_is_verdict,
   guarantee_class_ids_unique, guarantee_path_ids_unique,
   join_receipt_to_path, ReceiptJoined,
@@ -51,7 +60,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (v2-self-grounding-frontier identities) execute through gunbc.guarantee_measurement identities. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation, and builds a GuaranteeMeasurementReceipt that joins its declared path. The dark-suite originals in compiler_tests.rs remain until the finite classification in gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family."
+data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), gunbc#7485 (InferToEval self-grounding frontier), and gunbc#7555 (InferToTranslate underived-refusal identities reserved) execute through gunbc.guarantee_measurement identities. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 executing probes remain in src/v2/test/claim/infer_self_grounding_wall_test.dag, keyed to the same identities."
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -202,6 +211,74 @@ test fn not_runnable_never_satisfies_expectation() -> Bool {
     )
 }
 
+test fn probe_ids_are_canonically_ordered() -> Bool {
+  probe_ids_match_canonical_order(ids: guarantee_probe_ids())
+}
+
+test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
+  let census = census_of(source: call_mislabel_source)
+  probe_expectation_holds(
+    census: census,
+    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+  )
+    && !probe_expectation_holds(
+      census: census,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
+    )
+}
+
+test fn surplus_red_does_not_satisfy_mislabel_expectation() -> Bool {
+  let census = census_of(source: call_surplus_source)
+  probe_expectation_holds(
+    census: census,
+    expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
+  )
+    && !probe_expectation_holds(
+      census: census,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+    )
+}
+
+test fn green_control_fails_blocking_refusal_expectation() -> Bool {
+  let census = census_of(source: call_shape_green_source)
+  probe_expectation_holds(census: census, expectation: ExpectZeroDiagnostics)
+    && !probe_expectation_holds(
+      census: census,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+    )
+}
+
+test fn observation_fold_routes_blocking_refusal() -> Bool {
+  let obs = probe_observation_from_census(
+    census: census_of(source: call_mislabel_source),
+    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+  )
+  observation_is_blocking_refusal(o: obs, wanted: "CallArgumentNameUnknown" as NonEmptyStr)
+    && !observation_is_clean(o: obs)
+}
+
+test fn v2_translate_identities_are_declared() -> Bool {
+  (v2_infer_translate_path_id as String) == "v2-infer-translate"
+    && (v2_translate_underived_refusal_class as String) == "v2-translate-underived-refusal"
+    && (v2_translate_underived_red_probe as String) == "v2-translate-underived-refusal-conj-red"
+}
+
+test fn v2_translate_path_joins_the_registry() -> Bool {
+  match join_receipt_to_path(
+    receipt: build_v2_phase_receipt(
+      class: v2_translate_underived_refusal_class,
+      path: v2_infer_translate_path_id,
+      probe: v2_translate_underived_red_probe,
+      observed: RefusedTyped { diagnostic_class: "translate_rejected_grounding_not_derived" as NonEmptyStr, count: 1 },
+    ),
+    paths: guarantee_probe_paths(),
+  ) {
+    ReceiptJoined { path: p } => (p.acceptance_boundary == InferToTranslate)
+    ReceiptPathUnknown { receipt_path: _ } => false
+    ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+  }
+}
+
 test fn v2_frontier_identities_are_declared() -> Bool {
   (v2_infer_eval_path_id as String) == "v2-infer-eval"
     && (v2_self_grounding_frontier_class as String) == "v2-self-grounding-frontier"
@@ -211,15 +288,12 @@ test fn v2_frontier_identities_are_declared() -> Bool {
 
 test fn v2_infer_eval_path_joins_the_registry() -> Bool {
   match join_receipt_to_path(
-    receipt: GuaranteeMeasurementReceipt {
+    receipt: build_v2_phase_receipt(
       class: v2_self_grounding_frontier_class,
       path: v2_infer_eval_path_id,
       probe: v2_frontier_red_probe,
-      subject_revision: "0000000000000000000000000000000000000000" as CommitSha,
-      harness_revision: "1111111111111111111111111111111111111111" as CommitSha,
-      probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
       observed: AcceptedCounted { diagnostic_class: "GroundingNotDerived" as NonEmptyStr, count: 1 },
-    },
+    ),
     paths: guarantee_probe_paths(),
   ) {
     ReceiptJoined { path: p } => (p.acceptance_boundary == InferToEval)
