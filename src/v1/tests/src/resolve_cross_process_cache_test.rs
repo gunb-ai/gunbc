@@ -268,6 +268,15 @@ fn malformed_header_probe_refuses_as_backend_key_malformed() {
         other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
     }
 
+    with_cache_env(&cache_dir, || {
+        let index = build_multi_entry_index(&roots);
+        let err = resolve_entry_with_index(&index, &a).expect_err("malformed header must refuse");
+        assert!(
+            err.contains("backend key malformed"),
+            "malformed header must refuse before rebuilding: {err}"
+        );
+    });
+
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -291,6 +300,15 @@ fn malformed_header_truncated_read_refuses_as_backend_key_malformed() {
         CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
         other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
     }
+
+    with_cache_env(&cache_dir, || {
+        let index = build_multi_entry_index(&roots);
+        let err = resolve_entry_with_index(&index, &a).expect_err("truncated header must refuse");
+        assert!(
+            err.contains("backend key malformed"),
+            "truncated header must refuse before rebuilding: {err}"
+        );
+    });
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -319,13 +337,10 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
 
     with_cache_env(&cache_dir, || {
         let index = build_multi_entry_index(&roots);
-        let (recomputed, si2) =
-            resolve_entry_with_index(&index, &a).expect("recompute after subject poison");
-        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
-        assert_eq!(
-            outcome_tag(&run_claim(&ctx, "witness_a_true")),
-            "PASS",
-            "subject poison must fall through to fresh resolve"
+        let err = resolve_entry_with_index(&index, &a).expect_err("subject poison must refuse");
+        assert!(
+            err.contains("backend key malformed"),
+            "subject poison must refuse before rebuilding: {err}"
         );
     });
 

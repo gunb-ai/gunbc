@@ -95,12 +95,6 @@ struct CachePayload {
     source_indices: HashMap<String, NewlineIndex>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct LegacyCachePayload {
-    graph: ResolvedGraph,
-    source_indices: HashMap<String, NewlineIndex>,
-}
-
 fn sort_json_value(value: serde_json::Value) -> serde_json::Value {
     match value {
         serde_json::Value::Object(map) => {

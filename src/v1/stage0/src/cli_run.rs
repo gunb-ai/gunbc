@@ -10278,7 +10278,11 @@ fn resolved_graph_from_sources_with_index(
                         CacheRejectReason::ContentDigestMismatch,
                     ));
                 }
-                CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+                CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::BackendKeyMalformed,
+                    ));
+                }
                 CacheProbeResult::Miss => {}
             }
         }

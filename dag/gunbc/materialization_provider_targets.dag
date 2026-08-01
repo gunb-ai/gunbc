@@ -48,9 +48,9 @@ data materialization_provider_targets: List<ProviderContractTarget> = [
   ProviderContractTarget {
     cache: resolved_graph_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_facts"),
-    consumer_seam: target_decl(module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "serve_resolved_graph_v1_disk_probe"),
-    reason: "the FIRST NAMED CONSUMER TARGET: the Rust bridge now gates the disk seam on a metadata-only cache probe, and the transport refuses faithfully before the interpreter is reached when the cache format cannot supply per-output digests and byte sizes; the disk-hit seam stays red until that format lands",
-    dissolve_on: "resolved_graph_cache FORMAT_VERSION persists per-output digests and byte sizes, the transport can hand a faithful probe to provider_serve, and gunbc.materialization_provider_consumer_scaffold retires the v1 interpreter bridge"
+    consumer_seam: target_decl(module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "serve_resolved_graph_v2_disk_probe"),
+    reason: "Dispatch G production consumer: the Rust bridge routes verified v2 disk probes through provider_serve; legacy v1 artifacts probe-hit with parts=None and fall through to cold compile",
+    dissolve_on: "witness-realization lands a typed host-effect transport for provider_serve lookups (docs/plans/witness-realization-plan.md) OR cli_run hollowing-plan area 2.6 retires the resolved_graph cross-process hand path"
   },
   ProviderContractTarget {
     cache: compile_stage_memo_id,

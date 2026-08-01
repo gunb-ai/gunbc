@@ -7,7 +7,7 @@ data materialization_provider_consumer_hand_rust_scaffold: Disposition = Scaffol
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "v1_compiler.cli_run.materialization_provider_consumer",
-    decl_name: "serve_resolved_graph_v1_disk_probe",
+    decl_name: "serve_resolved_graph_v2_disk_probe",
     field: WholeDeclaration
   }
 }
