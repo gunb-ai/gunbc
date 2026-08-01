@@ -6,12 +6,24 @@ import gunbc.generated_artifact {
   artifact_path
 }
 import gunbc.gitattributes_emit {
+  GitattributesGenerated,
+  GitattributesGenerationRefused,
   expected_gitattributes,
   all_committed_paths_have_merge_rows,
   dag_linguist_presentation_policy_pattern,
   dag_linguist_presentation_policy_attribute,
   generated_projection_merge_attribute,
   gitattributes_has_merge_row_for
+}
+import gunbc.generated_projection_paths {
+  CommittedGeneratedArtifact,
+  GeneratedProjectionPathCollision,
+  GeneratedProjectionPathRow,
+  GeneratedProjectionPathsAccepted,
+  GeneratedProjectionPathsRefused,
+  Stage0EmittedRust,
+  deterministic_generated_projection_paths,
+  deterministic_generated_projection_paths_from_rows
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -24,21 +36,43 @@ test fn witness_all_committed_paths_have_merge_rows_holds() -> Bool {
   count(committed_generated_artifact_paths()) > 0
     && all_committed_paths_have_merge_rows()
     && gitattributes_has_merge_row_for(path: ".gitattributes")
+    && gitattributes_has_merge_row_for(path: "src/v1/stage0/src/std_algebra.rs")
+}
+
+test fn witness_projection_population_contains_stage0_rust() -> Bool {
+  match deterministic_generated_projection_paths() {
+    GeneratedProjectionPathsRefused { cause: _ } => false
+    GeneratedProjectionPathsAccepted { paths } => paths |> any(path => path == "src/v1/stage0/src/std_algebra.rs")
+  }
+}
+
+test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
+  match deterministic_generated_projection_paths_from_rows(rows: [
+    GeneratedProjectionPathRow { path: "same/path.rs", source: CommittedGeneratedArtifact },
+    GeneratedProjectionPathRow { path: "same/path.rs", source: Stage0EmittedRust }
+  ]) {
+    GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathCollision { path, first_source, duplicate_source } } =>
+      path == "same/path.rs" && first_source == CommittedGeneratedArtifact && duplicate_source == Stage0EmittedRust
+    GeneratedProjectionPathsAccepted { paths: _ } => false
+  }
 }
 
 test fn witness_presentation_policy_row_present_holds() -> Bool {
-  string_contains(
-    s: expected_gitattributes(),
-    pattern: concat(
-      concat(dag_linguist_presentation_policy_pattern, " "),
-      dag_linguist_presentation_policy_attribute
+  match expected_gitattributes() {
+    GitattributesGenerationRefused => false
+    GitattributesGenerated { content } => string_contains(
+      s: content,
+      pattern: concat(concat(dag_linguist_presentation_policy_pattern, " "), dag_linguist_presentation_policy_attribute)
     )
-  )
+  }
 }
 
 test fn witness_committed_matches_emit_holds() -> Bool {
   let committed = Filesystem.Read(path: artifact_path(a: GitattributesArtifact))
-  committed.success && (committed.content == expected_gitattributes())
+  match expected_gitattributes() {
+    GitattributesGenerationRefused => false
+    GitattributesGenerated { content } => committed.success && committed.content == content
+  }
 }
 
 test fn witness_red_missing_merge_row_fails() -> Bool {
@@ -47,12 +81,16 @@ test fn witness_red_missing_merge_row_fails() -> Bool {
 
 test fn witness_red_perturbed_emit_drifts() -> Bool {
   let committed = Filesystem.Read(path: artifact_path(a: GitattributesArtifact))
-  committed.success
-    && !(concat(committed.content, "\n# perturb") == expected_gitattributes())
+  match expected_gitattributes() {
+    GitattributesGenerationRefused => false
+    GitattributesGenerated { content } => committed.success && !(concat(committed.content, "\n# perturb") == content)
+  }
 }
 
 test fn witness_holds() -> Bool {
   witness_all_committed_paths_have_merge_rows_holds()
+    && witness_projection_population_contains_stage0_rust()
+    && witness_duplicate_projection_path_refuses_before_emission()
     && witness_presentation_policy_row_present_holds()
     && witness_committed_matches_emit_holds()
     && witness_red_missing_merge_row_fails()

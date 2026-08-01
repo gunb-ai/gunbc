@@ -16,7 +16,7 @@ import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.falsifier_workflow { expected_falsifier_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
-import gunbc.gitattributes_emit { expected_gitattributes }
+import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
@@ -55,7 +55,10 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     CiYamlArtifact => artifact_generated(content: expected_ci_yml())
     FalsifierYamlArtifact => artifact_generated(content: expected_falsifier_yml())
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
-    GitattributesArtifact => artifact_generated(content: expected_gitattributes())
+    GitattributesArtifact => match expected_gitattributes() {
+      GitattributesGenerated { content } => artifact_generated(content: content)
+      GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
+    }
     RoadmapArtifact => artifact_generated(content: expected_roadmap_md())
     DesignArtifact => artifact_generated(content: expected_design_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())

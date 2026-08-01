@@ -9364,11 +9364,7 @@ macro_rules! v1_builtin_arms {
                         ])),
                     })
                     .collect();
-                Ok(Some(Value::Variant {
-                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
-                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
-                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
-                }))
+                Ok(Some(list_value(items)))
             },
 
             arm "free_call.parse_stage0_cargo_manifest_bins" { "parse_stage0_cargo_manifest_bins" } => {
@@ -9446,7 +9442,11 @@ macro_rules! v1_builtin_arms {
                         ])),
                     })
                     .collect::<Vec<_>>();
-                Ok(Some(list_value(items)))
+                Ok(Some(Value::Variant {
+                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
+                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
+                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
+                }))
             },
 
             arm "free_call.to_string" { "to_string" } => {

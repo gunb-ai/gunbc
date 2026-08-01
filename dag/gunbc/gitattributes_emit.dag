@@ -1,8 +1,14 @@
 module gunbc.gitattributes_emit
 
-import gunbc.generated_artifact {
-  committed_generated_artifact_paths
+import gunbc.generated_projection_paths {
+  GeneratedProjectionPathsAccepted,
+  GeneratedProjectionPathsRefused,
+  deterministic_generated_projection_paths
 }
+
+type GitattributesGenerationOutcome
+  = GitattributesGenerated { content: String }
+  | GitattributesGenerationRefused
 
 data gitattributes_emit_authority_note: String = "THE committed byte projection through which Git receives the relevant subset of the modeled repository-path policy (generated-file conflict policy charter, lane 2, operator-ruled 2026-08-01). Presentation-policy rows (linguist) and integration-policy rows (merge driver attribute) are orthogonal facts derived from separate authorities — generated provenance does not imply linguist-hidden, and neither row is hand-authored in the committed file. The merge-attribute population is committed_generated_artifact_paths() verbatim until lane 3 (#7609, merry-deer-815): deterministic_generated_projection_paths() replaces it in generated_projection_merge_policy_lines() only, with duplicate-path refusal before row emission; committed_generated_artifact_paths() stays the heal/registry authority. .gitattributes classifies itself through the same derivation with no handwritten self-row. The merge-driver DEFINITION lives in repository-local Git config (gunbc.repo_local_git_config), not in this file."
 
@@ -28,21 +34,18 @@ fn presentation_policy_lines() -> List<String> {
   ]
 }
 
-fn generated_projection_merge_policy_lines() -> List<String> {
-  let paths = committed_generated_artifact_paths()
+fn generated_projection_merge_policy_lines() -> GitattributesGenerationOutcome {
   let header = [
     "# Integration policy — deterministic generated projections: provisional ours during merge,",
     "# then regenerate from merged authorities before commit (charter four-case policy row 1).",
     ""
   ]
-  concat(header, map(paths, p => concat(concat(p, " "), generated_projection_merge_attribute)))
-}
-
-fn gitattributes_body_lines() -> List<String> {
-  concat(
-    concat(gitattributes_header_lines(), presentation_policy_lines()),
-    generated_projection_merge_policy_lines()
-  )
+  match deterministic_generated_projection_paths() {
+    GeneratedProjectionPathsRefused { cause: _ } => GitattributesGenerationRefused
+    GeneratedProjectionPathsAccepted { paths } => GitattributesGenerated {
+      content: join_lines(lines: concat(header, map(paths, p => concat(concat(p, " "), generated_projection_merge_attribute))))
+    }
+  }
 }
 
 fn join_lines(lines: List<String>) -> String {
@@ -51,21 +54,38 @@ fn join_lines(lines: List<String>) -> String {
   })
 }
 
-fn expected_gitattributes() -> String {
-  concat(join_lines(lines: gitattributes_body_lines()), "\n")
+fn expected_gitattributes() -> GitattributesGenerationOutcome {
+  match generated_projection_merge_policy_lines() {
+    GitattributesGenerationRefused => GitattributesGenerationRefused
+    GitattributesGenerated { content } => GitattributesGenerated {
+      content: concat(
+        concat(join_lines(lines: concat(gitattributes_header_lines(), presentation_policy_lines())), "\n"),
+        concat(content, "\n")
+      )
+    }
+  }
 }
 
 fn gitattributes_drifted(committed: String) -> Bool {
-  !(committed == expected_gitattributes())
+  match expected_gitattributes() {
+    GitattributesGenerationRefused => true
+    GitattributesGenerated { content } => !(committed == content)
+  }
 }
 
 fn gitattributes_has_merge_row_for(path: String) -> Bool {
-  string_contains(
-    s: expected_gitattributes(),
-    pattern: concat(concat(path, " "), generated_projection_merge_attribute)
-  )
+  match expected_gitattributes() {
+    GitattributesGenerationRefused => false
+    GitattributesGenerated { content } => string_contains(
+      s: content,
+      pattern: concat(concat(path, " "), generated_projection_merge_attribute)
+    )
+  }
 }
 
 fn all_committed_paths_have_merge_rows() -> Bool {
-  all(committed_generated_artifact_paths(), p => gitattributes_has_merge_row_for(path: p))
+  match deterministic_generated_projection_paths() {
+    GeneratedProjectionPathsRefused { cause: _ } => false
+    GeneratedProjectionPathsAccepted { paths } => all(paths, p => gitattributes_has_merge_row_for(path: p))
+  }
 }
