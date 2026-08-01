@@ -1,6 +1,6 @@
 module extdeps.access.posix_effective_principal
 
-import std.types { String }
+import std.types { Bool, Int, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -11,6 +11,50 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data posix_effective_principal_read_note: String = "Read the effective POSIX user name (whoami utility semantics). Interface shape only — typed argv transport lives in extdeps.access.posix_effective_principal_read_op at the realization edge."
+data posix_effective_principal_read_note: String = "Read the effective POSIX user name (whoami utility semantics). Interface shape and result decoding live here; typed argv transport lives in extdeps.access.posix_effective_principal_read_op at the realization edge. EffectivePosixPrincipalName is opaque outside this authority, so downstream principal projections can consume only a successful, non-empty decoded read observation rather than pairing the request token with an authored name."
 
 type EffectivePosixPrincipalRead {}
+
+type EffectivePosixPrincipalReadOutcome {
+  read: EffectivePosixPrincipalRead
+  exit_code: Int
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+type EffectivePosixPrincipalName nominal_opaque = NonEmptyStr
+
+type EffectivePosixPrincipalObservation {
+  read: EffectivePosixPrincipalRead
+  effective_name: EffectivePosixPrincipalName
+}
+
+type EffectivePosixPrincipalObservationResult
+  = EffectivePosixPrincipalObserved { observation: EffectivePosixPrincipalObservation }
+  | EffectivePosixPrincipalObservationRefused { read: EffectivePosixPrincipalRead, reason: String }
+
+fn effective_posix_principal_observation(
+  outcome: EffectivePosixPrincipalReadOutcome,
+) -> EffectivePosixPrincipalObservationResult {
+  let name = trim(s: outcome.stdout)
+  if !outcome.success || outcome.exit_code != 0 {
+    EffectivePosixPrincipalObservationRefused { read: outcome.read, reason: outcome.stderr }
+  } else if name == "" {
+    EffectivePosixPrincipalObservationRefused {
+      read: outcome.read,
+      reason: "successful effective-principal read returned no name",
+    }
+  } else {
+    EffectivePosixPrincipalObserved { observation: EffectivePosixPrincipalObservation {
+      read: outcome.read,
+      effective_name: (name as NonEmptyStr) as EffectivePosixPrincipalName,
+    } }
+  }
+}
+
+fn effective_posix_principal_name(
+  observation: EffectivePosixPrincipalObservation,
+) -> NonEmptyStr {
+  observation.effective_name as NonEmptyStr
+}
