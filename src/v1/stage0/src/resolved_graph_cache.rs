@@ -179,6 +179,11 @@ pub enum CacheWriteOutcome {
 /// under the process cwd outside CI. Set `GUNBC_RESOLVED_GRAPH_CACHE_DIR` to override.
 /// CI floor jobs leave it unset (no cross-run inheritance). `GITHUB_ACTIONS` disables
 /// the default so PR jobs never inherit warmed artifacts.
+///
+/// Rationale for cwd-scoped default (not always-on temp_dir): an earlier always-on
+/// `.temp_dir()` default OOM'd concurrent floor shards sharing one host temp tree;
+/// cwd scope narrows blast radius to the invoking workspace and pairs with the modeled
+/// `SizeBounded` cap. Opt-in only — unset env means no cross-process tier in CI.
 pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR") {
         return Some(PathBuf::from(dir));

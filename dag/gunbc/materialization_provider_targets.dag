@@ -48,7 +48,7 @@ data materialization_provider_targets: List<ProviderContractTarget> = [
   ProviderContractTarget {
     cache: resolved_graph_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_facts"),
-    consumer_seam: target_decl(module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "serve_resolved_graph_v2_disk_probe"),
+    consumer_seam: target_decl(module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "serve_resolved_graph_stored_disk_probe"),
     reason: "Dispatch G production consumer: the Rust bridge routes verified v2 disk probes through provider_serve; legacy v1 artifacts probe-hit with parts=None and fall through to cold compile",
     dissolve_on: "witness-realization lands a typed host-effect transport for provider_serve lookups (docs/plans/witness-realization-plan.md) OR cli_run hollowing-plan area 2.6 retires the resolved_graph cross-process hand path"
   },
