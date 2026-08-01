@@ -34852,6 +34852,15 @@ mod peel_alias_fixpoint_termination {
                 source_visible_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
             });
+            // The pre-fix firing set: the old peel called this same resolver,
+            // projected `.resolved`, and discarded these diagnostics. The fix
+            // may REVEAL identities from this set; it must never RETIRE one by
+            // changing which resolver judgments fire.
+            let before_projection = crate::v1_compiler_infer_resolve::resolve_node(
+                n.clone(),
+                env.clone(),
+                "peel_fixpoint_probe".to_string(),
+            );
             let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
                 n.clone(),
                 env.clone(),
@@ -34867,6 +34876,11 @@ mod peel_alias_fixpoint_termination {
                         crate::v1_std_core::CompilerDiagnostic::UnresolvedType { .. }
                     )
                 })
+                .count();
+            let retired_count = before_projection
+                .diagnostics
+                .iter()
+                .filter(|before| !out.diagnostics.iter().any(|after| after == *before))
                 .count();
 
             // Positive control for the legitimate quiet probe-miss half: a
@@ -34884,9 +34898,14 @@ mod peel_alias_fixpoint_termination {
             );
             let quiet_diagnostic_count = quiet.diagnostics.len();
 
-            let _ = tx.send((termination_probe, quiet_diagnostic_count, refusal_count));
+            let _ = tx.send((
+                termination_probe,
+                quiet_diagnostic_count,
+                refusal_count,
+                retired_count,
+            ));
         });
-        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count) =
+        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count, retired_count) =
             rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
                 "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
@@ -34899,6 +34918,10 @@ mod peel_alias_fixpoint_termination {
         assert_eq!(
             refusal_count, 2,
             "a resolver refusal during speculative peel must remain typed and countable"
+        );
+        assert_eq!(
+            retired_count, 0,
+            "diagnostic propagation may reveal resolver identities but must retire none"
         );
         // Termination IS the property under test (the pre-guard control run for
         // this fixture is recorded in the PR body; the strip-tree integration
