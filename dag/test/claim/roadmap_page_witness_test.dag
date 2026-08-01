@@ -41,13 +41,16 @@ fn authority_page_html() -> String {
   }
 }
 
-data header_pin_a1_note: String = "The header pins moved for A1 of the presentation recon (operator-signed 2026-08-01): the unselected site mark (candidate A, whose aria-label said gunb.ai on a gunbc tool surface) is replaced by the text wordmark, the h1 carries the PAGE name alone so it never restates the wordmark, and the two toggles are server-rendered with their NAMES ('sound', 'theme' — never a state claim, which stays client-painted from this browser's storage; a blank button had no visible content and no accessible name). The pins stay exact-shape as before — the whole header is spelled out, so a new element, a resurrected mark, or a re-blanked toggle still reds."
+data header_pin_a1_note: String = "The header assertions moved TWICE at A1 (presentation recon, operator feedback 2026-08-01). First the content: the unselected site mark (candidate A, whose aria-label said gunb.ai on a gunbc tool surface) is replaced by the text wordmark, the h1 carries the PAGE name alone so it never restates the wordmark, and both toggles are server-rendered with visible content and an accessible name — the theme toggle with its parse-time-true initial state ('theme · auto': no data-theme exists until the client program runs, so prefers-color-scheme governs, which IS auto), the sound toggle with its name only (its state has no parse-time truth; see gunbc.roadmap_page.sound_toggle_placement_note). Second the SHAPE of the assertion: the former whole-header byte pin asserted the accidental composition — element order and adjacency that nobody decided — so it redded on any reorder while proving nothing semantic. Each assertion below is now ONE claim (wordmark exists; page-name h1 exists; each control is labeled before JavaScript). Header composition is deliberately NOT pinned: the A1 list layout is a provisional renderer, per the PR's own scope statement."
 
 test fn witness_authority_serializes_with_structure() -> Bool {
   let h = authority_page_html()
-  string_contains(
-    s: h,
-    pattern: "<header><span class=\"wordmark\">gunbc</span><h1>roadmap</h1><button class=\"sound-toggle\" type=\"button\">sound</button><button class=\"theme-toggle\" type=\"button\">theme</button></header>")
+  string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
+    && string_contains(s: h, pattern: "<h1>roadmap</h1>")
+    && string_contains(s: h, pattern: "<button class=\"sound-toggle\" type=\"button\">sound</button>")
+    && string_contains(s: h, pattern: "<button class=\"theme-toggle\" type=\"button\">theme · auto</button>")
+    && !string_contains(s: h, pattern: "class=\"mark mark-d1\"")
+    && !string_contains(s: h, pattern: "<h1>gunbc — roadmap</h1>")
     && string_contains(s: h, pattern: "<main class=\"roadmap\">")
     && string_contains(s: h, pattern: "class=\"roadmap-section\"")
     && string_contains(s: h, pattern: "class=\"status status-")
@@ -73,9 +76,12 @@ test fn witness_empty_doc_is_minimal_shell() -> Bool {
   starts_with(s: h, prefix: "<html lang=\"en\"><head><meta charset=\"utf-8\"")
     && string_contains(s: h, pattern: "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"")
     && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
-    && string_contains(
-      s: h,
-      pattern: "<body><header><span class=\"wordmark\">gunbc</span><h1>roadmap</h1><button class=\"sound-toggle\" type=\"button\">sound</button><button class=\"theme-toggle\" type=\"button\">theme</button></header><main class=\"roadmap\"></main></body></html>")
+    && string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
+    && string_contains(s: h, pattern: "<h1>roadmap</h1>")
+    && string_contains(s: h, pattern: "<button class=\"sound-toggle\" type=\"button\">sound</button>")
+    && string_contains(s: h, pattern: "<button class=\"theme-toggle\" type=\"button\">theme · auto</button>")
+    && string_contains(s: h, pattern: "<main class=\"roadmap\"></main></body></html>")
+    && !string_contains(s: h, pattern: "<script")
 }
 
 test fn witness_authority_differs_from_empty() -> Bool {
