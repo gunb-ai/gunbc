@@ -15,6 +15,7 @@ type DashboardRequirementKey
   | DashboardDraftRequirement
   | DashboardMergeableRequirement
   | DashboardChecksRequirement
+  | DashboardUnclassifiedRequirement { key: String }
 
 type DashboardMergeCriteriaRequirement {
   key: DashboardRequirementKey
@@ -112,6 +113,10 @@ type LandingDecision
       pull_request: LandingPullRequestProjection,
       criteria: DashboardMergeCriteriaSnapshot,
       projected_blocker_count: Int,
+      reason: String,
+    }
+  | LandingObservationRefused {
+      pull_request: LandingPullRequestProjection,
       reason: String,
     }
 
@@ -218,6 +223,8 @@ fn landing_failed_requirement_blockers(
         } else {
           [ChecksFailing { at: at, state: criteria.checks_state }]
         }
+      DashboardUnclassifiedRequirement { key: _ } =>
+        [RequirementBlockedUnclassified { at: at, actual: requirement.actual }]
     }
   }
 }
@@ -297,11 +304,13 @@ fn landing_queue_projection(
       LandingAtDecisionBoundary { admission } => [admission]
       LandingBlocked { pull_request: _, criteria: _, blockers: _, evidence: _ } => []
       LandingSummaryDiverged { pull_request: _, criteria: _, projected_blocker_count: _, reason: _ } => []
+      LandingObservationRefused { pull_request: _, reason: _ } => []
     }),
     blocked: filter(decisions, decision => match decision {
       LandingAtDecisionBoundary { admission: _ } => false
       LandingBlocked { pull_request: _, criteria: _, blockers: _, evidence: _ } => true
       LandingSummaryDiverged { pull_request: _, criteria: _, projected_blocker_count: _, reason: _ } => true
+      LandingObservationRefused { pull_request: _, reason: _ } => true
     }),
     untracked: untracked,
   }

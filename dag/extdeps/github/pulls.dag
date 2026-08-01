@@ -21,6 +21,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data github_cli_pull_merge_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cli.github.com/manual/gh_pr_merge"
+  }
+}
+
 type PullRequestState = Open | Closed
 
 type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
@@ -53,6 +60,51 @@ type IssueComment {
   html_url: NonEmptyStr
   body: String
   created_at: Timestamp
+}
+
+data github_cli_exact_head_merge_note: String = "GitHub CLI documents --match-head-commit as the commit SHA the pull-request head must match to allow merge and --squash as the repository's squash strategy. The operation exposes termination as data because a nonzero result is a domain refusal the landing workflow must render and receipt, not an interpreter crash. It deliberately carries no --admin and no --auto: landing workflow v1 performs the one operator-clicked merge already admitted by the dashboard summary; merge-queue enqueue remains a later realization."
+
+service github.CliPulls {
+  operation ListOpenJson {
+    input { repo: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "gh", "pr", "list",
+        "--repo", "{repo}",
+        "--state", "open",
+        "--limit", "100",
+        "--json", "number,title,url,headRefName,headRefOid,isDraft,state",
+      ]
+    }
+  }
+
+  operation SquashMergeExactHead {
+    input {
+      repo: NonEmptyStr
+      pull_number: Int
+      expected_head: CommitSha
+    }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "gh", "pr", "merge", "{pull_number}",
+        "--repo", "{repo}",
+        "--squash",
+        "--match-head-commit", "{expected_head}",
+      ]
+    }
+  }
 }
 
 service github.Pulls {

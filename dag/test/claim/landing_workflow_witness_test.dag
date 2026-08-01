@@ -1,0 +1,362 @@
+module test.claim.landing_workflow_witness_test
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import v2.std.optional { Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.source_integration_landing_spine { LandingActorAuthorityHandle }
+import gunbc.landing_workflow {
+  DashboardRequirementKey,
+  DashboardApprovalsRequirement,
+  DashboardRequestChangesRequirement,
+  DashboardActiveReviewsRequirement,
+  DashboardOpenRequirement,
+  DashboardDraftRequirement,
+  DashboardMergeableRequirement,
+  DashboardChecksRequirement,
+  DashboardMergeCriteriaRequirement,
+  DashboardMergeCriteriaSnapshot,
+  LandingPullRequestProjection,
+  LandingReviewArtifactProjection,
+  LandingDecision,
+  LandingAtDecisionBoundary,
+  LandingBlocked,
+  LandingSummaryDiverged,
+  LandingBlocker,
+  AwaitingFirstReview,
+  AwaitingApprovals,
+  StaleApprovalReReviewPending,
+  RequestChangesBy,
+  ChecksPending,
+  ChecksFailing,
+  MergeConflict,
+  DraftPullRequest,
+  LandingMergeActionResult,
+  LandingMergeActuated,
+  LandingMergeRefused,
+  LandingMergeHeadMoved,
+  landing_queue_projection,
+  project_landing_decision,
+  landing_merge_action_result,
+}
+import gunbc.landing_workflow_observe {
+  LandingSummaryDecode, LandingSummaryRead, LandingSummaryDecodeRefused,
+  landing_summary_decode,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data witness_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data stale_head: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data witness_actor: LandingActorAuthorityHandle = "tailnet-operator" as LandingActorAuthorityHandle
+
+fn witness_pr() -> LandingPullRequestProjection {
+  LandingPullRequestProjection {
+    work_item_id: "adhoc-witness",
+    work_item_title: "witness landing work",
+    session_id: Present { value: "session-witness" },
+    provider_instance: Present { value: "codex" },
+    branch: Present { value: "session/witness" },
+    repo: "gunb-ai/gunbc",
+    pr_number: 42,
+    pr_url: "https://github.com/gunb-ai/gunbc/pull/42",
+    pr_title: "witness PR",
+  }
+}
+
+fn requirement(key: DashboardRequirementKey, ok: Bool, actual: String) -> DashboardMergeCriteriaRequirement {
+  DashboardMergeCriteriaRequirement {
+    key: key,
+    label: "dashboard-owned requirement",
+    ok: ok,
+    actual: actual,
+  }
+}
+
+fn all_green_requirements() -> List<DashboardMergeCriteriaRequirement> {
+  [
+    requirement(key: DashboardApprovalsRequirement, ok: true, actual: "2/2"),
+    requirement(key: DashboardRequestChangesRequirement, ok: true, actual: "0"),
+    requirement(key: DashboardActiveReviewsRequirement, ok: true, actual: "0 active"),
+    requirement(key: DashboardOpenRequirement, ok: true, actual: "open"),
+    requirement(key: DashboardDraftRequirement, ok: true, actual: "ready"),
+    requirement(key: DashboardMergeableRequirement, ok: true, actual: "CLEAN"),
+    requirement(key: DashboardChecksRequirement, ok: true, actual: "passing"),
+  ]
+}
+
+fn criteria(
+  ready: Bool,
+  approvals: Int,
+  request_changes: List<NonEmptyStr>,
+  stale: List<NonEmptyStr>,
+  mergeable: String,
+  checks: String,
+  draft: Bool,
+  requirements: List<DashboardMergeCriteriaRequirement>,
+) -> DashboardMergeCriteriaSnapshot {
+  DashboardMergeCriteriaSnapshot {
+    ready: ready,
+    head_sha: witness_head,
+    required_approval_count: 2,
+    approval_count: approvals,
+    approval_providers: if approvals == 2 {
+      ["codex" as NonEmptyStr, "claude" as NonEmptyStr]
+    } else {
+      [] as List<NonEmptyStr>
+    },
+    request_changes_count: count(request_changes),
+    request_change_providers: request_changes,
+    stale_provider_count: count(stale),
+    stale_providers: stale,
+    active_review_count: 0,
+    mergeable: mergeable,
+    checks_state: checks,
+    is_draft: draft,
+    lifecycle: if draft { "draft" } else { "open" },
+    requirements: requirements,
+  }
+}
+
+fn evidence() -> List<LandingReviewArtifactProjection> {
+  [LandingReviewArtifactProjection {
+    artifact_id: 123,
+    provider: "codex",
+    reviewed_head: witness_head,
+    verdict: "approve",
+    artifact_url: "/api/reviews/123/artifacts/stdout.log",
+  }]
+}
+
+test fn dashboard_ready_pr_is_the_only_decision_boundary_row() -> Bool {
+  let decision = project_landing_decision(
+    pr: witness_pr(),
+    criteria: criteria(
+      ready: true,
+      approvals: 2,
+      request_changes: [],
+      stale: [],
+      mergeable: "CLEAN",
+      checks: "passing",
+      draft: false,
+      requirements: all_green_requirements(),
+    ),
+    review_artifacts: evidence(),
+    actor_authority: witness_actor,
+  )
+  let queue = landing_queue_projection(decisions: [decision], untracked: [])
+  match decision {
+    LandingAtDecisionBoundary { admission } =>
+      count(queue.ready) == 1
+        && count(queue.blocked) == 0
+        && admission.head_sha == witness_head
+        && count(admission.evidence.review_artifacts) == 1
+    _ => false
+  }
+}
+
+test fn first_review_pending_is_typed_and_located() -> Bool {
+  match project_landing_decision(
+    pr: witness_pr(),
+    criteria: criteria(
+      ready: false,
+      approvals: 0,
+      request_changes: [],
+      stale: [],
+      mergeable: "CLEAN",
+      checks: "passing",
+      draft: false,
+      requirements: [requirement(key: DashboardApprovalsRequirement, ok: false, actual: "0/2")],
+    ),
+    review_artifacts: [],
+    actor_authority: witness_actor,
+  ) {
+    LandingBlocked { pull_request: _, criteria: _, blockers, evidence: _ } =>
+      any(blockers, blocker => match blocker {
+        AwaitingFirstReview { at, required } =>
+          at.pr_number == 42 && at.head_sha == witness_head && required == 2
+        _ => false
+      })
+    _ => false
+  }
+}
+
+data stale_approval_red_note: String = "The discriminating stale-head control. An approval associated with an older head appears only as StaleApprovalReReviewPending and the current approval count stays below the bar; changing the projector to count the stale provider as a current approval makes this claim red."
+
+test fn stale_head_approval_does_not_enter_ready_queue() -> Bool {
+  let decision = project_landing_decision(
+    pr: witness_pr(),
+    criteria: criteria(
+      ready: false,
+      approvals: 1,
+      request_changes: [],
+      stale: ["cursor"],
+      mergeable: "CLEAN",
+      checks: "passing",
+      draft: false,
+      requirements: [requirement(key: DashboardApprovalsRequirement, ok: false, actual: "1/2")],
+    ),
+    review_artifacts: [],
+    actor_authority: witness_actor,
+  )
+  let queue = landing_queue_projection(decisions: [decision], untracked: [])
+  match decision {
+    LandingBlocked { pull_request: _, criteria: _, blockers, evidence: _ } =>
+      count(queue.ready) == 0
+        && any(blockers, blocker => match blocker {
+          AwaitingApprovals { actual, required, at: _ } => actual == 1 && required == 2
+          _ => false
+        })
+        && any(blockers, blocker => match blocker {
+          StaleApprovalReReviewPending { provider, at: _ } => (provider as String) == "cursor"
+          _ => false
+        })
+    _ => false
+  }
+}
+
+test fn every_failed_requirement_survives_as_its_typed_cause() -> Bool {
+  match project_landing_decision(
+    pr: witness_pr(),
+    criteria: criteria(
+      ready: false,
+      approvals: 1,
+      request_changes: ["codex"],
+      stale: [],
+      mergeable: "DIRTY",
+      checks: "failure",
+      draft: true,
+      requirements: [
+        requirement(key: DashboardApprovalsRequirement, ok: false, actual: "1/2"),
+        requirement(key: DashboardRequestChangesRequirement, ok: false, actual: "codex"),
+        requirement(key: DashboardDraftRequirement, ok: false, actual: "draft"),
+        requirement(key: DashboardMergeableRequirement, ok: false, actual: "DIRTY"),
+        requirement(key: DashboardChecksRequirement, ok: false, actual: "failure"),
+      ],
+    ),
+    review_artifacts: evidence(),
+    actor_authority: witness_actor,
+  ) {
+    LandingBlocked { pull_request: _, criteria: _, blockers, evidence: ev } =>
+      count(blockers) == 5
+        && any(blockers, blocker => match blocker { RequestChangesBy { provider, at: _ } => (provider as String) == "codex" _ => false })
+        && any(blockers, blocker => match blocker { DraftPullRequest { at: _ } => true _ => false })
+        && any(blockers, blocker => match blocker { MergeConflict { at: _, mergeable } => mergeable == "DIRTY" _ => false })
+        && any(blockers, blocker => match blocker { ChecksFailing { at: _, state } => state == "failure" _ => false })
+        && count(ev.review_artifacts) == 1
+    _ => false
+  }
+}
+
+test fn authority_ready_bit_and_requirement_rows_must_agree() -> Bool {
+  match project_landing_decision(
+    pr: witness_pr(),
+    criteria: criteria(
+      ready: true,
+      approvals: 0,
+      request_changes: [],
+      stale: [],
+      mergeable: "UNKNOWN",
+      checks: "pending",
+      draft: true,
+      requirements: [requirement(key: DashboardChecksRequirement, ok: false, actual: "pending")],
+    ),
+    review_artifacts: [],
+    actor_authority: witness_actor,
+  ) {
+    LandingSummaryDiverged { pull_request: _, criteria: _, projected_blocker_count, reason: _ } =>
+      projected_blocker_count == 1
+    _ => false
+  }
+}
+
+test fn exact_head_move_refuses_before_merge_receipt() -> Bool {
+  match project_landing_decision(
+    pr: witness_pr(),
+    criteria: criteria(
+      ready: true,
+      approvals: 2,
+      request_changes: [],
+      stale: [],
+      mergeable: "CLEAN",
+      checks: "passing",
+      draft: false,
+      requirements: all_green_requirements(),
+    ),
+    review_artifacts: evidence(),
+    actor_authority: witness_actor,
+  ) {
+    LandingAtDecisionBoundary { admission } =>
+      match landing_merge_action_result(
+        admission: admission,
+        observed_head: stale_head,
+        actuation_succeeded: true,
+        transport_receipt: "must not be believed",
+        merged_at: "2026-08-01T08:00:00Z",
+      ) {
+        LandingMergeRefused { refusal: LandingMergeHeadMoved { admitted, observed } } =>
+          admitted == witness_head && observed == stale_head
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn admitted_exact_head_merge_carries_authority_snapshot_receipt() -> Bool {
+  match project_landing_decision(
+    pr: witness_pr(),
+    criteria: criteria(
+      ready: true,
+      approvals: 2,
+      request_changes: [],
+      stale: [],
+      mergeable: "CLEAN",
+      checks: "passing",
+      draft: false,
+      requirements: all_green_requirements(),
+    ),
+    review_artifacts: evidence(),
+    actor_authority: witness_actor,
+  ) {
+    LandingAtDecisionBoundary { admission } =>
+      match landing_merge_action_result(
+        admission: admission,
+        observed_head: witness_head,
+        actuation_succeeded: true,
+        transport_receipt: "merged pull request 42",
+        merged_at: "2026-08-01T08:00:00Z",
+      ) {
+        LandingMergeActuated { receipt } =>
+          receipt.pr_number == 42
+            && receipt.admitted_head_sha == witness_head
+            && receipt.criteria.ready
+            && receipt.criteria.approval_count == 2
+            && receipt.actor_authority == witness_actor
+        _ => false
+      }
+    _ => false
+  }
+}
+
+data dashboard_summary_fixture: String = "{\"merge_criteria\":{\"ready\":false,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":1,\"approval_providers\":[\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":1,\"stale_providers\":[\"cursor\"],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[{\"key\":\"approvals\",\"label\":\"2 distinct dashboard approvals\",\"ok\":false,\"actual\":\"1/2\"}]},\"reviews\":[{\"id\":123,\"provider\":\"codex\",\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"verdict\":\"approve\",\"artifact_url\":\"/api/reviews/123/artifacts/stdout.log\"}]}"
+
+test fn dashboard_summary_decoder_projects_authority_and_evidence_without_recounting() -> Bool {
+  match landing_summary_decode(body: dashboard_summary_fixture) {
+    LandingSummaryRead { criteria, artifacts } =>
+      !criteria.ready
+        && criteria.approval_count == 1
+        && count(criteria.stale_providers) == 1
+        && count(criteria.requirements) == 1
+        && count(artifacts) == 1
+        && any(artifacts, artifact => artifact.artifact_id == 123)
+    LandingSummaryDecodeRefused { issues: _ } => false
+  }
+}
+
+data duplicate_ready_red_note: String = "A duplicate ready identity member is ambiguous JSON. Treating first-or-last as authoritative would permit input ordering to change admission, so the decoder must refuse it."
+
+test fn duplicate_dashboard_ready_member_refuses_fail_closed() -> Bool {
+  let duplicate = string_replace_all(s: dashboard_summary_fixture, pattern: "\"ready\":false", replacement: "\"ready\":false,\"ready\":true")
+  match landing_summary_decode(body: duplicate) {
+    LandingSummaryDecodeRefused { issues } => count(issues) > 0
+    LandingSummaryRead { criteria: _, artifacts: _ } => false
+  }
+}

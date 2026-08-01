@@ -1,0 +1,87 @@
+module gunbc.landing_workflow_page
+
+import std.types { Int, List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { txt, el, el_attrs }
+import gunbc.landing_workflow {
+  LandingMergeAdmission, LandingDecision, LandingBlocked,
+  LandingSummaryDiverged, LandingObservationRefused, LandingAtDecisionBoundary,
+  UntrackedPullRequest,
+}
+import gunbc.landing_workflow_runtime {
+  LandingQueueObservation, LandingQueueObserved, LandingQueueObserveRefused,
+  landing_blocker_label,
+}
+
+data landing_dashboard_page_note: String = "The landing dashboard is a thin HTML projection over LandingQueueObservation. Its form is only an affordance: POST /landing/merge/{number} repeats fresh server-side admission and exact-head actuation, so hiding or forging a button cannot widen authority. Evidence links resolve through the dedicated detail endpoint and the review/check URLs carried by the observation."
+
+fn landing_evidence_href(number: Int) -> String {
+  concat("/landing/pr/", to_string(number))
+}
+
+fn landing_ready_row(admission: LandingMergeAdmission) -> Fragment {
+  let number = admission.pull_request.pr_number
+  el("li", [
+    el("strong", [txt(join(["#", to_string(number), " ", admission.pull_request.pr_title], ""))]),
+    txt(" — admitted at "),
+    el("code", [txt(admission.head_sha as String)]),
+    txt(" "),
+    el_attrs("a", [attr(name: "href", value: landing_evidence_href(number: number))], [txt("inspect evidence")]),
+    txt(" "),
+    el_attrs("form", [
+      attr(name: "method", value: "post"),
+      attr(name: "action", value: concat("/landing/merge/", to_string(number))),
+    ], [
+      el_attrs("button", [attr(name: "type", value: "submit")], [txt("Squash merge admitted head")]),
+    ]),
+  ])
+}
+
+fn landing_blocked_row(decision: LandingDecision) -> Fragment {
+  match decision {
+    LandingBlocked { pull_request, criteria: _, blockers, evidence: _ } => el("li", [
+      el("strong", [txt(join(["#", to_string(pull_request.pr_number), " ", pull_request.pr_title], ""))]),
+      el("ul", map(blockers, blocker => el("li", [txt(landing_blocker_label(blocker: blocker))]))),
+      el_attrs("a", [attr(name: "href", value: landing_evidence_href(number: pull_request.pr_number))], [txt("inspect evidence")]),
+    ])
+    LandingSummaryDiverged { pull_request, criteria: _, projected_blocker_count: _, reason } => el("li", [
+      el("strong", [txt(concat("summary divergence #", to_string(pull_request.pr_number)))]),
+      txt(concat(": ", reason)),
+    ])
+    LandingObservationRefused { pull_request, reason } => el("li", [
+      el("strong", [txt(concat("observation refused #", to_string(pull_request.pr_number)))]),
+      txt(concat(": ", reason)),
+    ])
+    LandingAtDecisionBoundary { admission } => landing_ready_row(admission: admission)
+  }
+}
+
+fn landing_untracked_row(pr: UntrackedPullRequest) -> Fragment {
+  el("li", [
+    el_attrs("a", [attr(name: "href", value: pr.pr_url as String)], [txt(concat("#", to_string(pr.pr_number)))]),
+    txt(concat(" — ", pr.reason)),
+  ])
+}
+
+fn landing_queue_page(observation: LandingQueueObservation) -> Fragment {
+  let content = match observation {
+    LandingQueueObserveRefused { reason } => [
+      el("h1", [txt("Landing dashboard — observation refused")]),
+      el("p", [txt(reason)]),
+    ]
+    LandingQueueObserved { projection } => [
+      el("h1", [txt("Landing dashboard")]),
+      el("p", [txt("Only dashboard-admitted current heads appear in the merge-ready queue. Every action is re-admitted server-side.")]),
+      el("h2", [txt(concat("Merge-ready (", concat(to_string(count(projection.ready)), ")")))]),
+      el("ul", map(projection.ready, admission => landing_ready_row(admission: admission))),
+      el("h2", [txt(concat("Blocked (", concat(to_string(count(projection.blocked)), ")")))]),
+      el("ul", map(projection.blocked, decision => landing_blocked_row(decision: decision))),
+      el("h2", [txt(concat("Untracked (", concat(to_string(count(projection.untracked)), ")")))]),
+      el("ul", map(projection.untracked, pr => landing_untracked_row(pr: pr))),
+    ]
+  }
+  el("html", [
+    el("head", [el("title", [txt("Landing dashboard")])]),
+    el("body", content),
+  ])
+}

@@ -1,0 +1,443 @@
+module gunbc.landing_workflow_runtime
+
+import std.types { Bool, CommitSha, HttpStatus, Int, List, NonEmptyStr, String, Timestamp }
+import v2.std.optional { Present, Absent }
+import v2.std.collection { list_at_optional }
+import extdeps.shell
+import extdeps.clock
+import extdeps.github.pulls
+import extdeps.session_dashboard
+import extdeps.languages.json.emit {
+  JsonValue, serialize_json, json_object, json_kv, json_string, json_int, json_bool, json_array,
+}
+import gunbc.source_integration_landing_spine { LandingActorAuthorityHandle }
+import gunbc.landing_workflow_observe {
+  LandingJsonIssue,
+  LandingSummaryDecode, LandingSummaryRead, LandingSummaryDecodeRefused,
+  LandingTrackedPopulationDecode, LandingTrackedPopulationRead, LandingTrackedPopulationRefused,
+  LandingRepositoryPopulationDecode, LandingRepositoryPopulationRead, LandingRepositoryPopulationRefused,
+  landing_summary_decode, landing_tracked_population_decode, landing_repository_population_decode,
+}
+import gunbc.landing_workflow {
+  DashboardRequirementKey,
+  DashboardApprovalsRequirement, DashboardRequestChangesRequirement,
+  DashboardActiveReviewsRequirement, DashboardOpenRequirement, DashboardDraftRequirement,
+  DashboardMergeableRequirement, DashboardChecksRequirement, DashboardUnclassifiedRequirement,
+  DashboardMergeCriteriaRequirement, DashboardMergeCriteriaSnapshot,
+  LandingPullRequestProjection, LandingReviewArtifactProjection,
+  LandingBlocker,
+  AwaitingFirstReview, AwaitingApprovals, StaleApprovalReReviewPending,
+  RequestChangesBy, RequestChangesUnattributed, ActiveReviewOnCurrentHead,
+  PullRequestNotOpen, DraftPullRequest, MergeConflict, MergeabilityUnknown,
+  ChecksPending, ChecksFailing, RequirementBlockedUnclassified,
+  LandingEvidenceProjection, LandingMergeAdmission,
+  LandingDecision, LandingAtDecisionBoundary, LandingBlocked,
+  LandingSummaryDiverged, LandingObservationRefused,
+  UntrackedPullRequest, LandingQueueProjection,
+  LandingMergeActionRefusal, LandingMergeNotAdmitted, LandingMergeHeadMoved,
+  LandingMergeActuationFailed, LandingMergeReceipt,
+  LandingMergeActionResult, LandingMergeActuated, LandingMergeRefused,
+  project_landing_decision, landing_queue_projection, landing_merge_action_result,
+}
+
+data gunbc_landing_repo: NonEmptyStr = "gunb-ai/gunbc"
+data landing_dashboard_url_env: NonEmptyStr = "DASHBOARD_URL"
+data srv1_tailnet_operator_authority: LandingActorAuthorityHandle = "srv1-tailnet-operator" as LandingActorAuthorityHandle
+
+data landing_runtime_authority_note: String = "This server-side seam observes dashboard-tracked sessions and the dashboard-owned reviews merge_criteria object at request time. GitHub CLI is used only to enumerate otherwise-untracked open PRs and to execute the admitted exact-head squash merge. The authenticated tailnet operator role is projected into the existing LandingActorAuthorityHandle; it is an authorization handle, not a canonical Actor or a claim about a person's identity. Any unavailable/ambiguous observation refuses."
+
+type LandingQueueObservation
+  = LandingQueueObserved { projection: LandingQueueProjection }
+  | LandingQueueObserveRefused { reason: String }
+
+fn landing_dashboard_base_url() -> String? {
+  match shell.Env.Get(name: landing_dashboard_url_env).value {
+    Present { value } => if value == "" { none } else { Present { value: value } }
+    Absent => none
+  }
+}
+
+fn landing_issue_text(issue: LandingJsonIssue) -> String {
+  concat(issue.path, concat(": ", issue.reason))
+}
+
+fn landing_issues_text(issues: List<LandingJsonIssue>) -> String {
+  join(map(issues, issue => landing_issue_text(issue: issue)), "; ")
+}
+
+fn tracked_has_pr(tracked: List<LandingPullRequestProjection>, number: Int) -> Bool {
+  any(tracked, pr => pr.pr_number == number)
+}
+
+fn landing_unique_tracked_prs(rows: List<LandingPullRequestProjection>) -> List<LandingPullRequestProjection> {
+  fold(rows, init: [], f: (acc, pr) =>
+    if tracked_has_pr(tracked: acc, number: pr.pr_number) { acc } else { append(acc, items: [pr]) })
+}
+
+fn landing_reviews_url(base: String, pr_number: Int) -> NonEmptyStr {
+  join([base, "/api/reviews/pr?repo=", gunbc_landing_repo as String, "&pr=", to_string(pr_number)], "") as NonEmptyStr
+}
+
+fn landing_decision_observe(base: String, pr: LandingPullRequestProjection) -> LandingDecision {
+  let got = session_dashboard.Api.Get(url: landing_reviews_url(base: base, pr_number: pr.pr_number))
+  if !got.success {
+    LandingObservationRefused { pull_request: pr, reason: "dashboard reviews summary GET failed" }
+  } else {
+    match landing_summary_decode(body: got.body) {
+      LandingSummaryDecodeRefused { issues } => LandingObservationRefused {
+        pull_request: pr,
+        reason: concat("dashboard reviews summary decode refused: ", landing_issues_text(issues: issues)),
+      }
+      LandingSummaryRead { criteria, artifacts } => project_landing_decision(
+        pr: pr,
+        criteria: criteria,
+        review_artifacts: artifacts,
+        actor_authority: srv1_tailnet_operator_authority,
+      )
+    }
+  }
+}
+
+fn landing_queue_observe() -> LandingQueueObservation {
+  match landing_dashboard_base_url() {
+    Absent => LandingQueueObserveRefused { reason: "DASHBOARD_URL is absent or empty" }
+    Present { value: base } => {
+      let sessions = session_dashboard.Api.Get(url: concat(base, "/api/sessions") as NonEmptyStr)
+      if !sessions.success {
+        LandingQueueObserveRefused { reason: "dashboard sessions GET failed" }
+      } else {
+        match landing_tracked_population_decode(body: sessions.body, repo_name: gunbc_landing_repo as String) {
+          LandingTrackedPopulationRefused { issues } => LandingQueueObserveRefused {
+            reason: concat("dashboard tracked population decode refused: ", landing_issues_text(issues: issues)),
+          }
+          LandingTrackedPopulationRead { pull_requests } => {
+            let tracked = landing_unique_tracked_prs(rows: pull_requests)
+            let repository = github.CliPulls.ListOpenJson(repo: gunbc_landing_repo)
+            if !repository.success {
+              LandingQueueObserveRefused { reason: concat("GitHub open PR observation failed: ", repository.stderr) }
+            } else {
+              match landing_repository_population_decode(body: repository.stdout, repo_name: gunbc_landing_repo) {
+                LandingRepositoryPopulationRefused { issues } => LandingQueueObserveRefused {
+                  reason: concat("GitHub open PR population decode refused: ", landing_issues_text(issues: issues)),
+                }
+                LandingRepositoryPopulationRead { pull_requests: repository_prs } => {
+                  let untracked = filter(repository_prs, pr => !tracked_has_pr(tracked: tracked, number: pr.pr_number))
+                  let decisions = map(tracked, pr => landing_decision_observe(base: base, pr: pr))
+                  LandingQueueObserved {
+                    projection: landing_queue_projection(decisions: decisions, untracked: untracked),
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn landing_find_decision(projection: LandingQueueProjection, pr_number: Int) -> LandingDecision? {
+  let ready = projection.ready
+    |> filter(admission => admission.pull_request.pr_number == pr_number)
+    |> map(admission => LandingAtDecisionBoundary { admission: admission })
+  let blocked = filter(projection.blocked, decision => match decision {
+    LandingBlocked { pull_request, criteria: _, blockers: _, evidence: _ } => pull_request.pr_number == pr_number
+    LandingSummaryDiverged { pull_request, criteria: _, projected_blocker_count: _, reason: _ } => pull_request.pr_number == pr_number
+    LandingObservationRefused { pull_request, reason: _ } => pull_request.pr_number == pr_number
+    LandingAtDecisionBoundary { admission } => admission.pull_request.pr_number == pr_number
+  })
+  let found = concat(ready, blocked)
+  list_at_optional(xs: found, index: 0)
+}
+
+fn landing_merge_pr(pr_number: Int) -> LandingMergeActionResult {
+  match landing_queue_observe() {
+    LandingQueueObserveRefused { reason } => LandingMergeRefused {
+      refusal: LandingMergeActuationFailed { detail: concat("fresh admission observation refused: ", reason) },
+    }
+    LandingQueueObserved { projection } => match landing_find_decision(projection: projection, pr_number: pr_number) {
+      Absent => LandingMergeRefused { refusal: LandingMergeNotAdmitted { repo: gunbc_landing_repo, pr_number: pr_number } }
+      Present { value: LandingAtDecisionBoundary { admission } } => {
+        let merged = github.CliPulls.SquashMergeExactHead(
+          repo: admission.pull_request.repo,
+          pull_number: admission.pull_request.pr_number,
+          expected_head: admission.head_sha,
+        )
+        if merged.success {
+          let now = Clock.Now()
+          landing_merge_action_result(
+            admission: admission,
+            observed_head: admission.head_sha,
+            actuation_succeeded: true,
+            transport_receipt: merged.stdout,
+            merged_at: now.timestamp,
+          )
+        } else {
+          let refreshed = landing_queue_observe()
+          let observed_head = match refreshed {
+            LandingQueueObserved { projection: refreshed_projection } =>
+              match landing_find_decision(projection: refreshed_projection, pr_number: pr_number) {
+                Present { value: LandingAtDecisionBoundary { admission: refreshed_admission } } => refreshed_admission.head_sha
+                Present { value: LandingBlocked { pull_request: _, criteria, blockers: _, evidence: _ } } => criteria.head_sha
+                Present { value: LandingSummaryDiverged { pull_request: _, criteria, projected_blocker_count: _, reason: _ } } => criteria.head_sha
+                _ => admission.head_sha
+              }
+            LandingQueueObserveRefused { reason: _ } => admission.head_sha
+          }
+          landing_merge_action_result(
+            admission: admission,
+            observed_head: observed_head,
+            actuation_succeeded: false,
+            transport_receipt: join([merged.stderr, merged.stdout], "\n"),
+            merged_at: "1970-01-01T00:00:00Z" as Timestamp,
+          )
+        }
+      }
+      Present { value: _ } => LandingMergeRefused { refusal: LandingMergeNotAdmitted { repo: gunbc_landing_repo, pr_number: pr_number } }
+    }
+  }
+}
+
+fn dashboard_requirement_key_label(key: DashboardRequirementKey) -> String {
+  match key {
+    DashboardApprovalsRequirement => "approvals"
+    DashboardRequestChangesRequirement => "request_changes"
+    DashboardActiveReviewsRequirement => "active_reviews"
+    DashboardOpenRequirement => "open"
+    DashboardDraftRequirement => "draft"
+    DashboardMergeableRequirement => "mergeable"
+    DashboardChecksRequirement => "checks"
+    DashboardUnclassifiedRequirement { key } => key
+  }
+}
+
+fn criteria_requirement_json(r: DashboardMergeCriteriaRequirement) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "key", value: json_string(s: dashboard_requirement_key_label(key: r.key))),
+    json_kv(key: "label", value: json_string(s: r.label)),
+    json_kv(key: "ok", value: json_bool(b: r.ok)),
+    json_kv(key: "actual", value: json_string(s: r.actual)),
+  ])
+}
+
+fn landing_criteria_json(c: DashboardMergeCriteriaSnapshot) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "ready", value: json_bool(b: c.ready)),
+    json_kv(key: "head_sha", value: json_string(s: c.head_sha as String)),
+    json_kv(key: "approval_count", value: json_int(n: c.approval_count)),
+    json_kv(key: "required_approval_count", value: json_int(n: c.required_approval_count)),
+    json_kv(key: "mergeable", value: json_string(s: c.mergeable)),
+    json_kv(key: "checks_state", value: json_string(s: c.checks_state)),
+    json_kv(key: "is_draft", value: json_bool(b: c.is_draft)),
+    json_kv(key: "lifecycle", value: json_string(s: c.lifecycle)),
+    json_kv(key: "requirements", value: json_array(elements: map(c.requirements, r => criteria_requirement_json(r: r)))),
+  ])
+}
+
+fn landing_evidence_json(e: LandingEvidenceProjection) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "pull_request", value: json_string(s: e.pull_request_url as String)),
+    json_kv(key: "checks", value: json_string(s: e.checks_url as String)),
+    json_kv(key: "review_artifacts", value: json_array(elements: map(e.review_artifacts, a => json_object(members: [
+      json_kv(key: "id", value: json_int(n: a.artifact_id)),
+      json_kv(key: "provider", value: json_string(s: a.provider as String)),
+      json_kv(key: "head_sha", value: json_string(s: a.reviewed_head as String)),
+      json_kv(key: "verdict", value: json_string(s: a.verdict)),
+      json_kv(key: "url", value: json_string(s: a.artifact_url as String)),
+    ])))),
+  ])
+}
+
+fn landing_pr_json(pr: LandingPullRequestProjection) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "repo", value: json_string(s: pr.repo as String)),
+    json_kv(key: "number", value: json_int(n: pr.pr_number)),
+    json_kv(key: "url", value: json_string(s: pr.pr_url as String)),
+    json_kv(key: "title", value: json_string(s: pr.pr_title)),
+    json_kv(key: "work_item_id", value: json_string(s: pr.work_item_id as String)),
+    json_kv(key: "work_item_title", value: json_string(s: pr.work_item_title)),
+  ])
+}
+
+fn landing_blocker_label(blocker: LandingBlocker) -> String {
+  match blocker {
+    AwaitingFirstReview { at: _, required } => concat("awaiting-first-review 0/", to_string(required))
+    AwaitingApprovals { at: _, actual, required } => join(["awaiting-approvals ", to_string(actual), "/", to_string(required)], "")
+    StaleApprovalReReviewPending { at: _, provider } => concat("stale-re-review-pending ", provider as String)
+    RequestChangesBy { at: _, provider } => concat("request-changes-by ", provider as String)
+    RequestChangesUnattributed { at: _, count } => concat("request-changes-unattributed ", to_string(count))
+    ActiveReviewOnCurrentHead { at: _, count } => concat("active-reviews-on-current-head ", to_string(count))
+    PullRequestNotOpen { at: _, lifecycle } => concat("not-open ", lifecycle)
+    DraftPullRequest { at: _ } => "draft"
+    MergeConflict { at: _, mergeable } => concat("conflict ", mergeable)
+    MergeabilityUnknown { at: _, mergeable } => concat("mergeability-unknown ", mergeable)
+    ChecksPending { at: _ } => "checks-pending"
+    ChecksFailing { at: _, state } => concat("checks-failing ", state)
+    RequirementBlockedUnclassified { at: _, actual } => concat("unclassified-requirement ", actual)
+  }
+}
+
+fn landing_blocker_json(blocker: LandingBlocker) -> JsonValue {
+  let at = match blocker {
+    AwaitingFirstReview { at, required: _ } => at
+    AwaitingApprovals { at, actual: _, required: _ } => at
+    StaleApprovalReReviewPending { at, provider: _ } => at
+    RequestChangesBy { at, provider: _ } => at
+    RequestChangesUnattributed { at, count: _ } => at
+    ActiveReviewOnCurrentHead { at, count: _ } => at
+    PullRequestNotOpen { at, lifecycle: _ } => at
+    DraftPullRequest { at } => at
+    MergeConflict { at, mergeable: _ } => at
+    MergeabilityUnknown { at, mergeable: _ } => at
+    ChecksPending { at } => at
+    ChecksFailing { at, state: _ } => at
+    RequirementBlockedUnclassified { at, actual: _ } => at
+  }
+  json_object(members: [
+    json_kv(key: "type", value: json_string(s: landing_blocker_label(blocker: blocker))),
+    json_kv(key: "repo", value: json_string(s: at.repo as String)),
+    json_kv(key: "pr_number", value: json_int(n: at.pr_number)),
+    json_kv(key: "head_sha", value: json_string(s: at.head_sha as String)),
+    json_kv(key: "requirement", value: json_string(s: dashboard_requirement_key_label(key: at.requirement))),
+  ])
+}
+
+fn landing_admission_json(a: LandingMergeAdmission) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "pull_request", value: landing_pr_json(pr: a.pull_request)),
+    json_kv(key: "head_sha", value: json_string(s: a.head_sha as String)),
+    json_kv(key: "criteria", value: landing_criteria_json(c: a.criteria)),
+    json_kv(key: "evidence", value: landing_evidence_json(e: a.evidence)),
+    json_kv(key: "merge_action", value: json_string(s: concat("/landing/merge/", to_string(a.pull_request.pr_number)))),
+  ])
+}
+
+fn landing_decision_json(d: LandingDecision) -> JsonValue {
+  match d {
+    LandingAtDecisionBoundary { admission } => landing_admission_json(a: admission)
+    LandingBlocked { pull_request, criteria, blockers, evidence } => json_object(members: [
+      json_kv(key: "state", value: json_string(s: "blocked")),
+      json_kv(key: "pull_request", value: landing_pr_json(pr: pull_request)),
+      json_kv(key: "criteria", value: landing_criteria_json(c: criteria)),
+      json_kv(key: "blockers", value: json_array(elements: map(blockers, blocker => landing_blocker_json(blocker: blocker)))),
+      json_kv(key: "evidence", value: landing_evidence_json(e: evidence)),
+    ])
+    LandingSummaryDiverged { pull_request, criteria, projected_blocker_count, reason } => json_object(members: [
+      json_kv(key: "state", value: json_string(s: "summary-diverged")),
+      json_kv(key: "pull_request", value: landing_pr_json(pr: pull_request)),
+      json_kv(key: "criteria", value: landing_criteria_json(c: criteria)),
+      json_kv(key: "projected_blocker_count", value: json_int(n: projected_blocker_count)),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ])
+    LandingObservationRefused { pull_request, reason } => json_object(members: [
+      json_kv(key: "state", value: json_string(s: "observation-refused")),
+      json_kv(key: "pull_request", value: landing_pr_json(pr: pull_request)),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ])
+  }
+}
+
+fn landing_queue_json_value(o: LandingQueueObservation) -> JsonValue {
+  match o {
+    LandingQueueObserveRefused { reason } => json_object(members: [
+      json_kv(key: "ok", value: json_bool(b: false)),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ])
+    LandingQueueObserved { projection } => json_object(members: [
+      json_kv(key: "ok", value: json_bool(b: true)),
+      json_kv(key: "ready", value: json_array(elements: map(projection.ready, a => landing_admission_json(a: a)))),
+      json_kv(key: "blocked", value: json_array(elements: map(projection.blocked, d => landing_decision_json(d: d)))),
+      json_kv(key: "untracked", value: json_array(elements: map(projection.untracked, pr => json_object(members: [
+        json_kv(key: "state", value: json_string(s: "UntrackedPullRequest")),
+        json_kv(key: "repo", value: json_string(s: pr.repo as String)),
+        json_kv(key: "pr_number", value: json_int(n: pr.pr_number)),
+        json_kv(key: "url", value: json_string(s: pr.pr_url as String)),
+        json_kv(key: "reason", value: json_string(s: pr.reason)),
+      ])))),
+    ])
+  }
+}
+
+fn landing_queue_json(o: LandingQueueObservation) -> String {
+  serialize_json(v: landing_queue_json_value(o: o))
+}
+
+fn landing_queue_http_status(o: LandingQueueObservation) -> HttpStatus {
+  match o { LandingQueueObserved { projection: _ } => 200 LandingQueueObserveRefused { reason: _ } => 503 }
+}
+
+fn landing_pr_detail_json(o: LandingQueueObservation, pr_number: Int) -> String {
+  match o {
+    LandingQueueObserveRefused { reason } => serialize_json(v: json_object(members: [
+      json_kv(key: "ok", value: json_bool(b: false)),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ]))
+    LandingQueueObserved { projection } => match landing_find_decision(projection: projection, pr_number: pr_number) {
+      Present { value: decision } => serialize_json(v: landing_decision_json(d: decision))
+      Absent => {
+        let untracked = filter(projection.untracked, pr => pr.pr_number == pr_number)
+        serialize_json(v: json_object(members: [
+          json_kv(key: "ok", value: json_bool(b: false)),
+          json_kv(key: "state", value: json_string(s: if count(untracked) > 0 { "UntrackedPullRequest" } else { "not-found" })),
+          json_kv(key: "reason", value: json_string(s: if count(untracked) > 0 {
+            "open GitHub PR is not dashboard-tracked and cannot be admitted"
+          } else {
+            "pull request is not in the observed open population"
+          })),
+        ]))
+      }
+    }
+  }
+}
+
+fn landing_pr_detail_http_status(o: LandingQueueObservation, pr_number: Int) -> HttpStatus {
+  match o {
+    LandingQueueObserveRefused { reason: _ } => 503
+    LandingQueueObserved { projection } => match landing_find_decision(projection: projection, pr_number: pr_number) {
+      Present { value: _ } => 200
+      Absent => 404
+    }
+  }
+}
+
+fn landing_merge_result_json_value(r: LandingMergeActionResult) -> JsonValue {
+  match r {
+    LandingMergeActuated { receipt } => json_object(members: [
+      json_kv(key: "ok", value: json_bool(b: true)),
+      json_kv(key: "state", value: json_string(s: "merged")),
+      json_kv(key: "repo", value: json_string(s: receipt.repo as String)),
+      json_kv(key: "pr_number", value: json_int(n: receipt.pr_number)),
+      json_kv(key: "admitted_head_sha", value: json_string(s: receipt.admitted_head_sha as String)),
+      json_kv(key: "merge_criteria", value: landing_criteria_json(c: receipt.criteria)),
+      json_kv(key: "actor_authority", value: json_string(s: receipt.actor_authority as String)),
+      json_kv(key: "merged_at", value: json_string(s: receipt.merged_at as String)),
+      json_kv(key: "transport_receipt", value: json_string(s: receipt.transport_receipt)),
+    ])
+    LandingMergeRefused { refusal } => json_object(members: [
+      json_kv(key: "ok", value: json_bool(b: false)),
+      json_kv(key: "state", value: json_string(s: match refusal {
+        LandingMergeNotAdmitted { repo: _, pr_number: _ } => "not-admitted"
+        LandingMergeHeadMoved { admitted: _, observed: _ } => "head-moved"
+        LandingMergeActuationFailed { detail: _ } => "actuation-failed"
+      })),
+      json_kv(key: "reason", value: json_string(s: match refusal {
+        LandingMergeNotAdmitted { repo: _, pr_number: _ } => "pull request is not at the dashboard decision boundary"
+        LandingMergeHeadMoved { admitted, observed } => join(["head moved: admitted ", admitted as String, " observed ", observed as String], "")
+        LandingMergeActuationFailed { detail } => detail
+      })),
+    ])
+  }
+}
+
+fn landing_merge_result_json(r: LandingMergeActionResult) -> String {
+  serialize_json(v: landing_merge_result_json_value(r: r))
+}
+
+fn landing_merge_result_http_status(r: LandingMergeActionResult) -> HttpStatus {
+  match r {
+    LandingMergeActuated { receipt: _ } => 200
+    LandingMergeRefused { refusal: LandingMergeNotAdmitted { repo: _, pr_number: _ } } => 409
+    LandingMergeRefused { refusal: LandingMergeHeadMoved { admitted: _, observed: _ } } => 409
+    LandingMergeRefused { refusal: LandingMergeActuationFailed { detail: _ } } => 502
+  }
+}

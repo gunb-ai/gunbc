@@ -1,0 +1,336 @@
+module gunbc.landing_workflow_observe
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import v2.std.optional { Optional, Present, Absent }
+import v2.std.collection { list_at_optional }
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import gunbc.landing_workflow {
+  DashboardRequirementKey,
+  DashboardApprovalsRequirement,
+  DashboardRequestChangesRequirement,
+  DashboardActiveReviewsRequirement,
+  DashboardOpenRequirement,
+  DashboardDraftRequirement,
+  DashboardMergeableRequirement,
+  DashboardChecksRequirement,
+  DashboardUnclassifiedRequirement,
+  DashboardMergeCriteriaRequirement,
+  DashboardMergeCriteriaSnapshot,
+  LandingPullRequestProjection,
+  LandingReviewArtifactProjection,
+  UntrackedPullRequest,
+}
+
+data landing_dashboard_summary_authority_note: String = "The wire authority is the existing dashboard reviews summary: GET /api/reviews/pr?repo=OWNER/REPO&pr=N, the same object printed by `dashboard-ops reviews`. This decoder does not count reviews or decide readiness. It reads merge_criteria.ready and projects merge_criteria.requirements into the typed blocker vocabulary in gunbc.landing_workflow. Reviews are read only for their evidence artifacts. Duplicate, absent, or wrong-shaped identity fields refuse the entire PR observation; they never become zero approvals, no blockers, or an empty evidence set."
+
+type LandingJsonIssue {
+  path: String
+  reason: String
+}
+
+type LandingSummaryDecode
+  = LandingSummaryRead {
+      criteria: DashboardMergeCriteriaSnapshot,
+      artifacts: List<LandingReviewArtifactProjection>,
+    }
+  | LandingSummaryDecodeRefused { issues: List<LandingJsonIssue> }
+
+type LandingTrackedPopulationDecode
+  = LandingTrackedPopulationRead { pull_requests: List<LandingPullRequestProjection> }
+  | LandingTrackedPopulationRefused { issues: List<LandingJsonIssue> }
+
+type LandingRepositoryPopulationDecode
+  = LandingRepositoryPopulationRead { pull_requests: List<UntrackedPullRequest> }
+  | LandingRepositoryPopulationRefused { issues: List<LandingJsonIssue> }
+
+fn json_member(v: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value } => Present { value: value }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn json_field_issue(v: JsonValue, key: String, expected: String) -> List<LandingJsonIssue> {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => [LandingJsonIssue { path: key, reason: concat("required ", expected, " member is absent") }]
+    JsonMemberDuplicated { count } => [LandingJsonIssue { path: key, reason: concat("identity member is duplicated count=", to_string(count)) }]
+    JsonMemberNotAnObject => [LandingJsonIssue { path: key, reason: "container is not an object" }]
+    JsonMemberFound { value } =>
+      let ok = if expected == "string" {
+        match value { JsonString { value: _ } => true _ => false }
+      } else if expected == "number" {
+        match value { JsonNumber { lexeme } => match parse_int(s: lexeme) { Present { value: _ } => true Absent => false } _ => false }
+      } else if expected == "bool" {
+        match value { JsonBool { value: _ } => true _ => false }
+      } else if expected == "array" {
+        match value { JsonArray { elements: _ } => true _ => false }
+      } else if expected == "object" {
+        match value { JsonObject { members: _ } => true _ => false }
+      } else {
+        false
+      }
+      if ok { [] } else { [LandingJsonIssue { path: key, reason: concat("member is not a ", expected) }] }
+  }
+}
+
+fn json_string_or_empty(v: JsonValue, key: String) -> String {
+  match json_member(v: v, key: key) {
+    Present { value: JsonString { value } } => value
+    _ => ""
+  }
+}
+
+fn json_int_or_negative(v: JsonValue, key: String) -> Int {
+  match json_member(v: v, key: key) {
+    Present { value: JsonNumber { lexeme } } => match parse_int(s: lexeme) { Present { value } => value Absent => 0 - 1 }
+    _ => 0 - 1
+  }
+}
+
+fn json_bool_or_false(v: JsonValue, key: String) -> Bool {
+  match json_member(v: v, key: key) {
+    Present { value: JsonBool { value } } => value
+    _ => false
+  }
+}
+
+fn json_array_or_empty(v: JsonValue, key: String) -> List<JsonValue> {
+  match json_member(v: v, key: key) {
+    Present { value: JsonArray { elements } } => elements
+    _ => []
+  }
+}
+
+fn json_string_array_issues(v: JsonValue, key: String) -> List<LandingJsonIssue> {
+  let outer = json_field_issue(v: v, key: key, expected: "array")
+  let element_issues = json_array_or_empty(v: v, key: key)
+    |> flat_map(element => match element {
+      JsonString { value: _ } => []
+      _ => [LandingJsonIssue { path: key, reason: "array contains a non-string member" }]
+    })
+  concat(outer, element_issues)
+}
+
+fn json_string_array(v: JsonValue, key: String) -> List<NonEmptyStr> {
+  json_array_or_empty(v: v, key: key)
+    |> flat_map(element => match element {
+      JsonString { value } => if value == "" { [] } else { [value as NonEmptyStr] }
+      _ => []
+    })
+}
+
+fn dashboard_requirement_key(raw: String) -> DashboardRequirementKey {
+  if raw == "approvals" { DashboardApprovalsRequirement }
+  else if raw == "request_changes" { DashboardRequestChangesRequirement }
+  else if raw == "active_reviews" { DashboardActiveReviewsRequirement }
+  else if raw == "open" { DashboardOpenRequirement }
+  else if raw == "draft" { DashboardDraftRequirement }
+  else if raw == "mergeable" { DashboardMergeableRequirement }
+  else if raw == "checks" { DashboardChecksRequirement }
+  else { DashboardUnclassifiedRequirement { key: raw } }
+}
+
+fn dashboard_requirement_issues(v: JsonValue) -> List<LandingJsonIssue> {
+  let prefix = "merge_criteria.requirements[]"
+  map(concat(
+    json_field_issue(v: v, key: "key", expected: "string"),
+    json_field_issue(v: v, key: "label", expected: "string"),
+    json_field_issue(v: v, key: "ok", expected: "bool"),
+    json_field_issue(v: v, key: "actual", expected: "string"),
+  ), issue => LandingJsonIssue { path: concat(prefix, concat(".", issue.path)), reason: issue.reason })
+}
+
+fn dashboard_requirement(v: JsonValue) -> DashboardMergeCriteriaRequirement {
+  DashboardMergeCriteriaRequirement {
+    key: dashboard_requirement_key(raw: json_string_or_empty(v: v, key: "key")),
+    label: json_string_or_empty(v: v, key: "label"),
+    ok: json_bool_or_false(v: v, key: "ok"),
+    actual: json_string_or_empty(v: v, key: "actual"),
+  }
+}
+
+fn landing_review_artifact(v: JsonValue) -> LandingReviewArtifactProjection? {
+  let url = json_string_or_empty(v: v, key: "artifact_url")
+  let provider = json_string_or_empty(v: v, key: "provider")
+  let sha = json_string_or_empty(v: v, key: "sha")
+  let id = json_int_or_negative(v: v, key: "id")
+  if url == "" || provider == "" || sha == "" || id < 0 {
+    none
+  } else {
+    Present { value: LandingReviewArtifactProjection {
+      artifact_id: id,
+      provider: provider as NonEmptyStr,
+      reviewed_head: sha as CommitSha,
+      verdict: json_string_or_empty(v: v, key: "verdict"),
+      artifact_url: url as NonEmptyStr,
+    } }
+  }
+}
+
+fn landing_summary_decode(body: String) -> LandingSummaryDecode {
+  match parse_json(s: body) {
+    Absent => LandingSummaryDecodeRefused { issues: [LandingJsonIssue { path: "$", reason: "dashboard reviews response is not JSON" }] }
+    Present { value: doc } => {
+      let criteria = match json_member(v: doc, key: "merge_criteria") {
+        Present { value } => value
+        Absent => JsonNull
+      }
+      let requirements = json_array_or_empty(v: criteria, key: "requirements")
+      let reviews = json_array_or_empty(v: doc, key: "reviews")
+      let scalar_issues = concat(
+        json_field_issue(v: doc, key: "merge_criteria", expected: "object"),
+        json_field_issue(v: doc, key: "reviews", expected: "array"),
+        json_field_issue(v: criteria, key: "ready", expected: "bool"),
+        json_field_issue(v: criteria, key: "head_sha", expected: "string"),
+        json_field_issue(v: criteria, key: "required_approval_count", expected: "number"),
+        json_field_issue(v: criteria, key: "approval_count", expected: "number"),
+        json_string_array_issues(v: criteria, key: "approval_providers"),
+        json_field_issue(v: criteria, key: "request_changes_count", expected: "number"),
+        json_string_array_issues(v: criteria, key: "request_change_providers"),
+        json_field_issue(v: criteria, key: "stale_provider_count", expected: "number"),
+        json_string_array_issues(v: criteria, key: "stale_providers"),
+        json_field_issue(v: criteria, key: "active_review_count", expected: "number"),
+        json_field_issue(v: criteria, key: "mergeable", expected: "string"),
+        json_field_issue(v: criteria, key: "checks_state", expected: "string"),
+        json_field_issue(v: criteria, key: "is_draft", expected: "bool"),
+        json_field_issue(v: criteria, key: "lifecycle", expected: "string"),
+        json_field_issue(v: criteria, key: "requirements", expected: "array"),
+      )
+      let requirement_issues = flat_map(
+        requirements,
+        requirement => dashboard_requirement_issues(v: requirement),
+      )
+      let issues = concat(scalar_issues, requirement_issues)
+      if count(issues) > 0 {
+        LandingSummaryDecodeRefused { issues: issues }
+      } else {
+        LandingSummaryRead {
+          criteria: DashboardMergeCriteriaSnapshot {
+            ready: json_bool_or_false(v: criteria, key: "ready"),
+            head_sha: json_string_or_empty(v: criteria, key: "head_sha") as CommitSha,
+            required_approval_count: json_int_or_negative(v: criteria, key: "required_approval_count"),
+            approval_count: json_int_or_negative(v: criteria, key: "approval_count"),
+            approval_providers: json_string_array(v: criteria, key: "approval_providers"),
+            request_changes_count: json_int_or_negative(v: criteria, key: "request_changes_count"),
+            request_change_providers: json_string_array(v: criteria, key: "request_change_providers"),
+            stale_provider_count: json_int_or_negative(v: criteria, key: "stale_provider_count"),
+            stale_providers: json_string_array(v: criteria, key: "stale_providers"),
+            active_review_count: json_int_or_negative(v: criteria, key: "active_review_count"),
+            mergeable: json_string_or_empty(v: criteria, key: "mergeable"),
+            checks_state: json_string_or_empty(v: criteria, key: "checks_state"),
+            is_draft: json_bool_or_false(v: criteria, key: "is_draft"),
+            lifecycle: json_string_or_empty(v: criteria, key: "lifecycle"),
+            requirements: map(requirements, requirement => dashboard_requirement(v: requirement)),
+          },
+          artifacts: flat_map(reviews, review => match landing_review_artifact(v: review) {
+            Present { value } => [value]
+            Absent => []
+          }),
+        }
+      }
+    }
+  }
+}
+
+fn optional_nonempty_json_string(v: JsonValue, key: String) -> NonEmptyStr? {
+  let raw = json_string_or_empty(v: v, key: key)
+  if raw == "" { none } else { Present { value: raw as NonEmptyStr } }
+}
+
+fn tracked_pr_from_info(session: JsonValue, pr: JsonValue) -> LandingPullRequestProjection {
+  let session_id = json_string_or_empty(v: session, key: "id")
+  let node_id = json_string_or_empty(v: session, key: "node_id")
+  LandingPullRequestProjection {
+    work_item_id: if node_id == "" { session_id as NonEmptyStr } else { node_id as NonEmptyStr },
+    work_item_title: json_string_or_empty(v: session, key: "title"),
+    session_id: optional_nonempty_json_string(v: session, key: "id"),
+    provider_instance: optional_nonempty_json_string(v: session, key: "provider"),
+    branch: optional_nonempty_json_string(v: pr, key: "headRefName"),
+    repo: json_string_or_empty(v: pr, key: "repo") as NonEmptyStr,
+    pr_number: json_int_or_negative(v: pr, key: "number"),
+    pr_url: json_string_or_empty(v: pr, key: "url") as NonEmptyStr,
+    pr_title: json_string_or_empty(v: pr, key: "title"),
+  }
+}
+
+fn tracked_pr_info_issues(session: JsonValue, pr: JsonValue) -> List<LandingJsonIssue> {
+  concat(
+    json_field_issue(v: session, key: "id", expected: "string"),
+    json_field_issue(v: session, key: "title", expected: "string"),
+    json_field_issue(v: pr, key: "url", expected: "string"),
+    json_field_issue(v: pr, key: "number", expected: "number"),
+    json_field_issue(v: pr, key: "title", expected: "string"),
+    json_field_issue(v: pr, key: "repo", expected: "string"),
+    json_field_issue(v: pr, key: "headRefName", expected: "string"),
+    json_field_issue(v: pr, key: "state", expected: "string"),
+  )
+}
+
+fn landing_tracked_population_decode(body: String, repo_name: String) -> LandingTrackedPopulationDecode {
+  match parse_json(s: body) {
+    Absent => LandingTrackedPopulationRefused { issues: [LandingJsonIssue { path: "$", reason: "dashboard sessions response is not JSON" }] }
+    Present { value: doc } => {
+      let sessions = json_array_or_empty(v: doc, key: "sessions")
+      let session_array_issues = json_field_issue(v: doc, key: "sessions", expected: "array")
+      let open_rows = flat_map(sessions, session =>
+        json_array_or_empty(v: session, key: "pr_info")
+          |> filter(pr => json_string_or_empty(v: pr, key: "state") == "OPEN")
+          |> filter(pr => json_string_or_empty(v: pr, key: "repo") == repo_name)
+          |> map(pr => tracked_pr_from_info(session: session, pr: pr)))
+      let row_issues = flat_map(sessions, session =>
+        json_array_or_empty(v: session, key: "pr_info")
+          |> filter(pr => json_string_or_empty(v: pr, key: "state") == "OPEN")
+          |> filter(pr => json_string_or_empty(v: pr, key: "repo") == repo_name)
+          |> flat_map(pr => tracked_pr_info_issues(session: session, pr: pr)))
+      let issues = concat(session_array_issues, row_issues)
+      if count(issues) > 0 {
+        LandingTrackedPopulationRefused { issues: issues }
+      } else {
+        LandingTrackedPopulationRead { pull_requests: open_rows }
+      }
+    }
+  }
+}
+
+fn repository_pr_issues(pr: JsonValue) -> List<LandingJsonIssue> {
+  concat(
+    json_field_issue(v: pr, key: "number", expected: "number"),
+    json_field_issue(v: pr, key: "title", expected: "string"),
+    json_field_issue(v: pr, key: "url", expected: "string"),
+    json_field_issue(v: pr, key: "headRefOid", expected: "string"),
+  )
+}
+
+fn landing_repository_population_decode(body: String, repo_name: NonEmptyStr) -> LandingRepositoryPopulationDecode {
+  match parse_json(s: body) {
+    Absent => LandingRepositoryPopulationRefused { issues: [LandingJsonIssue { path: "$", reason: "GitHub open pull-request response is not JSON" }] }
+    Present { value: JsonArray { elements } } => {
+      let issues = flat_map(elements, pr => repository_pr_issues(pr: pr))
+      if count(issues) > 0 {
+        LandingRepositoryPopulationRefused { issues: issues }
+      } else {
+        LandingRepositoryPopulationRead {
+          pull_requests: map(elements, pr => UntrackedPullRequest {
+            repo: repo_name,
+            pr_number: json_int_or_negative(v: pr, key: "number"),
+            pr_url: json_string_or_empty(v: pr, key: "url") as NonEmptyStr,
+            reason: "UntrackedPullRequest: open in GitHub but not attached to a dashboard session or work item; visible outside the decision queue and never admitted",
+          }),
+        }
+      }
+    }
+    Present { value: _ } => LandingRepositoryPopulationRefused { issues: [LandingJsonIssue { path: "$", reason: "GitHub open pull-request response is not an array" }] }
+  }
+}

@@ -1,0 +1,26 @@
+module extdeps.session_dashboard
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data session_dashboard_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/gunb-ai/session-dashboard" }
+}
+
+data session_dashboard_tls_note: String = "The session dashboard endpoint named by DASHBOARD_URL is an operator-local HTTPS service with a locally issued certificate (the live session value fails public-root verification). This transport accepts that certificate only for the explicitly named dashboard URL and still requires curl --fail: HTTP errors are refusals. The tailnet/server placement supplies reachability authorization; this operation must not be reused as a general Internet HTTP client. Dissolve when the dashboard publishes its CA path or the services share an in-process read interface."
+
+service session_dashboard.Api {
+  operation Get {
+    input { url: NonEmptyStr }
+    output {
+      body: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "--insecure", "{url}"]
+    }
+  }
+}
