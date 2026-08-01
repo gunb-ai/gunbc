@@ -69,6 +69,8 @@ mod generator_match_arm_test;
 #[cfg(test)]
 mod generic_return_clone_bound_test;
 #[cfg(test)]
+mod generic_item_clone_bound_test;
+#[cfg(test)]
 mod global_bare_census_coverage_test;
 #[cfg(test)]
 mod global_bare_corpus_census_test;

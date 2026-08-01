@@ -58,7 +58,8 @@ import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint 
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
-  v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds,
+  v1_generic_params_needing_clone_bound, v1_generic_params_needing_clone_bound_for_item,
+  v1_emit_type_params_with_clone_bounds,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
 
@@ -4639,20 +4640,46 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
+fn enum_variant_field_type_exprs(variants: List<Node>) -> List<Node> {
+  variants |> fold(init: [], f: (acc, variant) =>
+    variant.children |> fold(init: acc, f: (inner, field) =>
+      concat(inner, [field_node_type_expr(n: field)])
+    )
+  )
+}
+
+fn emit_item_type_params(params: List<Node>, field_type_exprs: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  let clone_param_names = v1_generic_params_needing_clone_bound_for_item(
+    generic_param_names: generic_param_names,
+    field_type_exprs: field_type_exprs,
+    source_indices: source_indices
+  )
+  if (clone_param_names |> count) > 0 {
+    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
+  } else {
+    emit_type_params(params: params, source_indices: source_indices)
+  }
+}
+
 fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
-  let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
+    let field_type_exprs = item.children |> map(c => field_node_type_expr(n: c))
+    let type_params = emit_item_type_params(params: item.params, field_type_exprs: field_type_exprs, source_indices: env.source_indices)
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else if is_host_optional_carrier_alias(name: item_text) {
+    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Option<", elem_csv, ">;")
   } else if is_host_freemonoid_vec_alias(name: item_text) {
+    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else if is_host_diagnostics_carrier_alias(name: item_text) {
+    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
@@ -4680,6 +4707,8 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     } else {
       concat(policy_validation, "\n", rename_validations)
     }
+    let field_type_exprs = enum_variant_field_type_exprs(variants: item.children)
+    let type_params = emit_item_type_params(params: item.params, field_type_exprs: field_type_exprs, source_indices: env.source_indices)
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
     if validations == "" {
