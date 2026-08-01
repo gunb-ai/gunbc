@@ -248,9 +248,10 @@ source is a **projection** of its resolved audience, computed, not separately wr
 construction wall — `VisibilityPlacementMismatch`, typed and located, fired at push time — refuses
 whenever a file about to land in a storage root carries content whose resolved `Publish` grant
 does not admit that root's audience. This is the incident class named in the brief and it is
-worth stating precisely: **a file with no declared `Publish` fact, pushed to the public root, is
-not "assumed public"** — per §4/§8's frontier default, undeclared content defaults to the *narrowest*
-storage root until declared, so the failure mode of "forgot to mark it" is exclusion from the
+worth stating precisely: **a file with neither its own nor an inherited ancestor `Publish` fact,
+pushed to the public root, is not "assumed public"** — per §4/§8's frontier default, a path under
+a novel root defaults to the *narrowest* storage root until that subtree is declared, so the
+failure mode of "forgot to declare the new root" is exclusion from the
 public mirror (loud, safe, reversible by declaring the grant) rather than accidental publication
 (silent, unsafe, irreversible — history is public forever once pushed). This is the fail-closed
 choice DESIGN §5 requires whenever a default must be picked at all.
@@ -285,8 +286,10 @@ listed together, noting where they diverge.
   (referrer/audience outside every grant → typed refusal; container-internal referrer → admitted
   with no grant; ancestor-narrower child → `PublishAncestorNarrower`; closure gap →
   `PublishClosureGap`). No storage or resolver wiring yet.
-- **P-B (first enforcement seam, Stage 0 — file granularity):** two git storage roots (public +
-  private overlay), file-grain `Publish` declaration. A push-time guard wall computes
+- **P-B (first enforcement seam, Stage 0 — file-path subtree granularity):** two git storage roots
+  (public + private overlay), subtree-grain `Publish` defaults over the file-path containment tree.
+  Defaults flow downward, the nearest covering ancestor wins, and widening below a narrower
+  ancestor refuses per Rule 2. A push-time guard wall computes
   `VisibilityPlacementMismatch` (§4) and a public-to-private dangling-reference check (Rule 1,
   degenerate to file grain). The resolver's `.` projection path calls `Reference`'s `visible_from`
   when the projected child leaves the referrer's ancestor chain (unchanged from the prior draft);
@@ -296,13 +299,11 @@ listed together, noting where they diverge.
   zero-behavior-change the same way (§10 Q5 names this explicitly) — its undeclared default is
   narrowest-storage-root (§4/§8), which would exclude every currently-public file the instant the
   guard goes live unless the landing step itself stamps the existing corpus. So P-B's `Publish`
-  half lands with a one-time bulk migration as part of the same change: every file already
-  committed to the public root is declared `Publish { audience: World }` explicitly (not left
-  `LegacyOpen`) at cutover, so the narrowest-default rule only ever bites *new* undeclared content
-  added after P-B lands, never retroactively excludes what was already public. That migration step
-  is what makes "today's all-public-repo content stays public" true; it is a one-time cost, not an
-  ongoing one, and is the concrete answer to Q5's workflow-cost concern (new files need an explicit
-  grant going forward; existing ones do not need one retroactively).
+  half lands with a one-time bulk migration as part of the same change: the pinned cutover baseline
+  declares every file already committed to the public root `Publish { audience: World }`, and one
+  `SubtreePublishGrant` declares that default for each directory root evidenced by publication
+  history after the cutover. Existing behavior therefore stays public without per-file stamping, while a new
+  top-level root has no covering ancestor and refuses fail-closed until its policy is declared.
 - **P-C (Stage 1 — the composed-graph wall):** Rules 1–2 run as compile-time refusals over the
   **composed** graph (both storage roots mounted, the §2 multi-root precedent), not just the
   push-time file check — turning "the public repo happened to not dangle" into "the public repo
@@ -358,10 +359,11 @@ therefore how complete that check was entitled to be.
   check.
 - The `LegacyOpen` frontier is the one place a default is permissive (§3), and it is honest about
   it: it is what already happens today, named and counted rather than hidden, with the migration
-  priced per-site rather than swept. `Publish`'s undeclared-content default (§4) is the opposite
-  choice, deliberately, because unlike a stale in-tree symbol reference, an accidental public push
-  is irreversible — the two frontiers are not the same shape and this doc does not pretend they
-  are.
+  priced per-site rather than swept. `Publish`'s undeclared-root default (§4) is the opposite
+  choice, deliberately: established subtree defaults inherit downward, but a novel root has no
+  covering declaration and refuses. Unlike a stale in-tree symbol reference, an accidental public
+  push is irreversible — the two frontiers are not the same shape and this doc does not pretend
+  they are.
 
 ## 9. Convergence map (§2/§3 — DFS'd before minting; supersedes the prior draft's table)
 
@@ -399,12 +401,12 @@ therefore how complete that check was entitled to be.
 4. **`Reference`'s `LegacyOpen` dissolve-on** — left open-ended (per-node opt-in only) rather than
    a scheduled bulk migration; confirm vs. an operator-set target date for corpus-wide
    default-private.
-5. **`Publish` frontier default (§4/§8)** — this doc picks "undeclared defaults to narrowest
-   storage root" as the fail-closed choice. Confirm, since it is a behavior change the moment
-   Stage 0 lands (today, *everything* is in the one public repo; after P-B, undeclared new content
-   defaults private-until-marked) — a decision with real workflow cost (every new public file
-   needs an explicit grant) that the operator should rule on knowingly rather than inherit from
-   this doc's §5 fail-closed default.
+5. **`Publish` frontier default (§4/§8) — RESOLVED at Stage 0:** declared subtree defaults inherit
+   downward with nearest-ancestor precedence; the directory roots evidenced by post-cutover
+   publication history are `World`, while any other top-level root has no covering default and
+   therefore resolves to the
+   narrowest storage root until explicitly declared. This preserves ordinary file additions under
+   established roots without restoring accidental-publication behavior for new roots.
 6. **`VisibilityScope` retirement** — once the `AudienceScopeTree` projection lands (§1.4), does
    `std.cache_interface.VisibilityScope` get deleted in favor of the shared tree, or kept as the
    cache lane's local name projected from it? Either is consistent with §3 (below-boundary

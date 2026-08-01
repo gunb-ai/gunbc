@@ -9,9 +9,9 @@ import extdeps.git {
   GitDiffStatusEntry, DiffCopiedStatus, DiffRenamedStatus,
 }
 import gunbc.publication_grant {
-  PublicRootPublishBaseline, PublicFilePublishGrant, PublicPublicationGrantRoster,
-  public_root_publish_baseline,
-  public_file_publish_grant,
+  PublicRootPublishBaseline, SubtreePublishGrant, PublicPublicationGrantRoster,
+  public_root_publish_baseline, public_subtree_publish_grants,
+  subtree_publish_world_grant,
 }
 import gunbc.ci_gate { PublicationPlacementGate }
 import gunbc.commit_workflow {
@@ -21,17 +21,20 @@ import gunbc.commit_workflow {
 import tools.publication_placement_gate {
   PublishGuardLocalOutcome, PublishGuardLocalAccepted, PublishGuardLocalRefused,
   PublishGuardLocalViolation, BaselinePlacementPolicyNotPinned,
-  AddedPathPublishGrantAbsent,
-  FilePublishGrantMarkerRepeated, FilePublishGrantMarkerRefused,
+  AddedPathSubtreeGrantAbsent, AddedPathPublishGrantRefused,
+  SubtreePublishGrantRootRepeated, SubtreePublishGrantWidensAncestor,
   added_paths_from, publication_guard_local_check, publication_guard_process_exit,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data publication_placement_acceptance_note: String = "Discriminating P-B acceptance probes over the real gate decision and boundary. Advancing the roster cutover REDs against the independent fixed cutover authority before it can hide later files. The ungranted added path reaches a located AddedPathPublishGrantAbsent and an ExitFailure; adding its roster envelope reaches ExitSuccess. Ungranted copied and renamed destinations RED through the same path, closing Git's alternate encodings for a new public path. RED controls also prove that repeated file markers and marker envelopes refused by std.effect_grant.admit_effect cannot produce an honest coverage receipt. Every probe calls publication_guard_local_check, whose only publication decision is std.effect_grant.admit_effect(Publish, world_audience), then publication_guard_process_exit, the same boundary the live gate runs. Live git.Core.DiffNameStatus execution from the exact cutover to HEAD is enrolled separately as the Wet server-side floor runnable tools.floor_effect_gate_witness.publication_placement_gate_passes; it is not duplicated into the hermetic discovery corpus."
+data publication_placement_acceptance_note: String = "Discriminating P-B subtree-grain probes over the real gate decision and boundary. The behavior-preservation control sends representative current post-cutover additions under dag, docs, and src through the three history-derived public subtree defaults and reaches ExitSuccess without a per-file row. A descendant under dag inherits Publish World. A path under a novel top-level root reaches located AddedPathSubtreeGrantAbsent and ExitFailure. A narrower nested default beats its broader ancestor and refuses only that nested path; a sibling remains admitted. A World descendant below that narrower ancestor reaches SubtreePublishGrantWidensAncestor even with no added path, pinning visibility-grants Rule 2 downward closure separately from lookup precedence. Advancing the cutover and repeating a subtree root remain distinct refusals. Copied and renamed destinations under a novel root RED through the same absence path. Every probe calls publication_guard_local_check, whose publication decision remains std.effect_grant.admit_effect(Publish, world_audience), then publication_guard_process_exit, the same boundary the live gate runs. Live git.Core.DiffNameStatus execution from the exact cutover to HEAD is enrolled separately as the Wet server-side floor runnable tools.floor_effect_gate_witness.publication_placement_gate_passes."
 
-data synthetic_added_path: String = "dag/example/new_public_file.dag"
+data synthetic_known_path: String = "dag/example/new_public_file.dag"
+data synthetic_private_path: String = "dag/private/new_private_file.dag"
+data synthetic_public_sibling_path: String = "dag/example/public_sibling.dag"
+data synthetic_novel_path: String = "novel-root/new_public_file.dag"
 
 fn exit_is_success(exit: ProcessExit) -> Bool {
   match exit {
@@ -40,38 +43,49 @@ fn exit_is_success(exit: ProcessExit) -> Bool {
   }
 }
 
-fn ungranted_roster() -> PublicPublicationGrantRoster {
+fn default_roster() -> PublicPublicationGrantRoster {
   PublicPublicationGrantRoster {
     baseline: public_root_publish_baseline,
-    file_grants: [],
+    subtree_grants: public_subtree_publish_grants,
   }
 }
 
-fn granted_roster() -> PublicPublicationGrantRoster {
-  PublicPublicationGrantRoster {
-    baseline: public_root_publish_baseline,
-    file_grants: [public_file_publish_grant(path: synthetic_added_path)],
+fn private_subtree_grant(root: String) -> SubtreePublishGrant {
+  SubtreePublishGrant {
+    root: root,
+    envelope: Envelope {
+      frame: Frame { name: root, kind: SharedStateFrame },
+      grants: [],
+    },
   }
 }
 
-fn repeated_marker_roster() -> PublicPublicationGrantRoster {
-  let marker = public_file_publish_grant(path: synthetic_added_path)
+fn narrowed_roster() -> PublicPublicationGrantRoster {
   PublicPublicationGrantRoster {
     baseline: public_root_publish_baseline,
-    file_grants: [marker, marker],
+    subtree_grants: [
+      subtree_publish_world_grant(root: "dag"),
+      private_subtree_grant(root: "dag/private"),
+    ],
   }
 }
 
-fn refused_marker_roster() -> PublicPublicationGrantRoster {
+fn widening_roster() -> PublicPublicationGrantRoster {
   PublicPublicationGrantRoster {
     baseline: public_root_publish_baseline,
-    file_grants: [PublicFilePublishGrant {
-      path: synthetic_added_path,
-      envelope: Envelope {
-        frame: Frame { name: "synthetic-refused-marker", kind: SharedStateFrame },
-        grants: [],
-      },
-    }],
+    subtree_grants: [
+      subtree_publish_world_grant(root: "dag"),
+      private_subtree_grant(root: "dag/private"),
+      subtree_publish_world_grant(root: "dag/private/reopened"),
+    ],
+  }
+}
+
+fn repeated_root_roster() -> PublicPublicationGrantRoster {
+  let marker = subtree_publish_world_grant(root: "dag")
+  PublicPublicationGrantRoster {
+    baseline: public_root_publish_baseline,
+    subtree_grants: [marker, marker],
   }
 }
 
@@ -82,14 +96,49 @@ fn advanced_cutover_roster() -> PublicPublicationGrantRoster {
       cutover: "synthetic-advanced-cutover",
       envelope: public_root_publish_baseline.envelope,
     },
-    file_grants: [],
+    subtree_grants: [],
   }
 }
 
-test fn added_ungranted_public_path_reds_gate() -> Bool {
+test fn current_public_behavior_is_preserved_by_subtree_defaults() -> Bool {
+  let paths = [
+    "dag/extdeps/advertising/google_ads.dag",
+    "docs/plans/roadmap-presentation-seam-design.md",
+    "src/v2/workflow/ci_heal_revalidation_preflight_emit.dag",
+  ]
   let outcome = publication_guard_local_check(
-    roster: ungranted_roster(),
-    added_paths: [synthetic_added_path],
+    roster: default_roster(),
+    added_paths: paths,
+    head: "synthetic-head",
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } =>
+      receipt.root == "."
+        && receipt.subtree_grant_roots == ["dag", "docs", "src"]
+        && receipt.added_paths == paths
+        && exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } => false
+  }
+}
+
+test fn descendant_inherits_public_subtree_default() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: default_roster(),
+    added_paths: [synthetic_known_path],
+    head: "synthetic-head",
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } =>
+      receipt.added_paths == [synthetic_known_path]
+        && exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } => false
+  }
+}
+
+test fn novel_root_without_default_reds_gate() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: default_roster(),
+    added_paths: [synthetic_novel_path],
     head: "synthetic-head",
   )
   match outcome {
@@ -97,8 +146,48 @@ test fn added_ungranted_public_path_reds_gate() -> Bool {
     PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
       violations.count() == 1
         && match violations.first() {
-          AddedPathPublishGrantAbsent { path: path, root: root, audience: audience } =>
-            path == synthetic_added_path && root == "."
+          AddedPathSubtreeGrantAbsent { path: path, root: root, audience: audience } =>
+            path == synthetic_novel_path && root == "."
+          _ => false
+        }
+        && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+  }
+}
+
+test fn nearest_ancestor_narrowing_wins_without_capturing_sibling() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: narrowed_roster(),
+    added_paths: [synthetic_private_path, synthetic_public_sibling_path],
+    head: "synthetic-head",
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } => false
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
+      violations.count() == 1
+        && match violations.first() {
+          AddedPathPublishGrantRefused { path: path, root: root, verb: verb, target: target, frame: frame } =>
+            path == synthetic_private_path && root == "." && frame.name == "dag/private"
+          _ => false
+        }
+        && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
+  }
+}
+
+test fn descendant_cannot_widen_narrower_ancestor() -> Bool {
+  let outcome = publication_guard_local_check(
+    roster: widening_roster(),
+    added_paths: [],
+    head: "synthetic-head",
+  )
+  match outcome {
+    PublishGuardLocalAccepted { receipt: receipt } => false
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
+      violations.count() == 1
+        && match violations.first() {
+          SubtreePublishGrantWidensAncestor { subtree_root: subtree_root, ancestor_root: ancestor_root, root: root } =>
+            subtree_root == "dag/private/reopened"
+              && ancestor_root == "dag/private"
+              && root == "."
           _ => false
         }
         && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
@@ -127,30 +216,33 @@ test fn advanced_cutover_reds_gate() -> Bool {
   }
 }
 
-test fn added_granted_public_path_greens_gate() -> Bool {
+test fn repeated_publication_subtree_root_reds_gate() -> Bool {
   let outcome = publication_guard_local_check(
-    roster: granted_roster(),
-    added_paths: [synthetic_added_path],
+    roster: repeated_root_roster(),
+    added_paths: [],
     head: "synthetic-head",
   )
   match outcome {
-    PublishGuardLocalAccepted { receipt: receipt } =>
-      receipt.root == "."
-        && receipt.file_marker_paths == [synthetic_added_path]
-        && receipt.added_paths == [synthetic_added_path]
-        && exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
-    PublishGuardLocalRefused { receipt: receipt, violations: violations } => false
+    PublishGuardLocalAccepted { receipt: receipt } => false
+    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
+      violations.count() == 1
+        && match violations.first() {
+          SubtreePublishGrantRootRepeated { subtree_root: subtree_root, root: root } =>
+            subtree_root == "dag" && root == "."
+          _ => false
+        }
+        && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
   }
 }
 
-test fn ungranted_renamed_destination_reds_gate() -> Bool {
+test fn novel_renamed_destination_reds_gate() -> Bool {
   let renamed = GitDiffStatusEntry {
     status: DiffRenamedStatus { similarity: percent(100) },
-    path: synthetic_added_path,
+    path: synthetic_novel_path,
     old_path: Present { value: "dag/example/old_public_file.dag" },
   }
   let outcome = publication_guard_local_check(
-    roster: ungranted_roster(),
+    roster: default_roster(),
     added_paths: added_paths_from(entries: [renamed]),
     head: "synthetic-head",
   )
@@ -159,22 +251,22 @@ test fn ungranted_renamed_destination_reds_gate() -> Bool {
     PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
       violations.count() == 1
         && match violations.first() {
-          AddedPathPublishGrantAbsent { path: path, root: root, audience: audience } =>
-            path == synthetic_added_path && root == "."
+          AddedPathSubtreeGrantAbsent { path: path, root: root, audience: audience } =>
+            path == synthetic_novel_path && root == "."
           _ => false
         }
         && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
   }
 }
 
-test fn ungranted_copied_destination_reds_gate() -> Bool {
+test fn novel_copied_destination_reds_gate() -> Bool {
   let copied = GitDiffStatusEntry {
     status: DiffCopiedStatus { similarity: percent(100) },
-    path: synthetic_added_path,
+    path: synthetic_novel_path,
     old_path: Present { value: "dag/example/source_public_file.dag" },
   }
   let outcome = publication_guard_local_check(
-    roster: ungranted_roster(),
+    roster: default_roster(),
     added_paths: added_paths_from(entries: [copied]),
     head: "synthetic-head",
   )
@@ -183,46 +275,8 @@ test fn ungranted_copied_destination_reds_gate() -> Bool {
     PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
       violations.count() == 1
         && match violations.first() {
-          AddedPathPublishGrantAbsent { path: path, root: root, audience: audience } =>
-            path == synthetic_added_path && root == "."
-          _ => false
-        }
-        && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
-  }
-}
-
-test fn repeated_publication_marker_reds_gate() -> Bool {
-  let outcome = publication_guard_local_check(
-    roster: repeated_marker_roster(),
-    added_paths: [],
-    head: "synthetic-head",
-  )
-  match outcome {
-    PublishGuardLocalAccepted { receipt: receipt } => false
-    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
-      violations.count() == 1
-        && match violations.first() {
-          FilePublishGrantMarkerRepeated { path: path, root: root } =>
-            path == synthetic_added_path && root == "."
-          _ => false
-        }
-        && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))
-  }
-}
-
-test fn refused_publication_marker_reds_gate() -> Bool {
-  let outcome = publication_guard_local_check(
-    roster: refused_marker_roster(),
-    added_paths: [],
-    head: "synthetic-head",
-  )
-  match outcome {
-    PublishGuardLocalAccepted { receipt: receipt } => false
-    PublishGuardLocalRefused { receipt: receipt, violations: violations } =>
-      violations.count() == 1
-        && match violations.first() {
-          FilePublishGrantMarkerRefused { path: path, root: root, verb: verb, target: target, frame: frame } =>
-            path == synthetic_added_path && root == "." && frame.name == "synthetic-refused-marker"
+          AddedPathSubtreeGrantAbsent { path: path, root: root, audience: audience } =>
+            path == synthetic_novel_path && root == "."
           _ => false
         }
         && !exit_is_success(exit: publication_guard_process_exit(outcome: outcome))

@@ -3,7 +3,7 @@ module tools.publication_placement_gate
 import std.types { Bool, CommitSha, FilePath, GitRef, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.effect_grant {
-  Publish, NamespacePosition, EffectAdmission, Admitted, EffectOutsideGrant,
+  Publish, Verb, NamespacePosition, EffectAdmission, Admitted, EffectOutsideGrant,
   admit_effect, position_under,
 }
 import std.materialization_ladder { Frame }
@@ -55,7 +55,7 @@ type PublishGuardLocalViolation
   | BaselinePublishGrantRefused {
       root: FilePath,
       cutover: String,
-      verb: std.effect_grant.Verb,
+      verb: Verb,
       target: NamespacePosition,
       frame: Frame,
     }
@@ -82,7 +82,7 @@ type PublishGuardLocalViolation
   | AddedPathPublishGrantRefused {
       path: FilePath,
       root: FilePath,
-      verb: std.effect_grant.Verb,
+      verb: Verb,
       target: NamespacePosition,
       frame: Frame,
     }

@@ -11,7 +11,7 @@ import gunbc.publication_cutover {
   public_publication_root, public_publication_cutover_sha,
 }
 
-data publication_grant_note: String = "Stage-0 public-root publication roster (docs/plans/node-subtree-visibility-grants.md section 6, P-B public half). The one baseline row bulk-stamps every path already present at its exact cutover commit Publish World; it does not mint thousands of per-file declarations. Post-cutover policy is declared at subtree grain: each SubtreePublishGrant supplies the inherited default for every descendant, and tools.publication_placement_gate resolves the nearest covering ancestor while enforcing Rule 2's downward closure. The six established repository directory roots are Publish World; a novel top-level root has no covering declaration and therefore refuses fail-closed. Both baseline and subtree rows carry the existing std.effect_grant.Envelope, and the placement gate asks std.effect_grant.admit_effect(Publish, world_audience) -- this carrier never owns a second admission rule. PROVISIONAL CARRIER DISPOSITION (operator directive 2026-08-01): the Publish verb and audience-tree request shape consumed here are frozen provisional, not the permanent publication authorization ontology; this placement gate is expected to re-home its request onto a PublicationAdmissionRequest profile over the std.access AccessRequest/AccessPolicy/decision_meet kernel when the kernel/profile grounding pass lands. This roster remains only the declared-placement-policy input and introduces no identity, principal, role, or broader audience model. The public checkout is the only mounted root in this stage. Private-root and composed-graph closure are deliberately absent and arrive at P-C."
+data publication_grant_note: String = "Stage-0 public-root publication roster (docs/plans/node-subtree-visibility-grants.md section 6, P-B public half). The one baseline row bulk-stamps every path already present at its exact cutover commit Publish World; it does not mint thousands of per-file declarations. Post-cutover policy is declared at subtree grain: each SubtreePublishGrant supplies the inherited default for every descendant, and tools.publication_placement_gate resolves the nearest covering ancestor while enforcing Rule 2's downward closure. The cutover-to-HEAD addition history has three established publication roots -- dag, docs, and src -- and those roots are Publish World; a path under any other top-level root has no covering declaration and therefore refuses fail-closed until its policy is explicit. Both baseline and subtree rows carry the existing std.effect_grant.Envelope, and the placement gate asks std.effect_grant.admit_effect(Publish, world_audience) -- this carrier never owns a second admission rule. PROVISIONAL CARRIER DISPOSITION (operator directive 2026-08-01): the Publish verb and audience-tree request shape consumed here are frozen provisional, not the permanent publication authorization ontology; this placement gate is expected to re-home its request onto a PublicationAdmissionRequest profile over the std.access AccessRequest/AccessPolicy/decision_meet kernel when the kernel/profile grounding pass lands. This roster remains only the declared-placement-policy input and introduces no identity, principal, role, or broader audience model. The public checkout is the only mounted root in this stage. Private-root and composed-graph closure are deliberately absent and arrive at P-C."
 
 type PublicRootPublishBaseline {
   root: FilePath
@@ -59,13 +59,12 @@ fn subtree_publish_world_grant(root: FilePath) -> SubtreePublishGrant {
 }
 
 data public_subtree_publish_grants: List<SubtreePublishGrant> = [
-  subtree_publish_world_grant(root: ".cargo"),
-  subtree_publish_world_grant(root: ".githooks"),
-  subtree_publish_world_grant(root: ".github"),
   subtree_publish_world_grant(root: "dag"),
   subtree_publish_world_grant(root: "docs"),
   subtree_publish_world_grant(root: "src"),
 ]
+
+data post_cutover_race_repair_note: String = "Historical receipt (2026-08-01): eleven public CI/heal/workflow and source-integration paths merged from branches cut before the placement gate landed, leaving main with post-cutover Added paths but no per-file publication rows and refusing every later merge ref. The repair then raced: a concurrent PR sorted the same eleven rows into the primary list before the append-block repair merged; both edits merged without textual conflict and every row appeared twice, which the repeated-marker audit correctly refused. Subtree-grain inheritance closes both workflow races structurally: additions beneath dag, docs, or src need no independently racing stamp, while the repeated-root audit remains for the much smaller default/exception roster. A new top-level root still requires an explicit publication decision."
 
 data public_publication_grant_roster: PublicPublicationGrantRoster = PublicPublicationGrantRoster {
   baseline: public_root_publish_baseline,
