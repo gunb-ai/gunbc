@@ -64,6 +64,7 @@ use crate::resolved_graph_cache::{
     supports_faithful_probe, transform_content_digest, write as cross_process_write,
     CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
 };
+use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -7010,10 +7011,26 @@ fn typed_module_content_key(
             import_hashes.push_back(hash);
         }
     }
+    fn structural_from_wire(hex: String) -> Rc<crate::std_content_hash::Fnv1a64Structural> {
+        fnv1a64_structural_hex_digest(hex).unwrap_or_else(|| {
+            panic!("typed-module content key refused: reconcile digest is not a valid fnv1a64 structural wire form")
+        })
+    }
     Ok(typed_module_key(
-        module_key(source_hash, Rc::new(import_hashes)),
-        transform_content_digest(),
-    ))
+        module_key(
+            structural_from_wire(source_hash),
+            Rc::new(
+                import_hashes
+                    .iter()
+                    .cloned()
+                    .map(|h| structural_from_wire(h))
+                    .collect(),
+            ),
+        ),
+        structural_from_wire(transform_content_digest()),
+    )
+    .digest
+    .clone())
 }
 
 /// Record `mod_name`'s interface hash for downstream key derivation (one entry per
@@ -7025,7 +7042,13 @@ fn note_interface_hash(
 ) {
     interface_hash_by_name.insert(
         mod_name.to_string(),
-        tc_result.typed.interface.summary.interface_hash.clone(),
+        tc_result
+            .typed
+            .interface
+            .summary
+            .interface_hash
+            .digest
+            .clone(),
     );
 }
 

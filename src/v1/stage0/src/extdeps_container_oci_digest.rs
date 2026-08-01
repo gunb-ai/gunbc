@@ -70,7 +70,7 @@ pub fn oci_encoded_digest_syntax_valid(mut text: String, mut index: i64) -> bool
 }
 
 pub fn oci_encoded_digest(text: String) -> Option<String> {
-    if oci_encoded_digest_syntax_valid(text.clone(), 0) {
+    if oci_other_digest_encoded(text.clone()) {
         Some(text.clone())
     } else {
         None
@@ -257,12 +257,12 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                         None
                     } else {
                         match oci_encoded_digest(parts.encoded.clone()) {
-                            Some(_) => Some(Rc::new(OciContentDigest::OciOtherDigest(Rc::new(
-                                OciOtherDigestBody {
+                            Some(encoded) => Some(Rc::new(OciContentDigest::OciOtherDigest(
+                                Rc::new(OciOtherDigestBody {
                                     algorithm: parts.algorithm.clone(),
-                                    encoded: parts.encoded.clone(),
-                                },
-                            )))),
+                                    encoded: encoded.clone(),
+                                }),
+                            ))),
                             None => None,
                         }
                     }
