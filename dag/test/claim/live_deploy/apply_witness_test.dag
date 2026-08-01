@@ -2,6 +2,9 @@ module test.claim.live_deploy.apply
 
 import gunbc.live_deploy.apply {
   live_deploy_apply_readiness_gate_with_readiness,
+  srv1_blue_green_slot_selection,
+  BlueGreenSlotsSelected,
+  BlueGreenSlotSelectionRefused,
 }
 import gunbc.roadmap_static_site {
   roadmap_site_digest_readback_script,
@@ -42,6 +45,47 @@ import std.realization_reconcile {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn tailscale_status_fixture(proxy: String) -> String {
+  join([
+    "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"",
+    proxy,
+    "\"}}}}}",
+  ], "")
+}
+
+test fn witness_blue_active_selects_green_idle() -> Bool {
+  match srv1_blue_green_slot_selection(status_json: tailscale_status_fixture(proxy: "http://127.0.0.1:8080")) {
+    BlueGreenSlotsSelected { active, idle } =>
+      deployment_plan_listen_port(spec: active) == 8080
+        && deployment_plan_listen_port(spec: idle) == 18080
+    BlueGreenSlotSelectionRefused { reason: _ } => false
+  }
+}
+
+test fn witness_green_active_selects_blue_idle() -> Bool {
+  match srv1_blue_green_slot_selection(status_json: tailscale_status_fixture(proxy: "http://127.0.0.1:18080")) {
+    BlueGreenSlotsSelected { active, idle } =>
+      deployment_plan_listen_port(spec: active) == 18080
+        && deployment_plan_listen_port(spec: idle) == 8080
+    BlueGreenSlotSelectionRefused { reason: _ } => false
+  }
+}
+
+test fn witness_unknown_or_unparseable_route_refuses_before_slot_selection() -> Bool {
+  let unknown = srv1_blue_green_slot_selection(status_json: tailscale_status_fixture(proxy: "http://127.0.0.1:9999"))
+  let malformed = srv1_blue_green_slot_selection(status_json: "not-json")
+  match unknown {
+    BlueGreenSlotsSelected { active: _, idle: _ } => false
+    BlueGreenSlotSelectionRefused { reason: a } =>
+      match malformed {
+        BlueGreenSlotsSelected { active: _, idle: _ } => false
+        BlueGreenSlotSelectionRefused { reason: b } =>
+          string_contains(s: a, pattern: "refused")
+            && string_contains(s: b, pattern: "refused")
+      }
+  }
+}
 
 fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   Converged {
@@ -103,4 +147,3 @@ test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
     && string_contains(s: script, pattern: "--max-time")
     && !string_contains(s: script, pattern: "healthz json parse failed")
 }
-

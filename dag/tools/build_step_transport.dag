@@ -4,6 +4,7 @@ module tools.build_step_transport
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.cli_invoke { claim_executor_bin_name }
 import gunbc.cli_services
@@ -68,7 +69,7 @@ fn verify_artifacts_typed(root: String, paths: List<String>) -> Bool {
 }
 
 fn corruption_probe_with_content(content: String, expect_verify_success: Bool) -> Bool {
-  let root = git.Core.Toplevel()
+  let root = git.Inspect.Toplevel()
   if claim_executor_ready(root: root.path) {
     let tmp = shell.Mktemp.Dir()
     if tmp.success {
