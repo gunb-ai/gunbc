@@ -394,6 +394,7 @@ type ForecastRefusal
   | DependencyCycle { nodes: List<RoadmapNodeId> }
   | DependencyEndpointUnknown { nodes: List<RoadmapNodeId> }
   | NodeUnsized { nodes: List<RoadmapNodeId> }
+  | CycleTimeObservationNonPositive { nodes: List<RoadmapNodeId> }
   | NoCalibrationSample {
       gaps: List<CalibrationGap>,
       population_exclusions: List<CycleTimePopulationExclusion>,
@@ -426,6 +427,7 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
         DependencyCycle { nodes: _ } => 0
         DependencyEndpointUnknown { nodes: _ } => 0
         NodeUnsized { nodes: _ } => 0
+        CycleTimeObservationNonPositive { nodes: _ } => 0
         CalibrationHistoryRefused { refusals: _ } => 0
         ForecastBuildRefused { node: _ } => 0
       }
@@ -715,6 +717,12 @@ fn schedule_forecast(
   let cycles = dependency_cycle_nodes(nodes: nodes, edges: edges)
   let unknown_endpoints = unknown_dependency_endpoints(nodes: nodes, edges: edges)
   let unsized = nodes |> filter(n => match n.sizing { Unsized => true Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => false }) |> map(n => n.node)
+  let non_positive_observation_nodes = observations
+    |> filter(observation => millisecond_count(m: observation.cycle_time) <= 0)
+    |> fold(init: [], f: (located, observation) =>
+      if any(located, node => node == observation.node) { located }
+      else { append(located, items: [observation.node]) }
+    )
   let gaps = calibration_gaps(nodes: nodes, observations: observations)
   let invalid_worker_cap = assumptions.worker_concurrency_cap.max_concurrent <= 0
   let refusals = concat(
@@ -726,15 +734,18 @@ fn schedule_forecast(
         concat(
           if count(unsized) > 0 { [NodeUnsized { nodes: unsized }] } else { [] },
           concat(
-            if count(gaps) > 0 { [NoCalibrationSample {
+            if count(non_positive_observation_nodes) > 0 { [CycleTimeObservationNonPositive { nodes: non_positive_observation_nodes }] } else { [] },
+            concat(
+              if count(gaps) > 0 { [NoCalibrationSample {
               gaps: gaps,
               population_exclusions: population_exclusions,
               assumptions: assumptions,
               scenario_adjustment: scenario_adjustment(assumptions: assumptions),
-            }] } else { [] },
-            concat(
-              if invalid_worker_cap { [WorkerConcurrencyCapInvalid { declared_cap: assumptions.worker_concurrency_cap.max_concurrent }] } else { [] },
-              if count(history_refusals) > 0 { [CalibrationHistoryRefused { refusals: history_refusals }] } else { [] },
+              }] } else { [] },
+              concat(
+                if invalid_worker_cap { [WorkerConcurrencyCapInvalid { declared_cap: assumptions.worker_concurrency_cap.max_concurrent }] } else { [] },
+                if count(history_refusals) > 0 { [CalibrationHistoryRefused { refusals: history_refusals }] } else { [] },
+              ),
             ),
           ),
         ),

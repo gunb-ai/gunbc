@@ -49,6 +49,7 @@ import gunbc.roadmap_forecast {
   ForecastGraphEmpty,
   DependencyCycle,
   NodeUnsized,
+  CycleTimeObservationNonPositive,
   NoCalibrationSample,
   WorkerConcurrencyCapInvalid,
   CalibrationHistoryRefused,
@@ -225,6 +226,7 @@ test fn witness_live_graph_refuses_with_located_counted_calibration_gaps() -> Bo
               ForecastGraphEmpty => false
               DependencyEndpointUnknown { nodes: _ } => false
               NodeUnsized { nodes: _ } => false
+              CycleTimeObservationNonPositive { nodes: _ } => false
               WorkerConcurrencyCapInvalid { declared_cap: _ } => false
               CalibrationHistoryRefused { refusals: _ } => false
               ForecastBuildRefused { node: _ } => false
@@ -246,6 +248,7 @@ test fn witness_live_graph_gap_count_matches_refusal_rows() -> Bool {
         DependencyCycle { nodes: _ } => false
         DependencyEndpointUnknown { nodes: _ } => false
         NodeUnsized { nodes: _ } => false
+        CycleTimeObservationNonPositive { nodes: _ } => false
         WorkerConcurrencyCapInvalid { declared_cap: _ } => false
         CalibrationHistoryRefused { refusals: _ } => false
         ForecastBuildRefused { node: _ } => false
@@ -263,6 +266,7 @@ test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
         DependencyCycle { nodes: _ } => false
         DependencyEndpointUnknown { nodes: _ } => false
         NodeUnsized { nodes: _ } => false
+        CycleTimeObservationNonPositive { nodes: _ } => false
         WorkerConcurrencyCapInvalid { declared_cap: _ } => false
         CalibrationHistoryRefused { refusals: _ } => false
         ForecastBuildRefused { node: _ } => false
@@ -360,7 +364,34 @@ test fn witness_invalid_worker_cap_refuses() -> Bool {
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
       NodeUnsized { nodes: _ } => false
+      CycleTimeObservationNonPositive { nodes: _ } => false
       NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+      CalibrationHistoryRefused { refusals: _ } => false
+      ForecastBuildRefused { node: _ } => false
+    })
+  }
+}
+
+test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
+  let n = sized_node(id: "zero-cycle", cell: fixture_cell())
+  match schedule_forecast(
+    nodes: [n],
+    edges: [],
+    observations: [observation(id: n.node, cell: fixture_cell(), duration_ms: 0)],
+    history_refusals: [],
+    population_exclusions: [],
+    assumptions: assumptions(),
+    anchor: anchor(),
+  ) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } => count(refusals) == 1 && any(refusals, refusal => match refusal {
+      CycleTimeObservationNonPositive { nodes } => nodes == [n.node]
+      ForecastGraphEmpty => false
+      DependencyCycle { nodes: _ } => false
+      DependencyEndpointUnknown { nodes: _ } => false
+      NodeUnsized { nodes: _ } => false
+      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
     })
@@ -396,6 +427,7 @@ test fn witness_unsized_node_refuses() -> Bool {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
       NodeUnsized { nodes } => nodes == [n.node]
+      CycleTimeObservationNonPositive { nodes: _ } => false
       ForecastGraphEmpty => false
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
@@ -428,6 +460,7 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
       NodeUnsized { nodes: _ } => false
+      CycleTimeObservationNonPositive { nodes: _ } => false
       WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastBuildRefused { node: _ } => false
@@ -456,6 +489,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
       ForecastGraphEmpty => false
       DependencyEndpointUnknown { nodes: _ } => false
       NodeUnsized { nodes: _ } => false
+      CycleTimeObservationNonPositive { nodes: _ } => false
       NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
       WorkerConcurrencyCapInvalid { declared_cap: _ } => false
       CalibrationHistoryRefused { refusals: _ } => false
