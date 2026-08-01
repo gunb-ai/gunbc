@@ -333,6 +333,16 @@ test fn operation_execution_mechanism_RED_openssh_local_mode_is_not_remote_shell
   }
 }
 
+test fn operation_execution_mechanism_RED_openssh_interactive_session_is_not_remote_command() -> Bool {
+  match execution_mechanism_from_evidence(
+    evidence: SpawnInvocation { executable: "ssh", argv: ["ssh", "example.test"] }
+  ) {
+    ExecutionMechanismRefusedInvocationShape { executable: executable } => executable == "ssh"
+    ExecutionMechanismDerived { mechanism: _ } => false
+    ExecutionMechanismRefusedWrapper { executable: _ } => false
+  }
+}
+
 test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool {
   let label = operation_argv_refusal_label(
     m: shell_materialize_operation_argv(

@@ -32,7 +32,7 @@ data execution_mechanism_grounding_note: String = "OpenSSH CLI shape is grounded
 
 data execution_wrapper_refusal_note: String = "A known exec wrapper is not classified from argv[0]. env, sudo, nohup, timeout, nice, setsid, stdbuf, and xargs select the effective executable through their own option grammar; `env bash -s` is a LocalShellScript while `env git status` is a LocalProcess even though both have the same argv[0]. Looking through without modeling that grammar would recreate argv anemia inside the classifier, so wrappers refuse until their invocation shape is grounded. The executed live census pins the current TEN wrapper rows as counted residue — eight env and two sudo. An earlier source scan counted eight total because it missed two multiline env argv declarations; the derived census, not that grep, is the authority."
 
-data openssh_invocation_shape_note: String = "The executable name `ssh` is not enough evidence for RemoteShellCommand: OpenSSH also has local inspection and non-shell modes such as -G, -Q, -V, -N, -O, -s, and -W. The bounded decoder below admits only the invocation grammar exercised by the enrolled corpus: zero or more `-o VALUE` option pairs followed by a non-option destination. Every other leading option and a missing destination refuse as ExecutionMechanismRefusedInvocationShape. This is deliberately a conservative partial decoder, not a nickname for the full OpenSSH CLI grammar; a consumer that needs another mode must ground that mode before the classifier can admit it."
+data openssh_invocation_shape_note: String = "The executable name `ssh` is not enough evidence for RemoteShellCommand: OpenSSH also has local inspection and non-shell modes such as -G, -Q, -V, -N, -O, -s, and -W, while a destination without a command opens an interactive session. The bounded decoder below admits only the invocation grammar exercised by the enrolled corpus: zero or more `-o VALUE` option pairs, a non-option destination, an optional `--` separator, and at least one remote-command word. Every other leading option, a missing destination, and a destination without command evidence refuse as ExecutionMechanismRefusedInvocationShape. This is deliberately a conservative partial decoder, not a nickname for the full OpenSSH CLI grammar; a consumer that needs another mode must ground that mode before the classifier can admit it."
 
 type ExecutionMechanismEvidence
   = SpawnExecutable { executable: String }
@@ -97,7 +97,25 @@ fn openssh_remote_shell_command_from_arguments(
       } else if starts_with(s: argument, prefix: "-") {
         ExecutionMechanismRefusedInvocationShape { executable: executable }
       } else {
-        ExecutionMechanismDerived { mechanism: RemoteShellCommand }
+        match list_tail(xs: arguments) {
+          TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+          TailFound { tail: remote_command } => match list_head(xs: remote_command) {
+            HeadAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+            HeadFound { value: command_head } =>
+              if command_head == "--" {
+                match list_tail(xs: remote_command) {
+                  TailAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+                  TailFound { tail: separated_command } => match list_head(xs: separated_command) {
+                    HeadAbsent => ExecutionMechanismRefusedInvocationShape { executable: executable }
+                    HeadFound { value: _ } =>
+                      ExecutionMechanismDerived { mechanism: RemoteShellCommand }
+                  }
+                }
+              } else {
+                ExecutionMechanismDerived { mechanism: RemoteShellCommand }
+              }
+          }
+        }
       }
   }
 }
