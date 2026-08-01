@@ -13,8 +13,7 @@ import v2.compiler.self_host.frontier_probe_types {
   UnknownProbeCause,
   FixtureCemented,
   UpstreamSemanticRefusal,
-  frontier_blocker_class_matches,
-  frontier_located_reason_is_stale_knowledge_attributed
+  frontier_blocker_class_matches
 }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.source_authority { SourceRootIngest }

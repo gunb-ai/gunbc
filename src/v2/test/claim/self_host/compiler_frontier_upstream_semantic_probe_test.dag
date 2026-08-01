@@ -1,6 +1,7 @@
 module v2.test.self_host.compiler_frontier_upstream_semantic_probe
 
 import v2.compiler.self_host.frontier {
+  compiler_frontier_receipt_totality_wall_holds,
   compiler_frontier_roster_stale_located_reason_count_holds
 }
 import v2.compiler.self_host.frontier_probe_survey {
@@ -68,6 +69,10 @@ test fn compiler_frontier_stale_located_reason_wall_reds_until_second_pass_holds
 
 test fn compiler_frontier_empty_survey_blocker_partition_totality_holds() -> Bool {
   frontier_probe_survey_blocker_partition_totality_holds(receipts: [], module_count: 0)
+}
+
+test fn compiler_frontier_receipt_totality_wall_empty_survey_executes_red_on_stale_holds() -> Bool {
+  !compiler_frontier_receipt_totality_wall_holds(survey: [])
 }
 
 test fn frontier_emit_accept_unbound_located_stage_is_emit_holds() -> Bool {
