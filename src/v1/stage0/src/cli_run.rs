@@ -34942,8 +34942,8 @@ mod peel_alias_fixpoint_termination {
     fn peel_refusals_reach_compile_result_through_inference_consumers() {
         let source = r#"module peel_consumer_probe
 
-type FieldAlias<T> = FieldMissing<T>
-type RecordAlias<T> = RecordMissing<T>
+type FieldAlias<T> = FieldAlias<T>
+type RecordAlias<T> = RecordAlias<T>
 
 fn field_probe(x: FieldAlias<Int>) -> Int {
   x.value
@@ -34963,25 +34963,35 @@ fn record_probe() -> Int {
             )]),
             crate::v1_compiler_artifact::RenderTarget::Dag,
         );
-        let unresolved_subjects: Vec<String> = result
+        let resolution_depth_subjects: Vec<String> = result
             .diagnostics
             .iter()
             .filter_map(|d| match &*d.diagnostic {
-                crate::v1_std_core::CompilerDiagnostic::UnresolvedType { name, .. } => {
-                    Some(name.clone())
+                crate::v1_std_core::CompilerDiagnostic::InternalError { message, .. }
+                    if message
+                        .starts_with("internal: type resolution exceeded depth 100 for '") =>
+                {
+                    Some(message.clone())
                 }
                 _ => None,
             })
             .collect();
-        for diagnostic in result.diagnostics.iter() {
-            eprintln!(
-                "diagnostic={:?} message={}",
-                diagnostic.diagnostic,
-                crate::v1_std_core::diagnostic_to_message(diagnostic.diagnostic.clone())
-            );
-        }
-        eprintln!("unresolved_subjects={unresolved_subjects:?}");
-        assert!(!unresolved_subjects.is_empty());
+        let field_alias_count = resolution_depth_subjects
+            .iter()
+            .filter(|message| message.ends_with("'FieldAlias'"))
+            .count();
+        let record_alias_count = resolution_depth_subjects
+            .iter()
+            .filter(|message| message.ends_with("'RecordAlias'"))
+            .count();
+        assert_eq!(
+            field_alias_count, 4,
+            "field-access alias refusals must reach CompileResult.diagnostics"
+        );
+        assert_eq!(
+            record_alias_count, 3,
+            "record-literal alias refusals must reach CompileResult.diagnostics"
+        );
     }
 }
 
