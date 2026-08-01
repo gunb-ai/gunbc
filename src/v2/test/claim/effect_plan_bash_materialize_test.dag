@@ -242,6 +242,8 @@ test fn effect_plan_bash_metacharacters_and_newline_remain_one_quoted_word() -> 
     )
 }
 
+data unicode_escape_nul_witness_note: String = "This is also the CI-enforcing receipt for the language's Unicode escape: keep the production guard pattern authored with the Unicode escape while constructing the poison input independently with from_code_point(0). If the tokenizer regresses to passthrough, the pattern becomes printable text, no longer matches this real NUL, and this witness reds. Rewriting the guard pattern to from_code_point would make both sides share a constructor and remove this discrimination."
+
 test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
   let nul = from_code_point(cp: 0)
   let third_argument = effect_plan_bash_materialize(plan: one_step_plan(inv: test_path_invocation(
