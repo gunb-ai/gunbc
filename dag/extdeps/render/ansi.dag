@@ -167,6 +167,73 @@ fn ansi_text_contains_line_feed(text: String) -> Bool {
   string_contains(s: text, pattern: ansi_line_feed)
 }
 
+data terminal_diagnostic_projection_note: String = "A FAILURE TO RENDER THE PREFERRED FORM MUST NEVER REPLACE THE PRIMARY DIAGNOSTIC, and that rule is the whole reason this function is TOTAL rather than fallible. The incident it answers: a live GitHub 401 arrived with a CRLF-bearing body, the REST realization embedded that body in a diagnostic, the write guard found a real CR and refused, and 'HTTP 401: Bad credentials' was replaced by 'rendered text cannot contain terminal cursor-control bytes'. The located cause was destroyed by the mechanism protecting the terminal, which is a worse outcome than either the raw bytes or a plain refusal. Because this projection has no failure arm, there is no path by which rendering can lose the message it was given.\\n\\nWHY CR IS NOT SIMPLY ADMITTED, which was the tempting one-line fix: LF and TAB are admissible because neither can escape the erase-line invariant, and CR is admissible under no such argument - it moves the cursor to column zero and lets subsequent text overwrite what was already written, which is exactly the smuggled-overwrite the wall exists to stop. Adding CR to the admissible set would buy this one diagnostic at the cost of the guarantee. So the bytes are TRANSFORMED before they reach the guard instead, and the guard is left exactly as strict as it was.\\n\\nCRLF COLLAPSES TO LF RATHER THAN BEING ESCAPED because it is a line ending and not a cursor movement - every CRLF in a diagnostic is a line break some remote chose to spell in the network convention, and rendering it as a visible escape would make ordinary multi-line output unreadable to serve a distinction no reader wants. A LONE CR is the opposite case and stays visible: it has no line-ending reading, and it is the byte that actually performs the overwrite.\\n\\nTHE MARKERS COME FROM THE AUTHORITY, not from this module. A named control renders as its ECMA-48 acronym, so a reader sees <CR> or <ESC> rather than a hex code they must look up. The three code points the standard does not assign render with a trailing question mark on the Unicode annotation - <PAD?> - so the projection never silently presents an uncited draft name as though the cited standard had blessed it.\\n\\nTHE RAW BODY IS NOT DISCARDED. This produces a safe rendering and a list of what it changed; the original stays in whatever typed evidence carried it. A projection that destroyed its input would reproduce the failure it exists to prevent, one layer further in."
+
+type DiagnosticTextTransformation
+  = CrLfNormalizedToLineFeed { count: Int }
+  | ControlRenderedVisible { marker: NonEmptyStr, count: Int }
+
+type TerminalDiagnosticProjection {
+  safe_text: String
+  transformations: List<DiagnosticTextTransformation>
+}
+
+type DiagnosticProjectionStep {
+  text: String
+  transformations: List<DiagnosticTextTransformation>
+}
+
+fn terminal_control_marker(control: TerminalControl) -> String {
+  match control.name {
+    ControlNamed { acronym } => join(["<", acronym, ">"], "")
+    ControlUnassignedInEcma48 { unicode_annotation } => join(["<", unicode_annotation, "?>"], "")
+  }
+}
+
+fn render_control_visible(step: DiagnosticProjectionStep, control: TerminalControl) -> DiagnosticProjectionStep {
+  let character = terminal_control_character(control: control)
+  if ansi_control_is_content_admissible(c: character) {
+    step
+  } else {
+    let marker = terminal_control_marker(control: control)
+    let replaced = replace(step.text, character, marker)
+    let unit = length(marker) - length(character)
+    let delta = length(replaced) - length(step.text)
+    if delta == 0 {
+      step
+    } else {
+      DiagnosticProjectionStep {
+        text: replaced,
+        transformations: concat(
+          step.transformations,
+          [ControlRenderedVisible { marker: marker as NonEmptyStr, count: delta / unit }]
+        ),
+      }
+    }
+  }
+}
+
+fn project_diagnostic_text_for_terminal(text: String) -> TerminalDiagnosticProjection {
+  let normalized = replace(text, concat(ansi_carriage_return, ansi_line_feed), ansi_line_feed)
+  let crlf_count = length(text) - length(normalized)
+  let projected = fold(
+    ansi_terminal_control_rows,
+    init: DiagnosticProjectionStep {
+      text: normalized,
+      transformations: if crlf_count == 0 {
+        []
+      } else {
+        [CrLfNormalizedToLineFeed { count: crlf_count }]
+      },
+    },
+    f: (step, control) => render_control_visible(step: step, control: control)
+  )
+  TerminalDiagnosticProjection {
+    safe_text: projected.text,
+    transformations: projected.transformations,
+  }
+}
+
 
 type PaletteIndex = Int
 
