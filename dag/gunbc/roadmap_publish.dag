@@ -974,25 +974,38 @@ type PublicationEvidence
       found: String,
     }
 
+data receipt_source_is_not_a_bool_note: String = "ABSENT AND UNREADABLE ARE OPPOSITE INSTRUCTIONS, SO THEY CANNOT SHARE A CARRIER. This function used to take (readable: Bool, text: String) and answer EvidenceAbsent whenever the read had failed. Filesystem.Read reports success=false for a file that does not exist AND for a file that exists but could not be read, so one bit stood for two worlds whose correct actions are opposites: absent means go observe and write the receipt, unreadable means stop and do not touch evidence you could not read. The producer's gate maps EvidenceAbsent to PublishProceed, so an I/O fault on an existing receipt would have overwritten it - a fail-open in the one place this lane promises not to be, reported by review 46148.\\n\\nTHE REPOSITORY HAD ALREADY PAID FOR THIS LESSON at the Verify seam: roadmap_validation_oracle's validation_not_run_note records the identical defect (empty text arriving from three different worlds, then the validation re-run and the evidence overwritten) and the identical resolution - make the absence a state somebody ESTABLISHED rather than a value inferred from a failure. This is that fix applied to Publication, and taking the coproduct here rather than a Bool is what stops the conflation being re-introduced by a future caller: there is no longer a spelling for `I could not read it, treat it as gone`.\\n\\nA PRESENT BUT EMPTY FILE IS UNREADABLE, NOT ABSENT. Something wrote it, so the write either lost its content or was interrupted; concluding `nothing has been published` from a truncated file is the same fabrication one step down. The caller establishes absence by successfully listing a directory that exists - never by a read that failed."
+
+type PublicationReceiptSource
+  = ReceiptSourceAbsent
+  | ReceiptSourcePresent { text: String }
+  | ReceiptSourceUnreadable { detail: String }
+
 fn publication_evidence_for(
   expected: PublicationSubject,
-  receipt_readable: Bool,
-  receipt_text: String,
+  source: PublicationReceiptSource,
 ) -> PublicationEvidence {
-  if !receipt_readable || trim(receipt_text) == "" {
-    EvidenceAbsent
-  } else {
-    match publication_receipt_decode(receipt: receipt_text) {
-      ReceiptUndecodable { reason } => EvidenceUnreadable { reason: reason }
-      ReceiptDecoded { receipt } =>
-        match publication_receipt_subject_match(
-          expected: expected,
-          found: receipt.subject,
-        ) {
-          SubjectDiffers { field, expected: e, found: f } =>
-            EvidenceForAnotherSubject { field: field, expected: e, found: f }
-          SubjectMatches => EvidenceForSubject { receipt: receipt }
+  match source {
+    ReceiptSourceAbsent => EvidenceAbsent
+    ReceiptSourceUnreadable { detail } => EvidenceUnreadable { reason: detail }
+    ReceiptSourcePresent { text: receipt_text } =>
+      if trim(receipt_text) == "" {
+        EvidenceUnreadable {
+          reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
         }
-    }
+      } else {
+        match publication_receipt_decode(receipt: receipt_text) {
+          ReceiptUndecodable { reason } => EvidenceUnreadable { reason: reason }
+          ReceiptDecoded { receipt } =>
+            match publication_receipt_subject_match(
+              expected: expected,
+              found: receipt.subject,
+            ) {
+              SubjectDiffers { field, expected: e, found: f } =>
+                EvidenceForAnotherSubject { field: field, expected: e, found: f }
+              SubjectMatches => EvidenceForSubject { receipt: receipt }
+            }
+        }
+      }
   }
 }
