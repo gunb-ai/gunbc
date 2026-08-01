@@ -1,6 +1,6 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod, FermiDepth, NonEmptyStr }
+import std.types { HttpMethod, FermiDepth, NonEmptyStr, HttpStatus, Int, String }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
@@ -21,6 +21,48 @@ data rest_basic_auth_authority: ExternalAuthority = ExternalAuthority {
 }
 
 data rest_transport_fidelity: TransportFidelity = TransportFidelity { depth: L, hermetic: false }
+
+data http_status_class_authority_note: String = "RFC 9110 §15 defines five status classes. They live beside the RFC citation so callers derive class from the grounded status number instead of re-deriving a success boundary in prose or seed Rust. There is no Bool success arm: a Bool collapses five classes into two and bakes a convention the authority already names."
+
+type HttpStatusClass
+  = Informational
+  | Successful
+  | Redirection
+  | ClientErrorStatus
+  | ServerErrorStatus
+
+fn http_status_class(status: HttpStatus) -> HttpStatusClass {
+  if status < 200 { Informational }
+  else if status < 300 { Successful }
+  else if status < 400 { Redirection }
+  else if status < 500 { ClientErrorStatus }
+  else { ServerErrorStatus }
+}
+
+type RestResponseStatusPattern
+  = ExactStatus { code: HttpStatus }
+  | StatusHundredsRange { hundreds: Int }
+
+data rest_response_table_authority_note: String = "The operation's declared response {} block is a status-pattern to body-type table — not a success/failure directive. Parse lowers each arm to a response_<pattern> property on the operation node; emit and interp realize the SAME table (§3 single authority). A success arm (2xx class) decodes into the operation's output {}; an error arm decodes the declared body type and the operation still refuses — the payload is richer, the disposition does not flip. An undeclared status is a typed refusal, never a silent widen."
+
+type RestResponseTableRow {
+  pattern: RestResponseStatusPattern
+  body_type: String
+}
+
+fn rest_response_pattern_matches(pattern: RestResponseStatusPattern, status: HttpStatus) -> Bool {
+  match pattern {
+    ExactStatus { code: c } => status == c
+    StatusHundredsRange { hundreds: h } => status >= (h * 100) && status < ((h + 1) * 100)
+  }
+}
+
+fn rest_response_arm_is_success(pattern: RestResponseStatusPattern) -> Bool {
+  match pattern {
+    ExactStatus { code: c } => c >= 200 && c < 300
+    StatusHundredsRange { hundreds: h } => h == 2
+  }
+}
 
 type TlsPosture
   = VerifyPeer
