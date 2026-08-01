@@ -1,6 +1,7 @@
 module std.artifact_store_scratch_grant
 
 import std.types { String, Bool }
+import std.access { AccessDecision }
 import std.effect_grant {
   Verb, Read, Write,
   filesystem_position,
@@ -8,7 +9,7 @@ import std.effect_grant {
   RealTransport,
   LifecycleByConvention,
   Grant, Envelope,
-  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
+  admit_effect,
 }
 import std.filesystem_path_grant {
   absolute_path_position,
@@ -51,26 +52,23 @@ fn artifact_store_scratch_envelope() -> Envelope {
 fn artifact_store_scratch_target_admissible(
   store_root: String,
   verb: Verb
-) -> EffectAdmission {
-  if !is_gunbc_tmp_scratch_store_root(store_root: store_root) {
-    EffectOutsideGrant {
-      verb: verb,
-      target: absolute_path_position(path: store_root),
-      frame: artifact_store_scratch_frame
-    }
+) -> AccessDecision {
+  let env = if is_gunbc_tmp_scratch_store_root(store_root: store_root) {
+    artifact_store_scratch_envelope()
   } else {
-    admit_effect(
-      env: artifact_store_scratch_envelope(),
-      verb: verb,
-      target: absolute_path_position(path: store_root)
-    )
+    Envelope { frame: artifact_store_scratch_frame, grants: [] }
   }
+  admit_effect(
+    env: env,
+    verb: verb,
+    target: absolute_path_position(path: store_root)
+  )
 }
 
-fn artifact_store_scratch_write_admissible(store_root: String) -> EffectAdmission {
+fn artifact_store_scratch_write_admissible(store_root: String) -> AccessDecision {
   artifact_store_scratch_target_admissible(store_root: store_root, verb: Write)
 }
 
-fn artifact_store_scratch_read_admissible(store_root: String) -> EffectAdmission {
+fn artifact_store_scratch_read_admissible(store_root: String) -> AccessDecision {
   artifact_store_scratch_target_admissible(store_root: store_root, verb: Read)
 }

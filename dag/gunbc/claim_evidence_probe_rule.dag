@@ -44,6 +44,7 @@ fn infer_probe_evidence<F, C, A, FidelityBoundary>(
     fold: ProbeEffectOnSubjectFold {
       inert: true,
       may_establish: fn(_) { false },
+      answers_without_subject: fn(_) { false },
       unknown: fn(_) { false },
     },
   )

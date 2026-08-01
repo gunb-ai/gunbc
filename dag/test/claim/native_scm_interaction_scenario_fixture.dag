@@ -268,7 +268,7 @@ fn fixture_operational(
   }
 }
 
-fn fixture_projection(
+fn native_scm_scenario_fixture_projection(
   scenario: NativeScmScenario,
 ) -> NativeScmProjection {
   let workspace = match scenario {
@@ -304,7 +304,7 @@ fn native_scm_receipt_for(
     access: NativeScmLifecycleReady,
     check: fixture_check(scenario: scenario),
     operational: fixture_operational(scenario: scenario),
-    projections: fixture_projection(scenario: scenario),
+    projections: native_scm_scenario_fixture_projection(scenario: scenario),
     primary: fixture_primary(
       scenario: scenario,
       identity: identity,
