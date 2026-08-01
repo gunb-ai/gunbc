@@ -34786,6 +34786,11 @@ mod process_resolve_store_tests {
 
 #[cfg(test)]
 mod peel_alias_fixpoint_termination {
+    // Seed-retention receipt (DESIGN §7): the bounded wall-clock timeout and
+    // !Send fixture thread are host test orchestration, retained in cli_run.rs
+    // until ROADMAP row `v1-test-migration` moves this witness into test data.
+    // That row gates "Get hand-written Rust in this repository down to zero";
+    // migrate/delete this module when its executing witness is data-driven.
     // §4 boundedness witness for the peel_alias_once_for_field_access fixpoint
     // guard (04_infer.dag peel_alias_fixpoint_guard_note). Discriminating RED:
     // pre-guard, resolve returning the input node itself re-enters the recurse
