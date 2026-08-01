@@ -556,7 +556,7 @@ test fn a_v1_receipt_refuses_rather_than_decoding_without_its_binding() -> Bool 
 
 test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool {
   match publication_receipt_decode(
-    receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"published-ok\"\}\}",
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"published-ok\"\}\}",
   ) {
     ReceiptDecoded { receipt: _ } => false
     ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "published-ok")
@@ -565,10 +565,93 @@ test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool {
 
 test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool {
   match publication_receipt_decode(
-    receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"publication-bound\", \"pr_head\": \"h\", \"url\": \"u\", \"draft\": false\}\}",
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"publication-bound\", \"pr_head\": \"h\", \"url\": \"u\", \"draft\": false\}\}",
   ) {
     ReceiptDecoded { receipt: _ } => false
-    ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "publication-bound")
+    ReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: "publication-bound")
+        && string_contains(s: r, pattern: "pr_number")
+  }
+}
+
+data ambiguous_set_round_trips_note: String = "AN AMBIGUITY WHOSE MEMBERS ARE GONE IS NOT AN AMBIGUITY ANYONE CAN RESOLVE, and the decoder used to answer this arm with an empty list - discarding the very numbers the encoder had written. A receipt recording that two pull requests matched decoded to one recording that none did, reporting the same outcome kind, and every claim that checked only the kind stayed green."
+
+test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
+  match publication_receipt_decode(
+    receipt: publication_receipt_json(
+      receipt: publication_receipt_of(
+        subject: subject_for(head: fixture_expected),
+        outcome: adjudicate_with(
+          pulls: PullRequestsRead {
+            pulls: [
+              fixture_pull(
+                number: 11,
+                branch: fixture_branch as String,
+                base: fixture_base as String,
+                sha: fixture_expected,
+                draft: false,
+              ),
+              fixture_pull(
+                number: 12,
+                branch: fixture_branch as String,
+                base: fixture_base as String,
+                sha: fixture_expected,
+                draft: false,
+              ),
+            ],
+          },
+          remotes: remotes_deliberately_unreadable(),
+        ),
+      ),
+    ),
+  ) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      match receipt.outcome {
+        ReceiptBindingAmbiguous { pr_numbers } =>
+          count(pr_numbers) == 2
+            && pr_numbers.first() == 11
+        ReceiptBound { pr_number: _, pr_head: _, url: _, draft: _ } => false
+        ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
+        ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+        ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+        ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+        ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+        ReceiptObservationRefused { detail: _ } => false
+      }
+  }
+}
+
+data repository_round_trips_note: String = "THE DECODER USED TO REBUILD THE REPOSITORY IT DID NOT STORE - full_name by concatenation, private as false, and default_branch from the subject's expected_base. For this repository the base IS the default branch, so the round trip compared equal and nothing looked wrong. This claim uses a subject whose base is NOT the default branch, which is the case that would have produced a repository nobody recorded and a false wrong-subject refusal in the one function whose job is to tell those apart."
+
+test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() -> Bool {
+  let subject = PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a7",
+    repository: fixture_repository,
+    branch: fixture_branch,
+    expected_base: "release-2026-08" as NonEmptyStr,
+    expected_head: fixture_expected,
+  }
+  let text = publication_receipt_json(
+    receipt: publication_receipt_of(subject: subject, outcome: bound_outcome()),
+  )
+  match publication_receipt_decode(receipt: text) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      receipt.subject.repository.default_branch == "main"
+        && (receipt.subject.expected_base as String) == "release-2026-08"
+        && receipt.subject.repository.full_name == "gunb-ai/gunbc"
+        && match publication_evidence_for(
+             expected: subject,
+             receipt_readable: true,
+             receipt_text: text,
+           ) {
+             EvidenceForSubject { receipt: _ } => true
+             EvidenceAbsent => false
+             EvidenceUnreadable { reason: _ } => false
+             EvidenceForAnotherSubject { field: _, expected: _, found: _ } => false
+           }
   }
 }
 
@@ -666,7 +749,9 @@ test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
   !is_evidence(e: e) && differing_field(e: e) == "attempt_key"
 }
 
-test fn a_receipt_about_another_repository_is_not_evidence() -> Bool {
+data repository_identity_is_owner_and_name_note: String = "THE REPOSITORY IS COMPARED BY ITS IDENTITY, WHICH IS OWNER AND NAME, and the refusal names which half differs rather than saying `repository`. Those are different situations for a reader: a different owner usually means a fork or another organization, while a different name under the same owner usually means the receipt is about a sibling repository - and the remedies diverge from there. The receipt also records full_name, private and default_branch, which are ATTRIBUTES the judgment was made against rather than identity, so they round trip and are not part of the match."
+
+test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
   let expected = PublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
@@ -679,7 +764,29 @@ test fn a_receipt_about_another_repository_is_not_evidence() -> Bool {
     expected: expected,
     receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
-  !is_evidence(e: e) && differing_field(e: e) == "repository"
+  !is_evidence(e: e) && differing_field(e: e) == "repository_name"
+}
+
+test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
+  let expected = PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a7",
+    repository: Repository {
+      owner: "someone-else",
+      name: "gunbc",
+      full_name: "someone-else/gunbc",
+      private: false,
+      default_branch: "main",
+    },
+    branch: fixture_branch,
+    expected_base: fixture_base,
+    expected_head: fixture_expected,
+  }
+  let e = evidence_for_subject_of(
+    expected: expected,
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  !is_evidence(e: e) && differing_field(e: e) == "repository_owner"
 }
 
 test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
