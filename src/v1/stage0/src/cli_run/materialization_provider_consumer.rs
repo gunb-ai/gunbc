@@ -65,13 +65,9 @@ fn lookup_fold_outcome(
     lookup: &Value,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
     let args = [(Some("l".to_string()), lookup.clone())];
-    let outcome = v1_interpreter::run_in_context_with_args(
-        ctx,
-        "provider_lookup_outcome_tag",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("provider_lookup_outcome_tag: {e}"))?;
+    let outcome =
+        v1_interpreter::run_in_context_with_args(ctx, "provider_lookup_outcome_tag", &args, false)
+            .map_err(|e| format!("provider_lookup_outcome_tag: {e}"))?;
     match outcome {
         Value::Str(tag) => match tag.as_str() {
             "hit" => Ok(ResolvedGraphProviderOutcome::Hit),

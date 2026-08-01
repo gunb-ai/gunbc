@@ -155,14 +155,15 @@ fn encode_source_indices_part(
 fn encode_compile_clean_union_part(
     compile_clean_diags: &Vector<Rc<ErrorNode>>,
 ) -> Result<Vec<u8>, String> {
-    let plain: Vec<ErrorNode> = compile_clean_diags
-        .iter()
-        .map(|d| (**d).clone())
-        .collect();
+    let plain: Vec<ErrorNode> = compile_clean_diags.iter().map(|d| (**d).clone()).collect();
     serde_json::to_vec(&plain).map_err(|e| format!("cache union encode failed: {e}"))
 }
 
-fn pack_tripartite_payload(graph_bytes: &[u8], indices_bytes: &[u8], union_bytes: &[u8]) -> Vec<u8> {
+fn pack_tripartite_payload(
+    graph_bytes: &[u8],
+    indices_bytes: &[u8],
+    union_bytes: &[u8],
+) -> Vec<u8> {
     let mut out = Vec::new();
     for part in [graph_bytes, indices_bytes, union_bytes] {
         out.extend_from_slice(&(part.len() as u64).to_le_bytes());
@@ -195,7 +196,9 @@ fn parse_tripartite_payload(payload: &[u8]) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>
     Ok((parts[0].clone(), parts[1].clone(), parts[2].clone()))
 }
 
-fn faithful_parts_from_tripartite_payload(payload: &[u8]) -> Result<FaithfulResolvedGraphProbeParts, String> {
+fn faithful_parts_from_tripartite_payload(
+    payload: &[u8],
+) -> Result<FaithfulResolvedGraphProbeParts, String> {
     let (graph_bytes, indices_bytes, union_bytes) = parse_tripartite_payload(payload)?;
     let graph_digest = v1_rt::bytes_identity_hash(&graph_bytes);
     let indices_digest = v1_rt::bytes_identity_hash(&indices_bytes);
@@ -536,12 +539,8 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
         Ok(d) => d,
         Err(_) => return CacheLookupResult::Miss,
     };
-    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
-        si_plain
-            .into_iter()
-            .map(|(k, v)| (k, Rc::new(v)))
-            .collect(),
-    );
+    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> =
+        Rc::new(si_plain.into_iter().map(|(k, v)| (k, Rc::new(v))).collect());
     let decoded = Rc::new(decoded_graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
     let modules =

@@ -1,3 +1,4 @@
+use im::Vector;
 use std::fs;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -78,7 +79,8 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
     // A real resolved graph to persist under many synthetic content addresses.
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve fixture");
     let one_artifact =
-        build_valid_artifact_bytes("0000000000000000", &graph, si.as_ref()).expect("artifact");
+        build_valid_artifact_bytes("0000000000000000", &graph, si.as_ref(), &Vector::new())
+            .expect("artifact");
     let artifact_len = one_artifact.len() as u64;
 
     // Cap the cache at room for ~3 artifacts; then write 16 distinct ones.
@@ -88,7 +90,7 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
 
     for i in 0..n {
         let digest = format!("{i:016x}");
-        match write(&cache_dir, &digest, &graph, si.as_ref()) {
+        match write(&cache_dir, &digest, &graph, si.as_ref(), &Vector::new()) {
             Ok(CacheWriteOutcome::Written) | Ok(CacheWriteOutcome::AlreadyExists) => {}
             other => panic!("write {digest} failed: {other:?}"),
         }

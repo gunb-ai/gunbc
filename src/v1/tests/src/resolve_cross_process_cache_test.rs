@@ -34,6 +34,8 @@ impl Drop for CacheEnvGuard {
     }
 }
 
+use im::Vector;
+use std::rc::Rc;
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
     resolve_entry_with_index, run_claim, ClaimOutcome,
@@ -44,6 +46,10 @@ use v1_compiler::resolved_graph_cache::{
     CacheRejectReason, KeyInputMaterials,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
+
+fn empty_compile_clean_diags() -> Vector<Rc<v1_compiler::v1_std_core::ErrorNode>> {
+    Vector::new()
+}
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
@@ -176,13 +182,16 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         let order_cache = cache_dir.join(format!("order-{i}"));
         fs::create_dir_all(&order_cache).expect("order cache");
         for entry in *order {
-            let _ = cached_verdict(&roots, entry, "witness_a_true", &order_cache);
+            with_cache_env(&order_cache, || {
+                let index = build_multi_entry_index(&roots);
+                resolve_entry_with_index(&index, entry).expect("warm v2 cache artifact");
+            });
         }
-        for (entry, _f, _expected) in witnesses {
-            let err = cached_resolve_err(&roots, entry, &order_cache);
-            assert!(
-                err.contains("provider refused faithful probe"),
-                "v1 disk artifact reuse must stop the line until union lands (part a): {err}"
+        for (entry, f, expected) in witnesses {
+            assert_eq!(
+                cached_verdict(&roots, entry, f, &order_cache),
+                expected,
+                "cached oracle for {f} in order-{i}"
             );
         }
     }
@@ -200,7 +209,9 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let valid = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let valid =
+        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("valid bytes");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     let decodes_before = decode_count();
     let mut poisoned = valid;
@@ -218,7 +229,7 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
         let index = build_multi_entry_index(&roots);
         let err = resolve_entry_with_index(&index, &a).expect_err("poisoned hit must refuse");
         assert!(
-            err.contains("provider refused faithful probe"),
+            err.contains("content digest mismatch") || err.contains("refused poisoned"),
             "poisoned hit must refuse before rebuilding: {err}"
         );
         assert_eq!(
@@ -246,7 +257,9 @@ fn malformed_header_probe_refuses_as_backend_key_malformed() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let mut bytes =
+        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("valid bytes");
     bytes[0] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
 
@@ -268,7 +281,9 @@ fn malformed_header_truncated_read_refuses_as_backend_key_malformed() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let mut bytes =
+        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("valid bytes");
     bytes.truncate(7);
     write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
 
@@ -291,7 +306,8 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
     let mut poisoned =
-        build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+        build_valid_artifact_bytes(&subject, &graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("valid bytes");
     let subject_off = 8 + 4;
     poisoned[subject_off] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");
@@ -558,11 +574,10 @@ fn key_is_deterministic_in_its_axes() {
 
 // The ladder's tier ordering at the resolve seam (store fills share — never
 // replaces it): the per-process share serves repeats by reference; the store
-// would serve a process's first touch of a subject and install into the share
-// once the provider can serve a complete artifact (part a). Until then, a v1
-// disk hit is typed provider refusal and stops the line — no cold-resolve widen.
+// serves a fresh index's first touch of a subject and installs into the share
+// once the provider can serve a complete v2 artifact — no cold-resolve widen.
 #[test]
-fn same_subject_resolves_share_one_graph_store_refuses_v1_disk_hit() {
+fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
     let dir = temp_dir("share");
     let (roots, a, _b, _c) = write_fixture(&dir);
     let cache_dir = dir.join("cache");
@@ -584,15 +599,15 @@ fn same_subject_resolves_share_one_graph_store_refuses_v1_disk_hit() {
         );
 
         let index2 = build_multi_entry_index(&roots);
-        let err = resolve_entry_with_index(&index2, &a).expect_err("v1 store hit must refuse");
+        let (g3, _) = resolve_entry_with_index(&index2, &a).expect("v2 store hit must install");
         assert!(
-            err.contains("provider refused faithful probe"),
-            "fresh index must not cold-resolve through v1 disk hit: {err}"
+            std::rc::Rc::ptr_eq(&g1, &g3),
+            "fresh index must serve the disk artifact by reference after install"
         );
         assert_eq!(
             decode_count(),
             decodes_before,
-            "provider refusal must not decode or rebuild"
+            "disk hit must not decode or rebuild"
         );
     });
 }

@@ -9,16 +9,28 @@
 
 use v1_compiler::cli_run::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
-    serve_resolved_graph_v1_disk_probe_for_test,
+    serve_resolved_graph_v2_disk_probe_for_test,
 };
+use v1_compiler::resolved_graph_cache::FaithfulResolvedGraphProbeParts;
 
 #[test]
 fn faithful_probe_refusal_does_not_build_provider_ctx() {
     reset_materialization_provider_ctx_for_test();
     let builds_before = materialization_provider_ctx_build_count_for_test();
 
-    let err = serve_resolved_graph_v1_disk_probe_for_test("closure-digest", "compiler-digest")
-        .expect_err("unavailable faithful probe must refuse");
+    let err = serve_resolved_graph_v2_disk_probe_for_test(
+        "closure-digest",
+        "compiler-digest",
+        &FaithfulResolvedGraphProbeParts {
+            graph_digest: "0000000000000000".to_string(),
+            graph_bytes: 1,
+            indices_digest: "0000000000000000".to_string(),
+            indices_bytes: 1,
+            union_digest: "0000000000000000".to_string(),
+            union_bytes: 1,
+        },
+    )
+    .expect_err("unavailable faithful probe must refuse");
     assert!(
         err.contains("provider refused faithful probe"),
         "refusal should name the faithful-probe gap: {err}"

@@ -10122,24 +10122,23 @@ fn compile_clean_diags_from_resolved_stages(
 
 fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
     match outcome {
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Some(
-            "resolved-graph-cache provider refused disk hit: wrong artifact key".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedKindMismatch => Some(
-            "resolved-graph-cache provider refused disk hit: kind mismatch".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedWrongContent => Some(
-            "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
-        ),
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact => {
+            Some("resolved-graph-cache provider refused disk hit: wrong artifact key".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedKindMismatch => {
+            Some("resolved-graph-cache provider refused disk hit: kind mismatch".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedWrongContent => {
+            Some("resolved-graph-cache provider refused disk hit: wrong content".to_string())
+        }
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
-        ResolvedGraphProviderOutcome::Miss => Some(
-            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::Hit | ResolvedGraphProviderOutcome::RefusedIncomplete { .. } => {
-            None
+        ResolvedGraphProviderOutcome::Miss => {
+            Some("resolved-graph-cache provider refused disk hit: probe miss".to_string())
         }
+        ResolvedGraphProviderOutcome::Hit
+        | ResolvedGraphProviderOutcome::RefusedIncomplete { .. } => None,
     }
 }
 
@@ -10155,7 +10154,7 @@ fn install_cross_process_materialization_hit(
 ) {
     if memo_share == ResolvedGraphMemoShare::Memoize {
         index.resolved_graph_memo.borrow_mut().insert(
-            subject.clone(),
+            subject.to_string(),
             (
                 cached.graph.clone(),
                 cached.source_indices.clone(),
@@ -10229,24 +10228,59 @@ fn resolved_graph_from_sources_with_index(
     // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
     // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        match cross_process_probe(&cache_root, &subject) {
-            CacheProbeResult::Hit(_probe) if !cross_process_provider_routing_suppressed() => {
-                if !supports_faithful_probe() {
-                    return Err(format!(
-                        "resolved-graph-cache provider refused faithful probe: {}",
-                        faithful_probe_unavailable_gap()
+        if !cross_process_provider_routing_suppressed() {
+            match cross_process_probe(&cache_root, &subject) {
+                CacheProbeResult::Hit(probe) => {
+                    if !supports_faithful_probe() {
+                        return Err(format!(
+                            "resolved-graph-cache provider refused faithful probe: {}",
+                            faithful_probe_unavailable_gap()
+                        ));
+                    }
+                    if let Some(parts) = probe.parts {
+                        let closure_digest = closure_content_digest(&sources);
+                        let compiler_digest = transform_content_digest();
+                        match materialization_provider_consumer::serve_resolved_graph_v2_disk_probe(
+                            &closure_digest,
+                            &compiler_digest,
+                            &parts,
+                        ) {
+                            Ok(ResolvedGraphProviderOutcome::Hit) => {
+                                match cross_process_lookup(&cache_root, &subject) {
+                                    CacheLookupResult::Hit(cached) => {
+                                        return Ok(install_cross_process_materialization_hit(
+                                            index, &subject, cached, memo_share,
+                                        ));
+                                    }
+                                    CacheLookupResult::RejectedHit(reason) => {
+                                        return Err(cross_process_cache_integrity_refusal(reason));
+                                    }
+                                    CacheLookupResult::Miss => {
+                                        return Err(
+                                            "resolved-graph-cache lookup miss after provider hit"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                            Ok(ResolvedGraphProviderOutcome::RefusedIncomplete { .. }) => {}
+                            Ok(other) => {
+                                if let Some(msg) = provider_integrity_refusal_message(other) {
+                                    return Err(msg);
+                                }
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
+                CacheProbeResult::RejectedHit(CacheRejectReason::ContentDigestMismatch) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::ContentDigestMismatch,
                     ));
                 }
-                match cross_process_lookup(&cache_root, &subject) {
-                    CacheLookupResult::Hit(_cached) => {
-                        return serve_resolved_graph_disk_hit_through_provider(&sources);
-                    }
-                    CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
-                }
+                CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+                CacheProbeResult::Miss => {}
             }
-            CacheProbeResult::Hit(_)
-            | CacheProbeResult::RejectedHit(_)
-            | CacheProbeResult::Miss => {}
         }
     }
 
@@ -10456,8 +10490,13 @@ fn resolved_graph_from_sources_with_index(
         // the swallowed error hid that big closures never landed on disk (only
         // the prelude artifact ever existed), which mis-shaped a whole OOM
         // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
-        if let Err(e) = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref())
-        {
+        if let Err(e) = cross_process_write(
+            &cache_root,
+            &subject,
+            &typed,
+            source_indices.as_ref(),
+            &compile_clean_diags,
+        ) {
             eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
         }
     }
@@ -13745,7 +13784,8 @@ pub fn handle_serve(
         eprintln!("error: provide at least one --source-root");
         std::process::exit(1);
     }
-    let sources = match load_sources_for_entry(&source_roots, &entry_file) {
+    let index = process_shared_index(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
         Ok(sources) => sources,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -13753,29 +13793,34 @@ pub fn handle_serve(
         }
     };
     eprintln!("resolved {} sources", sources.len());
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    let has_errors = result
-        .diagnostics
-        .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
-    if has_errors {
-        for d in result.diagnostics.iter() {
-            if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-                eprintln!("error: {}", diagnostic_to_message(d.diagnostic.clone()));
-            }
-        }
-        std::process::exit(1);
-    }
-    let graph = match result.graph.as_ref() {
-        Some(g) => g,
-        None => {
-            eprintln!("error: compilation produced no graph");
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        &entry_file,
+        ResolvedGraphMemoShare::Memoize,
+    ) {
+        Ok(parts) => parts,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
             std::process::exit(1);
         }
     };
+    if compile_clean_diags
+        .iter()
+        .any(|d| compile_clean_diagnostic_is_hard(d))
+    {
+        for d in compile_clean_diags
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+        {
+            eprintln!("error: {}", format_error_node(d, &source_indices));
+        }
+        std::process::exit(1);
+    }
     let ctx = v1_interpreter::InterpContext::new(
-        graph,
-        result.source_indices.clone(),
+        &graph,
+        source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
     let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
