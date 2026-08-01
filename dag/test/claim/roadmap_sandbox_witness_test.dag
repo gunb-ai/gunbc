@@ -2,7 +2,11 @@ module test.claim.roadmap_sandbox_witness
 
 import std.types { Int, String, Bool, List }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.roadmap_sandbox { sandbox_page, sandbox_gallery_terminal_labels }
+import gunbc.roadmap_sandbox {
+  sandbox_page, sandbox_gallery_terminal_labels,
+  fixture_family_decl, fixture_family_members, fixture_family_rows, family_fixture_frame,
+}
+import gunbc.roadmap_presentation { WorkBandEntry, BandRow, BandFamily, band_entries }
 import gunbc.roadmap_component {
   dispatch_button_component, dispatch_state_display_text, sandbox_live_class,
 }
@@ -105,17 +109,76 @@ test fn witness_sandbox_gallery_and_live_render() -> Bool {
 }
 
 
-data family_fixture_witness_note: String = "The A3 exhibit's discriminating pins, all through the serialized page so they prove the REAL band_entries -> workspace_entries_ul path: the family claim renders (once per width frame) with the '3 nodes' count; a member row carries its SUBJECT while its full task headline is provably ABSENT from the whole page (the subject swap happened in presentation, not styling); the undeclared neighbour row keeps its own headline OUTSIDE the group; and no open-lifecycle chip renders anywhere in the fixture (the A3 chip collapse — routine state earns no chip). The headline-absent pin is the RED control: reverting family_subject_row to pass the headline through turns it red."
+data family_fixture_witness_note: String = "The A3 exhibit's discriminating pins, strengthened per review 46754 (the containment-only draft would have survived a duplicated claim, a '13 nodes' count, the neighbour absorbed into the family, or chips reappearing). Three layers: (1) the TYPED band_entries output is pinned by exact list equality — exactly one BandFamily (claim exact, member count exactly 3, member headlines exactly the three subjects in order) followed by exactly one BandRow (the neighbour's full headline) — so claim duplication, count drift, membership drift, and the subject swap are all caught at the structure the renderer consumes; (2) ONE serialized frame carries exact occurrence counts (family-claim/family-count/family-group/family-rows spans each render exactly once, the count span is exactly '>3 nodes<' so a '13 nodes' regression cannot hide inside a containment check, the member's full task headline occurs zero times — the RED control for family_subject_row — and the A3 chip collapse holds: zero 'status status-open' and zero activity markup, routine state earns no ink); (3) the PAGE contains all three width frames verbatim, so the frame-level pins transfer to the page without scanning it. Occurrence counting walks an index over the ~2KB frame (the std.encoding base64_collect_values shape), never the full page."
 
-test fn witness_family_fixture_claim_grouped_with_subjects() -> Bool {
-  let h = sandbox_html()
-  string_contains(s: h, pattern: "family grouping — claim stated once, members carry subjects (static)")
-    && string_contains(s: h, pattern: "Every startable node carries a closing contract")
-    && string_contains(s: h, pattern: "3 nodes")
-    && string_contains(s: h, pattern: "dag_compile_clean_gate")
-    && string_contains(s: h, pattern: "affected_set_falsifier")
-    && !string_contains(s: h, pattern: "Declare the closing contract for dag_compile_clean_gate")
-    && string_contains(s: h, pattern: "Record which generator actually produced each result")
-    && string_contains(s: h, pattern: "class=\"family-group\"")
-    && string_contains(s: h, pattern: "class=\"family-rows\"")
+fn frame_occurrence_count_go(s: String, pattern: String, i: Int, len: Int, plen: Int, acc: Int) -> Int {
+  if i + plen > len {
+    acc
+  } else {
+    if substring(s: s, start: i, end: i + plen) == pattern {
+      frame_occurrence_count_go(s: s, pattern: pattern, i: i + plen, len: len, plen: plen, acc: acc + 1)
+    } else {
+      frame_occurrence_count_go(s: s, pattern: pattern, i: i + 1, len: len, plen: plen, acc: acc)
+    }
+  }
+}
+
+fn frame_occurrence_count(s: String, pattern: String) -> Int {
+  frame_occurrence_count_go(
+    s: s, pattern: pattern,
+    i: 0, len: string_length(s: s), plen: string_length(s: pattern),
+    acc: 0)
+}
+
+fn fixture_band_entry_signature(e: WorkBandEntry) -> String {
+  match e {
+    BandFamily { family } => join([
+      "family|", family.claim,
+      "|", to_string(count(family.rows)),
+      "|", join(map(family.rows, r => r.headline), ","),
+    ], "")
+    BandRow { row } => join(["row|", row.headline], "")
+  }
+}
+
+test fn witness_family_fixture_typed_structure_exact() -> Bool {
+  let entries = band_entries(
+    rows: fixture_family_rows(),
+    families: [fixture_family_decl()],
+    members: fixture_family_members(),
+  )
+  map(entries, e => fixture_band_entry_signature(e: e)) == [
+    "family|Every startable node carries a closing contract|3|dag_compile_clean_gate,affected_set_falsifier,regen_floor_skip_witness",
+    "row|Record which generator actually produced each result",
+  ]
+}
+
+fn family_frame_html(label: String, cls: String) -> String {
+  match try_serialize_html_source(node: family_fixture_frame(label: label, cls: cls)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+test fn witness_family_fixture_frame_occurrences_exact() -> Bool {
+  let h = family_frame_html(label: "wide · 1680", cls: "fixture-wide")
+  h != ""
+    && frame_occurrence_count(s: h, pattern: "class=\"family-group\"") == 1
+    && frame_occurrence_count(s: h, pattern: "class=\"family-claim\"") == 1
+    && frame_occurrence_count(s: h, pattern: "Every startable node carries a closing contract") == 1
+    && frame_occurrence_count(s: h, pattern: "class=\"family-count\"") == 1
+    && frame_occurrence_count(s: h, pattern: ">3 nodes<") == 1
+    && frame_occurrence_count(s: h, pattern: "class=\"family-rows\"") == 1
+    && frame_occurrence_count(s: h, pattern: "Record which generator actually produced each result") == 1
+    && frame_occurrence_count(s: h, pattern: "Declare the closing contract for dag_compile_clean_gate") == 0
+    && frame_occurrence_count(s: h, pattern: "status status-open") == 0
+    && frame_occurrence_count(s: h, pattern: "class=\"activity") == 0
+}
+
+test fn witness_family_fixture_page_carries_all_three_frames() -> Bool {
+  let page = sandbox_html()
+  string_contains(s: page, pattern: "family grouping — claim stated once, members carry subjects (static)")
+    && string_contains(s: page, pattern: family_frame_html(label: "wide · 1680", cls: "fixture-wide"))
+    && string_contains(s: page, pattern: family_frame_html(label: "medium · 1024", cls: "fixture-medium"))
+    && string_contains(s: page, pattern: family_frame_html(label: "narrow · 480", cls: "fixture-narrow"))
 }
