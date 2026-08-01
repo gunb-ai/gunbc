@@ -8697,6 +8697,10 @@ pub struct ResolveStageNanos {
     pub assembly_symbol_index_merge: u128,
     /// Closure variant-owner base construction (per entry with cache misses).
     pub assembly_variant_base: u128,
+    /// Compose the closure index with one source tree's bare census (once per root used).
+    pub assembly_root_symbol_index: u128,
+    /// Variant-owner base for a composed per-root symbol index (once per root used).
+    pub assembly_root_variant_base: u128,
     /// Interface/variant surface installation (per computed or cached module membership).
     pub assembly_environment: u128,
     /// Diagnostic chunk/fork-ledger collection and diagnostic flattening.
@@ -8763,6 +8767,8 @@ impl ResolveStageNanos {
         self.assembly_pool_fill += other.assembly_pool_fill;
         self.assembly_symbol_index_merge += other.assembly_symbol_index_merge;
         self.assembly_variant_base += other.assembly_variant_base;
+        self.assembly_root_symbol_index += other.assembly_root_symbol_index;
+        self.assembly_root_variant_base += other.assembly_root_variant_base;
         self.assembly_environment += other.assembly_environment;
         self.assembly_diagnostics += other.assembly_diagnostics;
         self.assembly_registry += other.assembly_registry;
@@ -8803,6 +8809,8 @@ impl ResolveStageNanos {
             + self.assembly_pool_fill
             + self.assembly_symbol_index_merge
             + self.assembly_variant_base
+            + self.assembly_root_symbol_index
+            + self.assembly_root_variant_base
             + self.assembly_environment
             + self.assembly_diagnostics
             + self.assembly_registry
@@ -8832,6 +8840,8 @@ thread_local! {
             assembly_pool_fill: 0,
             assembly_symbol_index_merge: 0,
             assembly_variant_base: 0,
+            assembly_root_symbol_index: 0,
+            assembly_root_variant_base: 0,
             assembly_environment: 0,
             assembly_diagnostics: 0,
             assembly_registry: 0,
@@ -9195,6 +9205,14 @@ pub fn exclusive_cost_partition_from(
         CostPartitionRow {
             name: "assembly_variant_base",
             nanos: st.assembly_variant_base,
+        },
+        CostPartitionRow {
+            name: "assembly_root_symbol_index",
+            nanos: st.assembly_root_symbol_index,
+        },
+        CostPartitionRow {
+            name: "assembly_root_variant_base",
+            nanos: st.assembly_root_variant_base,
         },
         CostPartitionRow {
             name: "assembly_environment",
@@ -9852,6 +9870,8 @@ fn resolved_graph_from_sources_with_index(
         + measured.assembly_pool_fill
         + measured.assembly_symbol_index_merge
         + measured.assembly_variant_base
+        + measured.assembly_root_symbol_index
+        + measured.assembly_root_variant_base
         + measured.assembly_environment
         + measured.assembly_diagnostics
         + measured.assembly_registry
@@ -10869,7 +10889,6 @@ fn reconcile_with_typed_cache(
                                 render_typecheck_begin_line_mirror(&mod_name, typecheck_emoji())
                             );
                         }
-                        let module_tc_started = std::time::Instant::now();
                         // Same-tree bare underlay for the module being typechecked
                         // (bare = own tree, qualified = whole pool); out-of-root
                         // modules keep the closure-only bare universe.
@@ -10878,19 +10897,29 @@ fn reconcile_with_typed_cache(
                                 Some(root) => match tree_symbol_index_memo.get(&root) {
                                     Some(hit) => hit.clone(),
                                     None => {
+                                        let root_symbol_index_started = std::time::Instant::now();
                                         let composed =
                                             v1_compiler_infer::symbol_index_with_bare_fill(
                                                 symbol_index.clone(),
                                                 tree_bare_census_for_root(index, &root)?,
                                             );
+                                        resolve_stage_slot_add(|s| {
+                                            s.assembly_root_symbol_index +=
+                                                root_symbol_index_started.elapsed().as_nanos()
+                                        });
                                         // The composed index's global_bare = closure ∪ tree,
                                         // so its variant base is computed from the composed
                                         // map — once per root, beside the index it belongs to.
+                                        let root_variant_base_started = std::time::Instant::now();
                                         let base =
                                             v1_compiler_infer::build_global_bare_variant_locals(
                                                 composed.global_bare.clone(),
                                                 source_indices.clone(),
                                             );
+                                        resolve_stage_slot_add(|s| {
+                                            s.assembly_root_variant_base +=
+                                                root_variant_base_started.elapsed().as_nanos()
+                                        });
                                         tree_symbol_index_memo
                                             .insert(root, (composed.clone(), base.clone()));
                                         (composed, base)
@@ -10898,6 +10927,7 @@ fn reconcile_with_typed_cache(
                                 },
                                 None => (symbol_index.clone(), closure_variant_base.clone()),
                             };
+                        let module_tc_started = std::time::Instant::now();
                         let computed = v1_compiler_infer::typecheck_module(
                             resolved.clone(),
                             module_index.clone(),
