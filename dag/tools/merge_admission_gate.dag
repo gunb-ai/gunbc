@@ -8,6 +8,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission {
   current_gate_roster_hash,
   classify_merge_admission_verdict,
+  merge_admission_verdict_label,
   MergeAdmissionVerdict,
   MergeDeniedStaleBase,
   MergeDeniedStaleRoster,
@@ -26,17 +27,6 @@ import gunbc.merge_admission_produce {
   MergeTargetTreeHashRefused,
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
-
-fn verdict_reason(v: MergeAdmissionVerdict) -> String {
-  match v {
-    MergeAdmitted => "admitted"
-    MergeDeniedStaleBase => "stale base tree — re-run CI against current main"
-    MergeDeniedStaleRoster => "stale gate roster — re-run CI after criteria change"
-    MergeDeniedNotSuccess => "receipt conclusion is not success"
-    MergeDeniedWrongAttempt => "receipt belongs to a different walk attempt — not the subject; re-run CI"
-    MergeDeniedSubjectMismatch => "receipt describes a different head or base tree than this attempt captured — not the subject; re-run CI"
-  }
-}
 
 func main() -> ProcessExit {
   let root = git.Inspect.Toplevel().path as String
@@ -77,7 +67,7 @@ func main() -> ProcessExit {
             exit_failure(
               reason: concat(
                 "merge_admission_gate: blocked (",
-                concat(verdict_reason(v: verdict), ")")
+                concat(merge_admission_verdict_label(v: verdict), ")")
               )
             )
           } else {
