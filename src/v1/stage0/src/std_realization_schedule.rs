@@ -466,7 +466,7 @@ pub fn pre_walk_execution_note() -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WalkPlan<F> {
+pub struct WalkPlan<F: Clone> {
     pub pre_walk_execution: Rc<PreWalkExecution>,
     pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
     pub finalization: F,
