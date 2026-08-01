@@ -457,6 +457,38 @@ fn cross_worker_shared_typecheck_cache_purity() {
     }
 }
 
+/// Partial all-hit-probe abandonment must not double-count early cache hits.
+#[test]
+fn repeated_typecheck_attribution_partial_probe_hit_single_row_per_module() {
+    use v1_compiler::cli_run::{
+        arm_repeated_typecheck_attribution_probe, clear_repeated_typecheck_attribution_entry,
+        disarm_repeated_typecheck_attribution_probe, set_repeated_typecheck_attribution_entry,
+    };
+
+    let fx = Fixture::new("slice2-partial-probe");
+    let index = build_multi_entry_index(&fx.roots);
+    // Warm the shared prefix so entry_b's all-hit probe records u.common as a hit, then
+    // abandons on a genuine miss — the slow reconcile path must not duplicate that hit.
+    resolve_entry_with_index(&index, &fx.entry_a).expect("warm entry_a");
+
+    arm_repeated_typecheck_attribution_probe();
+    set_repeated_typecheck_attribution_entry(&fx.entry_b);
+    resolve_entry_with_index(&index, &fx.entry_b).expect("resolve b with probe");
+    clear_repeated_typecheck_attribution_entry();
+    let run = disarm_repeated_typecheck_attribution_probe().expect("probe armed");
+
+    let common_rows: Vec<_> = run
+        .rows
+        .iter()
+        .filter(|r| r.entry == fx.entry_b && r.module_path == "u.common")
+        .collect();
+    assert_eq!(
+        common_rows.len(),
+        1,
+        "exactly one row for (entry_b, u.common); got {common_rows:?}"
+    );
+}
+
 /// Slice-2 attribution receipt: shared prefix modules are cache hits on the second entry.
 #[test]
 fn repeated_typecheck_attribution_records_shared_prefix_hits() {

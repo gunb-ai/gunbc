@@ -48,7 +48,9 @@ The operator question slice 2 answers: **how often does a repeated module member
 - `repeated_typecheck_misses` — misses with `later_requester_count > 0`
 - `first_computation_typecheck_ns` / `repeated_typecheck_compute_ns`
 - `fanout_by_module` (from slice-1 overlap probe)
-- `peak_rss_bytes` (VmHWM at measurement end)
+- `memory.process_vm_hwm_bytes` — process VmHWM at measurement end (includes selector/index setup, not an attribution-only peak)
+- `memory.rss_before_measurement_bytes` / `memory.rss_after_measurement_bytes` — scoped VmRSS bracketing the resolve loop
+- `memory.cgroup_memory_events_high` — leaf cgroup `memory.events` high counter when readable
 
 ### The decision quantity
 
