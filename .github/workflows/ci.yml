@@ -494,7 +494,7 @@ jobs:
             git push origin HEAD:${{ github.head_ref || github.ref_name }}
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
             ROOT=$(git rev-parse --show-toplevel)
-            if ! GUNBC_HEALED_HEAD="$HEALED_HEAD" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/ci_heal_dispatch.dag --function main
+            if ! GUNBC_HEALED_HEAD="$HEALED_HEAD" GUNBC_HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/ci_heal_dispatch.dag --function main
             then
             echo "::error::HealDispatchRefused healed_head=$HEALED_HEAD cause=CreateWorkflowDispatchFailed" >&2
             exit 1
