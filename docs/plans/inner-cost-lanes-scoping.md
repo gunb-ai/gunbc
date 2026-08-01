@@ -152,6 +152,20 @@ condition asked for, and it points at the primitive rather than at `SourceCursor
 
 **This is a program, not a PR.** Saying so is the useful part of the scoping.
 
+**Authority correction, 2026-08-01 — BANKED vs NEXT.** Slice 1 is no longer future work:
+it merged as **#7483** (`b5191426479ddec5f9a80b60dc6264ca168b42b6`) and its receipt is
+[entry-graph-union slice 1](entry-graph-union-slice1-measurement.md). It established an
+exclusive partition and heavy selected-closure membership overlap, but eliminated `load` as the
+union program's target: the corpus-wide edge index is already paid once per shared index. The
+claim below is retained as the starting hypothesis that the receipt corrected; it is not current
+direction.
+
+**NEXT:** the successor slice measures per-entry typecheck attribution against one shared
+environment. Its decision ratio is **repeated typecheck compute / total typecheck compute**. Closure
+membership duplication is only a candidate bound and must not be substituted for that ratio. No
+union implementation is authorized until that receipt justifies it, and any justified
+implementation remains gated on fleet memory.
+
 ### The measurement
 
 One entry resolve, measured this session on `dag/tools/floor_effect_gate_witness.dag`:
@@ -174,9 +188,9 @@ semantics, it is not where the time goes. The cost is in loading and typecheckin
 is a nickname for the whole entry-graph construction. Anyone attacking "resolve" by its name will
 optimize the wrong thing.
 
-Deriving an exclusive partition — or documenting which counters nest inside which — is the first
-thing the measurement slice below should produce, because the union case has to be priced against
-real per-phase attribution rather than against inclusive totals.
+Deriving an exclusive partition was the first measurement slice; #7483 banked it and recorded why
+the earlier counters were not quotable. The remaining attribution question is narrower: whether
+the shared membership corresponds to repeated typecheck computation.
 
 ### The claim
 
@@ -191,8 +205,10 @@ It is not a local optimization with a local oracle:
 
 - It changes the retention profile, which is the axis the floor already fails on. DESIGN's v1
   run-stability thread records the root cause as *retention, not footprint* — multiplicative
-  inductive-field duplication along the import DAG — and the eviction work (M2) is explicitly shelved
-  behind measured triggers. A union resolve holds *more* live at once by construction, so it collides
+  inductive-field duplication along the import DAG. M2 is no longer shelved: schedule-derived
+  retention landed in #7129 (`bd5afd6bc3e8f3e4bc9ded40bcf3b79cdfee536d`), with the width > 1,
+  outer-ring, and resident-accounting follow-ups still open. A union resolve holds *more* live at
+  once by construction, so it collides
   with exactly the constraint that is already binding.
 - Its acceptance is fleet memory, not wall time: same verdicts, no material increase in cgroup peak,
   hard backoff, or throttle-wall, at the arm64 slot's real budget. That verdict cannot be produced in
@@ -202,10 +218,10 @@ It is not a local optimization with a local oracle:
 
 ### Sequencing
 
-Do not open this until the floor's retention story has a measured floor to build on. The honest first
-step is a *measurement*, not a change: instrument how much of the per-entry resolve cost is genuinely
-shared across the selected set, so the prize is known before the architecture moves. If the overlap
-is smaller than assumed, the program is worth less and the memo lane already captured most of it.
+The first measurement is banked in #7483. The next step remains a *measurement*, not a change:
+attribute repeated typecheck compute against total typecheck compute on the shared environment.
+Close or recut the program if that ratio does not justify an architecture move; if it does, fleet
+memory is still the implementation acceptance gate.
 
 ---
 
