@@ -1,0 +1,202 @@
+module gunbc.guarantee_probe_corpus
+
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, ContentHash }
+import std.nat { Nat }
+import gunbc.guarantee_measurement {
+  GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
+  SubjectGrain, SyntheticProgram,
+  AcceptanceBoundary, CompileAccept, RuntimeRun, InferToEval, InferToTranslate,
+  PathRealization, InterpreterRealization, EmittedTarget,
+  GuaranteePath,
+  ProbeObservation, RefusedTyped, AcceptedClean, AcceptedCounted, ProbeNotRunnable,
+  GuaranteeMeasurementReceipt,
+  probe_set_digest,
+  guarantee_class_ids_unique, guarantee_path_ids_unique,
+  join_receipt_to_path, ReceiptJoined,
+}
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_advisory_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from gunbc#7484, gunbc#7519, and gunbc#7485 migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. Each row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. This slice owns the identity registry and the census-to-observation bridge for the v1 compile path; v2 self-grounding probes key the InferToEval path with observations produced by the existing infer witnesses rather than compile_dag_diagnostic_census. No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier."
+
+data guarantee_probe_corpus_path_scope_note: String = "TWO PATHS FOR THE LANDED WALLS: v1-compile-rust is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path compile_diagnostic_census measures. v2-infer-eval is the same subject grain with acceptance_boundary InferToEval and realization_target InterpreterRealization — the path gunbc#7485's GroundingNotDerived frontier diagnostic lives on. A receipt keyed to one path must not claim coverage the other measures (DESIGN 4b minimum-across-paths discipline)."
+
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt but this slice pins PLACEHOLDER constants in the witness harness — the two-revision baseline execution names real commits and probe_set_digest at enrollment time; slice 1 proves the identity join and observation bridge execute green with stable placeholders."
+
+data v1_compile_rust_path_id: GuaranteePathId = "v1-compile-rust" as GuaranteePathId
+data v2_infer_eval_path_id: GuaranteePathId = "v2-infer-eval" as GuaranteePathId
+
+fn v1_compile_rust_path() -> GuaranteePath {
+  GuaranteePath {
+    id: v1_compile_rust_path_id,
+    subject_grain: SyntheticProgram,
+    acceptance_boundary: CompileAccept,
+    realization_target: EmittedTarget { language: "rust" as GuaranteeTargetName },
+  }
+}
+
+fn v2_infer_eval_path() -> GuaranteePath {
+  GuaranteePath {
+    id: v2_infer_eval_path_id,
+    subject_grain: SyntheticProgram,
+    acceptance_boundary: InferToEval,
+    realization_target: InterpreterRealization,
+  }
+}
+
+fn guarantee_probe_paths() -> List<GuaranteePath> {
+  [v1_compile_rust_path(), v2_infer_eval_path()]
+}
+
+data call_label_surplus_class: GuaranteeClassId = "call-label-and-surplus" as GuaranteeClassId
+data method_established_surface_class: GuaranteeClassId = "method-established-surface" as GuaranteeClassId
+data declared_conformance_ground_class: GuaranteeClassId = "declared-conformance-ground-fragment" as GuaranteeClassId
+data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-frontier" as GuaranteeClassId
+
+fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
+  [
+    call_label_surplus_class,
+    method_established_surface_class,
+    declared_conformance_ground_class,
+    v2_self_grounding_frontier_class,
+  ]
+}
+
+data call_mislabel_red_probe: GuaranteeProbeId = "call-label-surplus-mislabel-red" as GuaranteeProbeId
+data call_surplus_red_probe: GuaranteeProbeId = "call-label-surplus-surplus-red" as GuaranteeProbeId
+data call_shape_green_probe: GuaranteeProbeId = "call-label-surplus-green-control" as GuaranteeProbeId
+
+data method_missing_red_probe: GuaranteeProbeId = "method-established-surface-missing-red" as GuaranteeProbeId
+data method_green_probe: GuaranteeProbeId = "method-established-surface-green-control" as GuaranteeProbeId
+
+data conformance_scalar_red_probe: GuaranteeProbeId = "declared-conformance-ground-scalar-red" as GuaranteeProbeId
+data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-green-control" as GuaranteeProbeId
+
+data v2_frontier_red_probe: GuaranteeProbeId = "v2-self-grounding-frontier-value-red" as GuaranteeProbeId
+data v2_frontier_green_probe: GuaranteeProbeId = "v2-self-grounding-frontier-derived-green" as GuaranteeProbeId
+
+fn guarantee_probe_ids() -> List<GuaranteeProbeId> {
+  [
+    call_mislabel_red_probe,
+    call_surplus_red_probe,
+    call_shape_green_probe,
+    method_missing_red_probe,
+    method_green_probe,
+    conformance_scalar_red_probe,
+    conformance_green_probe,
+    v2_frontier_red_probe,
+    v2_frontier_green_probe,
+  ]
+}
+
+type ProbeExpectation
+  = ExpectBlockingRefusal { diagnostic_class: NonEmptyStr }
+  | ExpectZeroDiagnostics
+
+fn census_row_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
+  count(rows)
+}
+
+fn census_has_any_rows(census: CompileDiagnosticCensus) -> Bool {
+  match census {
+    CensusObserved { rows: rows } => census_row_count(rows: rows) > 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn census_blocking_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int {
+  match census {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn census_any_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int {
+  match census {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn probe_expectation_holds(census: CompileDiagnosticCensus, expectation: ProbeExpectation) -> Bool {
+  match expectation {
+    ExpectZeroDiagnostics =>
+      match census {
+        CensusObserved { rows: rows } => census_row_count(rows: rows) == 0
+        CensusNotRunnable { cause: _ } => false
+      }
+    ExpectBlockingRefusal { diagnostic_class: wanted } =>
+      census_blocking_count_for_class(census: census, wanted: wanted as String) >= 1
+  }
+}
+
+fn probe_observation_from_census(census: CompileDiagnosticCensus, expectation: ProbeExpectation) -> ProbeObservation {
+  match census {
+    CensusNotRunnable { cause: c } => ProbeNotRunnable { cause: c }
+    CensusObserved { rows: rows } =>
+      match expectation {
+        ExpectZeroDiagnostics =>
+          if census_row_count(rows: rows) == 0 {
+            AcceptedClean
+          } else {
+            let first = rows |> first
+            match first {
+              Present { value: r } =>
+                if r.blocking {
+                  RefusedTyped { diagnostic_class: r.diagnostic_class, count: 1 }
+                } else {
+                  AcceptedCounted { diagnostic_class: r.diagnostic_class, count: 1 }
+                }
+              Absent => AcceptedClean
+            }
+          }
+        ExpectBlockingRefusal { diagnostic_class: wanted } =>
+          let blocking = census_blocking_count_for_class(census: census, wanted: wanted as String)
+          if blocking >= 1 {
+            RefusedTyped { diagnostic_class: wanted, count: 1 }
+          } else if census_any_count_for_class(census: census, wanted: wanted as String) >= 1 {
+            AcceptedCounted { diagnostic_class: wanted, count: 1 }
+          } else {
+            AcceptedClean
+          }
+      }
+  }
+}
+
+data probe_subject_revision_placeholder: CommitSha = "0000000000000000000000000000000000000000"
+data probe_harness_revision_placeholder: CommitSha = "1111111111111111111111111111111111111111"
+
+fn build_v1_compile_receipt(
+  class: GuaranteeClassId,
+  probe: GuaranteeProbeId,
+  census: CompileDiagnosticCensus,
+  expectation: ProbeExpectation,
+) -> GuaranteeMeasurementReceipt {
+  GuaranteeMeasurementReceipt {
+    class: class,
+    path: v1_compile_rust_path_id,
+    probe: probe,
+    subject_revision: probe_subject_revision_placeholder,
+    harness_revision: probe_harness_revision_placeholder,
+    probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
+    observed: probe_observation_from_census(census: census, expectation: expectation),
+  }
+}
+
+fn receipt_joins_v1_compile_path(receipt: GuaranteeMeasurementReceipt) -> Bool {
+  match join_receipt_to_path(receipt: receipt, paths: guarantee_probe_paths()) {
+    ReceiptJoined { path: p } => (p.id as String) == (v1_compile_rust_path_id as String)
+    ReceiptPathUnknown { receipt_path: _ } => false
+    ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+  }
+}
