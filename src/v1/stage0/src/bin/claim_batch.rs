@@ -756,17 +756,24 @@ fn run() -> Result<ExitCode, ExitCode> {
             ms(st.ownership),
         );
         eprintln!(
-            "[assembly-split] schedule={:.1}ms probe={:.1}ms registry={:.1}ms services={:.1}ms rewire={:.1}ms (type_env={:.1}ms import_str={:.1}ms func_env={:.1}ms) emit_info={:.1}ms residue={:.1}ms",
+            "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_import_str={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
             ms(st.assembly_schedule),
             ms(st.assembly_probe),
+            ms(st.assembly_graph),
+            ms(st.assembly_symbol_index),
+            ms(st.assembly_pool_fill),
+            ms(st.assembly_symbol_index_merge),
+            ms(st.assembly_variant_base),
+            ms(st.assembly_environment),
+            ms(st.assembly_diagnostics),
             ms(st.assembly_registry),
             ms(st.assembly_services),
-            ms(st.assembly_rewire),
             ms(st.assembly_rewire_type_env),
             ms(st.assembly_rewire_import_str),
             ms(st.assembly_rewire_func_env),
             ms(st.assembly_emit_info),
             ms(st.reconcile_assembly),
+            ms(st.assembly_rewire),
         );
         // The two lines above are INCLUSIVE-universe rows: they sum every resolve this
         // thread ran, which is a strictly larger set than `[resolve-summary]`'s
