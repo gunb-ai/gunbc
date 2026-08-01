@@ -7391,6 +7391,120 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
     config_auth_resolved && has_auth_basic
 }
 
+/// The opt-in migration seam declared by extdeps.transports.rest.RestOutcome.
+///
+/// An operation asks for transport observations by declaring an output field whose
+/// type is RestOutcome. Operations without that field retain the legacy raise-on-
+/// failure behavior until the response table itself becomes the universal result
+/// authority; see rest_outcome_note. Inspect the field's TYPE, not its spelling, so
+/// callers may choose a domain-appropriate field name without creating another
+/// transport convention.
+fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+    let return_type = match op_node.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node,
+        _ => return None,
+    };
+    return_type.children.iter().find_map(|field| {
+        let field_type = match field.inferred.as_deref()? {
+            InferredNode::Resolved { node } => node,
+            _ => return None,
+        };
+        let type_name = authored_name_at(ctx.si(), field_type.clone());
+        (type_name.rsplit('.').next() == Some("RestOutcome"))
+            .then(|| authored_name_at(ctx.si(), field.clone()))
+    })
+}
+
+fn rest_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("RestOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+fn rest_status_refused_value(ctx: &InterpContext, status: u16, body: String) -> Value {
+    rest_outcome_variant(
+        ctx,
+        "RestStatusRefused",
+        vec![
+            (ctx.sym("status"), Value::Int(status as i64)),
+            (ctx.sym("body"), Value::Str(body)),
+        ],
+    )
+}
+
+fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
+    rest_outcome_variant(
+        ctx,
+        "RestTransportRefused",
+        vec![(ctx.sym("cause"), Value::Str(cause))],
+    )
+}
+
+fn rest_body_undecodable_value(ctx: &InterpContext, status: u16, cause: String) -> Value {
+    rest_outcome_variant(
+        ctx,
+        "RestBodyUndecodable",
+        vec![
+            (ctx.sym("status"), Value::Int(status as i64)),
+            (ctx.sym("cause"), Value::Str(cause)),
+        ],
+    )
+}
+
+/// Project an observation into the operation's declared output record. On a
+/// non-success outcome the ordinary body-derived fields are deliberately Null:
+/// RestOutcome is the only inhabited branch and therefore the only fact a caller
+/// can consume. On RestOk, preserve the already-decoded body fields and replace
+/// just the outcome field.
+fn attach_rest_outcome(
+    mapped: Option<Value>,
+    op_node: &Rc<Node>,
+    outcome_field: &str,
+    outcome: Value,
+    ctx: &InterpContext,
+) -> Value {
+    let mut fields = match mapped {
+        Some(Value::Record { fields, .. }) => (*fields).clone(),
+        _ => op_node
+            .inferred
+            .as_deref()
+            .and_then(|inferred| match inferred {
+                InferredNode::Resolved { node } => Some(node),
+                _ => None,
+            })
+            .map(|return_type| {
+                return_type
+                    .children
+                    .iter()
+                    .map(|field| {
+                        (
+                            ctx.sym(&authored_name_at(ctx.si(), field.clone())),
+                            Value::Null,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
+    let outcome_sym = ctx.sym(outcome_field);
+    match fields.iter_mut().find(|(name, _)| *name == outcome_sym) {
+        Some((_, value)) => *value = outcome,
+        None => fields.push((outcome_sym, outcome)),
+    }
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(fields),
+    }
+}
+
 fn dispatch_rest(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -7650,33 +7764,101 @@ fn dispatch_rest(
         request.call()
     };
 
+    let outcome_field = rest_outcome_output_field(op_node, ctx);
+
     match response {
         Ok(resp) => {
             let status = resp.status();
+            let body = match resp.into_string() {
+                Ok(body) => body,
+                Err(error) => {
+                    if let Some(field) = outcome_field.as_deref() {
+                        return Ok(attach_rest_outcome(
+                            None,
+                            op_node,
+                            field,
+                            rest_body_undecodable_value(ctx, status, error.to_string()),
+                            ctx,
+                        ));
+                    }
+                    String::new()
+                }
+            };
+            if !(200..300).contains(&status) {
+                if let Some(field) = outcome_field.as_deref() {
+                    return Ok(attach_rest_outcome(
+                        None,
+                        op_node,
+                        field,
+                        rest_status_refused_value(ctx, status, body),
+                        ctx,
+                    ));
+                }
+            }
             if status >= 400 {
-                let body = resp.into_string().unwrap_or_default();
                 return Err(InterpError::TypeError {
                     msg: format!("HTTP {}: {}", status, body),
                 });
             }
-            if response_format == "Text" {
-                let body = resp.into_string().unwrap_or_default();
-                return map_response_to_value(&body, None, op_node, ctx);
+            let mapped = if response_format == "Text" {
+                map_response_to_value(&body, None, op_node, ctx)?
+            } else {
+                let json: serde_json::Value =
+                    serde_json::from_str(&body).unwrap_or_else(|_| serde_json::Value::String(body));
+                map_response_to_value_json(&json, op_node, ctx)?
+            };
+            match outcome_field.as_deref() {
+                Some(field) => Ok(attach_rest_outcome(
+                    Some(mapped),
+                    op_node,
+                    field,
+                    rest_outcome_variant(ctx, "RestOk", vec![]),
+                    ctx,
+                )),
+                None => Ok(mapped),
             }
-            let body = resp.into_string().unwrap_or_default();
-            let json: serde_json::Value =
-                serde_json::from_str(&body).unwrap_or(serde_json::Value::String(body));
-            map_response_to_value_json(&json, op_node, ctx)
         }
         Err(ureq::Error::Status(status, resp)) => {
-            let body = resp.into_string().unwrap_or_default();
+            let body = match resp.into_string() {
+                Ok(body) => body,
+                Err(error) => {
+                    if let Some(field) = outcome_field.as_deref() {
+                        return Ok(attach_rest_outcome(
+                            None,
+                            op_node,
+                            field,
+                            rest_body_undecodable_value(ctx, status, error.to_string()),
+                            ctx,
+                        ));
+                    }
+                    String::new()
+                }
+            };
+            if let Some(field) = outcome_field.as_deref() {
+                return Ok(attach_rest_outcome(
+                    None,
+                    op_node,
+                    field,
+                    rest_status_refused_value(ctx, status, body),
+                    ctx,
+                ));
+            }
             Err(InterpError::TypeError {
                 msg: format!("HTTP {}: {}", status, body),
             })
         }
-        Err(e) => Err(InterpError::TypeError {
-            msg: format!("HTTP request failed: {}", e),
-        }),
+        Err(e) => match outcome_field.as_deref() {
+            Some(field) => Ok(attach_rest_outcome(
+                None,
+                op_node,
+                field,
+                rest_transport_refused_value(ctx, e.to_string()),
+                ctx,
+            )),
+            None => Err(InterpError::TypeError {
+                msg: format!("HTTP request failed: {}", e),
+            }),
+        },
     }
 }
 
