@@ -179,6 +179,31 @@ fn landing_review_artifact(v: JsonValue) -> LandingReviewArtifactProjection? {
   }
 }
 
+fn landing_review_artifact_issues(v: JsonValue) -> List<LandingJsonIssue> {
+  let shape_issues = concat(
+    json_field_issue(v: v, key: "id", expected: "number"),
+    json_field_issue(v: v, key: "provider", expected: "string"),
+    json_field_issue(v: v, key: "sha", expected: "string"),
+    json_field_issue(v: v, key: "verdict", expected: "string"),
+    json_field_issue(v: v, key: "artifact_url", expected: "string"),
+  )
+  let value_issues = concat(
+    if json_int_or_negative(v: v, key: "id") < 0 {
+      [LandingJsonIssue { path: "reviews[].id", reason: "review artifact id must be nonnegative" }]
+    } else { [] },
+    if json_string_or_empty(v: v, key: "provider") == "" {
+      [LandingJsonIssue { path: "reviews[].provider", reason: "review provider must be nonempty" }]
+    } else { [] },
+    if json_string_or_empty(v: v, key: "sha") == "" {
+      [LandingJsonIssue { path: "reviews[].sha", reason: "reviewed head must be nonempty" }]
+    } else { [] },
+    if json_string_or_empty(v: v, key: "artifact_url") == "" {
+      [LandingJsonIssue { path: "reviews[].artifact_url", reason: "present review row must carry inspectable artifact evidence" }]
+    } else { [] },
+  )
+  concat(shape_issues, value_issues)
+}
+
 fn landing_summary_decode(body: String) -> LandingSummaryDecode {
   match parse_json(s: body) {
     Absent => LandingSummaryDecodeRefused { issues: [LandingJsonIssue { path: "$", reason: "dashboard reviews response is not JSON" }] }
@@ -212,7 +237,11 @@ fn landing_summary_decode(body: String) -> LandingSummaryDecode {
         requirements,
         requirement => dashboard_requirement_issues(v: requirement),
       )
-      let issues = concat(scalar_issues, requirement_issues)
+      let review_issues = flat_map(
+        reviews,
+        review => landing_review_artifact_issues(v: review),
+      )
+      let issues = concat(scalar_issues, requirement_issues, review_issues)
       if count(issues) > 0 {
         LandingSummaryDecodeRefused { issues: issues }
       } else {

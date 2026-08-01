@@ -1,6 +1,6 @@
 module gunbc.landing_workflow_runtime
 
-import std.types { Bool, CommitSha, HttpStatus, Int, List, NonEmptyStr, String, Timestamp }
+import std.types { Bool, CommitSha, HttpStatus, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
 import v2.std.collection { list_at_optional }
 import extdeps.shell
@@ -37,7 +37,8 @@ import gunbc.landing_workflow {
   LandingMergeActionRefusal, LandingMergeNotAdmitted, LandingMergeHeadMoved,
   LandingMergeActuationFailed, LandingMergeReceipt,
   LandingMergeActionResult, LandingMergeActuated, LandingMergeRefused,
-  project_landing_decision, landing_queue_projection, landing_merge_action_result,
+  project_landing_decision, landing_queue_projection,
+  landing_merge_action_result, landing_merge_refusal_result,
 }
 
 data gunbc_landing_repo: NonEmptyStr = "gunb-ai/gunbc"
@@ -224,12 +225,10 @@ fn landing_merge_pr(pr_number: Int) -> LandingMergeActionResult {
               }
             LandingQueueObserveRefused { reason: _ } => admission.head_sha
           }
-          landing_merge_action_result(
+          landing_merge_refusal_result(
             admission: admission,
             observed_head: observed_head,
-            actuation_succeeded: false,
-            transport_receipt: join([merged.stderr, merged.stdout], "\n"),
-            merged_at: "1970-01-01T00:00:00Z" as Timestamp,
+            detail: join([merged.stderr, merged.stdout], "\n"),
           )
         }
       }

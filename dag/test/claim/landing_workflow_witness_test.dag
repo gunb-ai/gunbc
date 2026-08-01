@@ -37,6 +37,7 @@ import gunbc.landing_workflow {
   landing_queue_projection,
   project_landing_decision,
   landing_merge_action_result,
+  landing_merge_refusal_result,
 }
 import gunbc.landing_workflow_observe {
   LandingSummaryDecode, LandingSummaryRead, LandingSummaryDecodeRefused,
@@ -289,12 +290,10 @@ test fn exact_head_move_refuses_before_merge_receipt() -> Bool {
     actor_authority: witness_actor,
   ) {
     LandingAtDecisionBoundary { admission } =>
-      match landing_merge_action_result(
+      match landing_merge_refusal_result(
         admission: admission,
         observed_head: stale_head,
-        actuation_succeeded: true,
-        transport_receipt: "must not be believed",
-        merged_at: "2026-08-01T08:00:00Z",
+        detail: "must not be believed",
       ) {
         LandingMergeRefused { refusal: LandingMergeHeadMoved { admitted, observed } } =>
           admitted == witness_head && observed == stale_head
@@ -362,6 +361,19 @@ test fn duplicate_dashboard_ready_member_refuses_fail_closed() -> Bool {
   match landing_summary_decode(body: duplicate) {
     LandingSummaryDecodeRefused { issues } => any(issues, issue =>
       issue.path == "ready" && string_contains(s: issue.reason, pattern: "duplicated"))
+    LandingSummaryRead { criteria: _, artifacts: _ } => false
+  }
+}
+
+data malformed_review_evidence_fixture: String = "{\"merge_criteria\":{\"ready\":false,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"required_approval_count\":2,\"approval_count\":1,\"approval_providers\":[\"codex\"],\"request_changes_count\":0,\"request_change_providers\":[],\"stale_provider_count\":0,\"stale_providers\":[],\"active_review_count\":0,\"mergeable\":\"CLEAN\",\"checks_state\":\"passing\",\"is_draft\":false,\"lifecycle\":\"open\",\"requirements\":[{\"key\":\"approvals\",\"label\":\"2 distinct dashboard approvals\",\"ok\":false,\"actual\":\"1/2\"}]},\"reviews\":[{\"id\":124,\"provider\":\"codex\",\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"verdict\":\"approve\",\"artifact_url\":null}]}"
+
+data malformed_review_evidence_red_note: String = "A present review row may never disappear into an empty evidence list. Null, absent, duplicated, wrongly shaped, or empty artifact identity fields refuse the whole dashboard summary before admission projection."
+
+test fn malformed_present_review_evidence_refuses_instead_of_disappearing() -> Bool {
+  match landing_summary_decode(body: malformed_review_evidence_fixture) {
+    LandingSummaryDecodeRefused { issues } => any(issues, issue =>
+      issue.path == "reviews[].artifact_url"
+        && string_contains(s: issue.reason, pattern: "inspectable artifact evidence"))
     LandingSummaryRead { criteria: _, artifacts: _ } => false
   }
 }

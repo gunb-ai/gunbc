@@ -386,3 +386,16 @@ fn landing_merge_action_result(
       }
   }
 }
+
+fn landing_merge_refusal_result(
+  admission: LandingMergeAdmission,
+  observed_head: CommitSha,
+  detail: String,
+) -> LandingMergeActionResult {
+  match admit_landing_merge_action(admission: admission, observed_head: observed_head) {
+    Present { value: refusal } => LandingMergeRefused { refusal: refusal }
+    Absent => LandingMergeRefused {
+      refusal: LandingMergeActuationFailed { detail: detail },
+    }
+  }
+}
