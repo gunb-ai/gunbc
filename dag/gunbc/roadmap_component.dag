@@ -379,6 +379,31 @@ fn roadmap_row_grid_template() -> String {
     " ")
 }
 
+data row_head_column_note: String = "Explicit head-cell placement, derived from the SAME archetype the grid template folds (A3 routine-state collapse): once the status chip renders only when its lifecycle discriminates, the head can have fewer children than tracks, and implicit grid auto-placement would slide the title into the chip's auto track. Each head cell therefore carries an explicit grid-column derived from its region's HeadTrack position in roadmap_row_archetype — one authority for both the template and the placement, so an archetype reorder moves both together and a hand-drifted column is unwritable. A region not placed in a head track derives 0, which the archetype witness refuses (a 0 column never reaches emission while the witness is enrolled)."
+
+type RowHeadColumnScan {
+  col: Int
+  found: Int
+}
+
+fn roadmap_row_head_column(region_key: String) -> Int {
+  let scan = fold(roadmap_row_archetype, init: RowHeadColumnScan { col: 0, found: 0 }, f: (acc, r) => match r.placement {
+    HeadTrack { track: _ } =>
+      if acc.found > 0 {
+        acc
+      } else {
+        if row_region_key(r: r.region) == region_key {
+          RowHeadColumnScan { col: acc.col + 1, found: acc.col + 1 }
+        } else {
+          RowHeadColumnScan { col: acc.col + 1, found: 0 }
+        }
+      }
+    InTitleFlow => acc
+    UnderHead => acc
+  })
+  scan.found
+}
+
 data node_mid_class_note: String = "The title track's cell: the wrapper that carries the title plus the flowing meta regions (badges, carrier links). It exists because the archetype's grid has exactly the head tracks as columns and a node's badge count varies — meta declared InTitleFlow realizes as flex flow inside this cell, never as a column that would ragged the grid."
 
 data node_mid_class: String = "node-mid"
