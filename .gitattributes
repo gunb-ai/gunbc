@@ -1,1 +1,75 @@
+# gunbc .gitattributes — generated from dag/gunbc/gitattributes_emit.dag — do not hand-edit.
+# Authority: docs/plans/generated-file-conflict-policy.md (lane 2).
+
+# Presentation policy — linguist classification is independent of merge/integration policy.
 **/*.dag linguist-language=Rust
+
+# Integration policy — deterministic generated projections: provisional ours during merge,
+# then regenerate from merged authorities before commit (charter four-case policy row 1).
+
+.github/workflows/ci.yml merge=generated-artifact
+.github/workflows/falsifier.yml merge=generated-artifact
+.gitignore merge=generated-artifact
+.gitattributes merge=generated-artifact
+ROADMAP.md merge=generated-artifact
+DESIGN.md merge=generated-artifact
+.githooks/pre-push merge=generated-artifact
+.githooks/pre-commit merge=generated-artifact
+dag/gunbc/stage0_crate_layout_generated.dag merge=generated-artifact
+src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
+dag/gunbc/stage0_crate_partition_generated.dag merge=generated-artifact
+.github/live-deploy-srv1-apply.sh merge=generated-artifact
+.github/live-deploy-srv1-retract.sh merge=generated-artifact
+docs/plans/idea-machine.md merge=generated-artifact
+docs/plans/algebraic-rewrite-optimization.md merge=generated-artifact
+docs/plans/dag-v2-defork-audit.md merge=generated-artifact
+docs/plans/v2-self-hosting.md merge=generated-artifact
+docs/plans/m5-fixture-store-consolidation.md merge=generated-artifact
+docs/plans/model-realization-fork.md merge=generated-artifact
+docs/plans/value-null-split.md merge=generated-artifact
+docs/plans/ci-merge-freshness.md merge=generated-artifact
+docs/plans/seed-debt-bundle-item-2.md merge=generated-artifact
+docs/plans/axiom-syllogism-lens.md merge=generated-artifact
+docs/plans/invert-hand-maintained.md merge=generated-artifact
+docs/plans/fail-closed-lockdown.md merge=generated-artifact
+docs/plans/format-model-reconciliation.md merge=generated-artifact
+docs/plans/regime2-shared-emission-fold.md merge=generated-artifact
+docs/plans/shell-emission-model.md merge=generated-artifact
+docs/plans/construction-justification-rule.md merge=generated-artifact
+docs/plans/emission-ingestion-inverse.md merge=generated-artifact
+docs/plans/testgen-oracle.md merge=generated-artifact
+docs/plans/disposition-carrier.md merge=generated-artifact
+docs/plans/fold-ergonomics.md merge=generated-artifact
+docs/plans/m4-universal-hermetic-corpus.md merge=generated-artifact
+docs/plans/wiring-liveness-preflight.md merge=generated-artifact
+docs/plans/interpreter-kernel-d.md merge=generated-artifact
+docs/plans/inert-layer-lens.md merge=generated-artifact
+docs/plans/compile-clean-forcecheck.md merge=generated-artifact
+docs/plans/expressibility-frontier.md merge=generated-artifact
+docs/plans/p1-where-clause-lowering.md merge=generated-artifact
+docs/plans/intent-linearity-design-draft.md merge=generated-artifact
+docs/plans/solve-higher-order-design.md merge=generated-artifact
+docs/plans/language-target-self-host-frontier.md merge=generated-artifact
+docs/plans/self-applying-lenses.md merge=generated-artifact
+docs/plans/budget-tree.md merge=generated-artifact
+docs/plans/cardinality-refinement.md merge=generated-artifact
+docs/plans/compute-envelope-model.md merge=generated-artifact
+docs/plans/input-envelope-roadmap.md merge=generated-artifact
+docs/plans/ci-selection-vs-scheduling.md merge=generated-artifact
+docs/plans/ci-process-end-to-end.md merge=generated-artifact
+docs/plans/ci-oom-reclassification.md merge=generated-artifact
+docs/plans/bounded-input-cost-envelope-scheduling.md merge=generated-artifact
+docs/plans/ci-humming.md merge=generated-artifact
+docs/plans/edge-b-rust-dag-provenance-brief.md merge=generated-artifact
+docs/plans/resolver-type-name-collision-wall.md merge=generated-artifact
+docs/plans/realization-measurement-loop.md merge=generated-artifact
+docs/plans/host-effect-orchestration.md merge=generated-artifact
+docs/plans/ci-floor-fractal-gantt.md merge=generated-artifact
+docs/plans/resolver-pathology-profile-receipt.md merge=generated-artifact
+docs/plans/representation-minimization.md merge=generated-artifact
+docs/plans/reference-grounding-migration.md merge=generated-artifact
+docs/plans/typescript-gap-census.md merge=generated-artifact
+docs/plans/cli-run-hollowing-plan.md merge=generated-artifact
+docs/plans/fleet-acceptance-criteria.md merge=generated-artifact
+docs/plans/structural-quadratic-wall-coverage-audit.md merge=generated-artifact
+docs/plans/ci-performance-tanking-evidence.md merge=generated-artifact
