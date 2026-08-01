@@ -56,7 +56,7 @@ import gunbc.live_deploy.operations {
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
-  systemctl_disable_now_command,
+  systemctl_disable_now_if_present_command,
 }
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
@@ -428,12 +428,12 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       tailscale_serve_teardown_step(spec: spec),
     ]
     SystemdUnit => [
-      deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
+      deploy_raw(command: systemctl_disable_now_if_present_command(unit: spec.service.unit_name, privileged: true)),
       deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
     ]
     BeltTimerUnit => [
-      deploy_raw(command: concat(systemctl_disable_now_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true), " 2>/dev/null || true")),
+      deploy_raw(command: systemctl_disable_now_if_present_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
       deploy_raw(command: join([
         "sudo -n rm -f ", art.path as String, " ", deployment_belt_service_unit_path(names: spec.names) as String,
       ], "")),

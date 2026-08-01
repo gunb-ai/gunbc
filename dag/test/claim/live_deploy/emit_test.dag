@@ -347,7 +347,9 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
     && !string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
+    && string_contains(s: sh, pattern: "systemctl show gunbc-roadmap.service --property=LoadState --value")
     && string_contains(s: sh, pattern: "systemctl disable --now")
+    && !string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service 2>/dev/null || true")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }

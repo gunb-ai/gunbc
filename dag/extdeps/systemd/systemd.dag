@@ -32,6 +32,7 @@ type SystemdUnitProperty
   | MemoryHigh
   | CPUWeight
   | MemoryCurrent
+  | LoadState
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -40,8 +41,11 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemoryHigh => "MemoryHigh" as NonEmptyStr
     CPUWeight => "CPUWeight" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
+    LoadState => "LoadState" as NonEmptyStr
   }
 }
+
+data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr
 
 data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
 
