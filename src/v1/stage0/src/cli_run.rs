@@ -7373,6 +7373,18 @@ impl RepeatedTypecheckAttributionRun {
 static REPEATED_TYPECHECK_ATTRIBUTION_RUN: Mutex<Option<RepeatedTypecheckAttributionRun>> =
     Mutex::new(None);
 
+// Union-resolve slice-2 attribution tests arm/disarm this process-wide probe; `cargo test`
+// runs `#[test]` fns in parallel by default — serialize those oracles (not production use).
+static REPEATED_TYPECHECK_ATTRIBUTION_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
+
+/// Run an attribution-probe receipt test with exclusive access to the process-wide probe.
+pub fn with_repeated_typecheck_attribution_receipt<R>(f: impl FnOnce() -> R) -> R {
+    let _guard = REPEATED_TYPECHECK_ATTRIBUTION_RECEIPT_LOCK
+        .lock()
+        .expect("repeated typecheck attribution receipt lock poisoned");
+    f()
+}
+
 thread_local! {
     static REPEATED_TYPECHECK_ATTRIBUTION_ENTRY: RefCell<Option<String>> =
         const { RefCell::new(None) };
