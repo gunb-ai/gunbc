@@ -1,0 +1,44 @@
+module gunbc.cw_probe
+
+import gunbc.ci_gate {
+  Gate,
+  EmitHostGate, CheapClaimPoolGate,
+  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+}
+import gunbc.generated_artifact {
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GithooksPrePushArtifact, artifact_path
+}
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.types { NonEmptyStr }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.git.object_store {
+  GitPath,
+  git_path_octets,
+  GitObjectId,
+  git_object_id_eq,
+  GitIndexEntry,
+  GitIndexStage,
+  GitIndexStageNormal,
+  GitIndexStageBase,
+  GitIndexStageOurs,
+  GitIndexStageTheirs,
+  GitEffectiveConflictMarkerGrammar,
+  git_conflict_marker_begin,
+  git_conflict_marker_separator,
+  git_conflict_marker_end
+}
+import v2.compiler.source_authority {
+  ModuleStorageBinding,
+  ParsedFromSource,
+  ProducedByBehavior,
+}
+
+fn commit_writer_index_entries_for_path(
+  index: List<GitIndexEntry>,
+  path: GitPath,
+) -> List<GitIndexEntry> {
+  filter(index, entry => entry.path == path)
+}
