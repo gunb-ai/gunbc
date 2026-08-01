@@ -220,15 +220,17 @@ fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   roadmap_page(doc: doc, merged: [])
 }
 
+data server_zero_furniture_note: String = "The attention rule's server half (A2): a rendered row carries NO workflow furniture — no pre-rendered stage chips, no lamp strip, no hidden progress container, no 'waiting' text. Activity DOM exists only when the client paints it from the decided /workflow.json view of a live attempt. The former version of this witness pinned the seven server-rendered pending chips as a POSITIVE; the same patterns are now the discriminating negatives, so reintroducing preloaded furniture reds here."
+
 test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
   let h = dispatch_doc_html_for(rn: ready_dispatch_node())
   string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
     && string_contains(s: h, pattern: "data-node=")
-    && string_contains(s: h, pattern: "class=\"workflow-progress\" hidden")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"environment\"")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"publish\"")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"review\"")
-    && string_contains(s: h, pattern: "data-workflow-stage=\"audit\"")
+    && !string_contains(s: h, pattern: "workflow-progress")
+    && !string_contains(s: h, pattern: "data-workflow-stage=")
+    && !string_contains(s: h, pattern: "workflow-strip")
+    && !string_contains(s: h, pattern: "workflow-lamp")
+    && !string_contains(s: h, pattern: "class=\"node-activity\"")
     && string_contains(s: h, pattern: "<script src=\"/assets/roadmap-dispatch.js\"")
     && !string_contains(s: h, pattern: "querySelectorAll")
     && !string_contains(s: h, pattern: "j.status")

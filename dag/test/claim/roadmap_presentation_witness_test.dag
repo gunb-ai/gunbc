@@ -60,7 +60,6 @@ fn fx_specimen_activity() -> ActivityView {
     segments: fx_specimen_segments(),
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "" },
-    session_present: true,
     current_activity: "Worked for 6m 34s",
   )
 }
@@ -105,7 +104,6 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
     segments: segments,
     remaining: 5,
     process: WorkerProcessRunning { command: "codex exec" },
-    session_present: true,
     current_activity: "",
   ) {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
@@ -128,7 +126,6 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
     segments: segments,
     remaining: 6,
     process: WorkerProcessExited { exit_code: 0, last_command: "" },
-    session_present: true,
     current_activity: "",
   ) {
     ActiveWorkRefused { summary, located_reason, evidence: _ } =>
@@ -149,7 +146,6 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
     segments: segments,
     remaining: 6,
     process: WorkerProcessExited { exit_code: 1, last_command: "" },
-    session_present: true,
     current_activity: "",
   ) {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
@@ -227,7 +223,6 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
     segments: segments,
     remaining: 0,
     process: WorkerProcessExited { exit_code: 0, last_command: "" },
-    session_present: false,
     current_activity: "",
   ) {
     CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"

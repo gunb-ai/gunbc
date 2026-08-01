@@ -92,7 +92,7 @@ test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool {
     && string_contains(s: js, pattern: "sess.process_detail")
     && string_contains(s: js, pattern: "sess.cleanup_action")
     && string_contains(s: js, pattern: "sess.cleanup_allowed")
-    && string_contains(s: js, pattern: "'process-chip'")
+    && string_contains(s: js, pattern: "session-facts")
     && string_contains(s: js, pattern: "'cleanup-chip'")
     && string_contains(s: js, pattern: "'observe-refused sessions-observe-refused'")
     && string_contains(s: js, pattern: "session observation refused: ")
@@ -122,21 +122,24 @@ test fn sessions_client_serializes_each_observation_source() -> Bool {
     && string_contains(s: js, pattern: "gunbcAttemptsObservationPending = true")
 }
 
+data sessions_button_is_action_note: String = "Strengthened at A2 (the action/observation split): the sessions observer may never write the dispatch button's text at all — the former guarded caption flip ('session · present' on the button when idle) was the observation-in-the-control-position defect the falsifier exposed. Presence is recorded as a dataset fact for admission logic; the visible claim lives in the disclosure's session-facts line. The discriminating negatives are the exact strings the old mechanism emitted."
+
 test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
   let js = dispatch_client_js_source()
-  return string_contains(s: js, pattern: "sb.textContent === 'dispatch'")
-    && string_contains(s: js, pattern: "sb.textContent === 'session · present'")
-    && string_contains(s: js, pattern: "pb.textContent === 'session · present'")
+  return string_contains(s: js, pattern: "sb.dataset.sessionPresence = 'present'")
+    && !string_contains(s: js, pattern: "sb.textContent = 'session")
+    && !string_contains(s: js, pattern: "pb.textContent = 'dispatch'")
+    && string_contains(s: js, pattern: "session · present")
 }
 
 test fn sessions_refusal_withdraws_prior_presence() -> Bool {
   let js = dispatch_client_js_source()
-  let presence_reset_selector = ".dispatch-btn[data-session-presence=\"present\"]"
+  let presence_reset_selector = ".dispatch-btn[data-session-presence=\"present\"], .session-facts"
   return count(split(s: js, delimiter: presence_reset_selector)) == 4
     && string_contains(s: js, pattern: "sj.observe_refused")
     && string_contains(s: js, pattern: ".catch(")
-    && string_contains(s: js, pattern: "oldProcess.remove()")
-    && string_contains(s: js, pattern: "oldCleanup.remove()")
+    && string_contains(s: js, pattern: "pb.classList.contains('session-facts')")
+    && string_contains(s: js, pattern: "pb.remove()")
 }
 
 test fn attempts_refusal_withdraws_prior_rows() -> Bool {

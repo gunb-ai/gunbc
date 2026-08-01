@@ -30,20 +30,9 @@ import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
   theme_toggle_label_prefix, theme_toggle_auto_value,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
-  WorkflowLamp, workflow_lamps_v0, workflow_lamp_key, workflow_lamp_label,
-  workflow_lamp_initial_state,
-  workflow_controls_class, workflow_strip_class, workflow_lamp_class,
-  workflow_lamp_indicator_class, workflow_lamp_label_class,
-  workflow_lamp_data_attribute, workflow_observation_data_attribute,
-  workflow_lamp_label_data_attribute,
-  workflow_progress_stages,
-  workflow_progress_stage_key, workflow_progress_stage_label,
-  workflow_progress_class, workflow_stage_class, workflow_activity_class,
-  workflow_stage_data_attribute, workflow_segment_state_data_attribute,
+  workflow_controls_class,
   dashboard_instance_class, dashboard_instance_label_class,
 }
-import gunbc.roadmap_workflow_stage { WorkflowSegmentKind }
-import gunbc.client_observation_state { client_observation_state_key }
 import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
 
 fn roadmap_page_max_depth() -> Int { 12 }
@@ -417,63 +406,11 @@ fn node_exposes_manual_dispatch(rn: RoadmapNode, merged: List<Int>) -> Bool {
   !(status == "done" || status == "superseded")
 }
 
-fn workflow_lamp_node(lamp: WorkflowLamp) -> Fragment {
-  let key = workflow_lamp_key(lamp: lamp)
-  let label = workflow_lamp_label(lamp: lamp)
-  let observation = client_observation_state_key(
-    state: workflow_lamp_initial_state(lamp: lamp))
-  el_attrs("span", [
-    attr(name: "class", value: workflow_lamp_class),
-    attr(name: workflow_lamp_data_attribute, value: key),
-    attr(name: workflow_observation_data_attribute, value: observation),
-    attr(name: workflow_lamp_label_data_attribute, value: label),
-    attr(name: "role", value: "status"),
-    attr(name: "aria-label", value: join([label, ": ", observation], "")),
-  ], [
-    el_class("span", workflow_lamp_indicator_class, []),
-    el_class("span", workflow_lamp_label_class, [ txt(label) ]),
-  ])
-}
-
-fn workflow_strip_node() -> Fragment {
-  el_attrs("span", [
-    attr(name: "class", value: workflow_strip_class),
-    attr(name: "role", value: "group"),
-    attr(name: "aria-label", value: "workflow observations"),
-  ], map(workflow_lamps_v0, lamp => workflow_lamp_node(lamp: lamp)))
-}
-
-fn workflow_progress_stage_node(stage: WorkflowSegmentKind) -> Fragment {
-  let key = workflow_progress_stage_key(stage: stage)
-  let label = workflow_progress_stage_label(stage: stage)
-  el_attrs("span", [
-    attr(name: "class", value: workflow_stage_class),
-    attr(name: workflow_stage_data_attribute, value: key),
-    attr(name: workflow_segment_state_data_attribute, value: "pending"),
-    attr(name: "role", value: "status"),
-    attr(name: "aria-label", value: join([label, ": pending"], "")),
-  ], [txt(label)])
-}
-
-fn workflow_progress_node() -> Fragment {
-  el_attrs("span", [
-    attr(name: "class", value: workflow_progress_class),
-    attr(name: "hidden", value: ""),
-    attr(name: "role", value: "group"),
-    attr(name: "aria-label", value: "attempt workflow"),
-  ], concat(
-    map(
-      workflow_progress_stages,
-      stage => workflow_progress_stage_node(stage: stage),
-    ),
-    [el_class("span", workflow_activity_class, [txt("waiting")])],
-  ))
-}
+data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
 
 fn workflow_controls_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> {
-  [ el_class("div", workflow_controls_class, concat(
-      [ workflow_progress_node(), workflow_strip_node() ],
-      dispatch_button_nodes(rn: rn, dispatchable: dispatchable))) ]
+  [ el_class("div", workflow_controls_class,
+      dispatch_button_nodes(rn: rn, dispatchable: dispatchable)) ]
 }
 
 fn dispatch_client_script() -> Fragment {
@@ -530,7 +467,7 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
 
 data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass (operator feedback 2026-08-01): the flat row list, the head-line composition, and the visual style of this module are ONE PROVISIONAL RENDERER, not product ontology. What A1 fixed is which claims render and at what altitude (operational before narrative, local denominators, supporting facts demoted, routine chrome quieted); it deliberately did NOT choose the workspace's interaction model. The named misses carried forward to the presentation-seam slice (A2: WorkRowView/DailyWorkspaceView/ObservationImpactView, roadmap_page becomes serialize-only): the row's one purpose-specific supporting line (why-now / what-it-unlocks — deferred because no typed fact carries it yet, and truncating ticket prose by punctuation is exactly the heuristic class the seam exists to kill); the observation-refusal altitude split (one cause narrated once, not once per channel); availability-vs-priority on the dispatch control; family-once row grouping; routine-state collapse (open/ticket/idle lamps). Witnesses over this module assert per-claim semantics, never element order or adjacency — pinning the accidental composition would harden this renderer into the model."
 
-data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion. That final wrapper is always present, carrying the workflow observation strip plus the optional dispatch button, so done/superseded rows remain observable and dynamic process evidence plus stop/clear/unavailable cleanup stay inside the existing grid cell. The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its lamp or optional control."
+data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions."
 
 fn dependency_badge(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<Fragment> {
   let parents = roadmap_parent_ids(edges: edges, node: rn.node)

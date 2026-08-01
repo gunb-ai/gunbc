@@ -155,8 +155,8 @@ test fn stop_wire_statuses_discriminate() -> Bool {
 
 test fn stop_client_carries_the_chip() -> Bool {
   let js = dispatch_client_js_source()
-  return string_contains(s: js, pattern: "'process-chip'")
-    && string_contains(s: js, pattern: "'cleanup-chip'")
+  return string_contains(s: js, pattern: "'cleanup-chip'")
+    && string_contains(s: js, pattern: "session-facts")
     && string_contains(s: js, pattern: "'/cleanup/' + sess.node_id")
     && string_contains(s: js, pattern: "{ method: 'POST' }")
     && string_contains(s: js, pattern: "j.ok === true")
@@ -169,9 +169,10 @@ test fn stop_client_carries_the_chip() -> Bool {
 }
 
 test fn stop_chip_is_styled() -> Bool {
-  return string_contains(s: roadmap_css(), pattern: ".process-chip { font-size: var(--text-10);")
-    && string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")
+  return string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")
     && string_contains(s: roadmap_css(), pattern: ".cleanup-chip:disabled")
+    && string_contains(s: roadmap_css(), pattern: ".session-facts { display: flex;")
+    && !string_contains(s: roadmap_css(), pattern: ".process-chip")
 }
 
 test fn stop_fingerprint_scaffold_is_discharged() -> Bool {

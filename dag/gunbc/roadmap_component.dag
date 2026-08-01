@@ -5,15 +5,6 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
 import gunbc.design.scale { ScaleToken, space_4, space_8, height_row }
 import gunbc.roadmap_altitude { band_expands }
-import gunbc.client_observation_state {
-  ClientObservationState,
-  ClientObservationPending, ClientObservationOff, ClientObservationOn, ClientObservationRefused,
-  client_observation_state_key,
-}
-import gunbc.roadmap_workflow_stage {
-  WorkflowSegmentKind,
-  roadmap_attempt_workflow_segment_kinds,
-}
 import gunbc.design.component {
   Component, ComponentState, ComponentStateKind,
   IdleState, RequestedState, TerminalState,
@@ -128,7 +119,6 @@ fn dispatch_caption_set() -> List<String> {
   ], [
     concat(dispatch_ack_prefix, dispatch_ack_word),
     concat(dispatch_ack_prefix, belt_dispatch_disabled_status_label()),
-    concat(dispatch_session_chip_prefix, dispatch_caption_present_word),
   ])
 }
 
@@ -297,75 +287,21 @@ fn dashboard_instance_fetch_statements() -> List<TsStmt> {
 data attempts_route_path: String = "/attempts.json"
 data workflow_route_path: String = "/workflow.json"
 
-type WorkflowLamp
-  = SessionWorkflowLamp
-  | AttemptWorkflowLamp
-
-data workflow_lamps_v0: List<WorkflowLamp> = [
-  SessionWorkflowLamp,
-  AttemptWorkflowLamp,
-]
-
-fn workflow_lamp_key(lamp: WorkflowLamp) -> String {
-  match lamp {
-    SessionWorkflowLamp => "session"
-    AttemptWorkflowLamp => "attempt"
-  }
-}
-
-fn workflow_lamp_label(lamp: WorkflowLamp) -> String {
-  match lamp {
-    SessionWorkflowLamp => "Session"
-    AttemptWorkflowLamp => "Attempt"
-  }
-}
-
-fn workflow_lamp_state(
-  lamp: WorkflowLamp,
-  session: ClientObservationState,
-  attempt: ClientObservationState,
-) -> ClientObservationState {
-  match lamp {
-    SessionWorkflowLamp => session
-    AttemptWorkflowLamp => attempt
-  }
-}
-
-fn workflow_lamp_initial_state(lamp: WorkflowLamp) -> ClientObservationState {
-  workflow_lamp_state(
-    lamp: lamp,
-    session: ClientObservationPending,
-    attempt: ClientObservationPending)
-}
-
 data workflow_controls_class: String = "workflow-controls"
-data workflow_strip_class: String = "workflow-strip"
-data workflow_lamp_class: String = "workflow-lamp"
-data workflow_lamp_indicator_class: String = "workflow-lamp-indicator"
-data workflow_lamp_label_class: String = "workflow-lamp-label"
-data workflow_lamp_data_attribute: String = "data-workflow-lamp"
-data workflow_observation_data_attribute: String = "data-observation"
-data workflow_lamp_label_data_attribute: String = "data-label"
 
-data workflow_progress_stages: List<WorkflowSegmentKind> = roadmap_attempt_workflow_segment_kinds
+data node_activity_class: String = "node-activity"
+data activity_summary_class: String = "activity-summary"
+data activity_detail_class: String = "activity-detail"
+data activity_ledger_class: String = "activity-ledger"
+data activity_obligation_class: String = "activity-obligation"
+data activity_evidence_class: String = "activity-evidence"
+data activity_evidence_row_class: String = "activity-evidence-row"
+data activity_located_reason_class: String = "activity-located-reason"
+data session_facts_class: String = "session-facts"
 
-fn workflow_progress_stage_key(stage: WorkflowSegmentKind) -> String {
-  gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: stage)
-}
+data node_activity_region_note: String = "The client realization of the archetype's UnderHead ActivityRegion (A2 — roadmap_row_archetype_note records the falsifier that forced it; the lamp strip, seven pre-rendered stage chips, and 'waiting' text it replaces are deleted, not hidden). The container exists ONLY while the decided /workflow.json activity view says an attempt exists — the attention rule's 'no attempt, no furniture' is realized as DOM absence, not display:none. All content is painted VERBATIM from the decided view (gunbc.roadmap_presentation, single projection authority): activity.summary/outcome/reason are final strings, data-arm and data-attention are the decided keys the stylesheet materializes, the obligation ledger renders the wire's canonical segment rows, and evidence rows are label/value pairs. The client holds NO composition policy — a summary sentence assembled in TypeScript is the two-authorities defect this region dissolved. The detail disclosure auto-opens ONCE per anomaly transition (data-auto-opened guard), honoring both the attention rule's auto-expand and reason_surface_producers_note's ruling that a poll tick must never fight the operator's hands. Session-observation facts (/sessions.json, the independent presence source) render into the row disclosure's session-facts line, never into the actuator cell and never onto the dispatch button — the button is an action, not a status report."
 
-fn workflow_progress_stage_label(stage: WorkflowSegmentKind) -> String {
-  gunbc.roadmap_workflow_stage.workflow_segment_kind_short_label(kind: stage)
-}
-
-data workflow_progress_class: String = "workflow-progress"
-data workflow_stage_class: String = "workflow-stage"
-data workflow_activity_class: String = "workflow-activity"
-data workflow_stage_data_attribute: String = "data-workflow-stage"
-data workflow_segment_state_data_attribute: String = "data-state"
-
-data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine and not a replacement for independent Session/Attempt facts. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain visibly pending until their own producers exist. Both markup and server desired facts consume roadmap_attempt_workflow_segment_kinds, while the client writes each segment's observed state/detail and makes failed/refused state visible in the stage label rather than relying on border style alone. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
-
-data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26, vocabulary corrected 2026-07-28): Session and Attempt are two independent projections over /sessions.json and /attempts.json. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. Session means the tmux container is present—not that its process is running—and process lifecycle is rendered separately. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
+data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain pending until their own producers exist. The server decides the presentation (the 'activity' member on each wire attempt, derived by gunbc.roadmap_presentation from roadmap_attempt_workflow_segment_kinds and the reconcile report); the client paints it into the UnderHead activity region without policy. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
 
 data dispatch_caption_live_word_note: String = "The session route observes tmux container presence independently from pane/process lifecycle. Its caption is therefore `present`, never `live` or `executing`; the Session lamp names that same narrow fact. A neighboring process chip renders running, exited, absent, or unobserved from the pane source."
 
@@ -1372,16 +1308,6 @@ fn swatch_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
-data js_set_client_observation_fn: String = "gunbcSetClientObservation"
-
-fn workflow_lamp_selector(lamp: WorkflowLamp) -> String {
-  join([
-    "[", workflow_lamp_data_attribute, "=\"",
-    workflow_lamp_key(lamp: lamp),
-    "\"]",
-  ], "")
-}
-
 fn workflow_row_selector_expr(node_id: TsExpr) -> TsExpr {
   ts_binop(
     left: ts_binop(
@@ -1390,101 +1316,6 @@ fn workflow_row_selector_expr(node_id: TsExpr) -> TsExpr {
       right: node_id),
     op: "+",
     right: ts_lit_str(value: "\"]"))
-}
-
-fn workflow_lamp_in_row_expr(row_name: String, lamp: WorkflowLamp) -> TsExpr {
-  ts_binop(
-    left: ts_ident(name: row_name),
-    op: "&&",
-    right: ts_call(
-      callee: ts_member(object: ts_ident(name: row_name), property: "querySelector"),
-      args: [ts_lit_str(value: workflow_lamp_selector(lamp: lamp))]))
-}
-
-fn workflow_observation_key(state: ClientObservationState) -> String {
-  client_observation_state_key(state: state)
-}
-
-fn workflow_set_observation_call(
-  lamp_expr: TsExpr,
-  state: ClientObservationState,
-  reason_expr: TsExpr,
-) -> TsStmt {
-  ts_expr_stmt(expr: ts_call(
-    callee: ts_ident(name: js_set_client_observation_fn),
-    args: [
-      lamp_expr,
-      ts_lit_str(value: workflow_observation_key(state: state)),
-      reason_expr,
-    ]))
-}
-
-fn workflow_set_all_observations_stmt(
-  lamp: WorkflowLamp,
-  state: ClientObservationState,
-  reason_expr: TsExpr,
-) -> TsStmt {
-  ts_expr_stmt(expr: ts_call(
-    callee: ts_member(
-      object: ts_call(
-        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-        args: [ts_lit_str(value: workflow_lamp_selector(lamp: lamp))]),
-      property: "forEach"),
-    args: [ts_arrow(params: ["lamp"], body: workflow_set_observation_call(
-      lamp_expr: ts_ident(name: "lamp"),
-      state: state,
-      reason_expr: reason_expr))]))
-}
-
-fn workflow_observation_preamble_statements() -> List<TsStmt> {
-  [
-    ts_const(name: js_set_client_observation_fn, value: ts_arrow(
-      params: ["lamp", "state", "reason"],
-      body: ts_block(stmts: [
-        ts_if(
-          cond: ts_ident(name: "lamp"),
-          then: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(
-                object: ts_member(object: ts_ident(name: "lamp"), property: "dataset"),
-                property: "observation"),
-              op: "=",
-              right: ts_ident(name: "state"))),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "lamp"), property: "title"),
-              op: "=",
-              right: ts_binop(
-                left: ts_ident(name: "reason"),
-                op: "||",
-                right: ts_lit_str(value: "")))),
-            ts_const(name: "stateLabel", value: ts_cond(
-              test: ts_ident(name: "reason"),
-              consequent: ts_binop(
-                left: ts_binop(
-                  left: ts_ident(name: "state"),
-                  op: "+",
-                  right: ts_lit_str(value: ": ")),
-                op: "+",
-                right: ts_ident(name: "reason")),
-              alternate: ts_ident(name: "state"))),
-            ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "lamp"), property: "setAttribute"),
-              args: [
-                ts_lit_str(value: "aria-label"),
-                ts_binop(
-                  left: ts_binop(
-                    left: ts_member(
-                      object: ts_member(object: ts_ident(name: "lamp"), property: "dataset"),
-                      property: "label"),
-                    op: "+",
-                    right: ts_lit_str(value: ": ")),
-                  op: "+",
-                  right: ts_ident(name: "stateLabel")),
-              ])),
-          ]),
-          else_stmt: none),
-      ]))),
-  ]
 }
 
 data sessions_panel_note: String = "U2 plus workflow lamps v0, corrected for lifecycle truth: one named observer per endpoint runs at load, immediately after an accepted dispatch, and on the modeled poll cadence while the page is open. Each observation recomputes its own axis; neither endpoint can suppress the other. /sessions.json proves tmux/process presence only, so it renders `session · present` plus the provider/readiness evidence carried by the wire, never `live` as agent execution. Refusal resolves every Live lamp to Refused and inserts a source-specific loud banner — unknowable never rounds to Off."
@@ -1547,10 +1378,6 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
       args: [workflow_row_selector_expr(
         node_id: ts_member(object: ts_ident(name: "sess"), property: "node_id"))])),
-    workflow_set_observation_call(
-      lamp_expr: workflow_lamp_in_row_expr(row_name: "sr", lamp: SessionWorkflowLamp),
-      state: ClientObservationOn,
-      reason_expr: ts_lit_str(value: "")),
     ts_const(name: "sb", value: ts_binop(
       left: ts_ident(name: "sr"),
       op: "&&",
@@ -1566,27 +1393,73 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
             property: "sessionPresence"),
           op: "=",
           right: ts_lit_str(value: "present"))),
+        ts_const(name: "sdt", value: ts_call(
+          callee: ts_ident(name: js_row_disclosure_fn),
+          args: [ts_ident(name: "sb")])),
+        ts_let(name: "sf", value: ts_binop(
+          left: ts_ident(name: "sdt"),
+          op: "&&",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "sdt"), property: "querySelector"),
+            args: [ts_lit_str(value: concat(".", session_facts_class))]))),
         ts_if(
           cond: ts_binop(
-            left: ts_binop(
-              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
-              op: "===",
-              right: ts_lit_str(value: dispatch_caption_idle)),
-            op: "||",
-            right: ts_binop(
-              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
-              op: "===",
-              right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
+            left: ts_ident(name: "sdt"),
+            op: "&&",
+            right: ts_prefix(op: "!", expr: ts_ident(name: "sf"))),
           then: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+              left: ts_ident(name: "sf"),
               op: "=",
-              right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
-            ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "classList"), property: "add"),
-              args: [ts_lit_str(value: dispatch_class_ok)])),
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                args: [ts_lit_str(value: "div")]))),
             ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "sb"), property: "title"),
+              left: ts_member(object: ts_ident(name: "sf"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: session_facts_class))),
+            ts_const(name: "sfsm", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "sdt"), property: "querySelector"),
+              args: [ts_lit_str(value: "summary")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "sfsm"),
+              op: "&&",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "sfsm"), property: "insertAdjacentElement"),
+                args: [ts_lit_str(value: "afterend"), ts_ident(name: "sf")]))),
+            ts_const(name: "sft", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+              args: [ts_lit_str(value: "span")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "sft"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: "session-facts-text"))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "sf"), property: "append"),
+              args: [ts_ident(name: "sft")])),
+          ]),
+          else_stmt: none),
+        ts_const(name: "st", value: ts_binop(
+          left: ts_ident(name: "sf"),
+          op: "&&",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "sf"), property: "querySelector"),
+            args: [ts_lit_str(value: ".session-facts-text")]))),
+        ts_if(
+          cond: ts_ident(name: "st"),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "st"), property: "textContent"),
+              op: "=",
+              right: ts_binop(
+                left: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)),
+                op: "+",
+                right: ts_binop(
+                  left: ts_lit_str(value: " — "),
+                  op: "+",
+                  right: ts_member(object: ts_ident(name: "sess"), property: "process_state"))))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "st"), property: "title"),
               op: "=",
               right: ts_binop(
                 left: ts_binop(
@@ -1604,49 +1477,31 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                   left: ts_member(object: ts_ident(name: "sess"), property: "provider_readiness"),
                   op: "+",
                   right: ts_binop(
-                    left: ts_lit_str(value: " — "),
+                    left: ts_binop(
+                      left: ts_lit_str(value: " — "),
+                      op: "+",
+                      right: ts_member(object: ts_ident(name: "sess"), property: "session_name")),
                     op: "+",
-                    right: ts_member(object: ts_ident(name: "sess"), property: "session_name")))))),
+                    right: ts_cond(
+                      test: ts_member(object: ts_ident(name: "sess"), property: "process_detail"),
+                      consequent: ts_binop(
+                        left: ts_lit_str(value: " — "),
+                        op: "+",
+                        right: ts_member(object: ts_ident(name: "sess"), property: "process_detail")),
+                      alternate: ts_lit_str(value: ""))))))),
           ]),
           else_stmt: none),
-        ts_let(name: "pc", value: ts_call(
-          callee: ts_member(
-            object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"),
-            property: "querySelector"),
-          args: [ts_lit_str(value: ".process-chip")])),
+        ts_let(name: "cc", value: ts_binop(
+          left: ts_ident(name: "sf"),
+          op: "&&",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "sf"), property: "querySelector"),
+            args: [ts_lit_str(value: ".cleanup-chip")]))),
         ts_if(
-          cond: ts_prefix(op: "!", expr: ts_ident(name: "pc")),
-          then: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_ident(name: "pc"),
-              op: "=",
-              right: ts_call(
-                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
-                args: [ts_lit_str(value: "span")]))),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "pc"), property: "className"),
-              op: "=",
-              right: ts_lit_str(value: "process-chip"))),
-            ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "sb"), property: "insertAdjacentElement"),
-              args: [ts_lit_str(value: "afterend"), ts_ident(name: "pc")])),
-          ]),
-          else_stmt: none),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "pc"), property: "textContent"),
-          op: "=",
-          right: ts_member(object: ts_ident(name: "sess"), property: "process_state"))),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "pc"), property: "title"),
-          op: "=",
-          right: ts_member(object: ts_ident(name: "sess"), property: "process_detail"))),
-        ts_let(name: "cc", value: ts_call(
-          callee: ts_member(
-            object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"),
-            property: "querySelector"),
-          args: [ts_lit_str(value: ".cleanup-chip")])),
-        ts_if(
-          cond: ts_prefix(op: "!", expr: ts_ident(name: "cc")),
+          cond: ts_binop(
+            left: ts_ident(name: "sf"),
+            op: "&&",
+            right: ts_prefix(op: "!", expr: ts_ident(name: "cc"))),
           then: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_ident(name: "cc"),
@@ -1793,30 +1648,35 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                   ]))])),
               ]))])),
             ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "pc"), property: "insertAdjacentElement"),
-              args: [ts_lit_str(value: "afterend"), ts_ident(name: "cc")])),
+              callee: ts_member(object: ts_ident(name: "sf"), property: "append"),
+              args: [ts_ident(name: "cc")])),
           ]),
           else_stmt: none),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(
-            object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
-            property: "cleanupAction"),
-          op: "=",
-          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
-          op: "=",
-          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "cc"), property: "title"),
-          op: "=",
-          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_detail"))),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
-          op: "=",
-          right: ts_prefix(
-            op: "!",
-            expr: ts_member(object: ts_ident(name: "sess"), property: "cleanup_allowed")))),
+        ts_if(
+          cond: ts_ident(name: "cc"),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(
+                object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
+                property: "cleanupAction"),
+              op: "=",
+              right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
+              op: "=",
+              right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "cc"), property: "title"),
+              op: "=",
+              right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_detail"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+              op: "=",
+              right: ts_prefix(
+                op: "!",
+                expr: ts_member(object: ts_ident(name: "sess"), property: "cleanup_allowed")))),
+          ]),
+          else_stmt: none),
       ]),
       else_stmt: none,
     ),
@@ -1837,55 +1697,39 @@ fn remove_all_selector_stmt(selector: String, item_name: String) -> TsStmt {
         args: [])))]))
 }
 
+data sessions_reset_note: String = "Each session observation clears the prior projection before repainting: presence datasets flip back and every session-facts disclosure line is removed, so a torn-down session cannot leave a stale 'present' claim. The dispatch button itself is untouched — it is an action and never carried the presence claim after A2 (node_activity_region_note)."
+
 fn sessions_reset_presence_stmt() -> TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
         callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-        args: [ts_lit_str(value: ".dispatch-btn[data-session-presence=\"present\"]")]),
+        args: [ts_lit_str(value: join([
+          ".dispatch-btn[data-session-presence=\"present\"], .",
+          session_facts_class,
+        ], ""))]),
       property: "forEach"),
     args: [ts_arrow(params: ["pb"], body: ts_block(stmts: [
-      ts_expr_stmt(expr: ts_binop(
-        left: ts_member(
-          object: ts_member(object: ts_ident(name: "pb"), property: "dataset"),
-          property: "sessionPresence"),
-        op: "=",
-        right: ts_lit_str(value: ""))),
       ts_if(
-        cond: ts_binop(
-          left: ts_member(object: ts_ident(name: "pb"), property: "textContent"),
-          op: "===",
-          right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word))),
+        cond: ts_call(
+          callee: ts_member(
+            object: ts_member(object: ts_ident(name: "pb"), property: "classList"),
+            property: "contains"),
+          args: [ts_lit_str(value: session_facts_class)]),
         then: ts_block(stmts: [
-          ts_expr_stmt(expr: ts_binop(
-            left: ts_member(object: ts_ident(name: "pb"), property: "textContent"),
-            op: "=",
-            right: ts_lit_str(value: dispatch_caption_idle))),
           ts_expr_stmt(expr: ts_call(
-            callee: ts_member(
-              object: ts_member(object: ts_ident(name: "pb"), property: "classList"),
-              property: "remove"),
-            args: [ts_lit_str(value: dispatch_class_ok)])),
+            callee: ts_member(object: ts_ident(name: "pb"), property: "remove"),
+            args: [])),
+        ]),
+        else_stmt: Present { value: ts_block(stmts: [
           ts_expr_stmt(expr: ts_binop(
-            left: ts_member(object: ts_ident(name: "pb"), property: "title"),
+            left: ts_member(
+              object: ts_member(object: ts_ident(name: "pb"), property: "dataset"),
+              property: "sessionPresence"),
             op: "=",
             right: ts_lit_str(value: ""))),
-        ]),
-        else_stmt: none),
-      ts_const(name: "oldProcess", value: ts_call(
-        callee: ts_member(object: ts_member(object: ts_ident(name: "pb"), property: "parentElement"), property: "querySelector"),
-        args: [ts_lit_str(value: ".process-chip")])),
-      ts_expr_stmt(expr: ts_binop(
-        left: ts_ident(name: "oldProcess"),
-        op: "&&",
-        right: ts_call(callee: ts_member(object: ts_ident(name: "oldProcess"), property: "remove"), args: []))),
-      ts_const(name: "oldCleanup", value: ts_call(
-        callee: ts_member(object: ts_member(object: ts_ident(name: "pb"), property: "parentElement"), property: "querySelector"),
-        args: [ts_lit_str(value: ".cleanup-chip")])),
-      ts_expr_stmt(expr: ts_binop(
-        left: ts_ident(name: "oldCleanup"),
-        op: "&&",
-        right: ts_call(callee: ts_member(object: ts_ident(name: "oldCleanup"), property: "remove"), args: []))),
+        ]) },
+      ),
     ]))]))
 }
 
@@ -1954,19 +1798,11 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                 concat(
                   [
                     sessions_reset_presence_stmt(),
-                    workflow_set_all_observations_stmt(
-                      lamp: SessionWorkflowLamp,
-                      state: ClientObservationRefused { reason: "" },
-                      reason_expr: ts_ident(name: "why")),
                   ],
                   observation_refused_banner_stmts(source_class: "sessions-observe-refused")))),
               else_stmt: Present { value: ts_block(stmts: [
                 remove_all_selector_stmt(selector: ".sessions-observe-refused", item_name: "oldBanner"),
                 sessions_reset_presence_stmt(),
-                workflow_set_all_observations_stmt(
-                  lamp: SessionWorkflowLamp,
-                  state: ClientObservationOff,
-                  reason_expr: ts_lit_str(value: "")),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_member(object: ts_ident(name: "sj"), property: "sessions"), property: "forEach"),
                   args: [ts_arrow(params: ["sess"], body: ts_block(stmts: sessions_mark_live_stmts()))])),
@@ -1982,10 +1818,6 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
         concat(
           [
             sessions_reset_presence_stmt(),
-            workflow_set_all_observations_stmt(
-              lamp: SessionWorkflowLamp,
-              state: ClientObservationRefused { reason: "" },
-              reason_expr: ts_ident(name: "why")),
           ],
           concat(
             observation_refused_banner_stmts(source_class: "sessions-observe-refused"),
@@ -2004,10 +1836,6 @@ fn attempts_mark_stmts() -> List<TsStmt> {
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
       args: [workflow_row_selector_expr(
         node_id: ts_member(object: ts_ident(name: "att"), property: "node_id"))])),
-    workflow_set_observation_call(
-      lamp_expr: workflow_lamp_in_row_expr(row_name: "ar", lamp: AttemptWorkflowLamp),
-      state: ClientObservationOn,
-      reason_expr: ts_lit_str(value: "")),
     ts_const(name: "adt", value: ts_binop(
       left: ts_ident(name: "ar"),
       op: "&&",
@@ -2068,19 +1896,11 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
                 concat(
                   [
                     remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "staleAttempts"),
-                    workflow_set_all_observations_stmt(
-                      lamp: AttemptWorkflowLamp,
-                      state: ClientObservationRefused { reason: "" },
-                      reason_expr: ts_ident(name: "why")),
                   ],
                   observation_refused_banner_stmts(source_class: "attempts-observe-refused")))),
               else_stmt: Present { value: ts_block(stmts: [
                 remove_all_selector_stmt(selector: ".attempts-observe-refused", item_name: "oldBanner"),
                 remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "oldAttempts"),
-                workflow_set_all_observations_stmt(
-                  lamp: AttemptWorkflowLamp,
-                  state: ClientObservationOff,
-                  reason_expr: ts_lit_str(value: "")),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_member(object: ts_ident(name: "aj"), property: "attempts"), property: "forEach"),
                   args: [ts_arrow(params: ["att"], body: ts_block(stmts: attempts_mark_stmts()))])),
@@ -2096,10 +1916,6 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
         concat(
           [
             remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "staleAttempts"),
-            workflow_set_all_observations_stmt(
-              lamp: AttemptWorkflowLamp,
-              state: ClientObservationRefused { reason: "" },
-              reason_expr: ts_ident(name: "why")),
           ],
           concat(
             observation_refused_banner_stmts(source_class: "attempts-observe-refused"),
@@ -2153,95 +1969,396 @@ fn observation_fetch_statements() -> List<TsStmt> {
   ]
 }
 
-fn workflow_progress_in_row_expr(row_name: String) -> TsExpr {
+data workflow_paint_no_policy_note: String = "Every branch below selects WHERE a decided string lands, never WHAT it says: arm/attention keys route material and expansion, summary/outcome/reason strings land verbatim, the ledger renders the wire's canonical segment rows in wire order, and counts are never recomputed client-side. The stale sweep realizes attempt disappearance as DOM removal (attention rule: absence earns no area) while keep-and-update preserves the operator's open disclosure between polls."
+
+fn workflow_activity_in_row_expr(row_name: String) -> TsExpr {
   ts_binop(
     left: ts_ident(name: row_name),
     op: "&&",
     right: ts_call(
-      callee: ts_member(
-        object: ts_ident(name: row_name),
-        property: "querySelector",
-      ),
-      args: [ts_lit_str(value: join([".", workflow_progress_class], ""))],
-    ),
-  )
-}
-
-fn workflow_dynamic_stage_selector_expr() -> TsExpr {
-  ts_binop(
-    left: ts_binop(
-      left: ts_lit_str(value: join([
-        "[",
-        workflow_stage_data_attribute,
-        "=\"",
-      ], "")),
-      op: "+",
-      right: ts_member(object: ts_ident(name: "seg"), property: "kind"),
-    ),
-    op: "+",
-    right: ts_lit_str(value: "\"]"),
-  )
+      callee: ts_member(object: ts_ident(name: row_name), property: "querySelector"),
+      args: [ts_lit_str(value: join([".", node_activity_class], ""))]))
 }
 
 fn workflow_clear_rendered_stmt() -> TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
-        callee: ts_member(
-          object: ts_ident(name: "document"),
-          property: "querySelectorAll",
-        ),
-        args: [ts_lit_str(value: join([".", workflow_progress_class], ""))],
-      ),
-      property: "forEach",
-    ),
-    args: [ts_arrow(
-      params: ["wp"],
-      body: ts_expr_stmt(expr: ts_binop(
-        left: ts_member(object: ts_ident(name: "wp"), property: "hidden"),
-        op: "=",
-        right: ts_ident(name: "true"),
-      )),
-    )],
-  ))
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: join([".", node_activity_class], ""))]),
+      property: "forEach"),
+    args: [ts_arrow(params: ["na"], body: ts_expr_stmt(expr: ts_binop(
+      left: ts_member(
+        object: ts_member(object: ts_ident(name: "na"), property: "dataset"),
+        property: "stale"),
+      op: "=",
+      right: ts_lit_str(value: "1"))))]))
+}
+
+fn workflow_stale_sweep_stmt() -> TsStmt {
+  remove_all_selector_stmt(
+    selector: join([".", node_activity_class, "[data-stale=\"1\"]"], ""),
+    item_name: "staleActivity")
 }
 
 fn workflow_refuse_visible_stmt() -> TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
-        callee: ts_member(
-          object: ts_ident(name: "document"),
-          property: "querySelectorAll",
-        ),
-        args: [ts_lit_str(value: join([
-          ".",
-          workflow_progress_class,
-          ":not([hidden]) .",
-          workflow_stage_class,
-        ], ""))],
-      ),
-      property: "forEach",
-    ),
-    args: [ts_arrow(params: ["stage"], body: ts_block(stmts: [
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: join([".", node_activity_class], ""))]),
+      property: "forEach"),
+    args: [ts_arrow(params: ["na"], body: ts_block(stmts: [
       ts_expr_stmt(expr: ts_binop(
         left: ts_member(
-          object: ts_member(
-            object: ts_ident(name: "stage"),
-            property: "dataset",
-          ),
-          property: "state",
-        ),
+          object: ts_member(object: ts_ident(name: "na"), property: "dataset"),
+          property: "arm"),
         op: "=",
-        right: ts_lit_str(value: "refused"),
-      )),
+        right: ts_lit_str(value: "unobservable"))),
+      ts_const(name: "ns", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "na"), property: "querySelector"),
+        args: [ts_lit_str(value: join([".", activity_summary_class], ""))])),
       ts_expr_stmt(expr: ts_binop(
-        left: ts_member(object: ts_ident(name: "stage"), property: "title"),
+        left: ts_ident(name: "ns"),
+        op: "&&",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "ns"), property: "textContent"),
+          op: "=",
+          right: ts_ident(name: "why")))),
+    ]))]))
+}
+
+fn activity_container_create_stmts() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "act"),
+      op: "=",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+        args: [ts_lit_str(value: "div")]))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "act"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: node_activity_class))),
+    ts_const(name: "nh", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "wr"), property: "querySelector"),
+      args: [ts_lit_str(value: ".node-head")])),
+    ts_if(
+      cond: ts_ident(name: "nh"),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "nh"), property: "insertAdjacentElement"),
+          args: [ts_lit_str(value: "afterend"), ts_ident(name: "act")])),
+      ]),
+      else_stmt: Present { value: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "wr"), property: "append"),
+          args: [ts_ident(name: "act")])),
+      ]) },
+    ),
+    ts_const(name: "asum", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "span")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "asum"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: activity_summary_class))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
+      args: [ts_ident(name: "asum")])),
+    ts_const(name: "adet", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "details")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "adet"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: activity_detail_class))),
+    ts_const(name: "asm", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "summary")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "asm"), property: "textContent"),
+      op: "=",
+      right: ts_lit_str(value: "activity"))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "adet"), property: "append"),
+      args: [ts_ident(name: "asm")])),
+    ts_const(name: "aled", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "div")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "aled"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: activity_ledger_class))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "adet"), property: "append"),
+      args: [ts_ident(name: "aled")])),
+    ts_const(name: "aev", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "div")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "aev"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: activity_evidence_class))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "adet"), property: "append"),
+      args: [ts_ident(name: "aev")])),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
+      args: [ts_ident(name: "adet")])),
+  ]
+}
+
+fn activity_summary_text_expr() -> TsExpr {
+  ts_cond(
+    test: ts_binop(
+      left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+      op: "===",
+      right: ts_lit_str(value: "completed")),
+    consequent: ts_member(object: ts_ident(name: "av"), property: "outcome"),
+    alternate: ts_cond(
+      test: ts_binop(
+        left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+        op: "===",
+        right: ts_lit_str(value: "unobservable")),
+      consequent: ts_binop(
+        left: ts_lit_str(value: "workflow evidence unobservable — "),
+        op: "+",
+        right: ts_member(object: ts_ident(name: "av"), property: "reason")),
+      alternate: ts_member(object: ts_ident(name: "av"), property: "summary")))
+}
+
+fn activity_paint_stmts() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(
+        object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+        property: "arm"),
+      op: "=",
+      right: ts_member(object: ts_ident(name: "av"), property: "arm"))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(
+        object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+        property: "attention"),
+      op: "=",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "av"), property: "attention"),
+        op: "||",
+        right: ts_lit_str(value: "")))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(
+        object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+        property: "stale"),
+      op: "=",
+      right: ts_lit_str(value: ""))),
+    ts_const(name: "asum", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
+      args: [ts_lit_str(value: join([".", activity_summary_class], ""))])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "asum"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "asum"), property: "textContent"),
         op: "=",
-        right: ts_ident(name: "why"),
-      )),
-    ]))],
-  ))
+        right: activity_summary_text_expr()))),
+    ts_const(name: "adet", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
+      args: [ts_lit_str(value: join(["details.", activity_detail_class], ""))])),
+    ts_const(name: "anom", value: ts_binop(
+      left: ts_binop(
+        left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+        op: "===",
+        right: ts_lit_str(value: "refused")),
+      op: "||",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "av"), property: "attention"),
+        op: "===",
+        right: ts_lit_str(value: "anomalous")))),
+    ts_if(
+      cond: ts_binop(
+        left: ts_binop(
+          left: ts_ident(name: "adet"),
+          op: "&&",
+          right: ts_ident(name: "anom")),
+        op: "&&",
+        right: ts_prefix(op: "!", expr: ts_member(
+          object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+          property: "autoOpened"))),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "adet"), property: "open"),
+          op: "=",
+          right: ts_ident(name: "true"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(
+            object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+            property: "autoOpened"),
+          op: "=",
+          right: ts_lit_str(value: "1"))),
+      ]),
+      else_stmt: none),
+    ts_const(name: "aled", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
+      args: [ts_lit_str(value: join([".", activity_ledger_class], ""))])),
+    ts_if(
+      cond: ts_ident(name: "aled"),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "aled"), property: "textContent"),
+          op: "=",
+          right: ts_lit_str(value: ""))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_binop(
+              left: ts_member(object: ts_ident(name: "attempt"), property: "segments"),
+              op: "||",
+              right: ts_array(elements: [])),
+            property: "forEach"),
+          args: [ts_arrow(params: ["seg"], body: ts_block(stmts: [
+            ts_const(name: "ob", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+              args: [ts_lit_str(value: "div")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "ob"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: activity_obligation_class))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(
+                object: ts_member(object: ts_ident(name: "ob"), property: "dataset"),
+                property: "state"),
+              op: "=",
+              right: ts_member(object: ts_ident(name: "seg"), property: "state"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "ob"), property: "textContent"),
+              op: "=",
+              right: ts_binop(
+                left: ts_binop(
+                  left: ts_binop(
+                    left: ts_member(object: ts_ident(name: "seg"), property: "label"),
+                    op: "+",
+                    right: ts_lit_str(value: " · ")),
+                  op: "+",
+                  right: ts_member(object: ts_ident(name: "seg"), property: "state")),
+                op: "+",
+                right: ts_cond(
+                  test: ts_member(object: ts_ident(name: "seg"), property: "detail"),
+                  consequent: ts_binop(
+                    left: ts_lit_str(value: " — "),
+                    op: "+",
+                    right: ts_member(object: ts_ident(name: "seg"), property: "detail")),
+                  alternate: ts_lit_str(value: ""))))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "aled"), property: "append"),
+              args: [ts_ident(name: "ob")])),
+            ts_const(name: "bad", value: ts_binop(
+              left: ts_binop(
+                left: ts_member(object: ts_ident(name: "seg"), property: "state"),
+                op: "===",
+                right: ts_lit_str(value: "failed")),
+              op: "||",
+              right: ts_binop(
+                left: ts_member(object: ts_ident(name: "seg"), property: "state"),
+                op: "===",
+                right: ts_lit_str(value: "refused")))),
+            ts_const(name: "sd", value: ts_binop(
+              left: ts_member(object: ts_ident(name: "seg"), property: "detail"),
+              op: "||",
+              right: ts_lit_str(value: reason_absent_phrase))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_ident(name: js_reason_surface_fn),
+              args: [
+                ts_call(callee: ts_ident(name: js_row_disclosure_fn), args: [ts_ident(name: "act")]),
+                ts_binop(
+                  left: ts_lit_str(value: reason_source_workflow_prefix),
+                  op: "+",
+                  right: ts_member(object: ts_ident(name: "seg"), property: "kind")),
+                ts_cond(
+                  test: ts_ident(name: "bad"),
+                  consequent: ts_binop(
+                    left: ts_binop(
+                      left: ts_binop(
+                        left: ts_binop(
+                          left: ts_member(object: ts_ident(name: "seg"), property: "short_label"),
+                          op: "+",
+                          right: ts_lit_str(value: " · ")),
+                        op: "+",
+                        right: ts_member(object: ts_ident(name: "seg"), property: "state")),
+                      op: "+",
+                      right: ts_lit_str(value: " — ")),
+                    op: "+",
+                    right: ts_ident(name: "sd")),
+                  alternate: ts_lit_str(value: "")),
+              ])),
+          ]))])),
+      ]),
+      else_stmt: none),
+    ts_const(name: "aev", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
+      args: [ts_lit_str(value: join([".", activity_evidence_class], ""))])),
+    ts_if(
+      cond: ts_ident(name: "aev"),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "aev"), property: "textContent"),
+          op: "=",
+          right: ts_lit_str(value: ""))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_binop(
+              left: ts_member(object: ts_ident(name: "av"), property: "evidence"),
+              op: "||",
+              right: ts_array(elements: [])),
+            property: "forEach"),
+          args: [ts_arrow(params: ["row"], body: ts_block(stmts: [
+            ts_const(name: "er", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+              args: [ts_lit_str(value: "div")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "er"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: activity_evidence_row_class))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "er"), property: "textContent"),
+              op: "=",
+              right: ts_binop(
+                left: ts_binop(
+                  left: ts_member(object: ts_ident(name: "row"), property: "label"),
+                  op: "+",
+                  right: ts_lit_str(value: ": ")),
+                op: "+",
+                right: ts_member(object: ts_ident(name: "row"), property: "value")))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "aev"), property: "append"),
+              args: [ts_ident(name: "er")])),
+          ]))])),
+        ts_if(
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+              op: "===",
+              right: ts_lit_str(value: "refused")),
+            op: "&&",
+            right: ts_member(object: ts_ident(name: "av"), property: "located_reason")),
+          then: ts_block(stmts: [
+            ts_const(name: "lr", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+              args: [ts_lit_str(value: "div")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "lr"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: activity_located_reason_class))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "lr"), property: "textContent"),
+              op: "=",
+              right: ts_member(object: ts_ident(name: "av"), property: "located_reason"))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "aev"), property: "append"),
+              args: [ts_ident(name: "lr")])),
+          ]),
+          else_stmt: none),
+      ]),
+      else_stmt: none),
+  ]
 }
 
 fn workflow_mark_attempt_stmts() -> List<TsStmt> {
@@ -2258,313 +2375,38 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
         ),
       )],
     )),
-    ts_const(
-      name: "wp",
-      value: workflow_progress_in_row_expr(row_name: "wr"),
-    ),
+    ts_const(name: "av", value: ts_binop(
+      left: ts_member(object: ts_ident(name: "attempt"), property: "activity"),
+      op: "||",
+      right: ts_ident(name: "null"))),
+    ts_let(name: "act", value: workflow_activity_in_row_expr(row_name: "wr")),
     ts_if(
-      cond: ts_ident(name: "wp"),
+      cond: ts_binop(
+        left: ts_binop(
+          left: ts_prefix(op: "!", expr: ts_ident(name: "av")),
+          op: "||",
+          right: ts_binop(
+            left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+            op: "===",
+            right: ts_lit_str(value: "none"))),
+        op: "||",
+        right: ts_prefix(op: "!", expr: ts_ident(name: "wr"))),
       then: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "wp"), property: "hidden"),
-          op: "=",
-          right: ts_ident(name: "false"),
-        )),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "wp"), property: "title"),
-          op: "=",
-          right: ts_binop(
-            left: ts_binop(
-              left: ts_binop(
-                left: ts_member(
-                  object: ts_ident(name: "attempt"),
-                  property: "workflow_status",
-                ),
-                op: "+",
-                right: ts_lit_str(value: " · "),
-              ),
-              op: "+",
-              right: ts_member(
-                object: ts_ident(name: "attempt"),
-                property: "remaining_obligations",
-              ),
-            ),
-            op: "+",
-            right: ts_binop(
-              left: ts_lit_str(value: " remaining — "),
-              op: "+",
-              right: ts_binop(
-                left: ts_member(
-                  object: ts_ident(name: "attempt"),
-                  property: "provider_status",
-                ),
-                op: "+",
-                right: ts_cond(
-                  test: ts_member(
-                    object: ts_ident(name: "attempt"),
-                    property: "provider_detail",
-                  ),
-                  consequent: ts_binop(
-                    left: ts_lit_str(value: " — "),
-                    op: "+",
-                    right: ts_member(
-                      object: ts_ident(name: "attempt"),
-                      property: "provider_detail",
-                    ),
-                  ),
-                  alternate: ts_lit_str(value: ""),
-                ),
-              ),
-            ),
-          ),
-        )),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(
-            object: ts_ident(name: "wp"),
-            property: "setAttribute",
-          ),
-          args: [
-            ts_lit_str(value: "aria-label"),
-            ts_binop(
-              left: ts_lit_str(value: "Workflow: "),
-              op: "+",
-              right: ts_binop(
-                left: ts_member(
-                  object: ts_ident(name: "attempt"),
-                  property: "workflow_status",
-                ),
-                op: "+",
-                right: ts_binop(
-                  left: ts_lit_str(value: " · "),
-                  op: "+",
-                  right: ts_member(
-                    object: ts_ident(name: "attempt"),
-                    property: "remaining_obligations",
-                  ),
-                ),
-              ),
-            ),
-          ],
-        )),
-        ts_const(name: "wa", value: ts_call(
-          callee: ts_member(
-            object: ts_ident(name: "wp"),
-            property: "querySelector",
-          ),
-          args: [ts_lit_str(value: join([
-            ".",
-            workflow_activity_class,
-          ], ""))],
-        )),
-        ts_if(
-          cond: ts_ident(name: "wa"),
-          then: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(
-                object: ts_ident(name: "wa"),
-                property: "textContent",
-              ),
-              op: "=",
-              right: ts_binop(
-                left: ts_member(
-                  object: ts_ident(name: "attempt"),
-                  property: "provider_activity",
-                ),
-                op: "||",
-                right: ts_member(
-                  object: ts_ident(name: "attempt"),
-                  property: "provider_status",
-                ),
-              ),
-            )),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "wa"), property: "title"),
-              op: "=",
-              right: ts_member(
-                object: ts_ident(name: "attempt"),
-                property: "provider_detail",
-              ),
-            )),
-          ]),
-          else_stmt: none,
-        ),
-        ts_const(name: "wdt", value: ts_call(
-          callee: ts_ident(name: js_row_disclosure_fn),
-          args: [ts_ident(name: "wp")])),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(
-            object: ts_member(
-              object: ts_ident(name: "attempt"),
-              property: "segments",
-            ),
-            property: "forEach",
-          ),
-          args: [ts_arrow(params: ["seg"], body: ts_block(stmts: [
-            ts_const(name: "stage", value: ts_call(
-              callee: ts_member(
-                object: ts_ident(name: "wp"),
-                property: "querySelector",
-              ),
-              args: [workflow_dynamic_stage_selector_expr()],
-            )),
-            ts_if(
-              cond: ts_ident(name: "stage"),
-              then: ts_block(stmts: [
-                ts_expr_stmt(expr: ts_binop(
-                  left: ts_member(
-                    object: ts_member(
-                      object: ts_ident(name: "stage"),
-                      property: "dataset",
-                    ),
-                    property: "state",
-                  ),
-                  op: "=",
-                  right: ts_member(
-                    object: ts_ident(name: "seg"),
-                    property: "state",
-                  ),
-                )),
-                ts_const(name: "bad", value: ts_binop(
-                  left: ts_binop(
-                    left: ts_member(
-                      object: ts_ident(name: "seg"),
-                      property: "state",
-                    ),
-                    op: "===",
-                    right: ts_lit_str(value: "failed"),
-                  ),
-                  op: "||",
-                  right: ts_binop(
-                    left: ts_member(
-                      object: ts_ident(name: "seg"),
-                      property: "state",
-                    ),
-                    op: "===",
-                    right: ts_lit_str(value: "refused"),
-                  ),
-                )),
-                ts_const(name: "sl", value: ts_binop(
-                  left: ts_binop(
-                    left: ts_member(
-                      object: ts_ident(name: "seg"),
-                      property: "short_label",
-                    ),
-                    op: "+",
-                    right: ts_lit_str(value: " · "),
-                  ),
-                  op: "+",
-                  right: ts_member(
-                    object: ts_ident(name: "seg"),
-                    property: "state",
-                  ),
-                )),
-                ts_expr_stmt(expr: ts_binop(
-                  left: ts_member(
-                    object: ts_ident(name: "stage"),
-                    property: "textContent",
-                  ),
-                  op: "=",
-                  right: ts_cond(
-                    test: ts_ident(name: "bad"),
-                    consequent: ts_ident(name: "sl"),
-                    alternate: ts_member(
-                      object: ts_ident(name: "seg"),
-                      property: "short_label",
-                    ),
-                  ),
-                )),
-                ts_expr_stmt(expr: ts_binop(
-                  left: ts_member(
-                    object: ts_ident(name: "stage"),
-                    property: "title",
-                  ),
-                  op: "=",
-                  right: ts_member(
-                    object: ts_ident(name: "seg"),
-                    property: "detail",
-                  ),
-                )),
-                ts_const(name: "sd", value: ts_binop(
-                  left: ts_member(
-                    object: ts_ident(name: "seg"),
-                    property: "detail",
-                  ),
-                  op: "||",
-                  right: ts_lit_str(value: reason_absent_phrase),
-                )),
-                ts_expr_stmt(expr: ts_call(
-                  callee: ts_ident(name: js_reason_surface_fn),
-                  args: [
-                    ts_ident(name: "wdt"),
-                    ts_binop(
-                      left: ts_lit_str(value: reason_source_workflow_prefix),
-                      op: "+",
-                      right: ts_member(object: ts_ident(name: "seg"), property: "kind"),
-                    ),
-                    ts_cond(
-                      test: ts_ident(name: "bad"),
-                      consequent: ts_binop(
-                        left: ts_binop(
-                          left: ts_ident(name: "sl"),
-                          op: "+",
-                          right: ts_lit_str(value: " — "),
-                        ),
-                        op: "+",
-                        right: ts_ident(name: "sd"),
-                      ),
-                      alternate: ts_lit_str(value: ""),
-                    ),
-                  ],
-                )),
-                ts_expr_stmt(expr: ts_call(
-                  callee: ts_member(
-                    object: ts_ident(name: "stage"),
-                    property: "setAttribute",
-                  ),
-                  args: [
-                    ts_lit_str(value: "aria-label"),
-                    ts_binop(
-                      left: ts_binop(
-                        left: ts_binop(
-                          left: ts_member(
-                            object: ts_ident(name: "seg"),
-                            property: "label",
-                          ),
-                          op: "+",
-                          right: ts_lit_str(value: ": "),
-                        ),
-                        op: "+",
-                        right: ts_member(
-                          object: ts_ident(name: "seg"),
-                          property: "state",
-                        ),
-                      ),
-                      op: "+",
-                      right: ts_cond(
-                        test: ts_member(
-                          object: ts_ident(name: "seg"),
-                          property: "detail",
-                        ),
-                        consequent: ts_binop(
-                          left: ts_lit_str(value: " — "),
-                          op: "+",
-                          right: ts_member(
-                            object: ts_ident(name: "seg"),
-                            property: "detail",
-                          ),
-                        ),
-                        alternate: ts_lit_str(value: ""),
-                      ),
-                    ),
-                  ],
-                )),
-              ]),
-              else_stmt: none,
-            ),
-          ]))],
-        )),
+          left: ts_ident(name: "act"),
+          op: "&&",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "act"), property: "remove"),
+            args: []))),
       ]),
-      else_stmt: none,
+      else_stmt: Present { value: ts_block(stmts: concat(
+        [
+          ts_if(
+            cond: ts_prefix(op: "!", expr: ts_ident(name: "act")),
+            then: ts_block(stmts: activity_container_create_stmts()),
+            else_stmt: none),
+        ],
+        activity_paint_stmts())) },
     ),
   ]
 }
@@ -2640,6 +2482,7 @@ fn workflow_fetch_request_statements() -> List<TsStmt> {
                     body: ts_block(stmts: workflow_mark_attempt_stmts()),
                   )],
                 )),
+                workflow_stale_sweep_stmt(),
               ]) },
             ),
           ]))],
@@ -2731,22 +2574,20 @@ fn dispatch_client_program_for(
       concat(
         dispatch_preamble_statements(),
         concat(
-          workflow_observation_preamble_statements(),
+          dispatch_bind_statements(selector: selector, url_expr: url_expr),
           concat(
-            dispatch_bind_statements(selector: selector, url_expr: url_expr),
+            sound_toggle_bind_statements(),
             concat(
-              sound_toggle_bind_statements(),
+              theme_toggle_bind_statements(),
               concat(
-                theme_toggle_bind_statements(),
+                disclosure_bind_statements(),
                 concat(
-                  disclosure_bind_statements(),
+                  swatch_toggle_bind_statements(),
                   concat(
-                    swatch_toggle_bind_statements(),
+                    observation_fetch_statements(),
                     concat(
-                      observation_fetch_statements(),
-                      concat(
-                        workflow_fetch_statements(),
-                        instance_statements)))))))))),
+                      workflow_fetch_statements(),
+                      instance_statements))))))))),
   }
 }
 

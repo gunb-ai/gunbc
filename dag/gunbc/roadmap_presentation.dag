@@ -22,6 +22,9 @@ import gunbc.roadmap_workflow_stage {
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.workflow_reconcile { WorkflowReconcileReport }
+import extdeps.languages.json.emit {
+  JsonValue, json_object, json_kv, json_string, json_int, json_array,
+}
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent,
   WorkerProcessRunning, WorkerProcessExited,
@@ -107,6 +110,8 @@ type ActionView {
   primary_action: WorkAction?
   secondary_actions: List<WorkAction>
 }
+
+data work_item_workflow_fact_note: String = "In roadmap context, workflow means the work item's lifecycle. Compiler and CI execution workflow remains namespaced under v2.workflow and is not this vocabulary. The ruling names seven independent facts, each still owned by its existing typed authority: Ready by gunbc.roadmap_spawner.node_is_spawnable; Live by gunbc.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only. It is not an executable roster, does not re-declare those domain facts, and must not be enumerated as workflow status data. The facts have no total order and several may be true at once: a node can be Live and Landed, Attempted and Superseded, or Landed but not Done. A UI may order or group observations for presentation only. Proposed and Landed remain blocked until one typed attempt-keyed carrier joins RoadmapNodeId, attempt key, branch, and PullRequest identity. (Re-homed from the deleted gunbc.client_observation_state module, whose four-state lamp vocabulary dissolved into ActivityView at A2 — the class it guarded, unknowable-never-rounds-to-absent, is now carried by the ActivityUnobservable/NoActiveWork distinction and its executing witnesses.)"
 
 data work_lifecycle_note: String = "Lifecycle and scheduling are DISTINCT axes that the page previously fused into one status string: lifecycle is the node's own state (open/review/done/superseded, the node_status_symbol decision moved to this seam as its single authority), scheduling is the frontier position (ready/upcoming/done/superseded buckets from spawn_frontier). A row can be lifecycle-open and scheduling-upcoming; collapsing them loses exactly the fact that explains why an open row is not dispatchable-now."
 
@@ -442,14 +447,12 @@ fn activity_view_from_parts(
 fn activity_view_from_progress(
   progress: WorkflowAttemptProgress,
   process: WorkerProcessEvidence,
-  session_present: Bool,
   current_activity: String,
 ) -> ActivityView {
   activity_view_from_parts(
     segments: progress.segments,
     remaining: progress.reconciliation.remaining_count,
     process: process,
-    session_present: session_present,
     current_activity: current_activity,
   )
 }
@@ -458,11 +461,10 @@ fn activity_view_of(facts: WorkAttemptFacts) -> ActivityView {
   match facts {
     NoActiveAttempt => NoActiveWork
     AttemptUnobservable { reason } => ActivityUnobservable { reason: reason }
-    ActiveAttempt { progress, process, session_present, current_activity } =>
+    ActiveAttempt { progress, process, current_activity } =>
       activity_view_from_progress(
         progress: progress,
         process: process,
-        session_present: session_present,
         current_activity: current_activity,
       )
   }
@@ -487,6 +489,58 @@ fn work_row_view(
     activity: activity,
     action: action_view(ready: ready, lifecycle: lifecycle, activity: activity),
     supporting_facts: row_supporting_facts(rn: rn),
+  }
+}
+
+fn activity_attention_key(a: ActivityAttention) -> String {
+  match a {
+    ActivityRoutine => "routine"
+    ActivityNeedsUser => "needs-user"
+    ActivityAnomalous => "anomalous"
+  }
+}
+
+fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "label", value: json_string(s: row.label)),
+    json_kv(key: "value", value: json_string(s: row.value)),
+  ])
+}
+
+data activity_view_wire_note: String = "The wire realization of the DECIDED view — what makes the single projection authority real rather than aspirational: /workflow.json carries these fields and the client program paints them verbatim (arm selects the container's presence and material, summary/outcome/reason are final strings, attention is the expansion key, evidence rows are label/value pairs). The obligation ledger is NOT duplicated here — the attempt payload already carries the canonical segments and the client renders the ledger from those rows; a second segments copy under activity would be the dual representation §3 forbids."
+
+fn activity_view_json_value(view: ActivityView) -> JsonValue {
+  match view {
+    NoActiveWork => json_object(members: [
+      json_kv(key: "arm", value: json_string(s: "none")),
+    ])
+    ActiveWork { summary, obligations: _, remaining_obligation_count, current_activity, attention, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "active")),
+        json_kv(key: "summary", value: json_string(s: summary)),
+        json_kv(key: "remaining_obligation_count", value: json_int(n: remaining_obligation_count)),
+        json_kv(key: "current_activity", value: json_string(s: current_activity)),
+        json_kv(key: "attention", value: json_string(s: activity_attention_key(a: attention))),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    ActiveWorkRefused { summary, located_reason, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "refused")),
+        json_kv(key: "summary", value: json_string(s: summary)),
+        json_kv(key: "located_reason", value: json_string(s: located_reason)),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    CompletedWork { outcome, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "completed")),
+        json_kv(key: "outcome", value: json_string(s: outcome)),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    ActivityUnobservable { reason } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "unobservable")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
   }
 }
 
