@@ -1,11 +1,7 @@
 module test.claim.annotation_carrier
 
-import std.roster_frontier {
-  decl_ref,
-  fold_frontier_expiry,
-  frontier_expiry_clean,
-  frontier_rows_well_formed,
-}
+import std.roster_frontier { fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed }
+import std.decl_ref { decl_ref }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

@@ -9,7 +9,6 @@ import std.primitive_identity {
   RealizationNamesUnknownPrimitive,
   SurfaceJoinsTwoIdentities,
   SurfaceMissingPrimitiveIdentity,
-  decl_ref,
   primitive_d0_definitions,
   primitive_d0_derived_rows_missing_identity_count,
   primitive_d0_derived_surface_authority_count,
@@ -43,6 +42,7 @@ import std.primitive_identity {
   MeasurementOnly,
   surface_row,
 }
+import std.decl_ref { decl_ref }
 import std.primitives { builtin_registry_surface_names }
 import std.types { Bool, List, String }
 

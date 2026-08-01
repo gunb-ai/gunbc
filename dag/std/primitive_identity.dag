@@ -7,7 +7,7 @@ import std.algebra {
   all_algebra_field_templates,
   all_algebra_template_names,
 }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.rust.emit { rt_function_registry }
@@ -146,22 +146,6 @@ fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
 
 fn primitive_identity_eq(left: PrimitiveIdentity, right: PrimitiveIdentity) -> Bool {
   left.slug == right.slug
-}
-
-fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
-    field: WholeDeclaration,
-  }
-}
-
-fn decl_field_ref(module_path: String, decl_name: String, field_name: String) -> DeclarationRef {
-  DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
-    field: NamedField { field_name: field_name as NonEmptyStr },
-  }
 }
 
 data primitive_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "map_keys")
