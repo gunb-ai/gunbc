@@ -17646,19 +17646,29 @@ pub fn rust_btree_set_element_ord_eligible(
 ) -> bool {
     {
         let elem_name = authored_name_at(source_indices.clone(), elem_node.clone());
-        ((((((((elem_name.clone() == "String".to_string())
+        let name_grain_eligible = (((((((elem_name.clone() == "String".to_string())
             || (elem_name.clone() == "Int".to_string()))
             || (elem_name.clone() == "Bool".to_string()))
             || (elem_name.clone() == "Unit".to_string()))
             || (elem_name.clone() == "Secret".to_string()))
             || (elem_name.clone() == "Bytes".to_string()))
-            || rust_opaque_kernel_alias_type_eligible(elem_name.clone()))
+            || rust_opaque_kernel_alias_type_eligible(elem_name.clone()));
+        ((name_grain_eligible.clone() && ((elem_node.children.clone().len() as i64) == 0))
             || rust_nominal_ord_type_eligible(
                 elem_node.clone(),
                 source_indices.clone(),
                 emit_info.clone(),
             ))
     }
+}
+
+pub fn rust_btree_set_ord_name_grain_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The name-grain arms admit ONLY CHILDLESS nodes, and the gate is the repair of a silent regression worth keeping on the record (2026-08-01). The scalar/opaque-alias names are Ord-eligible as the childless carriers they denote; a node that WEARS one of those names while carrying type arguments is a different shape whose arguments the name check never examined — so when the generic-T rendering fix migrated Symbol from the shape-aware nominal-identity-carrier representation onto the name-only opaque-alias roster, Symbol-with-an-argument became eligible by name and the enrolled negative control (rust_btree_set_ord_eligibility_requires_nominal_carrier_shape, asserting Symbol carrying Float must refuse) went RED. Nothing noticed for ten days because the Rust unit suite had been removed from CI on 2026-07-11 (gunbc.commit_workflow commit_gate_rust_suite_removed_disposition) — an enrolled RED that executes nowhere is specification-without-execution one rung up, exactly the state the guarantee ladder's dissolution rule forbids (DESIGN 4b: the discriminating RED must REMAIN ENROLLED AS EXECUTING evidence). The defect class is the method wall's name-grain lesson at the emit seam: a roster keyed on names admits any shape wearing the name. Found by tidy-deer-730 while integrating gunbc#7484 (byte-identical red on both parents, proving pre-existence); the childless gate restores the shape constraint with zero corpus impact (a real scalar/alias element node is childless by construction — whole-tree compile-clean and the regen fixed point are the receipts). The suite's dark-evidence gap itself is filed on the guarantee lane, not silently fixed here: which REDs must execute in CI and at what cost is an operator decision recorded there, and this note is the measured incident that prices it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_empty_set_element_type_str(
