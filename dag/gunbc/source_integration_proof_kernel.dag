@@ -305,28 +305,108 @@ fn kernel_required_acceptance_capabilities() -> List<KernelAcceptanceCapability>
   ]
 }
 
-type KernelAcceptanceCheck {
+type KernelAcceptanceReceipt sole_constructor {
   capability: KernelAcceptanceCapability
-  witness_holds: Bool
+}
+
+type KernelAcceptanceScenario
+  = KernelAdmittedFiniteGenerationScenario
+  | KernelProposalBoundRefusalScenario
+  | KernelGroundingAndFrameRefusalScenario
+
+type KernelAcceptanceAdmission
+  = KernelAcceptanceEstablished { receipt: KernelAcceptanceReceipt }
+  | KernelAcceptanceRefused {
+      capability: KernelAcceptanceCapability,
+      failed_scenarios: List<KernelAcceptanceScenario>,
+    }
+
+fn kernel_has_proposal_bound_refusal(
+  assessment: KernelCandidateGenerationAssessment,
+) -> Bool {
+  assessment.refusals |> any(refusal =>
+    refusal.kind == KernelProposalBoundExceeded
+      && refusal.locus == "bounds.proposal_occurrences"
+      && refusal.occurrences > 0
+  )
+}
+
+fn kernel_has_distinct_grounding_and_frame_refusals(
+  assessment: KernelCandidateGenerationAssessment,
+) -> Bool {
+  assessment.refusals |> any(refusal =>
+    refusal.kind == KernelDeltaOutsideFrame
+      && refusal.locus == "transformations.delta.scope"
+      && refusal.occurrences > 0
+  ) && assessment.refusals |> any(refusal =>
+    refusal.kind == KernelDeltaUngrounded
+      && refusal.locus == "transformations.delta.grounding_claim"
+      && refusal.occurrences > 0
+  )
+}
+
+fn assess_bounded_candidate_generation_acceptance(
+  admitted_spec: KernelCandidateGenerationSpec,
+  proposal_bound_refusal_spec: KernelCandidateGenerationSpec,
+  grounding_and_frame_refusal_spec: KernelCandidateGenerationSpec,
+) -> KernelAcceptanceAdmission {
+  let admitted = assess_bounded_candidate_generation(spec: admitted_spec)
+  let bound_refused = assess_bounded_candidate_generation(
+    spec: proposal_bound_refusal_spec,
+  )
+  let delta_refused = assess_bounded_candidate_generation(
+    spec: grounding_and_frame_refusal_spec,
+  )
+  let failed_scenarios = concat(
+    if kernel_candidate_generation_admitted(assessment: admitted) {
+      []
+    } else { [KernelAdmittedFiniteGenerationScenario] },
+    concat(
+      if kernel_has_proposal_bound_refusal(assessment: bound_refused) {
+        []
+      } else { [KernelProposalBoundRefusalScenario] },
+      if kernel_has_distinct_grounding_and_frame_refusals(
+        assessment: delta_refused,
+      ) {
+        []
+      } else { [KernelGroundingAndFrameRefusalScenario] },
+    ),
+  )
+  if count(failed_scenarios) == 0 {
+    KernelAcceptanceEstablished {
+      receipt: KernelAcceptanceReceipt {
+        capability: KernelBoundedCandidateGenerationModeled,
+      },
+    }
+  } else {
+    KernelAcceptanceRefused {
+      capability: KernelBoundedCandidateGenerationModeled,
+      failed_scenarios: failed_scenarios,
+    }
+  }
 }
 
 fn kernel_missing_acceptance_capabilities(
-  checks: List<KernelAcceptanceCheck>,
+  admissions: List<KernelAcceptanceAdmission>,
 ) -> List<KernelAcceptanceCapability> {
   kernel_required_acceptance_capabilities()
-    |> filter(required => !(checks |> any(check =>
-      check.capability == required && check.witness_holds
+    |> filter(required => !(admissions |> any(admission =>
+      match admission {
+        KernelAcceptanceEstablished { receipt } =>
+          receipt.capability == required
+        KernelAcceptanceRefused { capability: _, failed_scenarios: _ } => false
+      }
     )))
 }
 
 fn kernel_closing_frontier_count(
-  checks: List<KernelAcceptanceCheck>,
+  admissions: List<KernelAcceptanceAdmission>,
 ) -> Int {
-  count(kernel_missing_acceptance_capabilities(checks: checks))
+  count(kernel_missing_acceptance_capabilities(admissions: admissions))
 }
 
 fn kernel_closing_contract_holds(
-  checks: List<KernelAcceptanceCheck>,
+  admissions: List<KernelAcceptanceAdmission>,
 ) -> Bool {
-  kernel_closing_frontier_count(checks: checks) == 0
+  kernel_closing_frontier_count(admissions: admissions) == 0
 }

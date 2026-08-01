@@ -22,9 +22,12 @@ import gunbc.source_integration_proof_kernel {
   KernelDeltaOutsideFrame,
   KernelDeltaUngrounded,
   KernelBoundedCandidateGenerationModeled,
-  KernelAcceptanceCheck,
+  KernelAcceptanceAdmission,
+  KernelAcceptanceEstablished,
+  KernelAcceptanceRefused,
   kernel_transformations,
   assess_bounded_candidate_generation,
+  assess_bounded_candidate_generation_acceptance,
   kernel_candidate_generation_admitted,
   kernel_required_acceptance_capabilities,
   kernel_missing_acceptance_capabilities,
@@ -34,7 +37,7 @@ import gunbc.source_integration_proof_kernel {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the model that candidate generation starts from finite declared generators rather than a caller-supplied CandidateSet. They also prove the model's admission boundary is discriminating: exceeding a declared bound and writing an ungrounded/out-of-frame delta produce distinct typed, located, counted refusals. The acceptance-capability frontier is itself closed and derived by set difference, so duplicate check rows cannot erase missing work and a failing check is missing just like an absent one. This suite does not claim the public reconciliation fold exists; the separate quarantined acceptance witness stays red until every required capability has an executing check."
+data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the model that candidate generation starts from finite declared generators rather than a caller-supplied CandidateSet. They also prove the model's admission boundary is discriminating: exceeding a declared bound and writing an ungrounded/out-of-frame delta produce distinct typed, located, counted refusals. Acceptance is derived from those executed positive and negative scenarios into a sole-constructor receipt; callers cannot assert a passing Boolean or construct the receipt outside the proof-kernel module. The capability frontier is closed and derived by set difference, so duplicate admissions cannot erase missing work and a refused admission is missing like an absent one. This suite does not claim the public reconciliation fold exists; the separate quarantined acceptance witness stays red until every required capability has an executing receipt constructor."
 
 fn p1_transformation() -> KernelDirectAuthoredTransformation {
   KernelDirectAuthoredTransformation {
@@ -184,21 +187,74 @@ test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
     )
 }
 
-fn p1_first_slice_acceptance_checks() -> List<KernelAcceptanceCheck> {
-  [KernelAcceptanceCheck {
-    capability: KernelBoundedCandidateGenerationModeled,
-    witness_holds: witness_candidate_generation_is_admitted_from_finite_generators()
-      && witness_candidate_generation_bound_refusal_is_typed_located_counted()
-      && witness_delta_grounding_and_frame_refusals_stay_distinct(),
-  }]
+fn p1_bound_refusal_spec() -> KernelCandidateGenerationSpec {
+  p1_spec_with(
+    remaining: [p1_transformation()],
+    first_delta: p1_transformation().delta,
+    proposal_bound: 1,
+    fact_bound: 8,
+  )
+}
+
+fn p1_delta_refusal_spec() -> KernelCandidateGenerationSpec {
+  let ungrounded_claim = Claim {
+    id: "acceptance-control-ungrounded-claim",
+    subject: p0_proposal().transformation,
+    target: p0_proposal().target,
+    proposition: LandingGuaranteeProposition {
+      statement: "acceptance control claim absent from proposal guarantees",
+    },
+    scope: "source-and-public-behavior",
+    bound: p0_proposal().attempt,
+  }
+  p1_spec_with(
+    remaining: [],
+    first_delta: [KernelGroundedDelta {
+      key: "outside-frame-acceptance-control",
+      before: "off",
+      after: "on",
+      scope: "outside-authored-frame",
+      grounding_claim: ungrounded_claim,
+    }],
+    proposal_bound: 2,
+    fact_bound: 4,
+  )
+}
+
+fn p1_first_slice_acceptance_admissions() -> List<KernelAcceptanceAdmission> {
+  [assess_bounded_candidate_generation_acceptance(
+    admitted_spec: p1_model_spec(),
+    proposal_bound_refusal_spec: p1_bound_refusal_spec(),
+    grounding_and_frame_refusal_spec: p1_delta_refusal_spec(),
+  )]
 }
 
 test fn witness_closing_frontier_is_derived_and_duplicate_safe() -> Bool {
-  let checks = p1_first_slice_acceptance_checks()
-  let duplicated = append(checks, items: checks)
+  let admissions = p1_first_slice_acceptance_admissions()
+  let duplicated = append(admissions, items: admissions)
   count(kernel_required_acceptance_capabilities()) == 17
-    && kernel_closing_frontier_count(checks: checks) == 16
-    && kernel_closing_frontier_count(checks: duplicated) == 16
-    && count(kernel_missing_acceptance_capabilities(checks: checks)) == 16
-    && !kernel_closing_contract_holds(checks: checks)
+    && admissions |> any(admission => match admission {
+      KernelAcceptanceEstablished { receipt } =>
+        receipt.capability == KernelBoundedCandidateGenerationModeled
+      KernelAcceptanceRefused { capability: _, failed_scenarios: _ } => false
+    })
+    && kernel_closing_frontier_count(admissions: admissions) == 16
+    && kernel_closing_frontier_count(admissions: duplicated) == 16
+    && count(kernel_missing_acceptance_capabilities(admissions: admissions)) == 16
+    && !kernel_closing_contract_holds(admissions: admissions)
+}
+
+test fn witness_failed_scenario_cannot_mint_acceptance_receipt() -> Bool {
+  let refused = assess_bounded_candidate_generation_acceptance(
+    admitted_spec: p1_bound_refusal_spec(),
+    proposal_bound_refusal_spec: p1_bound_refusal_spec(),
+    grounding_and_frame_refusal_spec: p1_delta_refusal_spec(),
+  )
+  match refused {
+    KernelAcceptanceRefused { capability, failed_scenarios } =>
+      capability == KernelBoundedCandidateGenerationModeled
+        && count(failed_scenarios) == 1
+        && kernel_closing_frontier_count(admissions: [refused]) == 17
+    KernelAcceptanceEstablished { receipt: _ } => false
+  }
 }
