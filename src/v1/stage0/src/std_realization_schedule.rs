@@ -897,7 +897,15 @@ pub fn scoped_witness_execution_receipt_decode(
                 } else {
                     body.clone()
                 };
-                let parsed = rows.clone().iter().cloned().fold(Rc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
+                if ((rows.clone().len() as i64) == 0) {
+                    Rc::new(
+                        ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
+                            detail: "receipt has no scoped witness execution result rows"
+                                .to_string(),
+                        },
+                    )
+                } else {
+                    rows.clone().iter().cloned().fold(Rc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptDecoded {
     rows: Rc::new(vec![]),
 }), |state: Rc<ScopedWitnessExecutionReceiptDecode>, line: String| match (*state).clone() {
     ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused { detail: detail, .. } => Rc::new(ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {
@@ -911,8 +919,8 @@ pub fn scoped_witness_execution_receipt_decode(
     rows: v1_rt::concat(rows.clone(), Rc::new(vec![row.clone()])),
 }),
 },
-});
-                parsed
+})
+                }
             }
         }
     }
