@@ -949,6 +949,21 @@ fn bound_reference_population_fold_step(
             more_failures_reversed: concat([projection], acc.more_failures_reversed),
           }
       }
+    ReferenceBindingProjectionWrongCategory { occurrence: _, observed: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
   }
 }
 
