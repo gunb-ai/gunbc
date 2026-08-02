@@ -181,7 +181,7 @@ test fn import_add_discriminator_is_explicitation_vs_padding() -> Bool {
 }
 
 test fn class_b_explicitation_count_seeded_and_priced() -> Bool {
-  type_ref_class_b_explicitation_count == 35
+  type_ref_class_b_explicitation_count == 36
     && string_contains(s: type_ref_class_b_explicitation_count_note, pattern: "Seed 905307fb = 28")
     && string_contains(s: type_ref_class_b_explicitation_count_note, pattern: "displaced cost")
 }
