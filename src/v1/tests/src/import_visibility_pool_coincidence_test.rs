@@ -10,6 +10,17 @@
 //! leniency, so Wave B's visibility wall will make them fail and force their assertions
 //! to flip to located refusals. The positive arm proves an eventual refusal is about
 //! visibility rather than fixture breakage.
+//!
+//! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral): this module exercises the
+//! v1 compiler-test harness because the deliberately invalid consumer sources cannot be
+//! committed beneath a discovered `.dag` root before the visibility wall exists. Lane:
+//! namespace, ROADMAP node `namespace-canonical-binding` (“Make name lookup itself
+//! produce that one answer, and delete the old way”), under “Work out what each name can
+//! see, and let that be what a file depends on.” Concrete dissolution: when that node's
+//! production changeover makes the false-green rows refuse, flip them to located-refusal
+//! assertions and delete this Rust module once the same fixture is enrolled as the
+//! namespace lane's `.dag` closing witness; otherwise it deletes with the
+//! `v1-test-migration` prerequisite of `v1-zero-hand-maintained-rust`.
 
 use crate::helpers::{compile_multi, diagnostic_messages};
 
