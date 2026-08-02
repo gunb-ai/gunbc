@@ -27793,35 +27793,42 @@ pub fn resolution_divergence_silent_pick_gate_in_process(
     _calling_ctx: &v1_interpreter::InterpContext,
 ) -> bool {
     let run = || -> Result<ResolutionDivergenceCensusProjection, String> {
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::ChildLaunch,
-            ResolutionDivergencePhaseState::Skipped,
-            "in-process witness; no child launched",
-        )?;
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::ChildWholeTreeResolve,
-            ResolutionDivergencePhaseState::Skipped,
-            "in-process census uses parent-owned shared index",
-        )?;
+        // Parent-plan capture leaves observation armed so cache misses between the
+        // plan and this witness are retained. Bracket every fallible setup step and
+        // disable before propagating its result: a closure-membership or receipt-I/O
+        // refusal must not leak the global observation state into later work.
+        let resolve_setup = (|| -> Result<_, String> {
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ChildLaunch,
+                ResolutionDivergencePhaseState::Skipped,
+                "in-process witness; no child launched",
+            )?;
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ChildWholeTreeResolve,
+                ResolutionDivergencePhaseState::Skipped,
+                "in-process census uses parent-owned shared index",
+            )?;
 
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::ParentWholeTreeResolve,
-            ResolutionDivergencePhaseState::Started,
-            "parent shared-index closure walk + resolve",
-        )?;
-        let roots = default_source_roots();
-        let index = process_shared_index(&roots);
-        let sources = resolution_divergence_closure_scoped_sources_from_shared_index(&index)?;
-        let modules_resolved = sources.len();
-        let resolve_result = resolved_graph_from_sources_with_index(
-            &index,
-            sources,
-            ResolveTypecheckGate::Strict,
-            "resolution-divergence-census-in-process",
-            ResolvedGraphMemoShare::Ephemeral,
-        );
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ParentWholeTreeResolve,
+                ResolutionDivergencePhaseState::Started,
+                "parent shared-index closure walk + resolve",
+            )?;
+            let roots = default_source_roots();
+            let index = process_shared_index(&roots);
+            let sources = resolution_divergence_closure_scoped_sources_from_shared_index(&index)?;
+            let modules_resolved = sources.len();
+            let (graph, source_indices, _) = resolved_graph_from_sources_with_index(
+                &index,
+                sources,
+                ResolveTypecheckGate::Strict,
+                "resolution-divergence-census-in-process",
+                ResolvedGraphMemoShare::Ephemeral,
+            )?;
+            Ok((graph, source_indices, modules_resolved))
+        })();
         let subsequent_silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-        let (graph, source_indices, _) = resolve_result?;
+        let (graph, source_indices, modules_resolved) = resolve_setup?;
         record_resolution_divergence_phase(
             ResolutionDivergencePhase::ParentWholeTreeResolve,
             ResolutionDivergencePhaseState::Completed,
