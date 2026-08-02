@@ -1,18 +1,18 @@
 module gunbc.stage0_rust_lifecycle_totality
 
 import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
   RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
   RustSourceHostObservation
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_generated_stage0_repo_paths,
-  derived_hand_maintained_stage0_repo_paths,
-  derived_partition_crate_lib_repo_paths,
   lifecycle_row_well_formed,
   list_concat_unique,
   path_in_list,
   path_occurrence_count,
-  residue_lifecycle_repo_paths,
   rust_source_lifecycle_residue_rows,
   RustMaintenanceDisposition,
   RustSourceLifecycleRow
@@ -23,6 +23,8 @@ import v2.std.collection { List }
 import v2.std.text { String }
 
 data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate, role-without-disposition, disposition-without-retirement-trigger. Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery (did we find every tracked path?) and decision (does every found path carry a disposition?) stay separate axes."
+
+data empty_string_list: List<String> = []
 
 type LifecycleTotalityReceipt
   = LifecycleTotalityDerived {
@@ -48,13 +50,10 @@ fn well_formed_maintenance_disposition_paths() -> List<String> {
 }
 
 fn derived_file_grain_classified_repo_paths() -> List<String> {
-  let from_generated = derived_generated_stage0_repo_paths()
-  let with_hand = list_concat_unique(
-    acc: from_generated,
-    items: derived_hand_maintained_stage0_repo_paths()
+  list_concat_unique(
+    acc: derived_generated_stage0_repo_paths(),
+    items: well_formed_maintenance_disposition_paths()
   )
-  let with_residue = list_concat_unique(acc: with_hand, items: residue_lifecycle_repo_paths())
-  list_concat_unique(acc: with_residue, items: derived_partition_crate_lib_repo_paths())
 }
 
 fn exact_unclassified_tracked_paths(
@@ -80,7 +79,7 @@ fn exact_stale_disposition_paths(
 fn exact_duplicate_disposition_paths(lifecycle_paths: List<String>) -> List<String> {
   fold_list(
     xs: lifecycle_paths,
-    empty: [],
+    empty: empty_string_list,
     cons: fn(acc, path) {
       if path_occurrence_count(paths: lifecycle_paths, needle: path) > 1
         && !path_in_list(path: path, paths: acc) {
@@ -174,7 +173,9 @@ fn lifecycle_totality_receipt(
           disposition_without_retirement_trigger_paths: exact_disposition_without_retirement_trigger_paths()
         }
       }
-    _ => LifecycleTotalityObservationRefused
+    RustManifestReadRefused { detail: detail } => LifecycleTotalityObservationRefused
+    RustManifestParseRefused { detail: detail } => LifecycleTotalityObservationRefused
+    GitObservationRefused { detail: detail } => LifecycleTotalityObservationRefused
   }
 }
 

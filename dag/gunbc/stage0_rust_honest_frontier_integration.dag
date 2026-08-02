@@ -19,18 +19,15 @@ import gunbc.stage0_rust_product_reachability {
   ProductReachabilityDerived,
   ProductReachabilityObservationRefused,
   ProductReachabilityReceipt,
-  ProductReachable,
-  ReachabilityRefused,
   exact_product_reachable_paths,
   exact_reachability_refused_paths,
-  product_reachability_receipt,
-  product_reachability_verdict_for_path
+  product_reachability_receipt
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_hand_maintained_stage0_repo_paths,
   path_in_list
 }
-import v2.std.algebra { any, filter, fold_list, list_snoc_item }
+import v2.std.algebra { filter }
 import v2.std.collection { List }
 import v2.std.text { String }
 
@@ -148,7 +145,13 @@ fn tracked_rust_unclassified_projection(
           TrackedRustProjectionParseRefused { detail: parse_detail }
         RustManifestReadRefused { detail: read_detail } =>
           TrackedRustProjectionReadRefused { detail: read_detail }
-        _ => TrackedRustProjectionReadRefused { detail: detail }
+        RustManifestObserved {
+          repository_revision: repository_revision,
+          manifest_content_identity: manifest_content_identity,
+          tracked_rust_repo_paths: tracked_rust_repo_paths,
+          prior_tracked_rust_repo_paths: prior_tracked_rust_repo_paths,
+          cargo_bin_repo_paths: cargo_bin_repo_paths
+        } => TrackedRustProjectionReadRefused { detail: detail }
       }
     HonestFrontierIntegrationDerived {
       lifecycle: lifecycle,

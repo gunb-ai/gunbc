@@ -1,7 +1,10 @@
 module gunbc.stage0_rust_product_reachability
 
 import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
   RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
   RustSourceHostObservation
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
@@ -14,6 +17,8 @@ import v2.std.collection { List }
 import v2.std.text { String }
 
 data stage0_rust_product_reachability_note: String = "C2 carrier (Lane C / v1-honest-frontier): product reachability from observed shipping Cargo bin roots. A path being tracked, generated, test-imported, or textually referenced is NOT proof of product reachability. Module-dependency closure is not modeled yet; unresolved edges refuse with ReachabilityRefused naming the missing edge. Test harness paths are TestOnlyReachable — reachable for tests, not for shipping products."
+
+data empty_string_list: List<String> = []
 
 data rust_module_dependency_graph_unresolved_edge: String = "Rust module dependency graph not modeled — cannot walk from cargo bin roots to dependent source files"
 
@@ -114,7 +119,9 @@ fn product_reachability_receipt(
           )
         }
       }
-    _ => ProductReachabilityObservationRefused
+    RustManifestReadRefused { detail: detail } => ProductReachabilityObservationRefused
+    RustManifestParseRefused { detail: detail } => ProductReachabilityObservationRefused
+    GitObservationRefused { detail: detail } => ProductReachabilityObservationRefused
   }
 }
 
@@ -123,12 +130,14 @@ fn exact_product_reachable_paths(receipt: ProductReachabilityReceipt) -> List<St
     ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
       fold_list(
         xs: verdicts,
-        empty: [],
+        empty: empty_string_list,
         cons: fn(acc, verdict) {
           match verdict {
-            ProductReachable { path: path, entry_path: _ } =>
+            ProductReachable { path: path, entry_path: entry_path } =>
               list_snoc_item(xs: acc, item: path)
-            _ => acc
+            TestOnlyReachable { path: path } => acc
+            NotProductReachable { path: path, reason: reason } => acc
+            ReachabilityRefused { path: path, unresolved_edge: unresolved_edge } => acc
           }
         }
       )
@@ -141,11 +150,13 @@ fn exact_test_only_reachable_paths(receipt: ProductReachabilityReceipt) -> List<
     ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
       fold_list(
         xs: verdicts,
-        empty: [],
+        empty: empty_string_list,
         cons: fn(acc, verdict) {
           match verdict {
+            ProductReachable { path: path, entry_path: entry_path } => acc
             TestOnlyReachable { path: path } => list_snoc_item(xs: acc, item: path)
-            _ => acc
+            NotProductReachable { path: path, reason: reason } => acc
+            ReachabilityRefused { path: path, unresolved_edge: unresolved_edge } => acc
           }
         }
       )
@@ -158,12 +169,14 @@ fn exact_not_product_reachable_paths(receipt: ProductReachabilityReceipt) -> Lis
     ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
       fold_list(
         xs: verdicts,
-        empty: [],
+        empty: empty_string_list,
         cons: fn(acc, verdict) {
           match verdict {
-            NotProductReachable { path: path, reason: _ } =>
+            ProductReachable { path: path, entry_path: entry_path } => acc
+            TestOnlyReachable { path: path } => acc
+            NotProductReachable { path: path, reason: reason } =>
               list_snoc_item(xs: acc, item: path)
-            _ => acc
+            ReachabilityRefused { path: path, unresolved_edge: unresolved_edge } => acc
           }
         }
       )
@@ -176,12 +189,14 @@ fn exact_reachability_refused_paths(receipt: ProductReachabilityReceipt) -> List
     ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
       fold_list(
         xs: verdicts,
-        empty: [],
+        empty: empty_string_list,
         cons: fn(acc, verdict) {
           match verdict {
-            ReachabilityRefused { path: path, unresolved_edge: _ } =>
+            ProductReachable { path: path, entry_path: entry_path } => acc
+            TestOnlyReachable { path: path } => acc
+            NotProductReachable { path: path, reason: reason } => acc
+            ReachabilityRefused { path: path, unresolved_edge: unresolved_edge } =>
               list_snoc_item(xs: acc, item: path)
-            _ => acc
           }
         }
       )
