@@ -19,8 +19,7 @@ data cited_symbol_resolution_witness_note: String = "G1 feature:cited-symbol-res
 
 data cited_symbol_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
 
-data cited_symbol_witness_layer_modules: List<ModuleDeclarationFact> =
-  module_declaration_facts_live(pool_roots: witness_layer_roots)
+data cited_symbol_witness_layer_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
 
 test fn cited_symbol_resolves_node_kind_authority() -> Bool {
   match resolve_declaration_ref(
