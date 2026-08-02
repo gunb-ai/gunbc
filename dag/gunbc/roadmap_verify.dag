@@ -261,13 +261,13 @@ fn verify_base_node_id(
   }
 }
 
-data verification_receipt_note: String = "WHAT A VERIFICATION IS EVIDENCE OF, stated as fields rather than left implicit. An outcome alone says pass or fail; it does not say WHICH tree, at WHICH revision, on WHICH machine, running WHICH realized command. Those are exactly the four facts the wrong-host and wrong-subject defects turned out to be about, and none of them was recoverable from the value the first cut returned — which is why a verification that ran on the wrong machine against the wrong tree produced an outcome indistinguishable from a correct one.\\n\\nThe attempt key binds the receipt to the work rather than to the node. A node is verified many times across many attempts; a receipt naming only the node cannot say which attempt it describes, and a Publication transition needs to know that its evidence belongs to the revision it is about to publish.\\n\\nThe realized command is stored as its wire form rather than as the ValidationOperation, because the operation is the DECLARATION and the argv is what actually ran. They differ by the capability realization, which is a per-instance fact — the same GunbcClaimValidation resolves to a different executable on an instance with a different environment, and a receipt that recorded only the declaration could not distinguish a validation that ran from one that resolved to a different binary.\\n\\nExit is a coproduct rather than an Int because 'the process did not run' has no exit code, and zero is a wrong answer for it in the most dangerous direction."
+data legacy_single_validation_verification_receipt_note: String = "DECLARED LEGACY STATE — DISSOLVE-ON: gunbc.roadmap_verification_receipt VerificationReceipt is wired into verify_attempt and the persistence function below deletes. This was the first attempt receipt and proved the wrong-host/wrong-worktree class, but its one command_wire and evidence string summarize a contract to one validation, its revision is an anonymous NonEmptyStr, and it carries no durable node identity, criteria digest or branch. It therefore cannot answer the exact-head question and must never be consumed as the current verification receipt. Exit remains a coproduct because a process that never ran has no exit code; zero is the wrong answer in the dangerous direction."
 
 type VerificationExit
   = ExitObserved { code: Int }
   | ExitNotObserved { reason: String }
 
-type VerificationReceipt {
+type LegacySingleValidationVerificationReceipt {
   node_id: String
   attempt_key: String
   host: NonEmptyStr
@@ -279,7 +279,9 @@ type VerificationReceipt {
   evidence: String
 }
 
-fn verification_receipt_json(receipt: VerificationReceipt) -> String {
+fn legacy_single_validation_verification_receipt_json(
+  receipt: LegacySingleValidationVerificationReceipt,
+) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-verification-receipt/v1")),
     json_kv(key: "node_id", value: json_string(s: receipt.node_id)),
@@ -312,7 +314,7 @@ data attempt_verification_note: String = "THE OPERATION THE FIRST CUT DID NOT HA
 type AttemptVerification
   = AttemptVerified {
       outcome: VerificationOutcome,
-      receipt: VerificationReceipt,
+      receipt: LegacySingleValidationVerificationReceipt,
     }
   | AttemptVerificationUnbound {
       node_id: String,
@@ -355,7 +357,7 @@ fn verify_attempt(
               label: "unrealized-capability" as NonEmptyStr,
               reason: "the instance environment realizes no executable for this validation's capability",
             },
-            receipt: VerificationReceipt {
+            receipt: LegacySingleValidationVerificationReceipt {
               node_id: node_id,
               attempt_key: attempt_key,
               host: verification_execution_host(instance: instance),
@@ -387,7 +389,7 @@ fn verify_attempt(
                     reason,
                   ], ""),
                 },
-                receipt: VerificationReceipt {
+                receipt: LegacySingleValidationVerificationReceipt {
                   node_id: node_id,
                   attempt_key: attempt_key,
                   host: verification_execution_host(instance: instance),
@@ -417,7 +419,7 @@ fn verify_attempt(
                     ], ""),
                   }
                 },
-                receipt: VerificationReceipt {
+                receipt: LegacySingleValidationVerificationReceipt {
                   node_id: node_id,
                   attempt_key: attempt_key,
                   host: verification_execution_host(instance: instance),
@@ -443,7 +445,7 @@ type VerificationReceiptPersistence
 fn persist_verification_receipt(
   instance: HostDashboardInstance,
   node: RoadmapNode,
-  receipt: VerificationReceipt,
+  receipt: LegacySingleValidationVerificationReceipt,
 ) -> VerificationReceiptPersistence {
   match instance.provision_transport {
     DashboardSshProvision { host } =>
@@ -462,7 +464,7 @@ fn persist_verification_receipt(
       )
       let write = Filesystem.Write(
         path: path,
-        content: verification_receipt_json(receipt: receipt),
+        content: legacy_single_validation_verification_receipt_json(receipt: receipt),
       )
       if write.success {
         ReceiptPersisted { path: path }
