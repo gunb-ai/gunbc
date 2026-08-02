@@ -65,6 +65,13 @@ import gunbc.roadmap_belt_actuate {
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
   belt_workflow_attempt_presentation_json,
+  belt_workflow_attempt_presentation_json_with_tick_read,
+  belt_verification_presentation_detail,
+  belt_tick_receipt_decode,
+  BeltTickReceiptRead,
+  BeltTickReceiptAbsent,
+  BeltTickReceiptPresent,
+  BeltTickReceiptUnreadable,
   BeltVerifyOutcome,
   VerifyDeferred,
   VerifyRecorded,
@@ -915,6 +922,13 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && observe_refused_with_empty_verify_is_deferred_not_recorded()
     && unknown_spawn_workdir_refuses_instance_resolution()
     && known_spawn_workdirs_resolve_to_distinct_instances()
+    && verification_presentation_absent_receipt_is_queued()
+    && verification_presentation_unreadable_receipt_is_blocked()
+    && verification_presentation_decouples_verify_from_spawn_observe_refusal()
+    && verification_presentation_verify_refused_is_blocked()
+    && verification_presentation_verify_failed_is_failed()
+    && verification_presentation_wire_carries_detail()
+    && malformed_pass_reason_makes_receipt_unreadable()
 }
 
 test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
@@ -995,6 +1009,106 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
     BeltPassRecorded => false
     BeltPassRefused { reason: _ } => false
     BeltPassFailed { reason: _ } => false
+  }
+}
+
+data verification_presentation_witness_note: String = "review 47210 spec-without-execution: decoupling is witnessed at the receipt layer but the presentation join had no executing consumer. These rows execute belt_verification_presentation_detail and the wire join against synthetic tick reads so the headline strings ('Verification queued - next belt tick', 'Verification blocked · …', observe-refusal vs verify-recorded at the UI layer) cannot drift without going red."
+
+test fn verification_presentation_absent_receipt_is_queued() -> Bool {
+  belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-absent-node"),
+    tick_read: BeltTickReceiptAbsent,
+  ) == "Verification queued - next belt tick"
+}
+
+test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-unreadable-node"),
+    tick_read: BeltTickReceiptUnreadable { reason: "belt tick receipt schema is unknown" },
+  )
+  string_contains(s: detail, pattern: "Verification blocked · belt tick receipt unreadable: ")
+    && string_contains(s: detail, pattern: "schema is unknown")
+}
+
+test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool {
+  let receipt = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      observe_refused: true,
+      observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
+      reconcile: belt_tick_empty_reconcile(state: Running),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      verify_outcomes: [
+        VerifyRecorded {
+          node_id: "v2-emitter-producer-provenance",
+          verdict_key: "refused",
+          detail: "validation refused",
+        },
+      ],
+      publish_outcomes: [],
+    },
+    observed_at: "2026-08-02T02:00:00Z",
+  )
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-decouple-node"),
+    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  )
+  !string_contains(s: detail, pattern: "tmux ls failed")
+    && string_contains(s: detail, pattern: "Verification queued")
+}
+
+test fn verification_presentation_verify_refused_is_blocked() -> Bool {
+  let receipt = BeltTickReceipt {
+    observed_at: "2026-08-02T02:00:00Z",
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
+    publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
+  }
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-verify-refused-node"),
+    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  )
+  detail == "Verification blocked · validation receipt could not be read"
+}
+
+test fn verification_presentation_verify_failed_is_failed() -> Bool {
+  let receipt = BeltTickReceipt {
+    observed_at: "2026-08-02T02:00:00Z",
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    verify_pass: BeltPassFailed { reason: "validation verdict failed" },
+    publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
+  }
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-verify-failed-node"),
+    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  )
+  detail == "Verification failed · validation verdict failed"
+}
+
+test fn verification_presentation_wire_carries_detail() -> Bool {
+  let j = serialize_json(v: belt_workflow_attempt_presentation_json_with_tick_read(
+    progress: completed_attempt_progress(node_id: "pres-wire-node"),
+    tick_read: BeltTickReceiptAbsent,
+  ))
+  string_contains(s: j, pattern: "\"verification_presentation\": \"Verification queued - next belt tick\"")
+}
+
+test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
+  let raw = join([
+    "{\"schema\":\"roadmap-belt-tick-receipt/v2\",",
+    "\"observed_at\":\"2026-08-02T02:00:00Z\",",
+    "\"spawn_pass\":{\"outcome\":\"recorded\"},",
+    "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"verify_pass\":{\"outcome\":\"refused\"},",
+    "\"publish_pass\":{\"outcome\":\"recorded\"}}",
+  ], "")
+  match belt_tick_receipt_decode(raw: raw) {
+    BeltTickReceiptUnreadable { reason: r } =>
+      string_contains(s: r, pattern: "refused without reason")
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
   }
 }
 

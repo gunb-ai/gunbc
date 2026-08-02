@@ -1575,37 +1575,44 @@ fn belt_pass_outcome_json(o: BeltPassOutcome) -> JsonValue {
   }
 }
 
-fn belt_pass_outcome_from_json(doc: JsonValue) -> BeltPassOutcome {
+type BeltPassOutcomeDecode
+  = BeltPassOutcomeDecoded { outcome: BeltPassOutcome }
+  | BeltPassOutcomeUnreadable { reason: String }
+
+fn belt_pass_outcome_from_json(doc: JsonValue) -> BeltPassOutcomeDecode {
   match json_object_unique_member(v: doc, key: "outcome") {
     JsonMemberFound { value: JsonString { value: outcome } } =>
       match outcome {
-        "recorded" => BeltPassRecorded
+        "recorded" => BeltPassOutcomeDecoded { outcome: BeltPassRecorded }
         "deferred" =>
           match json_object_unique_member(v: doc, key: "reason") {
             JsonMemberFound { value: JsonString { value: r } } =>
-              BeltPassDeferred { reason: r }
-            _ => BeltPassDeferred { reason: "belt tick pass deferred" }
+              BeltPassOutcomeDecoded { outcome: BeltPassDeferred { reason: r } }
+            _ =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass deferred without reason" }
           }
         "refused" =>
           match json_object_unique_member(v: doc, key: "reason") {
             JsonMemberFound { value: JsonString { value: r } } =>
-              BeltPassRefused { reason: r }
-            _ => BeltPassRefused { reason: "belt tick pass refused" }
+              BeltPassOutcomeDecoded { outcome: BeltPassRefused { reason: r } }
+            _ =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass refused without reason" }
           }
         "failed" =>
           match json_object_unique_member(v: doc, key: "reason") {
             JsonMemberFound { value: JsonString { value: r } } =>
-              BeltPassFailed { reason: r }
-            _ => BeltPassFailed { reason: "belt tick pass failed" }
+              BeltPassOutcomeDecoded { outcome: BeltPassFailed { reason: r } }
+            _ =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass failed without reason" }
           }
-        _ => BeltPassRefused { reason: "belt tick pass outcome is unknown" }
+        _ => BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is unknown" }
       }
     JsonMemberAbsent =>
-      BeltPassRefused { reason: "belt tick pass outcome is missing" }
+      BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is missing" }
     JsonMemberDuplicated { count: _ } =>
-      BeltPassRefused { reason: "belt tick pass outcome is duplicated" }
+      BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is duplicated" }
     JsonMemberNotAnObject =>
-      BeltPassRefused { reason: "belt tick pass outcome is unreadable" }
+      BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is unreadable" }
   }
 }
 
@@ -1621,14 +1628,34 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
           } else {
             match json_object_unique_member(v: doc, key: "observed_at") {
               JsonMemberFound { value: JsonString { value: observed_at } } =>
-                BeltTickReceiptPresent {
-                  receipt: BeltTickReceipt {
-                    observed_at: observed_at,
-                    spawn_pass: belt_pass_outcome_from_member(doc: doc, key: "spawn_pass"),
-                    teardown_pass: belt_pass_outcome_from_member(doc: doc, key: "teardown_pass"),
-                    verify_pass: belt_pass_outcome_from_member(doc: doc, key: "verify_pass"),
-                    publish_pass: belt_pass_outcome_from_member(doc: doc, key: "publish_pass"),
-                  },
+                match belt_pass_outcome_from_member(doc: doc, key: "spawn_pass") {
+                  BeltPassOutcomeUnreadable { reason: r } =>
+                    BeltTickReceiptUnreadable { reason: r }
+                  BeltPassOutcomeDecoded { outcome: spawn_pass } =>
+                    match belt_pass_outcome_from_member(doc: doc, key: "teardown_pass") {
+                      BeltPassOutcomeUnreadable { reason: r } =>
+                        BeltTickReceiptUnreadable { reason: r }
+                      BeltPassOutcomeDecoded { outcome: teardown_pass } =>
+                        match belt_pass_outcome_from_member(doc: doc, key: "verify_pass") {
+                          BeltPassOutcomeUnreadable { reason: r } =>
+                            BeltTickReceiptUnreadable { reason: r }
+                          BeltPassOutcomeDecoded { outcome: verify_pass } =>
+                            match belt_pass_outcome_from_member(doc: doc, key: "publish_pass") {
+                              BeltPassOutcomeUnreadable { reason: r } =>
+                                BeltTickReceiptUnreadable { reason: r }
+                              BeltPassOutcomeDecoded { outcome: publish_pass } =>
+                                BeltTickReceiptPresent {
+                                  receipt: BeltTickReceipt {
+                                    observed_at: observed_at,
+                                    spawn_pass: spawn_pass,
+                                    teardown_pass: teardown_pass,
+                                    verify_pass: verify_pass,
+                                    publish_pass: publish_pass,
+                                  },
+                                }
+                            }
+                        }
+                    }
                 }
               _ =>
                 BeltTickReceiptUnreadable { reason: "belt tick receipt observed_at is missing" }
@@ -1640,10 +1667,13 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
   }
 }
 
-fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcome {
+fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcomeDecode {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: pass_doc } => belt_pass_outcome_from_json(doc: pass_doc)
-    _ => BeltPassRefused { reason: join(["belt tick receipt ", key, " is missing"], "") }
+    _ =>
+      BeltPassOutcomeUnreadable {
+        reason: join(["belt tick receipt ", key, " is missing"], ""),
+      }
   }
 }
 
@@ -1687,6 +1717,13 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
   ])
 }
 
+fn belt_teardown_ok(o: BeltTeardownOutcome) -> Bool {
+  match o {
+    ReapedSession { session_name: _ } => true
+    TeardownFailed { session_name: _, detail: _ } => false
+  }
+}
+
 fn belt_spawn_pass_outcome_from(
   observe_refused: Bool,
   observe_reason: String,
@@ -1706,13 +1743,6 @@ fn belt_spawn_pass_outcome_from(
   }
 }
 
-fn belt_teardown_failed(o: BeltTeardownOutcome) -> Bool {
-  match o {
-    TeardownFailed { session_name: _, detail: _ } => true
-    ReapedSession { session_name: _ } => false
-  }
-}
-
 fn belt_teardown_pass_outcome_from(
   observe_refused: Bool,
   observe_reason: String,
@@ -1721,7 +1751,7 @@ fn belt_teardown_pass_outcome_from(
   if observe_refused {
     BeltPassRefused { reason: observe_reason }
   } else {
-    if count(teardown_outcomes |> filter(o => belt_teardown_failed(o: o))) > 0 {
+    if count(teardown_outcomes |> filter(o => !belt_teardown_ok(o: o))) > 0 {
       BeltPassFailed { reason: "one or more teardown outcomes failed" }
     } else {
       BeltPassRecorded
@@ -1844,13 +1874,6 @@ fn belt_spawn_ok(o: BeltSpawnOutcome) -> Bool {
   match o {
     Spawned { node_id: _, session_name: _ } => true
     SpawnFailed { node_id: _, step: _, detail: _ } => false
-  }
-}
-
-fn belt_teardown_ok(o: BeltTeardownOutcome) -> Bool {
-  match o {
-    ReapedSession { session_name: _ } => true
-    TeardownFailed { session_name: _, detail: _ } => false
   }
 }
 
