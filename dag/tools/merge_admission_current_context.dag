@@ -12,6 +12,7 @@ import extdeps.git.object_store {
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
+import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
 import gunbc.merge_admission {
   MergeAdmissionVerdict,
   MergeAdmitted,
@@ -105,7 +106,11 @@ func main() -> ProcessExit {
     Absent => return exit_failure(reason: "merge_admission_current_context: floor-receipt wire invalid")
   }
   let fetch_parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
-  let fetched = git.Core.FetchNoTags(remote: fetch_parts.remote, ref: fetch_parts.ref_name)
+  let fetched = git.Core.FetchNoTags(
+    remote: fetch_parts.remote,
+    ref: fetch_parts.ref_name,
+    stall_deadline_seconds: merge_admission_fetch_stall_deadline_seconds
+  )
   if !fetched.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
   }
