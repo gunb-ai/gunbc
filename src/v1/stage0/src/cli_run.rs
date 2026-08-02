@@ -51,18 +51,18 @@ pub(crate) mod test_module_hygiene_bridge;
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
-};
-pub use materialization_provider_consumer::{
-    serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
+    resolve_closure_request_key_from_digests, resolved_graph_parts_semantic_digest,
+    serve_resolved_graph_stored_disk_probe, serve_resolved_graph_stored_disk_probe_for_test,
     ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, faithful_probe_unavailable_gap, lookup as cross_process_lookup,
-    probe as cross_process_probe, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    supports_faithful_probe, transform_content_digest, write as cross_process_write,
-    CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
+    closure_content_digest, faithful_probe_unavailable_gap,
+    lookup_verified_probe as cross_process_lookup_verified_probe, probe as cross_process_probe,
+    resolved_graph_cache_root_from_env, subject_digest_for_closure, supports_faithful_probe,
+    transform_content_digest, write as cross_process_write, CacheLookupResult, CacheProbeResult,
+    CacheRejectReason, CachedResolvedGraph,
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
@@ -800,14 +800,6 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER,
             "cli_run_selected_closure_overlap_probe"
-        );
-    }
-
-    #[test]
-    fn repeated_typecheck_attribution_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_REPEATED_TYPECHECK_ATTRIBUTION_SCAFFOLD_MARKER,
-            "cli_run_repeated_typecheck_attribution_probe"
         );
     }
 
@@ -6809,6 +6801,16 @@ pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
     index.typed_module_cache.borrow().len()
 }
 
+/// Test-only projection of the durable typed-cache authority: the content keys whose
+/// computations populated this private index. A fresh, non-evicting test index makes
+/// this exactly the distinct-computation set without retaining request attribution.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_content_keys_for_test(
+    index: &MultiEntryIndex,
+) -> std::collections::BTreeSet<String> {
+    index.typed_module_cache.borrow().keys().cloned().collect()
+}
+
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
     index.typed_cache_evictions.get()
@@ -7096,527 +7098,6 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
-}
-
-// --- Repeated typecheck attribution probe (entry-graph-union slice 2 / lane ci-cost) ---
-// ONE-SHOT INSTRUMENT: per (entry, typed module content key) records cache disposition,
-// compute wall on miss, and cross-entry first-computer / later-requester counts against
-// ONE shared `MultiEntryIndex`. Verdict taken 2026-08-01 (§F); measurement orchestration
-// deletes after merged-SHA provenance receipt — see `cli_run_repeated_typecheck_attribution_probe`
-// scaffold below for the intrinsic trigger (not #7534).
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypedCacheDisposition {
-    Hit,
-    Miss,
-    Refused,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryModuleTypecheckRow {
-    pub entry: String,
-    pub module_key: String,
-    pub module_path: String,
-    pub in_closure: bool,
-    pub cache_disposition: TypedCacheDisposition,
-    pub typecheck_compute_ns: u128,
-    pub first_computing_entry: Option<String>,
-    pub later_requester_count: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryReconcileTiming {
-    pub entry: String,
-    pub reconcile_assembly_ns: u128,
-    pub typecheck_compute_ns: u128,
-    pub resolve_nanos: u128,
-}
-
-#[derive(Clone)]
-struct ModuleKeyTracker {
-    first_computing_entry: String,
-    requesters_seen: u64,
-}
-
-/// Captured rows from an armed attribution probe (entry-graph-union slice 2).
-#[derive(Debug, Clone)]
-pub struct RepeatedTypecheckAttributionSnapshot {
-    pub rows: Vec<EntryModuleTypecheckRow>,
-    pub entry_timings: Vec<EntryReconcileTiming>,
-    pub distinct_first_computes: usize,
-}
-
-struct RepeatedTypecheckAttributionRun {
-    key_tracker: HashMap<String, ModuleKeyTracker>,
-    rows: Vec<EntryModuleTypecheckRow>,
-    entry_timings: Vec<EntryReconcileTiming>,
-    all_hit_probe_rows: Vec<EntryModuleTypecheckRow>,
-    all_hit_probe_active: bool,
-    observed_entry_module_keys: HashSet<(String, String)>,
-}
-
-/// Aggregated repeated-typecheck attribution (entry-graph-union slice 2).
-#[derive(Debug, Clone)]
-pub struct RepeatedTypecheckAttributionMeasurement {
-    pub source_roots: Vec<String>,
-    pub scan_dirs: Vec<String>,
-    pub head_sha: String,
-    pub diff_base_override: Option<String>,
-    pub selected_entries: Vec<String>,
-    pub skipped_entries: Vec<String>,
-    pub max_entries_applied: Option<usize>,
-    /// Zero-based index into the production roster before `--max-entries` truncation.
-    pub entry_offset_applied: Option<usize>,
-    pub sum_closure_memberships: usize,
-    pub union_modules: usize,
-    pub membership_duplication_factor: Option<f64>,
-    pub rows: Vec<EntryModuleTypecheckRow>,
-    pub entry_timings: Vec<EntryReconcileTiming>,
-    pub total_cache_hits: usize,
-    pub total_cache_misses: usize,
-    pub total_cache_refusals: usize,
-    /// Sum of `typecheck_compute_ns` on every cache miss (first + repeated).
-    pub total_typecheck_compute_ns: u128,
-    /// Misses that re-paid typecheck for a module identity already computed earlier in this run.
-    pub repeated_typecheck_misses: usize,
-    /// Typecheck wall on first-computation misses only (`later_requester_count == 0`).
-    pub first_computation_typecheck_ns: u128,
-    /// Typecheck wall on repeated misses (`later_requester_count > 0` at observation).
-    pub repeated_typecheck_compute_ns: u128,
-    /// Per-module selected-entry fanout (from slice-1 overlap machinery), descending.
-    pub fanout_by_module: Vec<(String, usize)>,
-    pub memory: RepeatedTypecheckAttributionMemoryObservation,
-    pub key_summaries: Vec<ModuleKeyAttributionSummary>,
-    /// Cache hits / (hits + misses) — diagnostic only, NOT the decision metric.
-    pub cache_hit_ratio: Option<f64>,
-    /// Distinct first-computes vs total observations.
-    pub compute_duplication_factor: Option<f64>,
-    /// THE decision quantity: `repeated_typecheck_compute_ns / total_typecheck_compute_ns`.
-    pub decision_ratio: Option<f64>,
-}
-
-impl RepeatedTypecheckAttributionMeasurement {
-    pub fn selected_count(&self) -> usize {
-        self.selected_entries.len()
-    }
-}
-
-impl RepeatedTypecheckAttributionRun {
-    fn into_measurement(
-        self,
-        source_roots: Vec<String>,
-        scan_dirs: Vec<String>,
-        head_sha: String,
-        diff_base_override: Option<String>,
-        selected_entries: Vec<String>,
-        skipped_entries: Vec<String>,
-        max_entries_applied: Option<usize>,
-        entry_offset_applied: Option<usize>,
-        sum_closure_memberships: usize,
-        union_modules: usize,
-    ) -> RepeatedTypecheckAttributionMeasurement {
-        Self::snapshot_into_measurement(
-            RepeatedTypecheckAttributionSnapshot {
-                distinct_first_computes: self.key_tracker.len(),
-                rows: self.rows,
-                entry_timings: self.entry_timings,
-            },
-            source_roots,
-            scan_dirs,
-            head_sha,
-            diff_base_override,
-            selected_entries,
-            skipped_entries,
-            max_entries_applied,
-            entry_offset_applied,
-            sum_closure_memberships,
-            union_modules,
-            Vec::new(),
-            RepeatedTypecheckAttributionMemoryObservation::capture_pair(None, None),
-        )
-    }
-
-    fn snapshot_into_measurement(
-        snap: RepeatedTypecheckAttributionSnapshot,
-        source_roots: Vec<String>,
-        scan_dirs: Vec<String>,
-        head_sha: String,
-        diff_base_override: Option<String>,
-        selected_entries: Vec<String>,
-        skipped_entries: Vec<String>,
-        max_entries_applied: Option<usize>,
-        entry_offset_applied: Option<usize>,
-        sum_closure_memberships: usize,
-        union_modules: usize,
-        fanout_by_module: Vec<(String, usize)>,
-        memory: RepeatedTypecheckAttributionMemoryObservation,
-    ) -> RepeatedTypecheckAttributionMeasurement {
-        let total_cache_hits = snap
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Hit)
-            .count();
-        let total_cache_misses = snap
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Miss)
-            .count();
-        let total_cache_refusals = snap
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Refused)
-            .count();
-        let mut total_typecheck_compute_ns: u128 = 0;
-        let mut first_computation_typecheck_ns: u128 = 0;
-        let mut repeated_typecheck_compute_ns: u128 = 0;
-        let mut repeated_typecheck_misses: usize = 0;
-        for row in &snap.rows {
-            if row.cache_disposition != TypedCacheDisposition::Miss {
-                continue;
-            }
-            total_typecheck_compute_ns += row.typecheck_compute_ns;
-            if row.later_requester_count > 0 {
-                repeated_typecheck_misses += 1;
-                repeated_typecheck_compute_ns += row.typecheck_compute_ns;
-            } else {
-                first_computation_typecheck_ns += row.typecheck_compute_ns;
-            }
-        }
-        let observed = total_cache_hits + total_cache_misses;
-        let cache_hit_ratio = if observed == 0 {
-            None
-        } else {
-            Some(total_cache_hits as f64 / observed as f64)
-        };
-        let decision_ratio = if total_typecheck_compute_ns == 0 {
-            None
-        } else {
-            Some(repeated_typecheck_compute_ns as f64 / total_typecheck_compute_ns as f64)
-        };
-        let compute_duplication_factor = if snap.distinct_first_computes == 0 {
-            None
-        } else {
-            Some(snap.rows.len() as f64 / snap.distinct_first_computes as f64)
-        };
-        let membership_duplication_factor = if union_modules == 0 {
-            None
-        } else {
-            Some(sum_closure_memberships as f64 / union_modules as f64)
-        };
-        let fanout_by_path: HashMap<String, usize> = fanout_by_module
-            .iter()
-            .map(|(name, count)| (name.clone(), *count))
-            .collect();
-        let mut key_summaries_map: std::collections::HashMap<String, ModuleKeyAttributionSummary> =
-            std::collections::HashMap::new();
-        for row in &snap.rows {
-            let entry = key_summaries_map
-                .entry(row.module_key.clone())
-                .or_insert_with(|| ModuleKeyAttributionSummary {
-                    module_key: row.module_key.clone(),
-                    module_path: row.module_path.clone(),
-                    selected_entry_fanout: fanout_by_path
-                        .get(&row.module_path)
-                        .copied()
-                        .unwrap_or(0),
-                    hit_count: 0,
-                    miss_count: 0,
-                    recompute_count: 0,
-                });
-            match row.cache_disposition {
-                TypedCacheDisposition::Hit => entry.hit_count += 1,
-                TypedCacheDisposition::Miss => {
-                    entry.miss_count += 1;
-                    if row.later_requester_count > 0 {
-                        entry.recompute_count += 1;
-                    }
-                }
-                TypedCacheDisposition::Refused => {}
-            }
-        }
-        let mut key_summaries: Vec<ModuleKeyAttributionSummary> =
-            key_summaries_map.into_values().collect();
-        key_summaries.sort_by(|a, b| {
-            b.recompute_count
-                .cmp(&a.recompute_count)
-                .then_with(|| b.miss_count.cmp(&a.miss_count))
-                .then_with(|| a.module_key.cmp(&b.module_key))
-        });
-        RepeatedTypecheckAttributionMeasurement {
-            source_roots,
-            scan_dirs,
-            head_sha,
-            diff_base_override,
-            selected_entries,
-            skipped_entries,
-            max_entries_applied,
-            entry_offset_applied,
-            sum_closure_memberships,
-            union_modules,
-            membership_duplication_factor,
-            rows: snap.rows,
-            entry_timings: snap.entry_timings,
-            total_cache_hits,
-            total_cache_misses,
-            total_cache_refusals,
-            total_typecheck_compute_ns,
-            repeated_typecheck_misses,
-            first_computation_typecheck_ns,
-            repeated_typecheck_compute_ns,
-            fanout_by_module,
-            memory,
-            key_summaries,
-            cache_hit_ratio,
-            compute_duplication_factor,
-            decision_ratio,
-        }
-    }
-}
-
-static REPEATED_TYPECHECK_ATTRIBUTION_RUN: Mutex<Option<RepeatedTypecheckAttributionRun>> =
-    Mutex::new(None);
-
-/// Run an attribution-probe receipt test with exclusive access to the process-wide probe
-/// and `TYPECHECK_COMPUTE_COUNT` (resolves bump the counter; same lock as counter receipts).
-pub fn with_repeated_typecheck_attribution_receipt<R>(f: impl FnOnce() -> R) -> R {
-    let _guard = UNION_RESOLVE_PROCESS_RECEIPT_LOCK
-        .lock()
-        .expect("union resolve process receipt lock poisoned");
-    f()
-}
-
-thread_local! {
-    static REPEATED_TYPECHECK_ATTRIBUTION_ENTRY: RefCell<Option<String>> =
-        const { RefCell::new(None) };
-}
-
-pub(crate) const CLI_RUN_REPEATED_TYPECHECK_ATTRIBUTION_SCAFFOLD_MARKER: &str =
-    "cli_run_repeated_typecheck_attribution_probe";
-
-pub fn arm_repeated_typecheck_attribution_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    *guard = Some(RepeatedTypecheckAttributionRun {
-        key_tracker: HashMap::new(),
-        rows: Vec::new(),
-        entry_timings: Vec::new(),
-        all_hit_probe_rows: Vec::new(),
-        all_hit_probe_active: false,
-        observed_entry_module_keys: HashSet::new(),
-    });
-}
-
-pub fn set_repeated_typecheck_attribution_entry(entry: &str) {
-    REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| {
-        *cell.borrow_mut() = Some(entry.to_string());
-    });
-}
-
-pub fn clear_repeated_typecheck_attribution_entry() {
-    REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| {
-        *cell.borrow_mut() = None;
-    });
-}
-
-pub fn disarm_repeated_typecheck_attribution_probe() -> Option<RepeatedTypecheckAttributionSnapshot>
-{
-    clear_repeated_typecheck_attribution_entry();
-    REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned")
-        .take()
-        .map(|run| RepeatedTypecheckAttributionSnapshot {
-            distinct_first_computes: run.key_tracker.len(),
-            rows: run.rows,
-            entry_timings: run.entry_timings,
-        })
-}
-
-fn repeated_typecheck_attribution_armed() -> bool {
-    REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .ok()
-        .is_some_and(|g| g.is_some())
-}
-
-fn repeated_typecheck_attribution_begin_all_hit_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    if let Some(run) = guard.as_mut() {
-        run.all_hit_probe_active = true;
-        run.all_hit_probe_rows.clear();
-    }
-}
-
-fn repeated_typecheck_attribution_abort_all_hit_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    if let Some(run) = guard.as_mut() {
-        run.all_hit_probe_active = false;
-        run.all_hit_probe_rows.clear();
-    }
-}
-
-fn repeated_typecheck_attribution_commit_all_hit_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    run.all_hit_probe_active = false;
-    let buffered = std::mem::take(&mut run.all_hit_probe_rows);
-    for row in buffered {
-        commit_repeated_typecheck_attribution_row(run, row);
-    }
-}
-
-fn commit_repeated_typecheck_attribution_row(
-    run: &mut RepeatedTypecheckAttributionRun,
-    row: EntryModuleTypecheckRow,
-) {
-    let dedupe_key = (row.entry.clone(), row.module_key.clone());
-    if !run.observed_entry_module_keys.insert(dedupe_key) {
-        return;
-    }
-    let module_key = row.module_key.clone();
-    let disposition = row.cache_disposition;
-    if disposition == TypedCacheDisposition::Miss && !run.key_tracker.contains_key(&module_key) {
-        run.key_tracker.insert(
-            module_key.clone(),
-            ModuleKeyTracker {
-                first_computing_entry: row.entry.clone(),
-                requesters_seen: 0,
-            },
-        );
-    }
-    run.rows.push(row);
-    match disposition {
-        TypedCacheDisposition::Miss | TypedCacheDisposition::Hit => {
-            if let Some(tracker) = run.key_tracker.get_mut(&module_key) {
-                tracker.requesters_seen += 1;
-            }
-        }
-        TypedCacheDisposition::Refused => {}
-    }
-}
-
-fn build_repeated_typecheck_attribution_row(
-    run: &RepeatedTypecheckAttributionRun,
-    entry: String,
-    module_path: &str,
-    module_key: &str,
-    disposition: TypedCacheDisposition,
-    typecheck_compute_ns: u128,
-) -> EntryModuleTypecheckRow {
-    let (first_computing_entry, later_requester_count) = match run.key_tracker.get(module_key) {
-        Some(tracker) => (
-            Some(tracker.first_computing_entry.clone()),
-            tracker.requesters_seen,
-        ),
-        None if disposition == TypedCacheDisposition::Miss => (Some(entry.clone()), 0),
-        None => (None, 0),
-    };
-    EntryModuleTypecheckRow {
-        entry,
-        module_key: module_key.to_string(),
-        module_path: module_path.to_string(),
-        in_closure: true,
-        cache_disposition: disposition,
-        typecheck_compute_ns,
-        first_computing_entry,
-        later_requester_count,
-    }
-}
-
-fn observe_repeated_typecheck_attribution_module(
-    module_path: &str,
-    module_key: &str,
-    disposition: TypedCacheDisposition,
-    typecheck_compute_ns: u128,
-) {
-    if !repeated_typecheck_attribution_armed() {
-        return;
-    }
-    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| cell.borrow().clone())
-    else {
-        return;
-    };
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    let row = build_repeated_typecheck_attribution_row(
-        run,
-        entry,
-        module_path,
-        module_key,
-        disposition,
-        typecheck_compute_ns,
-    );
-    if run.all_hit_probe_active {
-        run.all_hit_probe_rows.push(row);
-        return;
-    }
-    commit_repeated_typecheck_attribution_row(run, row);
-}
-
-fn observe_repeated_typecheck_attribution_refused(module_path: &str, cause: &str) {
-    if !repeated_typecheck_attribution_armed() {
-        return;
-    }
-    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| cell.borrow().clone())
-    else {
-        return;
-    };
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    let row = EntryModuleTypecheckRow {
-        entry,
-        module_key: format!("refused:{cause}"),
-        module_path: module_path.to_string(),
-        in_closure: true,
-        cache_disposition: TypedCacheDisposition::Refused,
-        typecheck_compute_ns: 0,
-        first_computing_entry: None,
-        later_requester_count: 0,
-    };
-    if run.all_hit_probe_active {
-        run.all_hit_probe_rows.push(row);
-        return;
-    }
-    commit_repeated_typecheck_attribution_row(run, row);
-}
-
-pub fn note_repeated_typecheck_attribution_entry_timing(
-    entry: &str,
-    stage_nanos: &ResolveStageNanos,
-    resolve_nanos: u128,
-) {
-    if !repeated_typecheck_attribution_armed() {
-        return;
-    }
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    run.entry_timings.push(EntryReconcileTiming {
-        entry: entry.to_string(),
-        reconcile_assembly_ns: stage_nanos.reconcile_assembly,
-        typecheck_compute_ns: stage_nanos.typecheck_compute,
-        resolve_nanos,
-    });
 }
 
 fn shared_caches_read<'a>(
@@ -9239,6 +8720,24 @@ pub struct ResolveStageNanos {
     pub assembly_schedule: u128,
     /// `try_reconcile_all_cache_hits` pass 1: per-module content key + store probe.
     pub assembly_probe: u128,
+    /// Closure vectors and the final `ResolvedGraph` view (per entry).
+    pub assembly_graph: u128,
+    /// Closure-scoped symbol-index census construction (per entry with cache misses).
+    pub assembly_symbol_index: u128,
+    /// Whole-pool qualified fill lookup/build (per index; later calls are memo hits).
+    pub assembly_pool_fill: u128,
+    /// Merge the closure census with the pool qualified fill (per entry with misses).
+    pub assembly_symbol_index_merge: u128,
+    /// Closure variant-owner base construction (per entry with cache misses).
+    pub assembly_variant_base: u128,
+    /// Compose the closure index with one source tree's bare census (once per root used).
+    pub assembly_root_symbol_index: u128,
+    /// Variant-owner base for a composed per-root symbol index (once per root used).
+    pub assembly_root_variant_base: u128,
+    /// Interface/variant surface installation (per computed or cached module membership).
+    pub assembly_environment: u128,
+    /// Diagnostic chunk/fork-ledger collection and diagnostic flattening.
+    pub assembly_diagnostics: u128,
     /// `item_registry` merge fold across the closure's typed modules.
     pub assembly_registry: u128,
     /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
@@ -9296,6 +8795,15 @@ impl ResolveStageNanos {
         self.ownership += other.ownership;
         self.assembly_schedule += other.assembly_schedule;
         self.assembly_probe += other.assembly_probe;
+        self.assembly_graph += other.assembly_graph;
+        self.assembly_symbol_index += other.assembly_symbol_index;
+        self.assembly_pool_fill += other.assembly_pool_fill;
+        self.assembly_symbol_index_merge += other.assembly_symbol_index_merge;
+        self.assembly_variant_base += other.assembly_variant_base;
+        self.assembly_root_symbol_index += other.assembly_root_symbol_index;
+        self.assembly_root_variant_base += other.assembly_root_variant_base;
+        self.assembly_environment += other.assembly_environment;
+        self.assembly_diagnostics += other.assembly_diagnostics;
         self.assembly_registry += other.assembly_registry;
         self.assembly_services += other.assembly_services;
         self.assembly_rewire += other.assembly_rewire;
@@ -9329,9 +8837,45 @@ impl ResolveStageNanos {
             + self.ownership
             + self.assembly_schedule
             + self.assembly_probe
+            + self.assembly_graph
+            + self.assembly_symbol_index
+            + self.assembly_pool_fill
+            + self.assembly_symbol_index_merge
+            + self.assembly_variant_base
+            + self.assembly_root_symbol_index
+            + self.assembly_root_variant_base
+            + self.assembly_environment
+            + self.assembly_diagnostics
             + self.assembly_registry
             + self.assembly_services
-            + self.assembly_rewire
+            + self.assembly_rewire_type_env
+            + self.assembly_rewire_import_str
+            + self.assembly_rewire_func_env
+            + self.assembly_emit_info
+    }
+
+    /// Exclusive rows nested inside one reconcile span. Callers must subtract a
+    /// pre-span snapshot: the thread-local slot can already contain assembly work
+    /// performed while loading the entry (notably whole-tree census preparation).
+    fn reconcile_attributed_total(&self) -> u128 {
+        self.typecheck_compute
+            + self.parent_envs
+            + self.assembly_schedule
+            + self.assembly_probe
+            + self.assembly_graph
+            + self.assembly_symbol_index
+            + self.assembly_pool_fill
+            + self.assembly_symbol_index_merge
+            + self.assembly_variant_base
+            + self.assembly_root_symbol_index
+            + self.assembly_root_variant_base
+            + self.assembly_environment
+            + self.assembly_diagnostics
+            + self.assembly_registry
+            + self.assembly_services
+            + self.assembly_rewire_type_env
+            + self.assembly_rewire_import_str
+            + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
 }
@@ -9349,6 +8893,15 @@ thread_local! {
             ownership: 0,
             assembly_schedule: 0,
             assembly_probe: 0,
+            assembly_graph: 0,
+            assembly_symbol_index: 0,
+            assembly_pool_fill: 0,
+            assembly_symbol_index_merge: 0,
+            assembly_variant_base: 0,
+            assembly_root_symbol_index: 0,
+            assembly_root_variant_base: 0,
+            assembly_environment: 0,
+            assembly_diagnostics: 0,
             assembly_registry: 0,
             assembly_services: 0,
             assembly_rewire: 0,
@@ -9656,8 +9209,8 @@ pub fn exclusive_cost_partition_from(
 
     // Exclusive by construction: within one resolve span these windows are sequential and
     // disjoint. Reconcile's interior is split into its per-module rows plus the residue
-    // the reconcile window itself derives; `assembly_rewire` stands for its three
-    // sub-passes, which are carried as inclusive rows below.
+    // the reconcile window itself derives. The three rewire passes are exclusive peers;
+    // `assembly_rewire` is only a separately printed inclusive observation.
     let exclusive = vec![
         CostPartitionRow {
             name: "load",
@@ -9692,6 +9245,42 @@ pub fn exclusive_cost_partition_from(
             nanos: st.assembly_probe,
         },
         CostPartitionRow {
+            name: "assembly_graph",
+            nanos: st.assembly_graph,
+        },
+        CostPartitionRow {
+            name: "assembly_symbol_index",
+            nanos: st.assembly_symbol_index,
+        },
+        CostPartitionRow {
+            name: "assembly_pool_fill",
+            nanos: st.assembly_pool_fill,
+        },
+        CostPartitionRow {
+            name: "assembly_symbol_index_merge",
+            nanos: st.assembly_symbol_index_merge,
+        },
+        CostPartitionRow {
+            name: "assembly_variant_base",
+            nanos: st.assembly_variant_base,
+        },
+        CostPartitionRow {
+            name: "assembly_root_symbol_index",
+            nanos: st.assembly_root_symbol_index,
+        },
+        CostPartitionRow {
+            name: "assembly_root_variant_base",
+            nanos: st.assembly_root_variant_base,
+        },
+        CostPartitionRow {
+            name: "assembly_environment",
+            nanos: st.assembly_environment,
+        },
+        CostPartitionRow {
+            name: "assembly_diagnostics",
+            nanos: st.assembly_diagnostics,
+        },
+        CostPartitionRow {
             name: "assembly_registry",
             nanos: st.assembly_registry,
         },
@@ -9700,8 +9289,16 @@ pub fn exclusive_cost_partition_from(
             nanos: st.assembly_services,
         },
         CostPartitionRow {
-            name: "assembly_rewire",
-            nanos: st.assembly_rewire,
+            name: "assembly_rewire_type_env",
+            nanos: st.assembly_rewire_type_env,
+        },
+        CostPartitionRow {
+            name: "assembly_rewire_import_str",
+            nanos: st.assembly_rewire_import_str,
+        },
+        CostPartitionRow {
+            name: "assembly_rewire_func_env",
+            nanos: st.assembly_rewire_func_env,
         },
         CostPartitionRow {
             name: "assembly_emit_info",
@@ -9717,21 +9314,6 @@ pub fn exclusive_cost_partition_from(
         },
     ];
     let inclusive = vec![
-        InclusiveCostRow {
-            name: "assembly_rewire_type_env",
-            nanos: st.assembly_rewire_type_env,
-            contained_in: "assembly_rewire",
-        },
-        InclusiveCostRow {
-            name: "assembly_rewire_import_str",
-            nanos: st.assembly_rewire_import_str,
-            contained_in: "assembly_rewire",
-        },
-        InclusiveCostRow {
-            name: "assembly_rewire_func_env",
-            nanos: st.assembly_rewire_func_env,
-            contained_in: "assembly_rewire",
-        },
         // Inside `load` — the split that decides whether a per-source content-hash memo
         // suffices. `load_reference_scan` is the only part that is a pure function of
         // source content; `load_import_closure` carries file I/O and pool bookkeeping.
@@ -10035,13 +9617,6 @@ fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u128) {
                 .or_default()
                 .accumulate(&this_entry);
         });
-        if repeated_typecheck_attribution_armed() {
-            note_repeated_typecheck_attribution_entry_timing(
-                entry_file,
-                &this_entry,
-                elapsed_nanos,
-            );
-        }
     }
 }
 
@@ -10120,41 +9695,83 @@ fn compile_clean_diags_from_resolved_stages(
     Rc::new(acc)
 }
 
-fn serve_resolved_graph_disk_hit_through_provider(
-    sources: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        Rc<im::Vector<Rc<ErrorNode>>>,
-    ),
-    String,
-> {
-    let closure_digest = closure_content_digest(sources);
-    let compiler_digest = transform_content_digest();
-    match serve_resolved_graph_v1_disk_probe(&closure_digest, &compiler_digest)? {
-        ResolvedGraphProviderOutcome::Hit => Err(
-            "resolved-graph-cache provider served disk hit but compile-clean diagnostic union is not installed from artifact"
-                .to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Err(format!(
-            "resolved-graph-cache provider refused incomplete disk hit: missing {missing:?}"
-        )),
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Err(
-            "resolved-graph-cache provider refused disk hit: wrong artifact key".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::Miss => Err(
-            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedKindMismatch => Err(
-            "resolved-graph-cache provider refused disk hit: kind mismatch".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
-            "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
+fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
+    match outcome {
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact => {
+            Some("resolved-graph-cache provider refused disk hit: wrong artifact key".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedKindMismatch => {
+            Some("resolved-graph-cache provider refused disk hit: kind mismatch".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedWrongContent => {
+            Some("resolved-graph-cache provider refused disk hit: wrong content".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash => {
+            Some(
+                "resolved-graph-cache provider refused disk hit: cross-family content hash at fnv1a64 seam"
+                    .to_string(),
+            )
+        }
+        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
+        ResolvedGraphProviderOutcome::Miss => {
+            Some("resolved-graph-cache provider refused disk hit: probe miss".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Some(format!(
+            "resolved-graph-cache provider refused disk hit: incomplete artifact (missing: {})",
+            missing.join(", ")
+        )),
+        ResolvedGraphProviderOutcome::Hit => None,
+    }
+}
+
+#[doc(hidden)]
+pub fn provider_integrity_refusal_message_for_test(
+    outcome: ResolvedGraphProviderOutcome,
+) -> Option<String> {
+    provider_integrity_refusal_message(outcome)
+}
+
+fn install_cross_process_materialization_hit(
+    index: &MultiEntryIndex,
+    subject: &str,
+    cached: CachedResolvedGraph,
+    memo_share: ResolvedGraphMemoShare,
+) -> (
+    Rc<v1_compiler_compile::ResolvedGraph>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+    Rc<im::Vector<Rc<ErrorNode>>>,
+) {
+    if memo_share == ResolvedGraphMemoShare::Memoize {
+        index.resolved_graph_memo.borrow_mut().insert(
+            subject.to_string(),
+            (
+                cached.graph.clone(),
+                cached.source_indices.clone(),
+                cached.compile_clean_diags.clone(),
+            ),
+        );
+    }
+    (
+        cached.graph,
+        cached.source_indices,
+        cached.compile_clean_diags,
+    )
+}
+
+fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
+    match reason {
+        CacheRejectReason::ContentDigestMismatch => {
+            "resolved-graph-cache refused poisoned artifact: content digest mismatch".to_string()
+        }
+        CacheRejectReason::BackendKeyMalformed => {
+            "resolved-graph-cache refused artifact: backend key malformed".to_string()
+        }
+        CacheRejectReason::PartDecodeFailure => {
+            "resolved-graph-cache refused artifact: part decode failure after hash verification"
+                .to_string()
+        }
     }
 }
 
@@ -10201,29 +9818,78 @@ fn resolved_graph_from_sources_with_index(
     {
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
-    // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
-    // the share above on hit so later same-subject demands never re-decode. CI leaves
-    // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
-    // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
+    // Cross-process store tier: opt-in via `GUNBC_RESOLVED_GRAPH_CACHE_DIR` only.
+    // Installs into the share above on hit so later same-subject demands never
+    // re-decode. Floor/CI leave it unset (mechanism-inventory-red-controls: inert
+    // on floor); only explicit test harnesses arm the disk tier.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        match cross_process_probe(&cache_root, &subject) {
-            CacheProbeResult::Hit(_probe) if !cross_process_provider_routing_suppressed() => {
-                if !supports_faithful_probe() {
-                    return Err(format!(
-                        "resolved-graph-cache provider refused faithful probe: {}",
-                        faithful_probe_unavailable_gap()
+        if !cross_process_provider_routing_suppressed() {
+            match cross_process_probe(&cache_root, &subject) {
+                CacheProbeResult::Hit(probe) => {
+                    if !supports_faithful_probe() {
+                        return Err(format!(
+                            "resolved-graph-cache provider refused faithful probe: {}",
+                            faithful_probe_unavailable_gap()
+                        ));
+                    }
+                    let parts = &probe.parts;
+                    let closure_digest = closure_content_digest(&sources);
+                    let compiler_digest = transform_content_digest();
+                    match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
+                        &closure_digest,
+                        &compiler_digest,
+                        &probe.stored_request_key,
+                        &probe.stored_semantic_digest,
+                        parts,
+                    ) {
+                        Ok(ResolvedGraphProviderOutcome::Hit) => {
+                            match cross_process_lookup_verified_probe(&cache_root, &subject, &probe)
+                            {
+                                CacheLookupResult::Hit(cached) => {
+                                    return Ok(install_cross_process_materialization_hit(
+                                        index, &subject, cached, memo_share,
+                                    ));
+                                }
+                                CacheLookupResult::RejectedHit(reason) => {
+                                    return Err(cross_process_cache_integrity_refusal(reason));
+                                }
+                                CacheLookupResult::Miss => {
+                                    return Err(
+                                        "resolved-graph-cache lookup miss after provider hit"
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                        Ok(other) => {
+                            if let Some(msg) = provider_integrity_refusal_message(other) {
+                                return Err(msg);
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                CacheProbeResult::LegacyMigrationRequired { .. } => {
+                    // Cold rebuild is the declared migration disposition — never route
+                    // legacy on-disk rows through the v3 provider probe.
+                }
+                CacheProbeResult::RejectedHit(CacheRejectReason::ContentDigestMismatch) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::ContentDigestMismatch,
                     ));
                 }
-                match cross_process_lookup(&cache_root, &subject) {
-                    CacheLookupResult::Hit(_cached) => {
-                        return serve_resolved_graph_disk_hit_through_provider(&sources);
-                    }
-                    CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+                CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::BackendKeyMalformed,
+                    ));
                 }
+                CacheProbeResult::RejectedHit(CacheRejectReason::PartDecodeFailure) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::PartDecodeFailure,
+                    ));
+                }
+                CacheProbeResult::Miss => {}
             }
-            CacheProbeResult::Hit(_)
-            | CacheProbeResult::RejectedHit(_)
-            | CacheProbeResult::Miss => {}
         }
     }
 
@@ -10336,24 +10002,33 @@ fn resolved_graph_from_sources_with_index(
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
     set_phase(FloorPhase::Typecheck, entry_file);
+    let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
-    // Assembly residue = reconcile wall minus the per-module rows its internals
-    // accumulated into the slot during this call (typecheck computes + parent envs).
+    // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
+    // containing reconcile span. A timing overlap is an attribution refusal, never a
+    // saturating clamp to a plausible zero.
     let reconcile_total = reconcile_started.elapsed().as_nanos();
-    resolve_stage_slot_add(|s| {
-        s.reconcile_assembly += reconcile_total.saturating_sub(
-            s.typecheck_compute
-                + s.parent_envs
-                + s.assembly_schedule
-                + s.assembly_probe
-                + s.assembly_registry
-                + s.assembly_services
-                + s.assembly_rewire
-                + s.assembly_emit_info,
-        );
-    });
+    let measured = resolve_stage_slot_snapshot();
+    let reconcile_attributed_after = measured.reconcile_attributed_total();
+    let reconcile_attributed = reconcile_attributed_after
+        .checked_sub(reconcile_attributed_before)
+        .ok_or_else(|| {
+            format!(
+                "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
+             {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
+            )
+        })?;
+    let assembly_other = reconcile_total
+        .checked_sub(reconcile_attributed)
+        .ok_or_else(|| {
+            format!(
+                "assembly attribution refused: OverAttributed {{ sum_exclusive_nanos: \
+             {reconcile_attributed}, parent_span_nanos: {reconcile_total} }}"
+            )
+        })?;
+    resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
 
     let has_type_errors = typed
         .diagnostics
@@ -10433,8 +10108,32 @@ fn resolved_graph_from_sources_with_index(
         // the swallowed error hid that big closures never landed on disk (only
         // the prelude artifact ever existed), which mis-shaped a whole OOM
         // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
-        if let Err(e) = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref())
-        {
+        let closure_digest = closure_content_digest(&sources);
+        let compiler_digest = transform_content_digest();
+        let encoded = crate::resolved_graph_cache::encode_resolved_graph_parts(
+            &typed,
+            source_indices.as_ref(),
+            &compile_clean_diags,
+        )?;
+        let stored_request_key =
+            resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)?;
+        let stored_semantic_digest = resolved_graph_parts_semantic_digest(
+            &encoded.graph_digest,
+            encoded.graph_bytes.len() as u64,
+            &encoded.indices_digest,
+            encoded.indices_bytes.len() as u64,
+            &encoded.union_digest,
+            encoded.union_bytes.len() as u64,
+        )?;
+        if let Err(e) = cross_process_write(
+            &cache_root,
+            &subject,
+            &typed,
+            source_indices.as_ref(),
+            &compile_clean_diags,
+            &stored_request_key,
+            &stored_semantic_digest,
+        ) {
             eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
         }
     }
@@ -10657,6 +10356,7 @@ fn finish_resolved_graph_assembly(
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
+    let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
         let mut acc = im::Vector::new();
         for chunk in &diag_chunks {
@@ -10670,6 +10370,7 @@ fn finish_resolved_graph_assembly(
             "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
         );
     }
+    resolve_stage_slot_add(|s| s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos());
     let rewire_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
@@ -10691,12 +10392,15 @@ fn finish_resolved_graph_assembly(
     let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
-    Ok(Rc::new(ResolvedGraph {
+    let graph_started = std::time::Instant::now();
+    let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
         diagnostics,
         emit_graph_info,
-    }))
+    });
+    resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
+    Ok(graph)
 }
 
 /// When every module in the closure is already in the typed cache, skip the
@@ -10721,24 +10425,6 @@ fn try_reconcile_all_cache_hits(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
 ) -> Result<Option<Rc<ResolvedGraph>>, String> {
-    let attribution_probe = repeated_typecheck_attribution_armed();
-    if attribution_probe {
-        repeated_typecheck_attribution_begin_all_hit_probe();
-    }
-    struct AllHitProbeAbort {
-        suppress_abort: bool,
-    }
-    impl Drop for AllHitProbeAbort {
-        fn drop(&mut self) {
-            if !self.suppress_abort {
-                repeated_typecheck_attribution_abort_all_hit_probe();
-            }
-        }
-    }
-    let mut probe_guard = attribution_probe.then(|| AllHitProbeAbort {
-        suppress_abort: false,
-    });
-
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -10785,12 +10471,6 @@ fn try_reconcile_all_cache_hits(
                 resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
                 return Ok(None);
             };
-            observe_repeated_typecheck_attribution_module(
-                mod_name,
-                &typed_key,
-                TypedCacheDisposition::Hit,
-                0,
-            );
             // Record this confirmed hit's cache keys with the armed schedule retention
             // (idempotent; no-op when unarmed) — the all-hits PROBE must register keys just
             // like the slow reconcile loop at `reconcile_with_typed_cache`, else a prewarmed
@@ -10838,7 +10518,10 @@ fn try_reconcile_all_cache_hits(
     let empty_parent_diags = Rc::new(im::Vector::new());
     for tc_result in results.into_iter() {
         let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
+        let graph_started = std::time::Instant::now();
         modules_vec.push_back(tc_result.typed.clone());
+        resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
+        let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
         for fork in tc_result.binding_forks.iter() {
@@ -10848,13 +10531,9 @@ fn try_reconcile_all_cache_hits(
                 cross_tree_fork_count += 1;
             }
         }
-    }
-
-    if let Some(mut guard) = probe_guard.take() {
-        guard.suppress_abort = true;
-    }
-    if attribution_probe {
-        repeated_typecheck_attribution_commit_all_hit_probe();
+        resolve_stage_slot_add(|s| {
+            s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos()
+        });
     }
 
     finish_resolved_graph_assembly(
@@ -11185,10 +10864,19 @@ fn build_symbol_index_for_reconcile(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<SymbolIndex>, String> {
-    Ok(v1_compiler_infer::symbol_index_with_qualified_fill(
-        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices),
-        pool_qualified_fill(index)?,
-    ))
+    let symbol_index_started = std::time::Instant::now();
+    let symbol_index =
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
+    resolve_stage_slot_add(|s| {
+        s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
+    });
+    let pool_fill_started = std::time::Instant::now();
+    let pool_fill = pool_qualified_fill(index)?;
+    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_started.elapsed().as_nanos());
+    let merge_started = std::time::Instant::now();
+    let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
+    resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
+    Ok(merged)
 }
 
 fn reconcile_with_typed_cache(
@@ -11210,12 +10898,14 @@ fn reconcile_with_typed_cache(
     // (a result is a function of the module and its import closure, not of dispatch order)
     // is the same assumption the shared typed cache already ships on, held by the
     // every-order equivalence oracles (§6.1).
+    let graph_started = std::time::Instant::now();
     let closure_modules: Vec<Rc<v1_compiler_resolve::ResolvedModule>> =
         graph.modules.iter().cloned().collect();
     let closure_names: Vec<String> = closure_modules
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
+    resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
     let schedule_started = std::time::Instant::now();
     let (schedule, cycle_residue_slots) =
         module_schedule_batches(&closure_modules, &closure_names, index);
@@ -11252,10 +10942,14 @@ fn reconcile_with_typed_cache(
     // depends only on (global_bare, si), so it is computed once per symbol index —
     // once here for the closure index, once per composed per-root index below —
     // instead of rescanning the census inside every module's build_module_context.
+    let variant_base_started = std::time::Instant::now();
     let closure_variant_base = v1_compiler_infer::build_global_bare_variant_locals(
         symbol_index.global_bare.clone(),
         source_indices.clone(),
     );
+    resolve_stage_slot_add(|s| {
+        s.assembly_variant_base += variant_base_started.elapsed().as_nanos()
+    });
     let mut tree_symbol_index_memo: std::collections::HashMap<
         String,
         (
@@ -11317,21 +11011,10 @@ fn reconcile_with_typed_cache(
                         next_pending.push(slot);
                         continue;
                     }
-                    Err(e) => {
-                        observe_repeated_typecheck_attribution_refused(&mod_name, &e);
-                        return Err(e);
-                    }
+                    Err(e) => return Err(e),
                 };
                 let cached = index_get_typed(index, &typed_key)?;
                 let was_cache_hit = cached.is_some();
-                if was_cache_hit {
-                    observe_repeated_typecheck_attribution_module(
-                        &mod_name,
-                        &typed_key,
-                        TypedCacheDisposition::Hit,
-                        0,
-                    );
-                }
                 // Record this module's cache keys with the armed schedule retention
                 // (idempotent; hit or miss) so its state can be dropped exactly when no
                 // remaining scheduled entry reaches it. Keyed by `decl_file` — the same
@@ -11370,7 +11053,6 @@ fn reconcile_with_typed_cache(
                                 render_typecheck_begin_line_mirror(&mod_name, typecheck_emoji())
                             );
                         }
-                        let module_tc_started = std::time::Instant::now();
                         // Same-tree bare underlay for the module being typechecked
                         // (bare = own tree, qualified = whole pool); out-of-root
                         // modules keep the closure-only bare universe.
@@ -11379,19 +11061,29 @@ fn reconcile_with_typed_cache(
                                 Some(root) => match tree_symbol_index_memo.get(&root) {
                                     Some(hit) => hit.clone(),
                                     None => {
+                                        let root_symbol_index_started = std::time::Instant::now();
                                         let composed =
                                             v1_compiler_infer::symbol_index_with_bare_fill(
                                                 symbol_index.clone(),
                                                 tree_bare_census_for_root(index, &root)?,
                                             );
+                                        resolve_stage_slot_add(|s| {
+                                            s.assembly_root_symbol_index +=
+                                                root_symbol_index_started.elapsed().as_nanos()
+                                        });
                                         // The composed index's global_bare = closure ∪ tree,
                                         // so its variant base is computed from the composed
                                         // map — once per root, beside the index it belongs to.
+                                        let root_variant_base_started = std::time::Instant::now();
                                         let base =
                                             v1_compiler_infer::build_global_bare_variant_locals(
                                                 composed.global_bare.clone(),
                                                 source_indices.clone(),
                                             );
+                                        resolve_stage_slot_add(|s| {
+                                            s.assembly_root_variant_base +=
+                                                root_variant_base_started.elapsed().as_nanos()
+                                        });
                                         tree_symbol_index_memo
                                             .insert(root, (composed.clone(), base.clone()));
                                         (composed, base)
@@ -11399,6 +11091,7 @@ fn reconcile_with_typed_cache(
                                 },
                                 None => (symbol_index.clone(), closure_variant_base.clone()),
                             };
+                        let module_tc_started = std::time::Instant::now();
                         let computed = v1_compiler_infer::typecheck_module(
                             resolved.clone(),
                             module_index.clone(),
@@ -11422,12 +11115,6 @@ fn reconcile_with_typed_cache(
                         // threshold below — the receipt is the complete record, the render
                         // line a projection (one record, two projections).
                         note_module_typecheck_wall(&mod_name, module_tc_ms);
-                        observe_repeated_typecheck_attribution_module(
-                            &mod_name,
-                            &typed_key,
-                            TypedCacheDisposition::Miss,
-                            module_tc_elapsed.as_nanos(),
-                        );
                         if module_tc_ms >= 2_000 {
                             let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                             eprintln!(
@@ -11443,6 +11130,7 @@ fn reconcile_with_typed_cache(
                         computed
                     }
                 };
+                let environment_started = std::time::Instant::now();
                 note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
                 let typed = tc_result.typed.clone();
                 let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
@@ -11455,6 +11143,9 @@ fn reconcile_with_typed_cache(
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
+                resolve_stage_slot_add(|s| {
+                    s.assembly_environment += environment_started.elapsed().as_nanos()
+                });
                 progressed = true;
             }
             if !progressed {
@@ -11506,7 +11197,10 @@ fn reconcile_with_typed_cache(
                 closure_names[slot]
             )
         });
+        let graph_started = std::time::Instant::now();
         modules_vec.push_back(tc_result.typed.clone());
+        resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
+        let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
         for fork in tc_result.binding_forks.iter() {
@@ -11516,6 +11210,9 @@ fn reconcile_with_typed_cache(
                 cross_tree_fork_count += 1;
             }
         }
+        resolve_stage_slot_add(|s| {
+            s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos()
+        });
     }
 
     finish_resolved_graph_assembly(
@@ -12317,11 +12014,19 @@ pub fn whole_tree_ancestry_retention_probe(
     Ok(())
 }
 
-/// Companion to a `*_holds` witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
+/// Companion to a Bool witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
 /// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
-fn failure_receipt_companion(function: &str) -> Option<String> {
+///
+/// Both witness-naming conventions in the corpus are recognized: `_holds` (claim witnesses)
+/// and `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`). The
+/// gate witnesses were unreachable from this channel while only `_holds` was stripped, which
+/// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
+/// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
+/// the derivation cannot invent a required hook for a witness that has none.
+pub fn failure_receipt_companion(function: &str) -> Option<String> {
     function
         .strip_suffix("_holds")
+        .or_else(|| function.strip_suffix("_passes"))
         .map(|base| format!("{base}_failure_receipt"))
 }
 
@@ -13722,7 +13427,8 @@ pub fn handle_serve(
         eprintln!("error: provide at least one --source-root");
         std::process::exit(1);
     }
-    let sources = match load_sources_for_entry(&source_roots, &entry_file) {
+    let index = process_shared_index(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
         Ok(sources) => sources,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -13730,29 +13436,34 @@ pub fn handle_serve(
         }
     };
     eprintln!("resolved {} sources", sources.len());
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    let has_errors = result
-        .diagnostics
-        .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
-    if has_errors {
-        for d in result.diagnostics.iter() {
-            if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-                eprintln!("error: {}", diagnostic_to_message(d.diagnostic.clone()));
-            }
-        }
-        std::process::exit(1);
-    }
-    let graph = match result.graph.as_ref() {
-        Some(g) => g,
-        None => {
-            eprintln!("error: compilation produced no graph");
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        &entry_file,
+        ResolvedGraphMemoShare::Memoize,
+    ) {
+        Ok(parts) => parts,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
             std::process::exit(1);
         }
     };
+    if compile_clean_diags
+        .iter()
+        .any(|d| compile_clean_diagnostic_is_hard(d))
+    {
+        for d in compile_clean_diags
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+        {
+            eprintln!("error: {}", format_error_node(d, &source_indices));
+        }
+        std::process::exit(1);
+    }
     let ctx = v1_interpreter::InterpContext::new(
-        graph,
-        result.source_indices.clone(),
+        &graph,
+        source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
     let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
@@ -15512,54 +15223,6 @@ pub fn cgroup_memory_events_high() -> Option<u64> {
     })
 }
 
-fn git_head_sha_or_err() -> Result<String, String> {
-    std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| format!("git rev-parse HEAD: {e}"))
-        .and_then(|o| {
-            if o.status.success() {
-                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
-            } else {
-                Err("git rev-parse HEAD failed".to_string())
-            }
-        })
-}
-
-/// Process memory readings for repeated-typecheck attribution (slice 2).
-///
-/// VmHWM is process-wide high water — it includes selector setup, index construction,
-/// and every resolved entry, not an isolated "attribution retention peak".
-#[derive(Debug, Clone)]
-pub struct RepeatedTypecheckAttributionMemoryObservation {
-    pub rss_before_measurement_bytes: Option<u64>,
-    pub rss_after_measurement_bytes: Option<u64>,
-    pub process_vm_hwm_bytes: Option<u64>,
-    pub cgroup_memory_events_high: Option<u64>,
-}
-
-impl RepeatedTypecheckAttributionMemoryObservation {
-    pub fn capture_pair(before: Option<u64>, after: Option<u64>) -> Self {
-        Self {
-            rss_before_measurement_bytes: before,
-            rss_after_measurement_bytes: after,
-            process_vm_hwm_bytes: peak_rss_vhwm_bytes(),
-            cgroup_memory_events_high: cgroup_memory_events_high(),
-        }
-    }
-}
-
-/// Per typed module content key rollup for the detailed attribution receipt.
-#[derive(Debug, Clone)]
-pub struct ModuleKeyAttributionSummary {
-    pub module_key: String,
-    pub module_path: String,
-    pub selected_entry_fanout: usize,
-    pub hit_count: usize,
-    pub miss_count: usize,
-    pub recompute_count: usize,
-}
-
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
     matching_discovery_exclusion_substring(path).is_some()
 }
@@ -16755,314 +16418,6 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
             .to_string(),
     ));
     out.push_str("\"}");
-    out
-}
-
-// SCAFFOLD (§7 HAND-RUST — `cli_run_repeated_typecheck_attribution_probe`):
-// ROADMAP lane `ci-cost`, subject `entry-graph-union-construction` slice 2
-// (gunbc.roadmap_authority id `entry-graph-union-construction` — same row as slice 1).
-// VERDICT TAKEN 2026-08-01 (`entry-graph-union-slice2-typecheck-attribution.md` §F):
-// at N≤50 repeated typecheck compute is zero — union construction NO-GO on this hypothesis.
-// §4b + §G: law tests stay enrolled until deletion; measurement orchestration deletes after
-// merged-SHA provenance receipt (NOT tied to #7534 — unrelated exact-tree consumer).
-// DELETE WHEN dissolved (measurement orchestration — ~400 LOC incl. bin + probe plumbing):
-// `RepeatedTypecheckAttributionMeasurement`, `measure_repeated_typecheck_attribution`,
-// `render_repeated_typecheck_attribution_json`, `render_repeated_typecheck_attribution_receipt_json`,
-// `repeated_typecheck_attribution_arithmetic`, flag-gated `arm_*`/`observe_*`/`note_*` hooks,
-// and `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs`.
-// Trigger (intrinsic): candidate receipts accepted → merge → one representative 50-entry
-// cell + reorder control on merged main → archive receipt → delete (this lane's final commit
-// or named follow-up immediately after; never smuggled into another PR's rebase).
-// RETAIN through deletion: `repeated_typecheck_attribution_*` law tests in v1-compiler-tests
-// (once-per-content-key, later-requester hits, order-invariant distinct computes).
-// Receipt: `rg -c cli_run_repeated_typecheck_attribution_probe src/v1/stage0/src/cli_run.rs`
-// returns 4 while the scaffold stands (this block, the const, and its declaration test).
-// Not a compiler_frontier `.dag` row (seed-Rust) and not enrolled in `gunbc.ci_release_bins`.
-pub fn measure_repeated_typecheck_attribution(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-    explicit_entries: &[String],
-    max_entries: Option<usize>,
-    entry_offset: Option<usize>,
-) -> Result<RepeatedTypecheckAttributionMeasurement, String> {
-    let rss_before = current_rss_bytes();
-
-    let (head_sha, diff_base_override, skipped_entries, production_selected, overlap_membership) =
-        if explicit_entries.is_empty() {
-            let overlap = measure_selected_entry_closure_overlap(
-                source_roots,
-                scan_dirs,
-                exclude_substrings,
-                discovery_scope_dirs,
-            )?;
-            (
-                overlap.head_sha,
-                overlap.diff_base_override,
-                overlap.skipped_entries,
-                overlap.selected_entries.clone(),
-                Some((
-                    overlap.sum_closure_memberships,
-                    overlap.union_modules,
-                    overlap.fanout_by_module.clone(),
-                )),
-            )
-        } else {
-            (
-                git_head_sha_or_err()?,
-                std::env::var("GUNBC_CI_DIFF_BASE").ok(),
-                Vec::new(),
-                Vec::new(),
-                None,
-            )
-        };
-
-    let mut selected_entries = if explicit_entries.is_empty() {
-        production_selected.clone()
-    } else {
-        explicit_entries.to_vec()
-    };
-    if !explicit_entries.is_empty() && entry_offset.unwrap_or(0) > 0 {
-        return Err(
-            "repeated typecheck attribution: --entry-offset requires production selection \
-             (fail-closed)"
-                .to_string(),
-        );
-    }
-    let roster_len = selected_entries.len();
-    let offset = entry_offset.unwrap_or(0);
-    if offset > 0 {
-        if offset >= roster_len {
-            return Err(format!(
-                "repeated typecheck attribution: entry offset {offset} >= roster len \
-                 {roster_len} (fail-closed)"
-            ));
-        }
-        selected_entries = selected_entries[offset..].to_vec();
-    }
-    let entry_offset_applied = entry_offset.filter(|&o| o > 0);
-    let pre_cap_len = selected_entries.len();
-    if let Some(cap) = max_entries {
-        selected_entries.truncate(cap);
-    }
-    let max_entries_applied = max_entries.filter(|cap| *cap < pre_cap_len);
-
-    if selected_entries.is_empty() {
-        return Err(
-            "repeated typecheck attribution: zero entries to measure (fail-closed)".to_string(),
-        );
-    }
-
-    let (sum_closure_memberships, union_modules, fanout_by_module) =
-        if let Some((sum, union, fanout)) = overlap_membership
-            .filter(|_| explicit_entries.is_empty() && selected_entries == production_selected)
-        {
-            (sum, union, fanout)
-        } else {
-            let membership_index = process_shared_index(source_roots);
-            closure_overlap_membership_for_entries(&membership_index, &selected_entries)?
-        };
-
-    let index = build_multi_entry_index(source_roots);
-    arm_repeated_typecheck_attribution_probe();
-
-    for entry in &selected_entries {
-        set_repeated_typecheck_attribution_entry(entry);
-        resolve_entry_with_index(&index, entry).map_err(|e| {
-            disarm_repeated_typecheck_attribution_probe();
-            format!("repeated typecheck attribution: resolve refused for '{entry}': {e}")
-        })?;
-        clear_repeated_typecheck_attribution_entry();
-    }
-
-    let snap = disarm_repeated_typecheck_attribution_probe().ok_or_else(|| {
-        "repeated typecheck attribution: probe disarmed empty (internal)".to_string()
-    })?;
-
-    let rss_after = current_rss_bytes();
-    let memory = RepeatedTypecheckAttributionMemoryObservation::capture_pair(rss_before, rss_after);
-
-    Ok(RepeatedTypecheckAttributionRun::snapshot_into_measurement(
-        snap,
-        source_roots.to_vec(),
-        scan_dirs.to_vec(),
-        head_sha,
-        diff_base_override,
-        selected_entries,
-        skipped_entries,
-        max_entries_applied,
-        entry_offset_applied,
-        sum_closure_memberships,
-        union_modules,
-        fanout_by_module,
-        memory,
-    ))
-}
-
-/// Machine-readable projection of the repeated-typecheck attribution measurement.
-pub fn render_repeated_typecheck_attribution_json(
-    m: &RepeatedTypecheckAttributionMeasurement,
-) -> String {
-    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
-    let opt_f64 = |v: Option<f64>| match v {
-        Some(f) => format!("{f:.6}"),
-        None => "null".to_string(),
-    };
-    let opt_str = |o: &Option<String>| match o {
-        Some(v) => format!("\"{}\"", esc(v.clone())),
-        None => "null".to_string(),
-    };
-
-    let mut out = String::from("{\"subject\":{\"head_sha\":\"");
-    out.push_str(&esc(m.head_sha.clone()));
-    out.push_str("\",\"diff_base_override\":");
-    out.push_str(&opt_str(&m.diff_base_override));
-    out.push_str(",\"selected_entries\":");
-    out.push_str(&m.selected_count().to_string());
-    out.push_str(",\"max_entries_applied\":");
-    out.push_str(&match m.max_entries_applied {
-        Some(n) => n.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"entry_offset_applied\":");
-    out.push_str(&match m.entry_offset_applied {
-        Some(n) => n.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str("},\"membership\":{\"sum_closure_memberships\":");
-    out.push_str(&m.sum_closure_memberships.to_string());
-    out.push_str(",\"union_modules\":");
-    out.push_str(&m.union_modules.to_string());
-    out.push_str(",\"duplication_factor\":");
-    out.push_str(&opt_f64(m.membership_duplication_factor));
-    out.push_str("},\"attribution\":{\"total_cache_hits\":");
-    out.push_str(&m.total_cache_hits.to_string());
-    out.push_str(",\"total_cache_misses\":");
-    out.push_str(&m.total_cache_misses.to_string());
-    out.push_str(",\"total_cache_refusals\":");
-    out.push_str(&m.total_cache_refusals.to_string());
-    out.push_str(",\"total_typecheck_compute_ns\":");
-    out.push_str(&m.total_typecheck_compute_ns.to_string());
-    out.push_str(",\"repeated_typecheck_misses\":");
-    out.push_str(&m.repeated_typecheck_misses.to_string());
-    out.push_str(",\"first_computation_typecheck_ns\":");
-    out.push_str(&m.first_computation_typecheck_ns.to_string());
-    out.push_str(",\"repeated_typecheck_compute_ns\":");
-    out.push_str(&m.repeated_typecheck_compute_ns.to_string());
-    out.push_str(",\"cache_hit_ratio\":");
-    out.push_str(&opt_f64(m.cache_hit_ratio));
-    out.push_str(",\"compute_duplication_factor\":");
-    out.push_str(&opt_f64(m.compute_duplication_factor));
-    out.push_str(",\"decision_ratio\":");
-    out.push_str(&opt_f64(m.decision_ratio));
-    out.push_str(",\"memory\":{");
-    out.push_str("\"rss_before_measurement_bytes\":");
-    out.push_str(&match m.memory.rss_before_measurement_bytes {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"rss_after_measurement_bytes\":");
-    out.push_str(&match m.memory.rss_after_measurement_bytes {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"process_vm_hwm_bytes\":");
-    out.push_str(&match m.memory.process_vm_hwm_bytes {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"cgroup_memory_events_high\":");
-    out.push_str(&match m.memory.cgroup_memory_events_high {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str("}");
-    out.push_str("},\"entry_timings\":[");
-    for (i, t) in m.entry_timings.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"entry\":\"");
-        out.push_str(&esc(t.entry.clone()));
-        out.push_str("\",\"reconcile_assembly_ns\":");
-        out.push_str(&t.reconcile_assembly_ns.to_string());
-        out.push_str(",\"typecheck_compute_ns\":");
-        out.push_str(&t.typecheck_compute_ns.to_string());
-        out.push_str(",\"resolve_nanos\":");
-        out.push_str(&t.resolve_nanos.to_string());
-        out.push('}');
-    }
-    out.push_str("],\"interpretation_bound\":\"");
-    out.push_str(&esc(
-        "Per (entry, typed module content key) observations against ONE shared \
-         MultiEntryIndex. decision_ratio = repeated_typecheck_compute_ns / \
-         total_typecheck_compute_ns (NOT closure duplication). Refused rows are a \
-         third state, never folded into hits."
-            .to_string(),
-    ));
-    out.push_str("\"}");
-    out
-}
-
-/// Full per-row and per-key receipt for slice-2 attribution (written to disk).
-pub fn render_repeated_typecheck_attribution_receipt_json(
-    m: &RepeatedTypecheckAttributionMeasurement,
-) -> String {
-    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
-    let disposition = |d: TypedCacheDisposition| match d {
-        TypedCacheDisposition::Hit => "Hit",
-        TypedCacheDisposition::Miss => "Miss",
-        TypedCacheDisposition::Refused => "Refused",
-    };
-    let opt_str = |o: &Option<String>| match o {
-        Some(v) => format!("\"{}\"", esc(v.clone())),
-        None => "null".to_string(),
-    };
-
-    let mut out = String::from("{\"summary\":");
-    out.push_str(&render_repeated_typecheck_attribution_json(m));
-    out.push_str(",\"rows\":[");
-    for (i, row) in m.rows.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"entry\":\"");
-        out.push_str(&esc(row.entry.clone()));
-        out.push_str("\",\"module_key\":\"");
-        out.push_str(&esc(row.module_key.clone()));
-        out.push_str("\",\"module_path\":\"");
-        out.push_str(&esc(row.module_path.clone()));
-        out.push_str("\",\"cache_disposition\":\"");
-        out.push_str(disposition(row.cache_disposition));
-        out.push_str("\",\"typecheck_compute_ns\":");
-        out.push_str(&row.typecheck_compute_ns.to_string());
-        out.push_str(",\"first_computing_entry\":");
-        out.push_str(&opt_str(&row.first_computing_entry));
-        out.push_str(",\"later_requester_count\":");
-        out.push_str(&row.later_requester_count.to_string());
-        out.push('}');
-    }
-    out.push_str("],\"key_summaries\":[");
-    for (i, key) in m.key_summaries.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"module_key\":\"");
-        out.push_str(&esc(key.module_key.clone()));
-        out.push_str("\",\"module_path\":\"");
-        out.push_str(&esc(key.module_path.clone()));
-        out.push_str("\",\"selected_entry_fanout\":");
-        out.push_str(&key.selected_entry_fanout.to_string());
-        out.push_str(",\"hit_count\":");
-        out.push_str(&key.hit_count.to_string());
-        out.push_str(",\"miss_count\":");
-        out.push_str(&key.miss_count.to_string());
-        out.push_str(",\"recompute_count\":");
-        out.push_str(&key.recompute_count.to_string());
-        out.push('}');
-    }
-    out.push_str("]}");
     out
 }
 
@@ -31029,8 +30384,144 @@ struct TestMigrationDebtReport {
     entries: Vec<TestMigrationDebtEntry>,
 }
 
+struct TestMigrationBehaviorDiscoveryReport {
+    legacy_behavior_ids: Vec<String>,
+    witness_behavior_ids: Vec<String>,
+    errors: Vec<String>,
+}
+
 fn test_migration_debt_v1_test_dir() -> PathBuf {
     workspace_root().join("src/v1/tests/src")
+}
+
+fn test_migration_named_fn_after_attribute<'a, I>(lines: &mut I) -> Option<String>
+where
+    I: Iterator<Item = &'a str>,
+{
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("#[") {
+            continue;
+        }
+        let after_visibility = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
+        let after_async = after_visibility
+            .strip_prefix("async ")
+            .unwrap_or(after_visibility);
+        return after_async
+            .strip_prefix("fn ")
+            .and_then(|rest| rest.split('(').next())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string);
+    }
+    None
+}
+
+fn test_migration_rust_test_fn_names(content: &str) -> Result<Vec<String>, String> {
+    let mut lines = content.lines();
+    let mut names = Vec::new();
+    while let Some(line) = lines.next() {
+        if line.trim() != "#[test]" {
+            continue;
+        }
+        match test_migration_named_fn_after_attribute(&mut lines) {
+            Some(name) => names.push(name),
+            None => return Err("#[test] is not followed by a named Rust function".to_string()),
+        }
+    }
+    Ok(names)
+}
+
+fn test_migration_dag_test_fn_names(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("test fn ")
+                .and_then(|rest| rest.split('(').next())
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDiscoveryReport {
+    let dir = test_migration_debt_v1_test_dir();
+    let mut legacy_behavior_ids = Vec::new();
+    let mut witness_behavior_ids = Vec::new();
+    let mut errors = Vec::new();
+
+    match std::fs::read_dir(&dir) {
+        Ok(read_dir) => {
+            let mut paths: Vec<PathBuf> = read_dir
+                .filter_map(|entry| match entry {
+                    Ok(entry) => Some(entry.path()),
+                    Err(err) => {
+                        errors.push(format!("read legacy test directory entry: {err}"));
+                        None
+                    }
+                })
+                .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+                .collect();
+            paths.sort();
+            for path in paths {
+                let repo_path = path
+                    .strip_prefix(workspace_root())
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => match test_migration_rust_test_fn_names(&content) {
+                        Ok(names) => legacy_behavior_ids
+                            .extend(names.into_iter().map(|name| format!("{repo_path}::{name}"))),
+                        Err(err) => errors.push(format!("{repo_path}: {err}")),
+                    },
+                    Err(err) => errors.push(format!("read {repo_path}: {err}")),
+                }
+            }
+        }
+        Err(err) => errors.push(format!("read {}: {err}", dir.display())),
+    }
+
+    for (path, content) in corpus_dag_files() {
+        witness_behavior_ids.extend(
+            test_migration_dag_test_fn_names(&content)
+                .into_iter()
+                .map(|name| format!("{}::{name}", normalize_repo_path(&path))),
+        );
+    }
+
+    legacy_behavior_ids.sort();
+    legacy_behavior_ids.dedup();
+    witness_behavior_ids.sort();
+    witness_behavior_ids.dedup();
+    TestMigrationBehaviorDiscoveryReport {
+        legacy_behavior_ids,
+        witness_behavior_ids,
+        errors,
+    }
+}
+
+fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
+    static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
+    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
+}
+
+pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
+    test_migration_behavior_discovery_report()
+        .legacy_behavior_ids
+        .clone()
+}
+
+pub fn test_migration_witness_behavior_ids() -> Vec<String> {
+    test_migration_behavior_discovery_report()
+        .witness_behavior_ids
+        .clone()
+}
+
+pub fn test_migration_behavior_discovery_holds() -> bool {
+    test_migration_behavior_discovery_report().errors.is_empty()
 }
 
 fn test_migration_debt_stem(name: &str) -> String {
@@ -34809,6 +34300,12 @@ mod process_resolve_store_tests {
 
 #[cfg(test)]
 mod peel_alias_fixpoint_termination {
+    // Seed-retention receipt (DESIGN §7): the bounded wall-clock timeout,
+    // !Send fixture thread, and in-memory CompileResult RED harness are host
+    // test orchestration, retained in cli_run.rs until ROADMAP row
+    // `v1-test-migration` moves these witnesses into test data.
+    // That row gates "Get hand-written Rust in this repository down to zero";
+    // migrate/delete this module when its executing witness is data-driven.
     // §4 boundedness witness for the peel_alias_once_for_field_access fixpoint
     // guard (04_infer.dag peel_alias_fixpoint_guard_note). Discriminating RED:
     // pre-guard, resolve returning the input node itself re-enters the recurse
@@ -34875,18 +34372,77 @@ mod peel_alias_fixpoint_termination {
                 source_visible_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
             });
-            let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+            // The pre-fix firing set: the old peel called this same resolver,
+            // projected `.resolved`, and discarded these diagnostics. The fix
+            // may REVEAL identities from this set; it must never RETIRE one by
+            // changing which resolver judgments fire.
+            let before_projection = crate::v1_compiler_infer_resolve::resolve_node(
                 n.clone(),
-                env,
+                env.clone(),
                 "peel_fixpoint_probe".to_string(),
             );
-            let _ = tx.send((out.name.clone(), out == n));
+            let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                n.clone(),
+                env.clone(),
+                "peel_fixpoint_probe".to_string(),
+            );
+            let termination_probe = (out.resolved.name.clone(), out.resolved == n);
+            let refusal_count = out
+                .diagnostics
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::UnresolvedType { .. }
+                    )
+                })
+                .count();
+            let retired_count = before_projection
+                .diagnostics
+                .iter()
+                .filter(|before| !out.diagnostics.iter().any(|after| after == *before))
+                .count();
+
+            // Positive control for the legitimate quiet probe-miss half: a
+            // non-alias kernel leaf has nothing to peel and no refusal to
+            // report. Keeping this at zero prevents the typed carrier change
+            // from turning ordinary speculative misses into false reds.
+            let plain_int = crate::v1_std_core::leaf_node_with_span(
+                "Int".to_string(),
+                crate::v1_std_core::kernel_span("Int".to_string()),
+            );
+            let quiet = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                plain_int,
+                env.clone(),
+                "peel_quiet_probe".to_string(),
+            );
+            let quiet_diagnostic_count = quiet.diagnostics.len();
+
+            let _ = tx.send((
+                termination_probe,
+                quiet_diagnostic_count,
+                refusal_count,
+                retired_count,
+            ));
         });
-        let (name, is_fixpoint) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
-            "peel_alias_once_for_field_access did not terminate within 30s — the \
+        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count, retired_count) =
+            rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+                "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
-        );
+            );
         assert_eq!(name, "PeelFixpointProbe");
+        assert_eq!(
+            quiet_diagnostic_count, 0,
+            "a legitimate non-alias probe miss must stay quiet"
+        );
+        assert_eq!(
+            refusal_count, 2,
+            "a resolver refusal during speculative peel must remain typed and countable"
+        );
+        assert_eq!(
+            retired_count, 0,
+            "diagnostic propagation may reveal resolver identities but must retire none"
+        );
         // Termination IS the property under test (the pre-guard control run for
         // this fixture is recorded in the PR body; the strip-tree integration
         // RED — whole-tree completion + bounded peel iterations on the #6640
@@ -34895,6 +34451,62 @@ mod peel_alias_fixpoint_termination {
         // decorations on return, so identity is env-shape-dependent while
         // termination + name preservation are not.
         let _ = is_fixpoint;
+    }
+
+    #[test]
+    fn peel_refusals_reach_compile_result_through_inference_consumers() {
+        let source = r#"module peel_consumer_probe
+
+type FieldAlias<T> = FieldAlias<T>
+type RecordAlias<T> = RecordAlias<T>
+
+fn field_probe(x: FieldAlias<Int>) -> Int {
+  x.value
+}
+
+fn record_probe() -> Int {
+  let x = RecordAlias { value: 1 }
+  1
+}
+"#;
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                crate::v1_compiler_compile::SourceFile {
+                    path: "peel_consumer_probe.dag".to_string(),
+                    content: source.to_string(),
+                },
+            )]),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        let resolution_depth_subjects: Vec<String> = result
+            .diagnostics
+            .iter()
+            .filter_map(|d| match &*d.diagnostic {
+                crate::v1_std_core::CompilerDiagnostic::InternalError { message, .. }
+                    if message
+                        .starts_with("internal: type resolution exceeded depth 100 for '") =>
+                {
+                    Some(message.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        let field_alias_count = resolution_depth_subjects
+            .iter()
+            .filter(|message| message.ends_with("'FieldAlias'"))
+            .count();
+        let record_alias_count = resolution_depth_subjects
+            .iter()
+            .filter(|message| message.ends_with("'RecordAlias'"))
+            .count();
+        assert_eq!(
+            field_alias_count, 4,
+            "field-access alias refusals must reach CompileResult.diagnostics"
+        );
+        assert_eq!(
+            record_alias_count, 3,
+            "record-literal alias refusals must reach CompileResult.diagnostics"
+        );
     }
 }
 
@@ -35310,9 +34922,9 @@ mod exclusive_cost_partition_law {
     }
 
     #[test]
-    fn rewire_sub_rows_are_inclusive_and_never_enter_the_exclusive_sum() {
-        // Double-counting control: the three rewire sub-passes are contained in
-        // `assembly_rewire`. Adding them to the sum would over-attribute by their total.
+    fn rewire_sub_rows_are_exclusive_and_total_is_observation_only() {
+        // The three non-overlapping passes enter the partition directly. Their enclosing
+        // timer remains available on the text receipt but cannot become a quoted share.
         let st = ResolveStageNanos {
             assembly_rewire: 300,
             assembly_rewire_type_env: 100,
@@ -35324,18 +34936,15 @@ mod exclusive_cost_partition_law {
         assert_eq!(p.sum_exclusive_nanos(), 300);
         assert_eq!(p.remainder_nanos, 700);
 
-        // Exactly the three rewire sub-passes name `assembly_rewire` as their parent, and
-        // they account for all of it. Filtered rather than counting `p.inclusive` wholesale:
-        // other exclusive rows carry their own sub-rows, and a global count would make this
-        // control fail every time an unrelated row gains one -- which is what happened when
-        // the `load_*` sub-attribution landed.
-        let rewire: Vec<_> = p
-            .inclusive
-            .iter()
-            .filter(|r| r.contained_in == "assembly_rewire")
-            .collect();
-        assert_eq!(rewire.len(), 3);
-        assert_eq!(rewire.iter().map(|r| r.nanos).sum::<u128>(), 300);
+        assert_eq!(p.share_of_parent("assembly_rewire"), None);
+        assert_eq!(
+            p.exclusive
+                .iter()
+                .filter(|r| r.name.starts_with("assembly_rewire_"))
+                .map(|r| r.nanos)
+                .sum::<u128>(),
+            300
+        );
 
         // The invariant that actually matters, over every inclusive row from every parent:
         // an inclusive row is contained in some other row (exclusive, or another inclusive
@@ -35467,206 +35076,6 @@ mod selected_entry_closure_overlap_arithmetic {
         let json = render_selected_entry_closure_overlap_json(&m);
         assert!(json.contains("\"duplication_factor\":null"));
         assert!(json.contains("\"max\":null"));
-    }
-}
-
-#[cfg(test)]
-mod repeated_typecheck_attribution_arithmetic {
-    use super::*;
-
-    fn measurement_from_rows(
-        rows: Vec<EntryModuleTypecheckRow>,
-        key_tracker: HashMap<String, ModuleKeyTracker>,
-        sum_memberships: usize,
-        union_modules: usize,
-    ) -> RepeatedTypecheckAttributionMeasurement {
-        RepeatedTypecheckAttributionRun {
-            key_tracker,
-            rows,
-            entry_timings: Vec::new(),
-            all_hit_probe_rows: Vec::new(),
-            all_hit_probe_active: false,
-            observed_entry_module_keys: HashSet::new(),
-        }
-        .into_measurement(
-            vec!["dag".to_string()],
-            vec!["dag/test/claim".to_string()],
-            "0".repeat(40),
-            None,
-            vec!["a".to_string(), "b".to_string()],
-            Vec::new(),
-            None,
-            None,
-            sum_memberships,
-            union_modules,
-        )
-    }
-
-    #[test]
-    fn perfect_sharing_yields_zero_decision_ratio() {
-        // Two entries, one shared module: first miss, second hit → cache_hit_ratio 0.5,
-        // but decision_ratio 0 (no repeated typecheck compute).
-        let rows = vec![
-            EntryModuleTypecheckRow {
-                entry: "a".into(),
-                module_key: "k1".into(),
-                module_path: "std.types".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 100,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 0,
-            },
-            EntryModuleTypecheckRow {
-                entry: "b".into(),
-                module_key: "k1".into(),
-                module_path: "std.types".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Hit,
-                typecheck_compute_ns: 0,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 1,
-            },
-        ];
-        let mut tracker = HashMap::new();
-        tracker.insert(
-            "k1".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "a".to_string(),
-                requesters_seen: 2,
-            },
-        );
-        let m = measurement_from_rows(rows, tracker, 2, 1);
-        assert_eq!(m.total_cache_hits, 1);
-        assert_eq!(m.total_cache_misses, 1);
-        assert_eq!(m.repeated_typecheck_misses, 0);
-        assert_eq!(m.cache_hit_ratio, Some(0.5));
-        assert_eq!(m.decision_ratio, Some(0.0));
-        assert_eq!(m.total_typecheck_compute_ns, 100);
-        assert_eq!(m.repeated_typecheck_compute_ns, 0);
-    }
-
-    #[test]
-    fn repeated_recompute_raises_decision_ratio() {
-        let rows = vec![
-            EntryModuleTypecheckRow {
-                entry: "a".into(),
-                module_key: "k1".into(),
-                module_path: "m1".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 100,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 0,
-            },
-            EntryModuleTypecheckRow {
-                entry: "b".into(),
-                module_key: "k1".into(),
-                module_path: "m1".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 50,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 1,
-            },
-        ];
-        let mut tracker = HashMap::new();
-        tracker.insert(
-            "k1".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "a".to_string(),
-                requesters_seen: 2,
-            },
-        );
-        let m = measurement_from_rows(rows, tracker, 2, 1);
-        assert_eq!(m.repeated_typecheck_misses, 1);
-        assert_eq!(m.repeated_typecheck_compute_ns, 50);
-        assert_eq!(m.decision_ratio, Some(50.0 / 150.0));
-    }
-
-    #[test]
-    fn no_sharing_yields_zero_decision_ratio() {
-        let rows = vec![
-            EntryModuleTypecheckRow {
-                entry: "a".into(),
-                module_key: "k1".into(),
-                module_path: "m1".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 50,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 0,
-            },
-            EntryModuleTypecheckRow {
-                entry: "b".into(),
-                module_key: "k2".into(),
-                module_path: "m2".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 50,
-                first_computing_entry: Some("b".into()),
-                later_requester_count: 0,
-            },
-        ];
-        let mut tracker = HashMap::new();
-        tracker.insert(
-            "k1".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "a".to_string(),
-                requesters_seen: 1,
-            },
-        );
-        tracker.insert(
-            "k2".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "b".to_string(),
-                requesters_seen: 1,
-            },
-        );
-        let m = measurement_from_rows(rows, tracker, 2, 2);
-        assert_eq!(m.decision_ratio, Some(0.0));
-        assert_eq!(m.repeated_typecheck_misses, 0);
-        assert_eq!(m.compute_duplication_factor, Some(1.0));
-        assert_eq!(m.membership_duplication_factor, Some(1.0));
-    }
-
-    #[test]
-    fn cache_hits_carry_zero_typecheck_compute_ns() {
-        let rows = vec![EntryModuleTypecheckRow {
-            entry: "b".into(),
-            module_key: "k1".into(),
-            module_path: "m1".into(),
-            in_closure: true,
-            cache_disposition: TypedCacheDisposition::Hit,
-            typecheck_compute_ns: 0,
-            first_computing_entry: Some("a".into()),
-            later_requester_count: 1,
-        }];
-        let m = measurement_from_rows(rows, HashMap::new(), 1, 1);
-        assert!(
-            m.rows
-                .iter()
-                .filter(|r| r.cache_disposition == TypedCacheDisposition::Hit)
-                .all(|r| r.typecheck_compute_ns == 0),
-            "genuine shared-store hits must not carry typecheck wall"
-        );
-    }
-
-    #[test]
-    fn refused_rows_are_not_counted_as_hits() {
-        let rows = vec![EntryModuleTypecheckRow {
-            entry: "a".into(),
-            module_key: "refused:cause".into(),
-            module_path: "m1".into(),
-            in_closure: true,
-            cache_disposition: TypedCacheDisposition::Refused,
-            typecheck_compute_ns: 0,
-            first_computing_entry: None,
-            later_requester_count: 0,
-        }];
-        let m = measurement_from_rows(rows, HashMap::new(), 1, 1);
-        assert_eq!(m.total_cache_hits, 0);
-        assert_eq!(m.total_cache_refusals, 1);
     }
 }
 

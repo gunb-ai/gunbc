@@ -1214,7 +1214,38 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
     units
 }
 
+/// `ctx` exists solely to reach the failure-receipt companion on a red witness.
+///
+/// `cli_run`'s summary path has projected companion receipts since the Lane B agreement work,
+/// but THIS binary — the one the CI floor actually runs — did not, so the same witness was
+/// loud locally and mute in CI. That divergence is what let ten consecutive
+/// `extdeps_scope_placement_gate_passes` reds on main report only `returned Bool(false)`,
+/// naming neither the refusing arm nor the offending path. Both surfaces now read the one
+/// derivation (`cli_run::failure_receipt_companion`) and the one runner
+/// (`cli_run::run_claim_failure_receipt`); a witness with no companion is unchanged.
+///
+/// HAND-RUST DISPOSITION (DESIGN §7 seed-shrinks-toward-zero; review 47022 asked for this
+/// receipt explicitly). This edit is DEFERRED seed retention, not a new scaffold and not a
+/// census movement: it adds zero tracked-Rust paths (both touched files are already tracked
+/// and neither carries a `rust_source_lifecycle_residue_rows` row), so the path-grain
+/// population `gunbc.stage0_rust_honest_frontier_projection` measures is unchanged by it.
+/// The line-grain axis that would price it, `HandAuthoredLOC`, is one of the three axes that
+/// projection's own note declares explicitly deferred, so there is no line census to shrink
+/// here and claiming one would be a fabricated receipt.
+///
+/// Lane: **v1 exit**, whose fourth finish line is zero hand-maintained Rust.
+/// ROADMAP row: "Get hand-written Rust in this repository down to zero"
+/// (authority `dag/gunbc/v1_deletion_plan.dag`).
+/// Dissolution trigger: this projection is floor-runner plumbing and has no independent
+/// lifetime — it is deleted WITH `claim_executor` when witness execution leaves the
+/// hand-maintained seed runner, not migrated ahead of it. Writing the receipt in `.dag`
+/// first is not available: the failure-receipt channel is the seed's own witness-reporting
+/// surface, and `.dag` has no print primitive to surface a reason through.
+///
+/// The alternative was to leave the reason discarded, which is the DESIGN §5 trap this whole
+/// PR exists to close — a refusal that cannot be located is not a refusal anyone can act on.
 fn claim_result_for_outcome(
+    ctx: &InterpContext,
     function: String,
     entry: String,
     outcome: ClaimOutcome,
@@ -1236,10 +1267,21 @@ fn claim_result_for_outcome(
             budget_refusal: None,
         },
         ClaimOutcome::Fail => ClaimResult {
+            detail: {
+                let mut detail = "returned Bool(false)".to_string();
+                if let Some(companion) = v1_compiler::cli_run::failure_receipt_companion(&function)
+                {
+                    let receipt = v1_compiler::cli_run::run_claim_failure_receipt(ctx, &companion);
+                    if !receipt.is_empty() {
+                        detail.push_str(" | ");
+                        detail.push_str(&receipt);
+                    }
+                }
+                detail
+            },
             function,
             entry: entry.clone(),
             ok: false,
-            detail: "returned Bool(false)".to_string(),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -1436,7 +1478,14 @@ fn run_shared_entry_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(
+                &ctx,
+                function.clone(),
+                entry.to_string(),
+                outcome,
+                wall_nanos,
+                rn,
+            )
         })
         .collect()
 }
@@ -1507,7 +1556,14 @@ fn run_memo_shared_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(
+                ctx,
+                function.clone(),
+                entry.to_string(),
+                outcome,
+                wall_nanos,
+                rn,
+            )
         })
         .collect()
 }
@@ -2009,14 +2065,26 @@ fn run_discovery_batch_node(
                     .saturating_sub(st.attributed_total())),
             );
             eprintln!(
-                "[assembly-split] schedule={:.1}ms probe={:.1}ms registry={:.1}ms services={:.1}ms rewire={:.1}ms emit_info={:.1}ms residue={:.1}ms",
+                "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms root_symbol_index={:.1}ms root_variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_import_str={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
                 ms(st.assembly_schedule),
                 ms(st.assembly_probe),
+                ms(st.assembly_graph),
+                ms(st.assembly_symbol_index),
+                ms(st.assembly_pool_fill),
+                ms(st.assembly_symbol_index_merge),
+                ms(st.assembly_variant_base),
+                ms(st.assembly_root_symbol_index),
+                ms(st.assembly_root_variant_base),
+                ms(st.assembly_environment),
+                ms(st.assembly_diagnostics),
                 ms(st.assembly_registry),
                 ms(st.assembly_services),
-                ms(st.assembly_rewire),
+                ms(st.assembly_rewire_type_env),
+                ms(st.assembly_rewire_import_str),
+                ms(st.assembly_rewire_func_env),
                 ms(st.assembly_emit_info),
                 ms(st.reconcile_assembly),
+                ms(st.assembly_rewire),
             );
             // Both halves come from the SAME per-entry spans here (`total_resolve_nanos`
             // and `total_stage_nanos` are accumulated entry by entry at the same two call

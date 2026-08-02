@@ -146,14 +146,6 @@ fn host_standup_assimilation_step(
   }
 }
 
-fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
-    field: WholeDeclaration,
-  }
-}
-
 fn host_standup_prefix_gap_step(
   phase: HostStandupPrefixPhase,
   label: NonEmptyStr,

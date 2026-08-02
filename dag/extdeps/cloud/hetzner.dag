@@ -1,11 +1,7 @@
 module extdeps.cloud.hetzner
 
-import std.roster_frontier {
-  FrontierRow,
-  TriggerProse,
-  decl_ref,
-  frontier_row_decl,
-}
+import std.roster_frontier { FrontierRow, TriggerProse, frontier_row_decl }
+import std.decl_ref { decl_ref }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

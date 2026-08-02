@@ -656,6 +656,22 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
   )
 }
 
+test fn witness_v1_test_migration_contract_names_behavior_frontier() -> Bool {
+  match bound_execution_contract_for(id: "v1-test-migration") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && validations |> any(validation => match validation {
+          GunbcClaimValidation { entry, function } =>
+            (entry as String) == "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag"
+              && function == "legacy_test_behavior_unclassified_frontier_is_zero"
+          CargoTestValidation { filter: _ } => false
+          CargoFmtValidation => false
+        })
+  }
+}
+
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
   match bound_execution_contract_for(id: "observation-raw-print-retirement") {
     ExecutionContractUnspecified => false

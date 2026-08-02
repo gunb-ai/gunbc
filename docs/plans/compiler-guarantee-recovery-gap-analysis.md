@@ -893,8 +893,11 @@ prose and edges disagree, **the edges are the authority**.
 **Stage 0 — the measurement schema (added by the seventh-pass verdict, before probes AND
 carrier).** The first spine increment is neither probes nor carrier but the protocol they
 meet through: `GuaranteeClassId` / `GuaranteePathId` / `GuaranteeProbeId` as typed
-identities, `GuaranteePath` (`subject_grain`, `acceptance_boundary`, `compile_mode`,
-`realization_target`), and `GuaranteeMeasurementReceipt` (class × path × probe ×
+identities, `GuaranteePath` (`subject_grain`, `acceptance_boundary`,
+`realization_target` — the landed `gunbc.guarantee_measurement` shape: `compile_mode` was
+deleted as a derivable dual representation and `InterpreterRun` re-read as the
+realization-agnostic `RuntimeRun`, review 46308 on gunbc#7572), and
+`GuaranteeMeasurementReceipt` (class × path × probe ×
 `subject_revision` × `harness_revision` × `probe_set_digest` × observed outcome). Without
 this stage the probe corpus and the carrier each invent the receipt shape and meet in a
 protocol cycle — probes can't emit rows the carrier hasn't defined, the carrier can't
@@ -919,7 +922,7 @@ inhabitance · invocation · domain/totality · control soundness · semantic di
 realization · fidelity · external boundary) as **four carriers**: `GuaranteeRequirement`
 (class identity, domain, harm, `ceiling` with its mathematical/capability/price
 justification, `next_rung_trigger`); `GuaranteePath` (`subject_grain`,
-`acceptance_boundary`, `compile_mode`, `realization_target` — one row per in-scope path,
+`acceptance_boundary`, `realization_target` — the landed schema row; one per in-scope path,
 the population **derived from the census's path axes or completeness-witnessed against
 them**, so a strongest-path-only reading is a red, not an oversight); `GuaranteeMeasurement`
 (an executed probe/witness receipt, **with a named consumer in `Accepted`**); and
