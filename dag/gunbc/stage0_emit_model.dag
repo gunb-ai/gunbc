@@ -1,6 +1,5 @@
 module gunbc.stage0_emit_model
 
-
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",
