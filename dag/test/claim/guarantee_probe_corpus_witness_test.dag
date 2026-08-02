@@ -6,6 +6,8 @@ import gunbc.guarantee_probe_corpus {
   v2_infer_eval_path_id,
   v2_infer_translate_path_id,
   guarantee_probe_paths,
+  guarantee_probe_rows,
+  guarantee_probe_rows_reserved,
   guarantee_probe_class_ids,
   guarantee_probe_ids,
   guarantee_probe_ids_reserved,
@@ -29,12 +31,19 @@ import gunbc.guarantee_probe_corpus {
   ExpectBlockingRefusal,
   ExpectZeroDiagnostics,
   probe_expectation_holds,
+  probe_row_expectation_holds,
   probe_observation_from_census,
   observation_is_blocking_refusal,
   observation_is_clean,
   observation_refused_count,
   build_v1_compile_receipt,
   receipt_joins_v1_compile_path,
+  receipt_matches_probe_row,
+  active_probe_row,
+  resolve_canonical_probe_row,
+  ProbeRowResolved,
+  ProbeRowUnknown,
+  ProbeRowDuplicate,
   census_blocking_count_for_class,
   census_any_count_for_class,
   guarantee_probe_id_strings,
@@ -101,108 +110,124 @@ test fn probe_set_digest_is_stable() -> Bool {
 
 test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool {
   let census = census_of(source: call_mislabel_source)
-  probe_expectation_holds(
-    census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
-  )
-    && match census_blocking_count_for_class(census: census, wanted: "CallArgumentNameUnknown") {
-      Present { value: n } => n >= 1
-      Absent => false
-    }
+  match active_probe_row(probe: call_mislabel_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "CallArgumentNameUnknown") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
 }
 
 test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
   let census = census_of(source: call_surplus_source)
-  probe_expectation_holds(
-    census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
-  )
+  match active_probe_row(probe: call_surplus_red_probe) {
+    Present { value: row } => probe_row_expectation_holds(census: census, row: row)
+    Absent => false
+  }
 }
 
 test fn call_shape_green_control_has_zero_diagnostics() -> Bool {
-  probe_expectation_holds(
-    census: census_of(source: call_shape_green_source),
-    expectation: ExpectZeroDiagnostics,
-  )
+  match active_probe_row(probe: call_shape_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: call_shape_green_source), row: row)
+    Absent => false
+  }
 }
 
 test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
   let census = census_of(source: method_missing_source)
-  probe_expectation_holds(
-    census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
-  )
-    && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
-      Present { value: n } => n >= 3
-      Absent => false
-    }
+  match active_probe_row(probe: method_missing_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
+          Present { value: n } => n >= 3
+          Absent => false
+        }
+    Absent => false
+  }
 }
 
 test fn method_green_control_has_zero_diagnostics() -> Bool {
-  probe_expectation_holds(
-    census: census_of(source: method_green_source),
-    expectation: ExpectZeroDiagnostics,
-  )
+  match active_probe_row(probe: method_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: method_green_source), row: row)
+    Absent => false
+  }
 }
 
 test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
   let census = census_of(source: conformance_scalar_red_source)
-  probe_expectation_holds(
-    census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
-  )
-    && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
-      Present { value: n } => n >= 2
-      Absent => false
-    }
+  match active_probe_row(probe: conformance_scalar_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+          Present { value: n } => n >= 2
+          Absent => false
+        }
+    Absent => false
+  }
 }
 
 test fn conformance_green_control_has_zero_diagnostics() -> Bool {
-  probe_expectation_holds(
-    census: census_of(source: conformance_green_source),
-    expectation: ExpectZeroDiagnostics,
-  )
+  match active_probe_row(probe: conformance_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: conformance_green_source), row: row)
+    Absent => false
+  }
 }
 
 test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
-  let receipt = build_v1_compile_receipt(
-    class: call_label_surplus_class,
-    probe: call_mislabel_red_probe,
-    census: census_of(source: call_mislabel_source),
-    subject_revision: probe_subject_revision_placeholder,
-    harness_revision: probe_harness_revision_placeholder,
-  )
-  receipt_joins_v1_compile_path(receipt: receipt)
-    && (receipt.class as String) == (call_label_surplus_class as String)
-    && (receipt.probe as String) == (call_mislabel_red_probe as String)
-    && (receipt.path as String) == (v1_compile_rust_path_id as String)
+  match active_probe_row(probe: call_mislabel_red_probe) {
+    Present { value: row } =>
+      let receipt = build_v1_compile_receipt(
+        row: row,
+        census: census_of(source: call_mislabel_source),
+        subject_revision: probe_subject_revision_placeholder,
+        harness_revision: probe_harness_revision_placeholder,
+      )
+      receipt_joins_v1_compile_path(receipt: receipt)
+        && receipt_matches_probe_row(receipt: receipt, row: row)
+        && (receipt.path as String) == (v1_compile_rust_path_id as String)
+    Absent => false
+  }
 }
 
 test fn blocking_refusal_observation_is_a_verdict() -> Bool {
   let census = census_of(source: method_missing_source)
-  let receipt = build_v1_compile_receipt(
-    class: method_established_surface_class,
-    probe: method_missing_red_probe,
-    census: census,
-    subject_revision: probe_subject_revision_placeholder,
-    harness_revision: probe_harness_revision_placeholder,
-  )
-  observed_is_verdict(o: receipt.observed)
-    && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
-      Present { value: n } => observation_refused_count(o: receipt.observed) == n
-      Absent => false
-    }
+  match active_probe_row(probe: method_missing_red_probe) {
+    Present { value: row } =>
+      let receipt = build_v1_compile_receipt(
+        row: row,
+        census: census,
+        subject_revision: probe_subject_revision_placeholder,
+        harness_revision: probe_harness_revision_placeholder,
+      )
+      observed_is_verdict(o: receipt.observed)
+        && receipt_matches_probe_row(receipt: receipt, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
+          Present { value: n } => observation_refused_count(o: receipt.observed) == n
+          Absent => false
+        }
+    Absent => false
+  }
 }
 
 test fn green_control_observation_is_accepted_clean() -> Bool {
-  let receipt = build_v1_compile_receipt(
-    class: call_label_surplus_class,
-    probe: call_shape_green_probe,
-    census: census_of(source: call_shape_green_source),
-    subject_revision: probe_subject_revision_placeholder,
-    harness_revision: probe_harness_revision_placeholder,
-  )
-  observation_is_clean(o: receipt.observed)
+  match active_probe_row(probe: call_shape_green_probe) {
+    Present { value: row } =>
+      let receipt = build_v1_compile_receipt(
+        row: row,
+        census: census_of(source: call_shape_green_source),
+        subject_revision: probe_subject_revision_placeholder,
+        harness_revision: probe_harness_revision_placeholder,
+      )
+      observation_is_clean(o: receipt.observed)
+        && receipt_matches_probe_row(receipt: receipt, row: row)
+    Absent => false
+  }
 }
 
 test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
@@ -240,35 +265,44 @@ test fn probe_ids_are_canonically_ordered() -> Bool {
 
 test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
   let census = census_of(source: call_mislabel_source)
-  probe_expectation_holds(
-    census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
-  )
-    && !probe_expectation_holds(
-      census: census,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
-    )
+  match active_probe_row(probe: call_mislabel_red_probe) {
+    Present { value: mislabel_row } =>
+      match active_probe_row(probe: call_surplus_red_probe) {
+        Present { value: surplus_row } =>
+          probe_row_expectation_holds(census: census, row: mislabel_row)
+            && !probe_row_expectation_holds(census: census, row: surplus_row)
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn surplus_red_does_not_satisfy_mislabel_expectation() -> Bool {
   let census = census_of(source: call_surplus_source)
-  probe_expectation_holds(
-    census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
-  )
-    && !probe_expectation_holds(
-      census: census,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
-    )
+  match active_probe_row(probe: call_surplus_red_probe) {
+    Present { value: surplus_row } =>
+      match active_probe_row(probe: call_mislabel_red_probe) {
+        Present { value: mislabel_row } =>
+          probe_row_expectation_holds(census: census, row: surplus_row)
+            && !probe_row_expectation_holds(census: census, row: mislabel_row)
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn green_control_fails_blocking_refusal_expectation() -> Bool {
   let census = census_of(source: call_shape_green_source)
-  probe_expectation_holds(census: census, expectation: ExpectZeroDiagnostics)
-    && !probe_expectation_holds(
-      census: census,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
-    )
+  match active_probe_row(probe: call_shape_green_probe) {
+    Present { value: green_row } =>
+      match active_probe_row(probe: call_mislabel_red_probe) {
+        Present { value: mislabel_row } =>
+          probe_row_expectation_holds(census: census, row: green_row)
+            && !probe_row_expectation_holds(census: census, row: mislabel_row)
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn observation_fold_routes_blocking_refusal() -> Bool {
@@ -279,21 +313,46 @@ test fn observation_fold_routes_blocking_refusal() -> Bool {
 
 test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
   let census = census_of(source: call_mislabel_source)
-  !probe_expectation_holds(
-    census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
-  )
-    && observation_is_blocking_refusal(
-      o: probe_observation_from_census(census: census),
-      wanted: "CallArgumentNameUnknown" as NonEmptyStr,
-    )
-    && observation_is_clean(o: build_v1_compile_receipt(
-      class: call_label_surplus_class,
-      probe: call_mislabel_red_probe,
-      census: census,
-      subject_revision: probe_subject_revision_placeholder,
-      harness_revision: probe_harness_revision_placeholder,
-    ).observed) == false
+  match active_probe_row(probe: call_mislabel_red_probe) {
+    Present { value: row } =>
+      match active_probe_row(probe: call_surplus_red_probe) {
+        Present { value: wrong_row } =>
+          probe_row_expectation_holds(census: census, row: row)
+            && !probe_row_expectation_holds(census: census, row: wrong_row)
+            && observation_is_blocking_refusal(
+              o: probe_observation_from_census(census: census),
+              wanted: "CallArgumentNameUnknown" as NonEmptyStr,
+            )
+            && observation_is_clean(o: build_v1_compile_receipt(
+              row: row,
+              census: census,
+              subject_revision: probe_subject_revision_placeholder,
+              harness_revision: probe_harness_revision_placeholder,
+            ).observed) == false
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn canonical_probe_rows_bind_class_path_and_probe() -> Bool {
+  count(guarantee_probe_rows()) == count(guarantee_probe_ids())
+    && guarantee_probe_ids_unique(ids: guarantee_probe_ids())
+    && count(guarantee_probe_rows_reserved()) == count(guarantee_probe_ids_reserved())
+    && match resolve_canonical_probe_row(wanted: v2_frontier_red_probe) {
+      ProbeRowResolved { row: row } =>
+        (row.class as String) == (v2_self_grounding_frontier_class as String)
+          && (row.path as String) == (v2_infer_eval_path_id as String)
+          && (row.probe as String) == (v2_frontier_red_probe as String)
+      ProbeRowUnknown { wanted: _ } => false
+      ProbeRowDuplicate { wanted: _, matches: _ } => false
+    }
+    && match active_probe_row(probe: call_mislabel_red_probe) {
+      Present { value: row } =>
+        (row.class as String) == (call_label_surplus_class as String)
+          && (row.path as String) == (v1_compile_rust_path_id as String)
+      Absent => false
+    }
 }
 
 test fn v2_translate_identities_are_declared() -> Bool {

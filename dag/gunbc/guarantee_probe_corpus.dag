@@ -37,7 +37,7 @@ data guarantee_probe_corpus_path_scope_note: String = "THREE PATHS FOR THE LANDE
 
 data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. guarantee_probe_ids_reserved holds OPEN follow-on identities (gunbc#7555) outside the digest until their control merges. Callers must not re-sort; the active roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_phase_receipt take both from the caller — witness fixtures own placeholder revisions until the baseline stage names real commits; the corpus module does not fabricate provenance inside the builders."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_phase_receipt take a canonical GuaranteeProbeRow plus revisions from the caller — class, path, and probe are never independently threaded; witness fixtures own placeholder revisions until the baseline stage names real commits."
 
 data v1_compile_rust_path_id: GuaranteePathId = "v1-compile-rust" as GuaranteePathId
 data v2_infer_eval_path_id: GuaranteePathId = "v2-infer-eval" as GuaranteePathId
@@ -105,25 +105,136 @@ data v2_frontier_green_probe: GuaranteeProbeId = "v2-self-grounding-frontier-der
 data v2_translate_underived_red_probe: GuaranteeProbeId = "v2-translate-underived-refusal-conj-red" as GuaranteeProbeId
 data v2_translate_underived_green_probe: GuaranteeProbeId = "v2-translate-underived-refusal-derived-green" as GuaranteeProbeId
 
-fn guarantee_probe_ids() -> List<GuaranteeProbeId> {
+type ProbeExpectation
+  = ExpectBlockingRefusal { diagnostic_class: NonEmptyStr }
+  | ExpectZeroDiagnostics
+  | ExpectAcceptedCounted { diagnostic_class: NonEmptyStr }
+
+type GuaranteeProbeRow {
+  probe: GuaranteeProbeId
+  class: GuaranteeClassId
+  path: GuaranteePathId
+  expectation: ProbeExpectation
+}
+
+type ProbeRowResolution
+  = ProbeRowResolved { row: GuaranteeProbeRow }
+  | ProbeRowUnknown { wanted: GuaranteeProbeId }
+  | ProbeRowDuplicate { wanted: GuaranteeProbeId, matches: Int }
+
+fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
   [
-    call_shape_green_probe,
-    call_mislabel_red_probe,
-    call_surplus_red_probe,
-    conformance_green_probe,
-    conformance_scalar_red_probe,
-    method_green_probe,
-    method_missing_red_probe,
-    v2_frontier_green_probe,
-    v2_frontier_red_probe,
+    GuaranteeProbeRow {
+      probe: call_shape_green_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: call_mislabel_red_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: call_surplus_red_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: conformance_green_probe,
+      class: declared_conformance_ground_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: conformance_scalar_red_probe,
+      class: declared_conformance_ground_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: method_green_probe,
+      class: method_established_surface_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: method_missing_red_probe,
+      class: method_established_surface_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: v2_frontier_green_probe,
+      class: v2_self_grounding_frontier_class,
+      path: v2_infer_eval_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: v2_frontier_red_probe,
+      class: v2_self_grounding_frontier_class,
+      path: v2_infer_eval_path_id,
+      expectation: ExpectAcceptedCounted { diagnostic_class: "infer_grounding_not_derived" as NonEmptyStr },
+    },
   ]
 }
 
-fn guarantee_probe_ids_reserved() -> List<GuaranteeProbeId> {
+fn guarantee_probe_rows_reserved() -> List<GuaranteeProbeRow> {
   [
-    v2_translate_underived_red_probe,
-    v2_translate_underived_green_probe,
+    GuaranteeProbeRow {
+      probe: v2_translate_underived_red_probe,
+      class: v2_translate_underived_refusal_class,
+      path: v2_infer_translate_path_id,
+      expectation: ExpectAcceptedCounted { diagnostic_class: "infer_grounding_not_derived" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: v2_translate_underived_green_probe,
+      class: v2_translate_underived_refusal_class,
+      path: v2_infer_translate_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
   ]
+}
+
+fn guarantee_probe_ids() -> List<GuaranteeProbeId> {
+  guarantee_probe_rows() |> map(row => row.probe)
+}
+
+fn guarantee_probe_ids_reserved() -> List<GuaranteeProbeId> {
+  guarantee_probe_rows_reserved() |> map(row => row.probe)
+}
+
+fn resolve_guarantee_probe_row(rows: List<GuaranteeProbeRow>, wanted: GuaranteeProbeId) -> ProbeRowResolution {
+  let hits = rows |> filter(row => (row.probe as String) == (wanted as String))
+  if count(hits) == 0 {
+    ProbeRowUnknown { wanted: wanted }
+  } else if count(hits) > 1 {
+    ProbeRowDuplicate { wanted: wanted, matches: count(hits) }
+  } else {
+    match hits |> first {
+      Present { value: row } => ProbeRowResolved { row: row }
+      Absent => ProbeRowUnknown { wanted: wanted }
+    }
+  }
+}
+
+fn resolve_canonical_probe_row(wanted: GuaranteeProbeId) -> ProbeRowResolution {
+  match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: wanted) {
+    ProbeRowResolved { row: row } => ProbeRowResolved { row: row }
+    ProbeRowUnknown { wanted: w } =>
+      resolve_guarantee_probe_row(rows: guarantee_probe_rows_reserved(), wanted: w)
+    ProbeRowDuplicate { wanted: w, matches: m } => ProbeRowDuplicate { wanted: w, matches: m }
+  }
+}
+
+fn active_probe_row(probe: GuaranteeProbeId) -> GuaranteeProbeRow? {
+  match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: probe) {
+    ProbeRowResolved { row: row } => Present { value: row }
+    ProbeRowUnknown { wanted: _ } => none
+    ProbeRowDuplicate { wanted: _, matches: _ } => none
+  }
 }
 
 fn guarantee_probe_id_strings() -> List<String> {
@@ -191,10 +302,6 @@ fn probe_ids_are_lexicographically_ordered(ids: List<GuaranteeProbeId>) -> Bool 
   })
   walked.ok
 }
-
-type ProbeExpectation
-  = ExpectBlockingRefusal { diagnostic_class: NonEmptyStr }
-  | ExpectZeroDiagnostics
 
 fn non_empty_diagnostics_count_reason(nes: NonEmptyDiagnostics, reason: Symbol) -> Nat {
   let head_count = if nes.head.reason == reason { 1 } else { 0 }
@@ -267,12 +374,50 @@ fn observation_is_clean(o: ProbeObservation) -> Bool {
 }
 
 fn probe_expectation_holds(census: CompileDiagnosticCensus, expectation: ProbeExpectation) -> Bool {
-  let obs = probe_observation_from_census(census: census)
+  probe_row_observation_holds(
+    observation: probe_observation_from_census(census: census),
+    expectation: expectation,
+  )
+}
+
+fn probe_row_expectation_holds(census: CompileDiagnosticCensus, row: GuaranteeProbeRow) -> Bool {
+  probe_row_observation_holds(
+    observation: probe_observation_from_census(census: census),
+    expectation: row.expectation,
+  )
+}
+
+fn observation_is_accepted_counted(o: ProbeObservation, wanted: NonEmptyStr) -> Bool {
+  probe_observation_fold(
+    o: o,
+    fold: ProbeObservationFold {
+      refused: fn(_, _) { false },
+      accepted_clean: false,
+      accepted_counted: fn(cls, _) { cls == wanted },
+      diverged: fn(_) { false },
+      not_runnable: fn(_) { false },
+    },
+  )
+}
+
+fn probe_row_observation_holds(observation: ProbeObservation, expectation: ProbeExpectation) -> Bool {
   match expectation {
-    ExpectZeroDiagnostics => observation_is_clean(o: obs)
+    ExpectZeroDiagnostics => observation_is_clean(o: observation)
     ExpectBlockingRefusal { diagnostic_class: wanted } =>
-      observation_is_blocking_refusal(o: obs, wanted: wanted)
+      observation_is_blocking_refusal(o: observation, wanted: wanted)
+    ExpectAcceptedCounted { diagnostic_class: wanted } =>
+      observation_is_accepted_counted(o: observation, wanted: wanted)
   }
+}
+
+fn probe_row_observation_holds_for_row(observation: ProbeObservation, row: GuaranteeProbeRow) -> Bool {
+  probe_row_observation_holds(observation: observation, expectation: row.expectation)
+}
+
+fn receipt_matches_probe_row(receipt: GuaranteeMeasurementReceipt, row: GuaranteeProbeRow) -> Bool {
+  (receipt.probe as String) == (row.probe as String)
+    && (receipt.class as String) == (row.class as String)
+    && (receipt.path as String) == (row.path as String)
 }
 
 fn observation_refused_count(o: ProbeObservation) -> Int {
@@ -320,16 +465,15 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus) -> ProbeObserv
 }
 
 fn build_v1_compile_receipt(
-  class: GuaranteeClassId,
-  probe: GuaranteeProbeId,
+  row: GuaranteeProbeRow,
   census: CompileDiagnosticCensus,
   subject_revision: CommitSha,
   harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
   GuaranteeMeasurementReceipt {
-    class: class,
-    path: v1_compile_rust_path_id,
-    probe: probe,
+    class: row.class,
+    path: row.path,
+    probe: row.probe,
     subject_revision: subject_revision,
     harness_revision: harness_revision,
     probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
@@ -346,17 +490,15 @@ fn receipt_joins_v1_compile_path(receipt: GuaranteeMeasurementReceipt) -> Bool {
 }
 
 fn build_v2_phase_receipt(
-  class: GuaranteeClassId,
-  path: GuaranteePathId,
-  probe: GuaranteeProbeId,
+  row: GuaranteeProbeRow,
   observed: ProbeObservation,
   subject_revision: CommitSha,
   harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
   GuaranteeMeasurementReceipt {
-    class: class,
-    path: path,
-    probe: probe,
+    class: row.class,
+    path: row.path,
+    probe: row.probe,
     subject_revision: subject_revision,
     harness_revision: harness_revision,
     probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
