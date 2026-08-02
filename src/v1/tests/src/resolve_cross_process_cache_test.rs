@@ -39,8 +39,9 @@ use im::Vector;
 use std::rc::Rc;
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context,
-    resolve_closure_request_key_from_digests, resolve_entry_graph, resolve_entry_with_index,
-    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome,
+    reset_typecheck_compute_count, resolve_closure_request_key_from_digests, resolve_entry_graph,
+    resolve_entry_with_index, resolved_graph_parts_semantic_digest, run_claim,
+    typecheck_compute_count, with_typecheck_compute_count_receipt, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
     build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
@@ -1204,5 +1205,63 @@ fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
             decodes_after_disk,
             "memo repeat must not decode again"
         );
+    });
+}
+
+/// Closes the "warm-hit-skips-semantic-recompute" gap named by
+/// `gunbc.materialization_kernel_closing_contract` (brief step 2, Lane F,
+/// still-bat-561): `cross_process_cache_matches_cold_oracle_corpus` proves the
+/// cached verdict *equals* the cold one, which is necessary but not sufficient —
+/// a cache that quietly recomputed and then happened to agree would pass that
+/// test too. This test proves the recompute itself is skipped, using the same
+/// `TYPECHECK_COMPUTE_COUNT` receipt `union_resolve_receipts_test.rs` already uses
+/// to prove the in-process memo tier's skip, now wired through the real disk-tier
+/// seam (`resolved_graph_from_sources_with_index`'s `CacheProbeResult::Hit` arm,
+/// which returns via `install_cross_process_materialization_hit` before the
+/// per-module typecheck loop that calls `bump_typecheck_compute_count`).
+#[test]
+fn cross_process_hit_skips_semantic_recompute() {
+    with_typecheck_compute_count_receipt(|| {
+        let dir = temp_dir("skip-recompute");
+        let (roots, a, _b, _c) = write_fixture(&dir);
+        let cache_dir = dir.join("cache");
+        fs::create_dir_all(&cache_dir).expect("cache dir");
+
+        let cold = cold_oracle(&roots, &a, "witness_a_true");
+        assert_eq!(cold, "PASS", "cold oracle sanity");
+
+        // Cold, cache-populating resolve: a fresh process would genuinely typecheck.
+        reset_typecheck_compute_count();
+        with_cache_env(&cache_dir, || {
+            let index = build_multi_entry_index(&roots);
+            resolve_entry_with_index(&index, &a).expect("warm the disk cache");
+        });
+        let cold_computes = typecheck_compute_count();
+        assert!(
+            cold_computes > 0,
+            "the cache-populating resolve must genuinely typecheck at least one module \
+             (cold_computes = {cold_computes}); otherwise this test cannot discriminate \
+             a real skip from an already-warm in-process share"
+        );
+
+        // Warm, disk-tier-hit resolve: a FRESH index (no in-process share) so the
+        // only route to an answer is the cross-process store's Hit arm.
+        reset_typecheck_compute_count();
+        let warm_verdict = cached_verdict(&roots, &a, "witness_a_true", &cache_dir);
+        let warm_computes = typecheck_compute_count();
+
+        assert_eq!(
+            warm_verdict, "PASS",
+            "a disk-tier hit must still serve the correct verdict"
+        );
+        assert_eq!(
+            warm_computes, 0,
+            "a restart-stable exact hit must skip semantic recompute entirely \
+             (bump_typecheck_compute_count must not fire on the Hit path); \
+             got {warm_computes} genuine typechecks — the cache served an answer \
+             without proving it skipped the computation it claims to replace"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     });
 }
