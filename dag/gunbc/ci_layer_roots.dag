@@ -806,6 +806,8 @@ data v1_claim_scoped_witness_dissolve_on: List<V1ClaimScopedWitnessDissolutionTr
   V2ParserOwnsV1Claims {},
 ]
 
+data v1_claim_scoped_witness_dissolve_on_note: String = "When V2ParserOwnsV1Claims removes this scoped tail, the floor coordinator's scoped-receipt arming and std.realization_schedule scoped_witness_execution_receipt_decode surface must dissolve or change in the same motion: a gunbc_ci_floor_plan with no scoped tail otherwise leaves a header-only ledger that the decoder deliberately refuses, so the coupling reds visibly instead of normalizing an unmodeled zero-row run."
+
 data v1_claim_scoped_witness_entries: List<ScheduleWitnessEntry> = [
   ScheduleWitnessEntry {
     entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag",
