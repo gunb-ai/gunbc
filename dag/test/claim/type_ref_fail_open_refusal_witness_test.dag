@@ -24,7 +24,11 @@ import gunbc.type_ref_binding_authority_debt {
   type_ref_debt_freeze_early_receipt,
   type_ref_debt_freeze_census_receipt,
   type_ref_debt_freeze_vs_provisional_delta_note,
-  type_ref_debt_site_disposition_note
+  type_ref_debt_site_disposition_note,
+  type_ref_debt_universe_openness_note,
+  type_ref_import_add_discriminator_note,
+  type_ref_class_b_explicitation_count,
+  type_ref_class_b_explicitation_count_note
 }
 import std.types { String, Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -160,4 +164,24 @@ test fn incidental_outside_subset_is_by_subset_rule_not_construction() -> Bool {
   string_contains(s: type_ref_debt_site_disposition_note, pattern: "incidental BY SUBSET RULE")
     && string_contains(s: type_ref_debt_site_disposition_note, pattern: "almost certainly")
     && (string_contains(s: type_ref_debt_site_disposition_note, pattern: "BY CONSTRUCTION") == false)
+}
+
+test fn debt_universe_openness_is_declared_interim() -> Bool {
+  string_contains(s: type_ref_debt_universe_openness_note, pattern: "UNIVERSE OPENNESS")
+    && string_contains(s: type_ref_debt_universe_openness_note, pattern: "OPEN")
+    && string_contains(s: type_ref_debt_universe_openness_note, pattern: "BOUNDED INTERIM")
+    && string_contains(s: type_ref_debt_universe_openness_note, pattern: "N2 containment")
+    && string_contains(s: type_ref_debt_universe_openness_note, pattern: "rung inflation")
+}
+
+test fn import_add_discriminator_is_explicitation_vs_padding() -> Bool {
+  string_contains(s: type_ref_import_add_discriminator_note, pattern: "EXPLICITATION")
+    && string_contains(s: type_ref_import_add_discriminator_note, pattern: "PADDING")
+    && string_contains(s: type_ref_import_add_discriminator_note, pattern: "DECLARES")
+}
+
+test fn class_b_explicitation_count_seeded_and_priced() -> Bool {
+  type_ref_class_b_explicitation_count == 35
+    && string_contains(s: type_ref_class_b_explicitation_count_note, pattern: "Seed 905307fb = 28")
+    && string_contains(s: type_ref_class_b_explicitation_count_note, pattern: "displaced cost")
 }

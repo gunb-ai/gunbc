@@ -1,7 +1,7 @@
 module v2.std.effect_plan
 
 import v2.std.text { String }
-import std.nat { Nat }
+import v2.std.nat { Nat }
 import v2.std.algebra { FreeMonoid }
 import v2.std.collection {
   List
@@ -26,7 +26,7 @@ type EffectPlanStep<E>
   | For { binder: Symbol, over: ValueSource, body: EffectPlan<E> }
   | While { cond: Predicate, body: EffectPlan<E> }
   | BoundedPoll {
-      max_attempts: v2.std.nat.Nat,
+      max_attempts: Nat,
       body: EffectPlan<E>,
       success: Predicate
     }
