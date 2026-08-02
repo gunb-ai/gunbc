@@ -1633,6 +1633,23 @@ fn native_transition_decision(
     (accepted, fallback)
 }
 
+fn native_transition_population_counts(
+    selected: u64,
+    native_ok: bool,
+    fallback: bool,
+) -> (u64, u64, u64, u64) {
+    let native_count = if native_ok { selected } else { 0 };
+    let interpreted_count = if fallback { selected } else { 0 };
+    let unavailable_count = if native_ok { 0 } else { selected };
+    let fallback_count = if fallback { selected } else { 0 };
+    (
+        native_count,
+        interpreted_count,
+        unavailable_count,
+        fallback_count,
+    )
+}
+
 fn run_native_bundle_unit(
     source_roots: &[String],
     entry: String,
@@ -1709,10 +1726,8 @@ fn run_native_bundle_unit(
     let (accepted, fallback) =
         native_transition_decision(native_ok, oracle_green, planted_red_equivalent);
     let selected = primary.selected_count;
-    let native_count = if native_ok { selected } else { 0 };
-    let interpreted_count = if native_ok { 0 } else { selected };
-    let unavailable_count = if native_ok { 0 } else { selected };
-    let fallback_count = unavailable_count;
+    let (native_count, interpreted_count, unavailable_count, fallback_count) =
+        native_transition_population_counts(selected, native_ok, fallback);
     let cold_compile_wall = cold
         .as_ref()
         .ok()
@@ -7862,6 +7877,18 @@ mod tests {
             (false, false)
         );
         assert_eq!(native_transition_decision(false, true, true), (false, true));
+        assert_eq!(
+            native_transition_population_counts(3, true, false),
+            (3, 0, 0, 0)
+        );
+        assert_eq!(
+            native_transition_population_counts(3, false, true),
+            (0, 3, 3, 3)
+        );
+        assert_eq!(
+            native_transition_population_counts(3, false, false),
+            (0, 0, 3, 0)
+        );
     }
 
     #[test]

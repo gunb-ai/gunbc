@@ -343,9 +343,25 @@ fn native_production_transition_population_holds(
   receipt.selected_count > 0
     && receipt.bundle_count == 1
     && receipt.shard_count == 1
-    && receipt.native_count + receipt.interpreted_count == receipt.selected_count
-    && receipt.unavailable_count == receipt.fallback_count
-    && receipt.fallback_count <= receipt.interpreted_count
+    && receipt.native_count >= 0
+    && receipt.interpreted_count >= 0
+    && receipt.unavailable_count >= 0
+    && receipt.fallback_count >= 0
+    && match receipt.verdict {
+      NativeProductionTransitionAccepted =>
+        receipt.native_count == receipt.selected_count
+          && receipt.interpreted_count == 0
+          && receipt.unavailable_count == 0
+          && receipt.fallback_count == 0
+      NativeProductionTransitionFallback { cause: _ } =>
+        receipt.native_count + receipt.interpreted_count == receipt.selected_count
+          && receipt.unavailable_count == receipt.fallback_count
+          && receipt.fallback_count <= receipt.interpreted_count
+      NativeProductionTransitionRefused { reason: _ } =>
+        receipt.native_count + receipt.interpreted_count <= receipt.selected_count
+          && receipt.unavailable_count <= receipt.selected_count
+          && receipt.fallback_count <= receipt.interpreted_count
+    }
 }
 
 type NativeBundleFamilyCutoverEvidence {
