@@ -2,6 +2,7 @@ module test.claim.stage0_emit_model_witness
 
 import gunbc.stage0_emit_model {
   is_generated_stage0_file,
+  generated_stage0_file_count,
   stage0_module_emit_basename,
   stage0_module_emit_filename
 }
@@ -41,6 +42,14 @@ test fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "cli_run.rs") &&
   !is_generated_stage0_file(basename: "v1_interpreter.rs") &&
   !is_generated_stage0_file(basename: "main.rs")
+}
+
+test fn w_occurrence_binding_identity_emit_enrolled_generated() -> Bool {
+  is_generated_stage0_file(basename: "std_occurrence_identity.rs")
+}
+
+test fn w_generated_file_count_floor_holds() -> Bool {
+  generated_stage0_file_count() >= 112
 }
 
 test fn w_generated_files_classified_generated() -> Bool {
