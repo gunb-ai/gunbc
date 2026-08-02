@@ -131,7 +131,9 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv1_green_dashboard_instance,
   dashboard_instance_provider_state_root,
-  dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable,  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_dispatch_attempt_state_root,
+
 }
 import gunbc.roadmap_dispatch_environment {
   EnvironmentAdmitted,

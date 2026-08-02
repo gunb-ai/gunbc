@@ -78,7 +78,10 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
   dashboard_instance_reconcile,
-  dashboard_instance_retract_plan,
+  dashboard_instance_retract_plan,  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_dispatch_attempt_state_root,
+  dashboard_path_is_under,
+
 }
 
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {

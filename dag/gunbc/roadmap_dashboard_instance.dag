@@ -556,12 +556,12 @@ fn dashboard_instance_paths_are_owned(instance: HostDashboardInstance) -> Bool {
     root: instance.instance_root,
   )
     && match instance.dispatch_state_scope {
-      DispatchStateInstanceOwned =>
+      DispatchStateInstanceOwned { worktree_child: _, attempt_state_child: _ } =>
         dashboard_paths_all_under(
           paths: dashboard_instance_dispatch_state_paths(instance: instance),
           root: instance.instance_root,
         )
-      DispatchStateHostShared => true
+      DispatchStateHostShared { worktree_root: _, attempt_state_root: _ } => true
     }
 }
 
