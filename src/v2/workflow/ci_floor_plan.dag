@@ -362,7 +362,12 @@ fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
   let corpus_labels = list_map(xs: corpus_plan_nodes(spec: spec), f: fn(node) {
     runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
   })
-  concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
+  let spec_labels = concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
+  if gunbc_pr_native_batch_enrolled() {
+    list_snoc_item(xs: spec_labels, item: runnable_single_claim_function(r: gunbc_pr_native_batch()))
+  } else {
+    spec_labels
+  }
 }
 
 fn gunbc_ci_floor_schedule_runnable_labels(batches: List<List<Runnable>>) -> List<String> {
