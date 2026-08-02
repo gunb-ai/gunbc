@@ -2577,8 +2577,11 @@ pub fn type_ref_binding_authority_expect_red_covers(d: &Rc<ErrorNode>) -> bool {
 /// Shared by compile-clean, resolve typecheck gates, `gunbc run` / serve, and
 /// `typecheck_module`'s env-errors early-return so debt sites keep a populated
 /// func_env (arm still emits UnresolvedType; only the abort softens).
-/// Set `GUNBC_TYPE_REF_DEBT_ADMIT=0` to disable admission (raw UnresolvedType census).
+/// `GUNBC_TYPE_REF_DEBT_ADMIT=0` is a stopped-line audit knob: it only *tightens*
+/// (disables debt admission → more refusals fire / raw census). It is not a §5
+/// escape hatch — it never proceeds as if the UnresolvedType refusal had not fired.
 pub(crate) fn type_ref_unresolved_admitted_for_compile_clean(d: &Rc<ErrorNode>) -> bool {
+    // §5: admit=0 widens refusals only (audit/census). Never softens the refusal arm.
     match std::env::var_os("GUNBC_TYPE_REF_DEBT_ADMIT") {
         Some(v) if v == "0" || v.eq_ignore_ascii_case("false") || v == "off" => {
             return false;
