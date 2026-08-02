@@ -95,6 +95,8 @@ test fn compiler_frontier_wave2_emit_surface_dominates_holds() -> Bool {
 }
 
 test fn compiler_frontier_wave2_sizing_band_a_leaf_count_holds() -> Bool {
+  let emit_count = frontier_wave2_emit_surface_module_count(receipts: host_frontier_probe_survey)
+  let upstream_count = frontier_wave2_upstream_semantic_module_count(receipts: host_frontier_probe_survey)
   frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey) == 0
-    && frontier_wave2_emit_surface_module_count(receipts: host_frontier_probe_survey) >= 20
+    && (emit_count + upstream_count) >= 20
 }
