@@ -125,12 +125,16 @@ fn theme_toggle_control() -> Fragment {
 
 data roadmap_wordmark_note: String = "A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name lives in the wordmark, so the two never restate each other."
 
+data header_composition_frame_note: String = "HEADER AND CONTENT SHARE ONE COMPOSITION FRAME (A2 hierarchy closeout, operator gap ruling 2026-08-02: the wide-screen fold showed two alignment systems — the header hugging the left viewport edge while the content column centered at the page measure, leaving a dead gutter that read as accident). The header element keeps its full-width surface and border — it is a chassis edge — but its CONTENT now lives in .header-inner, the same measure_page/auto-margin frame the .roadmap and .daily-workspace columns use, so the wordmark, page name, and controls sit flush over the content column at every width. One frame, stated once: the inner wrapper consumes the identical tokens, so a measure change moves header and content together."
+
 fn roadmap_header(page: String) -> Fragment {
   el("header", [
-    el_class("span", "wordmark", [ txt("gunbc") ]),
-    el("h1", [ txt(page) ]),
-    sound_toggle_control(),
-    theme_toggle_control(),
+    el_class("div", "header-inner", [
+      el_class("span", "wordmark", [ txt("gunbc") ]),
+      el("h1", [ txt(page) ]),
+      sound_toggle_control(),
+      theme_toggle_control(),
+    ]),
   ])
 }
 
