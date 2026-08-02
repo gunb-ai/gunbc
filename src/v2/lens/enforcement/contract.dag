@@ -506,7 +506,7 @@ data lens_contract_vacuity: LensContract = {
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
       entry: "src/v2/test/claim/vacuity_consumer_witness_test.dag",
-      function: "vacuity_consumer_witness_fixture_ingest_is_accepted_by_execution",
+      function: "vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution",
       kind: CorpusWitnessKind
     }
   },
