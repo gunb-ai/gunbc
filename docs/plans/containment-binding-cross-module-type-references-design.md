@@ -1,12 +1,12 @@
 # Design — containment binding for cross-module type references
 
-**Status:** DRAFT (sharp-deer-661). Branch: `origin/session/sharp-deer-661` · PR #7621. **This note** is design-only — N2 implementation does not land from the document.
+**Authority:** merged design note (PR #7621). **This note** is design-only — N2 implementation does not land from the document.
 
 **Authority consumed:** [namespace-resolution-design.md §13](namespace-resolution-design.md#13-resolution-is-unique-on-chain-not-nearest-operator-ruling-ratified-2026-07-21) (unique-on-chain, binding-not-gate, `global_bare` dies as resolution); [namespace unique-on-chain — operational plan](namespace-unique-on-chain-operational-plan.md) (`TypeReference` vs `ValueReference` category, one population fold); [import-strip witness-discovery cascade diagnosis §14](import-strip-witness-discovery-cascade-diagnosis.md#14-post-flip-re-observation--class-b-is-type-only-and-it-fails-open-confirmed-by-execution-2026-07-25) (execution receipt that types diverge from values after the flip; cite **Class B mechanism**, not the historical file roster — §3.2).
 
 **Blocks:** Dispatch 2 mechanical import deletion for type positions; [namespace-resolution-design.md §8](namespace-resolution-design.md#8) terminal step 5 (delete `import` grammar — deps derived from `container.member` references) is **not reachable for type references** on the current resolver in either bare or qualified spelling until this lands.
 
-**Import-deletion graph:** node **N2** (this note). Depends on **N1** (swift-fox-347 — refusal arm for pool-present-but-unbound type misses). The dependency is **verifiability**, not politeness: until N1 lands, a green compile is not evidence that any binding change worked, so N2 implementation cannot be discriminated today even if written.
+**Import-deletion graph:** node **N2** (this note). Prerequisite: an **executing discriminator** proving the fail-open class (pool-present lookup hit ≠ binding → typed `UnresolvedType`, never `Product(<anon>)`) — **N1a**, not an admission/compatibility wall. Symbols: `type_ref_hit_ne_bind_measure_active` / `type_ref_measure_binding_authority` / `compile_dag_diagnostic_census` arming / `dag/test/claim/type_ref_hit_ne_bind_measure_witness_test.dag` (rows 1/3/4/5/7). Archive PR #7622 measured an open-universe admission attempt that the operator blocked; do not treat that tip as the prerequisite.
 
 **Upstream (canonical kernel — active roadmap, not landed for values or types):** `namespace-reference-derived-closure` (candidate producer) and `namespace-canonical-binding` (production changeover) remain **active** roadmap nodes ([operational plan §4](namespace-unique-on-chain-operational-plan.md#4-fresh-canonical-resolver-consuming-edge)). **#7178 predates them** — Dispatch 1 (`NamespaceOnlyY` default ON) improved **legacy** value/fn cross-module binding (import-scoped containment / `str_bindings` paths), **not** production `OccurrenceBindingResult`. N2's **terminal** target is the canonical producer + one fold for `TypeReference`; implementation is **blocked on or must land in concert with** those producer/changeover nodes. Do **not** read N2 as parity extension of an already-live canonical path for values — both categories still need the kernel; types additionally never received even the #7178 legacy extension.
 
@@ -16,16 +16,16 @@
 
 ## 1. The class — incomplete #7178 flip
 
-Dispatch 1 (#7178, `NamespaceOnlyY` default ON) gave **cross-module value and function references** improved **legacy** namespace-only containment binding (import-scoped / `str_bindings` paths — §14 shows value/fn sites improved relative to pre-flip). **Type references never received even that legacy extension.** The **canonical** candidate producer (`namespace-reference-derived-closure`) and production changeover (`namespace-canonical-binding`) are **not** live for values or types yet — N2's terminal design targets that kernel, not an already-shipped value parity. Until N1+N2 land, type positions still depend on import-scoped `str_bindings` / `ancestry_str_bindings` for legitimate binding — or, worse, on pool coincidence via flat `symbol_index_lookup` hits that peel to `Product(<anon>)`.
+Dispatch 1 (#7178, `NamespaceOnlyY` default ON) gave **cross-module value and function references** improved **legacy** namespace-only containment binding (import-scoped / `str_bindings` paths — §14 shows value/fn sites improved relative to pre-flip). **Type references never received even that legacy extension.** The **canonical** candidate producer (`namespace-reference-derived-closure`) and production changeover (`namespace-canonical-binding`) are **not** live for values or types yet — N2's terminal design targets that kernel, not an already-shipped value parity. Until N1a proves the fail-open class and N2 closes binding, type positions still depend on import-scoped `str_bindings` / `ancestry_str_bindings` for legitimate binding — or, worse, on pool coincidence via flat `symbol_index_lookup` hits that peel to `Product(<anon>)`.
 
-N1 (swift-fox-347) installs an interim **refusal floor** on the **legacy infer path**: pool-present + not legitimately bound → located refusal, never anonymous product. N1 uses import-reachability as a **transitional scaffold predicate** on that legacy path. N2 **routes `TypeReference` through the canonical fold** so the scaffold and lookup-as-binding both dissolve.
+**N1a** (swift-fox-347 extraction) is the **executing discriminator** on the legacy infer path under measurement mode only: pool-present + not measure-authority → located `UnresolvedType`, never anonymous product. Production compile-clean stays on the fail-open path (measure off). N1a does **not** ship a corpus admission wall. N2 **routes `TypeReference` through the canonical fold** so the measurement scaffold and lookup-as-binding both dissolve.
 
 This is not a cosmetic parity gap. It is a **§5 safety defect** sitting under import-strip Dispatch 2:
 
 1. **Missing binding authority for types (N2)** — lookup can succeed; admission does not. Row 5 proves qualified cross-module types are not **legitimately** bound without import reachability or containment authority.
-2. **Fail-open peel (N1)** — illegitimate or absent binding is accepted and peeled to `Product(<anon>)` (`node_type_shape` when `ident_span` is absent) instead of `UnresolvedType` / `AmbiguousReference`.
+2. **Fail-open peel (N1a discriminator class)** — illegitimate or absent binding is accepted and peeled to `Product(<anon>)` (`node_type_shape` when `ident_span` is absent) instead of `UnresolvedType` / `AmbiguousReference`.
 
-Import deletion for values is sound; for types it is **unsound and not observable from a green compile** until N1+N2 close the flip.
+Import deletion for values is sound; for types it is **unsound and not observable from a green compile** until N1a+N2 close the flip.
 
 ---
 
@@ -48,7 +48,7 @@ Measured at main+#7178, `gunbc compile --target dag`, one scratch entry per prob
 
 **Row 5 is the load-bearing row (calm-badger-682, 2026-08-01):** a fully qualified cross-module type name is **not legitimately bound** today without import reachability or containment admission — lookup may still hit (§3.1).
 
-**N1 refusal floor (Phase A):** pool-present + not legitimately bound must turn row 4 into row 3's refusal shape (`UnresolvedType`, located) — never `Product(<anon>)` — while rows 1 and 2 stay green. That is the **interim** success criterion only; **N2 (Phase B)** may additionally permit rows 4–5 to bind correctly when containment exposes the declaration on the ancestor chain (§7 Phase B discriminating pair).
+**N1a discriminator (Phase A):** under measurement mode, pool-present + not measure-authority must turn row 4 into row 3's `UnresolvedType` shape — never `Product(<anon>)` — while rows 1 and 7 (self-module qualified) stay green. That is the **discriminator** success criterion only; **N2 (Phase B)** may additionally permit rows 4–5 to bind correctly when containment exposes the declaration on the ancestor chain (§7 Phase B discriminating pair).
 
 ---
 
@@ -77,7 +77,7 @@ The **symptom** is settled by §14 execution. The **qualified row-5 mechanism** 
 
 ### 3.0b Adjacent defect (N1-owned — do not lose between lanes)
 
-swift-fox-347: `peel_alias_once_for_field_access` (`src/v1/04_infer.dag` / `v1_compiler_infer.rs`) can **drop `resolve_node` diagnostics** during alias peeling — silent refusal loss on a path adjacent to the type-reference fail-open. **Owner: N1 PR** (swift-fox-347), with its own discriminating witness; cited here so it is not dropped between N1 and N2.
+swift-fox-347 / N1a lane: `peel_alias_once_for_field_access` (`src/v1/04_infer.dag` / `v1_compiler_infer.rs`) must not **drop `resolve_node` diagnostics** during alias peeling — silent refusal loss on a path adjacent to the type-reference fail-open. **Status:** concat of `once.diagnostics` with `rest.diagnostics` is already present on main; keep as permanent regression control. Cited so it is not dropped between N1a and N2.
 
 ### 3.1 Discriminator result (swift-fox-347, 2026-08-01 — **closed for row 5 qualified path**)
 
@@ -105,19 +105,20 @@ swift-fox-347: `peel_alias_once_for_field_access` (`src/v1/04_infer.dag` / `v1_c
 
 ---
 
-## 4. N1 ↔ N2 swap seam (design constraint)
+## 4. N1a ↔ N2 swap seam (design constraint)
 
-N1 and N2 share one outcome: **no illegitimate bind, never `Product(<anon>)`**. They differ on **which path** carries binding authority during migration.
+N1a and N2 share one outcome class: **no illegitimate bind, never `Product(<anon>)`**. They differ on **which path** carries binding authority and when the arm is live.
 
-| Layer | N1 (swift-fox-347, interim scaffold) | N2 (this note, terminal) |
+| Layer | N1a (measurement discriminator) | N2 (this note, terminal) |
 |---|---|---|
-| **Binding authority** | Legacy infer path: import-reachability (`str_bindings` / `ancestry_str_bindings`) — refuse when not import-reachable | **Canonical path:** `namespace-reference-derived-closure` candidate producer (category-admissible containment population for `TypeReference`) → **one** `occurrence_binding_from_candidates` fold → `OccurrenceBindingResult` |
-| **On reject** | Located `UnresolvedType` / `AmbiguousReference`; never `Product(<anon>)` | Same refusal surface (`OccurrenceUnbound` / `OccurrenceAmbiguous` projected to type diagnostics) |
-| **On accept** | Only when import-reachable on legacy path today | `OccurrenceBound` from canonical fold — ancestor-chain unique-on-chain, **without** import |
+| **Binding authority** | Measure-only predicate on legacy infer path: bare exact import/local key; qualified self/ancestor containment + symbol_index hit — **not** a production gate | **Canonical path:** `namespace-reference-derived-closure` candidate producer (category-admissible containment population for `TypeReference`) → **one** `occurrence_binding_from_candidates` fold → `OccurrenceBindingResult` |
+| **On reject** | Located `UnresolvedType` / `AmbiguousReference` under measure; never `Product(<anon>)` | Same refusal surface (`OccurrenceUnbound` / `OccurrenceAmbiguous` projected to type diagnostics) |
+| **On accept** | Only under measure when the two-arm predicate holds | `OccurrenceBound` from canonical fold — ancestor-chain unique-on-chain, **without** import |
+| **Production default** | Measure **off** — main fail-open path unchanged (non-gating) | Live production binding |
 
-**Swap rule:** N1 lands the **refusal floor on the legacy infer path** (transitional scaffold — loud, counted, dissolution = `TypeReference` consumes `OccurrenceBindingResult`). N2 **does not** keep lookup and add a post-hoc admission predicate — that would institutionalize a second binding decision path (DESIGN §3 fork). N2 wires `TypeReference` through **`namespace-reference-derived-closure` + one canonical fold** (same **target** kernel values will migrate to at changeover — not what #7178 already shipped); then removes the import scaffold and dissolves `lookup_type_by_name` / flat `symbol_index_lookup` as **binding** selectors (migration-oracle retention only until census parity).
+**Swap rule:** N1a lands the **executing discriminator** (fixtures + precise `UnresolvedType` construction + hit≠bind under measure). N2 **does not** keep lookup and add a post-hoc admission predicate — that would institutionalize a second binding decision path (DESIGN §3 fork). N2 wires `TypeReference` through **`namespace-reference-derived-closure` + one canonical fold** (same **target** kernel values will migrate to at changeover — not what #7178 already shipped); then dissolves the measure predicate/arm and dissolves `lookup_type_by_name` / flat `symbol_index_lookup` as **binding** selectors (migration-oracle retention only until census parity).
 
-**Anti-goal:** making types “import-reachable” again — that points backward; Dispatch 2 deletes imports.
+**Anti-goal:** making types “import-reachable” again — that points backward; Dispatch 2 deletes imports. **Anti-goal:** shipping an open-universe identity-grain admission wall as “refusal” (#7622 archive).
 
 ---
 
@@ -166,26 +167,26 @@ Do **not** add a second type lookup in emit, closure derivation, or census — �
 
 From [import-strip diagnosis §14.4](import-strip-witness-discovery-cascade-diagnosis.md#144-consequence-for-the-wave-rule):
 
-### Phase A — refuse the fail-open (**N1**, swift-fox-347)
+### Phase A — execute the fail-open discriminator (**N1a**)
 
 **Trigger:** independent of whether import strip resumes.
 
-**Obligation:** pool-present + not-bound at type position → located, typed, counted refusal (`UnresolvedType` or `AmbiguousReference`), **never** `Product(<anon>)`.
+**Obligation:** under measurement mode (`compile_dag_diagnostic_census` arms `type_ref_hit_ne_bind_measure_active`), pool-present + not measure-authority at type position → located, typed, counted `UnresolvedType` (or `AmbiguousReference`), **never** `Product(<anon>)`. Production compile-clean stays green (measure off).
 
-**Discriminating pair:** row 4 becomes row 3; fabricated-vs-fabricated `if` branches must not typecheck clean.
+**Discriminating pair:** row 4 becomes row 3; fabricated-vs-fabricated `if` branches must not typecheck clean under measure.
 
-**Rung target:** mitigatable → mechanically preventive (witness executes on every compile).
+**Rung target:** executing discriminator / mechanically preventive on the measurement surface — **not** a corpus construction wall.
 
 Until Phase A lands, **no strip green is typing evidence** for types.
 
 ### Phase B — canonical binding for `TypeReference` (N2)
 
-**Trigger:** Phase A green on §14.1 matrix; row-5 qualified discriminator closed.
+**Trigger:** Phase A green on §14.1 matrix via N1a symbols; row-5 qualified discriminator closed.
 
 **Obligation:** route **type positions** through **`namespace-reference-derived-closure` → `occurrence_binding_from_candidates` → `OccurrenceBindingResult`** — not lookup + post-hoc gate. **Sequencing:** lands with (or after) the active producer/changeover roadmap nodes; #7178 legacy value/fn binding is **not** a substitute prerequisite. Category-admissible population for `TypeReference`; changeover dissolves legacy lookup-as-binding for types alongside the value/fn migration.
 
 1. Route v1 type occurrences through canonical candidate producer + fold (replace lookup-as-binding).
-2. Remove N1 import-reachability scaffold from infer legacy path.
+2. Remove N1a measure predicate/arm from infer legacy path.
 3. Generalize census oracle to type sites (`containment_resolve_decl_v1`).
 
 **Dissolve-on for invariant strings:** extend `global_bare_fallback_invariant` and `qualified_module_projection_invariant` to name lookup **and** admission (hit ≠ bind) — close partial-read gap, not “fix stale prose.”
@@ -200,7 +201,9 @@ Until Phase A lands, **no strip green is typing evidence** for types.
 
 ---
 
-## 8. Witnesses (to author when implementation starts — none exist as executing claims yet)
+## 8. Witnesses
+
+**N1a discriminator (landed):** `dag/test/claim/type_ref_hit_ne_bind_measure_witness_test.dag` — rows 1/3/4/5/7 via `compile_dag_diagnostic_census` (arms measure). N2 Phase B still owes the containment-bind positive pair and Class B accident detectors below.
 
 **Primary matrix:** replay §14.1 eight probes as `dag/test/claim/` rows (or extend import-strip probe harness) with executed RED/positive controls per row.
 
@@ -221,7 +224,7 @@ Until Phase A lands, **no strip green is typing evidence** for types.
 
 **Regression guard:** `node.dag` six `ContentHash` `if` sites are **accident detectors**, not the fix — witnesses must catch silent mis-typing without relying on branch juxtaposition.
 
-**N1 adjacent (swift-fox-347):** witness that `peel_alias_once_for_field_access` preserves or surfaces `resolve_node` diagnostics — no silent drop on alias peel (§3.0b).
+**N1a adjacent:** `peel_alias_once_for_field_access` already concatenates diagnostics on main (§3.0b) — permanent regression control, not re-landed here.
 
 ---
 
