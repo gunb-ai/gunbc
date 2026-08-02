@@ -4,7 +4,7 @@ import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, Fer
 import std.content_hash { ContentHash }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
-import std.effect_grant { Envelope, HandlerBinding, Read, Write, Verb, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
+import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, File, Ftp, Javascript, Data, Vbscript, Mailto }
 import v2.std.operation_argv { OperationRef }
@@ -168,7 +168,7 @@ fn rest_exchange_fixture_lookup(
   }
 }
 
-fn rest_method_verb(method: HttpMethod) -> Verb {
+fn rest_method_verb(method: HttpMethod) -> std.effect_grant.Verb {
   match method {
     GET => Read
     HEAD => Read

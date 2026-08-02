@@ -82,7 +82,6 @@ import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceFieldUnobserved,
   ClaudeCliProvider,
-  CodexCliProvider,
 }
 import gunbc.worker_lifecycle {
   WorkerObservation,
@@ -280,7 +279,7 @@ fn dispatch_provider_instance_for(
   ProviderInstance {
     kind: match provider {
       ClaudeCodeProvider => ClaudeCliProvider
-      CodexCliProvider => CodexCliProvider
+      CodexCliProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
     },
     host: ProviderInstanceFieldUnobserved {
       reason: "session observation does not read host identity" as NonEmptyStr,
