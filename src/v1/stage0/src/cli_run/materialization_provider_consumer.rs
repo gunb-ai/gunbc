@@ -316,19 +316,6 @@ pub fn serve_resolved_graph_stored_disk_probe(
             faithful_probe_unavailable_gap()
         ));
     }
-    let observed_semantic_digest = resolved_graph_parts_semantic_digest(
-        &parts.graph_digest,
-        parts.graph_bytes,
-        &parts.indices_digest,
-        parts.indices_bytes,
-        &parts.union_digest,
-        parts.union_bytes,
-    )?;
-    if stored_semantic_digest != observed_semantic_digest {
-        return Err(format!(
-            "resolved-graph-cache refused artifact: stored semantic digest mismatch (header={stored_semantic_digest}, observed={observed_semantic_digest})"
-        ));
-    }
     let ctx = materialization_provider_ctx()?;
     if is_union_part_absent(parts) {
         return serve_resolved_graph_incomplete_stored_disk_probe_in_ctx(

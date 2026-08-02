@@ -168,17 +168,18 @@ fn stored_disk_probe_wrong_semantic_digest_refuses() {
     let dir = temp_dir("wrong-semantic");
     let (roots, entry) = write_fixture(&dir);
     let (parts, closure, compiler, request_key, _semantic) = fixture_parts_and_keys(&roots, &entry);
-    let err = serve_resolved_graph_stored_disk_probe_for_test(
+    let outcome = serve_resolved_graph_stored_disk_probe_for_test(
         &closure,
         &compiler,
         &request_key,
         "ffffffffffffffff",
         &parts,
     )
-    .expect_err("header semantic digest mismatch must refuse before provider");
-    assert!(
-        err.contains("stored semantic digest mismatch"),
-        "expected semantic mismatch refusal: {err}"
+    .expect("wrong stored semantic digest must refuse via provider_serve");
+    assert_eq!(
+        outcome,
+        ResolvedGraphProviderOutcome::RefusedWrongContent,
+        "modeled provider_serve must own semantic digest comparison"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -198,7 +199,7 @@ fn incomplete_provider_outcome_maps_to_typed_refusal_message() {
 }
 
 #[test]
-fn synthetic_incomplete_parts_refuse_before_provider_hit() {
+fn synthetic_wrong_semantic_parts_refuse_via_provider_serve() {
     reset_materialization_provider_ctx_for_test();
     let builds_before = materialization_provider_ctx_build_count_for_test();
     let parts = FaithfulResolvedGraphProbeParts {
@@ -209,21 +210,22 @@ fn synthetic_incomplete_parts_refuse_before_provider_hit() {
         union_digest: "0000000000000000".to_string(),
         union_bytes: 1,
     };
-    let err = serve_resolved_graph_stored_disk_probe_for_test(
+    let outcome = serve_resolved_graph_stored_disk_probe_for_test(
         "0000000000000000",
         "0000000000000000",
         "0000000000000000",
         "0000000000000000",
         &parts,
     )
-    .expect_err("synthetic incomplete parts must refuse");
-    assert!(
-        err.contains("semantic digest mismatch"),
-        "incomplete artifact must not hit provider: {err}"
+    .expect("wrong stored semantic digest must refuse via provider_serve");
+    assert_eq!(
+        outcome,
+        ResolvedGraphProviderOutcome::RefusedWrongContent,
+        "stored header semantic digest must disagree with derived artifact content"
     );
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
-        builds_before,
-        "refusal before provider must not build ctx"
+        builds_before + 1,
+        "stored disk probe must build provider ctx before provider_serve refusal"
     );
 }

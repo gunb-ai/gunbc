@@ -515,10 +515,9 @@ fn serve_resolved_graph_stored_disk_probe(
     source_indices: ArtifactPart { digest: indices_digest, bytes: indices_bytes },
     compile_clean_diagnostic_union: ArtifactPart { digest: union_digest, bytes: union_bytes }
   }
-  let observed_from_parts = artifact_content_digest(artifact: artifact)
   provider_serve(
     req: req,
-    probe: ProbeFound { artifact: artifact, observed_digest: observed_from_parts }
+    probe: ProbeFound { artifact: artifact, observed_digest: stored_semantic_digest }
   )
 }
 
