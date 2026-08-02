@@ -13,8 +13,8 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   list_concat_unique,
   path_in_list,
   path_occurrence_count,
+  rust_maintenance_disposition_well_formed,
   rust_source_lifecycle_residue_rows,
-  RustMaintenanceDisposition,
   RustSourceLifecycleRow
 }
 import std.content_hash { Fnv1a64Structural }
@@ -101,24 +101,11 @@ fn exact_role_without_disposition_paths(
   )
 }
 
-fn maintenance_disposition_has_retirement_trigger(
-  disposition: RustMaintenanceDisposition
-) -> Bool {
-  match disposition {
-    Generated { authority: _ } => true
-    EmitFrom { authority: _ } => true
-    DeleteWith { roadmap_node: node } => !((node as String) == "")
-    RetainedKernel { reason: reason } => !(reason == "")
-    HandScaffold { reason: reason, dissolve_on: dissolve_on } =>
-      !(reason == "") && !(dissolve_on == "")
-  }
-}
-
 fn row_lacks_retirement_trigger(row: RustSourceLifecycleRow) -> Bool {
   any(
     xs: row.maintenance_dispositions,
     predicate: fn(disposition) {
-      !maintenance_disposition_has_retirement_trigger(disposition: disposition)
+      !rust_maintenance_disposition_well_formed(disposition: disposition)
     }
   )
 }
