@@ -526,11 +526,11 @@ jobs:
         timeout-minutes: 5
       - name: Upload author-commit-required workflow repairs (GitHub App cannot push .github/workflows/**)
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: heal-author-commit-required
           path: heal-author-commit-required
           if-no-files-found: ignore
           retention-days: 7
           compression-level: 0
+        if: always()
         timeout-minutes: 10
