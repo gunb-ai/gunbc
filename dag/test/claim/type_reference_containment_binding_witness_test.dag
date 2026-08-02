@@ -1,0 +1,324 @@
+module test.claim.type_reference_containment_binding_witness_test
+
+import std.types { Bool, SourceSpan, NonEmptyStr, String }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceProjection,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence,
+  CallableOccurrence,
+}
+import std.occurrence_binding_candidates {
+  OccurrenceModulePathRow,
+  DeclarationExposureRow,
+  DeclarationExposure,
+  LexicalExposure,
+  ModuleExposure,
+  RootExposure,
+  AuthoredOrderRow,
+  AuthoredTokenOrdinal,
+  OccurrenceBindingCandidateInputs,
+  ReferenceBindingProjection,
+  ReferenceBindingProjectionBound,
+  ReferenceBindingProjectionUnbound,
+  ReferenceBindingProjectionWrongCategory,
+  resolve_type_reference_containment_binding,
+}
+import gunbc.type_reference_containment_binding {
+  type_reference_containment_binding_authority_note,
+  type_reference_containment_binding_slice1_scope_note,
+}
+
+data type_reference_containment_binding_witness_note: String = "N2 slice 1 discriminating witnesses (containment-binding-cross-module-type-references-design.md section 8 minimal subset, fixture grain). Proves TypeOccurrence references bind through resolve_type_reference_containment_binding (P2a+P1 kernel) — never lookup-as-binding. Positive: cross-module RootExposure bare type, module-sibling type in fn sig. Negative: unbound when declaration not exposed, wrong-category API refusal. Qualified std.types.ContentHash projection and v1 production changeover are explicitly out of slice 1."
+
+fn trcb_module_path(dotted: String) -> NonEmptyStr {
+  dotted as NonEmptyStr
+}
+
+fn trcb_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: file, start: start, end: end }
+}
+
+fn trcb_fixture_path(
+  ancestors: List<OccurrenceId>,
+  terminal: OccurrenceId
+) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
+    ancestors: ancestors,
+    terminal: terminal,
+  }
+}
+
+fn trcb_fixture_index_entry(
+  occurrence: OccurrenceId,
+  authored_name: String,
+  containment: OccurrenceContainmentPath
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: authored_name,
+      diagnostic_span: trcb_fixture_span(file: "fixture.dag", start: 0, end: 1),
+    },
+    containment: containment,
+  }
+}
+
+fn trcb_fixture_declaration(
+  occurrence: OccurrenceId,
+  containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory
+) -> DeclarationOccurrence {
+  DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: trcb_fixture_span(file: "fixture.dag", start: 0, end: 1),
+  }
+}
+
+fn trcb_fixture_reference(
+  occurrence: OccurrenceId,
+  containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory
+) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: trcb_fixture_span(file: "fixture.dag", start: 0, end: 1),
+  }
+}
+
+fn trcb_fixture_inputs(
+  module_paths: List<OccurrenceModulePathRow>,
+  exposure_rows: List<DeclarationExposureRow>,
+  authored_order_rows: List<AuthoredOrderRow>
+) -> OccurrenceBindingCandidateInputs {
+  OccurrenceBindingCandidateInputs {
+    module_paths: module_paths,
+    exposure_rows: exposure_rows,
+    authored_order_rows: authored_order_rows,
+  }
+}
+
+fn trcb_authored_order(occurrence: OccurrenceId, ordinal: Int) -> AuthoredOrderRow {
+  AuthoredOrderRow {
+    occurrence: occurrence,
+    ordinal: AuthoredTokenOrdinal { value: ordinal },
+  }
+}
+
+fn trcb_module_exposure(occurrence: OccurrenceId, module: String) -> DeclarationExposureRow {
+  DeclarationExposureRow {
+    occurrence: occurrence,
+    exposure: ModuleExposure { module: trcb_module_path(dotted: module) },
+  }
+}
+
+fn trcb_root_exposure(occurrence: OccurrenceId) -> DeclarationExposureRow {
+  DeclarationExposureRow {
+    occurrence: occurrence,
+    exposure: RootExposure,
+  }
+}
+
+data cross_module_type_containment_bind_bare_note: String = "Design section 8 witness cross_module_type_containment_bind_bare: stripped consumer module references bare ContentHash; provider type carries RootExposure (std.types on every chain). GREEN without import — containment exposes the declaration, binding is OccurrenceBound from the kernel fold."
+
+test fn cross_module_type_containment_bind_bare_holds() -> Bool {
+  let type_decl = OccurrenceId { value: 10 }
+  let fn_body = OccurrenceId { value: 20 }
+  let type_ref = OccurrenceId { value: 30 }
+  let type_path = trcb_fixture_path(ancestors: [], terminal: type_decl)
+  let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
+  let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
+  match resolve_type_reference_containment_binding(
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          trcb_fixture_index_entry(occurrence: type_decl, authored_name: "ContentHash", containment: type_path),
+          trcb_fixture_index_entry(occurrence: fn_body, authored_name: "f", containment: fn_path),
+          trcb_fixture_index_entry(occurrence: type_ref, authored_name: "ContentHash", containment: ref_path),
+        ],
+      },
+      declarations: [
+        trcb_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
+        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+      ],
+      references: [
+        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+      ],
+    },
+    inputs: trcb_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: type_decl, module_path: trcb_module_path(dotted: "std.content_hash") },
+        OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+      ],
+      exposure_rows: [
+        trcb_root_exposure(occurrence: type_decl),
+        trcb_module_exposure(occurrence: fn_body, module: "extdeps.consumer"),
+      ],
+      authored_order_rows: [
+        trcb_authored_order(occurrence: type_decl, ordinal: 1),
+        trcb_authored_order(occurrence: fn_body, ordinal: 2),
+        trcb_authored_order(occurrence: type_ref, ordinal: 3),
+      ],
+    ),
+    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.declaration_occurrence.value == 10
+        && provider.reference_occurrence.value == 30
+        && provider.provider_module == trcb_module_path(dotted: "std.content_hash")
+        && provider.consumer_module == trcb_module_path(dotted: "extdeps.consumer")
+    _ => false
+  }
+}
+
+data module_sibling_type_visible_note: String = "Module-sibling type in fn signature: type T and fn f(x: T) in one module — ModuleExposure exposes the type declaration to the parameter type reference without import reachability."
+
+test fn module_sibling_type_visible_holds() -> Bool {
+  let type_decl = OccurrenceId { value: 10 }
+  let fn_decl = OccurrenceId { value: 20 }
+  let type_ref = OccurrenceId { value: 30 }
+  let type_path = trcb_fixture_path(ancestors: [], terminal: type_decl)
+  let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_decl)
+  let ref_path = trcb_fixture_path(ancestors: [fn_decl], terminal: type_ref)
+  match resolve_type_reference_containment_binding(
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          trcb_fixture_index_entry(occurrence: type_decl, authored_name: "LocalT", containment: type_path),
+          trcb_fixture_index_entry(occurrence: fn_decl, authored_name: "f", containment: fn_path),
+          trcb_fixture_index_entry(occurrence: type_ref, authored_name: "LocalT", containment: ref_path),
+        ],
+      },
+      declarations: [
+        trcb_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
+        trcb_fixture_declaration(occurrence: fn_decl, containment: fn_path, category: CallableOccurrence),
+      ],
+      references: [
+        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+      ],
+    },
+    inputs: trcb_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: type_decl, module_path: trcb_module_path(dotted: "app.module") },
+        OccurrenceModulePathRow { occurrence: fn_decl, module_path: trcb_module_path(dotted: "app.module") },
+        OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "app.module") },
+      ],
+      exposure_rows: [
+        trcb_module_exposure(occurrence: type_decl, module: "app.module"),
+        trcb_module_exposure(occurrence: fn_decl, module: "app.module"),
+      ],
+      authored_order_rows: [
+        trcb_authored_order(occurrence: type_decl, ordinal: 1),
+        trcb_authored_order(occurrence: fn_decl, ordinal: 2),
+        trcb_authored_order(occurrence: type_ref, ordinal: 3),
+      ],
+    ),
+    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.declaration_occurrence.value == 10
+        && provider.reference_occurrence.value == 30
+    _ => false
+  }
+}
+
+data cross_module_type_unbound_when_not_exposed_note: String = "Design section 8 cross_module_type_pool_present_unbound_refuses analog at fixture grain: type declaration exists in transport but carries only ModuleExposure for its own module while the reference lives in a different module with no RootExposure/LexicalExposure bridge — OccurrenceUnbound, never a silent bind."
+
+test fn cross_module_type_unbound_when_not_exposed_holds() -> Bool {
+  let type_decl = OccurrenceId { value: 10 }
+  let fn_body = OccurrenceId { value: 20 }
+  let type_ref = OccurrenceId { value: 30 }
+  let type_path = trcb_fixture_path(ancestors: [], terminal: type_decl)
+  let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
+  let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
+  match resolve_type_reference_containment_binding(
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          trcb_fixture_index_entry(occurrence: type_decl, authored_name: "ContentHash", containment: type_path),
+          trcb_fixture_index_entry(occurrence: fn_body, authored_name: "f", containment: fn_path),
+          trcb_fixture_index_entry(occurrence: type_ref, authored_name: "ContentHash", containment: ref_path),
+        ],
+      },
+      declarations: [
+        trcb_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
+        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+      ],
+      references: [
+        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+      ],
+    },
+    inputs: trcb_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: type_decl, module_path: trcb_module_path(dotted: "std.content_hash") },
+        OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+      ],
+      exposure_rows: [
+        trcb_module_exposure(occurrence: type_decl, module: "std.content_hash"),
+        trcb_module_exposure(occurrence: fn_body, module: "extdeps.consumer"),
+      ],
+      authored_order_rows: [
+        trcb_authored_order(occurrence: type_decl, ordinal: 1),
+        trcb_authored_order(occurrence: fn_body, ordinal: 2),
+        trcb_authored_order(occurrence: type_ref, ordinal: 3),
+      ],
+    ),
+    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+  ) {
+    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
+    _ => false
+  }
+}
+
+data type_reference_wrong_category_refuses_note: String = "API boundary: resolve_type_reference_containment_binding refuses non-TypeOccurrence references with ReferenceBindingProjectionWrongCategory before candidate enumeration — never a second binding path for callees."
+
+test fn type_reference_wrong_category_refuses_holds() -> Bool {
+  let call_ref = OccurrenceId { value: 30 }
+  let ref_path = trcb_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: call_ref)
+  match resolve_type_reference_containment_binding(
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          trcb_fixture_index_entry(occurrence: call_ref, authored_name: "f", containment: ref_path),
+        ],
+      },
+      declarations: [],
+      references: [
+        trcb_fixture_reference(occurrence: call_ref, containment: ref_path, category: CallableOccurrence),
+      ],
+    },
+    inputs: trcb_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: call_ref, module_path: trcb_module_path(dotted: "app.module") },
+      ],
+      exposure_rows: [],
+      authored_order_rows: [
+        trcb_authored_order(occurrence: call_ref, ordinal: 1),
+      ],
+    ),
+    reference: trcb_fixture_reference(occurrence: call_ref, containment: ref_path, category: CallableOccurrence),
+  ) {
+    ReferenceBindingProjectionWrongCategory { occurrence: occurrence, observed: observed } =>
+      occurrence.value == 30 && observed == CallableOccurrence
+    _ => false
+  }
+}
+
+test fn authority_note_names_kernel_path() -> Bool {
+  string_contains(s: type_reference_containment_binding_authority_note, pattern: "resolve_type_reference_containment_binding")
+    && string_contains(s: type_reference_containment_binding_authority_note, pattern: "occurrence_binding_from_candidates")
+    && string_contains(s: type_reference_containment_binding_slice1_scope_note, pattern: "OUT OF SLICE")
+    && string_contains(s: type_reference_containment_binding_slice1_scope_note, pattern: "lookup_type_by_name")
+}
