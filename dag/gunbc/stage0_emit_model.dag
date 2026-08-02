@@ -4,6 +4,7 @@ data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",
   "extdeps_cargo_version.rs",
+  "extdeps_container_oci_digest.rs",
   "extdeps_external_authority.rs",
   "extdeps_languages_dag_emit.rs",
   "extdeps_languages_dag_syntax.rs",
