@@ -10252,6 +10252,52 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(variant))
             },
 
+            // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
+            // It parses cli_run::regen_input_sources through the module-binding authority path;
+            // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
+            // v2.compiler.source_authority.ModuleStorageIndex.
+            arm "free_call.stage0_emission_source_identities_host" { "stage0_emission_source_identities_host" } => {
+                if !$positional.is_empty() {
+                    return Err(InterpError::TypeError {
+                        msg: "stage0_emission_source_identities_host takes no arguments".to_string(),
+                    });
+                }
+                let workspace = crate::cli_run::workspace_root();
+                let identities = crate::cli_run::stage0_emission_source_identities(&workspace)
+                    .map_err(|msg| InterpError::TypeError { msg })?;
+                let items = identities
+                    .into_iter()
+                    .map(|identity| Value::Record {
+                        type_name: $ctx.sym("Stage0SourceModuleIdentity"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module_path"), Value::Str(identity.module_path)),
+                            (
+                                $ctx.sym("provenance"),
+                                Value::Variant {
+                                    type_name: $ctx.sym("Stage0SourceIdentityProvenance"),
+                                    variant_name: $ctx.sym("ParsedFromRegenSourceClosure"),
+                                    fields: Rc::new(Vec::new()),
+                                },
+                            ),
+                            (
+                                $ctx.sym("source_tree"),
+                                Value::Variant {
+                                    type_name: $ctx.sym("Stage0SourceTree"),
+                                    variant_name: $ctx.sym(identity.source_tree),
+                                    fields: Rc::new(Vec::new()),
+                                },
+                            ),
+                            ($ctx.sym("storage_path"), Value::Str(identity.storage_path)),
+                        ])),
+                    })
+                    .collect::<Vec<_>>();
+                Ok(Some(Value::Variant {
+                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
+                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
+                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
+                }))
+            },
+
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
