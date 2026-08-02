@@ -65,6 +65,13 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "candidate-scoped-gates-atomic-landing",
+    primary_work: DeclarationRef { module_path: "gunbc.extdeps_scope_frontier", decl_name: "legacy_manifest_freeze_sha", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "gunbc.ci_failure_class", decl_name: "merge_freshness_gating_status", field: WholeDeclaration }, DeclarationRef { module_path: "tools.floor_effect_gate_witness", decl_name: "emit_host_gate_passes", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.merge_admission", decl_name: "merge_admission_required_check_binding_dissolution_trigger", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the four program walls are live: the merge-queue landing boundary enforced (MergeQueueOnly + ALLGREEN, dashboard enqueue-only), the candidate/freeze/manifest observations split with the false law text corrected and the DefaultBranchAudit backstop scheduled, the RunnableProcessExitClaim migration complete with the Boolean gate adapters deleted, and the repository ruleset modeled as desired state with read-back. Then the surviving policy rows migrate to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "generated-file-conflict-policy",
     primary_work: DeclarationRef { module_path: "gunbc.generated_artifact", decl_name: "committed_generated_artifacts", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "tools.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.stage0_emit_plan_generated", decl_name: "generated_stage0_files", field: WholeDeclaration }],

@@ -295,7 +295,7 @@ test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   }
 }
 
-test fn ingest_cross_language_compile_holds() -> Bool {
+test fn ingest_cross_language_compile_refuses_underived_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -303,9 +303,9 @@ test fn ingest_cross_language_compile_holds() -> Bool {
         source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
         target_model: dag_target_model()
       ) {
-        Accepted { value: source, diagnostics: _ } =>
-          string_is_empty(s: source.carried) == false
-        Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^infer_grounding_not_derived
+        Accepted { value: _, diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -317,6 +317,6 @@ test fn ingest_bridge_realized() -> Bool {
     && ingest_fails_closed_off_frontier_holds()
     && ingest_fails_closed_ambiguous_holds()
     && ingest_fails_closed_on_unstamped_holds()
-    && ingest_cross_language_compile_holds()
+    && ingest_cross_language_compile_refuses_underived_holds()
 }
 
