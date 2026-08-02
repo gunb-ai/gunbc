@@ -82,31 +82,15 @@ fn pr_floor_scheduling_disposition(
   primary: WitnessConsumerCadence,
   ci_enrolled: Bool
 ) -> SchedulingDisposition {
-  match primary {
-    DiscoverySelection => SchedulingEnrolled
-    _ => disposition_when_bool(enrolled: ci_enrolled)
-  }
+  if primary == DiscoverySelection { SchedulingEnrolled } else { disposition_when_bool(enrolled: ci_enrolled) }
 }
 
 fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  match primary {
-    FalsifierSelfHostWet => SchedulingEnrolled
-    FalsifierRehomedBinWet => SchedulingEnrolled
-    BinWitnessWet => SchedulingEnrolled
-    OfflineLocalRecipe => SchedulingDark
-    _ => SchedulingExcluded
-  }
+  if primary == FalsifierSelfHostWet { SchedulingEnrolled } else if primary == FalsifierRehomedBinWet { SchedulingEnrolled } else if primary == BinWitnessWet { SchedulingEnrolled } else if primary == OfflineLocalRecipe { SchedulingDark } else { SchedulingExcluded }
 }
 
 fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  match primary {
-    FalsifierSelfHostWet => SchedulingEnrolled
-    FalsifierRehomedBinWet => SchedulingEnrolled
-    FalsifierSubstrateLongLane => SchedulingEnrolled
-    QuarantineProbeExpectRed => SchedulingEnrolled
-    DiscoverySelection => SchedulingExcluded
-    _ => SchedulingExcluded
-  }
+  if primary == FalsifierSelfHostWet { SchedulingEnrolled } else if primary == FalsifierRehomedBinWet { SchedulingEnrolled } else if primary == FalsifierSubstrateLongLane { SchedulingEnrolled } else if primary == QuarantineProbeExpectRed { SchedulingEnrolled } else { SchedulingExcluded }
 }
 
 fn scheduling_disposition_for_primary_cadence(
@@ -598,11 +582,11 @@ fn cadence_row_is_offline_local_recipe(row: CadenceSchedulingRow) -> Bool {
 }
 
 fn scheduling_disposition_is_enrolled(disposition: SchedulingDisposition) -> Bool {
-  match disposition { SchedulingEnrolled => true _ => false }
+  match disposition { SchedulingEnrolled => true SchedulingDark => false SchedulingExcluded => false }
 }
 
 fn scheduling_disposition_is_excluded(disposition: SchedulingDisposition) -> Bool {
-  match disposition { SchedulingExcluded => true _ => false }
+  match disposition { SchedulingExcluded => true SchedulingEnrolled => false SchedulingDark => false }
 }
 
 fn cadence_disposition_for_pr_floor(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
