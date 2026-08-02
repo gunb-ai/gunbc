@@ -1,0 +1,180 @@
+module gunbc.roadmap_workflow_command
+
+import std.types { String, Bool, Int, List }
+import std.content_hash { ContentHash }
+import gunbc.roadmap_verification_receipt { VerificationSubject }
+
+type AttemptKey = String
+
+data workflow_command_note: String = "THE THREE RETRY SHAPES ARE FIRST-CLASS COMMANDS, NOT INCIDENTAL TMUX CLEANUP. RetryMechanism retries a failed mechanism at the same input identity without minting a new attempt or consuming a review round. ResumeAttempt continues the same branch and worktree with a new worker turn and new head, so a new evidence round begins without a fresh tree. StartNewAttempt begins from a declared base revision, optionally recording which prior attempt it supersedes; the superseded attempt's branch, worktree, and receipts are retained as lineage history, never deleted silently. A pre-receipt attempt is typed LegacyAttemptDisposition and is cleared only through StartNewAttempt{supersedes: ...}, never by guessing progress from absent receipts."
+
+type WorkflowCommand
+  = RetryVerification { subject: VerificationSubject }
+  | ResumeAttempt { attempt_key: AttemptKey, feedback: String }
+  | StartNewAttempt {
+      node_id: String,
+      base_revision: String,
+      supersedes: AttemptKey?,
+    }
+  | RetryMechanism {
+      operation: String,
+      input_identity: ContentHash,
+    }
+
+type AttemptLineage
+  = InitialAttempt
+  | ResumedFrom { attempt_key: AttemptKey }
+  | Supersedes { attempt_key: AttemptKey, reason: String }
+
+type WorkerTurn {
+  turn_key: String
+  attempt_key: AttemptKey
+  consumed_feedback: String
+  resulting_head: String?
+}
+
+type LegacyAttemptDisposition {
+  node_id: String
+  branch: String
+  attempt_key: AttemptKey
+}
+
+data legacy_attempt_supersedable_label: String = "legacy attempt — supersedable"
+
+data legacy_attempt_supersedable_summary: String = "legacy attempt — supersedable"
+
+data legacy_attempt_supersedable_detail: String = "attempt predates modeled admission and event capture; progress cannot be reconstructed from receipts, but StartNewAttempt{supersedes} is the machine-owned clear path"
+
+type WorkflowCommandAdmission
+  = WorkflowCommandAdmitted
+  | WorkflowCommandRefused { reason: String }
+
+fn is_legacy_attempt(modeled_state_present: Bool) -> Bool {
+  !modeled_state_present
+}
+
+fn legacy_attempt_disposition(
+  node_id: String,
+  branch: String,
+  attempt_key: AttemptKey,
+  modeled_state_present: Bool,
+) -> LegacyAttemptDisposition? {
+  if is_legacy_attempt(modeled_state_present: modeled_state_present) {
+    Present {
+      value: LegacyAttemptDisposition {
+        node_id: node_id,
+        branch: branch,
+        attempt_key: attempt_key,
+      }
+    }
+  } else {
+    Absent
+  }
+}
+
+fn admit_start_new_attempt(
+  supersedes: AttemptKey?,
+  superseded_exists: Bool,
+) -> WorkflowCommandAdmission {
+  match supersedes {
+    Absent => WorkflowCommandAdmitted
+    Present { value: _ } =>
+      if superseded_exists {
+        WorkflowCommandAdmitted
+      } else {
+        WorkflowCommandRefused {
+          reason: "StartNewAttempt supersedes names an attempt that does not exist",
+        }
+      }
+  }
+}
+
+fn admit_resume_attempt(
+  attempt_key: AttemptKey,
+  worktree_exists: Bool,
+) -> WorkflowCommandAdmission {
+  if attempt_key == "" {
+    WorkflowCommandRefused {
+      reason: "ResumeAttempt requires a non-empty attempt key",
+    }
+  } else if !worktree_exists {
+    WorkflowCommandRefused {
+      reason: join([
+        "ResumeAttempt requires an existing worktree for attempt ",
+        attempt_key,
+      ], ""),
+    }
+  } else {
+    WorkflowCommandAdmitted
+  }
+}
+
+fn admit_retry_mechanism(mints_attempt: Bool) -> WorkflowCommandAdmission {
+  if mints_attempt {
+    WorkflowCommandRefused {
+      reason: "RetryMechanism cannot mint a new attempt",
+    }
+  } else {
+    WorkflowCommandAdmitted
+  }
+}
+
+fn legacy_attempt_cannot_satisfy_obligations(modeled_state_present: Bool) -> Bool {
+  is_legacy_attempt(modeled_state_present: modeled_state_present)
+}
+
+fn attempt_key_short_form(key: AttemptKey) -> String {
+  if string_length(s: key) <= 8 {
+    key
+  } else {
+    join([substring(s: key, start: 0, end: 8), "…"], "")
+  }
+}
+
+fn attempt_lineage_row_label(
+  lineage: AttemptLineage,
+  ordinal: Int,
+) -> String {
+  let prefix = join(["Attempt ", to_string(ordinal), " — "], "")
+  match lineage {
+    InitialAttempt => join([prefix, "started fresh"], "")
+    ResumedFrom { attempt_key: prior } =>
+      join([
+        prefix,
+        "turn resumed after findings on ",
+        attempt_key_short_form(key: prior),
+      ], "")
+    Supersedes { attempt_key: prior, reason: reason } =>
+      join([
+        prefix,
+        "started fresh; supersedes ",
+        attempt_key_short_form(key: prior),
+        " (",
+        reason,
+        ")",
+      ], "")
+  }
+}
+
+fn worker_turn_row_label(turn: WorkerTurn) -> String {
+  match turn.resulting_head {
+    Present { value: head } =>
+      join([
+        "turn ",
+        attempt_key_short_form(key: turn.turn_key),
+        " on ",
+        attempt_key_short_form(key: turn.attempt_key),
+        " → ",
+        attempt_key_short_form(key: head),
+      ], "")
+    Absent =>
+      join([
+        "turn ",
+        attempt_key_short_form(key: turn.turn_key),
+        " on ",
+        attempt_key_short_form(key: turn.attempt_key),
+      ], "")
+  }
+}
+
+data belt_workflow_command_driver_seam_note: String = "P3 HANDOFF TO THE BELT WIRING LANE (#7679). These carriers name the commands and lineage facts the belt must observe and actuate: belt_dispatch_node and belt_actuate_spawn choose among StartNewAttempt, ResumeAttempt, and RetryMechanism instead of silently clearing tmux state; StartNewAttempt{supersedes} publishes the new attempt pointer and records Supersedes lineage without deleting the superseded branch or worktree; ResumeAttempt mints a WorkerTurn on the same attempt key; RetryMechanism reruns one mechanism without a new attempt key. LegacyAttemptDisposition rows remain readable and are cleared only when a StartNewAttempt names them in supersedes. This module does not perform host effects — it is the typed admission and presentation authority the driver wiring must consume."

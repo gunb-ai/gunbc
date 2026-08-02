@@ -26,6 +26,12 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_kind_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_workflow_command {
+  legacy_attempt_supersedable_summary,
+  legacy_attempt_supersedable_detail,
+  is_legacy_attempt,
+  attempt_key_short_form,
+}
 import gunbc.workflow_reconcile { WorkflowReconcileReport }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array,
