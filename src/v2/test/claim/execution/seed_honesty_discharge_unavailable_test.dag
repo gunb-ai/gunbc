@@ -12,7 +12,9 @@ import v2.workflow.bootstrap {
   pinned_v4_fixed_point_hash,
   seed_self_verify_check,
   seed_honesty_decision,
-  seed_honesty_decision_is_recorded
+  SeedHonestyUndecided,
+  IndependentRebuildRequiredFirst,
+  FixedPointTrustSufficient
 }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
@@ -91,7 +93,11 @@ test fn v1_seed_honesty_decision_closing_contract_holds() -> Bool {
   seed_self_verify_same_artifact_refuses()
     && seed_self_verify_planted_divergence_refuses()
     && seed_self_verify_distinct_equal_artifacts_hold()
-    && seed_honesty_decision_is_recorded(decision: seed_honesty_decision)
+    && match seed_honesty_decision {
+      SeedHonestyUndecided => false
+      IndependentRebuildRequiredFirst { rationale: rationale } => !(rationale == "")
+      FixedPointTrustSufficient { rationale: rationale } => !(rationale == "")
+    }
 }
 
 test fn seed_honesty_check_three_poles_hold_before_decision() -> Bool {
@@ -101,8 +107,11 @@ test fn seed_honesty_check_three_poles_hold_before_decision() -> Bool {
 }
 
 test fn seed_honesty_undecided_keeps_closing_contract_red() -> Bool {
-  !seed_honesty_decision_is_recorded(decision: seed_honesty_decision)
-    && !v1_seed_honesty_decision_closing_contract_holds()
+  match seed_honesty_decision {
+    SeedHonestyUndecided => !v1_seed_honesty_decision_closing_contract_holds()
+    IndependentRebuildRequiredFirst { rationale: _ } => false
+    FixedPointTrustSufficient { rationale: _ } => false
+  }
 }
 
 fn seed_honesty_fabricated_agreement(

@@ -126,14 +126,6 @@ type SeedHonestyDecision
 
 data seed_honesty_decision: SeedHonestyDecision = SeedHonestyUndecided
 
-fn seed_honesty_decision_is_recorded(decision: SeedHonestyDecision) -> Bool {
-  match decision {
-    SeedHonestyUndecided => false
-    IndependentRebuildRequiredFirst { rationale: rationale } => !(rationale == "")
-    FixedPointTrustSufficient { rationale: rationale } => !(rationale == "")
-  }
-}
-
 data independent_compiler_evidence_dissolve_on_note: String = "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction."
 
 data bootstrap_seed_honesty_disconnected_digest_note: String = "The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR."
