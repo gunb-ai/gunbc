@@ -1,0 +1,224 @@
+module gunbc.occurrence_identity_acceptance_closure
+
+import std.types { Bool, String, List }
+import std.occurrence_identity { occurrence_identity_acceptance_laws }
+
+type OccurrenceIdentityReceiptExecution
+  = OccurrenceIdentityReceiptPassed
+  | OccurrenceIdentityReceiptFailed
+  | OccurrenceIdentityReceiptNotExecuted
+
+type OccurrenceIdentityExecutingReceipt {
+  law_id: String
+  required_receipt: String
+  consumer: String
+  execution: OccurrenceIdentityReceiptExecution
+}
+
+type OccurrenceIdentityAdmittedDeferral {
+  law_id: String
+  required_receipt: String
+  reason: String
+  next_trigger: String
+}
+
+type OccurrenceIdentityClosingRefusal
+  = DuplicateAcceptanceLaw { law_id: String }
+  | UnknownReceiptLaw { law_id: String }
+  | DuplicateReceiptLaw { law_id: String }
+  | StaleReceiptLaw { law_id: String }
+  | ReceiptDidNotPass { law_id: String }
+  | UnknownDeferralLaw { law_id: String }
+  | DuplicateDeferralLaw { law_id: String }
+  | StaleDeferralLaw { law_id: String }
+  | ReceiptDeferralOverlap { law_id: String }
+
+type OccurrenceIdentityClosingVerdict
+  = OccurrenceIdentityClosingCovered { deferred_law_ids: List<String> }
+  | OccurrenceIdentityClosingOpen { missing_law_ids: List<String> }
+  | OccurrenceIdentityClosingRefused { refusals: List<OccurrenceIdentityClosingRefusal> }
+
+data occurrence_identity_closing_check_note: String = "Validation/workflow carrier for the namespace-reference-derived-closure node; execution outcomes, admitted deferrals, and node-closing verdicts deliberately do not live in the std.occurrence_identity identity authority. The closing verdict is derived from that authority's permanent occurrence_identity_acceptance_laws rows, scoped-batch execution observations, and admitted deferrals. The law population is not a caller parameter, so deleting a debt row or passing a narrowed list cannot delete a law. A receipt counts only when its law id and exact required_receipt still match and its execution observation is Passed; the scoped witness batch must supply that observation from execution, never from a roster entry asserting its own success. Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty deferred population closes the node. The exact-denominator census is only a hand-maintained spec-growth tripwire; this derived unmatched-law-to-Open fold is the load-bearing guarantee, and the census must be deleted rather than automated into a self-comparison. This five-law occurrence-identity acceptance family is distinct from the six candidate-producer conformance laws owned by the namespace mechanism. Synthetic Passed rows are controls for this fold only and never evidence that a production receipt executed; production integration must replace them with the live scoped execution-observation join."
+
+fn occurrence_identity_law_id_known(
+  law_id: String
+) -> Bool {
+  occurrence_identity_acceptance_laws |> any(law => law.id == law_id)
+}
+
+fn occurrence_identity_law_exact(
+  law_id: String,
+  required_receipt: String
+) -> Bool {
+  occurrence_identity_acceptance_laws
+    |> any(law => law.id == law_id && law.required_receipt == required_receipt)
+}
+
+fn occurrence_identity_receipt_passed(
+  receipt: OccurrenceIdentityExecutingReceipt
+) -> Bool {
+  match receipt.execution {
+    OccurrenceIdentityReceiptPassed => true
+    _ => false
+  }
+}
+
+fn occurrence_identity_closing_refusal_concat(
+  left: List<OccurrenceIdentityClosingRefusal>,
+  right: List<OccurrenceIdentityClosingRefusal>
+) -> List<OccurrenceIdentityClosingRefusal> {
+  concat(left, right)
+}
+
+fn occurrence_identity_closing_refusals(
+  receipts: List<OccurrenceIdentityExecutingReceipt>,
+  deferrals: List<OccurrenceIdentityAdmittedDeferral>
+) -> List<OccurrenceIdentityClosingRefusal> {
+  let duplicate_laws = occurrence_identity_acceptance_laws
+    |> flat_map(law =>
+      if (occurrence_identity_acceptance_laws
+        |> filter(other => other.id == law.id)
+        |> count) > 1 {
+        [DuplicateAcceptanceLaw { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  let unknown_receipts = receipts
+    |> flat_map(receipt =>
+      if occurrence_identity_law_id_known(law_id: receipt.law_id) {
+        []
+      } else {
+        [UnknownReceiptLaw { law_id: receipt.law_id }]
+      }
+    )
+  let duplicate_receipts = occurrence_identity_acceptance_laws
+    |> flat_map(law =>
+      if (receipts |> filter(receipt => receipt.law_id == law.id) |> count) > 1 {
+        [DuplicateReceiptLaw { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  let stale_receipts = receipts
+    |> flat_map(receipt =>
+      if occurrence_identity_law_id_known(law_id: receipt.law_id) &&
+        !occurrence_identity_law_exact(
+          law_id: receipt.law_id,
+          required_receipt: receipt.required_receipt,
+        ) {
+        [StaleReceiptLaw { law_id: receipt.law_id }]
+      } else {
+        []
+      }
+    )
+  let non_green_receipts = receipts
+    |> flat_map(receipt =>
+      if occurrence_identity_receipt_passed(receipt: receipt) {
+        []
+      } else {
+        [ReceiptDidNotPass { law_id: receipt.law_id }]
+      }
+    )
+  let unknown_deferrals = deferrals
+    |> flat_map(deferral =>
+      if occurrence_identity_law_id_known(law_id: deferral.law_id) {
+        []
+      } else {
+        [UnknownDeferralLaw { law_id: deferral.law_id }]
+      }
+    )
+  let duplicate_deferrals = occurrence_identity_acceptance_laws
+    |> flat_map(law =>
+      if (deferrals |> filter(deferral => deferral.law_id == law.id) |> count) > 1 {
+        [DuplicateDeferralLaw { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  let stale_deferrals = deferrals
+    |> flat_map(deferral =>
+      if occurrence_identity_law_id_known(law_id: deferral.law_id) &&
+        !occurrence_identity_law_exact(
+          law_id: deferral.law_id,
+          required_receipt: deferral.required_receipt,
+        ) {
+        [StaleDeferralLaw { law_id: deferral.law_id }]
+      } else {
+        []
+      }
+    )
+  let overlaps = occurrence_identity_acceptance_laws
+    |> flat_map(law =>
+      if (receipts |> any(receipt => receipt.law_id == law.id)) &&
+        (deferrals |> any(deferral => deferral.law_id == law.id)) {
+        [ReceiptDeferralOverlap { law_id: law.id }]
+      } else {
+        []
+      }
+    )
+  occurrence_identity_closing_refusal_concat(
+    left: occurrence_identity_closing_refusal_concat(
+      left: occurrence_identity_closing_refusal_concat(
+        left: occurrence_identity_closing_refusal_concat(
+          left: duplicate_laws,
+          right: unknown_receipts,
+        ),
+        right: duplicate_receipts,
+      ),
+      right: stale_receipts,
+    ),
+    right: occurrence_identity_closing_refusal_concat(
+      left: occurrence_identity_closing_refusal_concat(
+        left: non_green_receipts,
+        right: unknown_deferrals,
+      ),
+      right: occurrence_identity_closing_refusal_concat(
+        left: occurrence_identity_closing_refusal_concat(
+          left: duplicate_deferrals,
+          right: stale_deferrals,
+        ),
+        right: overlaps,
+      ),
+    ),
+  )
+}
+
+fn occurrence_identity_closing_verdict(
+  receipts: List<OccurrenceIdentityExecutingReceipt>,
+  deferrals: List<OccurrenceIdentityAdmittedDeferral>
+) -> OccurrenceIdentityClosingVerdict {
+  let refusals = occurrence_identity_closing_refusals(
+    receipts: receipts,
+    deferrals: deferrals,
+  )
+  if (refusals |> count) > 0 {
+    OccurrenceIdentityClosingRefused { refusals: refusals }
+  } else {
+    let missing_law_ids = occurrence_identity_acceptance_laws
+      |> filter(law =>
+        !(receipts |> any(receipt => receipt.law_id == law.id)) &&
+        !(deferrals |> any(deferral => deferral.law_id == law.id))
+      )
+      |> map(law => law.id)
+    if (missing_law_ids |> count) > 0 {
+      OccurrenceIdentityClosingOpen { missing_law_ids: missing_law_ids }
+    } else {
+      OccurrenceIdentityClosingCovered {
+        deferred_law_ids: occurrence_identity_acceptance_laws
+          |> filter(law => deferrals |> any(deferral => deferral.law_id == law.id))
+          |> map(law => law.id),
+      }
+    }
+  }
+}
+
+fn occurrence_identity_closing_complete(
+  verdict: OccurrenceIdentityClosingVerdict
+) -> Bool {
+  match verdict {
+    OccurrenceIdentityClosingCovered { deferred_law_ids: deferred_law_ids } =>
+      (deferred_law_ids |> count) == 0
+    _ => false
+  }
+}
