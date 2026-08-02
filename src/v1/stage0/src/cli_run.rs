@@ -6596,7 +6596,11 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// per (thread, canonical roots) and reused, so consumers that resolve distinct entries
 /// against it share one typed_module_cache — the union closure typechecks once per node.
 /// Roots are canonicalized (`canonical_shared_index_roots`) before both keying and
-/// building, so path-spelling variants of the same pool cannot fork the universe.
+/// building, so path-spelling variants of the same pool cannot fork the INDEX.
+/// This does not canonicalize independently-read `SourceFile` objects: a consumer
+/// that joins absolute-path reads to this relative-path index can still fork source
+/// identity. The divergence census walls that site with parent-owned `Rc` identity;
+/// the class-wide next rung is canonical `SourceFile` identity at construction.
 fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
@@ -27282,6 +27286,9 @@ fn resolution_divergence_closure_scoped_sources(
 /// relative-path objects from the index, so every declaration appears twice. Seed
 /// the closure from the index's existing `Rc<SourceFile>` values instead. This is a
 /// read-only index walk: no second whole-tree disk load and no second index build.
+/// The executable frozen control walls this consumer with `Rc::ptr_eq`; other
+/// `default_source_roots` consumers remain an explicitly separate construction-time
+/// identity class, dissolved when `SourceFile` construction canonicalizes paths.
 fn resolution_divergence_closure_scoped_sources_from_shared_index(
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
