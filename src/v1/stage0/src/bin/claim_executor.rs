@@ -1712,7 +1712,6 @@ fn claim_result_for_outcome(
     }
 }
 
-<<<<<<< HEAD
 #[derive(Clone)]
 struct NativeBundleProcessSpec {
     workspace_dir: String,
@@ -2084,14 +2083,15 @@ fn run_native_bundle_unit(
         corpus_witnesses: selected as usize,
         witness_row_costs: Vec::new(),
         budget_refusal: None,
-=======
+    }
+}
+
 fn scoped_execution_authority_source_roots(
     authority: ScopedWitnessExecutionAuthority,
     walk_source_roots: &[String],
 ) -> Vec<String> {
     match authority {
         ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots => walk_source_roots.to_vec(),
->>>>>>> origin/main
     }
 }
 
@@ -9203,12 +9203,9 @@ mod tests {
                 BatchUnit::UnrunnableSentinel { function } => {
                     out.push((String::new(), function.clone()));
                 }
-<<<<<<< HEAD
-                BatchUnit::Discovery { .. } => {}
-                BatchUnit::NativeBundle { .. } => {}
-=======
-                BatchUnit::Discovery { .. } | BatchUnit::ScopedDiscovery { .. } => {}
->>>>>>> origin/main
+                BatchUnit::Discovery { .. }
+                | BatchUnit::ScopedDiscovery { .. }
+                | BatchUnit::NativeBundle { .. } => {}
             }
         }
         out
