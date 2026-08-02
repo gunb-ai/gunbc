@@ -2,6 +2,7 @@ module gunbc.runner_activation
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.runner_host_deploy {
   RunnerHostDeploy, RunnerHostAdmission, RunnerHostEnrolled, RunnerHostUnenrolled,
@@ -36,10 +37,13 @@ type BuildCacheInstanceReady {
 data host_compile_pool_ready_note: String = "The compile pool is a SEPARATE prerequisite from the cache instance because moving the server into a managed unit relocates where every cache-miss compiler's memory is charged. A managed server inside no declared pool is not an improvement on a runner-owned one; it is the same unbounded charge under a different parent. The two receipts are therefore both required and neither implies the other. Today no host realizes the slice and the budget derives a zero pool, so this receipt has no producer either — which is the correct state for a wall whose actuation is deliberately unauthorized."
 
 type HostCompilePoolReady {
+  host: HostIdentity
   slice_unit: NonEmptyStr
   pool_declared: Bool
   pool_observed: Bool
 }
+
+data pool_receipt_binding_note: String = "THE POOL RECEIPT MUST NAME ITS HOST AND ITS SLICE, AND THE FIRST VERSION OF IT DID NEITHER (review 46581). The cache receipt was bound both ways -- admit_runner_activation compares its instance host to the deploy host and its managed_unit to the instance's intended_unit -- and the pool receipt beside it was checked only by two Booleans. So a pool observed on a DIFFERENT host, or a correctly-observed slice with some other name, admitted activation. That is the same unbound-receipt defect the unit comparison exists to prevent, sitting in the sibling field, and the asymmetry is exactly how it survived being written: the receipt that got the attention got the binding.\n\nBinding it needs no new mechanism. The host comes from the same HostIdentity the deploy and the cache instance already carry, and the intended slice is already a field on the instance -- BuildCacheInstance.intended_compile_pool -- so the comparison is against declared intent rather than against a constant this module would otherwise have to name. Reaching for gunbc_managed_compile_pool_slice here instead would have made the wall agree with a global default rather than with the instance being activated against, which is a weaker check that looks identical."
 
 type RunnerActivationAdmission
   = RunnerActivationAdmitted {
@@ -64,6 +68,14 @@ fn readiness_flags_all_verified(r: BuildCacheInstanceReady) -> Bool {
 
 fn compile_pool_is_ready(p: HostCompilePoolReady) -> Bool {
   p.pool_declared && p.pool_observed
+}
+
+fn pool_receipt_is_for_host(p: HostCompilePoolReady, host: HostIdentity) -> Bool {
+  (p.host as String) == (host as String)
+}
+
+fn pool_receipt_names_intended_pool(p: HostCompilePoolReady, r: BuildCacheInstanceReady) -> Bool {
+  (p.slice_unit as String) == (r.instance.intended_compile_pool as String)
 }
 
 fn admit_runner_activation(
@@ -102,6 +114,14 @@ fn admit_runner_activation(
                 reason: "runner_activation: the build-cache instance is managed-unit-owned but at least one declared attribute (endpoint, executable, principal, storage, capacity, compile pool) is unverified against intent. A partially verified instance is not a ready one; refusing rather than activating on the verified subset." as NonEmptyStr,
               }
             true =>
+              match pool_receipt_is_for_host(p: pool_ready, host: d.host_label as HostIdentity)
+                && pool_receipt_names_intended_pool(p: pool_ready, r: cache_ready) {
+                false =>
+                  RunnerActivationRefused {
+                    host_label: d.host_label,
+                    reason: "runner_activation: the compile-pool receipt is not bound to this activation. Either it was observed on a different host, or it names a slice other than the instance's intended_compile_pool. An unbound receipt makes the pool check answer a question about somewhere else, which is indistinguishable from not checking (review 46581)." as NonEmptyStr,
+                  }
+                true =>
               match compile_pool_is_ready(p: pool_ready) {
                 false =>
                   RunnerActivationRefused {
@@ -117,6 +137,7 @@ fn admit_runner_activation(
                     cache_ready: cache_ready,
                     pool_ready: pool_ready,
                   }
+              }
               }
           }
           }
