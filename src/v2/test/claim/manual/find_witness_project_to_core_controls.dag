@@ -1,8 +1,34 @@
 module v2.test.manual.find_witness_project_to_core_controls
 
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness,
+  find_witness_derives
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.model_core {
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling
+}
+import v2.std.node {
+  Conj,
+  Edge,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.verification {
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {
