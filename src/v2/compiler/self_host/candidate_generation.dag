@@ -69,7 +69,7 @@ data direct_rust_door_scaffold_build_cause: Symbol = ^direct_rust_door_scaffold_
 
 data direct_rust_door_awaiting_cargo_cause: Symbol = ^direct_rust_door_awaiting_cargo
 
-data direct_rust_door_probe_entry: String = "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag"
+data direct_rust_door_probe_entry: String = "src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag"
 
 data direct_rust_door_probe_function: String = "witness_direct_rust_door_provenanced_artifact_holds"
 

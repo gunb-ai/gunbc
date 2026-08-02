@@ -8,18 +8,16 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   MissingTranslationRuleRefuses,
   WrittenSourceIndependentOfSeedEmitter,
   assess_missing_translation_rule_refuses,
-  assess_written_source_independent_of_seed_emitter,
   candidate_generation_serialize_target_wiring_trigger,
   direct_rust_door_closing_frontier_count,
   direct_rust_door_required_capabilities,
   refused,
-  v2_emitter_direct_rust_door_acceptance_admissions,
   v2_emitter_direct_rust_door_closing_contract_holds,
 }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import v2.std.logic { Bool }
 
-data v2_emitter_direct_rust_door_contract_witness_note: String = "CONTROLLED FIXTURES for the two-clause closing fold. Production admissions establish both MissingTranslationRuleRefuses and WrittenSourceIndependentOfSeedEmitter after candidate_generation wires serialize_target through v2.compiler.emit. Fixture tests prove the fold rejects planted dishonest admissions and that unavailable rows cannot be erased by duplicate established rows."
+data v2_emitter_direct_rust_door_contract_witness_note: String = "Fast per-PR fixture controls for the two-clause closing fold. Production ingest-path admissions run from src/v2/test/claim/long/v2_emitter_direct_rust_door_contract_test.dag (5s budget rule)."
 
 test fn witness_required_capability_population_is_two() -> Bool {
   length(direct_rust_door_required_capabilities()) == 2
@@ -30,29 +28,6 @@ test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
     DirectRustDoorEstablished { capability } => capability == MissingTranslationRuleRefuses
     _ => false
   }
-}
-
-test fn witness_written_source_assessment_establishes_on_fixture() -> Bool {
-  match assess_written_source_independent_of_seed_emitter() {
-    DirectRustDoorEstablished { capability } =>
-      capability == WrittenSourceIndependentOfSeedEmitter
-    _ => false
-  }
-}
-
-test fn witness_production_admissions_close_contract_holds() -> Bool {
-  let admissions = v2_emitter_direct_rust_door_acceptance_admissions()
-  length(admissions) == 2
-    && direct_rust_door_closing_frontier_count(admissions: admissions) == 0
-    && v2_emitter_direct_rust_door_closing_contract_holds(admissions: admissions)
-    && admissions |> any(admission => match admission {
-      DirectRustDoorEstablished { capability } => capability == MissingTranslationRuleRefuses
-      _ => false
-    })
-    && admissions |> any(admission => match admission {
-      DirectRustDoorEstablished { capability } => capability == WrittenSourceIndependentOfSeedEmitter
-      _ => false
-    })
 }
 
 test fn witness_accept_despite_gap_refusal_fires() -> Bool {
