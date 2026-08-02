@@ -13939,6 +13939,9 @@ pub fn emit_fn_def(
                     return_is_bare_generic.clone(),
                     ret_name.clone(),
                     body_is_param_ref.clone(),
+                    inferred.clone(),
+                    emit_info.clone_bounded_type_params.clone(),
+                    emit_info.type_decl_items.clone(),
                     si.clone(),
                 );
                 let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
