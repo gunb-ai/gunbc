@@ -1,5 +1,8 @@
 module v2.lens.unit_modeling
 
+import v2.lens.common.construction_justification { ConstructionJustification }
+import v2.std.diagnostic { Diagnostic }
+import v2.std.node { Edge, Symbol }
 
 type UnitFieldRow {
   field: Symbol

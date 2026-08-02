@@ -847,13 +847,19 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   }
 }
 
-data type_ref_binding_authority_note: String = "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T) are NOT authorized by a leaf-only import of an unrelated T (review 47295 / DESIGN §3/§5): the leaf must be import-reachable AND the qualified prefix must be that leaf's owning module — never qualified_last_segment alone. Owning-module identity: (1) prefix == env.module_path for same-module qualified spellings of a local/ancestry leaf (fixes Edge/Node under qualify_borrowed); (2) else global_bare_owner_module(leaf) == prefix for imported leaves (census owner, not SourceSpan equality — span copies false-refused discovery sites that compile-clean never saw because v2.std.node is outside witness_layer_roots); (3) else symbol_index + span.file same-decl fallback. Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here."
+data type_ref_binding_authority_note: String = "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T): (A) if the qualified prefix is the referencing module itself OR a containment ancestor (leading-segment prefix of env.module_path) AND symbol_index_lookup(full name) hits, authorize — a module is always binding authority for its own declarations and nested modules inherit that along the containment chain (quiet-hawk-219 on #7622 batch-3: self/ancestor qualified PortReading/Finding/LetBinding/Edge refusing was 47295 over-reach, not Class B); (B) otherwise cross-tree — leaf must be import/ancestry-reachable AND own the qualified path (global_bare_owner_module(leaf) == prefix, else symbol_index + span.file same-decl fallback). Never authorize by qualified_last_segment alone (review 47295). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body."
 
 fn type_ref_binding_authority_leaf_binding(env: TypeEnv, leaf: String) -> TypeBinding? {
   match map_get(env.str_bindings, leaf) {
     Present { value: b } => Present { value: b }
     Absent => map_get(env.ancestry_str_bindings, leaf)
   }
+}
+
+fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> Bool {
+  let a_segs = module_path_segments(path: ancestor)
+  let d_segs = module_path_segments(path: descendant)
+  (a_segs |> count) > 0 && segment_lcp_len(a: a_segs, b: d_segs) == (a_segs |> count)
 }
 
 fn type_ref_binding_authority_same_decl(env: TypeEnv, leaf: String, leaf_binding: TypeBinding, indexed: Node) -> Bool {
@@ -876,11 +882,14 @@ fn type_ref_binding_authority_import_local(env: TypeEnv, name: String) -> Bool {
   } else if contains(name, ".") {
     let leaf = qualified_last_segment(name: name)
     let prefix = qualified_all_but_last(name: name)
-    match type_ref_binding_authority_leaf_binding(env: env, leaf: leaf) {
-      Present { value: leaf_binding } =>
-        if prefix == env.module_path {
-          true
-        } else {
+    if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
+      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    } else {
+      match type_ref_binding_authority_leaf_binding(env: env, leaf: leaf) {
+        Present { value: leaf_binding } =>
           match global_bare_owner_module(env: env, owner_module_path: env.module_path, name: leaf) {
             Present { value: owner_mp } => owner_mp == prefix
             Absent =>
@@ -890,8 +899,8 @@ fn type_ref_binding_authority_import_local(env: TypeEnv, name: String) -> Bool {
                 Absent => false
               }
           }
-        }
-      Absent => false
+        Absent => false
+      }
     }
   } else {
     false

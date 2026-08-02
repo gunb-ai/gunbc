@@ -1524,7 +1524,7 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
 pub fn type_ref_binding_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T) are NOT authorized by a leaf-only import of an unrelated T (review 47295 / DESIGN §3/§5): the leaf must be import-reachable AND symbol_index_lookup(full name) must resolve to the SAME declaration as that leaf binding — owning-module check, not qualified_last_segment alone. Same-declaration identity is span.file + authored leaf name (not raw SourceSpan equality): census vs local-binding copies of one decl can disagree on start/end while remaining the same declaration; full-span equality false-refused same-module uses (LandingRequiredClaim / LandingClaimReadinessReceipt under whole-tree compile-clean). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here.".to_string()
+            "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T): (A) if the qualified prefix is the referencing module itself OR a containment ancestor (leading-segment prefix of env.module_path) AND symbol_index_lookup(full name) hits, authorize — a module is always binding authority for its own declarations and nested modules inherit that along the containment chain (quiet-hawk-219 on #7622 batch-3: self/ancestor qualified PortReading/Finding/LetBinding/Edge refusing was 47295 over-reach, not Class B); (B) otherwise cross-tree — leaf must be import/ancestry-reachable AND own the qualified path (global_bare_owner_module(leaf) == prefix, else symbol_index + span.file same-decl fallback). Never authorize by qualified_last_segment alone (review 47295). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1537,6 +1537,15 @@ pub fn type_ref_binding_authority_leaf_binding(
     match v1_rt::map_get(&env.str_bindings.clone(), leaf.clone()) {
         Some(b) => Some(b.clone()),
         None => v1_rt::map_get(&env.ancestry_str_bindings.clone(), leaf.clone()),
+    }
+}
+
+pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
+    {
+        let a_segs = module_path_segments(ancestor.clone());
+        let d_segs = module_path_segments(descendant.clone());
+        (((a_segs.clone().len() as i64) > 0)
+            && (segment_lcp_len(a_segs.clone(), d_segs.clone()) == (a_segs.clone().len() as i64)))
     }
 }
 
@@ -1570,19 +1579,37 @@ pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -
         if v1_rt::contains(name.clone(), ".".to_string()) {
             {
                 let leaf = qualified_last_segment(name.clone());
-                match type_ref_binding_authority_leaf_binding(env.clone(), leaf.clone()) {
-                    Some(leaf_binding) => {
-                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                            Some(indexed) => type_ref_binding_authority_same_decl(
-                                env.clone(),
-                                leaf.clone(),
-                                leaf_binding.clone(),
-                                indexed.clone(),
-                            ),
-                            None => false,
-                        }
+                let prefix = qualified_all_but_last(name.clone());
+                if type_ref_module_path_is_containment_prefix(
+                    prefix.clone(),
+                    env.module_path.clone(),
+                ) {
+                    match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                        Some(_) => true,
+                        None => false,
                     }
-                    None => false,
+                } else {
+                    match type_ref_binding_authority_leaf_binding(env.clone(), leaf.clone()) {
+                        Some(leaf_binding) => match global_bare_owner_module(
+                            env.clone(),
+                            env.module_path.clone(),
+                            leaf.clone(),
+                        ) {
+                            Some(owner_mp) => (owner_mp.clone() == prefix.clone()),
+                            None => {
+                                match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                                    Some(indexed) => type_ref_binding_authority_same_decl(
+                                        env.clone(),
+                                        leaf.clone(),
+                                        leaf_binding.clone(),
+                                        indexed.clone(),
+                                    ),
+                                    None => false,
+                                }
+                            }
+                        },
+                        None => false,
+                    }
                 }
             }
         } else {
