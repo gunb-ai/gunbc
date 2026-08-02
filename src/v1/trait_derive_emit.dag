@@ -403,7 +403,7 @@ fn v1_fn_param_wf_needs_clone(
   value_params |> any(vp =>
     v1_type_expr_wf_needs_clone_param(
       param_name: param_name,
-      type_expr: child_type_node(ch: vp),
+      type_expr: param_node_type_expr(n: vp),
       bounds: bounds,
       type_decl_items: type_decl_items,
       source_indices: source_indices

@@ -669,7 +669,7 @@ pub fn v1_fn_param_wf_needs_clone(
         for vp in value_params.clone().iter().cloned() {
             if v1_type_expr_wf_needs_clone_param(
                 param_name.clone(),
-                child_type_node(vp.clone()),
+                param_node_type_expr(vp.clone()),
                 bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),

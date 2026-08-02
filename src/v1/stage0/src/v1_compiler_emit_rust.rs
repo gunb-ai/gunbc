@@ -106,8 +106,9 @@ pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     v1_clone_bounded_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
     v1_emit_struct_from_capability_table, v1_emit_type_params_with_clone_bounds,
-    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
-    v1_item_clone_undecided_head, v1_trait_derive_refuse,
+    v1_fn_param_wf_needs_clone, v1_generic_params_needing_clone_bound,
+    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_trait_derive_refuse,
+    v1_type_expr_wf_needs_clone_param,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -13945,6 +13946,85 @@ pub fn emit_fn_def(
                     si.clone(),
                 );
                 let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
+                if (name.clone() == "occurrence_binding_from_candidates".to_string()) {
+                    {
+                        let gpn_str = generic_param_names.clone().iter().cloned().fold(
+                            "".to_string(),
+                            |acc: String, g: String| {
+                                v1_rt::concat(
+                                    v1_rt::concat(v1_rt::concat(acc, "[".to_string()), g.clone()),
+                                    "]".to_string(),
+                                )
+                            },
+                        );
+                        let wf_direct = {
+                            let mut __found = false;
+                            for vp in value_params.clone().iter().cloned() {
+                                if v1_type_expr_wf_needs_clone_param(
+                                    "N".to_string(),
+                                    param_node_type_expr(vp.clone()),
+                                    emit_info.clone_bounded_type_params.clone(),
+                                    emit_info.type_decl_items.clone(),
+                                    si.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        let fn_wf = v1_fn_param_wf_needs_clone(
+                            "N".to_string(),
+                            value_params.clone(),
+                            inferred.clone(),
+                            emit_info.clone_bounded_type_params.clone(),
+                            emit_info.type_decl_items.clone(),
+                            si.clone(),
+                        );
+                        let cpn_str = clone_param_names.clone().iter().cloned().fold(
+                            "".to_string(),
+                            |acc: String, g: String| {
+                                v1_rt::concat(
+                                    v1_rt::concat(v1_rt::concat(acc, "[".to_string()), g.clone()),
+                                    "]".to_string(),
+                                )
+                            },
+                        );
+                        return v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "compile_error!(\"DBG gpn=".to_string(),
+                                                        gpn_str.clone(),
+                                                    ),
+                                                    " wf_direct=".to_string(),
+                                                ),
+                                                if wf_direct.clone() {
+                                                    "T".to_string()
+                                                } else {
+                                                    "F".to_string()
+                                                },
+                                            ),
+                                            " fn_wf=".to_string(),
+                                        ),
+                                        if fn_wf.clone() {
+                                            "T".to_string()
+                                        } else {
+                                            "F".to_string()
+                                        },
+                                    ),
+                                    " cpn=".to_string(),
+                                ),
+                                cpn_str.clone(),
+                            ),
+                            "\");\n".to_string(),
+                        );
+                    }
+                }
                 let type_params_str = if needs_clone_bound.clone() {
                     v1_emit_type_params_with_clone_bounds(
                         type_params.clone(),
