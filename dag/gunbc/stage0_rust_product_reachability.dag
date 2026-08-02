@@ -9,7 +9,11 @@ import gunbc.stage0_rust_host_observation {
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   path_has_prefix,
-  path_in_list
+  path_in_list,
+  rust_source_prefix_stage0_example,
+  rust_source_prefix_stage0_test,
+  rust_source_prefix_test_harness,
+  rust_source_prefix_tooling
 }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { filter, fold_list, list_map, list_snoc_item }
@@ -22,13 +26,18 @@ data empty_string_list: List<String> = []
 
 data rust_module_dependency_graph_unresolved_edge: String = "Rust module dependency graph not modeled — cannot walk from cargo bin roots to dependent source files"
 
-data prefix_test_harness_repo_prefix: String = "src/v1/tests/"
+fn path_is_test_harness(path: String) -> Bool {
+  path_has_prefix(path: path, prefix: rust_source_prefix_test_harness)
+    || path_has_prefix(path: path, prefix: rust_source_prefix_stage0_test)
+}
 
-data prefix_stage0_test_repo_prefix: String = "src/v1/stage0/tests/"
+fn path_is_example_harness(path: String) -> Bool {
+  path_has_prefix(path: path, prefix: rust_source_prefix_stage0_example)
+}
 
-data prefix_stage0_example_repo_prefix: String = "src/v1/stage0/examples/"
-
-data prefix_tooling_repo_prefix: String = "dag/tools/"
+fn path_is_tooling_shim(path: String) -> Bool {
+  path_has_prefix(path: path, prefix: rust_source_prefix_tooling)
+}
 
 type RustProductReachabilityVerdict
   = ProductReachable { path: String, entry_path: String }
@@ -42,19 +51,6 @@ type ProductReachabilityReceipt
       verdicts: List<RustProductReachabilityVerdict>
     }
   | ProductReachabilityObservationRefused
-
-fn path_is_test_harness(path: String) -> Bool {
-  path_has_prefix(path: path, prefix: prefix_test_harness_repo_prefix)
-    || path_has_prefix(path: path, prefix: prefix_stage0_test_repo_prefix)
-}
-
-fn path_is_example_harness(path: String) -> Bool {
-  path_has_prefix(path: path, prefix: prefix_stage0_example_repo_prefix)
-}
-
-fn path_is_tooling_shim(path: String) -> Bool {
-  path_has_prefix(path: path, prefix: prefix_tooling_repo_prefix)
-}
 
 fn product_reachability_verdict_for_path(
   path: String,

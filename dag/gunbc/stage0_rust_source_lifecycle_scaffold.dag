@@ -281,11 +281,19 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
   }
 }
 
+data rust_source_prefix_test_harness: String = "src/v1/tests/"
+
+data rust_source_prefix_stage0_test: String = "src/v1/stage0/tests/"
+
+data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
+
+data rust_source_prefix_tooling: String = "dag/tools/"
+
 data rust_source_discovery_prefix_hints: List<String> = [
-  "src/v1/tests/",
-  "dag/tools/",
-  "src/v1/stage0/tests/",
-  "src/v1/stage0/examples/"
+  rust_source_prefix_test_harness,
+  rust_source_prefix_tooling,
+  rust_source_prefix_stage0_test,
+  rust_source_prefix_stage0_example
 ]
 
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
