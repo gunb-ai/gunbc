@@ -8,6 +8,7 @@ import gunbc.guarantee_probe_corpus {
   guarantee_probe_paths,
   guarantee_probe_class_ids,
   guarantee_probe_ids,
+  guarantee_probe_ids_reserved,
   call_label_surplus_class,
   method_established_surface_class,
   declared_conformance_ground_class,
@@ -41,7 +42,7 @@ import gunbc.guarantee_probe_corpus {
 }
 import gunbc.guarantee_measurement {
   observed_is_verdict,
-  guarantee_class_ids_unique, guarantee_path_ids_unique,
+  guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
   probe_set_digest,
 }
 import gunbc.compile_diagnostic_census {
@@ -58,7 +59,7 @@ import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), gunbc#7485 (InferToEval self-grounding frontier), and gunbc#7555 (InferToTranslate underived-refusal identities reserved) execute through gunbc.guarantee_measurement identities. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag; InferToTranslate identity rows are declared here until #7555 lands executing probes."
+data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) execute through gunbc.guarantee_measurement identities. gunbc#7555 (InferToTranslate) is OPEN — class/path/probe rows are reserved for layout only; no control is copied from that branch and translate probes stay out of guarantee_probe_ids until #7555 merges. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag."
 
 data probe_subject_revision_placeholder: CommitSha = "0000000000000000000000000000000000000000"
 data probe_harness_revision_placeholder: CommitSha = "1111111111111111111111111111111111111111"
@@ -84,6 +85,12 @@ data conformance_green_source: String = "module probe_conformance_green\nfn a() 
 test fn identity_registry_is_unique() -> Bool {
   guarantee_class_ids_unique(ids: guarantee_probe_class_ids())
     && guarantee_path_ids_unique(paths: guarantee_probe_paths())
+    && guarantee_probe_ids_unique(ids: guarantee_probe_ids())
+}
+
+test fn duplicate_probe_id_reds_registry() -> Bool {
+  guarantee_probe_ids_unique(ids: guarantee_probe_ids())
+    && !guarantee_probe_ids_unique(ids: [call_mislabel_red_probe, call_mislabel_red_probe])
 }
 
 test fn probe_set_digest_is_stable() -> Bool {
@@ -293,6 +300,11 @@ test fn v2_translate_identities_are_declared() -> Bool {
   (v2_infer_translate_path_id as String) == "v2-infer-translate"
     && (v2_translate_underived_refusal_class as String) == "v2-translate-underived-refusal"
     && (v2_translate_underived_red_probe as String) == "v2-translate-underived-refusal-conj-red"
+    && count(guarantee_probe_ids_reserved()) == 2
+    && count(
+      guarantee_probe_ids()
+        |> filter(id => (id as String) == (v2_translate_underived_red_probe as String)),
+    ) == 0
 }
 
 test fn v2_frontier_identities_are_declared() -> Bool {

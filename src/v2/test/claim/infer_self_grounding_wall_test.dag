@@ -6,6 +6,8 @@ import gunbc.guarantee_probe_corpus {
   v2_frontier_red_probe,
   guarantee_probe_paths,
   build_v2_phase_receipt,
+  probe_observation_from_accepted_infer_diagnostics,
+  non_empty_diagnostics_count_reason,
 }
 import gunbc.guarantee_measurement {
   join_receipt_to_path,
@@ -13,7 +15,9 @@ import gunbc.guarantee_measurement {
   ReceiptPathUnknown,
   ReceiptPathDuplicate,
   InferToEval,
-  AcceptedCounted,
+  ProbeObservation,
+  probe_observation_fold,
+  ProbeObservationFold,
 }
 import v2.compiler.infer {
   infer,
@@ -28,7 +32,7 @@ import v2.compiler.infer {
 }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one }
 import v2.std.algebra { list_snoc_item }
-import v2.std.diagnostic { Accepted, Rejected, Some, None }
+import v2.std.diagnostic { Accepted, Rejected, Some, None, NonEmptyDiagnostics }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Node,
@@ -44,7 +48,7 @@ import v2.std.node {
   Named,
 }
 import v2.std.witness { Holds, Violates }
-import std.types { NonEmptyStr, Bool, CommitSha }
+import std.types { Bool, CommitSha }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -244,23 +248,52 @@ test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool {
     && wall_infer_counts_frontier(root: wall_malformed_int_with_extra_payload())
 }
 
+fn wall_frontier_observation_matches_infer(nes: NonEmptyDiagnostics, o: ProbeObservation) -> Bool {
+  probe_observation_fold(
+    o: o,
+    fold: ProbeObservationFold {
+      refused: fn(_, _) { false },
+      accepted_clean: false,
+      accepted_counted: fn(cls, c) {
+        (cls as String) == (nes.head.reason as String)
+          && c == non_empty_diagnostics_count_reason(nes: nes, reason: ^infer_grounding_not_derived)
+      },
+      diverged: fn(_) { false },
+      not_runnable: fn(_) { false },
+    },
+  )
+}
+
 test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
   let root = wall_value_node()
-  wall_resolved_type_refused(root: root)
-    && wall_infer_counts_frontier(root: root)
-    && match join_receipt_to_path(
-      receipt: build_v2_phase_receipt(
-        class: v2_self_grounding_frontier_class,
-        path: v2_infer_eval_path_id,
-        probe: v2_frontier_red_probe,
-        observed: AcceptedCounted { diagnostic_class: "GroundingNotDerived" as NonEmptyStr, count: 1 },
-        subject_revision: probe_subject_revision_placeholder,
-        harness_revision: probe_harness_revision_placeholder,
-      ),
-      paths: guarantee_probe_paths(),
-    ) {
-      ReceiptJoined { path: p } => p.acceptance_boundary == InferToEval
-      ReceiptPathUnknown { receipt_path: _ } => false
-      ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
-    }
+  match infer(tree: root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        None => false
+        Some { diagnostics: nes } =>
+          wall_resolved_type_refused(root: root)
+            && nes.head.reason == ^infer_grounding_not_derived
+            && match join_receipt_to_path(
+              receipt: build_v2_phase_receipt(
+                class: v2_self_grounding_frontier_class,
+                path: v2_infer_eval_path_id,
+                probe: v2_frontier_red_probe,
+                observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                subject_revision: probe_subject_revision_placeholder,
+                harness_revision: probe_harness_revision_placeholder,
+              ),
+              paths: guarantee_probe_paths(),
+            ) {
+              ReceiptJoined { path: p } =>
+                p.acceptance_boundary == InferToEval
+                  && wall_frontier_observation_matches_infer(
+                    nes: nes,
+                    o: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                  )
+              ReceiptPathUnknown { receipt_path: _ } => false
+              ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+            }
+      }
+  }
 }

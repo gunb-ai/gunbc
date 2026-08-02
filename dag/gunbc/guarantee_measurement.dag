@@ -135,6 +135,10 @@ fn guarantee_path_ids_unique(paths: List<GuaranteePath>) -> Bool {
   distinct_string_count(values: paths |> map(p => p.id as String)) == count(paths)
 }
 
+fn guarantee_probe_ids_unique(ids: List<GuaranteeProbeId>) -> Bool {
+  distinct_string_count(values: ids |> map(i => i as String)) == count(ids)
+}
+
 data probe_set_digest_note: String = "Content address of the exact probe set a receipt ran under, folded in the caller's list order: canonical ordering is the PROBE stage's obligation (it owns the probe roster and its canonical enumeration), so this fn is deterministic exactly when the caller's order is - stated rather than silently sorted here, because a sort would need an order authority this stage does not own and a host-order sort would be the determinism leak std.determinism refuses."
 
 fn probe_set_digest(probe_ids: List<GuaranteeProbeId>) -> Fnv1a64Structural {

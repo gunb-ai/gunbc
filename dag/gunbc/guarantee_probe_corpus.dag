@@ -12,11 +12,14 @@ import gunbc.guarantee_measurement {
   ProbeObservationFold, probe_observation_fold, observed_is_verdict,
   GuaranteeMeasurementReceipt,
   probe_set_digest,
-  guarantee_class_ids_unique, guarantee_path_ids_unique,
+  guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
   join_receipt_to_path, ReceiptJoined,
 }
 import v2.std.optional { Present, Absent }
 import std.algebra { Ordering, Less, Equal, Greater }
+import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
+import v2.std.algebra { fold_list }
+import v2.std.node { Symbol }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -28,11 +31,11 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 
-data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), gunbc#7485 (InferToEval self-grounding frontier), and gunbc#7555 (InferToTranslate underived-refusal, in flight — identities reserved, executing translate probes coordinate with merry-cat-407) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. Each row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag; InferToTranslate identities are declared here but executing probes land with #7555. No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier."
+data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main (merry-cat-407): class/path/probe identities are RESERVED here for layout, but no control is copied from that branch and executing translate probes are excluded from guarantee_probe_ids until #7555 merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag. No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier."
 
-data guarantee_probe_corpus_path_scope_note: String = "THREE PATHS FOR THE LANDED WALLS: v1-compile-rust is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path compile_diagnostic_census measures. v2-infer-eval is the same subject grain with acceptance_boundary InferToEval and realization_target InterpreterRealization — the path gunbc#7485's GroundingNotDerived frontier diagnostic lives on. v2-infer-translate is the same subject grain with acceptance_boundary InferToTranslate and realization_target InterpreterRealization — the path gunbc#7555's translate-underived-refusal diagnostic lives on. A receipt keyed to one path must not claim coverage the other measures (DESIGN 4b minimum-across-paths discipline)."
+data guarantee_probe_corpus_path_scope_note: String = "THREE PATHS FOR THE LANDED WALLS: v1-compile-rust is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path compile_diagnostic_census measures. v2-infer-eval is the same subject grain with acceptance_boundary InferToEval and realization_target InterpreterRealization — the path gunbc#7485's GroundingNotDerived frontier diagnostic lives on. v2-infer-translate is the same subject grain with acceptance_boundary InferToTranslate and realization_target InterpreterRealization — reserved for gunbc#7555 (OPEN; merry-cat-407), whose translate-underived-refusal control migrates only after that PR merges to main. A receipt keyed to one path must not claim coverage the other measures (DESIGN 4b minimum-across-paths discipline)."
 
-data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists probes in stable lexicographic order by branded id string. Callers must not re-sort; the roster order here IS the probe-set digest authority for this stage."
+data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. guarantee_probe_ids_reserved holds OPEN follow-on identities (gunbc#7555) outside the digest until their control merges. Callers must not re-sort; the active roster order here IS the probe-set digest authority for this stage."
 
 data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_phase_receipt take both from the caller — witness fixtures own placeholder revisions until the baseline stage names real commits; the corpus module does not fabricate provenance inside the builders."
 
@@ -113,6 +116,11 @@ fn guarantee_probe_ids() -> List<GuaranteeProbeId> {
     method_missing_red_probe,
     v2_frontier_green_probe,
     v2_frontier_red_probe,
+  ]
+}
+
+fn guarantee_probe_ids_reserved() -> List<GuaranteeProbeId> {
+  [
     v2_translate_underived_red_probe,
     v2_translate_underived_green_probe,
   ]
@@ -187,6 +195,28 @@ fn probe_ids_are_lexicographically_ordered(ids: List<GuaranteeProbeId>) -> Bool 
 type ProbeExpectation
   = ExpectBlockingRefusal { diagnostic_class: NonEmptyStr }
   | ExpectZeroDiagnostics
+
+fn non_empty_diagnostics_count_reason(nes: NonEmptyDiagnostics, reason: Symbol) -> Nat {
+  let head_count = if nes.head.reason == reason { 1 } else { 0 }
+  fold_list(
+    xs: nes.tail,
+    empty: head_count,
+    cons: fn(acc, d) {
+      if d.reason == reason { acc + 1 } else { acc }
+    },
+  )
+}
+
+fn probe_observation_from_accepted_infer_diagnostics(diagnostics: Diagnostics) -> ProbeObservation {
+  match diagnostics {
+    None => AcceptedClean
+    Some { diagnostics: nes } =>
+      AcceptedCounted {
+        diagnostic_class: nes.head.reason as NonEmptyStr,
+        count: non_empty_diagnostics_count_reason(nes: nes, reason: nes.head.reason),
+      }
+  }
+}
 
 fn census_row_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
   count(rows)
