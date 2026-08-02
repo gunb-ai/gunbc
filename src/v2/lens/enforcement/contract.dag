@@ -55,12 +55,12 @@ import v2.lens.registry {
 import v2.lens.enforcement.vocab {
   SubjectRoster, ScopeRoster,
   EnforcementMode, Blocking, AuditOnly, Advisory,
-  ConsumerKind, FloorGate, WitnessOnly, NoConsumer,
+  ConsumerKind, EnrolledInFloorRoster, WitnessOnly, NoConsumer,
   ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
   ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
   NarrowingReason, TypeReflectionUnavailable,
-  RedControlStatus, RedControlPassed, RedControlMissing, RedControlFailedToFlip,
-  SelfApplicationStatus, SelfAppliesObserved, SelfExemptObserved, SelfApplicationAbsent,
+  RedControlStatus, RedControlPassed, RedControlAbsent, RedControlFailedToFlip,
+  SelfApplicationStatus, LensModuleFunctionObserved, SelfExemptObserved, SelfApplicationAbsent,
   ReceiptRef, HasReceiptRef, NoReceiptRef
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow, WallAfterGrounding, RatchetForever }
@@ -77,12 +77,12 @@ type LensContract {
   boundary: ConstructionJustification
 }
 
-type CoverageReceipt {
+type EnrollmentDiscoveryReceipt {
   contract_id: LensIdV0
-  discovered_subjects: SubjectRoster
+  discovered_subject_names: SubjectRoster
   scope_satisfaction: ScopeSatisfaction
-  consumer_observed: ConsumerKind
-  consumer_receipt_ref: ReceiptRef
+  consumer_enrolled: ConsumerKind
+  consumer_entry_identity: ReceiptRef
   red_control_status: RedControlStatus
   self_application_status: SelfApplicationStatus
 }
@@ -590,55 +590,4 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_witness_cost_locality
 ]
 
-data lens_contracts_pending_fn_body_reflection_note: String = "W3.3 registry-enrollment frontier (mandate step 4): every enrolled LensContract with consumer_witness: NoConsumerWitness is enrolled-but-unreceipted by construction, not by omission - CoverageReceipt derivation (v2.lens.enforcement.receipts) is gated on fn_body_reflection_blocker (decl_facts marshals only the fn output skeleton today, not bodies), so a live receipt cannot be honestly derived for a lens whose subject discovery or red-control probe needs body-level facts. The pending roster is DERIVED from lens_contract_registry by contract_pending_fn_body_reflection (NoConsumerWitness only) - not a parallel hand list - so registry enrollment cannot silently drift from the counted frontier. This is the SAME typed gate receipts.dag already uses for ScopeNarrowed\{reason: TypeReflectionUnavailable\{blocker: fn_body_reflection_blocker\}\} - not a new absorption, the existing one generalized to the newly-enrolled roster. coverage_receipts_live omits pending ids so gate.dag find_receipt answers ReceiptAbsent -> typed LegFails (never a fabricated CoverageReceipt), and the frontier stays counted and located. Dissolve-on: fn-body reflection lands in decl_facts, at which point each id either derives a real CoverageReceipt (drops out of the derived pending set) or is re-justified with a narrower NarrowingReason - the derived pending set must shrink to [] or every remaining member must carry a fresher reason."
-
-fn contract_consumer_witness_is_absent(binding: ConsumerWitnessBinding) -> Bool {
-  match binding {
-    NoConsumerWitness => true
-    BoundConsumerWitness { witness: _ } => false
-  }
-}
-
-fn contract_pending_fn_body_reflection(c: LensContract) -> Bool {
-  contract_consumer_witness_is_absent(binding: c.consumer_witness)
-}
-
-fn lens_contract_pending_step(acc: List<LensIdV0>, c: LensContract) -> List<LensIdV0> {
-  if contract_pending_fn_body_reflection(c: c) {
-    list_snoc_item(xs: acc, item: c.entry.lens_id)
-  } else {
-    acc
-  }
-}
-
-data lens_contract_pending_empty_ids: List<LensIdV0> = []
-
-fn lens_contracts_pending_fn_body_reflection() -> List<LensIdV0> {
-  fold_list(
-    xs: lens_contract_registry,
-    empty: lens_contract_pending_empty_ids,
-    cons: lens_contract_pending_step
-  )
-}
-
-fn lens_contracts_pending_fn_body_reflection_count() -> Int {
-  length(xs: lens_contracts_pending_fn_body_reflection())
-}
-
-fn lens_contracts_receipted_count() -> Int {
-  length(xs: lens_contract_registry) - lens_contracts_pending_fn_body_reflection_count()
-}
-
-fn lens_id_pending_fn_body_reflection(id: LensIdV0) -> Bool {
-  contains(
-    xs: lens_contracts_pending_fn_body_reflection(),
-    item: id,
-    eq: lens_id_v0_eq
-  )
-}
-
-fn lens_contract_pending_inventory_holds() -> Bool {
-  for_all(xs: lens_contract_registry, predicate: fn(c) {
-    contract_pending_fn_body_reflection(c: c) == lens_id_pending_fn_body_reflection(id: c.entry.lens_id)
-  })
-}
+data enrollment_discovery_receipt_unbound_contract_note: String = "Phase 0A honesty: contracts with consumer_witness: NoConsumerWitness remain enrolled in lens_contract_registry and are enumerable via lens_contract_is_unbound (v2.lens.enforcement.receipts, routed through consumer_enrolled_for — not a parallel coproduct Bool predicate), but coverage_receipts_live does not derive an EnrollmentDiscoveryReceipt for them — semantic receipt legs (scope, subjects, red control, self-application) would be fabricated without a bound consumer witness. Unbound contracts stay visible and countable for the coming inventory phase; omitting receipts is not omitting contracts."

@@ -142,9 +142,9 @@ fn vacuity_consumer_witness_synthetic_equals_operand() -> Node {
 
 test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -> Bool {
   let target_file = vacuity_consumer_witness_scan_file()
-  let target_fn = ^vacuity_consumer_witness_nonexistent_probe_target
+  let target_fn = ^vacuity_self_application_probe
   let source_text = filesystem_read(path: target_file).content
-  let absent_fn_path_holds = match vacuity_witness_ingest_source_text(
+  let collection_ceiling_holds = match vacuity_witness_ingest_source_text(
     source_text: source_text,
     file: vacuity_bool_witness_file_anchor
   ) {
@@ -154,17 +154,17 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
         decls: vacuity_collect_fn_decls(root: module_root, acc: Empty),
         name: target_fn
       )
-      let fn_genuinely_absent = match fn_lookup {
-        Absent => true
-        Present { value: _ } => false
+      match fn_lookup {
+        Present { value: _ } =>
+          match classify_bool_witness_outcome(witness: BoolWitness { entry: target_file, function: target_fn }) {
+            Classified { evidence: _ } => true
+            Refused { cause: _ } => false
+          }
+        Absent =>
+          vacuity_classification_outcome_is_refused_fn_collection_unavailable(
+            o: classify_bool_witness_outcome(witness: BoolWitness { entry: target_file, function: target_fn })
+          )
       }
-      let classified = classify_unified_test_claim_vacuity(
-        claim: BoolWitnessClaim { witness: BoolWitness { entry: target_file, function: target_fn } },
-        lhs_provenance: OperandProvenanceUnknown,
-        rhs_provenance: OperandProvenanceUnknown,
-        operand_provenance: OperandProvenanceUnknown
-      )
-      fn_genuinely_absent && vacuity_evidence_eq(a: classified, b: Unknown)
   }
   let operand = vacuity_consumer_witness_synthetic_equals_operand()
   let dispatcher_reaches_proven_duplicate = vacuity_evidence_eq(
@@ -185,5 +185,5 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
     ),
     b: ProvenDuplicate
   )
-  absent_fn_path_holds && dispatcher_reaches_proven_duplicate
+  collection_ceiling_holds && dispatcher_reaches_proven_duplicate
 }

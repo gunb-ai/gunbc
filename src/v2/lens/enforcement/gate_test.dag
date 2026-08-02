@@ -15,7 +15,7 @@ data synthetic_intent: StandingIntent = {
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [] },
   default_mode: Blocking,
-  required_consumer: Exact { kind: FloorGate },
+  required_consumer: Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
@@ -39,47 +39,47 @@ data synthetic_contract_audit_only: LensContract = {
   boundary: ConstructionJustification { class: RatchetForever }
 }
 
-data synthetic_receipt_good: CoverageReceipt = {
+data synthetic_receipt_good: EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
-  consumer_observed: FloorGate,
-  consumer_receipt_ref: NoReceiptRef,
+  consumer_enrolled: EnrolledInFloorRoster,
+  consumer_entry_identity: NoReceiptRef,
   red_control_status: RedControlPassed,
-  self_application_status: SelfAppliesObserved
+  self_application_status: LensModuleFunctionObserved
 }
 
-data synthetic_receipt_narrow: CoverageReceipt = {
+data synthetic_receipt_narrow: EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeNarrowed {
     missing: ScopeRoster { roots: ["dag", "src/v1"] },
     reason: ExternalRuntimeOnly { reason: "synthetic off-substrate gap" }
   },
-  consumer_observed: FloorGate,
-  consumer_receipt_ref: NoReceiptRef,
+  consumer_enrolled: EnrolledInFloorRoster,
+  consumer_entry_identity: NoReceiptRef,
   red_control_status: RedControlPassed,
-  self_application_status: SelfAppliesObserved
+  self_application_status: LensModuleFunctionObserved
 }
 
-data synthetic_receipt_redfail: CoverageReceipt = {
+data synthetic_receipt_redfail: EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
-  consumer_observed: FloorGate,
-  consumer_receipt_ref: NoReceiptRef,
+  consumer_enrolled: EnrolledInFloorRoster,
+  consumer_entry_identity: NoReceiptRef,
   red_control_status: RedControlFailedToFlip,
-  self_application_status: SelfAppliesObserved
+  self_application_status: LensModuleFunctionObserved
 }
 
-data synthetic_receipt_witness_only: CoverageReceipt = {
+data synthetic_receipt_witness_only: EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
-  consumer_observed: WitnessOnly,
-  consumer_receipt_ref: NoReceiptRef,
+  consumer_enrolled: WitnessOnly,
+  consumer_entry_identity: NoReceiptRef,
   red_control_status: RedControlPassed,
-  self_application_status: SelfAppliesObserved
+  self_application_status: LensModuleFunctionObserved
 }
 
 data synthetic_intent_with_subject: StandingIntent = {
@@ -92,7 +92,7 @@ data synthetic_intent_with_subject: StandingIntent = {
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   default_mode: Blocking,
-  required_consumer: Exact { kind: FloorGate },
+  required_consumer: Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
@@ -108,7 +108,7 @@ data synthetic_intent_missing_subject: StandingIntent = {
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.not_discovered")] },
   default_mode: Blocking,
-  required_consumer: Exact { kind: FloorGate },
+  required_consumer: Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
@@ -124,7 +124,7 @@ data synthetic_intent_permuted_subject: StandingIntent = {
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "fixture.synthetic.subject_alpha")] },
   default_mode: Blocking,
-  required_consumer: Exact { kind: FloorGate },
+  required_consumer: Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
@@ -132,10 +132,10 @@ data synthetic_intent_permuted_subject: StandingIntent = {
 
 data synthetic_contracts: List<LensContract> = [synthetic_contract]
 data synthetic_contracts_audit_only: List<LensContract> = [synthetic_contract_audit_only]
-data receipts_good: List<CoverageReceipt> = [synthetic_receipt_good]
-data receipts_narrow: List<CoverageReceipt> = [synthetic_receipt_narrow]
-data receipts_redfail: List<CoverageReceipt> = [synthetic_receipt_redfail]
-data receipts_witness_only: List<CoverageReceipt> = [synthetic_receipt_witness_only]
+data receipts_good: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_good]
+data receipts_narrow: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_narrow]
+data receipts_redfail: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_redfail]
+data receipts_witness_only: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_witness_only]
 
 test fn subjects_leg_discriminates() -> Bool {
   return leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
@@ -179,8 +179,8 @@ test fn blocking_contract_without_live_consumer_is_inconsistent() -> Bool {
 }
 
 test fn blocking_registry_with_witness_only_receipt_fails_consistency() -> Bool {
-  return !enforcement_consistency_holds(contracts: synthetic_contracts, receipts: receipts_witness_only)
-    && enforcement_consistency_holds(contracts: synthetic_contracts_audit_only, receipts: receipts_witness_only)
+  return !blocking_consumers_enrolled(contracts: synthetic_contracts, receipts: receipts_witness_only)
+    && blocking_consumers_enrolled(contracts: synthetic_contracts_audit_only, receipts: receipts_witness_only)
 }
 
 test fn all_standing_intents_are_admissible() -> Bool {
@@ -188,11 +188,11 @@ test fn all_standing_intents_are_admissible() -> Bool {
 }
 
 test fn consumer_requirement_discriminates() -> Bool {
-  return !consumer_satisfies(actual: WitnessOnly, required: Exact { kind: FloorGate })
-    && consumer_satisfies(actual: FloorGate, required: Exact { kind: FloorGate })
+  return !consumer_satisfies(actual: WitnessOnly, required: Exact { kind: EnrolledInFloorRoster })
+    && consumer_satisfies(actual: EnrolledInFloorRoster, required: Exact { kind: EnrolledInFloorRoster })
     && consumer_satisfies(actual: MergeAdmission, required: AnyLiveConsumer)
     && !consumer_satisfies(actual: WitnessOnly, required: AnyLiveConsumer)
-    && consumer_satisfies(actual: MergeAdmission, required: OneOf { acceptable: [FloorGate, MergeAdmission] })
+    && consumer_satisfies(actual: MergeAdmission, required: OneOf { acceptable: [EnrolledInFloorRoster, MergeAdmission] })
 }
 
 test fn enforcement_mode_order_discriminates() -> Bool {
