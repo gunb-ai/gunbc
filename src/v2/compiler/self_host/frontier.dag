@@ -618,8 +618,8 @@ data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = execution_
 data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/materialization_carriers.dag",
   closure_reads: 35,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
+  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
+  located_stage: ProbeStageSemanticDerivation,
   located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
@@ -701,6 +701,7 @@ data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
 ]
 
 data compiler_frontier_sweep_order: List<String> = [
+  "src/v2/compiler/materialization_carriers.dag",
   "src/v2/compiler/04_infer.dag",
   "src/v2/compiler/05_eval.dag",
   "src/v2/compiler/06_translate.dag",
@@ -715,7 +716,6 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/discovery_enumeration.dag",
   "src/v2/compiler/01_tokenize.dag",
   "src/v2/compiler/self_host.dag",
-  "src/v2/compiler/materialization_carriers.dag",
   "src/v2/compiler/07_target_carriers.dag",
   "src/v2/compiler/fold_lowering.dag",
   "src/v2/compiler/03_normalize.dag",
