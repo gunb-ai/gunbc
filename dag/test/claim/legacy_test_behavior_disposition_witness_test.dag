@@ -10,7 +10,12 @@ import gunbc.legacy_test_behavior_disposition {
   TestBehaviorWitness,
   legacy_test_behavior_declared_slice_holds,
   legacy_test_behavior_disposition_graph_holds,
+  WitnessNotScheduledOffline,
+  WitnessScheduledInDiscovery,
+  WitnessScheduleUnknown,
   legacy_test_behavior_family_complete,
+  legacy_test_behavior_nonexecuting_witness_dispositions,
+  witness_entry_execution_status,
   optional_rendering_family_complete_live,
   legacy_test_behavior_id,
   test_behavior_witness_id,
@@ -71,6 +76,8 @@ test fn legacy_test_behavior_complete_fixture_is_admitted() -> Bool {
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: fixture_discovered_witnesses(),
     dispositions: fixture_complete_dispositions(),
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
 
@@ -80,6 +87,8 @@ test fn legacy_test_behavior_planted_unclassified_function_reds() -> Bool {
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: fixture_discovered_witnesses(),
     dispositions: [fixture_covered_disposition],
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
 
@@ -89,6 +98,8 @@ test fn legacy_test_behavior_planted_misclassification_reds() -> Bool {
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: [],
     dispositions: fixture_complete_dispositions(),
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
 
@@ -122,6 +133,8 @@ test fn legacy_test_behavior_family_complete_fixture_is_admitted() -> Bool {
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: fixture_discovered_witnesses(),
     dispositions: fixture_complete_dispositions(),
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
 
@@ -132,12 +145,16 @@ test fn legacy_test_behavior_family_ignores_unclassified_outside_its_files() -> 
     discovered_legacy: fixture_discovered_legacy_with_outsider(),
     discovered_witnesses: fixture_discovered_witnesses(),
     dispositions: fixture_complete_dispositions(),
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
     && !legacy_test_behavior_disposition_graph_holds(
       discovery_holds: true,
       discovered_legacy: fixture_discovered_legacy_with_outsider(),
       discovered_witnesses: fixture_discovered_witnesses(),
       dispositions: fixture_complete_dispositions(),
+      exclusion_patterns: fixture_exclusion_patterns(),
+      offline_patterns: fixture_offline_patterns(),
     )
 }
 
@@ -148,6 +165,8 @@ test fn legacy_test_behavior_family_planted_unclassified_member_reds() -> Bool {
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: fixture_discovered_witnesses(),
     dispositions: [fixture_covered_disposition],
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
 
@@ -158,6 +177,8 @@ test fn legacy_test_behavior_family_with_no_discovered_member_reds() -> Bool {
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: fixture_discovered_witnesses(),
     dispositions: fixture_complete_dispositions(),
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
 
@@ -168,11 +189,103 @@ test fn legacy_test_behavior_family_unresolved_witness_reds() -> Bool {
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: [],
     dispositions: fixture_complete_dispositions(),
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
 
 test fn optional_rendering_family_is_complete_live() -> Bool {
   optional_rendering_family_complete_live()
+}
+
+
+data fixture_dark_lane_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "src/v2/test/claim/long/fixture_long_lane_test.dag" as FilePath,
+  test_fn: "replacement_catches_regression" as NonEmptyStr,
+}
+
+data fixture_offline_lane_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "fixture/offline_lane/replacement_test.dag" as FilePath,
+  test_fn: "replacement_catches_regression" as NonEmptyStr,
+}
+
+data fixture_dark_lane_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: fixture_covered_behavior,
+  witness: fixture_dark_lane_witness,
+  distinguishing_failure: "fixture row citing a witness in a discovery-excluded lane" as NonEmptyStr,
+}
+
+data fixture_offline_lane_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: fixture_covered_behavior,
+  witness: fixture_offline_lane_witness,
+  distinguishing_failure: "fixture row citing a witness in a lane classified offline-local-recipe" as NonEmptyStr,
+}
+
+fn fixture_exclusion_patterns() -> List<String> {
+  ["test/claim/long/", "fixture/offline_lane/"]
+}
+
+fn fixture_offline_patterns() -> List<String> {
+  ["fixture/offline_lane/"]
+}
+
+test fn witness_in_scanned_lane_is_scheduled() -> Bool {
+  witness_entry_execution_status(
+    entry: fixture_witness.entry,
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
+  ) == WitnessScheduledInDiscovery
+}
+
+test fn witness_in_excluded_lane_is_schedule_unknown_not_admitted() -> Bool {
+  witness_entry_execution_status(
+    entry: fixture_dark_lane_witness.entry,
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
+  ) == WitnessScheduleUnknown { pattern: "test/claim/long/" as NonEmptyStr }
+}
+
+test fn witness_in_offline_lane_is_known_not_scheduled() -> Bool {
+  witness_entry_execution_status(
+    entry: fixture_offline_lane_witness.entry,
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
+  ) == WitnessNotScheduledOffline { pattern: "fixture/offline_lane/" as NonEmptyStr }
+}
+
+test fn nonexecuting_witness_rows_are_counted_not_dropped() -> Bool {
+  count(legacy_test_behavior_nonexecuting_witness_dispositions(
+    dispositions: [
+      fixture_covered_disposition,
+      fixture_dark_lane_disposition,
+      fixture_offline_lane_disposition,
+      fixture_retained_disposition,
+    ],
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
+  )) == 2
+}
+
+test fn graph_refuses_a_row_whose_witness_never_executes() -> Bool {
+  !legacy_test_behavior_disposition_graph_holds(
+    discovery_holds: true,
+    discovered_legacy: fixture_discovered_legacy(),
+    discovered_witnesses: [
+      test_behavior_witness_id(witness: fixture_dark_lane_witness),
+      test_behavior_witness_id(witness: fixture_witness),
+    ],
+    dispositions: [fixture_dark_lane_disposition, fixture_retained_disposition],
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
+  )
+}
+
+test fn non_covered_dispositions_are_unaffected_by_the_execution_wall() -> Bool {
+  count(legacy_test_behavior_nonexecuting_witness_dispositions(
+    dispositions: [fixture_retained_disposition],
+    exclusion_patterns: ["fixture/"],
+    offline_patterns: [],
+  )) == 0
 }
 
 test fn legacy_test_behavior_discovery_refusal_cannot_fabricate_green() -> Bool {
@@ -181,5 +294,7 @@ test fn legacy_test_behavior_discovery_refusal_cannot_fabricate_green() -> Bool 
     discovered_legacy: [],
     discovered_witnesses: [],
     dispositions: [],
+    exclusion_patterns: fixture_exclusion_patterns(),
+    offline_patterns: fixture_offline_patterns(),
   )
 }
