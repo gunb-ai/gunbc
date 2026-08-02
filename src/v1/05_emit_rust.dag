@@ -5318,6 +5318,9 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return_is_bare_generic: return_is_bare_generic,
     ret_name: ret_name,
     body_is_param_ref: body_is_param_ref,
+    ret: inferred,
+    bounds: emit_info.clone_bounded_type_params,
+    type_decl_items: emit_info.type_decl_items,
     source_indices: si
   )
   let needs_clone_bound = (clone_param_names |> count) > 0
