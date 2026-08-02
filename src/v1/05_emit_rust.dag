@@ -6410,7 +6410,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 }
 
 fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> Bool {
-  let base_struct = expand_type_for_field_access(n: resolved_type(n: base), env: scope.type_env, module_name: scope.module_name)
+  let base_struct = expand_type_for_field_access(n: resolved_type(n: base), env: scope.type_env, module_name: scope.module_name).resolved
   match find_child_named(n: base_struct, name: field, source_indices: scope.type_env.source_indices) {
     Present { value: field_child } =>
       let field_ty = resolved_type(n: field_child)
@@ -6704,7 +6704,7 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
 
       let si = scope.type_env.source_indices
       let resolved_rt = resolved_type(n: expr)
-      let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name)
+      let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name).resolved
       let variant_name = match tn { Present { value: n } => n  Absent => "" }
 
       let concrete_peel_would_erase_optional_ctor = is_optional_variant_name(name: variant_name)
