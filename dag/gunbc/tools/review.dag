@@ -4,6 +4,8 @@ import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
+
+data review_fetch_stall_deadline_seconds: Seconds = 300
 data cron_schedule: CronSchedule = CronSchedule {
   minute: extdeps.cron.schedule_model.Step { start: 0, step: 10 },
   hour: Wildcard,
@@ -59,7 +61,7 @@ fn fetch_pr_head_ref(ref: String) -> Bool {
   let fetched = git.Core.FetchNoTags(
     remote: "origin",
     ref: ref,
-    stall_deadline_seconds: 300 as Seconds
+    stall_deadline_seconds: review_fetch_stall_deadline_seconds
   )
   fetched.success
 }
