@@ -1,5 +1,7 @@
 module v2.workflow.ci_floor_peak_emit
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import v2.std.orchestration {
@@ -47,6 +49,17 @@ data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journa
 data ci_floor_phase_journal_read_command: String = "sed 's/^/[floor-phase-journal] /' \"$GUNBC_FLOOR_PHASE_JOURNAL\""
 
 data ci_floor_phase_journal_absent_command: String = "echo \"[floor-phase-journal] absent\""
+
+data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_peak_emit",
+    decl_name: "ci_floor_phase_journal_if",
+    field: WholeDeclaration
+  }
+}
+
+data ci_floor_phase_journal_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, header log, prefixed file read, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text."
 
 fn ci_floor_peak_run(command: String) -> Run {
   Run {

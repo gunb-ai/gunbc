@@ -278,12 +278,22 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
+        env:
+          GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         timeout-minutes: 55
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
+          if [ -f "$GUNBC_FLOOR_PHASE_JOURNAL" ]; then
+          echo "[floor-phase-journal] unix_millis pid phase state detail"
+          sed 's/^/[floor-phase-journal] /' "$GUNBC_FLOOR_PHASE_JOURNAL"
+          else
+          echo "[floor-phase-journal] absent"
+          fi
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
+        env:
+          GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         if: always()
         timeout-minutes: 5
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
