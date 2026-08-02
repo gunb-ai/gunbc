@@ -830,6 +830,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn type_ref_binding_authority_debt_admission_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_TYPE_REF_BINDING_AUTHORITY_DEBT_ADMISSION_SCAFFOLD_MARKER,
+            "cli_run_type_ref_binding_authority_debt_admission"
+        );
+    }
+
+    #[test]
     fn compile_clean_unlisted_import_census_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER,
@@ -2427,8 +2435,34 @@ fn compile_clean_policy_read_refuses_gate() -> bool {
     compile_clean_unlisted_import_use_blocks_cached().is_err()
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_type_ref_binding_authority_debt_admission`):
+// Host TSV loaders + identity-grain admission for N1 UnresolvedType (import-strip §14).
+// Authority: `gunbc.type_ref_binding_authority_debt` (frozen roster + expect-red + N2 dissolve).
+// NOT a semantic-debt census stand-in — this is the seed transport that *consumes* that census.
+// DELETE WHEN dissolved: `TYPE_REF_BINDING_AUTHORITY_DEBT_ROSTER_REL`,
+// `TYPE_REF_BINDING_AUTHORITY_EXPECT_RED_REL`, `normalize_repo_relative_path_for_debt`,
+// `load_type_ref_site_identity_tsv`, `type_ref_binding_authority_debt_roster`,
+// `type_ref_binding_authority_expect_red`, `type_ref_site_identity_covers`,
+// `type_ref_binding_authority_debt_covers`, `type_ref_binding_authority_expect_red_covers`,
+// `type_ref_unresolved_admitted_for_compile_clean`, and the OnceLock caches (~125 LOC).
+// Call-site wiring through compile-clean / resolve / run / emit (`v1_rt` bridge) deletes with it
+// once N2 containment makes the admission predicate unnecessary (roster empty → no host filter).
+// Receipt (declaration grain; bare token is multi-hit by design — scaffold header /
+// string literal / unit test). Executable pin that does NOT self-match this comment
+// (IDENT and TYPE_ANN are on separate lines here; contiguous only on the declaration):
+//   IDENT=CLI_RUN_TYPE_REF_BINDING_AUTHORITY_DEBT_ADMISSION_SCAFFOLD_MARKER
+//   TYPE_ANN=: &str =
+//   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
+// Lane: N2 type-position containment
+// (`docs/plans/namespace-resolution-design.md`; import-strip §14 /
+// `docs/plans/import-strip-witness-discovery-cascade-diagnosis.md`).
+// Carrier receipt: `gunbc.type_ref_binding_authority_debt` `type_ref_binding_authority_debt_hand_rust_receipt`.
+pub(crate) const CLI_RUN_TYPE_REF_BINDING_AUTHORITY_DEBT_ADMISSION_SCAFFOLD_MARKER: &str =
+    "cli_run_type_ref_binding_authority_debt_admission";
+
 /// Type-ref binding-authority debt (N1 / import-strip §14).
 ///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_TYPE_REF_BINDING_AUTHORITY_DEBT_ADMISSION_SCAFFOLD_MARKER` / §7).
 /// FROZEN at `type_ref_census_sha` (authority.dag). The arm always emits typed
 /// UnresolvedType (never FloorNotYet class-wide advisory). Compile-clean admits:
 ///   - incidental sites on `provisional_debt_roster.tsv` (TYPE×site identity)

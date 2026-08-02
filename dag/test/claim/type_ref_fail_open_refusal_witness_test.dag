@@ -10,6 +10,9 @@ import gunbc.compile_diagnostic_census {
 }
 import gunbc.type_ref_binding_authority_debt {
   type_ref_binding_authority_debt_dissolve_trigger,
+  type_ref_binding_authority_debt_hand_rust_receipt,
+  type_ref_binding_authority_debt_hand_rust_plan_anchor,
+  type_ref_binding_authority_debt_hand_rust_loc_delta_net,
   type_ref_census_sha,
   type_ref_debt_roster_freeze_state,
   Frozen,
@@ -73,6 +76,27 @@ test fn row5_qualified_pool_present_unreachable_matches_row3_shape() -> Bool {
 
 test fn debt_dissolve_trigger_names_n2() -> Bool {
   string_contains(s: type_ref_binding_authority_debt_dissolve_trigger, pattern: "N2 containment")
+}
+
+test fn hand_rust_receipt_names_deleted_scaffold_path() -> Bool {
+  string_contains(s: type_ref_binding_authority_debt_hand_rust_receipt, pattern: "HAND-RUST GATE receipt")
+    && string_contains(s: type_ref_binding_authority_debt_hand_rust_receipt, pattern: "cli_run_type_ref_binding_authority_debt_admission")
+    && string_contains(s: type_ref_binding_authority_debt_hand_rust_receipt, pattern: "DELETE")
+    && string_contains(s: type_ref_binding_authority_debt_hand_rust_receipt, pattern: "N2")
+}
+
+test fn hand_rust_receipt_plan_anchor_and_loc_are_checkable() -> Bool {
+  string_contains(
+    s: type_ref_binding_authority_debt_hand_rust_plan_anchor,
+    pattern: "import-strip-witness-discovery-cascade-diagnosis.md"
+  ) && type_ref_binding_authority_debt_hand_rust_loc_delta_net > 0
+}
+
+test fn dissolve_trigger_names_cli_run_hand_rust_transport() -> Bool {
+  string_contains(
+    s: type_ref_binding_authority_debt_dissolve_trigger,
+    pattern: "CLI_RUN_TYPE_REF_BINDING_AUTHORITY_DEBT_ADMISSION_SCAFFOLD_MARKER"
+  )
 }
 
 test fn census_sha_is_pinned_on_carrier() -> Bool {
