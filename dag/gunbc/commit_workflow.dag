@@ -1213,6 +1213,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       check_fns: [
         "ingested_classical_not_resolves_holds",
         "ingested_classical_not_arrow_has_match_holds",
+        "ingested_classical_not_canonical_emit_refuses_underived_holds",
+        "ingested_classical_not_staging_emit_refuses_underived_holds",
+        "ingested_classical_not_emit_accepts_holds",
         "ingested_classical_not_emit_octet_bridge_shape_holds",
         "ingested_classical_not_emit_source_arm_shape_holds"
       ],

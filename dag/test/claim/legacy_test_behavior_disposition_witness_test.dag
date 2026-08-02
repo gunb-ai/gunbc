@@ -1,0 +1,99 @@
+module test.claim.legacy_test_behavior_disposition_witness_test
+
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
+import gunbc.legacy_test_behavior_disposition {
+  CoveredByWitness,
+  LegacyTestBehavior,
+  LegacyTestBehaviorDisposition,
+  RetainedNonMigratableBehavior,
+  TestBehaviorWitness,
+  legacy_test_behavior_declared_slice_holds,
+  legacy_test_behavior_disposition_graph_holds,
+  legacy_test_behavior_id,
+  test_behavior_witness_id,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data fixture_covered_behavior: LegacyTestBehavior = LegacyTestBehavior {
+  source_file: "fixture/legacy.rs" as FilePath,
+  test_fn: "covered_behavior" as NonEmptyStr,
+}
+
+data fixture_retained_behavior: LegacyTestBehavior = LegacyTestBehavior {
+  source_file: "fixture/legacy.rs" as FilePath,
+  test_fn: "retained_behavior" as NonEmptyStr,
+}
+
+data fixture_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "fixture/replacement_test.dag" as FilePath,
+  test_fn: "replacement_catches_regression" as NonEmptyStr,
+}
+
+data fixture_covered_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: fixture_covered_behavior,
+  witness: fixture_witness,
+  distinguishing_failure: "planted regression changes the replacement verdict from true to false" as NonEmptyStr,
+}
+
+data fixture_retained_disposition: LegacyTestBehaviorDisposition = RetainedNonMigratableBehavior {
+  behavior: fixture_retained_behavior,
+  reason: "fixture host-only behavior cannot yet execute through the substrate" as NonEmptyStr,
+  dissolution_trigger: "the fixture host surface becomes a modeled effect" as NonEmptyStr,
+}
+
+fn fixture_discovered_legacy() -> List<String> {
+  [
+    legacy_test_behavior_id(behavior: fixture_covered_behavior),
+    legacy_test_behavior_id(behavior: fixture_retained_behavior),
+  ]
+}
+
+fn fixture_discovered_witnesses() -> List<String> {
+  [test_behavior_witness_id(witness: fixture_witness)]
+}
+
+fn fixture_complete_dispositions() -> List<LegacyTestBehaviorDisposition> {
+  [fixture_covered_disposition, fixture_retained_disposition]
+}
+
+test fn legacy_test_behavior_live_discovery_and_first_file_mapping_hold() -> Bool {
+  legacy_test_behavior_declared_slice_holds()
+}
+
+test fn legacy_test_behavior_complete_fixture_is_admitted() -> Bool {
+  legacy_test_behavior_disposition_graph_holds(
+    discovery_holds: true,
+    discovered_legacy: fixture_discovered_legacy(),
+    discovered_witnesses: fixture_discovered_witnesses(),
+    dispositions: fixture_complete_dispositions(),
+  )
+}
+
+test fn legacy_test_behavior_planted_unclassified_function_reds() -> Bool {
+  !legacy_test_behavior_disposition_graph_holds(
+    discovery_holds: true,
+    discovered_legacy: fixture_discovered_legacy(),
+    discovered_witnesses: fixture_discovered_witnesses(),
+    dispositions: [fixture_covered_disposition],
+  )
+}
+
+test fn legacy_test_behavior_planted_misclassification_reds() -> Bool {
+  !legacy_test_behavior_disposition_graph_holds(
+    discovery_holds: true,
+    discovered_legacy: fixture_discovered_legacy(),
+    discovered_witnesses: [],
+    dispositions: fixture_complete_dispositions(),
+  )
+}
+
+test fn legacy_test_behavior_discovery_refusal_cannot_fabricate_green() -> Bool {
+  !legacy_test_behavior_disposition_graph_holds(
+    discovery_holds: false,
+    discovered_legacy: [],
+    discovered_witnesses: [],
+    dispositions: [],
+  )
+}

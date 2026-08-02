@@ -1,6 +1,7 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List, ContentHash }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
+import std.content_hash { Fnv1a64Structural }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
@@ -77,7 +78,9 @@ type RestExchangeObservation
 
 type RestAuthSensitiveIdentity
   = RestUnauthenticated
-  | RestAuthenticated { scheme: NonEmptyStr, digest: ContentHash }
+  | RestAuthenticated { scheme: NonEmptyStr, digest: Fnv1a64Structural }
+
+data rest_authenticated_digest_witness_note: String = "AUTHENTICATED ARM: EXECUTED PIN, REPLAY-PATH DEFERRAL TYPED (review 47041, gunbc#7648). RestAuthenticated.digest is Fnv1a64Structural and the seed mint rest_auth_identity_value produces it via atom_identity_hash over '<scheme>\\0<secret>' - the SAME fnv1a64 primitive std.content_hash.content_hash_atom realizes, so an authored fixture reproduces the digest through the modeled surface (content_hash_atom(value: \"<scheme>\\0<secret>\")); an earlier spelling hashed with the host DefaultHasher, a value from outside the family this carrier names, which no dag fixture could ever author. EXECUTED EVIDENCE: rest_authenticated_identity_matches_dag_constructed_value (src/v1/tests/src/cross_representation_equality_test.rs) pins the seed mint ==-equal to the dag-authored identity - RED under a bare-text digest, RED under a non-fnv1a64 digest - plus a secret-inequality control. WHAT REMAINS DEFERRED, AND WHY, TYPED: a full replay-path authenticated witness (fixture matched against a seed-produced invocation through the service dispatch) additionally requires the invocation input_digest, whose per-param limbs content_hash_service_inputs still derives via the host value_hash - not reproducible from .dag - so authoring the matching fixture is blocked on that limb pipeline migrating to the fnv1a64 primitives; that migration also moves the recorded-fixture store keys, so it is its own lane, not a fixture edit here. RUNG: the mint seam is mechanically prevented by the executed pin; the end-to-end authenticated replay path remains unexecuted and must not be reported above that. DISSOLVE-ON: the limb migration lands and an authenticated replay witness executes against a seed-produced invocation; this row then deletes."
 
 data rest_bound_invocation_note: String = "REST needs a specialization of v2.std.operation_argv.BoundOperationInvocation rather than pretending its shell-only binding list is enough. OperationRef remains the declaration identity authority. The specialization adds the HTTP method, fully realized URI target, the digest of every declared input, and an auth-sensitive digest whose preimage never enters the fixture. Together those facts make a replay exact: a fixture for another operation, path/query/body input, method, target, or credential identity cannot satisfy this invocation. Query and body values are already in the declared-input digest; constants are fixed by OperationRef."
 
@@ -85,7 +88,7 @@ type RestBoundOperationInvocation {
   at: OperationRef
   method: HttpMethod
   target: Uri
-  input_digest: ContentHash
+  input_digest: Fnv1a64Structural
   auth_identity: RestAuthSensitiveIdentity
 }
 

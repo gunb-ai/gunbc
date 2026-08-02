@@ -15,7 +15,12 @@ import v2.compiler.eval {
   inputs_root_only
 }
 import extdeps.communication.medium { Medium }
-import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.compiler.infer {
+  InferredFacts,
+  InferredTree,
+  infer,
+  inferred_facts_witness_for_node
+}
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
@@ -150,7 +155,28 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
     }
   )
 }
-fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+fn ingested_canonical_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      infer(tree: arrow)
+    }
+  )
+}
+
+fn ingested_classical_not_staging_facts_lookup(
+  canonical: InferredTree,
+  key: Node
+) -> Optional<InferredFacts> {
+  match inferred_facts_witness_for_node(tree: canonical, node: key) {
+    Holds { value: facts } =>
+      Present { value: facts }
+    Violates { diagnostic: _ } =>
+      Present { value: ingested_classical_not_composed_facts(key: key) }
+  }
+}
+
+fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
@@ -162,11 +188,7 @@ fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
               root: inferred.root,
               facts: Map {
                 lookup: fn(key) {
-                  match inferred.facts.lookup(key: key) {
-                    Present { value: f } => Present { value: f }
-                    Absent =>
-                      Present { value: ingested_classical_not_composed_facts(key: key) }
-                  }
+                  ingested_classical_not_staging_facts_lookup(canonical: inferred, key: key)
                 }
               }
             }
@@ -175,6 +197,51 @@ fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
       )
     }
   )
+}
+
+fn ingested_emit_shape_frontier_tree_from_source(source: String) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      outcome_accepted(
+        value: InferredTree {
+          root: arrow,
+          facts: Map {
+            lookup: fn(_key) {
+              Absent
+            }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      bind_outcome(
+        o: infer(tree: arrow),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: Map {
+                lookup: fn(key) {
+                  Present { value: ingested_classical_not_composed_facts(key: key) }
+                }
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+  ingested_staging_inferred_tree_from_source(source: source)
 }
 
 fn ingested_classical_not_eval_subgraph_canonical() -> Node {
@@ -448,7 +515,7 @@ test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Boo
 }
 
 test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
-  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
@@ -462,13 +529,25 @@ test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
 }
 
 test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
-  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
           string_contains(s: source, pattern: "pub fn classical_not(x")
             || string_contains(s: source, pattern: "fn classical_not(x")
         Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_canonical_emit_refuses_underived_holds() -> Bool {
+  match ingested_canonical_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^infer_grounding_not_derived
+        Accepted { value: _, diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -482,8 +561,28 @@ test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
   ingested_arrow_has_match_body(source: ingested_classical_not_source)
 }
 
+fn ingested_classical_not_staging_emit_refuses_underived(source: String) -> Bool {
+  match ingested_staging_inferred_tree_from_source(source: source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^infer_grounding_not_derived
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_staging_emit_refuses_underived_holds() -> Bool {
+  ingested_classical_not_staging_emit_refuses_underived(source: ingested_classical_not_source)
+}
+
+test fn ingested_classical_not_staging_swapped_emit_refuses_underived_holds() -> Bool {
+  ingested_classical_not_staging_emit_refuses_underived(source: ingested_classical_not_swapped_source)
+}
+
 test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
-  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
       ingested_classical_not_verdict_is_pass(
         run: ingested_classical_not_run(
@@ -496,7 +595,7 @@ test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
-  match ingested_inferred_tree_from_source(source: ingested_classical_not_swapped_source) {
+  match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_swapped_source) {
     Accepted { value: tree, diagnostics: _ } =>
       ingested_classical_not_verdict_is_semantic_mismatch(
         run: ingested_classical_not_run(
@@ -509,9 +608,9 @@ test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
 }
 
 test fn ingested_classical_not_emit_accepts_holds() -> Bool {
-  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
-      match emit(tree: tree, target: rust_target_model_staging()) {
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -575,5 +674,7 @@ test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool 
   )
 }
 
-data ingested_classical_not_emit_mock_shape_note: String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for the classical_not cutover's emit-to-text half — mocked/synthetically-ingested inferred tree -> assert emitted Rust TEXT (string compare, no compile), the shape src/v2/test/claim/emit/rust_binop_emit_test.dag already uses for direct emit() assertions. Aggregates only the pure parse/normalize/resolve/infer/emit legs (no host build/run, no eval): resolves_holds, arrow_has_match_holds, and the two source-shape assertions already in this module. Deliberately excludes emit_host_classical_not_ingested_equals_eval_holds/_swapped_refuses_holds, which run a real emit-vs-eval agreement leg — those stay off the per-PR enrollment."
+data ingested_classical_not_staging_composed_facts_scaffold: String = "Marked scaffold (lane: witness-realization / emit-host wet legs; owner: v2-inferred-tree-completeness; trigger: carrier split makes incomplete InferredTree unwritable so staging cannot compose over infer judgments). ingested_staging_inferred_tree_from_source is facts-flow-forward: Holds preserves canonical infer facts verbatim, including GroundingNotDerived — never upgrades infer's judgment to hand-composed DerivedGrounding. Violates (lookup miss) alone receives ingested_classical_not_composed_facts as the offline wet-leg frontier until the trigger fires. ingested_wet_emit_eval_composed_tree_from_source is the separate wet-only carrier: composed DerivedGrounding on every lookup so emit accepts and eval admits facts — never enrolled per-PR and never masquerades as canonical infer output."
+
+data ingested_classical_not_emit_mock_shape_note: String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_source (orch-emit-compatible empty facts map) -> assert emitted Rust TEXT (string compare, no compile). ingested_canonical_inferred_tree_from_source is the pure infer carrier; ingested_classical_not_canonical_emit_refuses_underived_holds and ingested_classical_not_staging_emit_refuses_underived_holds witness translate refuses recorded GroundingNotDerived. Wet/nightly emit-vs-eval legs use ingested_wet_emit_eval_composed_tree_from_source (composed facts on every lookup — emit accepts, eval admits); shape-frontier stays emit-only. Deliberately excludes wet legs from per-PR CommitCheckEnrollment."
 
