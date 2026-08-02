@@ -2434,6 +2434,13 @@ fn run_discovery_batch_node(
     scoped_receipt: Option<ScopedReceiptBatch>,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
+    // Post-discovery projections are executor machinery too.  Scoped batches keep
+    // their witness subjects under the narrow `source_roots`, while the authored
+    // timing projector and its renderers live in the enclosing walk universe.  Keep
+    // that authority available after the options value moves into discovery; using
+    // subject roots here makes a fully-green scoped roster refuse while resolving
+    // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
+    let execution_projection_source_roots = execution_authority_source_roots.clone();
     let label = format!(
         "discovery-corpus[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
@@ -2564,10 +2571,14 @@ fn run_discovery_batch_node(
                     )
                 );
             }
-            let projected = project_witness_cost_receipt(&source_roots, &summary);
+            let projected =
+                project_witness_cost_receipt(&execution_projection_source_roots, &summary);
             match &projected {
                 Ok(rows) => {
-                    match render_timing_histogram(&source_roots, &compute_histogram_data(rows)) {
+                    match render_timing_histogram(
+                        &execution_projection_source_roots,
+                        &compute_histogram_data(rows),
+                    ) {
                         Ok(histogram) => eprintln!("{histogram}"),
                         Err(e) => eprintln!("[histogram] render failed (timings unaffected): {e}"),
                     }
@@ -2575,7 +2586,7 @@ fn run_discovery_batch_node(
                 Err(msg) => eprintln!("{msg}"),
             }
             if let Ok(rows) = &projected {
-                emit_slowest_witness_attribution(&source_roots, rows);
+                emit_slowest_witness_attribution(&execution_projection_source_roots, rows);
             }
             if expect_red && summary.total > 0 {
                 // All green on an expect-red probe = stale quarantine (dissolve-on fired).
@@ -2623,7 +2634,8 @@ fn run_discovery_batch_node(
                     };
                 }
             }
-            let projected = project_witness_cost_receipt(&source_roots, &summary);
+            let projected =
+                project_witness_cost_receipt(&execution_projection_source_roots, &summary);
             if expect_red {
                 eprintln!(
                     "[expect-red] known-red probe still red: {} of {} failed (agreement — quarantine holds)",
