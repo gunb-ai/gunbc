@@ -132,6 +132,7 @@ type TrackedRustUnclassifiedProjection
   | TrackedRustProjectionReadRefused { detail: String }
   | TrackedRustProjectionParseRefused { detail: String }
   | TrackedRustProjectionGitRefused { detail: String }
+  | TrackedRustProjectionObservationRefused { detail: String }
 
 fn tracked_rust_unclassified_projection(
   observation: RustSourceHostObservation
@@ -151,7 +152,7 @@ fn tracked_rust_unclassified_projection(
           tracked_rust_repo_paths: tracked_rust_repo_paths,
           prior_tracked_rust_repo_paths: prior_tracked_rust_repo_paths,
           cargo_bin_repo_paths: cargo_bin_repo_paths
-        } => TrackedRustProjectionReadRefused { detail: detail }
+        } => TrackedRustProjectionObservationRefused { detail: detail }
       }
     HonestFrontierIntegrationDerived {
       lifecycle: lifecycle,
@@ -172,7 +173,7 @@ fn tracked_rust_unclassified_projection(
         } =>
           TrackedRustUnclassifiedPaths { paths: paths }
         LifecycleTotalityObservationRefused =>
-          TrackedRustProjectionReadRefused { detail: "lifecycle totality refused" }
+          TrackedRustProjectionObservationRefused { detail: "lifecycle totality refused" }
       }
   }
 }
