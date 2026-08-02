@@ -1206,3 +1206,21 @@ fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
         );
     });
 }
+
+// `cross_process_hit_skips_semantic_recompute` (the counter-proof for the
+// "warm-hit-skips-semantic-recompute" clause in
+// `gunbc.materialization_kernel_closing_frontier_audit`) was written and executed
+// here, then removed rather than landed: a second real resolve through the
+// disk-tier cache in the same process (fresh `MultiEntryIndex`, same
+// subject — exactly this test's shape) reliably aborts the process with
+// unbounded memory growth (~175MB -> >8GB RSS observed), reproducible on
+// the unmodified sibling test below (`same_subject_resolves_share_one_graph_store_hits_v2_disk`)
+// with zero diff to this file or `resolved_graph_cache.rs` versus main —
+// a pre-existing defect in the disk-tier repeat-resolve path, not something
+// this test introduced. A test that reliably OOMs the runner is not a safe
+// discriminating witness to enroll (DESIGN §5). The clause stays
+// `PartiallyDelivered` in the audit; its evidence names this finding and
+// the next trigger (root-cause the repeat-resolve memory growth as its own
+// piece of work before re-attempting this proof). The defect itself is
+// also recorded as its own DESIGN.md Open Threads entry ("disk-tier
+// repeat-resolve memory growth"), not only here.
