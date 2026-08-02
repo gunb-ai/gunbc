@@ -27229,8 +27229,7 @@ pub fn resolution_divergence_census_live_closure_scoped(
         "closure-scoped source load + resolve",
     )?;
     let roots = default_source_roots();
-    let mei = build_multi_entry_index_primary_precedence(&roots);
-    let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
+    let sources = resolution_divergence_closure_scoped_sources(&roots)?;
     let modules_resolved = sources.len();
     crate::v1_rt::resolution_silent_pick_enable();
     let resolve_result = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
@@ -27263,6 +27262,22 @@ pub fn resolution_divergence_census_live_closure_scoped(
         &format!("sites_checked={}", census.sites_checked),
     )?;
     Ok(census)
+}
+
+/// Closure membership for both the standalone adapter and the in-process gate.
+///
+/// The compile-clean/census pool is `primary-precedence`: the authored first root
+/// owns a module and later roots only fill absent names. The process-shared resolve
+/// index is deliberately strict for per-entry resolution. Using that strict index
+/// to *select* whole-tree membership mixes later-root import providers back into
+/// first-root entries and mints duplicate module declarations. Keep membership on
+/// its declared authority, then let callers resolve the deduplicated source set
+/// through either the cold adapter or the parent-owned shared index.
+fn resolution_divergence_closure_scoped_sources(
+    roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let membership_index = build_multi_entry_index_primary_precedence(roots);
+    load_compile_clean_entry_sources(roots, &membership_index, None)
 }
 
 /// A silent-pick row that also lands in the census's own containment_ambiguous
@@ -27749,11 +27764,11 @@ pub fn resolution_divergence_silent_pick_gate_in_process(
         record_resolution_divergence_phase(
             ResolutionDivergencePhase::ParentWholeTreeResolve,
             ResolutionDivergencePhaseState::Started,
-            "closure-scoped source load + shared-index resolve",
+            "primary-precedence closure load + shared-index resolve",
         )?;
         let roots = default_source_roots();
         let index = process_shared_index(&roots);
-        let sources = load_compile_clean_entry_sources(&roots, &index, None)?;
+        let sources = resolution_divergence_closure_scoped_sources(&roots)?;
         let modules_resolved = sources.len();
         let resolve_result = resolved_graph_from_sources_with_index(
             &index,
@@ -28335,13 +28350,18 @@ fn caller() -> Bool {
         let roots = fixture_roots(&fixture);
         let before = resolution_divergence_census_live(&roots, &[]).expect("legacy cold census");
 
-        let index = super::build_multi_entry_index_primary_precedence(&roots);
-        let sources = super::load_compile_clean_entry_sources(&roots, &index, None)
-            .expect("closure-scoped fixture sources");
+        // Match production exactly: membership is selected with the declared
+        // primary-precedence pool, while resolution consumes the parent process's
+        // canonicalized shared index. The absolute fixture roots intentionally differ
+        // in spelling from that canonical index; routing membership through the shared
+        // index reintroduces every module twice (absolute entry + relative provider).
+        let sources = super::resolution_divergence_closure_scoped_sources(&roots)
+            .expect("primary-precedence closure-scoped fixture sources");
+        let index = super::process_shared_index(&roots);
         let modules_resolved = sources.len();
         crate::v1_rt::resolution_silent_pick_enable();
         let resolve_result = super::resolved_graph_from_sources_with_index(
-            &index,
+            index.as_ref(),
             sources,
             super::ResolveTypecheckGate::Strict,
             "resolution-divergence-shared-cut-control",
