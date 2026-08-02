@@ -1,5 +1,14 @@
 module v2.extdeps.languages.rust_wire_serde
 
+import std.serialization { VariantNaming }
+import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules }
+import v2.std.compilers.target_model {
+  ConcreteSyntaxToken,
+  TargetModel
+}
+import v2.std.grammar { GrammarExpr, GrammarProduction }
+import v2.std.node { Edge, Node, Symbol, SyntheticOccurrence }
+
 fn rust_wire_serde_string_variant_rename_all_attr(naming: VariantNaming) -> String {
   match naming {
     AsAuthored => ""

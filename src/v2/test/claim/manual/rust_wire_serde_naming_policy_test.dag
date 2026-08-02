@@ -1,16 +1,20 @@
 module v2.test.manual.rust_wire_serde_naming_policy_test
 
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn rust_ws_serialize_accepts(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> Bool {
+fn rust_ws_serialize_accepts(target: TargetModel, emitted: Node) -> Bool {
   match v2.compiler.translate.target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn rust_ws_serialized_text(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> String {
+fn rust_ws_serialized_text(target: TargetModel, emitted: Node) -> String {
   match v2.compiler.translate.target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => ""
@@ -53,21 +57,21 @@ test fn witness_rust_wire_serde_naming_discriminates() -> Bool {
     && snake != v2.extdeps.languages.rust_wire_serde.rust_ws_review_event_body_golden
 }
 
-data unified_claim_rust_wire_serde_screaming_snake: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_rust_wire_serde_screaming_snake: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_screaming_snake_holds
   }
 }
 
-data unified_claim_rust_wire_serde_snake_case: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_rust_wire_serde_snake_case: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_snake_case_holds
   }
 }
 
-data unified_claim_rust_wire_serde_naming_discriminates: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_rust_wire_serde_naming_discriminates: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_naming_discriminates

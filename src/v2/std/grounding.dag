@@ -1,4 +1,12 @@
 module v2.std.grounding
+
+import v2.std.compilers.target_model { FunctionBoundarySite, TargetModel }
+import v2.std.diagnostic { Diagnostic }
+import v2.std.host_run { EmitHostRunReceipt }
+import v2.std.model_core { ModelCorePrimitiveFactAxis, PrimitiveFactBundle }
+import v2.std.node { Node, Symbol }
+import v2.std.verdict { VerdictTally }
+
 type PerLanguageFactBundleKey {
   subject_carrier: Node
   target: TargetModel
@@ -233,7 +241,7 @@ type GroundingEvidenceSchema
   | Sg5Evidence { source_carrier: Node }
 
 type PerTargetGroundingReceipt {
-  host_run: v2.std.host_run.EmitHostRunReceipt
+  host_run: EmitHostRunReceipt
 }
 
 fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> TargetModel {
@@ -245,9 +253,9 @@ type HostVerdictSurfaceExecutionStatus
   | AuthoringTimeVerdictSurface
 
 type PerTargetTestClaimReceipt {
-  host_run: v2.std.host_run.EmitHostRunReceipt
+  host_run: EmitHostRunReceipt
   execution_status: HostVerdictSurfaceExecutionStatus
-  verdict_tally: v2.std.verdict.VerdictTally
+  verdict_tally: VerdictTally
 }
 
 fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> TargetModel {
