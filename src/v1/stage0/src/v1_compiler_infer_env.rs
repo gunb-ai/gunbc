@@ -1546,17 +1546,19 @@ pub fn type_ref_binding_authority_same_decl(
     leaf_binding: Rc<TypeBinding>,
     indexed: Rc<Node>,
 ) -> bool {
-    let leaf_authored = authored_name(env.clone(), leaf_binding.resolved.clone());
-    let indexed_authored = authored_name(env.clone(), indexed.clone());
-    let leaf_matches = (leaf_binding.name.clone() == leaf.clone())
-        || (leaf_authored.clone() == leaf.clone())
-        || (qualified_last_segment(leaf_authored.clone()) == leaf.clone());
-    let indexed_matches = (indexed_authored.clone() == leaf.clone())
-        || (qualified_last_segment(indexed_authored.clone()) == leaf.clone());
-    leaf_matches
-        && indexed_matches
-        && ((leaf_binding.resolved.clone().span.clone().file == indexed.span.clone().file)
-            || (leaf_binding.resolved.clone().span.clone() == indexed.span.clone()))
+    {
+        let leaf_authored = authored_name(env.clone(), leaf_binding.resolved.clone());
+        let indexed_authored = authored_name(env.clone(), indexed.clone());
+        let leaf_matches = (((leaf_binding.name.clone() == leaf.clone())
+            || (leaf_authored.clone() == leaf.clone()))
+            || (qualified_last_segment(leaf_authored.clone()) == leaf.clone()));
+        let indexed_matches = ((indexed_authored.clone() == leaf.clone())
+            || (qualified_last_segment(indexed_authored.clone()) == leaf.clone()));
+        ((leaf_matches.clone() && indexed_matches.clone())
+            && ((leaf_binding.resolved.clone().span.clone().file.clone()
+                == indexed.span.clone().file.clone())
+                || (leaf_binding.resolved.clone().span.clone() == indexed.span.clone())))
+    }
 }
 
 pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -> bool {
