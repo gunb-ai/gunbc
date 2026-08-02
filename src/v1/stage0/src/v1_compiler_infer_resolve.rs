@@ -1153,6 +1153,23 @@ pub fn resolve_node_bounded(
             {
                 {
                     let type_name = authored_name(env.clone(), n.clone());
+                    let binding_authority_diags = if (((masked.clone()
+                        && (type_ref_has_binding_authority(env.clone(), type_name.clone())
+                            == false))
+                        && (is_kernel_type(type_name.clone()) == false))
+                        && (is_kernel_type(qualified_last_segment(type_name.clone())) == false))
+                    {
+                        Rc::new(vec![make_error_node(
+                            bare_name_miss_diagnostic(
+                                env.clone(),
+                                type_name.clone(),
+                                n.span.clone(),
+                            ),
+                            module_name.clone(),
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    };
                     let decl = resolve_generic_use_decl(env.clone(), n.clone());
                     let expected_arity = (decl.params.clone().len() as i64);
                     let actual_arity = (n.children.clone().len() as i64);
@@ -1324,7 +1341,10 @@ pub fn resolve_node_bounded(
                             Rc::new(NodeResolveResult {
                                 resolved: resolved_node.clone(),
                                 diagnostics: v1_rt::concat(
-                                    v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
+                                    v1_rt::concat(
+                                        binding_authority_diags.clone(),
+                                        v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
+                                    ),
                                     target_result.diagnostics.clone(),
                                 ),
                             })
@@ -1388,7 +1408,10 @@ pub fn resolve_node_bounded(
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 }),
-                                diagnostics: v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
+                                diagnostics: v1_rt::concat(
+                                    binding_authority_diags.clone(),
+                                    v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
+                                ),
                             });
                             result
                         }
