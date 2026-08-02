@@ -1,4 +1,4 @@
-module v2.test.round_trip.dag_comment_wall_test
+module test.claim.dag_comment_wall_test
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

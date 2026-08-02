@@ -3,6 +3,7 @@ module gunbc.legacy_test_behavior_disposition
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 import gunbc.ci_layer_roots {
   witness_admission_offline_exclusion_substrings,
+  witness_discovery_scan_dirs,
   witness_exclusion_substrings,
 }
 
@@ -124,10 +125,12 @@ fn legacy_test_behavior_unresolved_witness_dispositions(
     ))
 }
 
-data witness_execution_wall_note: String = "A CITED WITNESS MUST EXECUTE SOMEWHERE SCHEDULED, OR THE ROW REFUSES. The resolution check above establishes that a CoveredByWitness names a DISCOVERED floor `test fn` — that the name exists in the corpus. It does not establish that anything ever RUNS it, and those are different facts: per-PR discovery scans the corpus MINUS gunbc.ci_layer_roots witness_exclusion_substrings, so a row may name a real, typechecked, permanently-red-free witness in an excluded lane and be admitted while no scheduled consumer executes it. That failure is worse than a guard that stays quiet, because the row reads DISCHARGED: every consumer of this graph, including the closing contract that gates the whole node, treats the behavior as covered. The check is authored while the cited population is small and entirely self-authored; its cost grows monotonically with every family, so this is the cheapest moment it will ever land.\\n\\nTHE UNKNOWN ARM IS THE WHOLE POINT (DESIGN 5): status is three-valued and only one value admits. A path matching no exclusion is scanned by per-PR discovery and executes. A path matching a pattern the admission roster classifies OfflineLocalRecipe is KNOWN not to run on any schedule — a documented local recipe is not a consumer. A path matching any other exclusion has a lane this graph cannot establish a schedule for, and it REFUSES rather than admitting on unknown, because an excluded lane that someone believes is scheduled is exactly the state that produced this gap. Expect this to flag witnesses in lanes that exist but are DARK; those are counted refusals and real findings, not false positives to special-case away."
+data witness_execution_wall_note: String = "A CITED WITNESS MUST EXECUTE SOMEWHERE SCHEDULED, OR THE ROW REFUSES. Resolution establishes that a CoveredByWitness names a DISCOVERED floor `test fn` — that the name exists in the corpus. It does not establish that anything ever RUNS it, and those are different facts. A row whose witness never executes reads DISCHARGED to every consumer of this graph, including the closing contract that gates the whole node, while nothing would go red if the behavior regressed.\n\nSCHEDULING IS ESTABLISHED POSITIVELY, AND THIS IS THE CORRECTION THAT DEFINES THE MECHANISM. An earlier revision asked only whether the entry matched an EXCLUSION pattern and admitted everything else. That is the absorbing inference this graph exists to refuse, made one level up: absence of exclusion is not presence of scheduling. Discovery scans gunbc.ci_layer_roots witness_discovery_scan_dirs — three paths — and a witness outside all three is invisible by OMISSION while matching no exclusion at all, so the old wall admitted it. The specimen is not hypothetical: the first migrated family cited four probes in src/v2/test/claim/round_trip, which is in no scan dir and on no exclusion list, and the populated main-push log that landed gunbc#7687 shows 2000+ witnesses executed and zero from that file. The unrelated source_authority_contract_test.dag in the same directory also executes zero, so it is a lane fact rather than a file fact. The wall reported zero non-executing rows while its own first family was entirely non-executing.\n\nFIVE STATES, TWO OF WHICH ADMIT. WitnessScheduledInDiscovery carries the scan dir that contains it — naming WHICH one, so the admission is a located fact rather than a bare true. WitnessScheduledAsDeclaredEntry covers the explicit roster, which runs as declared regardless of scan dirs. WitnessOutsideEveryScanDir is the state the old wall could not represent and is the one this correction adds. WitnessNotScheduledOffline is KNOWN not to run on any schedule — a documented local recipe is not a consumer. WitnessScheduleUnknown is an excluded lane whose schedule this graph cannot establish, and it REFUSES rather than admitting on unknown, because an excluded lane someone believes is scheduled is the state that produced the original gap. Exclusion is evaluated FIRST: an excluded path is removed from discovery even when it sits inside a scan dir, so scan-dir membership can never overturn a refusal.\n\nExpect this to flag witnesses in lanes that exist but are DARK. Those are counted refusals and real findings, not false positives to special-case away, and a zero from this wall is only worth what its controls are worth — which is why round_trip is enrolled as a permanent fixture RED rather than merely fixed and forgotten."
 
 type WitnessExecutionStatus
-  = WitnessScheduledInDiscovery
+  = WitnessScheduledInDiscovery { scan_dir: NonEmptyStr }
+  | WitnessScheduledAsDeclaredEntry
+  | WitnessOutsideEveryScanDir
   | WitnessNotScheduledOffline { pattern: NonEmptyStr }
   | WitnessScheduleUnknown { pattern: NonEmptyStr }
 
@@ -160,8 +163,37 @@ fn patterns_contain(patterns: List<String>, value: String) -> Bool {
   patterns |> any(p => p == value)
 }
 
+fn witness_scan_dir_pick(
+  acc: String,
+  entry: FilePath,
+  scan_dir: String,
+) -> String {
+  if acc != "" {
+    acc
+  } else if starts_with(s: entry as String, prefix: concat(scan_dir, "/")) {
+    scan_dir
+  } else {
+    ""
+  }
+}
+
+fn witness_containing_scan_dir(
+  entry: FilePath,
+  scan_dirs: List<String>,
+) -> String {
+  fold(
+    scan_dirs,
+    init: "",
+    f: (acc, candidate) => witness_scan_dir_pick(acc: acc, entry: entry, scan_dir: candidate),
+  )
+}
+
 fn witness_entry_execution_status(
   entry: FilePath,
+  scan_dirs: List<String>,
+  declared_entries: List<String>,
+  scan_dirs: List<String>,
+  declared_entries: List<String>,
   exclusion_patterns: List<String>,
   offline_patterns: List<String>,
 ) -> WitnessExecutionStatus {
@@ -170,18 +202,26 @@ fn witness_entry_execution_status(
     exclusion_patterns: exclusion_patterns,
   )
   let offline = patterns_contain(patterns: offline_patterns, value: matched)
-  if matched == "" {
-    WitnessScheduledInDiscovery
-  } else if offline {
+  let scan_dir = witness_containing_scan_dir(entry: entry, scan_dirs: scan_dirs)
+  let declared = patterns_contain(patterns: declared_entries, value: entry as String)
+  if matched != "" && offline {
     WitnessNotScheduledOffline { pattern: matched as NonEmptyStr }
-  } else {
+  } else if matched != "" {
     WitnessScheduleUnknown { pattern: matched as NonEmptyStr }
+  } else if declared {
+    WitnessScheduledAsDeclaredEntry
+  } else if scan_dir != "" {
+    WitnessScheduledInDiscovery { scan_dir: scan_dir as NonEmptyStr }
+  } else {
+    WitnessOutsideEveryScanDir
   }
 }
 
 fn witness_execution_status_admits(status: WitnessExecutionStatus) -> Bool {
   match status {
-    WitnessScheduledInDiscovery => true
+    WitnessScheduledInDiscovery { scan_dir: _ } => true
+    WitnessScheduledAsDeclaredEntry => true
+    WitnessOutsideEveryScanDir => false
     WitnessNotScheduledOffline { pattern: _ } => false
     WitnessScheduleUnknown { pattern: _ } => false
   }
@@ -189,6 +229,8 @@ fn witness_execution_status_admits(status: WitnessExecutionStatus) -> Bool {
 
 fn legacy_test_disposition_witness_executes(
   disposition: LegacyTestBehaviorDisposition,
+  scan_dirs: List<String>,
+  declared_entries: List<String>,
   exclusion_patterns: List<String>,
   offline_patterns: List<String>,
 ) -> Bool {
@@ -197,6 +239,8 @@ fn legacy_test_disposition_witness_executes(
       witness_execution_status_admits(
         status: witness_entry_execution_status(
           entry: witness.entry,
+          scan_dirs: scan_dirs,
+          declared_entries: declared_entries,
           exclusion_patterns: exclusion_patterns,
           offline_patterns: offline_patterns,
         ),
@@ -212,12 +256,16 @@ fn legacy_test_disposition_witness_executes(
 
 fn legacy_test_behavior_nonexecuting_witness_dispositions(
   dispositions: List<LegacyTestBehaviorDisposition>,
+  scan_dirs: List<String>,
+  declared_entries: List<String>,
   exclusion_patterns: List<String>,
   offline_patterns: List<String>,
 ) -> List<LegacyTestBehaviorDisposition> {
   dispositions
     |> filter(d => !legacy_test_disposition_witness_executes(
       disposition: d,
+      scan_dirs: scan_dirs,
+      declared_entries: declared_entries,
       exclusion_patterns: exclusion_patterns,
       offline_patterns: offline_patterns,
     ))
@@ -285,6 +333,8 @@ fn legacy_test_behavior_family_complete(
   discovered_legacy: List<String>,
   discovered_witnesses: List<String>,
   dispositions: List<LegacyTestBehaviorDisposition>,
+  scan_dirs: List<String>,
+  declared_entries: List<String>,
   exclusion_patterns: List<String>,
   offline_patterns: List<String>,
 ) -> Bool {
@@ -315,6 +365,8 @@ fn legacy_test_behavior_family_complete(
     )) == 0
     && count(legacy_test_behavior_nonexecuting_witness_dispositions(
       dispositions: family_dispositions,
+      scan_dirs: scan_dirs,
+      declared_entries: declared_entries,
       exclusion_patterns: exclusion_patterns,
       offline_patterns: offline_patterns,
     )) == 0
@@ -325,6 +377,8 @@ fn legacy_test_behavior_disposition_graph_holds(
   discovered_legacy: List<String>,
   discovered_witnesses: List<String>,
   dispositions: List<LegacyTestBehaviorDisposition>,
+  scan_dirs: List<String>,
+  declared_entries: List<String>,
   exclusion_patterns: List<String>,
   offline_patterns: List<String>,
 ) -> Bool {
@@ -344,6 +398,8 @@ fn legacy_test_behavior_disposition_graph_holds(
     )) == 0
     && count(legacy_test_behavior_nonexecuting_witness_dispositions(
       dispositions: dispositions,
+      scan_dirs: scan_dirs,
+      declared_entries: declared_entries,
       exclusion_patterns: exclusion_patterns,
       offline_patterns: offline_patterns,
     )) == 0
@@ -460,7 +516,7 @@ data empty_optional_unwrap_disposition: LegacyTestBehaviorDisposition = DeleteLo
   reason: "NO gunbc CODE IS IN THIS TEST'S LOOP. It builds an empty Vec in Rust, calls Option::expect on the resulting None inside catch_unwind and asserts a panic, then calls unwrap_or_default and asserts it yields 0. Both are guarantees of the Rust standard library, true independently of anything this repository emits, and neither invokes the compiler, the emitter, or any fixture source. It is a demonstration of why the emitter's choice matters, written as a test — valuable as documentation, worth nothing as an oracle, because no change to gunbc can make it fail. The fact it is really about — that the emitter chooses the aborting shape and never the fabricating one — is asserted where that choice is actually made, by the migrated call-site witness's exclusion of unwrap_or_default and unwrap_or_else. Deleted for having no gunbc-observable failure mode, not to reduce a count." as NonEmptyStr,
 }
 
-data dag_comment_wall_family_note: String = "THE dag-comment-wall BEHAVIOR FAMILY, the first family carried to completion. Subject: after the comment-ban wall, a `//` or `/* */` outside a string literal must refuse, a string literal containing `//` must still be accepted, and comment-free source must still compile. Before this migration the floor carried the subject only as two FidelityDisposition rows (v2.test.round_trip.dag_comment_wall_test dag_line_comment_is_fail_closed / dag_block_comment_is_fail_closed), which assert what the language model DECLARES and stay green under a tokenizer that re-admits comment-skip — a declaration standing where an execution was available. The four executing probes now in that same file drive the production compile path (compile_dag_rust_emit_check, the compile-clean hard-diagnostic authority) that the Rust module drove through parse_with_table, so each row below names a witness that goes red for the reason its behavior existed rather than a peer that merely stays quiet. Deletability of the Rust module is separate and already authorized at stem grain: the floor witness file shares the stem dag_comment_wall_test, so the delete guard admits the module the moment a change deletes it. Deletion is deliberately NOT part of this change — a disposition whose behavior no longer discovers is stale and refuses, so classification and deletion are separate acts on this graph."
+data dag_comment_wall_family_note: String = "THE dag-comment-wall BEHAVIOR FAMILY, the first family carried to completion. Subject: after the comment-ban wall, a `//` or `/* */` outside a string literal must refuse, a string literal containing `//` must still be accepted, and comment-free source must still compile. Before this migration the floor carried the subject only as two FidelityDisposition rows (test.claim.dag_comment_wall_test dag_line_comment_is_fail_closed / dag_block_comment_is_fail_closed), which assert what the language model DECLARES and stay green under a tokenizer that re-admits comment-skip — a declaration standing where an execution was available. The four executing probes now in that same file drive the production compile path (compile_dag_rust_emit_check, the compile-clean hard-diagnostic authority) that the Rust module drove through parse_with_table, so each row below names a witness that goes red for the reason its behavior existed rather than a peer that merely stays quiet. Deletability of the Rust module is separate and already authorized at stem grain: the floor witness file shares the stem dag_comment_wall_test, so the delete guard admits the module the moment a change deletes it. Deletion is deliberately NOT part of this change — a disposition whose behavior no longer discovers is stale and refuses, so classification and deletion are separate acts on this graph."
 
 data dag_comment_wall_family: LegacyTestBehaviorFamily = LegacyTestBehaviorFamily {
   name: "dag-comment-wall" as NonEmptyStr,
@@ -473,7 +529,7 @@ data comment_wall_clean_behavior: LegacyTestBehavior = LegacyTestBehavior {
 }
 
 data comment_wall_clean_witness: TestBehaviorWitness = TestBehaviorWitness {
-  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  entry: "dag/test/claim/dag_comment_wall_test.dag" as FilePath,
   test_fn: "dag_comment_wall_clean_source_compiles" as NonEmptyStr,
 }
 
@@ -489,7 +545,7 @@ data comment_wall_line_behavior: LegacyTestBehavior = LegacyTestBehavior {
 }
 
 data comment_wall_line_witness: TestBehaviorWitness = TestBehaviorWitness {
-  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  entry: "dag/test/claim/dag_comment_wall_test.dag" as FilePath,
   test_fn: "dag_comment_wall_line_comment_refused" as NonEmptyStr,
 }
 
@@ -505,7 +561,7 @@ data comment_wall_block_behavior: LegacyTestBehavior = LegacyTestBehavior {
 }
 
 data comment_wall_block_witness: TestBehaviorWitness = TestBehaviorWitness {
-  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  entry: "dag/test/claim/dag_comment_wall_test.dag" as FilePath,
   test_fn: "dag_comment_wall_block_comment_refused" as NonEmptyStr,
 }
 
@@ -521,7 +577,7 @@ data comment_wall_string_behavior: LegacyTestBehavior = LegacyTestBehavior {
 }
 
 data comment_wall_string_witness: TestBehaviorWitness = TestBehaviorWitness {
-  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  entry: "dag/test/claim/dag_comment_wall_test.dag" as FilePath,
   test_fn: "dag_comment_wall_slash_slash_inside_string_compiles" as NonEmptyStr,
 }
 
@@ -590,6 +646,16 @@ fn legacy_test_behavior_declared_slice_holds() -> Bool {
     )) == 0
 }
 
+fn witness_scan_dirs_live() -> List<String> {
+  witness_discovery_scan_dirs
+}
+
+data witness_declared_entry_roster_gap_note: String = "THE DECLARED-ENTRY ROSTER IS EMPTY HERE, AND EMPTY IS THE FAIL-CLOSED DIRECTION. Discovery is not the only way a witness runs: CiSpec.witness_entries carries explicit rows that execute as declared regardless of scan dirs, and a row citing one of those would be genuinely scheduled while sitting outside every scan dir. This projection does not read that roster yet, so it reports the empty list, which can only ever REFUSE a row that should have been admitted — never admit one that should have been refused. That is the direction a gap is allowed to point (DESIGN 5): an under-approximation of scheduling produces a false refusal, which is loud and counted, whereas the over-approximation this wall was built to remove produced a false admission, which is silent. No row in this graph currently cites a declared entry, so the roster is empty in fact as well as in code. DISSOLVE-ON: the first CoveredByWitness row citing an entry outside every scan dir — at that point this projection reads the real CiSpec.witness_entries roster instead of returning empty, and the row's admission is established rather than assumed."
+
+fn witness_declared_entries_live() -> List<String> {
+  []
+}
+
 fn witness_exclusion_patterns_live() -> List<String> {
   witness_exclusion_substrings()
 }
@@ -601,6 +667,8 @@ fn witness_offline_patterns_live() -> List<String> {
 fn legacy_test_behavior_nonexecuting_witness_dispositions_live() -> List<LegacyTestBehaviorDisposition> {
   legacy_test_behavior_nonexecuting_witness_dispositions(
     dispositions: legacy_test_behavior_dispositions(),
+    scan_dirs: witness_scan_dirs_live(),
+    declared_entries: witness_declared_entries_live(),
     exclusion_patterns: witness_exclusion_patterns_live(),
     offline_patterns: witness_offline_patterns_live(),
   )
@@ -617,6 +685,8 @@ fn optional_rendering_family_complete_live() -> Bool {
     discovered_legacy: legacy_test_behavior_ids_live(),
     discovered_witnesses: test_behavior_witness_ids_live(),
     dispositions: legacy_test_behavior_dispositions(),
+    scan_dirs: witness_scan_dirs_live(),
+    declared_entries: witness_declared_entries_live(),
     exclusion_patterns: witness_exclusion_patterns_live(),
     offline_patterns: witness_offline_patterns_live(),
   )
@@ -629,6 +699,10 @@ fn dag_comment_wall_family_complete_live() -> Bool {
     discovered_legacy: legacy_test_behavior_ids_live(),
     discovered_witnesses: test_behavior_witness_ids_live(),
     dispositions: legacy_test_behavior_dispositions(),
+    scan_dirs: witness_scan_dirs_live(),
+    declared_entries: witness_declared_entries_live(),
+    exclusion_patterns: witness_exclusion_patterns_live(),
+    offline_patterns: witness_offline_patterns_live(),
   )
 }
 
@@ -638,6 +712,8 @@ fn legacy_test_behavior_closing_contract_holds() -> Bool {
     discovered_legacy: legacy_test_behavior_ids_live(),
     discovered_witnesses: test_behavior_witness_ids_live(),
     dispositions: legacy_test_behavior_dispositions(),
+    scan_dirs: witness_scan_dirs_live(),
+    declared_entries: witness_declared_entries_live(),
     exclusion_patterns: witness_exclusion_patterns_live(),
     offline_patterns: witness_offline_patterns_live(),
   )
