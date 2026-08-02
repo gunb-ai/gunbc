@@ -122,7 +122,7 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
     // Cap the cache at room for ~3 artifacts; then write 16 distinct ones.
     let cap = artifact_len * 3 + 64;
     let n = 16u64;
-    std::env::set_var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES", cap.to_string());
+    v1_compiler::resolved_graph_cache::set_resolved_graph_cache_cap_bytes_for_test(Some(cap));
 
     for i in 0..n {
         let digest = format!("{i:016x}");
@@ -140,7 +140,7 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
         }
     }
 
-    std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES");
+    v1_compiler::resolved_graph_cache::set_resolved_graph_cache_cap_bytes_for_test(None);
 
     let footprint = total_bin_bytes(&cache_dir);
     assert!(
@@ -160,7 +160,7 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
 #[test]
 fn cap_matches_modeled_authority() {
     let _lock = CAP_ENV_MUTEX.lock().expect("cap env mutex");
-    std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES");
+    v1_compiler::resolved_graph_cache::set_resolved_graph_cache_cap_bytes_for_test(None);
     let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .find(|p| {

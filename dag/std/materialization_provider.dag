@@ -8,6 +8,7 @@ import std.content_hash {
   HashFamily,
   Sha256Family,
   Sha1Family,
+  Fnv1a64StructuralFamily,
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
@@ -506,11 +507,21 @@ fn cross_family_fnv1a64_seam_lookup_refusal(
   }
 }
 
-fn fnv1a64_structural_after_fnv1a64_seam_admission(hash: ContentHash) -> Fnv1a64Structural {
-  match admit_fnv1a64_structural(hash: hash) {
+fn fnv1a64_seam_cross_family_extraction_bug_digest(family: HashFamily) -> Fnv1a64StructuralDigestHex {
+  match family {
+    Sha256Family => "BUG-XFAMILY-SHA256" as Fnv1a64StructuralDigestHex
+    Sha1Family => "BUG-XFAMILY-SHA1" as Fnv1a64StructuralDigestHex
+    Fnv1a64StructuralFamily => "BUG-XFAMILY-FNV" as Fnv1a64StructuralDigestHex
+  }
+}
+
+fn fnv1a64_structural_from_admitted(admission: Fnv1a64StructuralAdmission) -> Fnv1a64Structural {
+  match admission {
     Fnv1a64StructuralAdmitted { digest: d } => d
-    CrossFamilyContentHashRefused { family: _ } =>
-      structural_content_hash(digest: "0000000000000000")
+    CrossFamilyContentHashRefused { family: f } =>
+      structural_content_hash(
+        digest: fnv1a64_seam_cross_family_extraction_bug_digest(family: f)
+      )
   }
 }
 
@@ -537,9 +548,9 @@ fn resolve_closure_request_key_outcome(
           ResolveClosureRequestKeyReady {
             key: request_key(
               req: ResolveClosureRequest {
-                closure_digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: closure_digest),
+                closure_digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: closure_digest)),
                 compiler: compiler_identity_input(
-                  digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: compiler_digest)
+                  digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: compiler_digest))
                 )
               }
             )
@@ -573,21 +584,21 @@ fn resolved_graph_parts_semantic_digest_outcome(
                   positioned_part(
                     id: output_resolved_graph,
                     part: ArtifactPart {
-                      digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: graph_digest),
+                      digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: graph_digest)),
                       bytes: graph_bytes
                     }
                   ),
                   positioned_part(
                     id: output_source_indices,
                     part: ArtifactPart {
-                      digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: indices_digest),
+                      digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: indices_digest)),
                       bytes: indices_bytes
                     }
                   ),
                   positioned_part(
                     id: output_compile_clean_diagnostic_union,
                     part: ArtifactPart {
-                      digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: union_digest),
+                      digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: union_digest)),
                       bytes: union_bytes
                     }
                   )
@@ -626,9 +637,9 @@ fn serve_resolved_graph_stored_disk_probe(
                     Present { value: lookup } => lookup
                     Absent => {
                       let closure_structural =
-                        fnv1a64_structural_after_fnv1a64_seam_admission(hash: closure_digest)
+                        fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: closure_digest))
                       let compiler_structural =
-                        fnv1a64_structural_after_fnv1a64_seam_admission(hash: compiler_digest)
+                        fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: compiler_digest))
                       let req = ResolveClosureRequest {
                         closure_digest: closure_structural,
                         compiler: compiler_identity_input(digest: compiler_structural)
@@ -636,15 +647,15 @@ fn serve_resolved_graph_stored_disk_probe(
                       let artifact = ResolvedGraphArtifact {
                         request_key: stored_request_key,
                         resolved_graph: ArtifactPart {
-                          digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: graph_digest),
+                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: graph_digest)),
                           bytes: graph_bytes
                         },
                         source_indices: ArtifactPart {
-                          digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: indices_digest),
+                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: indices_digest)),
                           bytes: indices_bytes
                         },
                         compile_clean_diagnostic_union: ArtifactPart {
-                          digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: union_digest),
+                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: union_digest)),
                           bytes: union_bytes
                         }
                       }
@@ -685,9 +696,9 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
                 Present { value: lookup } => lookup
                 Absent => {
                   let closure_structural =
-                    fnv1a64_structural_after_fnv1a64_seam_admission(hash: closure_digest)
+                    fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: closure_digest))
                   let compiler_structural =
-                    fnv1a64_structural_after_fnv1a64_seam_admission(hash: compiler_digest)
+                    fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: compiler_digest))
                   let req = ResolveClosureRequest {
                     closure_digest: closure_structural,
                     compiler: compiler_identity_input(digest: compiler_structural)
@@ -699,14 +710,14 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
                       positioned_part(
                         id: output_resolved_graph,
                         part: ArtifactPart {
-                          digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: graph_digest),
+                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: graph_digest)),
                           bytes: graph_bytes
                         }
                       ),
                       positioned_part(
                         id: output_source_indices,
                         part: ArtifactPart {
-                          digest: fnv1a64_structural_after_fnv1a64_seam_admission(hash: indices_digest),
+                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: indices_digest)),
                           bytes: indices_bytes
                         }
                       )

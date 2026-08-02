@@ -33,18 +33,27 @@ const V3_HEADER_LEN: usize =
 /// in lockstep by `cap_matches_modeled_authority` in the size-bound test.
 const RESOLVED_GRAPH_CACHE_CAP_BYTES: u64 = 10_737_418_240;
 
-/// The byte ceiling the on-disk cache is held under. Defaults to the modeled
-/// cap; `GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES` overrides it (operator escape
-/// hatch / test injection). A malformed or zero override falls back to the
-/// modeled default rather than disabling the bound (fail-closed).
+thread_local! {
+    static RESOLVED_GRAPH_CACHE_CAP_OVERRIDE: std::cell::RefCell<Option<u64>> =
+        std::cell::RefCell::new(None);
+}
+
+/// The byte ceiling the on-disk cache is held under — always the modeled
+/// `SizeBounded` cap from `extdeps.realization.resolved_graph` (no production
+/// env override; review 47220).
 pub fn resolved_graph_cache_cap_bytes() -> u64 {
-    match std::env::var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES") {
-        Ok(s) => match s.trim().parse::<u64>() {
-            Ok(n) if n > 0 => n,
-            _ => RESOLVED_GRAPH_CACHE_CAP_BYTES,
-        },
-        Err(_) => RESOLVED_GRAPH_CACHE_CAP_BYTES,
+    if let Some(cap) = RESOLVED_GRAPH_CACHE_CAP_OVERRIDE.with(|c| *c.borrow()) {
+        if cap > 0 {
+            return cap;
+        }
     }
+    RESOLVED_GRAPH_CACHE_CAP_BYTES
+}
+
+/// Test-only cap injection for eviction witnesses — not a production escape hatch.
+#[doc(hidden)]
+pub fn set_resolved_graph_cache_cap_bytes_for_test(cap: Option<u64>) {
+    RESOLVED_GRAPH_CACHE_CAP_OVERRIDE.with(|c| *c.borrow_mut() = cap);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
