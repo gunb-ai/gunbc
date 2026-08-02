@@ -5973,6 +5973,20 @@ fn floor_worker_succeeded(row: &ObservedFloorWorker) -> bool {
     floor_worker_observation_outcome(row).label == "completed"
 }
 
+fn journal_floor_worker_observation(row: &ObservedFloorWorker) {
+    let outcome = floor_worker_observation_outcome(row);
+    append_floor_phase_journal(
+        "coordinator-observation",
+        outcome.label,
+        &format!(
+            "worker={} termination={} detail={}",
+            row.worker,
+            floor_worker_termination_label(&row.termination),
+            outcome.detail.replace(['\t', '\r', '\n'], " ")
+        ),
+    );
+}
+
 fn spawn_floor_worker(
     base_args: &[String],
     role: &str,
@@ -6042,6 +6056,11 @@ fn spawn_floor_worker(
     let observed = observe_floor_worker(&worker, status, &terminal_path);
     append_floor_worker_observation(&observed)?;
     let outcome = floor_worker_observation_outcome(&observed);
+    // The Actions log transport can drop the worker's inherited stderr after a
+    // large discovery run. Persist the derived verdict before reporting it on
+    // that channel so the existing always() post-step still surfaces the exact
+    // failure arm and detail.
+    journal_floor_worker_observation(&observed);
     eprintln!(
         "[floor-worker-observation] worker={} termination={} terminal_receipt={:?} outcome={} detail={}",
         observed.worker,
@@ -9373,6 +9392,34 @@ mod tests {
         assert!(
             persisted.contains("\tpositive-control\tcompleted\tknown-green-path\n"),
             "the persisted row must retain the phase, state, and detail: {persisted:?}"
+        );
+    }
+
+    #[test]
+    fn floor_worker_verdict_reaches_the_durable_journal() {
+        let journal = std::env::temp_dir().join(format!(
+            "claim-executor-floor-worker-verdict-journal-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&journal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        journal_floor_worker_observation(&ObservedFloorWorker {
+            worker: "scoped:batch-a".to_string(),
+            termination: FloorWorkerTermination::Exited(1),
+            terminal_receipt: FloorWorkerTerminalReceipt::Observed(
+                FloorWorkerTerminalReport::Failed("witness row was red".to_string()),
+            ),
+        });
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+
+        let persisted = fs::read_to_string(&journal)
+            .expect("the synced worker verdict must survive on the out-of-band journal");
+        let _ = fs::remove_file(&journal);
+        assert!(
+            persisted.contains(
+                "\tcoordinator-observation\tfailed\tworker=scoped:batch-a termination=exited:1 detail=witness row was red\n"
+            ),
+            "the journal must retain the derived verdict rather than only process completion: {persisted:?}"
         );
     }
 
