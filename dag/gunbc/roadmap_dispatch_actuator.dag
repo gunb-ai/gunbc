@@ -356,7 +356,7 @@ fn dispatch_worktree_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    instance.dispatch_worktree_root as String,
+    dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     "/",
     node_id as String,
     "-a",
@@ -370,7 +370,7 @@ fn dispatch_attempt_state_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    instance.dispatch_attempt_state_root as String,
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
     "/",
     node_id as String,
     "-a",
@@ -615,7 +615,7 @@ fn dispatch_current_attempt_state_path_for_instance(
   node_id: RoadmapNodeId,
 ) -> String {
   join([
-    instance.dispatch_attempt_state_root as String,
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
     "/",
     node_id as String,
     "-current",

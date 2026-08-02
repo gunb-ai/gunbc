@@ -1124,8 +1124,8 @@ fn dashboard_instance_observe(
   let obs_marker = dashboard_target_path_observe(instance: instance, flag: "-f", path: dashboard_instance_ownership_marker_path(instance: instance))
   let obs_origin = dashboard_target_path_observe(instance: instance, flag: "-d", path: instance.local_origin_root)
   let obs_source = dashboard_target_path_observe(instance: instance, flag: "-d", path: instance.repo_root)
-  let obs_attempts = dashboard_target_path_observe(instance: instance, flag: "-d", path: instance.dispatch_worktree_root)
-  let obs_attempt_state = dashboard_target_path_observe(instance: instance, flag: "-d", path: instance.dispatch_attempt_state_root)
+  let obs_attempts = dashboard_target_path_observe(instance: instance, flag: "-d", path: dashboard_instance_dispatch_worktree_root(instance: instance))
+  let obs_attempt_state = dashboard_target_path_observe(instance: instance, flag: "-d", path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
   let probe_refusals = fold(
     [
       dashboard_exec_refusal_reason(label: "provider runtime", r: provider_runtime),

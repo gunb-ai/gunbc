@@ -344,7 +344,7 @@ test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
       rows,
       row =>
         row.kind == "ensure-directory"
-          && row.target == lab.dispatch_attempt_state_root as String,
+          && row.target == dashboard_instance_dispatch_attempt_state_root(instance: lab) as String,
     )
     && any(rows, row => row.kind == "verify-provider-runtime")
     && any(rows, row => row.kind == "verify-provider-auth")
