@@ -7924,7 +7924,21 @@ fn rest_bound_invocation_value(
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
-            (ctx.sym("input_digest"), Value::Str(input_digest)),
+            (
+                ctx.sym("input_digest"),
+                // Grounding, gunbc#7480 Phase A: RestBoundOperationInvocation.input_digest is
+                // modelled as std.content_hash Fnv1a64Structural (the structural family member
+                // content_hash_service_inputs actually produces), not as bare text. The realization
+                // must construct the SAME shape the model declares, or fixture matching compares a
+                // record against a string and silently never matches -- the model/realization fork.
+                Value::Record {
+                    type_name: ctx.sym("Fnv1a64Structural"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("digest"),
+                        Value::Str(input_digest),
+                    )])),
+                },
+            ),
             (
                 ctx.sym("auth_identity"),
                 rest_auth_identity_value(auth, basic_header, ctx),
