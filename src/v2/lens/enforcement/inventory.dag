@@ -56,11 +56,13 @@ type LensEnforcementInventoryRow {
 
 data evaluated_scope_absent_reason: String = "evaluated_scope awaits Phase 1 execution receipts; discovery-only name counts are not evaluation"
 
-fn subject_counts_from_receipt(receipt: EnrollmentDiscoveryReceipt, facts: List<DeclFact>) -> SubjectPopulationCounts {
+data subject_counts_evaluated_unavailable_absent_note: String = "evaluated and unavailable subject counts await Phase 1 execution receipts; only discovered (receipt-local name count) is reported in Phase 0B"
+
+fn subject_counts_from_receipt(receipt: EnrollmentDiscoveryReceipt) -> SubjectPopulationCounts {
   SubjectPopulationCounts {
     discovered: length(xs: receipt.discovered_subject_names.entries),
-    evaluated: body_judged_count_of(facts: facts),
-    unavailable: body_unavailable_count_of(facts: facts)
+    evaluated: 0,
+    unavailable: 0
   }
 }
 
@@ -315,7 +317,7 @@ fn contract_consumer_application(
         required_scope: whole_corpus_scope,
         claimed_scope: c.claimed_scope,
         evaluated_scope: evaluated_scope_absent_fact(),
-        subject_counts: subject_counts_from_receipt(receipt: receipt, facts: facts)
+        subject_counts: subject_counts_from_receipt(receipt: receipt)
       }
   }
 }
@@ -328,7 +330,7 @@ fn standing_intent_application(
 ) -> LensEnforcementApplication {
   let verdict = intent_family_verdict(intent: intent, contracts: [c], receipts: receipts)
   let counts = match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
-    ReceiptFound { value: r } => subject_counts_from_receipt(receipt: r, facts: facts)
+    ReceiptFound { value: r } => subject_counts_from_receipt(receipt: r)
     ReceiptAbsent => subject_counts_absent()
   }
   LensEnforcementApplication {
@@ -496,6 +498,13 @@ fn inventory_application_count_for_lens(
   match find_inventory_row(inventory: inventory, id: id) {
     InventoryRowAbsent => 0
     InventoryRowFound { value: row } => length(xs: row.applications)
+  }
+}
+
+fn witness_exclusion_lookup_is_offline(lookup: WitnessExclusionLookup) -> Bool {
+  match lookup {
+    ExclusionRowFound { value: row } => witness_exclusion_row_is_offline(row: row)
+    ExclusionRowAbsent => false
   }
 }
 

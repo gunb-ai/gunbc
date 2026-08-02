@@ -3,13 +3,11 @@ module v2.test.claim.enforcement_inventory_witness
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data enforcement_inventory_self_audit_note: String = "Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool predicate). Lens inventory rows are a pure fold over lens_contract_registry with no stored ledger. Witness admission inventory rows derive from gunbc.ci_layer_roots witness_exclusion_frontier (no hand-authored scheduling). Support status is on LensEnforcementApplication rows, not lens_id. evaluated_scope is typed absent on every application until Phase 1. Scope leg and whole_corpus_scope constant were not modified. 0A red-control evidence is construction in the production fold; discriminating witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row)."
+data enforcement_inventory_witness_offline_note: String = "Operator-ruled OFFLINE (review 47569): seven *_live tests call lens_enforcement_inventory_live which reads decl_facts over the whole corpus. Excluded from per-PR discovery via witness_exclusion_frontier row enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --functions <csv>. Two frontier-reconciliation tests (enforcement_live specimen + row-count) are cheap but share this file grain."
+
+data enforcement_inventory_self_audit_note: String = "Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool predicate). Lens inventory rows are a pure fold over lens_contract_registry with no stored ledger. Witness admission inventory rows derive from gunbc.ci_layer_roots witness_exclusion_frontier (no hand-authored scheduling). Support status is on LensEnforcementApplication rows, not lens_id. evaluated_scope and subject_counts evaluated/unavailable are typed absent until Phase 1. Scope leg and whole_corpus_scope constant were not modified. 0A red-control evidence is construction in the production fold; discriminating witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row)."
 
 data enforcement_live_witness_pattern: String = "enforcement_live_witness_test.dag"
-
-fn witness_primary_cadence_is_offline_recipe(primary: WitnessConsumerCadence) -> Bool {
-  match primary { OfflineLocalRecipe => true _ => false }
-}
 
 test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool {
   match find_witness_admission_row_for_pattern(
@@ -20,7 +18,7 @@ test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool 
     WitnessAdmissionRowFound { value: row } =>
       match row.exclusion {
         ExclusionRowFound { value: excl } =>
-          witness_primary_cadence_is_offline_recipe(primary: row.primary_cadence)
+          witness_exclusion_lookup_is_offline(lookup: row.exclusion)
             && !(excl.reason == "")
             && !(excl.dissolve_on == "")
             && scheduling_disposition_is_enrolled(disposition: cadence_disposition_for_offline_recipe(rows: row.cadence_rows))
@@ -33,6 +31,23 @@ test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool 
 
 test fn witness_admission_inventory_reconciles_exclusion_frontier() -> Bool {
   length(xs: witness_admission_inventory_live()) == length(xs: witness_exclusion_frontier)
+}
+
+data enforcement_inventory_witness_pattern: String = "enforcement_inventory_witness_test.dag"
+
+test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
+  match find_witness_admission_row_for_pattern(
+    inventory: witness_admission_inventory_live(),
+    pattern: enforcement_inventory_witness_pattern
+  ) {
+    WitnessAdmissionRowAbsent => false
+    WitnessAdmissionRowFound { value: row } =>
+      match row.exclusion {
+        ExclusionRowFound { value: excl } =>
+          witness_exclusion_lookup_is_offline(lookup: row.exclusion) && !(excl.dissolve_on == "")
+        ExclusionRowAbsent => false
+      }
+  }
 }
 
 test fn inventory_reconciles_registry_both_ways_live() -> Bool {
