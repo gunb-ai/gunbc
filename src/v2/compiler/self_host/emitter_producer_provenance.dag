@@ -139,13 +139,13 @@ data cssl_harness_realized_closure: RealizedEmitterClosure = RealizedEmitterClos
   ]
 }
 
-data v2_interpreted_emitter_closure_note: String = "Future V2EmitterInterpreted closure shape: v2.compiler.emit (serialize_target composed with translate) without v1.compiler.emit_rust. First customer when generate_stage_candidate_from_ingest wires serialize_target."
+data v2_interpreted_emitter_closure_note: String = "V2EmitterInterpreted closure for Lane B direct rust door: v2.compiler.emit (serialize_target composed with translate) plus v2.compiler.self_host.candidate_generation (mint_provenanced_rust_artifact entry), without v1.compiler.emit_rust. Landed as first customer in session bright-bear-372."
 
 data v2_interpreted_emitter_closure: RealizedEmitterClosure = RealizedEmitterClosure {
   emitter_module_paths: [
     v2_emit_interpreted_qualified_module,
     "v2.compiler.translate",
-    "v2.compiler.candidate_generation"
+    "v2.compiler.self_host.candidate_generation"
   ]
 }
 
