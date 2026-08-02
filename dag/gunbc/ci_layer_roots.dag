@@ -119,6 +119,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "manual suites migrate under test/claim with declared consumers; row deletes"
   },
   WitnessExclusionRow {
+    pattern: "legacy_test_behavior_disposition_acceptance_test.dag",
+    classification: QuarantineProbeExpectRed,
+    reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress. Covered dispositions must resolve to discovered floor test functions; stale, duplicate, unresolved, and unclassified identities all refuse.",
+    dissolve_on: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall"
+  },
+  WitnessExclusionRow {
     pattern: "observation_raw_print_retirement_acceptance_test.dag",
     classification: QuarantineProbeExpectRed,
     reason: "PAIRED with a known_red_probe_entries row (Phase 0(b) admission: an excluded witness must name an EXECUTING consumer — the exclusion alone is orphaned enrollment, and the discovery corpus refuses it as UnexecutedDeferredWitness). Measured: shipping the exclusion without the probe row reded the floor with exactly that cause, which is the invariant working. The acceptance test for roadmap node observation-raw-print-retirement, red BY DESIGN: it asserts observation_emit_frontier_count() == 0 (that node's handback, 'the classified zero-residue progress census') while the census counts 8 unmigrated emit sites today. It is the discriminating validation on that node's WorkItemExecutionContract, so dispatch's Verify segment has a target that can actually FAIL — without a red validation somewhere, a green Verify proves only that the plumbing ran. Not a broken witness and not relaxable: the only edit that may green it is migrating the sites it counts.",
@@ -772,6 +778,7 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_ingest_round_trip_holds"),
   probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds"),
   probe_red(entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag", f: "compiler_closure_scoped_ingest_module_count_ok_holds"),
+  probe_red(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag", f: "legacy_test_behavior_unclassified_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds"),
   probe_red(entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag", f: "v1_seed_honesty_decision_closing_contract_holds")

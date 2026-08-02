@@ -11,6 +11,7 @@ import gunbc.live_deploy.spec {
   deployment_spec_srv1,
   deployment_spec_srv1_green,
   deployment_slot_spec,
+  deployment_retiring_slot_spec,
   deployment_route_spec,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
@@ -26,7 +27,12 @@ import gunbc.live_deploy.spec {
   Dependency,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
+  GunbcSourceTree,
   ServeBinary,
+  DispatchWorktreeRoot,
+  AttemptStateRoot,
+  SystemdUnit,
+  BeltTimerUnit,
   TailscaleServeMapping,
   TeardownDisposition,
   TeardownActs,
@@ -115,6 +121,23 @@ test fn witness_slot_and_route_specs_make_preflip_mapping_mutation_unwritable() 
   spec_artifact_kind_count(spec: slot, kind: TailscaleServeMapping) == 0
     && spec_artifact_kind_count(spec: route, kind: TailscaleServeMapping) == 1
     && count(route.steps) == 1
+}
+
+fn retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: DeploymentSpec) -> Bool {
+  let retiring = deployment_retiring_slot_spec(spec: spec)
+  spec_artifact_kind_count(spec: retiring, kind: SystemdUnit) == 1
+    && spec_artifact_kind_count(spec: retiring, kind: BeltTimerUnit) == 1
+    && spec_artifact_kind_count(spec: retiring, kind: GunbcSourceTree) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: ServeBinary) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: DispatchWorktreeRoot) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: AttemptStateRoot) == 0
+    && spec_artifact_kind_count(spec: retiring, kind: TailscaleServeMapping) == 0
+}
+
+test fn witness_blue_and_green_retirement_both_preserve_reusable_dispatch_state() -> Bool {
+  retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: deployment_spec_srv1())
+    && retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: deployment_spec_srv1_green())
+    && witness_retract_attempt_state_root_refuses_when_nonempty()
 }
 
 test fn witness_spec_targets_srv1() -> Bool {
@@ -282,7 +305,7 @@ test fn witness_retract_script_owned_only() -> Bool {
   !string_contains(s: sh, pattern: "sudo bash")
     && !string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: sh, pattern: "sudo -n systemctl disable --now gunbc-roadmap.service")
+    && string_contains(s: sh, pattern: "then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
     && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: "sudo -n rm -d /opt/gunbc/dispatch-worktrees")
     && string_contains(s: sh, pattern: "sudo -n rm -rf /opt/gunbc/gunbc")
@@ -324,7 +347,10 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
     && !string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --https=443 off")
-    && string_contains(s: sh, pattern: "systemctl disable --now")
+    && string_contains(s: sh, pattern: "_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap.service' '--property=LoadState' '--value')")
+    && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
+    && !string_contains(s: sh, pattern: "_gunbc_load_state=$(systemctl")
+    && !string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service 2>/dev/null || true")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
