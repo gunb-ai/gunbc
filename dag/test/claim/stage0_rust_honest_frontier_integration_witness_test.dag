@@ -2,16 +2,19 @@ module test.claim.stage0_rust_honest_frontier_integration_witness
 
 import gunbc.stage0_rust_honest_frontier_integration {
   HonestFrontierIntegrationDerived,
+  HonestFrontierIntegrationRefused,
   honest_frontier_decision_complete,
   honest_frontier_discovery_complete,
   honest_frontier_integration_receipt,
   stage0_rust_honest_frontier_integration_note
 }
+import gunbc.stage0_rust_host_observation { RustManifestObserved }
 import gunbc.stage0_rust_lifecycle_totality { lifecycle_totality_witness_observation }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_hand_maintained_stage0_repo_paths,
   path_in_list
 }
+import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { length }
 
 test fn honest_frontier_integration_note_cites_hand_queue_drain() -> Bool {
@@ -37,6 +40,26 @@ test fn honest_frontier_integration_joins_c1_and_c2() -> Bool {
         && !path_in_list(path: main_path, paths: refused_paths)
         && !path_in_list(path: cli_run_path, paths: product_paths)
     _ => false
+  }
+}
+
+test fn honest_frontier_integration_refusal_does_not_project_empty_hand_paths() -> Bool {
+  match honest_frontier_integration_receipt(
+    observation: RustManifestObserved {
+      repository_revision: "",
+      manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+      tracked_rust_repo_paths: derived_hand_maintained_stage0_repo_paths(),
+      prior_tracked_rust_repo_paths: [],
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    }
+  ) {
+    HonestFrontierIntegrationRefused { detail: detail } => detail != ""
+    HonestFrontierIntegrationDerived {
+      hand_maintained_product_reachable_paths: _,
+      hand_maintained_reachability_refused_paths: _,
+      lifecycle: _,
+      reachability: _
+    } => false
   }
 }
 
