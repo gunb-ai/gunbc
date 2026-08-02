@@ -4666,8 +4666,15 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
                 let outcome = wet_witness_row_outcome_label(&row.5);
                 let detail = scoped_wire_text(&row.6);
                 body.push_str(&format!(
-                    "{batch}\t{}\t{}\t{outcome}\t{detail}\n",
-                    row.0, row.1
+                    "{}\n",
+                    [
+                        batch.to_string(),
+                        row.0.clone(),
+                        row.1.clone(),
+                        outcome.to_string(),
+                        detail,
+                    ]
+                    .join("\t")
                 ));
                 row_count += 1;
             }
@@ -7080,13 +7087,17 @@ fn collect_wet_witness_row_outcome_replay_lines(path: &Path) -> Result<Vec<Strin
             continue;
         }
         let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 5 {
-            return Err(format!(
-                "malformed wet witness row-outcome line (need 5 cols): {line}"
-            ));
-        }
+        let (batch, entry, function, outcome, detail) = match parts.len() {
+            4 => (parts[0], parts[1], parts[2], parts[3], ""),
+            5 => (parts[0], parts[1], parts[2], parts[3], parts[4]),
+            _ => {
+                return Err(format!(
+                    "malformed wet witness row-outcome line (need 4-5 cols): {line}"
+                ));
+            }
+        };
         lines.push(wet_witness_row_outcome_replay_line(
-            parts[0], parts[1], parts[2], parts[3], parts[4],
+            batch, entry, function, outcome, detail,
         ));
     }
     Ok(lines)
@@ -10754,9 +10765,9 @@ mod tests {
         let path = base.join("floor-wet-witness-row-outcome-receipt.tsv");
         let body = fs::read_to_string(&path).unwrap();
         assert!(body.contains("planted_pass_wet_row"));
-        assert!(body.contains("\tpassed\t"));
+        assert!(body.contains("planted_pass_wet_row\tpassed"));
         assert!(body.contains("planted_fail_wet_row"));
-        assert!(body.contains("\tfailed\t"));
+        assert!(body.contains("planted_fail_wet_row\tfailed\t"));
         assert!(body.contains("planted_selection_skip_wet_row"));
         assert!(body.contains("selection-skipped"));
         let lines = collect_wet_witness_row_outcome_replay_lines(&path).expect("replay lines");
