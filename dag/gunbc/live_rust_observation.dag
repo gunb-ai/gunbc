@@ -1,0 +1,163 @@
+module gunbc.live_rust_observation
+
+import extdeps.github.actions_environment {
+  ActionsShaObservation,
+  ActionsShaObserved,
+  ActionsShaMissing,
+  ActionsShaEmpty,
+  github_sha_variable_name
+}
+import extdeps.shell
+import gunbc.stage0_rust_host_observation {
+  RustSourceHostObservation,
+  RustManifestObserved,
+  RustManifestReadRefused,
+  RustManifestParseRefused,
+  GitObservationRefused,
+  current_stage0_rust_source_observation
+}
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  RustSourceManifestStateVerdict,
+  rust_source_manifest_state_verdict
+}
+import std.types { CommitSha, ContentHash, Int, NonEmptyStr, String }
+import v2.std.algebra { length }
+
+data live_rust_observation_note: String = "THE CLOSING CONTRACT FOR THE RUST-SOURCE OBSERVATION: proof that a run observed the exact subject it claims to have tested, rather than proof that an observation function is callable.\n\nWHAT MAKES THIS EVIDENCE RATHER THAN A GREEN LIGHT. The expected revision is supplied by the workflow runner (extdeps.github.actions_environment GITHUB_SHA), NOT derived from the repository the observation reads. Deriving both sides with git would compare git to itself -- true by construction, incapable of failing, and exactly the reflection-evidence-for-structural-proof failure DESIGN names. Because the two sides have independent origins, a mismatch is reachable, and a reachable mismatch is what makes the match meaningful.\n\nLAYERING. extdeps.github.actions_environment owns what GITHUB_SHA means; extdeps.shell shell.Env.Get owns reading a process environment variable. This module only projects that existing operation into the GitHub-owned observation type. It adds no GitHub-specific environment transport and no new Rust realization.\n\nWHY THE FOLD TAKES THE OBSERVATION AS A PARAMETER. admit_live_rust_observation is pure: it decides an outcome from a request and an observation it is handed. Only live_rust_observation_wet calls the host. That split is deliberate and load-bearing -- it means every control except the revision match can execute HERMETICALLY against constructed observations, at no host cost and with no Git mock anywhere, while the single genuinely-live claim stays in the one wet entry. A contract whose controls all required the host would have to be trusted; this one is mostly decidable.\n\nNO MOCKS, STATED SO IT IS NOT ADDED LATER AS A CONVENIENCE. Publishing static Git mock responses to make the live witness green would let a witness named for liveness pass against a constant sha. The hermetic controls below use constructed RustSourceHostObservation values, which is a different thing: they exercise the FOLD, and none of them claims to have observed anything.\n\nEVERY REFUSAL IS TYPED AND DISTINCT. The three host refusals stay separable (a Git failure is not a manifest read failure is not a TOML parse failure), missing and present-but-empty runner expectations are different arms, an empty population is its own cause rather than a quiet success, and a revision mismatch names both sides. A failure arm refuses and never widens (DESIGN 5): there is no arm that accepts a partial population, and no arm that treats an unavailable expectation as satisfied.\n\nCOST. The enrolled claim enters CI batch 4, the wet corpora batch. Its per_unit_ms is currently 0 under the declared D2 calibration gap, so this new unit is honestly unpriced rather than free; the batch's fixed overhead remains the active backstop until that calibration lands."
+
+type LiveRustObservationRequest {
+  expected_repository_revision: CommitSha
+}
+
+type LiveObservationRefusalCause
+  = LiveGitRefused { detail: String }
+  | LiveManifestReadRefused { detail: String }
+  | LiveManifestParseRefused { detail: String }
+  | LiveRevisionMismatch { expected: CommitSha, observed: CommitSha }
+  | LiveExpectationMissing { detail: String }
+  | LiveExpectationEmpty { detail: String }
+  | LiveTrackedPopulationEmpty
+  | LivePriorPopulationEmpty
+  | LiveCargoTargetsEmpty
+
+type LiveRustObservationReceipt {
+  expected_repository_revision: CommitSha
+  observed_repository_revision: CommitSha
+  manifest_content_identity: ContentHash
+  tracked_path_count: Int
+  prior_path_count: Int
+  cargo_target_count: Int
+  verdict: RustSourceManifestStateVerdict
+}
+
+type LiveRustObservationOutcome
+  = LiveObservationAdmitted { receipt: LiveRustObservationReceipt }
+  | LiveObservationRefused { cause: LiveObservationRefusalCause }
+
+type LiveRustObservationExpectation
+  = LiveExpectationAdmitted { request: LiveRustObservationRequest }
+  | LiveExpectationRefused { cause: LiveObservationRefusalCause }
+
+fn admit_live_rust_observation(
+  request: LiveRustObservationRequest,
+  observation: RustSourceHostObservation
+) -> LiveRustObservationOutcome {
+  match observation {
+    GitObservationRefused { detail: detail } =>
+      LiveObservationRefused { cause: LiveGitRefused { detail: detail } }
+    RustManifestReadRefused { detail: detail } =>
+      LiveObservationRefused { cause: LiveManifestReadRefused { detail: detail } }
+    RustManifestParseRefused { detail: detail } =>
+      LiveObservationRefused { cause: LiveManifestParseRefused { detail: detail } }
+    RustManifestObserved {
+      repository_revision: observed_revision,
+      manifest_content_identity: identity,
+      tracked_rust_repo_paths: tracked,
+      prior_tracked_rust_repo_paths: prior,
+      cargo_bin_repo_paths: cargo
+    } =>
+      if request.expected_repository_revision == "" {
+        LiveObservationRefused {
+          cause: LiveExpectationEmpty { detail: "the workflow runner supplied an empty expected repository revision" }
+        }
+      } else if !(observed_revision == request.expected_repository_revision) {
+        LiveObservationRefused {
+          cause: LiveRevisionMismatch {
+            expected: request.expected_repository_revision,
+            observed: observed_revision
+          }
+        }
+      } else if length(xs: tracked) == 0 {
+        LiveObservationRefused { cause: LiveTrackedPopulationEmpty }
+      } else if length(xs: prior) == 0 {
+        LiveObservationRefused { cause: LivePriorPopulationEmpty }
+      } else if length(xs: cargo) == 0 {
+        LiveObservationRefused { cause: LiveCargoTargetsEmpty }
+      } else {
+        LiveObservationAdmitted {
+          receipt: LiveRustObservationReceipt {
+            expected_repository_revision: request.expected_repository_revision,
+            observed_repository_revision: observed_revision,
+            manifest_content_identity: identity,
+            tracked_path_count: length(xs: tracked),
+            prior_path_count: length(xs: prior),
+            cargo_target_count: length(xs: cargo),
+            verdict: rust_source_manifest_state_verdict(observation: observation)
+          }
+        }
+      }
+  }
+}
+
+fn current_actions_sha_observation() -> ActionsShaObservation {
+  let reading = shell.Env.Get(name: github_sha_variable_name as NonEmptyStr)
+  match reading.value {
+    Present { value: value } =>
+      if value == "" {
+        ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" }
+      } else {
+        ActionsShaObserved { sha: value as CommitSha }
+      }
+    Absent => ActionsShaMissing { detail: "GITHUB_SHA was not set" }
+  }
+}
+
+fn live_rust_observation_expectation(
+  actions: ActionsShaObservation
+) -> LiveRustObservationExpectation {
+  match actions {
+    ActionsShaMissing { detail: detail } =>
+      LiveExpectationRefused { cause: LiveExpectationMissing { detail: detail } }
+    ActionsShaEmpty { detail: detail } =>
+      LiveExpectationRefused { cause: LiveExpectationEmpty { detail: detail } }
+    ActionsShaObserved { sha: expected } =>
+      LiveExpectationAdmitted {
+        request: LiveRustObservationRequest { expected_repository_revision: expected }
+      }
+  }
+}
+
+fn admit_current_actions_rust_observation(
+  actions: ActionsShaObservation,
+  observation: RustSourceHostObservation
+) -> LiveRustObservationOutcome {
+  match live_rust_observation_expectation(actions: actions) {
+    LiveExpectationRefused { cause: cause } => LiveObservationRefused { cause: cause }
+    LiveExpectationAdmitted { request: request } =>
+      admit_live_rust_observation(
+        request: request,
+        observation: observation
+      )
+  }
+}
+
+fn live_rust_observation_wet() -> LiveRustObservationOutcome {
+  match live_rust_observation_expectation(actions: current_actions_sha_observation()) {
+    LiveExpectationRefused { cause: cause } => LiveObservationRefused { cause: cause }
+    LiveExpectationAdmitted { request: request } =>
+      admit_live_rust_observation(
+        request: request,
+        observation: current_stage0_rust_source_observation()
+      )
+  }
+}
