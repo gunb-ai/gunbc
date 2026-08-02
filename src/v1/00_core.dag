@@ -341,6 +341,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
 
 fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
   reason == "predicate deferred at compile time"
+    || reason == "predicate not enforced at compile time"
     || reason == "non-literal value at refined position"
     || reason == "predicate argument is not an int literal"
     || reason == "int predicate not implemented"

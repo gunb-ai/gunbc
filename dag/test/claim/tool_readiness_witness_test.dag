@@ -1,6 +1,7 @@
 module test.claim.tool_readiness_witness
 
-import std.types { Bool, ContentHash, String }
+import std.types { Bool, String }
+import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.version { VersionIdentity }
 import extdeps.tools { CliTool, SourceRustup }
@@ -47,10 +48,10 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data expected_rustfmt_identity: ContentHash = "rustfmt-hermetic-expected" as ContentHash
-data other_rustfmt_identity: ContentHash = "rustfmt-host-other" as ContentHash
-data unrelated_cargo_identity_a: ContentHash = "cargo-a" as ContentHash
-data unrelated_cargo_identity_b: ContentHash = "cargo-b" as ContentHash
+data expected_rustfmt_identity: ContentHash = content_hash_of_value(value: "rustfmt-hermetic-expected" as NonEmptyStr)
+data other_rustfmt_identity: ContentHash = content_hash_of_value(value: "rustfmt-host-other" as NonEmptyStr)
+data unrelated_cargo_identity_a: ContentHash = content_hash_of_value(value: "cargo-a" as NonEmptyStr)
+data unrelated_cargo_identity_b: ContentHash = content_hash_of_value(value: "cargo-b" as NonEmptyStr)
 
 data rustfmt_pin: Pin<CliTool> = Pin {
   subject: rustfmt_cli_tool,
@@ -79,8 +80,8 @@ fn observed(tool_name: String, identity: ContentHash) -> ObservedToolIdentity {
 fn context(rows: List<ObservedToolIdentity>) -> ResolvedBuildContext {
   ResolvedBuildContext {
     observed_tool_identities: rows,
-    environment_identity: "environment" as ContentHash,
-    cargo_configuration_identity: "cargo-config" as ContentHash,
+    environment_identity: content_hash_of_value(value: "environment" as NonEmptyStr),
+    cargo_configuration_identity: content_hash_of_value(value: "cargo-config" as NonEmptyStr),
   }
 }
 

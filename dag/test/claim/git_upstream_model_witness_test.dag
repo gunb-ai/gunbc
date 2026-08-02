@@ -114,68 +114,75 @@ import extdeps.git.object_store {
   git_store_object_canonical_hash_input,
   stored_object_oid,
   git_object_id_format,
-  git_object_id_content_hash,
-  git_tree_entry_name_octets,
+  git_object_id_wire_hex,
+  git_sha1_object_id,
+  git_sha256_object_id,
+  GitSha1ObjectId,
+  GitSha256ObjectId,
   git_r0_unsupported_boundary,
+}
+import std.content_hash {
+  Sha1Digest,
+  Sha1DigestHex,
+  Sha256Digest,
+  Sha256DigestHex,
 }
 import std.types { Bytes }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 
-data sha1_blob_regular: GitObjectId = GitSha1ObjectId {
-  digest: "1d3a06547c706bd0f75b130edecf4832295bba6b",
+data git_upstream_witness_lit_note: String = "Witness-corpus Git object ids are constructed only through git_sha1_object_id / git_sha256_object_id (review 45376). The Absent arm below is unreachable for pinned corpus literals; it exists only because data initializers require a total GitObjectId."
+
+fn witness_lit_git_sha1(hex: String) -> GitObjectId {
+  match git_sha1_object_id(hex: hex) {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest {
+          hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as Sha1DigestHex,
+        },
+      }
+  }
 }
 
-data sha1_blob_executable: GitObjectId = GitSha1ObjectId {
-  digest: "e5224d533ef27b001224859a9b36696846a7e7fe",
+fn witness_lit_git_sha256(hex: String) -> GitObjectId {
+  match git_sha256_object_id(hex: hex) {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha256ObjectId {
+        digest: Sha256Digest {
+          hex: "cd12b0326b0ea9f272a6dc91e21e490f4cee87b47e6bffa03801420cf81f6bab" as Sha256DigestHex,
+        },
+      }
+  }
 }
 
-data sha1_blob_symlink: GitObjectId = GitSha1ObjectId {
-  digest: "ea786ff2cf69cdc0e487ad1cea3b8bd361eb66a3",
-}
+data sha1_blob_regular: GitObjectId = witness_lit_git_sha1(hex: "1d3a06547c706bd0f75b130edecf4832295bba6b")
 
-data sha1_subtree: GitObjectId = GitSha1ObjectId {
-  digest: "b4039bf87f95684a5b63d40de54df03ee50c3784",
-}
+data sha1_blob_executable: GitObjectId = witness_lit_git_sha1(hex: "e5224d533ef27b001224859a9b36696846a7e7fe")
 
-data sha1_empty_tree: GitObjectId = GitSha1ObjectId {
-  digest: "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
-}
+data sha1_blob_symlink: GitObjectId = witness_lit_git_sha1(hex: "ea786ff2cf69cdc0e487ad1cea3b8bd361eb66a3")
 
-data sha1_empty_blob: GitObjectId = GitSha1ObjectId {
-  digest: "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
-}
+data sha1_subtree: GitObjectId = witness_lit_git_sha1(hex: "b4039bf87f95684a5b63d40de54df03ee50c3784")
 
-data sha1_gitlink: GitObjectId = GitSha1ObjectId {
-  digest: "01659456264276d57ab43c410b6f15eb60892634",
-}
+data sha1_empty_tree: GitObjectId = witness_lit_git_sha1(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904")
 
-data sha1_root_tree: GitObjectId = GitSha1ObjectId {
-  digest: "d0cb4d7effa07dbdd7c6585c72413fc4ce06bee1",
-}
+data sha1_empty_blob: GitObjectId = witness_lit_git_sha1(hex: "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")
 
-data sha1_parent_commit: GitObjectId = GitSha1ObjectId {
-  digest: "bd91a9ea7a010de8add58bf259276d8787545846",
-}
+data sha1_gitlink: GitObjectId = witness_lit_git_sha1(hex: "01659456264276d57ab43c410b6f15eb60892634")
 
-data sha1_next_commit: GitObjectId = GitSha1ObjectId {
-  digest: "0ec5705ce5bb4c179eeae463a64b69e75e0963b8",
-}
+data sha1_root_tree: GitObjectId = witness_lit_git_sha1(hex: "d0cb4d7effa07dbdd7c6585c72413fc4ce06bee1")
 
-data sha1_tag: GitObjectId = GitSha1ObjectId {
-  digest: "d70b9ebe6a9f36bb261192c53c95da287aa71302",
-}
+data sha1_parent_commit: GitObjectId = witness_lit_git_sha1(hex: "bd91a9ea7a010de8add58bf259276d8787545846")
 
-data sha1_absent_commit: GitObjectId = GitSha1ObjectId {
-  digest: "cccccccccccccccccccccccccccccccccccccccc",
-}
+data sha1_next_commit: GitObjectId = witness_lit_git_sha1(hex: "0ec5705ce5bb4c179eeae463a64b69e75e0963b8")
 
-data sha1_promisor_missing: GitObjectId = GitSha1ObjectId {
-  digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-}
+data sha1_tag: GitObjectId = witness_lit_git_sha1(hex: "d70b9ebe6a9f36bb261192c53c95da287aa71302")
 
-data sha256_object: GitObjectId = GitSha256ObjectId {
-  digest: "cd12b0326b0ea9f272a6dc91e21e490f4cee87b47e6bffa03801420cf81f6bab",
-}
+data sha1_absent_commit: GitObjectId = witness_lit_git_sha1(hex: "cccccccccccccccccccccccccccccccccccccccc")
+
+data sha1_promisor_missing: GitObjectId = witness_lit_git_sha1(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+
+data sha256_object: GitObjectId = witness_lit_git_sha256(hex: "cd12b0326b0ea9f272a6dc91e21e490f4cee87b47e6bffa03801420cf81f6bab")
 
 fn git_r0_fixture_expected_readback_receipt() -> String {
   "sha1_blobs=grounded|sha256_blob=grounded|tree_modes=100644,100755,120000,040000,160000|non_ascii_path=preserved|index_entries=6|ref_cas=advanced|stale=refused|missing_target=refused|tag_type=tag|fsck=ok"
@@ -661,27 +668,27 @@ test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() ->
       [
         "120000",
         "blob",
-        git_object_id_content_hash(oid: sha1_blob_symlink) as String,
+        git_object_id_wire_hex(oid: sha1_blob_symlink) as String,
         "link",
         "100644",
         "blob",
-        git_object_id_content_hash(oid: sha1_blob_regular) as String,
+        git_object_id_wire_hex(oid: sha1_blob_regular) as String,
         "readme",
         "100755",
         "blob",
-        git_object_id_content_hash(oid: sha1_blob_executable) as String,
+        git_object_id_wire_hex(oid: sha1_blob_executable) as String,
         "run",
         "040000",
         "tree",
-        git_object_id_content_hash(oid: sha1_subtree) as String,
+        git_object_id_wire_hex(oid: sha1_subtree) as String,
         "src",
         "160000",
         "commit",
-        git_object_id_content_hash(oid: sha1_gitlink) as String,
+        git_object_id_wire_hex(oid: sha1_gitlink) as String,
         "vendor",
         "100644",
         "blob",
-        git_object_id_content_hash(oid: sha1_blob_regular) as String,
+        git_object_id_wire_hex(oid: sha1_blob_regular) as String,
         concat(from_code_point(255), ".dag"),
       ],
       nul,
@@ -704,7 +711,7 @@ test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
       [
         "100644",
         "blob",
-        git_object_id_content_hash(oid: sha1_blob_regular) as String,
+        git_object_id_wire_hex(oid: sha1_blob_regular) as String,
       ],
       nul,
     ),
@@ -756,7 +763,7 @@ test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path()
     join(
       [
         "100644",
-        git_object_id_content_hash(oid: sha1_blob_regular) as String,
+        git_object_id_wire_hex(oid: sha1_blob_regular) as String,
         "0",
       ],
       nul,
@@ -792,7 +799,7 @@ test fn witness_git_index_path_preserves_component_boundaries() -> Bool {
     join(
       [
         "100644",
-        git_object_id_content_hash(oid: sha1_empty_blob) as String,
+        git_object_id_wire_hex(oid: sha1_empty_blob) as String,
         "0",
       ],
       nul,
