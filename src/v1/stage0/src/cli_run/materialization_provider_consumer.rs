@@ -24,6 +24,7 @@ pub enum ResolvedGraphProviderOutcome {
     RefusedWrongArtifact,
     RefusedKindMismatch,
     RefusedWrongContent,
+    RefusedCrossFamilyContentHash,
     LookupUnclassified { label: String },
 }
 
@@ -109,6 +110,7 @@ fn lookup_fold_outcome(
             "kind_mismatch" => Ok(ResolvedGraphProviderOutcome::RefusedKindMismatch),
             "wrong_artifact" => Ok(ResolvedGraphProviderOutcome::RefusedWrongArtifact),
             "wrong_content" => Ok(ResolvedGraphProviderOutcome::RefusedWrongContent),
+            "cross_family_hash" => Ok(ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash),
             "incomplete" => {
                 let missing = v1_interpreter::run_in_context_with_args(
                     ctx,
@@ -256,6 +258,70 @@ fn serve_resolved_graph_incomplete_stored_disk_probe_in_ctx(
     lookup_fold_outcome(ctx, &lookup)
 }
 
+fn provider_lookup_refusal_err(
+    ctx: &InterpContext,
+    lookup: &Value,
+    prefix: &str,
+) -> String {
+    match lookup_fold_outcome(ctx, lookup) {
+        Ok(outcome) => super::provider_integrity_refusal_message(outcome)
+            .unwrap_or_else(|| format!("{prefix}: unexpected provider hit")),
+        Err(e) => format!("{prefix}: {e}"),
+    }
+}
+
+fn decode_content_hash_outcome_or_lookup_refusal(
+    ctx: &InterpContext,
+    value: &Value,
+    outcome_type: &str,
+    ready_variant: &str,
+    ready_field: &str,
+    refused_variant: &str,
+    err_prefix: &str,
+) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } => {
+            if !ctx.sym_eq(*type_name, outcome_type) {
+                return Err(format!(
+                    "{} returned `{}`, expected {} outcome",
+                    err_prefix,
+                    ctx.format_value(value),
+                    outcome_type
+                ));
+            }
+            if ctx.sym_eq(*variant_name, ready_variant) {
+                let ready = ctx
+                    .field(fields, ready_field)
+                    .unwrap_or_else(|| panic!("{err_prefix}: missing `{ready_field}` field"));
+                wire_content_hash_to_hex(ctx, &ready)
+            } else if ctx.sym_eq(*variant_name, refused_variant) {
+                let lookup = ctx
+                    .field(fields, "lookup")
+                    .unwrap_or_else(|| panic!("{err_prefix}: missing `lookup` field"));
+                Err(provider_lookup_refusal_err(ctx, &lookup, err_prefix))
+            } else {
+                Err(format!(
+                    "{} returned `{}`, expected {} or {} outcome",
+                    err_prefix,
+                    ctx.format_value(value),
+                    ready_variant,
+                    refused_variant
+                ))
+            }
+        }
+        other => Err(format!(
+            "{} returned `{}`, expected variant",
+            err_prefix,
+            ctx.format_value(other)
+        )),
+    }
+}
+
 pub fn resolve_closure_request_key_from_digests(
     closure_digest: &str,
     compiler_digest: &str,
@@ -271,15 +337,22 @@ pub fn resolve_closure_request_key_from_digests(
             wire_fnv1a64_content_hash_value(&ctx, compiler_digest)?,
         ),
     ];
-    match v1_interpreter::run_in_context_with_args(
+    let outcome = v1_interpreter::run_in_context_with_args(
         &ctx,
-        "resolve_closure_request_key_from_digests",
+        "resolve_closure_request_key_outcome",
         &args,
         false,
-    ) {
-        Ok(key) => wire_content_hash_to_hex(&ctx, &key),
-        Err(e) => Err(format!("resolve_closure_request_key_from_digests: {e}")),
-    }
+    )
+    .map_err(|e| format!("resolve_closure_request_key_outcome: {e}"))?;
+    decode_content_hash_outcome_or_lookup_refusal(
+        &ctx,
+        &outcome,
+        "ResolveClosureRequestKeyOutcome",
+        "ResolveClosureRequestKeyReady",
+        "key",
+        "ResolveClosureRequestKeyRefused",
+        "resolve_closure_request_key_from_digests",
+    )
 }
 
 pub fn resolved_graph_parts_semantic_digest(
@@ -317,15 +390,22 @@ pub fn resolved_graph_parts_semantic_digest(
             wire_byte_size_value(&ctx, union_bytes)?,
         ),
     ];
-    match v1_interpreter::run_in_context_with_args(
+    let outcome = v1_interpreter::run_in_context_with_args(
         &ctx,
-        "resolved_graph_parts_semantic_digest",
+        "resolved_graph_parts_semantic_digest_outcome",
         &args,
         false,
-    ) {
-        Ok(digest) => wire_content_hash_to_hex(&ctx, &digest),
-        Err(e) => Err(format!("resolved_graph_parts_semantic_digest: {e}")),
-    }
+    )
+    .map_err(|e| format!("resolved_graph_parts_semantic_digest_outcome: {e}"))?;
+    decode_content_hash_outcome_or_lookup_refusal(
+        &ctx,
+        &outcome,
+        "ResolvedGraphPartsSemanticDigestOutcome",
+        "ResolvedGraphPartsSemanticDigestReady",
+        "digest",
+        "ResolvedGraphPartsSemanticDigestRefused",
+        "resolved_graph_parts_semantic_digest",
+    )
 }
 
 pub fn serve_resolved_graph_stored_disk_probe(

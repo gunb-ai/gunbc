@@ -10131,6 +10131,12 @@ fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> 
         ResolvedGraphProviderOutcome::RefusedWrongContent => {
             Some("resolved-graph-cache provider refused disk hit: wrong content".to_string())
         }
+        ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash => {
+            Some(
+                "resolved-graph-cache provider refused disk hit: cross-family content hash at fnv1a64 seam"
+                    .to_string(),
+            )
+        }
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
