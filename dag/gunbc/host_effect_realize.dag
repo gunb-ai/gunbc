@@ -1,8 +1,9 @@
 module gunbc.host_effect_realize
 
+import gunbc.build_cache_instance { BuildCacheInstance, ci_cache_instance }
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
-  OsInstallActuatorToolchainEnsure, ProvisionBuildCache,
+  OsInstallActuatorToolchainEnsure, EnsureBuildCacheInstance,
   SetHostnameCas,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
@@ -175,7 +176,7 @@ type ResolvedHostEffectCell =
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
   | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
-  | ProvisionBuildCacheOnHost { node: ComputeHost, catalog_id: String }
+  | EnsureBuildCacheInstanceOnHost { node: ComputeHost, desired: BuildCacheInstance }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | HostnameReadOnHost { node: ComputeHost }
   | NbdProxySessionOnHost {
@@ -213,8 +214,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
       match effect {
         OsInstallActuatorToolchainEnsure {} =>
           OsInstallActuatorToolchainOnHost { node: n }
-        ProvisionBuildCache { catalog_id: id } =>
-          ProvisionBuildCacheOnHost { node: n, catalog_id: id }
+        EnsureBuildCacheInstance { desired: d } =>
+          EnsureBuildCacheInstanceOnHost { node: n, desired: d }
         Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
         Srv3BootOnceReadBackSleep =>
@@ -250,8 +251,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               }
             OsInstallActuatorToolchainEnsure {} =>
               OsInstallActuatorToolchainOnHost { node: n }
-            ProvisionBuildCache { catalog_id: id } =>
-              ProvisionBuildCacheOnHost { node: n, catalog_id: id }
+            EnsureBuildCacheInstance { desired: d } =>
+              EnsureBuildCacheInstanceOnHost { node: n, desired: d }
             Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
             Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
             Srv3SeededInstallMediaToolchainEnsure =>
@@ -294,7 +295,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
       match effect {
         OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        ProvisionBuildCache { catalog_id: _ } =>
+        EnsureBuildCacheInstance { desired: _ } =>
           IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -307,7 +308,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             OsInstallActuatorToolchainEnsure {} =>
               IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ProvisionBuildCache { catalog_id: _ } =>
+            EnsureBuildCacheInstance { desired: _ } =>
               IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3InstallMediaFetch =>
               IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -1026,6 +1027,7 @@ fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architect
 }
 
 fn realize_provision_build_cache_body(
+  instance: BuildCacheInstance,
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -1068,7 +1070,7 @@ fn realize_provision_build_cache_body(
             Present { value: digest } => {
               let observed = run_shell_transport(
                 script: retained_srvn(
-                  body: build_cache_provision_shell_script(arch_token: token, digest: digest),
+                  body: build_cache_provision_shell_script(instance: instance, arch_token: token, digest: digest),
                   reason: "srvN build-cache provisioning (sccache daemon ensure)",
                 ),
                 transport: transport,
@@ -1084,19 +1086,21 @@ fn realize_provision_build_cache(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match effect_intent.effect {
-    ProvisionBuildCache { catalog_id: id } =>
-      match provision_build_cache_catalog_gate_verdict(catalog_id: id) {
+    EnsureBuildCacheInstance { desired: d } =>
+      match provision_build_cache_catalog_gate_verdict(catalog_id: d.implementation) {
         ProvisionBuildCacheCatalogRefused { reason: reason } =>
           NotConverged { reason: reason as String, applied: effect_intent }
         ProvisionBuildCacheCatalogRealizable =>
           match effect_intent.transport {
             LocalShell =>
               realize_provision_build_cache_body(
+                instance: d,
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
             SshShell { ssh_host: _ } =>
               realize_provision_build_cache_body(
+                instance: d,
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
@@ -1118,7 +1122,7 @@ fn realize_provision_build_cache(
 fn provision_build_cache_witness_intent() -> HostEffectIntent {
   HostEffectIntent {
     target: HostOs { node: srv1_host },
-    effect: ProvisionBuildCache { catalog_id: sccache_local_id },
+    effect: EnsureBuildCacheInstance { desired: ci_cache_instance(host: operator_host_srv1) },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     privilege_denial: none,
@@ -1141,7 +1145,7 @@ fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
 fn provision_build_cache_arch_unknown_intent_fixture() -> HostEffectIntent {
   HostEffectIntent {
     target: HostOs { node: provision_build_cache_arch_unknown_host_fixture() },
-    effect: ProvisionBuildCache { catalog_id: sccache_local_id },
+    effect: EnsureBuildCacheInstance { desired: ci_cache_instance(host: operator_host_srv1) },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     privilege_denial: none,
@@ -1676,7 +1680,7 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
     OsInstallActuatorToolchainOnHost { node: _ } =>
       realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
-    ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
+    EnsureBuildCacheInstanceOnHost { node: _, desired: _ } =>
       realize_provision_build_cache(effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
@@ -1832,7 +1836,7 @@ fn host_effect_apply_gated(
         TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
         OsInstallActuatorToolchainOnHost { node: _ } =>
           realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
-        ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
+        EnsureBuildCacheInstanceOnHost { node: _, desired: _ } =>
           realize_provision_build_cache(effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
@@ -1905,7 +1909,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureBuildCacheInstanceOnHost { node: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

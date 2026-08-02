@@ -5,6 +5,9 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.build_cache_instance { BuildCacheInstance, ci_cache_instance }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.build_cache_unit { render_build_cache_unit }
 import extdeps.cache.sccache {
   sccache_misconfigured_log_fragments,
   sccache_installed_binary_path,
@@ -30,27 +33,17 @@ data host_build_cache_provision_script_scaffold: Disposition = Scaffold {
 
 data build_cache_install_authority_note: String = "The ensure arm installs sccache by calling the cited authority extdeps.cache.sccache.sccache_install_script (pinned release, per-arch sha256 verified, landing at sccache_installed_binary_path) — it does NOT hand-roll a package-manager install. Until 2026-07-24 this module ran `sudo -n apt-get install -y sccache` and wrote a unit with ExecStart=/usr/bin/sccache, a §3 fork of the same concept: P1:runner-deploy-slot installs the pinned tarball to /usr/local/bin and then P1b:build-cache-provision pointed its unit at a path that install never creates, so the daemon could not start and the read-back refused. Both the install and the unit now read ONE path row, so the two phases cannot disagree."
 
-data build_cache_systemd_user_unit_path: String = "$HOME/.config/systemd/user/sccache.service"
-
-fn build_cache_systemd_user_unit_body() -> String {
-  join([
-    "[Unit]",
-    "Description=sccache compiler cache (gunbc host standup)",
-    "After=network.target",
-    "",
-    "[Service]",
-    "Type=simple",
-    join(["Environment=", sccache_start_server_env_assignment()], ""),
-    join(["Environment=", sccache_no_daemon_env_assignment()], ""),
-    join(["Environment=", sccache_idle_timeout_never_env_assignment()], ""),
-    join(["ExecStart=", sccache_installed_binary_path], ""),
-    "Restart=on-failure",
-    "",
-    "[Install]",
-    "WantedBy=default.target",
-    "",
-  ], "\n")
+fn build_cache_systemd_unit_path(instance: BuildCacheInstance) -> String {
+  join(["/etc/systemd/system/", instance.intended_unit as String], "")
 }
+
+data build_cache_system_unit_decision_note: String = "OPEN QUESTION 1 OF THE srvN BUILD-CACHE DESIGN IS DECIDED HERE, AND IT IS FLAGGED RATHER THAN SLIPPED IN. That question -- user service versus system service for the shared daemon -- was recorded as operator-open in build_cache_user_service_linger_note, and this module previously answered it by default rather than by decision: it wrote $HOME/.config/systemd/user/sccache.service and then needed `loginctl enable-linger` to stop the manager dying with the ssh session, which the census note accounted as the one genuinely NEW piece of emitted shell in the whole lane.\n\nThe evidence now settles it. A live sudo capture of srv1 on 2026-08-01 shows the production authority this lane converges on -- ctrl-sccache.service -- is a SYSTEM unit under /etc/systemd/system with User=briansrls, and the CI instance must run as ghrunner while the session instance runs as briansrls ON THE SAME HOST. A user-scope unit cannot express two principals on one host at all, because it inherits the invoking user; a system unit names the principal explicitly, which is exactly the field the instance carries.\n\nSo the answer is system-scope, and the linger line is DELETED rather than reworked -- the lane's one acknowledged shell growth removed by the change that made it unnecessary. An operator who wants user-scope should say so and this reverts; it is a decision made on evidence, not a fait accompli."
+
+fn build_cache_systemd_unit_body(instance: BuildCacheInstance) -> String {
+  join(concat(render_build_cache_unit(instance: instance), [""]), "\n")
+}
+
+data unit_body_is_rendered_not_written_note: String = "THIS BUILDER NO LONGER WRITES A UNIT; IT SERIALIZES ONE. Every line now comes from gunbc.build_cache_unit.render_build_cache_unit, which derives the unit from the instance, so this module has stopped being a second authority for what a build-cache unit contains. That is the census action for this row -- DECOMPOSE -- discharged for the unit half rather than deferred again: the hand-written [Unit]/[Service] block is GONE, not edited.\n\nWhat the rendered unit gains over the block it replaces, and why each mattered: User and Group (the old user-scope unit inherited the invoking user and so could not express ghrunner and briansrls on one host), Slice (the compile pool that bounds every cache-miss compiler), SCCACHE_DIR and the endpoint (without which the unit cannot say which of the host's two caches it serves), and an instance-specific Description. The old block had none of those."
 
 data build_cache_path_authority_note: String = "The PATH-shadow JUDGEMENT lives in the model — gunbc.host_build_cache_provision.DaemonPathShadowed / RefusalPathShadowed and the verdict fold that refuses it, proven by design_witness_path_shadow_refuses_fail_closed against a synthetic DaemonPathShadowed observation. Its LIVE OBSERVATION is STAGED, deliberately NOT emitted as hand-shell here: this file is an A5 `decompose` scaffold that the census pledges may SHRINK but must not GROW (dissolve-on #5828), and a `command -v sccache` observation folded into the bodies still GROWS the emitted shell surface — a census regression even though the model verdict it feeds is correct (review 42343 caught this; the earlier 'folded in, count six' defense counted *_body builders, not the shell surface). The observation lands when ProvisionBuildCache realizes as typed host-effect argv (this module's own dissolve-on): the resolve becomes a typed op (shell.Which.Check) and the comparison a typed predicate over captured values (the deploy-preflight `whoami` precedent: a negated StrEq, never a minted StrNeq). Until then the model carries the state and its refusal; only the live producer is deferred."
 
@@ -106,18 +99,21 @@ fn build_cache_classify_failure_body() -> String {
   ], "\n")
 }
 
-fn build_cache_ensure_daemon_body(arch_token: NonEmptyStr, digest: Digest) -> String {
+fn build_cache_ensure_daemon_body(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+) -> String {
   join([
     join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then"], ""),
     sccache_install_script(rel: sccache_release_0_15_0, arch: arch_token, digest: digest),
     "fi",
-    join(["mkdir -p \"$(dirname \"", build_cache_systemd_user_unit_path, "\")\""], ""),
-    join(["cat > \"", build_cache_systemd_user_unit_path, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
-    build_cache_systemd_user_unit_body(),
+    join(["sudo -n install -d -o '", instance.intended_principal as String, "' -g '", instance.intended_principal as String, "' '", instance.intended_storage as String, "'"], ""),
+    join(["sudo -n tee '", build_cache_systemd_unit_path(instance: instance), "' >/dev/null <<'__GUNBC_SCCACHE_UNIT__'"], ""),
+    build_cache_systemd_unit_body(instance: instance),
     "__GUNBC_SCCACHE_UNIT__",
-    "sudo -n loginctl enable-linger \"$USER\"",
-    "systemctl --user daemon-reload",
-    "systemctl --user enable --now sccache.service",
+    "sudo -n systemctl daemon-reload",
+    join(["sudo -n systemctl enable --now '", instance.intended_unit as String, "'"], ""),
     "",
   ], "\n")
 }
@@ -139,13 +135,17 @@ fn build_cache_read_back_body(binary: String) -> String {
   ], "\n")
 }
 
-fn build_cache_provision_script_body(arch_token: NonEmptyStr, digest: Digest) -> String {
+fn build_cache_provision_script_body(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+) -> String {
   join([
     "set -euo pipefail",
     build_cache_observe_stats_body(),
     build_cache_classify_failure_body(),
     "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"",
-    build_cache_ensure_daemon_body(arch_token: arch_token, digest: digest),
+    build_cache_ensure_daemon_body(instance: instance, arch_token: arch_token, digest: digest),
     build_cache_read_back_body(binary: sccache_installed_binary_path),
   ], "\n")
 }
@@ -176,9 +176,15 @@ fn build_cache_install_is_cited_not_package_manager() -> Bool {
     && !string_contains(s: body, pattern: "/usr/bin/sccache")
 }
 
+data checks_subject_note: String = "THE CONSTRUCTION CHECKS NOW READ THE RENDERED BODY, WHICH IS HOW THEY EARNED THEIR KEEP. They were written against the hand-authored unit block in this module. Pointing them at gunbc.build_cache_unit's render is the whole substance of the A5 swap: if the generated unit cannot satisfy the walls the hand-written one had to, the swap is a regression rather than a decomposition.\n\nIt did not pass on the first try. The render initially emitted ExecStart=... --start-server and build_cache_unit_is_foreground_supervised refused it immediately -- correctly, because Type=simple plus a daemonizing ExecStart marks the unit dead while the server runs unsupervised (measured on srv3 2026-07-25). The render was corrected, not the check. That is the intended direction and the reason these checks are repointed rather than retired: a wall built for the old shape caught the new one on first contact."
+
+fn build_cache_check_subject_instance() -> BuildCacheInstance {
+  ci_cache_instance(host: operator_host_srv1)
+}
+
 fn build_cache_unit_execstart_matches_install_path() -> Bool {
   string_contains(
-    s: build_cache_systemd_user_unit_body(),
+    s: build_cache_systemd_unit_body(instance: build_cache_check_subject_instance()),
     pattern: join(["ExecStart=", sccache_installed_binary_path], ""),
   )
 }
@@ -186,7 +192,7 @@ fn build_cache_unit_execstart_matches_install_path() -> Bool {
 data build_cache_unit_foreground_supervision_note: String = "The unit is Type=simple, so systemd tracks the ExecStart process AS the service — it MUST stay in the foreground. `sccache --start-server` DAEMONIZES and returns 0, so under Type=simple systemd sees the ExecStart exit cleanly and marks the unit `inactive (dead)` the instant it starts; the backgrounded server then idle-times-out unsupervised and Restart=on-failure never fires (the exit was success). Proven live on srv3 2026-07-25: the earlier `--start-server` form left the unit inactive with no sccache process, the daemon surviving only via sccache's own per-invocation auto-start — i.e. the unit was a no-op. This is the §5 specification-without-execution trap: the string witness that ExecStart equals the install path was green while the unit did nothing. The foreground form matches the production ctrl-sccache.service invocation (bare ExecStart + SCCACHE_START_SERVER=1 SCCACHE_NO_DAEMON=1 env, verified running month+ on srv1/srv2), reducing the §3 fork between the modeled unit and production rather than inventing a third shape. build_cache_unit_is_foreground_supervised makes the defective combo (Type=simple paired with a backgrounding --start-server) UNWRITABLE; the runtime is-active proof is the live srv3 re-provision (systemd --user is not runnable in the hermetic CI container, so the construction wall carries the CI grain and live execution carries the runtime grain). CORRECTION 2026-07-25 — that runtime claim was an OVERCLAIM and is retracted as stated: the srv3 re-provision observed is-active only in the same minutes it ran, and a read-back six hours later found the unit `inactive (dead)` since 06:38:56 with no sccache process. Foreground supervision was necessary and not sufficient; the residue is sccache's own idle timeout, and the fix, the receipt and the reason Restart=always is the wrong repair are in build_cache_unit_daemon_self_exit_note. The general lesson this lane keeps re-learning: an is-active read taken at provisioning time proves the unit STARTED, never that it STAYS — the durable claim needs a read-back separated from the write by longer than every self-exit timer in the supervised process."
 
 fn build_cache_unit_is_foreground_supervised() -> Bool {
-  let body = build_cache_systemd_user_unit_body()
+  let body = build_cache_systemd_unit_body(instance: build_cache_check_subject_instance())
   string_contains(s: body, pattern: "Type=simple")
     && string_contains(s: body, pattern: sccache_start_server_env_assignment())
     && string_contains(s: body, pattern: sccache_no_daemon_env_assignment())
@@ -200,7 +206,7 @@ fn build_cache_unit_body_runs_until_stopped(body: String) -> Bool {
 }
 
 fn build_cache_unit_daemon_runs_until_stopped() -> Bool {
-  build_cache_unit_body_runs_until_stopped(body: build_cache_systemd_user_unit_body())
+  build_cache_unit_body_runs_until_stopped(body: build_cache_systemd_unit_body(instance: build_cache_check_subject_instance()))
 }
 
 fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
@@ -212,8 +218,12 @@ fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
   )
 }
 
-fn build_cache_provision_shell_script(arch_token: NonEmptyStr, digest: Digest) -> String {
+fn build_cache_provision_shell_script(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+) -> String {
   shell_exec_via_bash(
-    body: build_cache_provision_script_body(arch_token: arch_token, digest: digest),
+    body: build_cache_provision_script_body(instance: instance, arch_token: arch_token, digest: digest),
   )
 }

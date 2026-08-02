@@ -27,12 +27,16 @@ import std.effects {
   NonIdempotent,
 }
 
+import gunbc.build_cache_instance { BuildCacheInstance }
+
+data ensure_build_cache_instance_grain_note: String = "THE EFFECT CARRIES THE DEPLOYED INSTANCE, NOT THE CATALOG. It used to be ProvisionBuildCache { catalog_id: CacheInterfaceId }, and a CacheInterfaceId names sccache's cache SEMANTICS and pinned binary rather than any running daemon. srv1 and srv2 each run TWO servers from that one catalog row -- a CI server as ghrunner over /var/lib/ctrl/sccache-ci and a session server as briansrls over /var/lib/ctrl/sccache with a 50G cap -- so the old arm could not say WHICH one to converge, and could not express that one is correctly placed while the other is not.\n\nThe defect was visible in the emitted shell, which is the clearest evidence it was a grain problem and not a naming one: the unit the old realizer wrote carried no SCCACHE_DIR, no socket path, no User and no Slice. It literally could not name which instance it was, because the effect that produced it could not either. A catalog-grain effect produced a catalog-grain unit.\n\nThe unit is now RENDERED from the instance by gunbc.build_cache_unit, so the deployed unit and the declared intent cannot disagree."
+
 type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
   | OsInstallActuatorToolchainEnsure {}
-  | ProvisionBuildCache { catalog_id: CacheInterfaceId }
+  | EnsureBuildCacheInstance { desired: BuildCacheInstance }
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
