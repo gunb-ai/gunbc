@@ -1,8 +1,8 @@
 module gunbc.roadmap_belt_actuate
 
 import gunbc.output_policy { OutcomeIsData }
-import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
-import gunbc.roadmap_model { RoadmapNode }
+import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap_status { signoff_accepts }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
@@ -56,6 +56,9 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_oracle_revision_path_for_instance,
   dispatch_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_attempt_validation_receipt_path_for_instance,
+  dispatch_attempt_verification_receipt_path_for_instance,
+  dispatch_attempt_verification_dir_for_instance,
+  verification_receipt_directory_segment,
   dispatch_attempt_publication_receipt_path_for_instance,
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
@@ -175,6 +178,26 @@ import gunbc.roadmap_publish_observe {
   WorktreeRepositoryBinding,
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
+}
+import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  VerificationSubjectObservation,
+  VerificationSubjectObserved,
+  VerificationSubjectUnobserved,
+  ValidationExecution,
+  VerificationReceipt,
+  VerificationReceiptFileSource,
+  VerificationReceiptAbsent,
+  VerificationReceiptPresent,
+  VerificationReceiptUnreadable,
+  verification_receipt_json,
+  verification_receipt_decode,
+  VerificationReceiptDecoded,
+  VerificationReceiptUndecodable,
+  verification_receipt_text_decode,
+  VerificationReceiptTextExactHead,
+  VerificationReceiptTextLegacy,
+  VerificationReceiptTextUndecodable,
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap_validation_oracle {
@@ -2488,6 +2511,180 @@ fn belt_publication_receipt_source(
   }
 }
 
+fn belt_verification_subject_for(
+  node: RoadmapNode,
+  attempt_key: String,
+  branch: String,
+  head: WorktreeHeadObservation,
+) -> VerificationSubjectObservation {
+  match head {
+    WorktreeHeadUnobserved { reason } =>
+      VerificationSubjectUnobserved {
+        reason: join([
+          "verification is adjudicated against an exact head and this attempt has none: ",
+          reason,
+        ], ""),
+      }
+    WorktreeHeadObserved { revision } =>
+      if trim(branch) == "" {
+        VerificationSubjectUnobserved {
+          reason: "the attempt has no branch name, so there is no verification subject to construct",
+        }
+      } else {
+        match node_criteria_digest(rn: node) {
+          Absent =>
+            VerificationSubjectUnobserved {
+              reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
+            }
+          Present { value: criteria_digest } =>
+            VerificationSubjectObserved {
+              subject: VerificationSubject {
+                node_identity: node.identity,
+                criteria_digest: criteria_digest,
+                attempt_key: attempt_key,
+                branch: branch as NonEmptyStr,
+                head_sha: revision as CommitSha,
+              },
+            }
+        }
+      }
+  }
+}
+
+fn belt_verification_receipt_source(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  subject: VerificationSubjectObservation,
+) -> VerificationReceiptFileSource {
+  match subject {
+    VerificationSubjectUnobserved { reason: _ } => VerificationReceiptAbsent
+    VerificationSubjectObserved { subject: observed } => {
+      let attempt_dir = dispatch_attempt_state_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      )
+      let attempt_listing = Filesystem.List(path: attempt_dir)
+      if !attempt_listing.success {
+        VerificationReceiptUnreadable {
+          detail: join([
+            "the attempt state directory could not be listed, so whether a verification receipt exists was not established: ",
+            attempt_dir,
+            " (",
+            attempt_listing.error,
+            ")",
+          ], ""),
+        }
+      } else if !belt_listing_names_entry(
+        listing: attempt_listing.entries,
+        name: verification_receipt_directory_segment,
+      ) {
+        if belt_listing_names_entry(
+          listing: attempt_listing.entries,
+          name: "validation-receipt.json",
+        ) {
+          let legacy_path = dispatch_attempt_validation_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+          )
+          let legacy_read = Filesystem.Read(path: legacy_path)
+          if legacy_read.success {
+            VerificationReceiptPresent { text: legacy_read.content }
+          } else {
+            VerificationReceiptUnreadable {
+              detail: join([
+                "the legacy validation receipt was listed and then could not be read: ",
+                legacy_path,
+                " (",
+                legacy_read.error,
+                ")",
+              ], ""),
+            }
+          }
+        } else {
+          VerificationReceiptAbsent
+        }
+      } else {
+        let verification_dir = dispatch_attempt_verification_dir_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: attempt_key,
+        )
+        let verification_listing = Filesystem.List(path: verification_dir)
+        if !verification_listing.success {
+          VerificationReceiptUnreadable {
+            detail: join([
+              "the verification receipt directory was named by the attempt listing but could not itself be listed: ",
+              verification_dir,
+              " (",
+              verification_listing.error,
+              ")",
+            ], ""),
+          }
+        } else if !belt_listing_names_entry(
+          listing: verification_listing.entries,
+          name: join([observed.head_sha as String, ".json"], ""),
+        ) {
+          VerificationReceiptAbsent
+        } else {
+          let path = dispatch_attempt_verification_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+            head_sha: observed.head_sha as String,
+          )
+          let read = Filesystem.Read(path: path)
+          if read.success {
+            VerificationReceiptPresent { text: read.content }
+          } else {
+            VerificationReceiptUnreadable {
+              detail: join([
+                "a verification receipt for this head was listed and then could not be read, so it exists and its content is unavailable: ",
+                path,
+                " (",
+                read.error,
+                ")",
+              ], ""),
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn belt_verification_subject_observation_for_attempt(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> VerificationSubjectObservation {
+  match belt_lookup_node(node_id: node_id) {
+    NodeMissing =>
+      VerificationSubjectUnobserved {
+        reason: "the roadmap authority declares no node with this id, so there is no verification subject",
+      }
+    NodeFound { node } =>
+      belt_verification_subject_for(
+        node: node,
+        attempt_key: attempt_key,
+        branch: dispatch_branch_name(
+          node_id: node_id as RoadmapNodeId,
+          attempt_key: attempt_key,
+        ),
+        head: belt_worktree_head_observe(
+          instance: instance,
+          worktree: dispatch_worktree_path_for_instance(
+            instance: instance,
+            node_id: node_id as RoadmapNodeId,
+            attempt_key: attempt_key,
+          ),
+        ),
+      )
+  }
+}
+
 fn belt_workflow_progress_for_attempt_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -2520,8 +2717,10 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
-      validation_receipt_readable: false,
-      validation_receipt: "",
+      verification_subject: VerificationSubjectUnobserved {
+        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
+      },
+      verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectUnobserved {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
@@ -2546,27 +2745,29 @@ fn belt_workflow_progress_for_attempt_ref(
         node_id: node_id,
       ),
     )
-    let validation_receipt = Filesystem.Read(
-      path: dispatch_current_attempt_validation_receipt_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ),
+    let branch = dispatch_branch_name(
+      node_id: node_id,
+      attempt_key: current_key,
+    )
+    let worktree = dispatch_worktree_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: current_key,
+    )
+    let head = belt_worktree_head_observe(
+      instance: instance,
+      worktree: worktree,
     )
     let publication_subject = belt_publication_subject_for(
       node_id: attempt.node_id,
       attempt_key: current_key,
-      branch: dispatch_branch_name(
-        node_id: node_id,
-        attempt_key: current_key,
-      ),
-      head: belt_worktree_head_observe(
-        instance: instance,
-        worktree: dispatch_worktree_path_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: current_key,
-        ),
-      ),
+      branch: branch,
+      head: head,
+    )
+    let verification_subject = belt_verification_subject_observation_for_attempt(
+      instance: instance,
+      node_id: attempt.node_id,
+      attempt_key: current_key,
     )
     let publication_receipt = belt_publication_receipt_source(
       instance: instance,
@@ -2603,8 +2804,13 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
-      validation_receipt_readable: validation_receipt.success,
-      validation_receipt: validation_receipt.content,
+      verification_subject: verification_subject,
+      verification_source: belt_verification_receipt_source(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: current_key,
+        subject: verification_subject,
+      ),
       publication_subject: publication_subject,
       publication_source: publication_receipt,
     })
@@ -2644,26 +2850,41 @@ fn belt_validation_commands_for_contract(
   }
 }
 
-fn belt_run_validation_commands(
-  commands: List<ModeledValidationCommand?>,
+type BeltValidationRun {
+  executions: List<ValidationExecution>
+  verdict: ValidationVerdict
+}
+
+fn belt_run_validation_operations(
+  instance: HostDashboardInstance,
+  validations: List<ValidationOperation>,
   worktree: String,
   oracle_identity: ContentHash,
-) -> ValidationVerdict {
+) -> BeltValidationRun {
   fold(
-    commands,
-    init: ValidationPassed {
-      command: "",
-      oracle_identity: oracle_identity,
+    validations,
+    init: BeltValidationRun {
+      executions: [],
+      verdict: ValidationPassed {
+        command: "",
+        oracle_identity: oracle_identity,
+      },
     },
-    f: fn(acc, maybe_command) {
-      match acc {
+    f: fn(acc, validation) {
+      match acc.verdict {
         ValidationNotRun => acc
         ValidationFailed { command: _, exit_code: _, detail: _ } => acc
         ValidationRefused { cause: _ } => acc
         ValidationPassed { command: prior, oracle_identity: _ } =>
-          match maybe_command {
+          match validation_operation_command(
+            validation: validation,
+            environment: instance.execution_environment,
+          ) {
             Absent =>
-              ValidationRefused { cause: ValidationCommandUnrealized }
+              BeltValidationRun {
+                executions: acc.executions,
+                verdict: ValidationRefused { cause: ValidationCommandUnrealized },
+              }
             Present { value: command } => {
               let wire = modeled_validation_command_wire(command: command)
               match belt_exec(
@@ -2673,26 +2894,47 @@ fn belt_run_validation_commands(
                 ),
                 workdir: worktree,
               ) {
-                ExecOk { stdout: _ } =>
-                  ValidationPassed {
-                    command: if prior == "" {
-                      wire
-                    } else {
-                      join([prior, "; ", wire], "")
+                ExecOk { stdout } =>
+                  BeltValidationRun {
+                    executions: acc.executions |> append(ValidationExecution {
+                      validation: validation,
+                      command: command,
+                      exit_code: 0,
+                      stdout: stdout,
+                      stderr: "",
+                    }),
+                    verdict: ValidationPassed {
+                      command: if prior == "" {
+                        wire
+                      } else {
+                        join([prior, "; ", wire], "")
+                      },
+                      oracle_identity: oracle_identity,
                     },
-                    oracle_identity: oracle_identity,
                   }
                 ExecFailed { program: _, exit_code, stderr } =>
-                  ValidationFailed {
-                    command: wire,
-                    exit_code: exit_code,
-                    detail: stderr,
+                  BeltValidationRun {
+                    executions: acc.executions |> append(ValidationExecution {
+                      validation: validation,
+                      command: command,
+                      exit_code: exit_code,
+                      stdout: "",
+                      stderr: stderr,
+                    }),
+                    verdict: ValidationFailed {
+                      command: wire,
+                      exit_code: exit_code,
+                      detail: stderr,
+                    },
                   }
                 ExecRefused { program, reason } =>
-                  ValidationRefused {
-                    cause: ValidationCommandRefused {
-                      program: program,
-                      reason: reason,
+                  BeltValidationRun {
+                    executions: acc.executions,
+                    verdict: ValidationRefused {
+                      cause: ValidationCommandRefused {
+                        program: program,
+                        reason: reason,
+                      },
                     },
                   }
               }

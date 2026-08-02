@@ -584,6 +584,8 @@ data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIP
 
 data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD GRAIN. One implementation attempt may be verified at head A, receive findings, and be verified again at head B. An attempt-level file would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication: attempt/<attempt>/verification/<head_sha>.json, with no current alias because a reader that has not observed the head cannot name the verification subject. DISSOLVE-ON: the two legacy attempt-level paths below lose their last belt consumers and delete."
 
+data verification_receipt_directory_segment: String = "verification"
+
 fn dispatch_attempt_verification_dir_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,

@@ -1,19 +1,73 @@
 module gunbc.roadmap_verification_receipt
 
-import std.types { String, NonEmptyStr, Int, List, CommitSha }
+import std.types { String, NonEmptyStr, Int, List, CommitSha, Bool, FilePath }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
   content_hash_eq_structural,
+  serialize_content_hash,
+  fnv1a64_structural_hex_digest,
+  as_content_hash_structural,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonString,
+  JsonNumber,
+  JsonBool,
+  JsonArray,
+  JsonObject,
+  serialize_json,
+  json_string,
+  json_int,
+  json_bool,
+  json_array,
+  json_object,
+  json_kv,
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
 }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 import gunbc.roadmap_execution_contract {
   ValidationOperation,
   ModeledValidationCommand,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  CargoFmtValidation,
 }
 import gunbc.roadmap_validation_oracle {
   ValidationVerdict,
+  ValidationPassed,
+  ValidationFailed,
+  ValidationRefused,
+  ValidationNotRun,
+  ValidationRefusalCause,
+  ValidationContractUnspecified,
+  ValidationOracleUnpinnable,
+  ValidationOracleMissing,
+  ValidationOracleAmbiguous,
+  ValidationOracleUnpinnedDependency,
+  ValidationOracleMoved,
+  ValidationOracleCrossFamilyIdentityIncomparable,
+  ValidationOraclePinUnrecorded,
+  ValidationPinReceiptUnreadable,
+  ValidationCommandUnrealized,
+  ValidationCommandRefused,
   validation_verdict_key,
+  validation_verdict_detail,
+  validation_refusal_cause_key,
+  validation_refusal_cause_detail,
+  validation_receipt_schema,
+  validation_receipt_decode,
+  validation_receipt_decode_document,
+  ValidationReceiptDecoded,
+  ValidationReceiptUndecodable,
+  validation_oracle_parse_pinned_identity_wire,
 }
 
 data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head. None of those five fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string.\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other."
@@ -148,3 +202,667 @@ fn verification_evidence_moves_lamp(evidence: VerificationEvidence) -> Bool {
     VerificationEvidenceLegacyAttemptLevel { verdict_key: _ } => false
   }
 }
+
+type VerificationSubjectObservation
+  = VerificationSubjectObserved { subject: VerificationSubject }
+  | VerificationSubjectUnobserved { reason: String }
+
+type VerificationReceiptFileSource
+  = VerificationReceiptAbsent
+  | VerificationReceiptPresent { text: String }
+  | VerificationReceiptUnreadable { detail: String }
+
+data verification_receipt_schema: NonEmptyStr = "roadmap-verification-receipt/v1"
+
+type VerificationReceiptMember
+  = VerificationReceiptMemberRead { value: String }
+  | VerificationReceiptMemberUnreadable { reason: String }
+
+fn verification_receipt_string_member(
+  doc: JsonValue,
+  key: String,
+) -> VerificationReceiptMember {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberNotAnObject =>
+      VerificationReceiptMemberUnreadable {
+        reason: "verification receipt is not a JSON object",
+      }
+    JsonMemberAbsent =>
+      VerificationReceiptMemberUnreadable {
+        reason: join(["verification receipt has no ", key, " member"], ""),
+      }
+    JsonMemberDuplicated { count: n } =>
+      VerificationReceiptMemberUnreadable {
+        reason: join([
+          "verification receipt carries ", to_string(n), " ", key,
+          " members; an identity member must occur exactly once",
+        ], ""),
+      }
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: sv } => VerificationReceiptMemberRead { value: sv }
+        _ =>
+          VerificationReceiptMemberUnreadable {
+            reason: join(["verification receipt ", key, " is not a JSON string"], ""),
+          }
+      }
+  }
+}
+
+fn verification_receipt_int_member(doc: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn verification_receipt_object_member(doc: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } => Present { value: v }
+    _ => none
+  }
+}
+
+fn verification_receipt_string_array_member(
+  doc: JsonValue,
+  key: String,
+) -> List<String>? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonArray { elements } => {
+          let parsed = map(elements, e => match e {
+            JsonString { value: s } => Present { value: s }
+            _ => none
+          })
+          let readable = filter(parsed, x => match x {
+            Present { value: _ } => true
+            Absent => false
+          })
+          if count(readable) == count(elements) {
+            Present {
+              value: map(readable, x => match x {
+                Present { value: s } => s
+                Absent => ""
+              }),
+            }
+          } else {
+            none
+          }
+        }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
+  json_object(members: [
+    json_kv(
+      key: "node_identity",
+      value: json_string(s: subject.node_identity as String),
+    ),
+    json_kv(
+      key: "criteria_digest",
+      value: json_string(s: subject.criteria_digest.digest as String),
+    ),
+    json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
+    json_kv(key: "branch", value: json_string(s: subject.branch as String)),
+    json_kv(key: "head_sha", value: json_string(s: subject.head_sha as String)),
+  ])
+}
+
+fn verification_validation_operation_json(
+  validation: ValidationOperation,
+) -> JsonValue {
+  match validation {
+    GunbcClaimValidation { entry, function } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "gunbc-claim")),
+        json_kv(key: "entry", value: json_string(s: entry as String)),
+        json_kv(key: "function", value: json_string(s: function as String)),
+      ])
+    CargoTestValidation { filter } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "cargo-test")),
+        json_kv(key: "filter", value: json_string(s: filter as String)),
+      ])
+    CargoFmtValidation =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "cargo-fmt")),
+      ])
+  }
+}
+
+fn verification_modeled_command_json(
+  command: ModeledValidationCommand,
+) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "label", value: json_string(s: command.label as String)),
+    json_kv(key: "program", value: json_string(s: command.program as String)),
+    json_kv(
+      key: "args",
+      value: json_array(elements: map(command.args, a => json_string(s: a))),
+    ),
+  ])
+}
+
+fn verification_validation_execution_json(
+  execution: ValidationExecution,
+) -> JsonValue {
+  json_object(members: [
+    json_kv(
+      key: "validation",
+      value: verification_validation_operation_json(
+        validation: execution.validation,
+      ),
+    ),
+    json_kv(
+      key: "command",
+      value: verification_modeled_command_json(command: execution.command),
+    ),
+    json_kv(key: "exit_code", value: json_int(n: execution.exit_code)),
+    json_kv(key: "stdout", value: json_string(s: execution.stdout)),
+    json_kv(key: "stderr", value: json_string(s: execution.stderr)),
+  ])
+}
+
+fn verification_verdict_json(verdict: ValidationVerdict) -> JsonValue {
+  match verdict {
+    ValidationNotRun =>
+      json_object(members: [
+        json_kv(key: "key", value: json_string(s: "not_run")),
+      ])
+    ValidationPassed { command, oracle_identity } =>
+      json_object(members: [
+        json_kv(key: "key", value: json_string(s: "passed")),
+        json_kv(key: "command", value: json_string(s: command)),
+        json_kv(
+          key: "oracle_identity",
+          value: json_string(
+            s: serialize_content_hash(hash: oracle_identity) as String,
+          ),
+        ),
+      ])
+    ValidationFailed { command, exit_code, detail } =>
+      json_object(members: [
+        json_kv(key: "key", value: json_string(s: "failed")),
+        json_kv(key: "command", value: json_string(s: command)),
+        json_kv(key: "exit_code", value: json_int(n: exit_code)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    ValidationRefused { cause } =>
+      json_object(members: [
+        json_kv(key: "key", value: json_string(s: "refused")),
+        json_kv(
+          key: "cause_kind",
+          value: json_string(s: validation_refusal_cause_key(cause: cause)),
+        ),
+        json_kv(
+          key: "cause_detail",
+          value: json_string(s: validation_refusal_cause_detail(cause: cause)),
+        ),
+      ])
+  }
+}
+
+fn verification_receipt_json(receipt: VerificationReceipt) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: verification_receipt_schema as String)),
+    json_kv(key: "subject", value: verification_subject_json(subject: receipt.subject)),
+    json_kv(
+      key: "oracle_identity",
+      value: json_string(
+        s: serialize_content_hash(hash: receipt.oracle_identity) as String,
+      ),
+    ),
+    json_kv(
+      key: "executions",
+      value: json_array(elements: map(
+        receipt.executions,
+        e => verification_validation_execution_json(execution: e),
+      )),
+    ),
+    json_kv(key: "verdict", value: verification_verdict_json(verdict: receipt.verdict)),
+  ]))
+}
+
+type VerificationReceiptDecode
+  = VerificationReceiptDecoded { receipt: VerificationReceipt }
+  | VerificationReceiptUndecodable { reason: String }
+
+fn verification_subject_decode(doc: JsonValue) -> VerificationSubject? {
+  match verification_receipt_string_member(doc: doc, key: "node_identity") {
+    VerificationReceiptMemberUnreadable { reason: _ } => none
+    VerificationReceiptMemberRead { value: node_identity } =>
+      match verification_receipt_string_member(doc: doc, key: "criteria_digest") {
+        VerificationReceiptMemberUnreadable { reason: _ } => none
+        VerificationReceiptMemberRead { value: criteria_wire } =>
+          match fnv1a64_structural_hex_digest(hex: criteria_wire) {
+            Absent => none
+            Present { value: criteria_digest } =>
+              match verification_receipt_string_member(doc: doc, key: "attempt_key") {
+                VerificationReceiptMemberUnreadable { reason: _ } => none
+                VerificationReceiptMemberRead { value: attempt_key } =>
+                  match verification_receipt_string_member(doc: doc, key: "branch") {
+                    VerificationReceiptMemberUnreadable { reason: _ } => none
+                    VerificationReceiptMemberRead { value: branch } =>
+                      match verification_receipt_string_member(doc: doc, key: "head_sha") {
+                        VerificationReceiptMemberUnreadable { reason: _ } => none
+                        VerificationReceiptMemberRead { value: head_sha } =>
+                          Present {
+                            value: VerificationSubject {
+                              node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
+                              criteria_digest: criteria_digest,
+                              attempt_key: attempt_key,
+                              branch: branch as NonEmptyStr,
+                              head_sha: head_sha as CommitSha,
+                            },
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn verification_validation_operation_decode(
+  doc: JsonValue,
+) -> ValidationOperation? {
+  match verification_receipt_string_member(doc: doc, key: "kind") {
+    VerificationReceiptMemberUnreadable { reason: _ } => none
+    VerificationReceiptMemberRead { value: kind } =>
+      if kind == "gunbc-claim" {
+        match verification_receipt_string_member(doc: doc, key: "entry") {
+          VerificationReceiptMemberUnreadable { reason: _ } => none
+          VerificationReceiptMemberRead { value: entry } =>
+            match verification_receipt_string_member(doc: doc, key: "function") {
+              VerificationReceiptMemberUnreadable { reason: _ } => none
+              VerificationReceiptMemberRead { value: function } =>
+                Present {
+                  value: GunbcClaimValidation {
+                    entry: entry as FilePath,
+                    function: function as NonEmptyStr,
+                  },
+                }
+            }
+        }
+      } else if kind == "cargo-test" {
+        match verification_receipt_string_member(doc: doc, key: "filter") {
+          VerificationReceiptMemberUnreadable { reason: _ } => none
+          VerificationReceiptMemberRead { value: filter } =>
+            Present {
+              value: CargoTestValidation { filter: filter as NonEmptyStr },
+            }
+        }
+      } else if kind == "cargo-fmt" {
+        Present { value: CargoFmtValidation }
+      } else {
+        none
+      }
+  }
+}
+
+fn verification_modeled_command_decode(
+  doc: JsonValue,
+) -> ModeledValidationCommand? {
+  match verification_receipt_string_member(doc: doc, key: "label") {
+    VerificationReceiptMemberUnreadable { reason: _ } => none
+    VerificationReceiptMemberRead { value: label } =>
+      match verification_receipt_string_member(doc: doc, key: "program") {
+        VerificationReceiptMemberUnreadable { reason: _ } => none
+        VerificationReceiptMemberRead { value: program } =>
+          match verification_receipt_string_array_member(doc: doc, key: "args") {
+            Absent => none
+            Present { value: args } =>
+              Present {
+                value: ModeledValidationCommand {
+                  label: label as NonEmptyStr,
+                  program: program as FilePath,
+                  args: args,
+                },
+              }
+          }
+      }
+  }
+}
+
+fn verification_validation_execution_decode(
+  doc: JsonValue,
+) -> ValidationExecution? {
+  match verification_receipt_object_member(doc: doc, key: "validation") {
+    Absent => none
+    Present { value: validation_doc } =>
+      match verification_validation_operation_decode(doc: validation_doc) {
+        Absent => none
+        Present { value: validation } =>
+          match verification_receipt_object_member(doc: doc, key: "command") {
+            Absent => none
+            Present { value: command_doc } =>
+              match verification_modeled_command_decode(doc: command_doc) {
+                Absent => none
+                Present { value: command } =>
+                  match verification_receipt_int_member(doc: doc, key: "exit_code") {
+                    Absent => none
+                    Present { value: exit_code } =>
+                      match verification_receipt_string_member(doc: doc, key: "stdout") {
+                        VerificationReceiptMemberUnreadable { reason: _ } => none
+                        VerificationReceiptMemberRead { value: stdout } =>
+                          match verification_receipt_string_member(doc: doc, key: "stderr") {
+                            VerificationReceiptMemberUnreadable { reason: _ } => none
+                            VerificationReceiptMemberRead { value: stderr } =>
+                              Present {
+                                value: ValidationExecution {
+                                  validation: validation,
+                                  command: command,
+                                  exit_code: exit_code,
+                                  stdout: stdout,
+                                  stderr: stderr,
+                                },
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn verification_verdict_decode(doc: JsonValue) -> ValidationVerdict? {
+  match verification_receipt_string_member(doc: doc, key: "key") {
+    VerificationReceiptMemberUnreadable { reason: _ } => none
+    VerificationReceiptMemberRead { value: key } =>
+      if key == "not_run" {
+        Present { value: ValidationNotRun }
+      } else if key == "passed" {
+        match verification_receipt_string_member(doc: doc, key: "command") {
+          VerificationReceiptMemberUnreadable { reason: _ } => none
+          VerificationReceiptMemberRead { value: command } =>
+            match verification_receipt_string_member(doc: doc, key: "oracle_identity") {
+              VerificationReceiptMemberUnreadable { reason: _ } => none
+              VerificationReceiptMemberRead { value: identity_wire } =>
+                match validation_oracle_parse_pinned_identity_wire(text: identity_wire) {
+                  Absent => none
+                  Present { value: oracle_identity } =>
+                    Present {
+                      value: ValidationPassed {
+                        command: command,
+                        oracle_identity: oracle_identity,
+                      },
+                    }
+                }
+            }
+        }
+      } else if key == "failed" {
+        match verification_receipt_string_member(doc: doc, key: "command") {
+          VerificationReceiptMemberUnreadable { reason: _ } => none
+          VerificationReceiptMemberRead { value: command } =>
+            match verification_receipt_int_member(doc: doc, key: "exit_code") {
+              Absent => none
+              Present { value: exit_code } =>
+                match verification_receipt_string_member(doc: doc, key: "detail") {
+                  VerificationReceiptMemberUnreadable { reason: _ } => none
+                  VerificationReceiptMemberRead { value: detail } =>
+                    Present {
+                      value: ValidationFailed {
+                        command: command,
+                        exit_code: exit_code,
+                        detail: detail,
+                      },
+                    }
+                }
+            }
+        }
+      } else if key == "refused" {
+        match verification_receipt_string_member(doc: doc, key: "cause_kind") {
+          VerificationReceiptMemberUnreadable { reason: _ } => none
+          VerificationReceiptMemberRead { value: cause_kind } =>
+            match verification_receipt_string_member(doc: doc, key: "cause_detail") {
+              VerificationReceiptMemberUnreadable { reason: _ } => none
+              VerificationReceiptMemberRead { value: cause_detail } =>
+                Present {
+                  value: ValidationRefused {
+                    cause: if cause_kind == "contract-unspecified" {
+                      ValidationContractUnspecified
+                    } else if cause_kind == "command-unrealized" {
+                      ValidationCommandUnrealized
+                    } else {
+                      ValidationPinReceiptUnreadable { detail: cause_detail }
+                    },
+                  },
+                }
+            }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDecode {
+  match verification_receipt_string_member(doc: doc, key: "schema") {
+    VerificationReceiptMemberUnreadable { reason: r } =>
+      VerificationReceiptUndecodable { reason: r }
+    VerificationReceiptMemberRead { value: schema } =>
+      if schema != (verification_receipt_schema as String) {
+        VerificationReceiptUndecodable {
+          reason: join([
+            "verification receipt schema is ", schema,
+            ", not ", verification_receipt_schema as String,
+          ], ""),
+        }
+      } else {
+        match verification_receipt_object_member(doc: doc, key: "subject") {
+          Absent =>
+            VerificationReceiptUndecodable {
+              reason: "verification receipt has no readable subject member",
+            }
+          Present { value: subject_doc } =>
+            match verification_subject_decode(doc: subject_doc) {
+              Absent =>
+                VerificationReceiptUndecodable {
+                  reason: "verification receipt subject is not readable",
+                }
+              Present { value: subject } =>
+                match verification_receipt_string_member(doc: doc, key: "oracle_identity") {
+                  VerificationReceiptMemberUnreadable { reason: r } =>
+                    VerificationReceiptUndecodable { reason: r }
+                  VerificationReceiptMemberRead { value: oracle_wire } =>
+                    match validation_oracle_parse_pinned_identity_wire(text: oracle_wire) {
+                      Absent =>
+                        VerificationReceiptUndecodable {
+                          reason: "verification receipt oracle_identity is not readable",
+                        }
+                      Present { value: oracle_identity } =>
+                        match verification_receipt_object_member(doc: doc, key: "verdict") {
+                          Absent =>
+                            VerificationReceiptUndecodable {
+                              reason: "verification receipt has no readable verdict member",
+                            }
+                          Present { value: verdict_doc } =>
+                            match verification_verdict_decode(doc: verdict_doc) {
+                              Absent =>
+                                VerificationReceiptUndecodable {
+                                  reason: "verification receipt verdict is not readable",
+                                }
+                              Present { value: verdict } =>
+                                match json_object_unique_member(v: doc, key: "executions") {
+                                  JsonMemberFound { value: executions_value } =>
+                                    match executions_value {
+                                      JsonArray { elements } => {
+                                        let parsed = map(
+                                          elements,
+                                          e => verification_validation_execution_decode(doc: e),
+                                        )
+                                        let readable = filter(parsed, x => match x {
+                                          Present { value: _ } => true
+                                          Absent => false
+                                        })
+                                        if count(readable) == count(elements) {
+                                          VerificationReceiptDecoded {
+                                            receipt: VerificationReceipt {
+                                              subject: subject,
+                                              oracle_identity: oracle_identity,
+                                              executions: map(readable, x => match x {
+                                                Present { value: v } => v
+                                                Absent => ValidationExecution {
+                                                  validation: CargoFmtValidation,
+                                                  command: ModeledValidationCommand {
+                                                    label: "" as NonEmptyStr,
+                                                    program: "" as FilePath,
+                                                    args: [],
+                                                  },
+                                                  exit_code: 0,
+                                                  stdout: "",
+                                                  stderr: "",
+                                                }
+                                              }),
+                                              verdict: verdict,
+                                            },
+                                          }
+                                        } else {
+                                          VerificationReceiptUndecodable {
+                                            reason: "verification receipt executions are not all readable",
+                                          }
+                                        }
+                                      }
+                                      _ =>
+                                        VerificationReceiptUndecodable {
+                                          reason: "verification receipt executions is not a JSON array",
+                                        }
+                                    }
+                                  _ =>
+                                    VerificationReceiptUndecodable {
+                                      reason: "verification receipt has no executions member",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn verification_receipt_decode(receipt: String) -> VerificationReceiptDecode {
+  match parse_json(s: receipt) {
+    Absent =>
+      VerificationReceiptUndecodable {
+        reason: "verification receipt is not one complete JSON value",
+      }
+    Present { value: doc } => verification_receipt_decode_document(doc: doc)
+  }
+}
+
+type VerificationReceiptTextDecode
+  = VerificationReceiptTextExactHead { receipt: VerificationReceipt }
+  | VerificationReceiptTextLegacy { verdict_key: String }
+  | VerificationReceiptTextUndecodable { reason: String }
+
+fn verification_receipt_text_decode(receipt: String) -> VerificationReceiptTextDecode {
+  if trim(receipt) == "" {
+    VerificationReceiptTextUndecodable {
+      reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
+    }
+  } else {
+    match parse_json(s: receipt) {
+      Absent =>
+        VerificationReceiptTextUndecodable {
+          reason: "verification receipt is not one complete JSON value",
+        }
+      Present { value: doc } =>
+        match verification_receipt_string_member(doc: doc, key: "schema") {
+          VerificationReceiptMemberUnreadable { reason: r } =>
+            VerificationReceiptTextUndecodable { reason: r }
+          VerificationReceiptMemberRead { value: schema } =>
+            if schema == (verification_receipt_schema as String) {
+              match verification_receipt_decode(receipt: receipt) {
+                VerificationReceiptUndecodable { reason } =>
+                  VerificationReceiptTextUndecodable { reason: reason }
+                VerificationReceiptDecoded { receipt: r } =>
+                  VerificationReceiptTextExactHead { receipt: r }
+              }
+            } else if schema == (validation_receipt_schema as String) {
+              match validation_receipt_decode_document(doc: doc) {
+                ValidationReceiptUndecodable { reason } =>
+                  VerificationReceiptTextUndecodable { reason: reason }
+                ValidationReceiptDecoded { verdict_key } =>
+                  VerificationReceiptTextLegacy { verdict_key: verdict_key }
+              }
+            } else {
+              VerificationReceiptTextUndecodable {
+                reason: join([
+                  "verification receipt schema is ", schema,
+                  " and is neither ", verification_receipt_schema as String,
+                  " nor ", validation_receipt_schema as String,
+                ], ""),
+              }
+            }
+        }
+    }
+  }
+}
+
+fn verification_receipt_source_from_file(
+  source: VerificationReceiptFileSource,
+) -> VerificationReceiptSource? {
+  match source {
+    VerificationReceiptAbsent => none
+    VerificationReceiptUnreadable { detail: _ } => none
+    VerificationReceiptPresent { text } =>
+      match verification_receipt_text_decode(receipt: text) {
+        VerificationReceiptTextExactHead { receipt } =>
+          Present {
+            value: ExactHeadVerificationReceipt { receipt: receipt },
+          }
+        VerificationReceiptTextLegacy { verdict_key } =>
+          Present {
+            value: LegacyAttemptValidationReceipt { verdict_key: verdict_key },
+          }
+        VerificationReceiptTextUndecodable { reason: _ } => none
+      }
+  }
+}
+
+fn verification_file_evidence_for(
+  expected: VerificationSubject,
+  source: VerificationReceiptFileSource,
+) -> VerificationFileEvidence {
+  match source {
+    VerificationReceiptAbsent => VerificationFileAbsent
+    VerificationReceiptUnreadable { detail } =>
+      VerificationFileUnreadable { reason: detail }
+    VerificationReceiptPresent { text } =>
+      match verification_receipt_text_decode(receipt: text) {
+        VerificationReceiptTextUndecodable { reason } =>
+          VerificationFileUnreadable { reason: reason }
+        VerificationReceiptTextLegacy { verdict_key } =>
+          VerificationFileDecoded {
+            evidence: verification_evidence_for(
+              expected: expected,
+              source: LegacyAttemptValidationReceipt { verdict_key: verdict_key },
+            ),
+          }
+        VerificationReceiptTextExactHead { receipt } =>
+          VerificationFileDecoded {
+            evidence: verification_evidence_for(
+              expected: expected,
+              source: ExactHeadVerificationReceipt { receipt: receipt },
+            ),
+          }
+      }
+  }
+}
+
+type VerificationFileEvidence
+  = VerificationFileAbsent
+  | VerificationFileUnreadable { reason: String }
+  | VerificationFileDecoded { evidence: VerificationEvidence }
