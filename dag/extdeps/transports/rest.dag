@@ -1,7 +1,13 @@
 module extdeps.transports.rest
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
-import std.content_hash { ContentHash }
+import std.content_hash {
+  ContentHash,
+  ContentHashCrossFamilyIncomparable,
+  ContentHashDifferent,
+  ContentHashEqual,
+  compare_content_hash,
+}
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
@@ -112,7 +118,11 @@ fn rest_bound_invocation_eq(a: RestBoundOperationInvocation, b: RestBoundOperati
   a.at == b.at
     && a.method == b.method
     && a.target == b.target
-    && a.input_digest == b.input_digest
+    && match compare_content_hash(left: a.input_digest, right: b.input_digest) {
+      ContentHashEqual => true
+      ContentHashDifferent => false
+      ContentHashCrossFamilyIncomparable => false
+    }
     && a.auth_identity == b.auth_identity
 }
 
