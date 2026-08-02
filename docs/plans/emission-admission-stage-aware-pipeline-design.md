@@ -81,7 +81,7 @@ Related: [five-minute-ci-gate-design.md](five-minute-ci-gate-design.md)
 | **Self-host is one boolean** | Frontier disposition, regen verify, and realized comparison each answer a single match/mismatch bit. A stage-local refusal (infer ok, emit wrong) has no durable receipt tying *which stage* failed — the `#7485` containment class. |
 | **Detects movement, not fix-forward** | Byte gates detect unexpected output movement but cannot answer: *can the last accepted compiler understand and validate the changed requirements needed to build the repair?* A defective generation may be the only one that can rebuild its own old source while being unable to compile the new requirement revision. |
 | **Warm receipts cannot be trusted for merge** | `warm-merge-admission` can stamp resolve/materialization receipts, but has no typed rule for whether an emission delta was *expected* from the PR's source change. Stale-base refusals exist; *undeclared emitter drift* does not. |
-| **Phases pay duplicate prelude work** | `phased-single-process-ci` wants regen, floor, and admission on one substrate. Without stage-stamped verdicts, each phase assumes the prior phase might have silently changed upstream facts — discovery/resolve/index rerun anyway. |
+| **Phases pay duplicate prelude work** | `phased-single-process-ci` wants regen, floor, and admission on one substrate. Without per-stage execution receipts, each phase assumes the prior phase might have silently changed upstream facts — discovery/resolve/index rerun anyway. |
 | **Byte gates cannot distinguish intent** | `generated_artifact_drift_gate`, `RegenVerifyGate`, and `self_host_realized_comparison` answer only *match / mismatch*. An intentional emitter migration with regen is indistinguishable from an emitter bug — review becomes the classifier (§5 specification-without-execution). |
 | **Producer provenance is partial** | `EmitterProducer` × `EmissionQualification` and `mint_producer_emission_receipt` land per-module receipts, but digest fields remain scaffold-keyed (`producer_emission_receipt_digest_scaffold_note`) and `emitter_produced_baseline` is zero — no join from PR facts to admitted vs regression disposition. |
 | **Generation is implicit** | `V2EmitterNative { generation: Int }` names a generation index on the producer axis only. There is no graph of *which generation's emitted artifact* a consumer read, no candidate/accepted distinction, and no recovery anchor — so native cutover cannot refuse stale-generation replay without widening to cold rerun. |
@@ -622,10 +622,10 @@ warm reuse or merge admission.
 │  emit StageExecutionReceipt + EmissionDelta + candidate state  │
 │  refuse: RefusedUndeclaredDelta (fail fast — floor not run)  │
 └───────────────────────────┬──────────────────────────────────┘
-                            │ stamps + lineage edges
+                            │ stage receipts + lineage edges
 ┌─ Phase: Floor ────────────▼──────────────────────────────────┐
 │  compile-clean + witness corpus on shared materialization    │
-│  inherit stamps; refuse RefusedStaleSubstrate if replay      │
+│  inherit receipts; refuse RefusedStaleSubstrate if replay    │
 │  candidate artifacts: stage + behavior validation            │
 └───────────────────────────┬──────────────────────────────────┘
                             │
@@ -643,8 +643,8 @@ Admission may consume warm receipts only for `AcceptedCompilerGeneration` bindin
 ### 6.2 Prelude duplication metric
 
 First slice for `phased-single-process-ci`: attribute resolve/index/discovery time per
-phase with and without stamps. **RED control:** if phase *N+1* repeats resolve whose inputs
-are unchanged per stamp, count > 0 ⇒ `RefusedStaleSubstrate` or a dedicated prelude
+phase with and without stage receipts. **RED control:** if phase *N+1* repeats resolve whose
+inputs are unchanged per its receipt, count > 0 ⇒ `RefusedStaleSubstrate` or a dedicated prelude
 duplication refusal (roadmap red_control, made executable).
 
 ---
