@@ -1521,6 +1521,60 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     }
 }
 
+thread_local! {
+    static TYPE_REF_HIT_NE_BIND_MEASURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// N1a: arms measurement-only hit≠bind UnresolvedType for nested synthetic compiles.
+pub fn with_type_ref_hit_ne_bind_measure<T>(f: impl FnOnce() -> T) -> T {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|c| {
+        let prev = c.get();
+        c.set(true);
+        let out = f();
+        c.set(prev);
+        out
+    })
+}
+
+pub fn type_ref_hit_ne_bind_measure_active() -> bool {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|c| c.get())
+}
+
+pub fn type_ref_hit_ne_bind_measure_active_note() -> String {
+    "Host thread-local armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). .dag default body is false; seed Rust reads the thread-local. Zero production gates consult this.".to_string()
+}
+
+pub fn type_ref_measure_binding_authority_fn_note() -> String {
+    "MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm.".to_string()
+}
+
+pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
+    let a_segs = module_path_segments(ancestor);
+    let d_segs = module_path_segments(descendant);
+    ((a_segs.len() as i64) > 0)
+        && (segment_lcp_len(a_segs.clone(), d_segs) == (a_segs.len() as i64))
+}
+
+pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
+    if v1_rt::map_has(&env.str_bindings, name.clone())
+        || v1_rt::map_has(&env.ancestry_str_bindings, name.clone())
+    {
+        true
+    } else if v1_rt::contains(name.clone(), ".".to_string()) {
+        let prefix = qualified_all_but_last(name.clone());
+        if type_ref_module_path_is_containment_prefix(prefix, env.module_path.clone()) {
+            match symbol_index_lookup(env.symbol_index.clone(), name) {
+                Some(_) => true,
+                None => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
 pub fn variant_arm_type_projection(
     env: Rc<TypeEnv>,
     owner: Rc<Node>,

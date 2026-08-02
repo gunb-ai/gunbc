@@ -12,7 +12,7 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
     is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
-    lookup_type_for,
+    lookup_type_for, type_ref_hit_ne_bind_measure_active, type_ref_measure_binding_authority,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -1674,6 +1674,8 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     resolved.clone()
                                                 };
+                                                let type_name =
+                                                    authored_name(env.clone(), n.clone());
                                                 let is_optional = (n.return_cardinality.clone()
                                                     == Cardinality::CardOptional);
                                                 let final_resolved = if is_optional.clone() {
@@ -1683,34 +1685,60 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     structurally_resolved.clone()
                                                 };
-                                                let unlisted_diags = if ((masked.clone()
-                                                    && (v1_rt::map_is_empty(
-                                                        &env.source_visible_names.clone(),
+                                                if (((masked.clone()
+                                                    && type_ref_hit_ne_bind_measure_active())
+                                                    && (type_ref_measure_binding_authority(
+                                                        env.clone(),
+                                                        type_name.clone(),
                                                     ) == false))
-                                                    && (v1_rt::map_has(
-                                                        &env.source_visible_names.clone(),
-                                                        authored_name(env.clone(), n.clone()),
-                                                    ) == false))
+                                                    && ((is_kernel_type(type_name.clone())
+                                                        == false)
+                                                        && (is_kernel_type(
+                                                            qualified_last_segment(
+                                                                type_name.clone(),
+                                                            ),
+                                                        ) == false)))
                                                 {
-                                                    Rc::new(vec![make_error_node(
-                                                        Rc::new(
-                                                            CompilerDiagnostic::UnlistedImportUse {
-                                                                name: authored_name(
+                                                    Rc::new(NodeResolveResult {
+                                                        resolved: final_resolved.clone(),
+                                                        diagnostics: Rc::new(vec![
+                                                            make_error_node(
+                                                                bare_name_miss_diagnostic(
                                                                     env.clone(),
-                                                                    n.clone(),
+                                                                    type_name.clone(),
+                                                                    n.span.clone(),
                                                                 ),
-                                                                span: n.span.clone(),
-                                                            },
-                                                        ),
-                                                        module_name.clone(),
-                                                    )])
+                                                                module_name.clone(),
+                                                            ),
+                                                        ]),
+                                                    })
                                                 } else {
-                                                    Rc::new(vec![])
-                                                };
-                                                Rc::new(NodeResolveResult {
-                                                    resolved: final_resolved.clone(),
-                                                    diagnostics: unlisted_diags.clone(),
-                                                })
+                                                    let unlisted_diags = if ((masked.clone()
+                                                        && (v1_rt::map_is_empty(
+                                                            &env.source_visible_names.clone(),
+                                                        ) == false))
+                                                        && (v1_rt::map_has(
+                                                            &env.source_visible_names.clone(),
+                                                            type_name.clone(),
+                                                        ) == false))
+                                                    {
+                                                        Rc::new(vec![make_error_node(
+                                                            Rc::new(
+                                                                CompilerDiagnostic::UnlistedImportUse {
+                                                                    name: type_name.clone(),
+                                                                    span: n.span.clone(),
+                                                                },
+                                                            ),
+                                                            module_name.clone(),
+                                                        )])
+                                                    } else {
+                                                        Rc::new(vec![])
+                                                    };
+                                                    Rc::new(NodeResolveResult {
+                                                        resolved: final_resolved.clone(),
+                                                        diagnostics: unlisted_diags.clone(),
+                                                    })
+                                                }
                                             }
                                             None => {
                                                 let n_is_error = if (n.inferred.clone() != None) {
