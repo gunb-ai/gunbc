@@ -42,7 +42,9 @@ fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
     }
     method: GET
     target: probe_target
-    input_digest: as_content_hash_structural(structural: structural_content_hash(digest: "0000000000000000"))
+    input_digest: as_content_hash_structural(
+      structural: structural_content_hash(digest: "0000000000000000")
+    )
     auth_identity: RestUnauthenticated
   }
 }
