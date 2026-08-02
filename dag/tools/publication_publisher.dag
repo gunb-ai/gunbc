@@ -1,6 +1,7 @@
 module tools.publication_publisher
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { serialize_content_hash }
 import extdeps.git.hooks { PrePushStdinRow }
 import gunbc.public_projection { PublicProjectionPlan, PublicationSubject }
 import gunbc.publication_admission_delta {
@@ -165,7 +166,7 @@ fn newly_public_subject_receipt_refusal(
               Present {
                 value: DecisionReceiptNotAuthorizing {
                   session: session,
-                  subject_identity: subject.subject_identity as String,
+                  subject_identity: serialize_content_hash(hash: subject.subject_identity) as String,
                   detail: "decision receipt does not authorize newly public subject",
                 },
               }
@@ -173,7 +174,7 @@ fn newly_public_subject_receipt_refusal(
               Present {
                 value: DecisionReceiptMissing {
                   session: session,
-                  subject_identity: subject.subject_identity as String,
+                  subject_identity: serialize_content_hash(hash: subject.subject_identity) as String,
                 },
               }
             }

@@ -1,6 +1,7 @@
 module gunbc.publication_admission_delta
 
-import std.types { ContentHash, List, NonEmptyStr }
+import std.types { List, NonEmptyStr }
+import std.content_hash { ContentHash }
 import gunbc.public_projection {
   PublicationSubject,
   PublicProjectionPlan,

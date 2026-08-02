@@ -1,7 +1,14 @@
 module gunbc.public_projection
 
-import std.types { CommitSha, ContentHash, FilePath, List, NonEmptyStr }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.types { CommitSha, FilePath, List, NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged,
+  serialize_content_hash,
+  as_content_hash_structural,
+}
 import gunbc.publication_policy {
   AdmittedPublicationPolicy,
   PublicationDisposition,
@@ -29,19 +36,26 @@ type PublicProjectionPlan {
 fn publication_subject_digest(subject: PublicationSubject) -> ContentHash {
   content_hash_tagged(
     tag: "publication-subject",
-    payload: content_hash_combine(
-      content_hash_atom(value: subject.subject_identity as NonEmptyStr),
-      content_hash_atom(value: subject.content_identity as NonEmptyStr),
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: serialize_content_hash(hash: subject.subject_identity)),
+      right: content_hash_atom(value: serialize_content_hash(hash: subject.content_identity)),
     ),
   )
 }
 
 fn projection_digest_from_subjects(subjects: List<PublicationSubject>) -> ContentHash {
   let digests = map(subjects, subject => publication_subject_digest(subject: subject))
-  fold(
-    sort_by(digests, digest => digest as String),
-    init: content_hash_atom(value: "public-projection" as NonEmptyStr),
-    f: fn(acc, digest) { content_hash_combine(acc, digest) },
+  as_content_hash_structural(
+    structural: fold(
+      sort_by(digests, digest => serialize_content_hash(hash: digest) as String),
+      init: content_hash_atom(value: "public-projection" as NonEmptyStr),
+      f: fn(acc, digest) {
+        content_hash_combine_structural(
+          left: acc,
+          right: content_hash_atom(value: serialize_content_hash(hash: digest)),
+        )
+      },
+    )
   )
 }
 
