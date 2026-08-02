@@ -1,0 +1,16 @@
+module test.claim.qualified_leaf_registry_collision_emit_witness_test
+
+data qualified_leaf_registry_collision_emit_witness_note: String = "Discriminating regression control for the post-#7685 leaf-keyed qualified lookup collision: emit_var_ref and emit_value_ref_ident key the flat item_registry on the leaf name only, so a cross-module qualified reference (module_a.homonym_value) can bind to module_b's ItemInfo when both modules declare the same leaf. Unlike qualified_declaration_reference_emit_witness_test.dag's cross-module case (interpreter_surviving_roles_ceiling — a unique leaf), this witness plants TWO modules with the SAME leaf name and different values, then asserts the consumer's qualified reference emits against module_a's crate path, never module_b's. dissolve-on: never — permanent regression alarm for qualified-path disambiguation at emit time."
+
+fn w_cross_module_same_leaf_binds_qualifier_module() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.leaf_key_collision_consumer\n\nimport test.fixture.leaf_key_collision.module_a { }\nimport std.types { Int }\n\ndata derived: Int = test.fixture.leaf_key_collision.module_a.homonym_value\n",
+    "src/test_claim_leaf_key_collision_consumer.rs",
+    ["test_fixture_leaf_key_collision_module_a::homonym_value()"],
+    ["test_fixture_leaf_key_collision_module_b::homonym_value"]
+  )
+}
+
+test fn cross_module_same_leaf_emits_qualifier_module_not_registry_winner() -> Bool {
+  w_cross_module_same_leaf_binds_qualifier_module()
+}
