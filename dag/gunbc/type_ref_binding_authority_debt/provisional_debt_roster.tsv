@@ -2,7 +2,7 @@
 # FROZEN — type_ref_debt_roster_freeze_state = Frozen; new-sites-refuse armed
 # key grain: TYPE x (file, span_start, span_end)
 # disposition	incidental_debt
-# types	608	sites	2848
+# types	608	sites	2849
 # TYPE	NonEmptyStr	455
 NonEmptyStr	dag/extdeps/access/aws_iam.dag	332	343
 NonEmptyStr	dag/extdeps/access/aws_iam.dag	385	396
@@ -3459,3 +3459,4 @@ v2.std.diagnostic.Diagnostic	src/v2/std/diagnostic.dag	762	772
 v2.std.diagnostic.NonEmptyDiagnostics	src/v2/std/diagnostic.dag	970	989
 # TYPE	v2.std.language_model.LanguageModel	1
 v2.std.language_model.LanguageModel	src/v2/extdeps/languages/dag.dag	117875	117888
+Temperature	dag/std/measure.dag	4899	4910

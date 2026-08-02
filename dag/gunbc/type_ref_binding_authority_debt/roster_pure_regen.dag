@@ -69,4 +69,4 @@ fn type_ref_roster_buckets_partition_complete(
   count(labeled) == count(buckets.incidental) + count(buckets.expect_red) + count(buckets.unclassified)
 }
 
-data type_ref_roster_pure_regen_authority_note: String = "HALF 1 PURE fold: type_ref_fold_labeled_sites_to_roster_buckets. Checked floor artifacts remain the SHA-pinned TSVs plus type_ref_census_sha. Witness: type_ref_roster_pure_regen_witness_test."
+data type_ref_roster_pure_regen_authority_note: String = "HALF 1 PURE fold: type_ref_fold_labeled_sites_to_roster_buckets (+ type_ref_fold_one_labeled_site). Checked floor artifacts remain the SHA-pinned TSVs plus type_ref_census_sha. Partition-completeness helper: type_ref_roster_buckets_partition_complete."
