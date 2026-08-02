@@ -1,23 +1,25 @@
 # Emission admission + stage-aware pipeline (declared-change vs regression)
 
-**Status:** Stage 1 LANDED (vocabulary carrier + `admit_emission_delta` + synthetic witnesses).
-Stages 2–6 remain design-only until separately dispatched.
+**Status:** design-only (model-before-implement). This document is the deliverable for
+work item `node://adhoc-48a1f19c-1f8` (session calm-eagle-92). No load-bearing `.dag`
+carrier lands in the design PR; each implementation stage below is a separately dispatched,
+separately-signed PR.
 
-Work item: `node://adhoc-48a1f19c-1f8` (session calm-eagle-92).
+Parent context: v1-deletion / self-host lane (`still-bat-561`). The operator framing:
+self-host must not collapse to one boolean fixed-point check. Each compiler stage needs
+durable provenance — implementation, inputs, outputs, refusal, seed fallback, and named
+consumers — and emission must **fail fast per stage** with a typed, located reason rather
+than deferring classification to review or a corpus-wide rerun.
 
-Parent context: v1-deletion lane (`still-bat-561`). This design unblocks honest
-warm-merge admission, phased single-process CI, and self-host/regen gates that
-today can only compare bytes — not classify *why* bytes changed.
-
-DESIGN refs: §2 (reuse existing stage/change authorities; no parallel ledger),
-§3 (`gunbc.bootstrap.CompilerStage` is the stage authority;
-`FrontierProbeStage` is harness vocabulary, not a second pipeline),
-§4 (emission is the downstream half of the two-stage contract in
-[compiler-guarantee-recovery-gap-analysis.md](compiler-guarantee-recovery-gap-analysis.md)
+DESIGN refs: §2 (DFS existing machinery before minting vocabulary; no parallel ledger),
+§3 (`gunbc.bootstrap.CompilerStage` is the stage authority; `FrontierProbeStage` is harness
+vocabulary, not a second pipeline), §4 (emission is the downstream half of the two-stage
+contract in [compiler-guarantee-recovery-gap-analysis.md](compiler-guarantee-recovery-gap-analysis.md)
 §1), §5 (undeclared emission delta refuses — never widens to rerun-everything or
-accept-anyway), §4b (discriminating RED: regression vs declared-change controls
-stay enrolled after walls land), §6 (model-before-implement; scaffolds name
-dissolution triggers).
+accept-anyway), §4b (discriminating RED: regression vs declared-change controls stay enrolled
+after walls land), §6 (model-before-implement; scaffolds name dissolution triggers), §7
+(behavioral equivalence over byte identity for self-host; bricking fear is a git revert,
+not rollback machinery).
 
 Related: [five-minute-ci-gate-design.md](five-minute-ci-gate-design.md)
 (`warm-merge-admission`, `phased-single-process-ci`) ·
@@ -25,18 +27,18 @@ Related: [five-minute-ci-gate-design.md](five-minute-ci-gate-design.md)
 [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md)
 (BothWays delta lens) · [post-zero-regen-gate-placement.md](post-zero-regen-gate-placement.md) ·
 `gunbc.bootstrap` · `gunbc.guarantee_measurement` · `v2.compiler.self_host` ·
-`gunbc.generated_artifact`
+`v2.compiler.self_host.emitter_producer_provenance` · `gunbc.generated_artifact`
 
 ---
 
 ## 0. One-sentence claim
 
-> Every emission delta is admitted only when a **declared change set** names the
-> compiler stages and artifact surfaces that may move; anything else is a
-> **regression** and refuses. The pipeline is **stage-aware**: each phase
-> (regen, floor, admission) stamps which `CompilerStage` produced which artifact,
-> and admission consumes those stamps — it does not re-derive the whole compiler
-> from bytes alone.
+> Every emission delta is admitted only when a **declared change set** names the compiler
+> stages and artifact surfaces that may move; anything else is a **regression** and refuses.
+> The pipeline is **stage-aware**: each phase stamps which `CompilerStage` produced which
+> artifact, and admission consumes those stamps plus a **generation lineage graph** — it
+> does not re-derive the whole compiler from bytes alone, and it does not equate
+> generation-to-generation output.
 
 ---
 
@@ -44,255 +46,186 @@ Related: [five-minute-ci-gate-design.md](five-minute-ci-gate-design.md)
 
 | Cost today | Mechanism |
 |---|---|
-| **Warm receipts cannot be trusted for merge** | `warm-merge-admission` can stamp resolve/materialization receipts, but has no typed rule for whether an emission delta was *expected* from the PR's source change. Stale-base and stale-roster refusals exist; *undeclared emitter drift* does not — so admission either reruns cold or risks admitting a regression. |
-| **Phases pay duplicate prelude work** | `phased-single-process-ci` wants regen, floor, and admission on one substrate. Without stage-stamped verdicts, each phase must assume the prior phase might have silently changed upstream facts — so discovery/resolve/index rerun anyway (the roadmap's red_control: "silently reruns full discovery when prior phase already fixed those facts"). |
-| **Byte gates cannot distinguish intent** | `generated_artifact_drift_gate`, `regen_verify`, and `self_host_realized_comparison` answer only *match / mismatch*. A PR that intentionally changes `05_emit` output and includes regen is indistinguishable from an emitter bug — both are "bytes differ." Review becomes the classifier (§5 specification-without-execution). |
-| **Self-host flips lack stage attribution** | `frontier_probe_types` locates blockers at `ProbeStageAssemble` / `ProbeStageEmit` / `ProbeStageSemanticDerivation`, but that vocabulary is harness-facing. There is no durable receipt tying an emission delta to `CompilerStage::Emit` vs an upstream `Infer` refusal planted at emit — the `#7485` containment class. |
-| **Guarantee paths stay unmeasured at emission** | `gunbc.guarantee_measurement` names `source→each-emission-target` as an independent path grain, but receipts today do not carry *declared vs regression* disposition — only observed verdict/refusal. Rung honesty (§4b) cannot rank emission-path regressions separately from declared emitter migrations. |
+| **Self-host is one boolean** | Frontier disposition, regen verify, and realized comparison each answer a single match/mismatch bit. A stage-local refusal (infer ok, emit wrong) has no durable receipt tying *which stage* failed — the `#7485` containment class. |
+| **Warm receipts cannot be trusted for merge** | `warm-merge-admission` can stamp resolve/materialization receipts, but has no typed rule for whether an emission delta was *expected* from the PR's source change. Stale-base refusals exist; *undeclared emitter drift* does not. |
+| **Phases pay duplicate prelude work** | `phased-single-process-ci` wants regen, floor, and admission on one substrate. Without stage-stamped verdicts, each phase assumes the prior phase might have silently changed upstream facts — discovery/resolve/index rerun anyway. |
+| **Byte gates cannot distinguish intent** | `generated_artifact_drift_gate`, `RegenVerifyGate`, and `self_host_realized_comparison` answer only *match / mismatch*. An intentional emitter migration with regen is indistinguishable from an emitter bug — review becomes the classifier (§5 specification-without-execution). |
+| **Producer provenance is partial** | `EmitterProducer` × `EmissionQualification` and `mint_producer_emission_receipt` land per-module receipts, but digest fields remain scaffold-keyed (`producer_emission_receipt_digest_scaffold_note`) and `emitter_produced_baseline` is zero — no join from PR facts to admitted vs regression disposition. |
+| **Generation is implicit** | `V2EmitterNative { generation: Int }` names a generation index on the producer axis only. There is no graph of *which generation's emitted artifact* a consumer read, so native-at-small-scale cutover cannot refuse stale-generation replay without widening to cold rerun. |
 
 ---
 
-## 2. The gap — what exists vs what is missing
+## 2. DFS — existing machinery (reuse, do not fork)
 
-### 2.1 Authorities already correct (reuse, do not fork)
+Apply DESIGN §2 before proposing vocabulary: the concept DAG already carries most of the
+stage/provenance spine. **This design adds two genuinely new pieces** (§3); everything
+below is live on main and should be cited, extended, or joined — not re-invented.
 
-| Fact | Authority | Live today? |
-|---|---|---|
-| Compiler pipeline stages | `gunbc.bootstrap.CompilerStage` (`Tokenize`…`Emit`) | ✓ `dag/gunbc/bootstrap.dag` |
-| Stage input/output kinds | `gunbc.bootstrap.StageInput` / `StageOutput` / `ArtifactKind` | ✓ modeled, lightly exercised |
-| Change → affected stages (bootstrap edits) | `gunbc.bootstrap.ChangeClassification.affects_stages` | ✓ modeled; not wired to CI/self-host |
-| Field propagation per stage | `gunbc.bootstrap.FieldPropagation` / `TransformContract` | ✓ modeled; not executed |
-| Source-graph change kinds | `v2.std.change.ChangeKind` + `ChangeSet` | ✓ consumed by `v2.lens.affected_set` |
-| Emitted-byte digest | `v2.compiler.self_host.canonical_emitted_bytes_digest` | ✓ executed on self-host roster |
-| Per-path guarantee receipts | `gunbc.guarantee_measurement.GuaranteeMeasurementReceipt` | ✓ Stage-0 vocabulary; no emission-admission join |
-| Generated artifact registry | `gunbc.generated_artifact` + drift witnesses | ✓ byte fixed-point; no declared-change arm |
-| Harness probe positions | `v2.compiler.self_host.frontier_probe_types.FrontierProbeStage` | ✓ distinct from `CompilerStage` by design |
+### 2.1 Producer × qualification provenance (live)
 
-### 2.2 The violation (three coupled gaps)
+Authority: `v2.compiler.self_host.emitter_producer_provenance`.
 
-1. **No declared-change carrier.** PRs carry git diffs and affected-set projections, but nothing in-tree states *which compiler stages and emission surfaces are allowed to move* for this change. `ChangeClassification` in `gunbc.bootstrap` is bootstrap-authoring vocabulary only — not joined to pull-request admission.
-
-2. **No emission-admission verdict.** Consumers collapse to `bytes_equal` / `bytes_differ`. Missing arms: `AdmittedDeclared { stages, surfaces }`, `RefusedRegression { stage, surface, cause }`, `RefusedUndeclaredDelta`, `RefusedStageMismatch { declared, observed }`. The absorbing fallback class (§5): treating any mismatch as "rerun regen" or "rerun whole floor" without a counted, typed reason.
-
-3. **No stage-stamped phase pipeline.** Regen, floor, and admission are separate processes (separate `gunbc run` invocations, separate indices). `phased-single-process-ci` needs phase boundaries with *separate verdict stamps* on one shared materialization provider — but the stamp shape is unspecified.
-
----
-
-## 3. Scope
-
-### 3.1 In scope (this design)
-
-- Vocabulary and join contracts for **declared change**, **emission delta**, and **admission verdict**.
-- **Stage-aware pipeline run** model: phases, stage stamps, artifact surfaces.
-- Classification rules: declared-change vs regression (fail-closed).
-- First consumers named with discriminating witnesses (design-level; implementation is staged).
-- Explicit integration with `warm-merge-admission`, `phased-single-process-ci`, regen/self-host, and generated-artifact drift.
-
-### 3.2 Out of scope (named neighbors)
-
-| Neighbor | Why out |
+| Symbol | Role |
 |---|---|
-| Implementing warm-merge-admission (#7522) | Downstream consumer; this design is its admission *ontology*. |
-| Materialization substrate (#7534) | Shared cache keys are orthogonal; this design consumes materialization receipts, does not define them. |
-| Full `ChangeClassification` → live bootstrap planner | Bootstrap authoring tool; only the *join pattern* is reused for PR declared-change. |
-| Byte-identical self-host fixed point | Retired non-goal (DESIGN §7); admission uses behavioral + digest receipts, not byte identity as the sole oracle. |
-| DDC / `ddc_reference_compiler` | [seed-honesty-discharge-design.md](seed-honesty-discharge-design.md) — consumes admission receipts, does not define them. |
-| Guarantee ladder disposition derivation | `gunbc.guarantee_measurement` Stage 0 only; dispositions stay on the claims carrier. |
+| `EmitterProducer` | Orthogonal producer axis: `V1SeedEmitter` \| `V2EmitterInterpreted` \| `V2EmitterNative { generation }` |
+| `EmissionQualification` | Qualification axis: `SourceProduced` \| `CargoGreen` \| `BehavioralEquivalent` \| `ProductionRouted` |
+| `ProducerEmissionReceipt` | Per-module receipt: module/emitter/emitted digests, producer, qualifications, build result, behavioral probe coordinates, `RealizedEmitterClosure` |
+| `emitter_producer_mint_admission` | **Construction wall:** `V2EmitterInterpreted` / `V2EmitterNative` refuse when `v1.compiler.emit_rust` is reachable in `realized_closure` (`^v2_emitter_in_seed_emit_rust_closure`) |
+| `mint_producer_emission_receipt` | Sole minter for `ProducerEmissionReceipt`; refuses when mint admission refuses |
+| `emitter_produced_baseline` | Counted baseline `0` — frontier `EmitterProduced` rows stay empty until execution-measured verdict digests land (`frontier_probe_survey` dissolve-on) |
+| `producer_emission_receipt_digest_scaffold_note` | Honest scaffold: digests still keyed on `symbol_identity_digest` until measured binding |
 
-### 3.3 Load-bearing files (escalate before edit under a stale brief)
+**What this already buys:** producer/qualification decomposition (replacing `SelfEmitted`
+state-space conflation), a mint wall against hand-authored receipts, and structural refusal
+of mislabeled V2 producers in seed closures.
 
-- `dag/gunbc/bootstrap.dag` — extend only via new exported types or new fns; do not repurpose `CompilerStage` variants.
-- `src/v2/std/change.dag` — declared-change projection from `ChangeSet`.
-- New module home (proposed): `gunbc.emission_admission` under `dag/gunbc/` (product/workflow layer, not `std/`).
-- `src/v2/workflow/ci_floor_plan.dag` / `dag/gunbc/commit_workflow.dag` — phase enrollment (later PRs).
-- `dag/tools/generated_artifact_gate.dag` — regen phase consumer (later PR).
+**What it does not yet buy:** PR-level declared-change vs regression, stage-stamped phase
+pipeline, or generation lineage as a first-class graph.
 
----
+### 2.2 Emitted-byte digest + comparison gates (live)
 
-## 4. Target model
-
-### 4.1 Artifact surface (what emission admission governs)
-
-An **emission surface** is a typed target for bytes the compiler pipeline (or a
-generated-artifact emitter) produces. Surfaces are enumerated — not free paths —
-so admission cannot be bypassed via a novel string path.
-
-```dag
-type EmissionSurface
-  = Stage0SeedFile { rel_path: FilePath }           // GENERATED_STAGE0_FILES roster
-  | GeneratedArtifactSurface { artifact: GeneratedArtifact }
-  | TargetLanguageBundle { target: GuaranteeTargetName, module: QualifiedModule }
-  | OrchestrationMedium { medium: Symbol }            // e.g. bash slice enrolled in ci_spec
-```
-
-**Authority:** surfaces derive from existing registries (`gunbc.generated_artifact`,
-`gunbc.stage0_emit_model.generated_stage0_files`, self-host frontier module list,
-`gunbc.guarantee_measurement.GuaranteeTargetName`). A path literal not reachable
-from a registry row is `SurfaceUnknown` and refuses — never admitted by glob.
-
-### 4.2 Stage stamp (pipeline awareness)
-
-Each pipeline phase produces a **stage stamp** recording which `CompilerStage`
-values contributed to an artifact (not just the last stage — emit can plant
-upstream `CompilerError` nodes).
-
-```dag
-type StageContribution
-  = StageProduced { stage: CompilerStage }
-  | StageForwarded { stage: CompilerStage, from_prior_phase: PipelinePhase }
-  | UpstreamRefusalEmbedded { origin_stage: CompilerStage, diagnostic: NonEmptyStr }
-
-type StageStamp {
-  phase: PipelinePhase
-  contributions: List<StageContribution>
-  substrate_revision: ContentFingerprint   // shared materialization identity
-}
-
-type PipelinePhase
-  = RegenPhase
-  | FloorPhase
-  | AdmissionPhase
-```
-
-**Law:** `FrontierProbeStage` projects to `CompilerStage` via an explicit total
-function `compiler_stage_from_probe` when probe receipts are consumed — never the
-identity map. Harness positions (`Assemble`) are not compiler stages.
-
-### 4.3 Declared change set (author intent)
-
-A **declared change set** is the PR's claim about which stages and surfaces may
-move. It is derived — not hand-authored per PR — from facts already in the tree:
-
-| Source | Projection |
+| Symbol | Role |
 |---|---|
-| Git merge-base diff + `v2.lens.affected_set` | `ChangeSet` over module graph |
-| `v2.std.change.RecomputePlan` / readiness layers | stages that must rerun vs preserve |
-| Touch of emitter / translate / generated-artifact emit modules | `CompilerStage::Emit` (+ upstream if not lossless) |
-| `gunbc.bootstrap.ChangeClassification` rows (when editing bootstrap types) | explicit `affects_stages` |
-| Generated-artifact registry + diff | `EmissionSurface` rows for touched artifacts |
+| `v2.compiler.self_host.canonical_emitted_bytes_digest` | Host-grounded digest over actual emitted bytes (`Medium<String>`) |
+| `tools.floor_effect_gate_witness.regen_verify_gate_passes` | CI floor gate: `RegenVerifyGate` compares regen output to committed Rust |
+| `v2.workflow.self_host_realized_comparison_gate` | Behavioral + staleness gates over realized comparison transport |
+| `gunbc.ci_spec.RegenVerifyGate` | Spec row; regen skip policy keyed on merge-base diff vs regen input closure |
 
-```dag
-type DeclaredChangeSet {
-  subject_revision: MeasurementRevision      // guarantee_measurement vocabulary
-  allowed_stage_moves: List<CompilerStage>
-  allowed_surface_moves: List<EmissionSurface>
-  derivation_evidence: DeclaredChangeEvidence  // typed, located — not prose
-}
+**What this already buys:** fail-closed byte mismatch on the regen path and behavioral
+witnesses on a curated roster.
 
-type DeclaredChangeEvidence
-  = DerivedFromAffectedSet { changes: ChangeSet }
-  | DerivedFromBootstrapPlan { change: ChangeClassification }
-  | AuthorExplicit { reason: NonEmptyStr }    // rare; counted; never default
-```
+**What it does not yet buy:** classification of *why* bytes moved (declared migration vs
+regression).
 
-**Fail-closed:** `DeclaredChangeUnknown` when affected-set refuses, selection
-fails closed, or a touched path is outside modeled surfaces. Unknown ⇒ no
-admission — not "allow and rerun."
+### 2.3 Stage vocabulary (live, lightly joined)
 
-### 4.4 Emission delta (observed fact)
+| Symbol | Role |
+|---|---|
+| `gunbc.bootstrap.CompilerStage` | Canonical pipeline stages (`Tokenize`…`Emit`) |
+| `gunbc.bootstrap.ChangeClassification.affects_stages` | Bootstrap-authoring: which stages a bootstrap edit may move |
+| `v2.compiler.self_host.frontier_probe_types.FrontierProbeStage` | Harness probe positions (`ProbeStageAssemble` / `ProbeStageEmit` / …) — distinct from `CompilerStage` by design |
+| `v2.std.change.ChangeKind` + `ChangeSet` | Source-graph change kinds; consumed by `v2.lens.affected_set` |
 
-```dag
-type EmissionDelta {
-  surface: EmissionSurface
-  before: ContentFingerprint
-  after: ContentFingerprint
-  stage_stamp: StageStamp
-  observed_at_phase: PipelinePhase
-}
-```
+### 2.4 Neighbors (consume, do not redefine)
 
-Deltas are observed by execution — regen compare, drift gate, self-host
-`canonical_emitted_bytes_digest`, warm receipt replay. Numeric literals copied
-from the current tree are not oracles (DESIGN §5 merge-blocking test rule).
-
-### 4.5 Admission verdict (the seam)
-
-```dag
-type EmissionAdmissionVerdict
-  = AdmittedDeclared {
-      delta: EmissionDelta
-      matched_declaration: DeclaredChangeSet
-    }
-  | RefusedRegression {
-      delta: EmissionDelta
-      cause: EmissionRegressionCause
-    }
-  | RefusedUndeclaredDelta {
-      delta: EmissionDelta
-      missing_from_declaration: EmissionSurface
-    }
-  | RefusedStageMismatch {
-      delta: EmissionDelta
-      declared_stages: List<CompilerStage>
-      observed_stage: CompilerStage
-    }
-  | RefusedStaleSubstrate {
-      stamp: StageStamp
-      cause: NonEmptyStr
-    }
-
-type EmissionRegressionCause
-  = SurfaceMovedWithoutDeclaration
-  | StageAttributionMismatch
-  | UpstreamRefusalMaskedAtEmit
-  | BehavioralWitnessFailed
-  | DigestMismatchUndeclared
-```
-
-**Core decision** (pure, total on well-formed inputs):
-
-```
-admit_emission_delta(delta, declared) ->
-  if delta.before == delta.after -> AdmittedDeclared (no-op move)
-  else if !surface_allowed(delta.surface, declared) -> RefusedUndeclaredDelta
-  else if !stage_allowed(delta.stage_stamp, declared) -> RefusedStageMismatch
-  else if upstream_refusal_masked(delta) -> RefusedRegression
-  else -> AdmittedDeclared
-```
-
-No arm widens: missing declaration never triggers regen-all; mismatch never
-falls through to green.
+| Authority | Relationship |
+|---|---|
+| `gunbc.generated_artifact` | Registry + drift witnesses — byte fixed-point; gains a declared-change arm |
+| `gunbc.guarantee_measurement` | Per-path receipts — gains admission verdict projection on emission paths |
+| [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md) | BothWays quotient-delta lawful edits — orthogonal semantic comparison, not authority-vs-seed |
 
 ---
 
-## 5. Stage-aware pipeline (phased single process)
+## 3. Two genuinely new pieces
 
-### 5.1 End-to-end shape
+Everything in §2 is reuse. **Only these are new design obligations:**
+
+### 3.1 Declared-change vs regression (not generation equivalence)
+
+**Problem:** Today's gates ask "does output match committed?" or "does generation N match
+generation N−1?" Neither answers the operational question: **did this PR declare that these
+surfaces may move?**
+
+**New carrier (proposed name: `EmissionAdmissionVerdict`):**
+
+| Verdict | Meaning |
+|---|---|
+| `AdmittedDeclared { stages, surfaces, evidence }` | Observed delta ⊆ declared change set; stage stamps consistent |
+| `RefusedRegression { stage, surface, cause }` | Bytes/behavior moved without declaration or with failed witness |
+| `RefusedUndeclaredDelta` | Delta on a registered surface with no `allowed_surface_moves` entry |
+| `RefusedStageMismatch { declared, observed }` | Declared `Infer`-only but emit digest moved (or converse) |
+| `RefusedStaleSubstrate { expected_revision, observed_revision }` | Warm receipt replay against wrong materialization revision |
+
+**Declared change set (proposed):** derived from PR facts — affected-set projection,
+touched emitter modules, explicit frontier row flips, regen-input-closure membership —
+joined to `CompilerStage` and `ArtifactSurface` (generated-artifact registry paths, seed
+files, behavioral probe coordinates). Human `AuthorExplicit` override is an open question
+(§9).
+
+**Law:** admission is **not** generation-to-generation equivalence. A declared emitter
+migration may admit digest movement with behavioral green; an undeclared move refuses even
+if bytes happen to match a prior generation.
+
+### 3.2 Generation lineage graph
+
+**Problem:** `V2EmitterNative { generation: Int }` tags the producer but does not record
+which emitted artifact generation a consumer actually used. Native cutover, warm-merge
+replay, and phased CI all need to refuse **stale-generation artifacts** without absorbing
+into "rerun everything."
+
+**New graph (proposed):**
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  One initialized process (shared materialization provider)       │
-│                                                                  │
-│  RegenPhase                                                      │
-│    ├─ compute DeclaredChangeSet from PR facts                    │
-│    ├─ run regen emitters → EmissionDelta[]                       │
-│    ├─ StageStamp per delta (Emit + forwarded upstream)           │
-│    └─ RegenVerdict = fold admit_emission_delta                   │
-│           │                                                      │
-│           ▼ (RegenVerdict must be Admitted* or Refused — blocks) │
-│  FloorPhase                                                      │
-│    ├─ reuse substrate_revision + declared set                    │
-│    ├─ witness / compile / native runs                            │
-│    └─ FloorVerdict (separate stamp; may not rerun resolve)       │
-│           │                                                      │
-│           ▼                                                      │
-│  AdmissionPhase (merge / warm-merge-admission)                   │
-│    ├─ validate warm receipts against declared + stamps           │
-│    └─ AdmissionVerdict → merge gate                              │
-└─────────────────────────────────────────────────────────────────┘
+GenerationNode { index, producer, receipt_digest, substrate_revision }
+GenerationEdge { parent, child, delta: EmissionDelta }
+ArtifactBinding { path, generation, emitted_source_digest }
+ConsumerRead { consumer_id, artifact_binding, admission_verdict }
 ```
 
-**Ordering law (from roadmap):** regen still gates floor. Admission may consume
-warm receipts only when `substrate_revision` and `DeclaredChangeSet` match the
-stamping run.
+**Laws:**
+
+- Every `ArtifactBinding` points at exactly one `GenerationNode` that holds a
+  `ProducerEmissionReceipt` or an honest `SeedRetained` / scaffold row.
+- Consumers (`RegenVerifyGate`, warm-merge admission, floor witness) record
+  `ConsumerRead` — not just Bool pass/fail.
+- Replay of a warm receipt refuses when `substrate_revision` or `generation` edge does
+  not match the stamping run (fail-closed; no widen to cold rerun without counted cause).
+
+**Dissolve-on:** when `frontier_probe_survey` binds execution-measured digests, lineage
+edges upgrade from scaffold digests to measured digests without changing graph shape.
+
+---
+
+## 4. Bricking de-risk (operator ruling)
+
+Emitted Rust is **plain text in git**. A bad emitter migration does not require rollback
+machinery, feature flags, or absorbing "rerun regen until green":
+
+1. `git checkout` the last good commit (or revert the PR).
+2. Seed-retained modules continue to compile from committed `src/v1/**` until frontier rows
+   flip with receipts.
+
+This design **does not** introduce a rollback subsystem. It introduces **earlier, typed
+refusal** so bricking is caught at regen/admission with a located cause (`RefusedRegression`,
+`RefusedUndeclaredDelta`) rather than after merge or fleet deploy. The psychological "fear
+of bricking" is already handled by version control; the gap is *classification at the
+gate*.
+
+---
+
+## 5. Stage-aware pipeline model
+
+### 5.1 Phases on one substrate (`phased-single-process-ci`)
+
+```
+┌─ Phase: Regen ─────────────────────────────────────────────────┐
+│  regen_stage0 / generated_artifact_gate                        │
+│  emit StageStamp + EmissionDelta list + GenerationNode       │
+│  refuse: RefusedUndeclaredDelta (fail fast — floor not run)  │
+└───────────────────────────┬──────────────────────────────────┘
+                            │ stamps + lineage edges
+┌─ Phase: Floor ────────────▼──────────────────────────────────┐
+│  compile-clean + witness corpus on shared materialization    │
+│  inherit stamps; refuse RefusedStaleSubstrate if replay      │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+┌─ Phase: Admission ────────▼──────────────────────────────────┐
+│  warm-merge-admission / merge gate                           │
+│  validate receipts against DeclaredChangeSet + ConsumerRead    │
+│  AdmissionVerdict → merge allow/refuse                         │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Ordering law:** regen still gates floor (existing `ci_regen_floor_skip_policy_note`).
+Admission may consume warm receipts only when `substrate_revision`, `DeclaredChangeSet`, and
+generation lineage match the stamping run.
 
 ### 5.2 Prelude duplication metric
 
-First slice for `phased-single-process-ci` (roadmap handback): attribute time
-spent in resolve, index construction, and discovery per phase with and without
-stamps. **RED control:** if phase *N+1* repeats resolve whose inputs are
-unchanged per stamp, count > 0 ⇒ regression refusal (the roadmap red_control,
-made executable).
+First slice for `phased-single-process-ci`: attribute resolve/index/discovery time per
+phase with and without stamps. **RED control:** if phase *N+1* repeats resolve whose inputs
+are unchanged per stamp, count > 0 ⇒ `RefusedStaleSubstrate` or a dedicated prelude
+duplication refusal (roadmap red_control, made executable).
 
 ---
 
@@ -301,11 +234,11 @@ made executable).
 | Consumer | Declared-change source | Regression signal |
 |---|---|---|
 | `warm-merge-admission` | PR affected set + stamped receipts at merge base | Receipt replay produces undeclared `EmissionDelta` |
-| `generated_artifact_drift_gate` | diff touches artifact authority modules | `artifact_generate` ≠ committed without `allowed_surface_moves` |
-| `regen_stage0 --verify` | diff touches `src/v2/compiler/*emit*` or frontier SelfEmitted rows | seed file digest mismatch undeclared |
-| `self_host_realized_comparison` | frontier row flip / emitter edit in PR | behavioral witness fails with declared-only digest move |
-| `ci_merge_admission_emit` | gate roster + floor stamp (existing) joined with admission verdict | stale-base / stale-roster (existing) + new undeclared-delta arm |
-| `gunbc.guarantee_measurement` | probe harness declares subject revision | `ExecutionDiverged` on emission path with clean compile admission |
+| `generated_artifact_drift_gate` | diff touches artifact authority modules | generate ≠ committed without `allowed_surface_moves` |
+| `RegenVerifyGate` / `regen_verify_gate_passes` | diff touches `src/v2/compiler/*emit*` or frontier rows | seed digest mismatch undeclared |
+| `self_host_realized_comparison` | frontier flip / emitter edit in PR | behavioral witness fails with digest-only move |
+| `mint_producer_emission_receipt` | (future) declared emitter migration | mint with `BuildRefused` or wrong producer in closure |
+| `gunbc.guarantee_measurement` | probe declares subject revision | `ExecutionDiverged` on emission path with clean compile |
 
 ---
 
@@ -315,61 +248,100 @@ Each verdict arm gets a discriminating pair:
 
 | Arm | GREEN control | RED control |
 |---|---|---|
-| `AdmittedDeclared` | emitter edit in PR + regen committed + `allowed_surface_moves` contains surface | same edit without declaration ⇒ `RefusedUndeclaredDelta` |
-| `RefusedRegression` | planted emitter bug without source change ⇒ refusal | declaration cannot green a behavioral failure |
-| `RefusedStageMismatch` | declared `Infer`-only change but emit digest moves | mismatch stage attribution |
+| `AdmittedDeclared` | emitter edit + regen + declaration contains surface | same edit without declaration ⇒ `RefusedUndeclaredDelta` |
+| `RefusedRegression` | planted emitter bug without source change ⇒ refusal | declaration cannot green behavioral failure |
+| `RefusedStageMismatch` | declared `Infer`-only change | emit digest moves |
 | `RefusedStaleSubstrate` | warm receipt from prior `substrate_revision` | replay after index rebuild without restamp |
+| Generation stale read | consumer reads binding at generation G | replay claims G but artifact is G−1 |
 | Prelude duplication | phase 2 skips resolve when stamp says preserved | forced re-resolve ⇒ counted refusal |
 
-Probes that go green when a wall lands **flip to permanent regression controls** —
-they do not retire (§4b dissolution-on rule).
+Probes that go green when a wall lands **flip to permanent regression controls** — they do
+not retire (§4b dissolution-on rule).
 
 ---
 
-## 8. Staged plan (design only — implementation is separate PRs)
+## 8. Staged implementation plan (future PRs — not this document)
 
-| Stage | Deliverable | Depends on |
+| Stage | Deliverable | Dissolution trigger |
 |---|---|---|
-| **0 — this document** | Sign-ready design + operator review | — |
-| **1 — vocabulary carrier** | `gunbc.emission_admission` types + pure `admit_emission_delta` + unit witnesses on synthetic deltas | Stage 0 sign-off |
-| **2 — declared-change derivation** | `declared_change_set_from_pr_facts` wired to affected-set; refusal when selection fails | Stage 1 |
-| **3 — regen phase stamp** | `regen_stage0` / `generated_artifact_gate` emit `StageStamp` + deltas; regen refuses undeclared | Stage 2 |
-| **4 — warm-merge join** | #7522 admits from warm receipts only with matching stamps + declaration | Stage 3 |
-| **5 — phased single process** | `phased-single-process-ci` shares substrate; prelude duplication witness | Stage 4 |
-| **6 — guarantee path rows** | emission-path measurement receipts carry admission verdict projection | Stage 1 (can parallel 3–5) |
-
-**Dissolution triggers (scaffolds):**
-
-- Stage 1: delete any interim `bytes_differ` only branch in merge admission once
-  verdict arm executes in CI.
-- Stage 3: retire `regen_divergence_count` prose-oracle when structured
-  `EmissionDelta` list is the transport (extends regen ratchet retirement).
-- Stage 5: delete duplicate `process_shared_index` construction in per-phase
-  entrypoints when stamp hit rate is receipted ≥ target on representative PRs.
+| **0 — this document** | Sign-ready design + doc graph bind | Operator sign-off |
+| **1 — vocabulary carrier** | Types + pure `admit_emission_delta` + synthetic unit witnesses | Interim bytes-only merge branches gain verdict arm |
+| **2 — declared-change derivation** | `declared_change_set_from_pr_facts` wired to affected-set; refuse when selection fails | Hand-classified PR intent in review prose |
+| **3 — regen phase stamp** | `regen_stage0` emits `StageStamp` + deltas; regen refuses undeclared | `regen_divergence_count` prose-oracle |
+| **4 — generation lineage** | `GenerationNode` / `ArtifactBinding` / `ConsumerRead` on regen + warm paths | Implicit generation in producer tag only |
+| **5 — warm-merge join** | #7522 admits warm receipts only with matching stamps + declaration | Cold rerun as default merge path |
+| **6 — phased single process** | Shared substrate; prelude duplication witness | Per-phase `process_shared_index` duplication |
+| **7 — guarantee path rows** | emission-path measurement carries admission projection | Emission path unmeasured for intent |
 
 ---
 
 ## 9. Open questions (operator sign-off)
 
-1. **AuthorExplicit declaration:** should human override ever admit a delta without
-   affected-set evidence, or is that always a §5 escape hatch to refuse?
+### Q1 — `AuthorExplicit` override
 
-2. **Behavioral vs digest on self-host:** for `SelfEmitted` modules, is digest
-   match alone ever sufficient, or must `AdmittedDeclared` always include a
-   behavioral witness when the surface is `Stage0SeedFile`?
+Should a human declaration ever admit a delta without affected-set evidence?
 
-3. **Frontier scaffold rows:** do counted `SeedRetained` / `UnpinnedFrontier` rows
-   automatically widen `allowed_surface_moves`, or does each row carry an explicit
-   `DeclaredChangeTemplate`?
+| Option | Tradeoff |
+|---|---|
+| **A. Refuse always** | No escape hatch; missing affected-set evidence is `RefusedUndeclaredDelta` |
+| **B. Typed override row** | `AuthorExplicit { author, rationale, surfaces }` admissible with counted audit + RED control |
+| **C. FrontierAccepted only** | Override allowed only for enrolled scaffold rows, not production surfaces |
 
-4. **Registry completeness:** is `SurfaceUnknown` a hard refusal on the merge path,
-   or a counted `FrontierAccepted` disposition until the generated-artifact
-   registry covers all emit surfaces?
+**Recommendation:** **B** with a construction wall — override row required, never a silent
+flag; aligns with §5 "no escape hatches" while allowing genuine operator migrations.
 
-5. **Relationship to `BothWays`:** [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md)
-   intentional semantic edits compare `R1` vs `R2`, not authority vs seed — does
-   emission admission treat quotient-delta lawful edits as always `AdmittedDeclared`
-   when the six lens laws pass, even if digest moves?
+### Q2 — Behavioral vs digest on self-host
+
+For `SelfEmitted` / `Stage0SeedFile` surfaces, is digest match alone ever sufficient?
+
+| Option | Tradeoff |
+|---|---|
+| **A. Digest only** | Faster CI; risks §5 validation-standing-where-construction-was-available |
+| **B. Behavioral always** | Matches `BehavioralEquivalent` qualification; costs wet witness |
+| **C. Tiered by surface** | Digest for formatting-only paths; behavioral when probe enrolled |
+
+**Recommendation:** **C** — join to existing `EmissionQualification` and behavioral transport
+roster; refuse `AdmittedDeclared` without `BehavioralEquivalent` when a probe is enrolled.
+
+### Q3 — Frontier scaffold rows
+
+Do `SeedRetained` / `UnpinnedFrontier` rows auto-widen `allowed_surface_moves`?
+
+| Option | Tradeoff |
+|---|---|
+| **A. Auto-widen by row class** | Less author burden; risks over-admission |
+| **B. Per-row `DeclaredChangeTemplate`** | Explicit; scales with roster size |
+| **C. Census-derived default** | `witness_entry_eligibility_census` projects templates once |
+
+**Recommendation:** **B** for production surfaces, **A** only for counted scaffold classes
+with dissolution triggers named on the row.
+
+### Q4 — Registry completeness
+
+Is `SurfaceUnknown` hard refusal or `FrontierAccepted` on the merge path?
+
+| Option | Tradeoff |
+|---|---|
+| **A. Hard refusal** | Fail-closed; blocks merge until registry complete |
+| **B. FrontierAccepted** | Merge proceeds with counted debt; risks silent widen |
+| **C. Refuse on warm path only** | Cold merge ok with debt; warm replay refuses |
+
+**Recommendation:** **C** — matches §4b `FrontierAccepted` semantics and warm-merge's
+higher trust bar.
+
+### Q5 — Relationship to BothWays quotient delta
+
+Do lawful BothWays edits always become `AdmittedDeclared` when the six lens laws pass?
+
+| Option | Tradeoff |
+|---|---|
+| **A. Always admitted** | Semantic lawful ⇒ admission; digest move expected |
+| **B. Requires explicit surface entry** | BothWays green ≠ emission admission without declaration |
+| **C. Join only for `SelfEmitted` surfaces** | Seed-emitted paths use quotient delta; generated-artifact paths use registry |
+
+**Recommendation:** **C** — [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md)
+comparison is semantic (R1 vs R2); emission admission still needs surface declaration for
+registry-governed artifacts.
 
 ---
 
@@ -377,8 +349,8 @@ they do not retire (§4b dissolution-on rule).
 
 This design is ready for operator review when:
 
-- [ ] §4 types are agreed as the single admission authority (no parallel byte gate semantics).
-- [ ] Stage 1–3 sequencing is accepted relative to #7522 / `phased-single-process-ci`.
-- [ ] Open questions §9 have recorded verdicts (even if "defer with scaffold row").
-- [ ] Parent lane (`still-bat-561`) confirms this unblocks v1-deletion emission gates
-      without contradicting seed-honesty / real-fixpoint milestones.
+1. All symbols in §2 resolve on main (grep-verified at PR open).
+2. The two new pieces (§3) are explicit and not conflated with existing gates.
+3. Open questions (§9) have options + recommendations recorded in the PR body.
+4. Doc graph bind lands (`gunbc.doc_graph_roots` → this slug).
+5. No implementation code ships in the design PR.

@@ -1,7 +1,5 @@
 module gunbc.bootstrap
 
-import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
-import std.content_hash { ContentHash }
 
 type CompilerStage
   = Tokenize
@@ -39,7 +37,7 @@ type ArtifactKind
   | RenderedFiles
 
 type SourceEntry {
-  path: FilePath
+  path: std.types.FilePath
   content: String
   module_name: NonEmptyStr?
 }
@@ -75,7 +73,7 @@ type FixedPointCheck {
   pass1_hash: ContentHash
   pass2_hash: ContentHash
   converged: Bool
-  diff_files: List<FilePath>
+  diff_files: List<std.types.FilePath>
 }
 
 type BootstrapResult

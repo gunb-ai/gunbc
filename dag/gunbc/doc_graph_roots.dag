@@ -121,6 +121,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "emission-admission-stage-aware-pipeline-design",
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.emitter_producer_provenance", decl_name: "emitter_producer_provenance_note", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v2.compiler.self_host", decl_name: "canonical_emitted_bytes_digest", field: WholeDeclaration }, DeclarationRef { module_path: "tools.floor_effect_gate_witness", decl_name: "regen_verify_gate_passes", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.bootstrap", decl_name: "CompilerStage", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "Stages 1–7 in the design doc land or are honestly retired: declared-change vs regression verdict executes on the merge path, generation lineage graph binds ConsumerRead on regen and warm-merge, phased-single-process CI prelude-duplication witness is green on a representative PR, and the doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "fleet-self-converge-enforcement-design",
     primary_work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
     additional_works: [],
