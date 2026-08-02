@@ -119,6 +119,8 @@ fn merge_target_refresh_refusal_label(cause: MergeTargetRefreshRefusal) -> Strin
 
 data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admission-refresh-refusal.txt"
 
+data merge_admission_refresh_refusal_wire_seed_pairing: String = "PAIRED LITERAL (review 47596): claim_executor.rs MERGE_ADMISSION_REFRESH_REFUSAL_WIRE reads this exact relpath at the stage-failure line — the seed cannot import a .dag datum, so a rename here lands with the paired seed edit or the stage failure degrades to detail-without-wire, never a silent success. Same pairing class as floor-population-budget-refusal.txt, under walk_plan_run_stage_claim_executor_seed_deferral."
+
 data merge_admission_refresh_refusal_wire_note: String = "TYPED CAUSE FOR THE STAGE-2 CLAIM BOUNDARY (review 47542 finding 3, made blocking by CI run 30764945450: refresh_current_target_and_gate returned bare Bool false on srv4-04 with all seven failure causes conflated, and the red was undiagnosable from the log). Same pattern as merge_admission_capture_refusal_wire_note: the claim channel is a Bool, so the core returns the typed sum and the Bool projection durably writes the labeled cause to target/merge-admission-refresh-refusal.txt before returning false; claim_executor's stage-failure line reads the wire. The fetch and target-tree arms carry the operation's own stderr/cause so a runner-side git failure names itself."
 
 func refresh_wire_path() -> FilePath {

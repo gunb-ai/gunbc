@@ -1456,6 +1456,16 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
 /// "not one entry" — the state-space conflation this field exists to avoid.
 const DISCOVERY_AGGREGATE_ENTRY: &str = "<discovery corpus — many entries>";
 
+/// PAIRED LITERALS (review 47596): the .dag single authorities are
+/// `tools.merge_admission_capture` `merge_admission_capture_refusal_wire_relpath` and
+/// `tools.merge_admission_walk` `merge_admission_refresh_refusal_wire_relpath`; the seed
+/// cannot import a .dag datum, so the pairing is these consts plus the sentence on each
+/// datum naming this file — the floor-population-budget-refusal.txt precedent, under the
+/// same walk_plan_run_stage_claim_executor_seed_deferral. A rename lands on both sides
+/// or the wire read degrades to the loud wire-absent arm, never a silent success.
+const MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE: &str = "target/merge-admission-capture-refusal.txt";
+const MERGE_ADMISSION_REFRESH_REFUSAL_WIRE: &str = "target/merge-admission-refresh-refusal.txt";
+
 struct ClaimResult {
     function: String,
     /// The entry file this claim was declared in. Carried rather than looked up: a
@@ -2997,7 +3007,7 @@ fn run_pre_walk_execution(
             // floor-population-budget-refusal.txt pattern; merge_admission_capture
             // merge_admission_capture_refusal_wire_note). Wire-absent is its own
             // reported state, never folded into a generic failure.
-            let cause = match fs::read_to_string("target/merge-admission-capture-refusal.txt") {
+            let cause = match fs::read_to_string(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
                 Ok(wire) => format!("capture refusal wire: {}", wire.trim()),
                 Err(_) => "typed child returned false with no capture-refusal wire (child died before writing its cause, or the wire write itself refused — indistinguishable from here: the Bool claim is the only surviving channel)".to_string(),
             };
@@ -5891,7 +5901,7 @@ fn run_walk(
                         // as the pre-walk capture). Read fresh per failure; absent wire
                         // is its own reported state.
                         let stage_cause = match fs::read_to_string(
-                            "target/merge-admission-refresh-refusal.txt",
+                            MERGE_ADMISSION_REFRESH_REFUSAL_WIRE,
                         ) {
                             Ok(wire) => format!("; refusal wire: {}", wire.trim()),
                             Err(_) => String::new(),

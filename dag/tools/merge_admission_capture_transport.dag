@@ -2,6 +2,7 @@ module tools.merge_admission_capture_transport
 
 import extdeps.git.inspect
 import extdeps.gunbc
+import gunbc.cli_invoke { release_bin_rel_path }
 import std.types { FilePath, String }
 import v2.std.collection { List }
 
@@ -25,7 +26,7 @@ func run_merge_admission_capture_subprocess(
   )
   gunbc.WitnessBin.Run(
     workdir: root,
-    bin_path: concat(root as String, "/target/release/claim_batch") as FilePath,
+    bin_path: concat(concat(root as String, "/"), release_bin_rel_path(bin_name: "claim_batch")) as FilePath,
     args: args
   ).success
 }
