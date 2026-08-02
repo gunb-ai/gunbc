@@ -418,11 +418,13 @@ fn commit_writer_text_marker_refusals(
   )
 }
 
+data commit_writer_index_filter_capture_scaffold: String = "DECLARED SCAFFOLD (gunbc#7480, 2026-08-02). The body below selects entries with flat_map rather than the obvious filter(index, entry => entry.path == path), and that spelling is NOT a preference -- the filter form does not compile in this module. ROOT CAUSE, bisected and reproduced: src/v2/std/algebra.dag declares fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool). This module does not import v2.std.algebra, but it imports v2.compiler.source_authority, which drags the whole v2 compiler closure -- including v2.std.algebra -- into the module pool. The bare name filter then binds to THAT declaration instead of the builtin, List<GitIndexEntry> does not unify with FreeMonoid<T>, the lambda parameter stays an unbound T, and the module fails with `no field path on type T`. THE DISCRIMINATING MEASUREMENT: importing v2.std.algebra for `length` ALONE -- never filter -- is sufficient to break it, and deleting only the source_authority import makes the original filter form compile. So this is name capture by POOL MEMBERSHIP, not by the import list, which is exactly the DESIGN #6985 Class B failure mode in its inverting direction: an unrelated import pulls a module into the pool whose declaration captures a bare name that was resolving correctly. It is silent -- nothing reports that filter rebound. Hypotheses REFUTED by execution first, recorded so nobody repeats them: a trailing comma in the parameter list; filter over an imported record type; List not being imported; two filter calls over different element types in one module; a lambda or parameter name colliding with an imported symbol; cross-call-site unification collapsing the element type. The sibling function below uses flat_map over the same type with the same `entry` binding and compiles, which is what makes flat_map a safe carrier here. The source_authority import CANNOT simply be dropped: ModuleStorageBinding, ParsedFromSource and ProducedByBehavior are all genuinely used by this module. DISSOLVE-ON: the namespace-only name-resolution lane makes the containment tree the single naming authority, so a module not in the import list can no longer capture a bare reference; at that point restore the filter spelling and delete this row. This scaffold changes NO behaviour -- it selects exactly the entries whose path matches, as filter did."
+
 fn commit_writer_index_entries_for_path(
   index: List<GitIndexEntry>,
   path: GitPath,
 ) -> List<GitIndexEntry> {
-  filter(index, entry => entry.path == path)
+  flat_map(index, entry => if entry.path == path { [entry] } else { [] })
 }
 
 fn commit_writer_normal_index_entries_for_path(
@@ -1421,6 +1423,15 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       span: SpanUndeclared
     },
     surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag",
+      check_fns: ["live_rust_observation_matches_actions_subject"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {

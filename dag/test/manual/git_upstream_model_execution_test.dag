@@ -3,8 +3,8 @@ module test.manual.git_upstream_model_execution
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.gunbc
+import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.git.object_store {
-  GitSha1Digest,
   GitObjectId,
   GitSha1ObjectId,
   GitObjectFormatSha1,
@@ -25,7 +25,7 @@ import extdeps.git.object_store {
   GitProjected,
   GitProjectionRefused,
   GitRefTransitionModeled,
-  git_object_id_content_hash,
+  git_object_id_wire_hex,
   git_decode_ls_tree_z,
   git_decode_ls_files_stage_z,
   git_model_update_ref_exact,
@@ -70,7 +70,9 @@ type GitR0LiveFixtureOutcome
   | GitR0LiveFixtureExecutionRefused { diagnostic: String }
 
 fn observed_sha1_oid(stdout: String) -> GitObjectId {
-  GitSha1ObjectId { digest: trim(s: stdout) as GitSha1Digest }
+  GitSha1ObjectId {
+    digest: Sha1Digest { hex: trim(s: stdout) as Sha1DigestHex },
+  }
 }
 
 fn complete_fixture_repository() -> GitRepositoryState {
@@ -490,18 +492,18 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && cleaned_fixture.success
           && cleaned_sha256.success
 
-      let content_addresses_grounded = trim(s: regular_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_regular) as String)
-          && trim(s: executable_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_executable) as String)
-          && trim(s: symlink_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_symlink) as String)
-          && trim(s: empty_blob_oid.stdout) == (git_object_id_content_hash(oid: sha1_empty_blob) as String)
-          && trim(s: empty_tree.stdout) == (git_object_id_content_hash(oid: sha1_empty_tree) as String)
-          && trim(s: subtree_oid.stdout) == (git_object_id_content_hash(oid: sha1_subtree) as String)
-          && trim(s: gitlink_commit.stdout) == (git_object_id_content_hash(oid: sha1_gitlink) as String)
-          && trim(s: root_tree.stdout) == (git_object_id_content_hash(oid: sha1_root_tree) as String)
-          && trim(s: parent_commit.stdout) == (git_object_id_content_hash(oid: sha1_parent_commit) as String)
-          && trim(s: next_commit.stdout) == (git_object_id_content_hash(oid: sha1_next_commit) as String)
-          && trim(s: tag_oid.stdout) == (git_object_id_content_hash(oid: sha1_tag) as String)
-          && trim(s: sha256_blob.stdout) == (git_object_id_content_hash(oid: sha256_object) as String)
+      let content_addresses_grounded = trim(s: regular_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_regular) as String)
+          && trim(s: executable_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_executable) as String)
+          && trim(s: symlink_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_symlink) as String)
+          && trim(s: empty_blob_oid.stdout) == (git_object_id_wire_hex(oid: sha1_empty_blob) as String)
+          && trim(s: empty_tree.stdout) == (git_object_id_wire_hex(oid: sha1_empty_tree) as String)
+          && trim(s: subtree_oid.stdout) == (git_object_id_wire_hex(oid: sha1_subtree) as String)
+          && trim(s: gitlink_commit.stdout) == (git_object_id_wire_hex(oid: sha1_gitlink) as String)
+          && trim(s: root_tree.stdout) == (git_object_id_wire_hex(oid: sha1_root_tree) as String)
+          && trim(s: parent_commit.stdout) == (git_object_id_wire_hex(oid: sha1_parent_commit) as String)
+          && trim(s: next_commit.stdout) == (git_object_id_wire_hex(oid: sha1_next_commit) as String)
+          && trim(s: tag_oid.stdout) == (git_object_id_wire_hex(oid: sha1_tag) as String)
+          && trim(s: sha256_blob.stdout) == (git_object_id_wire_hex(oid: sha256_object) as String)
           && trim(s: sha256_format.stdout) == "sha256"
 
       let tree_modes_grounded = count(split(s: trim(s: modes.stdout), delimiter: "\n")) == 6

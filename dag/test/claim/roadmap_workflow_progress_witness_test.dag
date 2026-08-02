@@ -43,10 +43,25 @@ import gunbc.roadmap_workflow_stage {
   PublicationWorkflowSegment,
   ReviewWorkflowSegment,
   GoalAuditWorkflowSegment,
+  WorkflowSegmentPending,
   workflow_segment_kind_key,
   workflow_segment_state_key,
 }
 import gunbc.workflow_reconcile { workflow_reconcile_status_key }
+import gunbc.roadmap_publish {
+  PublicationSubject,
+  PublicationSubjectObservation,
+  PublicationSubjectObserved, PublicationSubjectUnobserved,
+  publication_receipt_of,
+  publication_receipt_json,
+  adjudicate_publication,
+  PullRequestsRead, PullRequestsUnreadable,
+  RemoteBranchesRead,
+  RemoteBranch,
+}
+import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
+import extdeps.github.github { GitHubUser, User, Repository }
+import std.types { String, Int, CommitSha }
 
 fn fixture_evidence(
   events: String,
@@ -68,6 +83,23 @@ fn fixture_evidence(
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: false,
     validation_receipt: "",
+    publication_subject: PublicationSubjectObserved {
+      subject: PublicationSubject {
+        node_id: "node-1",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
+    },
+    publication_source: ReceiptSourceAbsent,
   }
 }
 
@@ -306,9 +338,12 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     validation_summary: base.validation_summary,
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
   }
   let progress = workflow_attempt_progress(evidence: forged)
-  !(segment_state(progress.segments, "env") == "complete")
+  segment_state(progress.segments, "environment") != "" 
+    && segment_state(progress.segments, "environment") != "complete"
 }
 
 test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
@@ -332,6 +367,8 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     validation_summary: base.validation_summary,
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -357,6 +394,23 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     validation_summary: "",
     validation_receipt_readable: false,
     validation_receipt: "",
+    publication_subject: PublicationSubjectObserved {
+      subject: PublicationSubject {
+        node_id: "node-1",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
+    },
+    publication_source: ReceiptSourceAbsent,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
@@ -388,6 +442,8 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     validation_summary: base.validation_summary,
     validation_receipt_readable: base.validation_receipt_readable,
     validation_receipt: base.validation_receipt,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
@@ -446,4 +502,203 @@ test fn roadmap_workflow_progress_keystone_holds() -> Bool {
     && readable_but_invalid_admission_receipt_refuses_progress()
     && workflow_json_exposes_segment_and_provider_facts()
     && failed_or_refused_stage_is_visible_without_decoding_border_style()
+}
+
+data publication_projection_witness_note: String = "THE VERTICAL SPECIMEN, WITH ITS NEGATIVE HALF, AND THE NEGATIVE HALF IS WHY IT EXISTS. A claim that a bound receipt paints the lamp green proves the happy path and nothing else; it stays green under the exact defect this lane was rewritten to remove, which is a consumer that finds a receipt at a path and trusts what it finds.\\n\\nSO THE SPECIMEN IS ONE RECEIPT READ TWICE. Written for head H, it completes the row whose subject is H, and it does NOT complete the row whose subject is H2 - it refuses there, naming expected_head as the field that differs. That is the review loop's real shape: a worker pushes a correction while a receipt for the earlier head is still on disk, and every downstream obligation is about the new commit.\\n\\nAND THE SUBJECT ITSELF CAN BE MISSING, which is a fifth reading rather than a phrasing of pending. An attempt whose head could not be read has nothing to compare a receipt against, so the lamp refuses and says so - never `pending`, which a reader would take for `not published yet`."
+
+data pub_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe"
+data pub_other: CommitSha = "d00dd00dd00dd00dd00dd00dd00dd00dd00dd00d"
+data pub_branch: NonEmptyStr = "dispatch/node-1-afeedfacefeedface" as NonEmptyStr
+
+data pub_repository: Repository = Repository {
+  owner: "gunb-ai",
+  name: "gunbc",
+  full_name: "gunb-ai/gunbc",
+  private: false,
+  default_branch: "main",
+}
+
+fn pub_subject(head: CommitSha) -> PublicationSubject {
+  PublicationSubject {
+    node_id: "node-1",
+    attempt_key: "feedfacefeedface",
+    repository: pub_repository,
+    branch: pub_branch,
+    expected_base: "main" as NonEmptyStr,
+    expected_head: head,
+  }
+}
+
+fn pub_pull(sha: CommitSha) -> PullRequest {
+  PullRequest {
+    number: 7552,
+    title: "publication slice",
+    body: none,
+    state: Open,
+    html_url: "https://github.com/gunb-ai/gunbc/pull/7552" as NonEmptyStr,
+    user: GitHubUser { login: "someone", id: 1, type: User },
+    head: PullRequestRef {
+      ref: pub_branch as String,
+      sha: sha,
+      label: "head",
+    },
+    base: PullRequestRef { ref: "main", sha: pub_other, label: "base" },
+    created_at: "2026-08-01T00:00:00Z",
+    updated_at: "2026-08-01T00:00:00Z",
+    merged_at: none,
+    draft: false,
+  }
+}
+
+fn pub_receipt_for(subject_head: CommitSha, pull_sha: CommitSha) -> String {
+  publication_receipt_json(
+    receipt: publication_receipt_of(
+      subject: pub_subject(head: subject_head),
+      outcome: adjudicate_publication(
+        pulls: PullRequestsRead { pulls: [pub_pull(sha: pull_sha)] },
+        remotes: RemoteBranchesRead { branches: [] },
+        remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+        branch: pub_branch,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: subject_head,
+      ),
+    ),
+  )
+}
+
+fn publication_segment_of(
+  subject: PublicationSubjectObservation,
+  source: PublicationReceiptSource,
+) -> WorkflowSegment {
+  let base = fixture_evidence(events: "", process: WorkerProcessAbsent)
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    validation_receipt_readable: base.validation_receipt_readable,
+    validation_receipt: base.validation_receipt,
+    publication_subject: subject,
+    publication_source: source,
+  })
+  fold(progress.segments, init: WorkflowSegment {
+    kind: PublicationWorkflowSegment,
+    state: WorkflowSegmentPending,
+    detail: "no publication segment was projected",
+  }, f: fn(acc, segment) {
+    if workflow_segment_kind_key(kind: segment.kind) == "publish" { segment } else { acc }
+  })
+}
+
+fn publication_state_at(
+  subject_head: CommitSha,
+  source: PublicationReceiptSource,
+) -> String {
+  workflow_segment_state_key(
+    state: publication_segment_of(
+      subject: PublicationSubjectObserved { subject: pub_subject(head: subject_head) },
+      source: source,
+    ).state,
+  )
+}
+
+test fn publication_at_the_expected_head_completes_where_the_old_constant_could_not() -> Bool {
+  publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  ) == "complete"
+}
+
+test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Bool {
+  let receipt_for_h = pub_receipt_for(subject_head: pub_head, pull_sha: pub_head)
+  let at_h = publication_state_at(subject_head: pub_head, source: ReceiptSourcePresent { text: receipt_for_h })
+  let at_h2 = publication_state_at(subject_head: pub_other, source: ReceiptSourcePresent { text: receipt_for_h })
+  let detail_at_h2 = publication_segment_of(
+    subject: PublicationSubjectObserved { subject: pub_subject(head: pub_other) },
+    source: ReceiptSourcePresent { text: receipt_for_h },
+  ).detail
+  at_h == "complete"
+    && at_h2 == "refused"
+    && at_h2 != "complete"
+    && at_h2 != "pending"
+    && string_contains(s: detail_at_h2, pattern: "expected_head")
+}
+
+data bound_sentence_names_one_head_note: String = "The completed sentence an operator reads must name the head that was actually judged. ReceiptBound no longer carries a head of its own, so this projection renders subject.expected_head - the single copy in the document. The claim asserts BOTH directions: the judged head appears, and the other fixture sha does not, because a sentence that could name a second head is the same defect one layer out from the one review 46116 found in the carrier."
+
+test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
+  let detail = publication_segment_of(
+    subject: PublicationSubjectObserved { subject: pub_subject(head: pub_head) },
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  ).detail
+  string_contains(s: detail, pattern: pub_head as String)
+    && !string_contains(s: detail, pattern: pub_other as String)
+}
+
+data unreadable_lamp_is_not_pending_note: String = "A receipt the projection could not READ is not a row nobody has published (review 46148). Pending invites a reader to wait; refused tells them something is broken. Both directions are asserted here because the defect made them the same lamp."
+
+test fn an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published() -> Bool {
+  let unreadable = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourceUnreadable { detail: "input/output error" },
+  )
+  let absent = publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent)
+  unreadable == "refused" && absent == "pending" && unreadable != absent
+}
+
+test fn publication_at_another_head_fails_rather_than_reading_as_progress() -> Bool {
+  publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other) },
+  ) == "failed"
+}
+
+test fn an_absent_publication_receipt_is_pending_not_a_judgment() -> Bool {
+  publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent) == "pending"
+}
+
+test fn an_undecodable_publication_receipt_refuses_rather_than_pending() -> Bool {
+  let refused = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: "not a receipt" },
+  )
+  refused == "refused" && refused != "pending"
+}
+
+test fn an_attempt_with_no_readable_head_refuses_rather_than_pending() -> Bool {
+  let segment = publication_segment_of(
+    subject: PublicationSubjectUnobserved {
+      reason: "the attempt worktree is gone",
+    },
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  )
+  workflow_segment_state_key(state: segment.state) == "refused"
+    && string_contains(s: segment.detail, pattern: "no exact head")
+}
+
+test fn the_publication_readings_are_distinct_states() -> Bool {
+  let bound = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  )
+  let moved = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other) },
+  )
+  let absent = publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent)
+  let wrong_subject = publication_state_at(
+    subject_head: pub_other,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  )
+  bound != moved && moved != absent && bound != absent
+    && wrong_subject != bound && wrong_subject != moved && wrong_subject != absent
 }

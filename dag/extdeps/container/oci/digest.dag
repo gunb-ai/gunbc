@@ -1,0 +1,248 @@
+module extdeps.container.oci.digest
+
+import std.types { NonEmptyStr, String }
+import std.content_hash {
+  Sha256Digest,
+  sha256_hex_digest,
+  content_hash_validate_lower_hex_length,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.oci.digest",
+      decl_name: "OciContentDigest",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data qualified_self_reference_emit_defect_note: String = "WHY first_citation IS A BARE REFERENCE HERE WHILE THE actions_environment PRECEDENT WRITES A DOTTED PATH, recorded because it is a live emitter defect rather than a style preference. Writing first_citation: extdeps.container.oci.digest.extdeps_external_authority_anchor -- the fully qualified self-reference, exactly the form dag/extdeps/github/actions_environment.dag uses -- emits crate::extdeps_cargo::extdeps_external_authority_anchor.clone(): the WRONG MODULE (extdeps_cargo is unrelated to this one) and a fn item rather than a call, so the generated stage0 fails to compile with E0308. The bare same-module reference emits extdeps_external_authority_anchor() correctly.\n\nTHE PRECEDENT NEVER EXERCISED THIS. dag/extdeps/github/actions_environment.dag is not in the regen input closure, so no generated Rust is produced from it and its dotted spelling has never reached the emitter. This module IS in that closure, which is why the defect surfaced here first and why copying the precedent verbatim is not safe.\n\nTHIS IS NOT A DODGE, AND THE DISTINCTION MATTERS (DESIGN.md 5, unmarked workaround): a bare reference to a sibling declaration in the SAME module is the natural spelling, not a respelling chosen to avoid an obstacle. What would have been a workaround is silently picking it and saying nothing, which is why this row exists. The defect is real, is not fixed here, and is not this PR to fix: qualified declaration references in a data initializer resolve to the wrong module and lose their call. DISSOLVE-ON: the emitter resolving a qualified declaration reference to its declaring module and emitting a call, at which point either spelling works and this note deletes."
+
+data oci_content_digest_note: String = "OCI digest authority (image-spec descriptor.md; distribution-spec digest): algorithm-qualified content address with wire form algorithm:encoded. Modelled as OciContentDigest coproduct (review 45466) — OciSha256Digest(Sha256Digest) | OciSha512Digest(OciSha512DigestBody) | OciOtherDigest(OciOtherDigestBody) — so algorithm tag and payload cannot be forged independently. sha256 arm carries std.content_hash.Sha256Digest directly; sha512 body uses OciSha512DigestHex (String where lower_hex_128); other body uses OciOtherDigestAlgorithm (String where oci_other_digest_algorithm — construction-walls reserved sha256/sha512 wire tokens and cites image-spec algorithm grammar algorithm-component ([a-z0-9]+) separated by [+._-], review 45505) plus OciOtherDigestEncoded (String where oci_other_digest_encoded — [a-zA-Z0-9=_-]+ per descriptor.md, review 45479/45731). Equality is substrate structural == on the coproduct (no parallel oci_content_digest_eq predicate). dissolve-on: cite digest-length law per algorithm when a second validated sha512 consumer needs more than length-128 wire check."
+
+fn oci_encoded_digest_char_allowed(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 61
+    || cp == 95
+    || cp == 45
+}
+
+fn oci_encoded_digest_syntax_valid(text: String, index: Int) -> Bool {
+  if index >= text.length() {
+    text.length() > 0
+  } else {
+    if oci_encoded_digest_char_allowed(
+      cp: code_point(substring(s: text, start: index, end: index + 1)),
+    ) {
+      oci_encoded_digest_syntax_valid(text: text, index: index + 1)
+    } else {
+      false
+    }
+  }
+}
+
+fn oci_encoded_digest(text: String) -> OciOtherDigestEncoded? {
+  if oci_other_digest_encoded(value: text) {
+    Present { value: text as OciOtherDigestEncoded }
+  } else {
+    none
+  }
+}
+
+fn oci_digest_algorithm_component_char_allowed(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 122)
+}
+
+fn oci_digest_algorithm_separator_char_allowed(cp: Int) -> Bool {
+  cp == 43 || cp == 46 || cp == 95 || cp == 45
+}
+
+fn oci_digest_algorithm_syntax_valid(text: String, index: Int, in_component: Bool) -> Bool {
+  if index >= text.length() {
+    in_component
+  } else {
+    let cp = code_point(substring(s: text, start: index, end: index + 1))
+    if in_component {
+      if oci_digest_algorithm_component_char_allowed(cp: cp) {
+        oci_digest_algorithm_syntax_valid(
+          text: text,
+          index: index + 1,
+          in_component: true,
+        )
+      } else if oci_digest_algorithm_separator_char_allowed(cp: cp) {
+        oci_digest_algorithm_syntax_valid(
+          text: text,
+          index: index + 1,
+          in_component: false,
+        )
+      } else {
+        false
+      }
+    } else if oci_digest_algorithm_component_char_allowed(cp: cp) {
+      oci_digest_algorithm_syntax_valid(
+        text: text,
+        index: index + 1,
+        in_component: true,
+      )
+    } else {
+      false
+    }
+  }
+}
+
+fn oci_digest_algorithm_wire_holds(algorithm: String) -> Bool {
+  length(algorithm) > 0
+    && oci_digest_algorithm_syntax_valid(text: algorithm, index: 0, in_component: false)
+}
+
+fn oci_other_digest_algorithm(value: String) -> Bool {
+  oci_digest_algorithm_wire_holds(algorithm: value)
+    && value != "sha256"
+    && value != "sha512"
+}
+
+fn oci_other_digest_encoded(value: String) -> Bool {
+  oci_encoded_digest_syntax_valid(text: value, index: 0)
+}
+
+type OciSha512DigestHex = String where lower_hex_128
+
+type OciOtherDigestAlgorithm = String where oci_other_digest_algorithm
+
+type OciOtherDigestEncoded = String where oci_other_digest_encoded
+
+type OciSha512DigestBody {
+  hex: OciSha512DigestHex
+}
+
+type OciOtherDigestBody {
+  algorithm: OciOtherDigestAlgorithm
+  encoded: OciOtherDigestEncoded
+}
+
+type OciContentDigest
+  = OciSha256Digest(Sha256Digest)
+  | OciSha512Digest(OciSha512DigestBody)
+  | OciOtherDigest(OciOtherDigestBody)
+
+fn oci_content_digest_wire_algorithm(d: OciContentDigest) -> String {
+  match d {
+    OciSha256Digest(_) => "sha256"
+    OciSha512Digest(body) => "sha512"
+    OciOtherDigest(body) => body.algorithm as String
+  }
+}
+
+fn oci_content_digest_encoded_hex(d: OciContentDigest) -> String {
+  match d {
+    OciSha256Digest(digest) => digest.hex as String
+    OciSha512Digest(body) => body.hex as String
+    OciOtherDigest(body) => body.encoded as String
+  }
+}
+
+fn render_oci_content_digest_wire(d: OciContentDigest) -> String {
+  concat(
+    oci_content_digest_wire_algorithm(d: d),
+    ":",
+    oci_content_digest_encoded_hex(d: d),
+  )
+}
+
+type OciWireDigestParts {
+  algorithm: String
+  encoded: String
+}
+
+fn oci_wire_digest_parts_from_split(algorithm: String, encoded: String) -> OciWireDigestParts {
+  OciWireDigestParts {
+    algorithm: algorithm,
+    encoded: encoded,
+  }
+}
+
+fn oci_wire_digest_parts(raw: String) -> OciWireDigestParts? {
+  let parts = split(s: raw, delimiter: ":")
+  if length(parts) != 2 {
+    none
+  } else {
+    Present {
+      value: oci_wire_digest_parts_from_split(
+        algorithm: parts.first(),
+        encoded: parts.skip(n: 1).first(),
+      )
+    }
+  }
+}
+
+fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
+  match oci_wire_digest_parts(raw: raw) {
+    Present { value: parts } =>
+      if parts.algorithm == "sha256" {
+        match sha256_hex_digest(hex: parts.encoded) {
+          Present { value: digest } => Present { value: OciSha256Digest(digest) }
+          Absent => none
+        }
+      } else if parts.algorithm == "sha512" {
+        if content_hash_validate_lower_hex_length(
+          text: parts.encoded,
+          expected_hex_digits: 128,
+        ) {
+          Present {
+            value: OciSha512Digest(
+              OciSha512DigestBody {
+                hex: parts.encoded as OciSha512DigestHex,
+              },
+            )
+          }
+        } else {
+          none
+        }
+      } else if !(oci_other_digest_algorithm(value: parts.algorithm)) {
+        none
+      } else {
+        match oci_encoded_digest(text: parts.encoded) {
+          Present { value: encoded } =>
+            Present {
+              value: OciOtherDigest(
+                OciOtherDigestBody {
+                  algorithm: parts.algorithm as OciOtherDigestAlgorithm,
+                  encoded: encoded,
+                },
+              )
+            }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
+}
+
+fn oci_sha256_content_digest(hex: String) -> OciContentDigest? {
+  match sha256_hex_digest(hex: hex) {
+    Present { value: digest } =>
+      Present {
+        value: oci_content_digest_from_validated_sha256(digest: digest)
+      }
+    Absent => none
+  }
+}
+
+fn oci_content_digest_from_validated_sha256(digest: Sha256Digest) -> OciContentDigest {
+  OciSha256Digest(digest)
+}

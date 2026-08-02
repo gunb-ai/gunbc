@@ -245,13 +245,13 @@ fn qualified_rows_match_complete_discoveries(
     })
 }
 
-test fn commit_check_demand_live_roster_is_exactly_49_typed_rows() -> Bool {
+test fn commit_check_demand_live_roster_is_exactly_50_typed_rows() -> Bool {
   let gates = filter(commit_gate_roster, row => check_is_gate(check: row.check))
   let witnesses = filter(commit_gate_roster, row => check_is_witness(check: row.check))
   let fmt = filter(commit_gate_roster, row => check_is_fmt(check: row.check))
-  commit_gate_roster.count() == 49
+  commit_gate_roster.count() == 50
     && gates.count() == 10
-    && witnesses.count() == 38
+    && witnesses.count() == 39
     && fmt.count() == 1
     && commit_gate_roster.count() == gates.count() + witnesses.count() + fmt.count()
 }
