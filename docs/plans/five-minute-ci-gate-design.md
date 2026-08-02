@@ -55,7 +55,7 @@ Registered as roadmap edges where noted; order is binding for dispatch.
 | 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **NEXT** — #7599 owner; first major CI slice after merge |
 | 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **NEXT** under `module-grain-materialization` |
 | 5 | Union program **closed** per #7533; remaining assembly observation → `per-entry-assembly-decomposition` (narrow measured lane) | **CLOSED** / **NEXT** |
-| 6 | This program (`five-minute-ci-gate`) makes the five-minute objective and this graph explicit | this registration |
+| 6 | This program (`five-minute-ci-gate`) makes the bare-minimum-computation contract and this graph explicit; five minutes stays the distress checkpoint (Stage C bound), never the completion criterion | this registration |
 
 **Materialization hierarchy** (step 4 feeds step 3, not a parallel fork):
 
