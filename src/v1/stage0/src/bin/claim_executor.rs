@@ -579,6 +579,7 @@ enum Runnable {
         entries: Vec<ScopedScheduleEntry>,
         scan_dirs: Vec<String>,
         node_frontier_selection: NodeFrontierSelectionMode,
+        execution_authority: ScopedWitnessExecutionAuthority,
         profile: ParsedRunnableProfile,
         clamp: (u128, u128),
         process_isolation: ScopedProcessIsolation,
@@ -604,6 +605,11 @@ enum ScopedProcessIsolation {
     SharedWalkProcess,
     SequentialChildProcess,
     FreshJobProcess,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScopedWitnessExecutionAuthority {
+    InheritedWalkSourceRoots,
 }
 
 /// The runnable's declared effect envelope, read from its profile's `execution_mode`
@@ -1086,6 +1092,22 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 None => return Err("ScopedWitnessBatch missing field `node_frontier_selection`".to_string()),
             };
+            let execution_authority = match ctx.field(batch, "execution_authority") {
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "InheritedWalkSourceRoots") =>
+                {
+                    ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots
+                }
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.execution_authority must be ScopedWitnessExecutionAuthority, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => {
+                    return Err("ScopedWitnessBatch missing field `execution_authority`".to_string())
+                }
+            };
             let resource = match ctx.field(batch, "resource_profile") {
                 Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
                 Some(other) => {
@@ -1150,6 +1172,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 entries,
                 scan_dirs,
                 node_frontier_selection,
+                execution_authority,
                 profile,
                 clamp: (overhead_seconds * 1000, per_unit_ms),
                 process_isolation,
@@ -1396,6 +1419,7 @@ enum BatchUnit {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         node_frontier_selection: NodeFrontierSelectionMode,
+        execution_authority: ScopedWitnessExecutionAuthority,
         execution_mode: ExecutionMode,
     },
 }
@@ -1474,6 +1498,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 entries,
                 scan_dirs,
                 node_frontier_selection,
+                execution_authority,
                 profile,
                 ..
             } => units.push(BatchUnit::ScopedDiscovery {
@@ -1483,6 +1508,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
                 node_frontier_selection: *node_frontier_selection,
+                execution_authority: *execution_authority,
                 execution_mode: profile.execution_mode,
             }),
         }
@@ -1584,6 +1610,15 @@ fn claim_result_for_outcome(
     }
 }
 
+fn scoped_execution_authority_source_roots(
+    authority: ScopedWitnessExecutionAuthority,
+    walk_source_roots: &[String],
+) -> Vec<String> {
+    match authority {
+        ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots => walk_source_roots.to_vec(),
+    }
+}
+
 fn run_batch_unit(
     source_roots: Vec<String>,
     unit: BatchUnit,
@@ -1632,8 +1667,10 @@ fn run_batch_unit(
                 &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
                 &falsifier_self_host_wet_budgets.known_red_entry_paths,
             );
+            let execution_authority_source_roots = roots.clone();
             vec![run_discovery_batch_node(
                 roots,
+                execution_authority_source_roots,
                 scan_dirs,
                 explicit_entries,
                 node_frontier_selection,
@@ -1655,14 +1692,18 @@ fn run_batch_unit(
             source_roots: roots,
             scan_dirs,
             node_frontier_selection,
+            execution_authority,
             execution_mode,
         } => {
             let explicit_entries: Vec<(String, String)> = entries_with_kind
                 .iter()
                 .map(|row| (row.entry.clone(), row.function.clone()))
                 .collect();
+            let execution_authority_source_roots =
+                scoped_execution_authority_source_roots(execution_authority, &source_roots);
             vec![run_discovery_batch_node(
                 roots,
+                execution_authority_source_roots,
                 scan_dirs,
                 explicit_entries,
                 node_frontier_selection,
@@ -2378,6 +2419,7 @@ fn discovery_claim_result(
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
+    execution_authority_source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
     node_frontier_selection: NodeFrontierSelectionMode,
@@ -2406,6 +2448,7 @@ fn run_discovery_batch_node(
         DiscoveryWidthPolicy::Adaptive(governor),
         DiscoveryCorpusOptions {
             node_frontier_selection,
+            execution_authority_source_roots,
             explicit_roster_only: false,
             exclude_substrings,
             discovery_scope_dirs,
@@ -5566,6 +5609,7 @@ fn run_perturb_check(
                         entries,
                         scan_dirs,
                         node_frontier_selection,
+                        execution_authority,
                         profile,
                         clamp,
                         process_isolation,
@@ -5585,6 +5629,7 @@ fn run_perturb_check(
                             .collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         node_frontier_selection: *node_frontier_selection,
+                        execution_authority: *execution_authority,
                         profile: *profile,
                         clamp: *clamp,
                         process_isolation: *process_isolation,
@@ -9420,6 +9465,23 @@ mod tests {
                 "\tcoordinator-observation\tfailed\tworker=scoped:batch-a termination=exited:1 detail=witness row was red\n"
             ),
             "the journal must retain the derived verdict rather than only process completion: {persisted:?}"
+        );
+    }
+
+    #[test]
+    fn scoped_execution_authority_inherits_walk_roots_without_widening_subject_roots() {
+        let walk_roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let subject_roots = vec!["dag".to_string(), "src/v1".to_string()];
+        let authority_roots = scoped_execution_authority_source_roots(
+            ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots,
+            &walk_roots,
+        );
+
+        assert_eq!(authority_roots, walk_roots);
+        assert_eq!(subject_roots, ["dag", "src/v1"]);
+        assert_ne!(
+            authority_roots, subject_roots,
+            "the selector authority must not be fused into the scoped witness subject envelope"
         );
     }
 

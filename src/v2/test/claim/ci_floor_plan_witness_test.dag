@@ -79,7 +79,7 @@ import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec
 import std.realization_schedule {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch, RunnableScopedWitnessBatch,
   RunnableOwnsBatchClamp, runnable_batch_clamp_source,
-  SequentialChildProcess,
+  SequentialChildProcess, InheritedWalkSourceRoots,
   ScopedWitnessExecutionReceiptDecoded, ScopedWitnessExecutionReceiptRefused,
   ScopedWitnessExecuted, ScopedWitnessSelectionSkipped, scoped_witness_execution_receipt_decode,
   FloorWorkerObservation, OrdinaryFloorWorker, FloorWorkerExited, FloorWorkerSignaled,
@@ -335,6 +335,7 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
     && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
     && (v1_claim_scoped_witness_batch.scan_dirs == [])
     && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
+    && (v1_claim_scoped_witness_batch.execution_authority == InheritedWalkSourceRoots {})
     && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
     && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SequentialChildProcess)
     && match runnable_batch_clamp_source(r: target) {

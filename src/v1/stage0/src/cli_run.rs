@@ -12378,6 +12378,14 @@ pub(crate) fn prime_witness_execution_legs<'a>(
     index: &MultiEntryIndex,
     entries: impl IntoIterator<Item = &'a str>,
 ) {
+    prime_witness_execution_legs_from_authority(index, None, entries)
+}
+
+fn prime_witness_execution_legs_from_authority<'a>(
+    subject_index: &MultiEntryIndex,
+    inherited_authority_roots: Option<&[String]>,
+    entries: impl IntoIterator<Item = &'a str>,
+) {
     let mut distinct: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for entry in entries {
         let rel = repo_relative_dag_path(entry);
@@ -12388,14 +12396,21 @@ pub(crate) fn prime_witness_execution_legs<'a>(
     if distinct.is_empty() {
         return;
     }
-    let (graph, indices) =
-        resolve_entry_with_index(index, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "witness execution leg: resolve census authority \
+    let resolved = match inherited_authority_roots {
+        None => resolve_entry_with_index(
+            subject_index,
+            WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY,
+        ),
+        Some(roots) => {
+            resolve_entry_graph_shared(roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+        }
+    };
+    let (graph, indices) = resolved.unwrap_or_else(|e| {
+        panic!(
+            "witness execution leg: resolve census authority \
                      {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY}: {e} (refuse)"
-                )
-            });
+        )
+    });
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     for rel in distinct {
         let leg = match eval_census_string_fn(&ctx, "census_execution_leg_label", &rel) {
@@ -17423,6 +17438,10 @@ pub enum NodeFrontierSelectionMode {
 
 pub struct DiscoveryCorpusOptions {
     pub node_frontier_selection: NodeFrontierSelectionMode,
+    /// Module universe that owns executor decisions such as affected-set selection and witness
+    /// execution-leg classification. Normally identical to `source_roots`; scoped batches
+    /// inherit the enclosing walk roots so executor machinery does not widen the witness subject.
+    pub execution_authority_source_roots: Vec<String>,
     pub explicit_roster_only: bool,
     /// Path-substring exclusion list. Non-plan callers default to
     /// `witness_exclusion_substrings()`; plan-driven paths supply this from
@@ -17463,6 +17482,7 @@ impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
             node_frontier_selection: NodeFrontierSelectionMode::Off,
+            execution_authority_source_roots: vec![],
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
@@ -19534,6 +19554,13 @@ fn run_discovery_corpus_with_options_inner(
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
     let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
+    if options.execution_authority_source_roots.is_empty() {
+        return Err(
+            "discovery execution requires an explicit executor-authority source-root universe"
+                .to_string(),
+        );
+    }
+    let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
     // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
@@ -19604,7 +19631,7 @@ fn run_discovery_corpus_with_options_inner(
     // the post-resolve union so this pre-resolve count stays paired with calibration.
     let preresolve_calibration_started = std::time::Instant::now();
     let pre_resolve_closure_nodes = {
-        let prefix_entries: &[&str] = if selection_enabled {
+        let prefix_entries: &[&str] = if selection_enabled && execution_authority_is_subject {
             &[FLOOR_RUNNER_ENTRY]
         } else {
             &[]
@@ -19652,10 +19679,20 @@ fn run_discovery_corpus_with_options_inner(
     );
     let runner_resolve_started = std::time::Instant::now();
     let floor_runner_ctx = if selection_enabled {
-        // Resolve the floor runner through the SAME shared index as the rows (union-resolve
-        // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
-        // with the roster, so co-resolving here means that prefix is not typechecked twice.
-        match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+        let resolved = if execution_authority_is_subject {
+            // Ordinary discovery consumes one source-root authority, so preserve the shared
+            // prefix resolve and its measured retention behavior.
+            resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
+        } else {
+            // Scoped discovery keeps its subject universe narrow. The selector is an enclosing
+            // walk authority and resolves against that walk's roots without entering the subject
+            // index, digest, or clamp population.
+            resolve_entry_graph(
+                &options.execution_authority_source_roots,
+                FLOOR_RUNNER_ENTRY,
+            )
+        };
+        match resolved {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
@@ -19735,7 +19772,12 @@ fn run_discovery_corpus_with_options_inner(
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
     // per worker — and width is adaptive, so "n is small here" is not a fact that stays
     // true (§6). One build covers the run; workers only read the process-wide memo.
-    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
+    prime_witness_execution_legs_from_authority(
+        &index,
+        (!execution_authority_is_subject)
+            .then_some(options.execution_authority_source_roots.as_slice()),
+        rows.iter().map(|row| row.entry.as_str()),
+    );
 
     // Arm the observation heartbeat's entry total at the same grain the drain walks
     // (entry-groups), now that the roster is known — never a fabricated 0-of-0, and
@@ -19758,6 +19800,7 @@ fn run_discovery_corpus_with_options_inner(
                 &changed_paths,
                 &diff_edits,
                 floor_runner_ctx.as_ref(),
+                execution_authority_is_subject,
                 whole_tree_published_keys.clone(),
                 options.witness_budget_policy(),
                 ShardStyle {
@@ -19871,6 +19914,7 @@ fn run_discovery_corpus_with_options_inner(
                         &changed_paths,
                         &diff_edits,
                         floor_runner_ctx.as_ref(),
+                        execution_authority_is_subject,
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
@@ -19914,6 +19958,8 @@ fn run_discovery_corpus_with_options_inner(
                 ));
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
+            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
+            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
             let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::new();
@@ -19933,6 +19979,7 @@ fn run_discovery_corpus_with_options_inner(
                 let abort_for_worker = abort.clone();
                 let governor_for_worker = governor.clone();
                 let roots = source_roots_owned.clone();
+                let execution_authority_roots = execution_authority_roots_owned.clone();
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
@@ -19973,7 +20020,12 @@ fn run_discovery_corpus_with_options_inner(
                             None => build_multi_entry_index(&roots),
                         };
                         let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                            match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+                            let resolved = if execution_authority_is_subject_for_workers {
+                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
+                            } else {
+                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
+                            };
+                            match resolved {
                                 Ok((graph, source_indices)) => {
                                     Some(make_eval_context(&graph, source_indices, execution_mode))
                                 }
@@ -20013,6 +20065,7 @@ fn run_discovery_corpus_with_options_inner(
                                 &paths,
                                 &seeds,
                                 runner.as_ref(),
+                                execution_authority_is_subject_for_workers,
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
@@ -20354,6 +20407,7 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
+    execution_authority_is_subject: bool,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
     budgets: WitnessBudgetPolicy,
     style: ShardStyle,
@@ -20375,18 +20429,17 @@ fn run_discovery_rows(
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
     };
-    // One context build for the whole roster, on this thread, while its shared index is warm.
-    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
-
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
-    // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
-    // context: the floor runner closure is resolved once per shard and its modules are resident
-    // for the shard's lifetime, so they are part of the memory this count is paired against
-    // (the entry-selection prefix context was retired with the import-closure reground — the
-    // entry_file_touched decision now reads the module-graph facts, no interpreter context).
+    // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
+    // batch's floor-runner prefix shares that subject universe and is included; a scoped batch's
+    // inherited selector authority is deliberately excluded from the subject digest/clamp grain.
     // Row closures fold in below as each entry resolves.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx].into_iter().flatten() {
+    for prefix_ctx in [floor_runner_ctx]
+        .into_iter()
+        .flatten()
+        .filter(|_| execution_authority_is_subject)
+    {
         collect_typed_module_names(
             prefix_ctx.modules.iter().cloned(),
             &prefix_ctx.source_indices,
@@ -25012,6 +25065,7 @@ mod discovery_summary_merge_tests {
             DiscoveryWidthPolicy::Serial,
             DiscoveryCorpusOptions {
                 node_frontier_selection: NodeFrontierSelectionMode::Off,
+                execution_authority_source_roots: roots.clone(),
                 explicit_roster_only: true,
                 exclude_substrings: Vec::new(),
                 ..Default::default()

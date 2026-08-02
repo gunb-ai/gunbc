@@ -13,6 +13,7 @@ use self::OnSuccessRunnableDisposition::*;
 use self::Runnable::*;
 use self::RunnableBatchClampSource::*;
 use self::RunnableMemoryClass::*;
+use self::ScopedWitnessExecutionAuthority::*;
 use self::ScopedWitnessExecutionOutcome::*;
 use self::ScopedWitnessExecutionReceiptDecode::*;
 use self::ScopedWitnessProcessIsolation::*;
@@ -442,6 +443,32 @@ pub struct ScopedWitnessBatchResourceProfile {
     pub process_isolation: ScopedWitnessProcessIsolation,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ScopedWitnessExecutionAuthority {
+    InheritedWalkSourceRoots,
+}
+
+pub fn scoped_witness_execution_authority_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ScopedWitnessExecutionAuthority carries PROVENANCE, not an open-ended placeholder: InheritedWalkSourceRoots means every executor-owned .dag decision used while realizing the scoped batch — currently affected-set selection and witness execution-leg classification — resolves from the enclosing walk's source-root authority. The scoped batch cannot author a second root list, so executor machinery cannot enter or move the witness subject universe, its digest, or its measured clamp basis. The one-variant carrier is therefore a construction wall against re-forking the root fact, not hollow generality.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn scoped_witness_execution_authority_seed_refusal_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "PRE-EXISTING SEED DIAGNOSTIC DEBT, observed by the scoped carrier rather than created by it: cli_run prime_witness_execution_legs panics when witness_entry_eligibility_census cannot resolve, instead of returning a typed located refusal through DiscoverySummary. The panic is fail-closed in effect but loses the actionable result arm and was one cause of an unexplained nonzero worker exit in run 30746409064. dissolve-on: prime_witness_execution_legs returns Result with the eligibility authority entry and inherited execution-authority roots in its error; run_discovery_corpus_with_options projects that error into the existing located discovery refusal and the panic arm deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScopedWitnessBatch {
     pub batch_id: ScopedWitnessBatchId,
@@ -449,6 +476,7 @@ pub struct ScopedWitnessBatch {
     pub entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
     pub scan_dirs: Rc<Vec<String>>,
     pub node_frontier_selection: NodeFrontierSelection,
+    pub execution_authority: ScopedWitnessExecutionAuthority,
     pub execution_mode: ExecutionMode,
     pub resource_profile: Rc<ScopedWitnessBatchResourceProfile>,
 }
@@ -476,6 +504,7 @@ pub fn scoped_witness_batch(
         entries: entries.clone(),
         scan_dirs: scan_dirs.clone(),
         node_frontier_selection: node_frontier_selection.clone(),
+        execution_authority: ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots {},
         execution_mode: resource_profile.runnable.clone().execution_mode.clone(),
         resource_profile: resource_profile.clone(),
     })
@@ -1162,7 +1191,7 @@ pub fn walk_plan_note() -> String {
 pub fn walk_plan_run_stage_claim_executor_seed_deferral() -> String {
     thread_local! {
         static CACHED: String = {
-            "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining typed selection-skipped discovery rows is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.\n\nWHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.\n\nWHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, affected-set selection, and SequentialChildProcess isolation. `scoped_witness_execution_receipt_decoder_accepts_writer_projection`, `scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance`, and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder across execution, honest nonexecution, and refusal. The Rust control `scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome` pins the seed projection so an unaffected row remains present without failing the worker. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, and `floor_worker_signal_overrules_a_completed_terminal_report` pin the coordinator's typed observation boundary and the derived-verdict law. Deleting or flattening the modeled arms, dropping a selection-skipped roster row, accepting receipt absence, normalizing a signal into success, storing an authored outcome, or restoring the old isolation spelling makes one of those controls red.\n\nMIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for.".to_string()
+            "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, `scoped_execution_authority_source_roots`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining typed selection-skipped discovery rows and resolving executor-owned decisions against inherited walk roots are HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.\n\nWHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.\n\nWHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, inherited execution authority, and SequentialChildProcess isolation. `scoped_witness_execution_receipt_decoder_accepts_writer_projection`, `scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance`, and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder across execution, honest nonexecution, and refusal. The Rust controls `scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome` and `scoped_execution_authority_inherits_walk_roots_without_widening_subject_roots` pin the seed projections so an unaffected row remains present without failing the worker and executor-owned decisions consume the enclosing walk roots without entering the witness subject envelope. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, `floor_worker_signal_overrules_a_completed_terminal_report`, and `floor_worker_verdict_reaches_the_durable_journal` pin the coordinator's typed observation boundary, the derived-verdict law, and the surviving out-of-band projection used when the Actions stream drops worker stderr. Deleting or flattening the modeled arms, widening the subject roots with executor dependencies, dropping a selection-skipped roster row, accepting receipt absence, normalizing a signal into success, storing an authored outcome, losing the durable verdict, or restoring the old isolation spelling makes one of those controls red.\n\nMIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1474,6 +1503,8 @@ pub struct SharedWalkProcess;
 pub struct SequentialChildProcess;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FreshJobProcess;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InheritedWalkSourceRoots;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SelectionOff;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
