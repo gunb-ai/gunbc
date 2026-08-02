@@ -6,11 +6,10 @@
 //! authored name list resolves silently. An unrelated module loading the provider also
 //! makes that declaration resolve in a consumer with no provider import edge at all.
 //!
-//! The ignored tests state the intended refusal and deliberately fail on the current
-//! resolver. Wave B will remove `#[ignore]` when it installs the visibility wall. The
-//! active false-green receipt keeps the defect observable in the meantime, while the
-//! positive arm proves an eventual refusal is about visibility rather than fixture
-//! breakage.
+//! Every row executes against the current resolver. The false-green rows assert today's
+//! leniency, so Wave B's visibility wall will make them fail and force their assertions
+//! to flip to located refusals. The positive arm proves an eventual refusal is about
+//! visibility rather than fixture breakage.
 
 use crate::helpers::{compile_multi, diagnostic_messages};
 
@@ -39,17 +38,20 @@ fn hard_messages(files: &[(&str, &str)]) -> Vec<String> {
         .collect()
 }
 
-fn expects_not_imported_refusal(files: &[(&str, &str)]) {
+fn asserts_current_not_imported_false_green(files: &[(&str, &str)], control: &str) {
     let messages = diagnostic_messages(&compile_multi(files));
     assert!(
-        messages.iter().any(|message| {
-            message.contains("NotImported")
-                && (message.contains("unbound")
-                    || message.contains("not imported")
-                    || message.contains("undefined variable"))
-        }),
-        "a located refusal must name the non-visible `NotImported` declaration; got \
-         {messages:?}"
+        hard_messages(files).is_empty(),
+        "FALSE GREEN pinned for Wave B: {control} currently resolves non-visible \
+         `NotImported`; the visibility wall must make this assertion fail before it is \
+         flipped to require a located refusal. Got {messages:?}"
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|message| message.contains("NotImported")),
+        "FALSE GREEN pinned for Wave B: {control} is currently silent; a diagnostic \
+         unexpectedly named `NotImported`: {messages:?}"
     );
 }
 
@@ -135,28 +137,32 @@ fn explicitly_importing_both_declarations_is_green() {
 }
 
 #[test]
-#[ignore = "known red: Wave B must make loaded declarations non-visible unless imported"]
-fn omitted_declaration_is_located_refusal_even_with_pool_homonym() {
+fn homonymous_provider_does_not_ambiguate_selective_import_false_green() {
     let consumer = "module visibility_fixture.selective_consumer\n\
         import visibility_fixture.provider { Imported }\n\
         import visibility_fixture.homonym_provider { HomonymAnchor }\n\
         data observed: Int = NotImported\n";
-    expects_not_imported_refusal(&[
-        ("provider.dag", PROVIDER),
-        ("homonym_provider.dag", HOMONYM_PROVIDER),
-        ("consumer.dag", consumer),
-    ]);
+    asserts_current_not_imported_false_green(
+        &[
+            ("provider.dag", PROVIDER),
+            ("homonym_provider.dag", HOMONYM_PROVIDER),
+            ("consumer.dag", consumer),
+        ],
+        "a homonymous loaded provider neither refuses nor creates ambiguity",
+    );
 }
 
 #[test]
-#[ignore = "known red: Wave B must prevent transitive imports from conferring visibility"]
-fn direct_imports_are_not_transitive() {
+fn direct_import_chain_currently_confers_transitive_visibility() {
     let consumer = "module visibility_fixture.chain_consumer\n\
         import visibility_fixture.bridge { BridgeAnchor }\n\
         data observed: Int = NotImported\n";
-    expects_not_imported_refusal(&[
-        ("provider.dag", PROVIDER),
-        ("bridge.dag", DIRECT_IMPORT_BRIDGE),
-        ("consumer.dag", consumer),
-    ]);
+    asserts_current_not_imported_false_green(
+        &[
+            ("provider.dag", PROVIDER),
+            ("bridge.dag", DIRECT_IMPORT_BRIDGE),
+            ("consumer.dag", consumer),
+        ],
+        "a direct import by the bridge incorrectly confers transitive visibility",
+    );
 }
