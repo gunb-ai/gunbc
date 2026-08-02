@@ -61,6 +61,8 @@ data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
 
 data ci_floor_phase_journal_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, header log, prefixed file read, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text."
 
+data ci_floor_phase_journal_runner_scaffold_comment: String = concat("# ", ci_floor_phase_journal_shell_emit_dissolution_trigger)
+
 fn ci_floor_peak_run(command: String) -> Run {
   Run {
     command: command,
@@ -194,7 +196,10 @@ fn ci_floor_phase_journal_if() -> PipelineStep {
 fn ci_floor_peak_post_pipeline() -> Pipeline {
   Pipeline {
     steps: concat(
-      [ci_floor_phase_journal_if()],
+      [
+        ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
+        ci_floor_phase_journal_if()
+      ],
       concat(ci_floor_peak_cgroup_locate_steps(), [ci_floor_peak_post_peak_if()])
     ),
     on_failure: FailFast
