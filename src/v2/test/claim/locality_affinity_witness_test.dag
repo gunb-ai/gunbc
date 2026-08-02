@@ -8,7 +8,7 @@ import std.machine_shape {
   execution_shape_independent_lanes,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count }
-import std.types { ContentHash }
+import std.content_hash { ContentHash }
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }

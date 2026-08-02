@@ -60,7 +60,7 @@ data roadmap_css_lift_parity_digest: String = "8c17e1aa2f548e98"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {
-  content_hash_atom(value: s as NonEmptyStr) as String
+  content_hash_atom(value: s as NonEmptyStr).digest as String
 }
 
 fn roadmap_css_derived_digest() -> String {

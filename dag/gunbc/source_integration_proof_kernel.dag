@@ -1,6 +1,7 @@
 module gunbc.source_integration_proof_kernel
 
-import std.types { Bool, ContentHash, Int, List, NonEmptyStr }
+import std.content_hash { ContentHash }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.integer { PositiveInt }
 import gunbc.source_integration_landing_spine {
   LandingProposalContract,

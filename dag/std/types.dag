@@ -182,7 +182,6 @@ type LeaseToken   = NonEmptyStr where brand("LeaseToken")
 type WorkerId     = NonEmptyStr where brand("WorkerId")
 type CommentId    = NonEmptyStr where brand("CommentId")
 type SignalKey    = NonEmptyStr where brand("SignalKey")
-type ContentHash  = NonEmptyStr where brand("ContentHash")
 
 type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
 type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")

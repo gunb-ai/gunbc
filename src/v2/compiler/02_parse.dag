@@ -44,6 +44,7 @@ import v2.std.node {
   node_occurrence_minted,
   node_synthetic,
   node_with_occurrence_id,
+  symbol_identity_digest,
   SyntheticOccurrence,
   well_formed
 }
@@ -443,7 +444,7 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
 fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
   fold_list(
     xs: lexeme,
-    empty: atom_identity_hash(s: ^parse_lexeme_digest_nil),
+    empty: symbol_identity_digest(sym: ^parse_lexeme_digest_nil),
     cons: fn(acc, ch) {
       combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
     }
@@ -453,14 +454,14 @@ fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
 fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
   fold_list(
     xs: all_tokens,
-    empty: atom_identity_hash(s: ^parse_token_stream_digest_nil),
+    empty: symbol_identity_digest(sym: ^parse_token_stream_digest_nil),
     cons: fn(acc, tok) {
       combine_hash(
         a: acc,
         b: combine_hash(
           a: combine_hash(
-            a: atom_identity_hash(s: tok.class),
-            b: atom_identity_hash(s: tok.file)
+            a: symbol_identity_digest(sym: tok.class),
+            b: symbol_identity_digest(sym: tok.file)
           ),
           b: combine_hash(
             a: combine_hash(
@@ -512,7 +513,7 @@ fn parse_table_empty() -> ParseTable {
     provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
     materialization: v2.compiler.materialization_carriers.parse_table_memo_materialization(),
     grammar_digest: content_hash(n: grammar_empty_node()),
-    token_stream_digest: atom_identity_hash(s: ^parse_table_empty_token_stream),
+    token_stream_digest: symbol_identity_digest(sym: ^parse_table_empty_token_stream),
     entries: empty_map(),
     memo_hits: 0,
     memo_misses: 0,
@@ -527,7 +528,7 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
     a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
     b: combine_hash(
       a: byte_limb_hash_peano_digest(limb: key.position),
-      b: atom_identity_hash(s: key.production)
+      b: symbol_identity_digest(sym: key.production)
     )
   )
 }

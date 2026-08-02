@@ -10,7 +10,8 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
 }
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data }
-import std.types { NonEmptyStr, ContentHash }
+import std.types { NonEmptyStr }
+import std.content_hash { ContentHash }
 
 data srv4_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
   payload: srv4_ubuntu_autoinstall_on_iso,
