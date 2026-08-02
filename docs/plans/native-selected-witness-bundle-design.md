@@ -25,7 +25,7 @@ SelectedWitnessPlan
 3. each native member's witness identity (`entry`, `function`, subject digest);
 4. each member's native realization family and realization digest.
 
-This is the structural fnv1a64 `ContentHash` family, not an OCI or cryptographic digest. The carrier states that boundary explicitly until `feature:content-hash-family-grounded` makes the distinction structural. The host realization continues to add the existing `artifact_realization_digest` over materialized files and build argv and the resolved-build-context identity before trusting a warm marker. Thus a subject, compiler, emitted dispatcher, tool, environment, or Cargo-configuration change cannot serve an old binary.
+This is `std.content_hash.Fnv1a64Structural`, not the subject-generic `ContentHash` union and not an OCI or cryptographic digest. The selected witness, realization, compiler, bundle, and execution-roster identities all carry that family structurally, and compose only through `content_hash_combine_structural` and `content_hash_tagged_structural`. The host realization continues to add the existing `artifact_realization_digest` over materialized files and build argv and the resolved-build-context identity before trusting a warm marker. Thus a subject, compiler, emitted dispatcher, tool, environment, or Cargo-configuration change cannot serve an old binary.
 
 This first slice chooses `OneSelectedBundle`: the selected subset is three tiny members in one already-proven logic family (`meet`, `join`, `complement`), so a shard boundary would add another process and artifact without isolating a cost or capability difference. The stable-shard arm is modeled for the later whole-selected-set slice; changing policy changes bundle identity.
 
