@@ -82,15 +82,45 @@ fn pr_floor_scheduling_disposition(
   primary: WitnessConsumerCadence,
   ci_enrolled: Bool
 ) -> SchedulingDisposition {
-  if primary == DiscoverySelection { SchedulingEnrolled } else { disposition_when_bool(enrolled: ci_enrolled) }
+  match primary {
+    DiscoverySelection => SchedulingEnrolled
+    FalsifierSelfHostWet => disposition_when_bool(enrolled: ci_enrolled)
+    FalsifierRehomedBinWet => disposition_when_bool(enrolled: ci_enrolled)
+    FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
+    BinWitnessWet => disposition_when_bool(enrolled: ci_enrolled)
+    QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
+    OfflineLocalRecipe => disposition_when_bool(enrolled: ci_enrolled)
+    FixtureExplicitRoster => disposition_when_bool(enrolled: ci_enrolled)
+    NoConsumer => disposition_when_bool(enrolled: ci_enrolled)
+  }
 }
 
 fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  if primary == FalsifierSelfHostWet { SchedulingEnrolled } else if primary == FalsifierRehomedBinWet { SchedulingEnrolled } else if primary == BinWitnessWet { SchedulingEnrolled } else if primary == OfflineLocalRecipe { SchedulingDark } else { SchedulingExcluded }
+  match primary {
+    FalsifierSelfHostWet => SchedulingEnrolled
+    FalsifierRehomedBinWet => SchedulingEnrolled
+    BinWitnessWet => SchedulingEnrolled
+    OfflineLocalRecipe => SchedulingDark
+    DiscoverySelection => SchedulingExcluded
+    FalsifierSubstrateLongLane => SchedulingExcluded
+    QuarantineProbeExpectRed => SchedulingExcluded
+    FixtureExplicitRoster => SchedulingExcluded
+    NoConsumer => SchedulingExcluded
+  }
 }
 
 fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  if primary == FalsifierSelfHostWet { SchedulingEnrolled } else if primary == FalsifierRehomedBinWet { SchedulingEnrolled } else if primary == FalsifierSubstrateLongLane { SchedulingEnrolled } else if primary == QuarantineProbeExpectRed { SchedulingEnrolled } else { SchedulingExcluded }
+  match primary {
+    FalsifierSelfHostWet => SchedulingEnrolled
+    FalsifierRehomedBinWet => SchedulingEnrolled
+    FalsifierSubstrateLongLane => SchedulingEnrolled
+    QuarantineProbeExpectRed => SchedulingEnrolled
+    DiscoverySelection => SchedulingExcluded
+    BinWitnessWet => SchedulingExcluded
+    OfflineLocalRecipe => SchedulingExcluded
+    FixtureExplicitRoster => SchedulingExcluded
+    NoConsumer => SchedulingExcluded
+  }
 }
 
 fn scheduling_disposition_for_primary_cadence(
