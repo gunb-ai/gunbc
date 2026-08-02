@@ -1,8 +1,57 @@
 module v2.test.claim.infer_self_grounding_wall
 
+import gunbc.guarantee_probe_corpus {
+  v2_self_grounding_frontier_class,
+  v2_infer_eval_path_id,
+  v2_frontier_red_probe,
+  guarantee_probe_paths,
+  build_v2_phase_receipt,
+}
+import gunbc.guarantee_measurement {
+  join_receipt_to_path,
+  ReceiptJoined,
+  ReceiptPathUnknown,
+  ReceiptPathDuplicate,
+  InferToEval,
+  AcceptedCounted,
+}
+import v2.compiler.infer {
+  infer,
+  canonical_grounding_for_node,
+  canonical_grounding_from_derived_type,
+  canonical_grounding_admits_infer_facts,
+  inferred_facts_witness_for_node,
+  inferred_facts_resolved_type,
+  CanonicalGrounding,
+  CanonicalGroundingWitness,
+  StructuralPropertyWitness,
+}
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one }
+import v2.std.algebra { list_snoc_item }
+import v2.std.diagnostic { Accepted, Rejected, Some, None }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Node,
+  Edge,
+  TypeNode,
+  ComputationNode,
+  Atom,
+  Conj,
+  Disj,
+  Value,
+  Symbol,
+  SyntheticOccurrence,
+  Named,
+}
+import v2.std.witness { Holds, Violates }
+import std.types { NonEmptyStr, Bool, CommitSha }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wall_subject_note: String = "Discriminating witnesses for the v2 self-grounding wall. The defect these pin was measured by execution on main at a589c5f0179: v2's infer routed nine of the closed vocabulary's twelve node kinds through solve_constraints with the singleton candidate set [root] under a predicate reducing to root == root, and stamped the result canonical. Because a grounding's structural evidence IS the node's resolved type, every such node was typed as ITSELF. Two arms are asserted in both directions: the construction authority refuses self-evidence (and still accepts a real derived type), and canonical_grounding_for_node — the reader 06_translate's coerce_grounded_node funnels through — now refuses the Conj/Disj groundings it previously handed back with evidence == source."
+data probe_subject_revision_placeholder: CommitSha = "0000000000000000000000000000000000000000"
+data probe_harness_revision_placeholder: CommitSha = "1111111111111111111111111111111111111111"
+
+data wall_subject_note: String = "Discriminating witnesses for the v2 self-grounding wall. The defect these pin was measured by execution on main at a589c5f0179: v2's infer routed nine of the closed vocabulary's twelve node kinds through solve_constraints with the singleton candidate set [root] under a predicate reducing to root == root, and stamped the result canonical. Because a grounding's structural evidence IS the node's resolved type, every such node was typed as ITSELF. Two arms are asserted in both directions: the construction authority refuses self-evidence (and still accepts a real derived type), and canonical_grounding_for_node — the reader 06_translate's coerce_grounded_node funnels through — now refuses the Conj/Disj groundings it previously handed back with evidence == source. Executing frontier witnesses below also join gunbc.guarantee_probe_corpus InferToEval identities (v2-self-grounding-frontier / v2-infer-eval / v2-self-grounding-frontier-value-red)."
 
 fn wall_atom(s: Symbol) -> Node {
   Node {
@@ -193,4 +242,25 @@ test fn wall_malformed_bool_payload_is_not_grounded_or_discharged() -> Bool {
 test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool {
   wall_grounding_for_node_refused(root: wall_malformed_int_with_extra_payload())
     && wall_infer_counts_frontier(root: wall_malformed_int_with_extra_payload())
+}
+
+test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
+  let root = wall_value_node()
+  wall_resolved_type_refused(root: root)
+    && wall_infer_counts_frontier(root: root)
+    && match join_receipt_to_path(
+      receipt: build_v2_phase_receipt(
+        class: v2_self_grounding_frontier_class,
+        path: v2_infer_eval_path_id,
+        probe: v2_frontier_red_probe,
+        observed: AcceptedCounted { diagnostic_class: "GroundingNotDerived" as NonEmptyStr, count: 1 },
+        subject_revision: probe_subject_revision_placeholder,
+        harness_revision: probe_harness_revision_placeholder,
+      ),
+      paths: guarantee_probe_paths(),
+    ) {
+      ReceiptJoined { path: p } => p.acceptance_boundary == InferToEval
+      ReceiptPathUnknown { receipt_path: _ } => false
+      ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+    }
 }

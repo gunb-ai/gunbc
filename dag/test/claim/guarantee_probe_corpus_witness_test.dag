@@ -33,19 +33,14 @@ import gunbc.guarantee_probe_corpus {
   observation_is_clean,
   observation_refused_count,
   build_v1_compile_receipt,
-  build_v2_phase_receipt,
   receipt_joins_v1_compile_path,
   census_blocking_count_for_class,
   census_any_count_for_class,
   probe_ids_match_canonical_order,
 }
 import gunbc.guarantee_measurement {
-  GuaranteeMeasurementReceipt,
-  ProbeObservation, RefusedTyped, AcceptedClean, AcceptedCounted, ExecutionDiverged, ProbeNotRunnable,
-  AcceptanceBoundary, InferToEval, InferToTranslate,
   observed_is_verdict,
   guarantee_class_ids_unique, guarantee_path_ids_unique,
-  join_receipt_to_path, ReceiptJoined,
   probe_set_digest,
 }
 import gunbc.compile_diagnostic_census {
@@ -61,7 +56,10 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), gunbc#7485 (InferToEval self-grounding frontier), and gunbc#7555 (InferToTranslate underived-refusal identities reserved) execute through gunbc.guarantee_measurement identities. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 executing probes remain in src/v2/test/claim/infer_self_grounding_wall_test.dag, keyed to the same identities."
+data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), gunbc#7485 (InferToEval self-grounding frontier), and gunbc#7555 (InferToTranslate underived-refusal identities reserved) execute through gunbc.guarantee_measurement identities. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag; InferToTranslate identity rows are declared here until #7555 lands executing probes."
+
+data probe_subject_revision_placeholder: CommitSha = "0000000000000000000000000000000000000000"
+data probe_harness_revision_placeholder: CommitSha = "1111111111111111111111111111111111111111"
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -154,6 +152,8 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
     probe: call_mislabel_red_probe,
     census: census_of(source: call_mislabel_source),
     expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+    subject_revision: probe_subject_revision_placeholder,
+    harness_revision: probe_harness_revision_placeholder,
   )
   receipt_joins_v1_compile_path(receipt: receipt)
     && (receipt.class as String) == (call_label_surplus_class as String)
@@ -168,6 +168,8 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
     probe: method_missing_red_probe,
     census: census,
     expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
+    subject_revision: probe_subject_revision_placeholder,
+    harness_revision: probe_harness_revision_placeholder,
   )
   observed_is_verdict(o: receipt.observed)
     && observation_refused_count(o: receipt.observed) == census_blocking_count_for_class(census: census, wanted: "MethodNotFound")
@@ -179,6 +181,8 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
     probe: call_shape_green_probe,
     census: census_of(source: call_shape_green_source),
     expectation: ExpectZeroDiagnostics,
+    subject_revision: probe_subject_revision_placeholder,
+    harness_revision: probe_harness_revision_placeholder,
   )
   observation_is_clean(o: receipt.observed)
 }
@@ -260,41 +264,9 @@ test fn v2_translate_identities_are_declared() -> Bool {
     && (v2_translate_underived_red_probe as String) == "v2-translate-underived-refusal-conj-red"
 }
 
-test fn v2_translate_path_joins_the_registry() -> Bool {
-  match join_receipt_to_path(
-    receipt: build_v2_phase_receipt(
-      class: v2_translate_underived_refusal_class,
-      path: v2_infer_translate_path_id,
-      probe: v2_translate_underived_red_probe,
-      observed: RefusedTyped { diagnostic_class: "translate_rejected_grounding_not_derived" as NonEmptyStr, count: 1 },
-    ),
-    paths: guarantee_probe_paths(),
-  ) {
-    ReceiptJoined { path: p } => (p.acceptance_boundary == InferToTranslate)
-    ReceiptPathUnknown { receipt_path: _ } => false
-    ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
-  }
-}
-
 test fn v2_frontier_identities_are_declared() -> Bool {
   (v2_infer_eval_path_id as String) == "v2-infer-eval"
     && (v2_self_grounding_frontier_class as String) == "v2-self-grounding-frontier"
     && (v2_frontier_red_probe as String) == "v2-self-grounding-frontier-value-red"
     && (v2_frontier_green_probe as String) == "v2-self-grounding-frontier-derived-green"
-}
-
-test fn v2_infer_eval_path_joins_the_registry() -> Bool {
-  match join_receipt_to_path(
-    receipt: build_v2_phase_receipt(
-      class: v2_self_grounding_frontier_class,
-      path: v2_infer_eval_path_id,
-      probe: v2_frontier_red_probe,
-      observed: AcceptedCounted { diagnostic_class: "GroundingNotDerived" as NonEmptyStr, count: 1 },
-    ),
-    paths: guarantee_probe_paths(),
-  ) {
-    ReceiptJoined { path: p } => (p.acceptance_boundary == InferToEval)
-    ReceiptPathUnknown { receipt_path: _ } => false
-    ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
-  }
 }

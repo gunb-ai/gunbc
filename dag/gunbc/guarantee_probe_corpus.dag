@@ -27,13 +27,13 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 
-data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), gunbc#7485 (InferToEval self-grounding frontier), and gunbc#7555 (InferToTranslate underived-refusal, in flight — identities reserved, executing probes coordinate with merry-cat-407) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. Each row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path; v2 phase-boundary probes key InferToEval/InferToTranslate paths with observations produced by the existing src/v2/test/claim infer witnesses rather than compile_dag_diagnostic_census. No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier."
+data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), gunbc#7485 (InferToEval self-grounding frontier), and gunbc#7555 (InferToTranslate underived-refusal, in flight — identities reserved, executing translate probes coordinate with merry-cat-407) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. Each row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag; InferToTranslate identities are declared here but executing probes land with #7555. No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier."
 
 data guarantee_probe_corpus_path_scope_note: String = "THREE PATHS FOR THE LANDED WALLS: v1-compile-rust is subject_grain SyntheticProgram, acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path compile_diagnostic_census measures. v2-infer-eval is the same subject grain with acceptance_boundary InferToEval and realization_target InterpreterRealization — the path gunbc#7485's GroundingNotDerived frontier diagnostic lives on. v2-infer-translate is the same subject grain with acceptance_boundary InferToTranslate and realization_target InterpreterRealization — the path gunbc#7555's translate-underived-refusal diagnostic lives on. A receipt keyed to one path must not claim coverage the other measures (DESIGN 4b minimum-across-paths discipline)."
 
 data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists probes in stable lexicographic order by branded id string. Callers must not re-sort; the roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt but this slice pins PLACEHOLDER constants in the witness harness — the two-revision baseline execution names real commits and probe_set_digest at enrollment time; slice 1 proves the identity join and observation bridge execute green with stable placeholders."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_phase_receipt take both from the caller — witness fixtures own placeholder revisions until the baseline stage names real commits; the corpus module does not fabricate provenance inside the builders."
 
 data v1_compile_rust_path_id: GuaranteePathId = "v1-compile-rust" as GuaranteePathId
 data v2_infer_eval_path_id: GuaranteePathId = "v2-infer-eval" as GuaranteePathId
@@ -103,8 +103,8 @@ data v2_translate_underived_green_probe: GuaranteeProbeId = "v2-translate-underi
 
 fn guarantee_probe_ids() -> List<GuaranteeProbeId> {
   [
-    call_mislabel_red_probe,
     call_shape_green_probe,
+    call_mislabel_red_probe,
     call_surplus_red_probe,
     conformance_green_probe,
     conformance_scalar_red_probe,
@@ -118,8 +118,8 @@ fn guarantee_probe_ids() -> List<GuaranteeProbeId> {
 }
 
 data canonical_probe_id_strings: List<String> = [
-  "call-label-surplus-mislabel-red",
   "call-label-surplus-green-control",
+  "call-label-surplus-mislabel-red",
   "call-label-surplus-surplus-red",
   "declared-conformance-ground-green-control",
   "declared-conformance-ground-scalar-red",
@@ -161,13 +161,6 @@ type ProbeExpectation
 
 fn census_row_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
   count(rows)
-}
-
-fn census_has_any_rows(census: CompileDiagnosticCensus) -> Bool {
-  match census {
-    CensusObserved { rows: rows } => census_row_count(rows: rows) > 0
-    CensusNotRunnable { cause: _ } => false
-  }
 }
 
 fn census_blocking_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int {
@@ -270,21 +263,20 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus, expectation: P
   }
 }
 
-data probe_subject_revision_placeholder: CommitSha = "0000000000000000000000000000000000000000"
-data probe_harness_revision_placeholder: CommitSha = "1111111111111111111111111111111111111111"
-
 fn build_v1_compile_receipt(
   class: GuaranteeClassId,
   probe: GuaranteeProbeId,
   census: CompileDiagnosticCensus,
   expectation: ProbeExpectation,
+  subject_revision: CommitSha,
+  harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
   GuaranteeMeasurementReceipt {
     class: class,
     path: v1_compile_rust_path_id,
     probe: probe,
-    subject_revision: probe_subject_revision_placeholder,
-    harness_revision: probe_harness_revision_placeholder,
+    subject_revision: subject_revision,
+    harness_revision: harness_revision,
     probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
     observed: probe_observation_from_census(census: census, expectation: expectation),
   }
@@ -303,13 +295,15 @@ fn build_v2_phase_receipt(
   path: GuaranteePathId,
   probe: GuaranteeProbeId,
   observed: ProbeObservation,
+  subject_revision: CommitSha,
+  harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
   GuaranteeMeasurementReceipt {
     class: class,
     path: path,
     probe: probe,
-    subject_revision: probe_subject_revision_placeholder,
-    harness_revision: probe_harness_revision_placeholder,
+    subject_revision: subject_revision,
+    harness_revision: harness_revision,
     probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
     observed: observed,
   }
