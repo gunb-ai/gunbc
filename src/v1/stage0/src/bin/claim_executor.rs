@@ -1223,6 +1223,27 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
 /// naming neither the refusing arm nor the offending path. Both surfaces now read the one
 /// derivation (`cli_run::failure_receipt_companion`) and the one runner
 /// (`cli_run::run_claim_failure_receipt`); a witness with no companion is unchanged.
+///
+/// HAND-RUST DISPOSITION (DESIGN §7 seed-shrinks-toward-zero; review 47022 asked for this
+/// receipt explicitly). This edit is DEFERRED seed retention, not a new scaffold and not a
+/// census movement: it adds zero tracked-Rust paths (both touched files are already tracked
+/// and neither carries a `rust_source_lifecycle_residue_rows` row), so the path-grain
+/// population `gunbc.stage0_rust_honest_frontier_projection` measures is unchanged by it.
+/// The line-grain axis that would price it, `HandAuthoredLOC`, is one of the three axes that
+/// projection's own note declares explicitly deferred, so there is no line census to shrink
+/// here and claiming one would be a fabricated receipt.
+///
+/// Lane: **v1 exit**, whose fourth finish line is zero hand-maintained Rust.
+/// ROADMAP row: "Get hand-written Rust in this repository down to zero"
+/// (authority `dag/gunbc/v1_deletion_plan.dag`).
+/// Dissolution trigger: this projection is floor-runner plumbing and has no independent
+/// lifetime — it is deleted WITH `claim_executor` when witness execution leaves the
+/// hand-maintained seed runner, not migrated ahead of it. Writing the receipt in `.dag`
+/// first is not available: the failure-receipt channel is the seed's own witness-reporting
+/// surface, and `.dag` has no print primitive to surface a reason through.
+///
+/// The alternative was to leave the reason discarded, which is the DESIGN §5 trap this whole
+/// PR exists to close — a refusal that cannot be located is not a refusal anyone can act on.
 fn claim_result_for_outcome(
     ctx: &InterpContext,
     function: String,
