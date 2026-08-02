@@ -1,5 +1,26 @@
 # Emission admission + stage-aware pipeline (declared-change vs regression)
 
+> **ROUGH DRAFT — merged before design review completed.** This document does not
+> authorize promotion, warm reuse, recovery-anchor release, or deletion of a prior
+> compiler generation. Candidate/shadow generation may continue. Superseded by the
+> next amendment.
+>
+> Nine corrections are outstanding against this revision, three of them blocking:
+> `FixForwardProof` is named but undefined and must be deleted as a free-standing
+> concept (the complete `SuccessorCapabilityReceipt`, derived from an actual
+> `RequirementDelta`, is the proof); the first accepted generation has no origin and
+> needs a structurally distinct `BootstrapGenesis` constructor that the ordinary
+> promotion constructor cannot produce; and no state names the loss of every trusted
+> fix-forward path (`NoTrustedFixForwardPath`). Also outstanding: `StageStamp` is
+> named but undefined and must become a total stage-execution receipt;
+> `RequirementRevision` must be split from `ValidationRevision`; `RecoveryAnchor`
+> must not reference a future state at construction; "formatting-only" must be
+> proved by reachability rather than authored; the stage order must be corrected;
+> and the witness table must be rewritten around the mutation that changes each
+> verdict.
+>
+> No roadmap acceptance and no promotion authority derives from this document.
+
 **Status:** design-only (model-before-implement). This document is the deliverable for
 work item `node://adhoc-48a1f19c-1f8` (session calm-eagle-92). No load-bearing `.dag`
 carrier lands in the design PR; each implementation stage below is a separately dispatched,
@@ -472,9 +493,9 @@ admission. A human may **not** override missing affected-set or requirement evid
 
 ---
 
-## 11. Sign-off bar
+## 11. Sign-off bar (NOT MET — see the rough-draft banner)
 
-This design is ready for operator merge when:
+This bar was written before review and is retained as the record of what it asked for. It is superseded: the nine corrections in the banner are the real bar. This design was NOT ready for operator merge when it merged, and the list below did not catch that, because every item it names is satisfiable while the highest-stakes concepts stay undefined:
 
 1. All symbols in §2 resolve on main (grep-verified).
 2. §3 obligations are explicit — not reduced to declared-change + lineage alone.
