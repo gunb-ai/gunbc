@@ -506,7 +506,7 @@ data lens_contract_vacuity: LensContract = {
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
       entry: "src/v2/test/claim/vacuity_consumer_witness_test.dag",
-      function: "vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate",
+      function: "vacuity_consumer_witness_derived_equals_classified_sites",
       kind: CorpusWitnessKind
     }
   },

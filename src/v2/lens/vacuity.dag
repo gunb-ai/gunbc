@@ -170,6 +170,8 @@ fn vacuity_same_eval_is_literal_pair(record: VacuityEvidenceRecord) -> Bool {
   record.lhs_provenance == LiteralOracle && record.rhs_provenance == LiteralOracle
 }
 
+data vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolution_note: String = "🟡 dissolve-on: vacuity_operand_provenance_is_live_snapshot_duplicate_partner is a second hand-rolled subset predicate over TestClaimOperandProvenance, sibling to operand_provenance_is_independent_oracle (line 51's note) but not discharged by it — each coproduct-classifying predicate carries its own disposition rather than inheriting one from a neighbor (review 46886, calm-badger-682 relay). Same trigger as the sibling: DISSOLVES WHEN provenance is read from the containment-tree projection and live-snapshot-duplicate membership is construction-side (illegal states unrepresentable), or when a single canonical accessor over TestClaimOperandProvenance answers both this and the independent-oracle question, replacing both hand-matched predicates at once (never two accessors surviving side by side once one canonical one exists — §3 single authority)."
+
 fn vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: TestClaimOperandProvenance) -> Bool {
   match p {
     LiteralOracle => true
