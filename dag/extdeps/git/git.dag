@@ -819,7 +819,7 @@ service git.Core {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["git", "-C", "{repo}", "init", "-q"] }
+    transport shell { argv: [shape_git_init_in_repo_argv(repo: repo)] }
     exit {
       0 => Unit
       nonzero => String "Init failed"
@@ -866,7 +866,7 @@ fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
 }
 
 fn shape_git_init_in_repo_argv(repo: FilePath) -> List<String> {
-  ["-C", repo as String, "init", "-q"]
+  ["git", "-C", repo as String, "init", "-q"]
 }
 
 fn shape_git_bare_fetch_argv(
