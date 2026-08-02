@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""OFFLINE AUTHORING TOOL — HALF 2 host-effect + TSV host serialization.
+"""OFFLINE AUTHORING TOOL — HALF 2 host-effect + labeled→buckets + TSV serialize.
 
 NEVER invoked from CI, claim_executor, compile-clean, or any enrolled floor
 consumer. Checked artifacts are the OUTPUT rows (SHA-pinned TSVs +
 type_ref_census_sha in authority.dag).
 
-HALF 1 PURE — DISSOLVED: census→bucket partition is
-  gunbc.type_ref_binding_authority_debt.roster_pure_regen
-  type_ref_fold_labeled_sites_to_roster_buckets
-Do not re-implement that fold here.
+SINGLE AUTHORITY for census→bucket partition (review 47277): this script.
+A prior unused roster_pure_regen.dag fold was deleted — it claimed HALF 1
+while this file still partitioned. Dissolve-on:
+  type_ref_roster_pure_regen_dissolve_trigger
+(enrolled modeled fold becomes sole partition; this arm deletes or calls it).
 
 HALF 2 HOST-EFFECT — deliberate/incidental execution discriminator
 (compile as-is vs bind-patched scratch). Documented authoring-time measurement
-PROCEDURE. This script may run that discriminator and host-serialize TSV
-outputs that mirror the .dag fold's buckets.
+PROCEDURE (type_ref_roster_host_effect_classify_procedure_note).
 
 Authority: gunbc.type_ref_binding_authority_debt
 """
@@ -167,6 +167,42 @@ def exec_nonfixture(root: Path, gunbc: Path, name: str, file: str) -> str:
     return "undecidable_asserting_control_harness"
 
 
+def classify_site(
+    root: Path, gunbc: Path, name: str, file: str, start: int, end: int
+) -> tuple[str, tuple]:
+    """HALF 2: return (kind, row) where kind is incidental|expect_red|unclassified."""
+    if not in_subset(root, file):
+        return ("incidental", (name, file, start, end))
+    if "type_ref_fail_open_probe" in file:
+        reason = exec_fixture(root, gunbc, name, file)
+        if reason == "exec_expect_red_fails_if_binds":
+            return ("expect_red", (name, file, start, end, reason))
+        return ("unclassified", (name, file, start, end, reason))
+    reason = exec_nonfixture(root, gunbc, name, file)
+    if reason.startswith("exec_no_control"):
+        return ("incidental", (name, file, start, end))
+    if reason.startswith("exec_"):
+        return ("expect_red", (name, file, start, end, reason))
+    return ("unclassified", (name, file, start, end, reason))
+
+
+def fold_labeled_sites_to_roster_buckets(
+    labeled: list[tuple[str, tuple]],
+) -> tuple[list[tuple], list[tuple], list[tuple]]:
+    """Sole labeled→buckets partition (offline host; see dissolve trigger)."""
+    incidental: list[tuple] = []
+    deliberate: list[tuple] = []
+    unclassified: list[tuple] = []
+    for kind, row in labeled:
+        if kind == "incidental":
+            incidental.append(row)
+        elif kind == "expect_red":
+            deliberate.append(row)
+        else:
+            unclassified.append(row)
+    return incidental, deliberate, unclassified
+
+
 def host_serialize_buckets(
     path: Path,
     rows: list[tuple],
@@ -174,7 +210,7 @@ def host_serialize_buckets(
     disposition: str,
     with_reason: bool,
 ) -> None:
-    """Host TSV write mirroring roster_pure_regen buckets (not a second fold)."""
+    """Host TSV write of already-partitioned bucket rows."""
     by_type: dict[str, list] = defaultdict(list)
     for row in rows:
         by_type[row[0]].append(row)
@@ -208,29 +244,14 @@ def main() -> None:
     args = ap.parse_args()
     root = Path(".").resolve()
     sites = load_sites(args.census)
-    # HALF 2: produce disposition labels (then host-serialize bucket TSVs).
-    deliberate: list[tuple] = []
-    incidental: list[tuple] = []
-    unclassified: list[tuple] = []
-
-    for name, file, start, end in sites:
-        if not in_subset(root, file):
-            incidental.append((name, file, start, end))
-            continue
-        if "type_ref_fail_open_probe" in file:
-            reason = exec_fixture(root, args.gunbc, name, file)
-            if reason == "exec_expect_red_fails_if_binds":
-                deliberate.append((name, file, start, end, reason))
-            else:
-                unclassified.append((name, file, start, end, reason))
-            continue
-        reason = exec_nonfixture(root, args.gunbc, name, file)
-        if reason.startswith("exec_no_control"):
-            incidental.append((name, file, start, end))
-        elif reason.startswith("exec_"):
-            deliberate.append((name, file, start, end, reason))
-        else:
-            unclassified.append((name, file, start, end, reason))
+    # HALF 2 labels, then sole partition fold (no parallel .dag authority).
+    labeled = [
+        classify_site(root, args.gunbc, name, file, start, end)
+        for name, file, start, end in sites
+    ]
+    incidental, deliberate, unclassified = fold_labeled_sites_to_roster_buckets(
+        labeled
+    )
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     host_serialize_buckets(
