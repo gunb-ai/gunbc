@@ -12,7 +12,6 @@ import gunbc.guarantee_probe_corpus {
   receipt_matches_v2_infer_eval_probe_row,
   synthetic_infer_eval_subject_revision,
   synthetic_program_harness_revision,
-  GuaranteeProbeId,
 }
 import gunbc.guarantee_measurement {
   join_receipt_to_path,

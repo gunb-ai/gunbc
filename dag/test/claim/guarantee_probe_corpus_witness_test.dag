@@ -356,6 +356,15 @@ test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
   mislabel_subject != surplus_subject && mislabel_harness != surplus_harness
 }
 
+test fn harness_revision_tracks_harness_material_not_probe_id_alone() -> Bool {
+  let scope_harness = witness_harness_revision(probe: call_mislabel_red_probe)
+  let alt_harness = synthetic_program_harness_revision(
+    probe: call_mislabel_red_probe,
+    harness_material: "alternate witness scope" as NonEmptyStr,
+  )
+  scope_harness != alt_harness
+}
+
 test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
   match active_v1_compile_probe_row(probe: call_mislabel_red_probe) {
     Present { value: row } =>
