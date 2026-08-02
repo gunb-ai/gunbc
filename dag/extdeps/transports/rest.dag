@@ -105,55 +105,14 @@ type RestFixtureLookup
   | RestFixtureAbsent { invocation: RestBoundOperationInvocation }
   | RestFixtureAmbiguous { invocation: RestBoundOperationInvocation, count: Int }
 
-fn rest_http_method_eq(a: HttpMethod, b: HttpMethod) -> Bool {
-  match a {
-    GET => match b { GET => true, _ => false }
-    POST => match b { POST => true, _ => false }
-    PUT => match b { PUT => true, _ => false }
-    PATCH => match b { PATCH => true, _ => false }
-    DELETE => match b { DELETE => true, _ => false }
-    HEAD => match b { HEAD => true, _ => false }
-    OPTIONS => match b { OPTIONS => true, _ => false }
-  }
-}
-
-fn rest_uri_scheme_eq(a: UriScheme, b: UriScheme) -> Bool {
-  match a {
-    Http => match b { Http => true, _ => false }
-    Https => match b { Https => true, _ => false }
-    File => match b { File => true, _ => false }
-    Ftp => match b { Ftp => true, _ => false }
-    Javascript => match b { Javascript => true, _ => false }
-    Data => match b { Data => true, _ => false }
-    Vbscript => match b { Vbscript => true, _ => false }
-    Mailto => match b { Mailto => true, _ => false }
-  }
-}
-
-fn rest_uri_eq(a: Uri, b: Uri) -> Bool {
-  rest_uri_scheme_eq(a: a.scheme, b: b.scheme) && a.locator == b.locator
-}
-
-fn rest_operation_ref_eq(a: OperationRef, b: OperationRef) -> Bool {
-  a.path == b.path && a.service == b.service && a.operation == b.operation
-}
-
-fn rest_auth_identity_eq(a: RestAuthSensitiveIdentity, b: RestAuthSensitiveIdentity) -> Bool {
-  match a {
-    RestUnauthenticated => match b { RestUnauthenticated => true, _ => false }
-    RestAuthenticated { scheme: sa, digest: da } => match b {
-      RestAuthenticated { scheme: sb, digest: db } => sa == sb && da == db
-      RestUnauthenticated => false
-    }
-  }
-}
+data invocation_identity_equality_note: String = "IDENTITY CONSUMES CANONICAL EQUALITY; IT DOES NOT RE-DERIVE IT. An earlier cut carried five hand-rolled predicates - rest_http_method_eq, rest_uri_scheme_eq, rest_uri_eq, rest_operation_ref_eq, rest_auth_identity_eq - each matching every variant of a closed coproduct to decide whether two of them were the same. That is a second representation of equality standing beside the one the substrate already provides, and it is the §2/§3 failure in its most literal form: adding a variant to HttpMethod or UriScheme would leave the predicate silently answering false for the new one, so the duplicate was not merely redundant but decayed differently from the type it claimed to compare (review 46769).\n\nWHAT IS DELIBERATELY NOT COLLAPSED: the field list below, rather than a whole-record a == b. Which facts constitute an exact invocation identity is a modeled decision - operation, method, fully realized target, input digest, and auth identity - and spelling them keeps that decision reviewable at the point it is made. The equality of each named fact is canonical; the choice of which facts to compare is not equality is business."
 
 fn rest_bound_invocation_eq(a: RestBoundOperationInvocation, b: RestBoundOperationInvocation) -> Bool {
-  rest_operation_ref_eq(a: a.at, b: b.at)
-    && rest_http_method_eq(a: a.method, b: b.method)
-    && rest_uri_eq(a: a.target, b: b.target)
+  a.at == b.at
+    && a.method == b.method
+    && a.target == b.target
     && a.input_digest == b.input_digest
-    && rest_auth_identity_eq(a: a.auth_identity, b: b.auth_identity)
+    && a.auth_identity == b.auth_identity
 }
 
 fn rest_fixture_scan(
