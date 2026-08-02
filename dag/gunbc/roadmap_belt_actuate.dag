@@ -2840,11 +2840,11 @@ type BeltValidationRun {
   verdict: ValidationVerdict
 }
 
-type BeltVerificationCheckout
-  = BeltVerificationCheckoutReady { worktree: String }
-  | BeltVerificationCheckoutRefused { reason: String }
-
 data belt_verification_detached_checkout_note: String = "Validations run in a detached checkout of the observed head, never in the mutable implementation worktree. The checkout path is head-addressed and idempotent: an existing tree at the same revision is reused; a tree at a different revision refuses rather than validating the wrong commit."
+
+type BeltVerificationCheckout
+  = VerificationCheckoutReady { worktree: String }
+  | VerificationCheckoutRefused { reason: String }
 
 fn belt_verification_detached_checkout(
   instance: HostDashboardInstance,
@@ -2862,9 +2862,9 @@ fn belt_verification_detached_checkout(
   match belt_worktree_head_observe(instance: instance, worktree: checkout_path) {
     WorktreeHeadObserved { revision } =>
       if revision as String == head_sha {
-        BeltVerificationCheckoutReady { worktree: checkout_path }
+        VerificationCheckoutReady { worktree: checkout_path }
       } else {
-        BeltVerificationCheckoutRefused {
+        VerificationCheckoutRefused {
           reason: join([
             "a verification checkout already exists at ",
             checkout_path,
@@ -2885,9 +2885,9 @@ fn belt_verification_detached_checkout(
         workdir: repo_root,
       ) {
         ExecOk { stdout: _ } =>
-          BeltVerificationCheckoutReady { worktree: checkout_path }
+          VerificationCheckoutReady { worktree: checkout_path }
         ExecFailed { program, exit_code, stderr } =>
-          BeltVerificationCheckoutRefused {
+          VerificationCheckoutRefused {
             reason: join([
               program,
               " could not create a detached verification checkout at ",
@@ -2899,7 +2899,7 @@ fn belt_verification_detached_checkout(
             ], ""),
           }
         ExecRefused { program, reason } =>
-          BeltVerificationCheckoutRefused {
+          VerificationCheckoutRefused {
             reason: join([
               program,
               " was not available to create a detached verification checkout: ",
@@ -3098,7 +3098,7 @@ fn belt_verify_attempt_for_instance(
 fn belt_verify_persist_receipt(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
-  node_id: gunbc.roadmap_model.RoadmapNodeId,
+  node_id: RoadmapNodeId,
   subject: VerificationSubject,
   run: BeltValidationRun,
   oracle_identity: ContentHash,
@@ -3135,7 +3135,7 @@ fn belt_verify_persist_receipt(
 fn belt_verify_run_in_worktree(
   instance: HostDashboardInstance,
   node: RoadmapNode,
-  node_id: gunbc.roadmap_model.RoadmapNodeId,
+  node_id: RoadmapNodeId,
   worktree: String,
 ) -> BeltValidationRun {
   let observations = belt_oracle_observations_in_worktree(
@@ -3230,7 +3230,7 @@ fn belt_verify_run_and_persist(
     head_sha: subject.head_sha as String,
     repo_root: instance.repo_root as String,
   ) {
-    BeltVerificationCheckoutRefused { reason } =>
+    VerificationCheckoutRefused { reason } =>
       belt_verify_persist_receipt(
         instance: instance,
         progress: progress,
@@ -3249,19 +3249,18 @@ fn belt_verify_run_and_persist(
           structural: content_hash_atom(value: "verification-checkout-refused")
         ),
       )
-    BeltVerificationCheckoutReady { worktree } => {
-      let run = belt_verify_run_in_worktree(
-        instance: instance,
-        node: node,
-        node_id: node_id,
-        worktree: worktree,
-      )
+    VerificationCheckoutReady { worktree } =>
       belt_verify_persist_receipt(
         instance: instance,
         progress: progress,
         node_id: node_id,
         subject: subject,
-        run: run,
+        run: belt_verify_run_in_worktree(
+          instance: instance,
+          node: node,
+          node_id: node_id,
+          worktree: worktree,
+        ),
         oracle_identity: match validation_oracle_parse_pinned_identity_wire(
           text: belt_read_or_empty(
             path: dispatch_current_attempt_oracle_identity_path_for_instance(
@@ -3277,7 +3276,6 @@ fn belt_verify_run_and_persist(
             )
         },
       )
-    }
   }
 }
 
