@@ -1,6 +1,10 @@
 module gunbc.legacy_test_inflow
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import gunbc.legacy_test_behavior_disposition {
+  LegacyTestBehavior,
+  legacy_test_behavior_id,
+}
 
 data legacy_test_inflow_authority_note: String = "WHY THIS EXISTS: THE MECHANISM IS ABSENT, NOT THE RATIO. The v1-test-migration roadmap node declares in its own out_of_scope that adding a test written only in Rust, with no authority the substrate owns, 'counts against the finish line rather than toward it' because it grows the very population the node exists to drain. Nothing in the repository observes that inflow. The declared rule and the enforced rule differ, and the difference is invisible: the disposition graph measures the population and the frontier, both of which a steady arrival of new legacy tests moves without anyone deciding to move them. This carrier makes arrivals observable at the grain the rule is stated in. It is deliberately NOT justified by any measured arrival rate — a rate is one window's sample, and a mechanism argued from a sample invites deletion the first window the sample inverts. The rate is what this measures, never what establishes it."
 
@@ -8,32 +12,23 @@ data legacy_test_inflow_audit_mode_note: String = "AUDIT MODE, DELIBERATELY NOT 
 
 data legacy_test_inflow_scope_note: String = "SCOPE IS THE DISPOSITION GRAPH'S DENOMINATOR, EXACTLY. An arrival counts when it adds a line-anchored Rust `#[test]` function under src/v1/tests/src, because that is the population gunbc.legacy_test_behavior_disposition discovers and the frontier is measured against. Rust tests elsewhere in the seed — src/v1/stage0/src and its tests directory — are outside the counted population and are outside this counter too; that is a stated scope, not an oversight, and widening one without the other would make the counter and the frontier disagree about what they are counting. A change that adds a floor .dag `test fn` adds no arrival: it is the migration direction, and counting it would price the cure as the disease."
 
-data legacy_test_inflow_extraction_fork_note: String = "A DECLARED SECOND READING OF ONE RULE, with the same dissolution trigger as the first. The identity of a legacy behavior — an added `#[test]` line, then the next line that is neither blank nor another attribute, then its function name after any pub/async — is authored twice: once over the live tree in the seed host bridge (cli_run.rs test_migration_named_fn_after_attribute, reached through the discovery report), and once here over unified diff text. The fork is not gratuitous: the host builtin walks the working tree and cannot be pointed at a diff, and .dag cannot yet enumerate a revision's files, so neither reading can call the other today. It carries the SAME dissolve-on as the discovery scaffold it mirrors — when .dag can read parsed declaration trees directly, both readings collapse onto that one authority and this fold deletes. Until then the divergence risk is real and is checked rather than asserted: inflow_addition_id serializes an addition into exactly the identity string gunbc.legacy_test_behavior_disposition builds from typed fields, so any arrival this counter names can be joined against the live discovered population by string identity."
+data legacy_test_inflow_extraction_fork_note: String = "A DECLARED SECOND READING OF ONE RULE, with the same dissolution trigger as the first. The identity of a legacy behavior — an added `#[test]` line, then the next line that is neither blank nor another attribute, then its function name after any pub/async — is authored twice: once over the live tree in the seed host bridge (cli_run.rs test_migration_named_fn_after_attribute, reached through the discovery report), and once here over unified diff text. The fork is not gratuitous: the host builtin walks the working tree and cannot be pointed at a diff, and .dag cannot yet enumerate a revision's files, so neither reading can call the other today. It carries the SAME dissolve-on as the discovery scaffold it mirrors — when .dag can read parsed declaration trees directly, both readings collapse onto that one authority and this fold deletes. WHAT IS NOT FORKED IS THE IDENTITY ITSELF (codex review 47551, and the correction is worth stating because the first revision of this carrier got it wrong): an arrival IS a gunbc.legacy_test_behavior_disposition LegacyTestBehavior, imported and constructed here, serialized by that module's legacy_test_behavior_id. An earlier revision minted a sibling LegacyTestInflowAddition record with the same two fields and a private id function that happened to produce the same string, and argued in this note that the two could therefore be joined — which is the nickname failure exactly: a second name for one concept, joinable only for as long as nobody edits either serializer. The reading of Rust source text is forked because neither reading can call the other; the thing the readings produce is not."
 
 data legacy_test_inflow_arrival_versus_churn_note: String = "AN ARRIVAL IS NOT A POPULATION DELTA, AND THE DIFFERENCE IS RENAMES — measured, not reasoned. Over the first window this counter was run against (the merge of gunbc#7652 to the tree state at 9f978aa8df9), the discovered population gained 21 identities and lost 5, while this counter reported 18 arrivals. The gap is exactly three renamed test functions: renaming a test emits a removed and an added `fn` line with its `#[test]` line UNCHANGED, so an identity join over the two populations counts the rename as one departure plus one arrival, and this counter counts it as neither. The counter's reading is the one the roadmap rule is stated in — renaming a legacy test does not grow the population the migration must drain, so it is churn, not inflow. Anyone comparing the two numbers should expect them to differ by renames and should NOT reconcile them by adjusting either: they answer different questions, and only this one answers 'did a new legacy behavior arrive'.\\n\\nCONSEQUENCE FOR THE ZERO-CONTEXT TRANSPORT, stated because it is the shape most likely to be misread as a miss: the floor observes git diff with -U0, so a change that adds ONLY an attribute line above an already-existing function leaves that function's declaration outside the observed text entirely. That arrival is real and this carrier will not name it, so it REFUSES (InflowRefused, unresolved attribute) rather than reporting a count that silently omits it. Under a context-bearing diff the same fold resolves the declaration and reports it normally. Refusing a shape it cannot name is the fail-closed half of audit mode; quietly reporting one fewer arrival would be the absorbing fallback."
 
-type LegacyTestInflowAddition {
-  source_file: FilePath
-  test_fn: NonEmptyStr
-}
-
 type LegacyTestInflowObservation
-  = InflowMeasured { additions: List<LegacyTestInflowAddition> }
+  = InflowMeasured { additions: List<LegacyTestBehavior> }
   | InflowRefused { reason: NonEmptyStr }
 
 type InflowFoldState {
   in_legacy_file: Bool
   current_file: String
   pending_attribute: Bool
-  additions: List<LegacyTestInflowAddition>
+  additions: List<LegacyTestBehavior>
   unresolved: Bool
 }
 
 data legacy_test_inflow_dir_prefix: String = "src/v1/tests/src/"
-
-fn inflow_addition_id(addition: LegacyTestInflowAddition) -> String {
-  concat(concat(addition.source_file as String, "::"), addition.test_fn as String)
-}
 
 fn inflow_path_is_legacy_test_module(path: String) -> Bool {
   starts_with(s: path, prefix: legacy_test_inflow_dir_prefix) && ends_with(s: path, suffix: ".rs")
@@ -73,7 +68,7 @@ fn inflow_state_with_declaration(acc: InflowFoldState, declaration: String) -> I
       in_legacy_file: acc.in_legacy_file,
       current_file: acc.current_file,
       pending_attribute: false,
-      additions: concat(acc.additions, [LegacyTestInflowAddition {
+      additions: concat(acc.additions, [LegacyTestBehavior {
         source_file: acc.current_file as FilePath,
         test_fn: name as NonEmptyStr,
       }]),
@@ -166,7 +161,7 @@ fn inflow_observation_of_diff(diff_text: String) -> LegacyTestInflowObservation 
 
 fn inflow_observation_addition_ids(observation: LegacyTestInflowObservation) -> List<String> {
   match observation {
-    InflowMeasured { additions } => additions |> map(a => inflow_addition_id(addition: a))
+    InflowMeasured { additions } => additions |> map(a => legacy_test_behavior_id(behavior: a))
     InflowRefused { reason: _ } => []
   }
 }

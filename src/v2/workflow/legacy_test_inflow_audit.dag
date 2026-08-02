@@ -2,7 +2,6 @@ module v2.workflow.legacy_test_inflow_audit
 
 import std.types { Int, List, String }
 import std.logic { Bool }
-import gunbc.ci_spec { gunbc_ci_spec }
 import gunbc.legacy_test_inflow {
   LegacyTestInflowObservation,
   inflow_observation_addition_ids,
