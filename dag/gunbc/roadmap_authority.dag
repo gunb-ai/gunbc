@@ -246,6 +246,15 @@ fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract 
   )
 }
 
+data namespace_reference_derived_closure_execution_contract_note: String = "THE SIX-ARM CLOSING DISCRIMINATOR for namespace-reference-derived-closure. The validation is deliberately RED while its production admission seam carries a typed unavailable row for every clause: the closed capability population is the node's own red control, and missing capabilities are a derived set difference, so duplicate evidence cannot hide an unexecuted clause and zero work cannot verify as complete. Clauses (a-d) wait on #7515's structural candidate producer, (e) waits on its reference-derived dependency projection, and (f) waits on the projection's pool-membership-independence wall. The paired fixture suite executes the merged P1 kernel for the first four clauses and proves every clause rejects its planted wrong output, but the bound acceptance witness imports none of those fixtures; it can green only when the gated node supplies production observations. It is enrolled QuarantineProbeExpectRed until that transition."
+
+fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as FilePath,
+    function: "witness_namespace_reference_derived_closure_closing_contract_holds" as NonEmptyStr,
+  )
+}
+
 data v1_interpreter_primitive_roster_execution_contract_note: String = "THE CLOSING CHECK IS STRUCTURAL, NOT A POPULATION PIN, and that choice is the whole content of this binding. The node asks whether the interpreter's dispatch surface is ENUMERABLE and whether its roster can silently disagree with the dispatch; it does not ask how large the surface currently is. So the bound validation asserts properties that survive the roster legitimately growing -- named dispatch sites contribute derived rows, duplicate row keys refuse, shadows are exactly the known set BY NAME, every declared row carries its own dissolution trigger, an arm carrying no semantic primitive identity stays representable, and an unrecognised form label refuses rather than defaulting.\n\nBinding it to counts would have re-created at the acceptance layer the exact defect #7615 removed from the witness layer: the five deleted witnesses pinned live-population numbers copied from the tree, which DESIGN.md 5 rules is not an oracle, and they duly behaved as pure change detectors that redded main twice. A closing check that reds on legitimate growth is worse than one that does not exist, because it trains everyone to edit the number rather than read the change.\n\nThe validation can genuinely fail: removing a dispatch site, dropping a declared row's trigger, admitting an unknown form label, or letting a second arm identity shadow a spelling each red it. The detectors' own discriminating REDs and positive controls live in test.claim.v1_interpreter_primitive_surface_witness_test and execute beside it."
 
 fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionContract {
@@ -620,7 +629,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
-    active_large(
+    with_execution(active_large(
       identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
       id: "namespace-reference-derived-closure",
       owner: "namespace",
@@ -634,7 +643,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No hand-written dependency statements, no falling back to searching everything that happens to be loaded, no mass edits across the repository, and no throwing away which particular name produced which dependency.",
         handback: "The derived dependencies for one real file, matching what was written by hand, with each of the red controls actually run."
       )
-    ),
+    ), namespace_reference_derived_closure_execution_contract()),
     active(
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
       id: "namespace-ambiguity-discharge",

@@ -80,8 +80,8 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "stage0_rust_host_observation_live_witness_test.dag",
     classification: OfflineLocalRecipe,
-    reason: "SUBSTANTIATED per-row: every fn in this file calls gunbc.stage0_rust_host_observation current_stage0_rust_source_observation, whose realization reaches git.Inspect.HeadCommit and git.Inspect.MergeBase. Neither carries a mock_response, so the hermetic envelope does not skip these -- it REFUSES, declining to fabricate rather than inventing a revision. Because a refusing discovery member fails its whole batch, leaving them enrolled took down the entire per-PR witness corpus (CI receipt on PR 7562: batch 3 discovery-corpus, 2 roots + 105 explicit). Publishing the mocks was tried and reverted: it only moves the refusal to the next unmocked operation, and mocking the whole revision-addressed chain would let scaffold_host_observation_is_live_and_observed pass against a constant sha -- reflection evidence standing in for the live read the witness exists to prove. Falsifier wet enrollment is not available either: falsifier_self_host_wet_cadence_active is false, so a row there would satisfy a coverage argument while executing nowhere. The honest state is excluded, reason stated, gap counted -- the same class and the same trigger as the wet_integration_offline_note rows.",
-    dissolve_on: "mock_response coverage lands for the git.Inspect revision-addressed operations AND the assertions are re-checked so that they still discriminate under a fixed mock (a liveness claim that a constant satisfies must be restated or dropped); or the wet lane un-darkens and these fns enroll there as declared execution rows. Either way this row deletes."
+    reason: "SUBSTANTIATED per-row: every fn in this file reaches git.Inspect.HeadCommit and git.Inspect.MergeBase without mock_response, so the hermetic discovery envelope REFUSES rather than skipping (a refusing discovery member fails its whole batch — CI receipt on PR 7562). Publishing mocks was tried and reverted: it only moves the refusal to the next unmocked operation, and mocking the whole revision-addressed chain would let a liveness witness pass against a constant sha. The closing contract `live_rust_observation_matches_actions_subject` is enrolled in bin_witness_wet_entries and executes on the per-PR wet corpora batch (GITHUB_SHA supplied by the runner, not hand-set). The three scaffold witnesses in this file remain offline-local: they are not on the bin roster and the wet cadence they would otherwise need is not scheduled (falsifier_self_host_wet_cadence_active is false).",
+    dissolve_on: "mock_response coverage lands for the git.Inspect revision-addressed operations AND scaffold assertions are re-checked under a fixed mock; or the scaffold fns enroll on a scheduled wet lane. Either way this row deletes."
   },
   WitnessExclusionRow {
     pattern: "claim/long/mandatory_tag_extdeps_corpus",
@@ -142,6 +142,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: QuarantineProbeExpectRed,
     reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node 2-scm-p1-proof-kernel, RED BY DESIGN while the derived KernelAcceptanceCapability frontier is nonzero. The first slice supplies the bounded candidate-generation model check; the one public fold, occurrence dedup, context transport, commuting squares, batch invariance, n-way safety, order honesty, all seven closure certificates, and data-only invariant extension stay missing until executing scenarios establish them. The validation cannot pass on zero progress and is bound directly by scm_p1_proof_kernel_execution_contract.",
     dissolve_on: "every required KernelAcceptanceCapability has a passing executing scenario — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall"
+  },
+  WitnessExclusionRow {
+    pattern: "namespace_reference_derived_closure_acceptance_test.dag",
+    classification: QuarantineProbeExpectRed,
+    reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
+    dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   },
   WitnessExclusionRow {
     pattern: "seed_honesty_discharge_unavailable_test.dag",
@@ -794,6 +800,7 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag", f: "legacy_test_behavior_unclassified_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds"),
+  probe_red(entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag", f: "witness_namespace_reference_derived_closure_closing_contract_holds"),
   probe_red(entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag", f: "v1_seed_honesty_decision_closing_contract_holds")
 ]
 
@@ -928,6 +935,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_two_declared_operations_execute"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_fail_fast_prevents_later_operation_execution"),
