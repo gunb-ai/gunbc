@@ -1,5 +1,6 @@
 module test.claim.rest_exchange_replay_test
 
+import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, String, List, GET }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
@@ -41,7 +42,7 @@ fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
     }
     method: GET
     target: probe_target
-    input_digest: "0000000000000000"
+    input_digest: Fnv1a64Structural { digest: "0000000000000000" }
     auth_identity: RestUnauthenticated
   }
 }

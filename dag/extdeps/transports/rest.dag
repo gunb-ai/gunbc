@@ -1,6 +1,7 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List, ContentHash }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
+import std.content_hash { Fnv1a64Structural }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
@@ -77,7 +78,7 @@ type RestExchangeObservation
 
 type RestAuthSensitiveIdentity
   = RestUnauthenticated
-  | RestAuthenticated { scheme: NonEmptyStr, digest: ContentHash }
+  | RestAuthenticated { scheme: NonEmptyStr, digest: Fnv1a64Structural }
 
 data rest_bound_invocation_note: String = "REST needs a specialization of v2.std.operation_argv.BoundOperationInvocation rather than pretending its shell-only binding list is enough. OperationRef remains the declaration identity authority. The specialization adds the HTTP method, fully realized URI target, the digest of every declared input, and an auth-sensitive digest whose preimage never enters the fixture. Together those facts make a replay exact: a fixture for another operation, path/query/body input, method, target, or credential identity cannot satisfy this invocation. Query and body values are already in the declared-input digest; constants are fixed by OperationRef."
 
@@ -85,7 +86,7 @@ type RestBoundOperationInvocation {
   at: OperationRef
   method: HttpMethod
   target: Uri
-  input_digest: ContentHash
+  input_digest: Fnv1a64Structural
   auth_identity: RestAuthSensitiveIdentity
 }
 
