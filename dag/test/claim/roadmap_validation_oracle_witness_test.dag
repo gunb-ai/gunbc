@@ -36,6 +36,9 @@ import gunbc.roadmap_verification_receipt {
   VerificationReceiptAbsent,
   VerificationReceiptPresent,
   verification_receipt_json,
+  verification_receipt_decode,
+  VerificationReceiptDecoded,
+  VerificationReceiptUndecodable,
 }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 import extdeps.version { VersionIdentity }
@@ -521,14 +524,8 @@ test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
     end: string_length(s: genuine) - 12,
   )
   starts_with(s: genuine, prefix: truncated)
-    && match validation_receipt_decode(receipt: genuine) {
-      ValidationReceiptDecoded { verdict_key } => verdict_key == "passed"
-      ValidationReceiptUndecodable { reason: _ } => false
-    }
-    && match validation_receipt_decode(receipt: truncated) {
-      ValidationReceiptDecoded { verdict_key: _ } => false
-      ValidationReceiptUndecodable { reason: _ } => true
-    }
+    && exact_head_receipt_verdict_key(receipt: genuine) == "passed"
+    && exact_head_receipt_is_undecodable(receipt: truncated)
 }
 
 data structural_decode_note: String = "These pin what the byte-prefix reader structurally COULD NOT decide, which is why they are the receipt for replacing it rather than decoration on top of it. A prefix reader answers one question - does the document open with these exact bytes - so it necessarily conflates `the members are in a different order` with `this is not our receipt`, and it cannot see a second verdict member at all because a duplicate sits past the prefix it compares. Reading the document as a value makes member ORDER irrelevant and member COUNT decidable, and the pair below is stated as a control: the same document decodes when its identity members occur once and refuses when one of them occurs twice, so duplication is isolated as the cause rather than inferred from a refusal that could have come from anywhere."
@@ -806,6 +803,21 @@ fn receipt_for(verdict: ValidationVerdict) -> String {
   )
 }
 
+fn exact_head_receipt_verdict_key(receipt: String) -> String {
+  match verification_receipt_decode(receipt: receipt) {
+    VerificationReceiptDecoded { receipt: r } =>
+      validation_verdict_key(verdict: r.verdict)
+    VerificationReceiptUndecodable { reason: _ } => "undecodable"
+  }
+}
+
+fn exact_head_receipt_is_undecodable(receipt: String) -> Bool {
+  match verification_receipt_decode(receipt: receipt) {
+    VerificationReceiptDecoded { receipt: _ } => false
+    VerificationReceiptUndecodable { reason: _ } => true
+  }
+}
+
 test fn verify_lamp_stays_pending_without_a_receipt() -> Bool {
   verify_lamp_state(receipt: "") == "pending"
 }
@@ -863,10 +875,7 @@ test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
     command: "gunbc run --claim-run",
     oracle_identity: pinned_identity(),
   })
-  let decoded_key = match validation_receipt_decode(receipt: not_run) {
-    ValidationReceiptDecoded { verdict_key } => verdict_key
-    ValidationReceiptUndecodable { reason: _ } => "undecodable"
-  }
+  let decoded_key = exact_head_receipt_verdict_key(receipt: not_run)
   decoded_key == "not_run"
     && validation_verdict_key(verdict: ValidationNotRun) == "not_run"
     && not_run != passed

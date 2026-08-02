@@ -70,6 +70,21 @@ import gunbc.roadmap_verification_receipt {
   VerificationReceiptAbsent,
   VerificationReceiptPresent,
 }
+import std.types { CommitSha }
+import std.content_hash { content_hash_atom }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+
+data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+
+fn fixture_verification_subject() -> VerificationSubject {
+  VerificationSubject {
+    node_identity: "node-1" as NonEmptyStr as RoadmapNodeIdentity,
+    criteria_digest: content_hash_atom(value: "workflow-progress-fixture"),
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+    head_sha: fixture_verification_head,
+  }
+}
 
 fn fixture_evidence(
   events: String,
@@ -89,8 +104,8 @@ fn fixture_evidence(
     provider_events_error: "",
     process: process,
     validation_summary: "gunbc run --claim-run",
-    verification_subject: VerificationSubjectUnobserved {
-      reason: "fixture verification subject not established",
+    verification_subject: VerificationSubjectObserved {
+      subject: fixture_verification_subject(),
     },
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
@@ -420,7 +435,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
       segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "workspace") == "refused"
-        && progress.reconciliation.observed_refusal_count == 3
+        && progress.reconciliation.observed_refusal_count == 4
     _ => false
   }
 }
