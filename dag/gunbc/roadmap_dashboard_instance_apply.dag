@@ -93,9 +93,9 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
   dashboard_instance_provision_op_row,
-  dashboard_instance_reconcile,  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_reconcile,
+  dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
-
 }
 
 data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Preflight resolves the modeled controller ref once and carries that exact CommitSha through initial observation and post-apply read-back; a target checkout that is clean against its own origin but stale against the requested commit derives Apply, never false convergence. Codex runtime identity (`--version` must realize `codex-cli`) and OAuth state (`login status`) are separate observations and provision steps, so a broken npm/Node launcher cannot masquerade as an auth refusal; successful stderr is retained in receipts rather than dropping runtime warnings. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. Recursive deletion is confined to the fresh controller-side mktemp directory minted by this invocation; no instance or target state is recursively deleted by apply."
