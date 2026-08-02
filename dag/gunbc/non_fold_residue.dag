@@ -711,11 +711,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: "DISSOLVE-ON: provenance is read from the containment-tree projection and live-snapshot-duplicate membership is construction-side (illegal states unrepresentable), or a single canonical accessor over TestClaimOperandProvenance answers both this and the independent-oracle question (operand_provenance_is_independent_oracle), replacing both hand-matched predicates at once — never two accessors surviving side by side once one canonical one exists (DESIGN §3 single authority). Same trigger as vacuity_operand_provenance_independent_oracle_predicate_dissolution_note's sibling note." },
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host_effect_nbd_proxy_serve.dag::host_effect_nbd_proxy_serve_apply_drains_stale_matching" },
-    reason: nfr_reason_structural_eq_backfill,
-    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
     reason: nfr_reason_legacy_slice1_bridge,
     trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberTeardown/MemberTeardownRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
