@@ -1,6 +1,11 @@
 module test.claim.rest_exchange_replay_test
 
 import std.types { Bool, String, List, GET }
+import std.content_hash {
+  Fnv1a64StructuralDigestHex,
+  as_content_hash_structural,
+  structural_content_hash,
+}
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
   Read, ServiceOpTree, NamespacePosition,
@@ -41,7 +46,11 @@ fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
     }
     method: GET
     target: probe_target
-    input_digest: "0000000000000000"
+    input_digest: as_content_hash_structural(
+      structural: structural_content_hash(
+        digest: "0000000000000000" as Fnv1a64StructuralDigestHex,
+      ),
+    )
     auth_identity: RestUnauthenticated
   }
 }
