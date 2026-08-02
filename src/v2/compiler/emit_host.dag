@@ -48,9 +48,9 @@ import std.artifact_store {
 }
 import std.content_hash {
   content_hash_atom,
-  content_hash_combine
+  content_hash_combine_structural
 }
-import std.types { ContentHash }
+import std.content_hash { ContentHash }
 import extdeps.realization.emit_on_demand_host {
   native_cache_realization_workspace_root
 }
@@ -285,7 +285,7 @@ fn emit_host_string_list_digest(xs: List<String>, seed: String) -> ContentHash {
   fold(
     xs,
     init: content_hash_atom(value: seed),
-    f: (acc, value) => content_hash_combine(
+    f: (acc, value) => content_hash_combine_structural(
       left: acc,
       right: content_hash_atom(value: value)
     )

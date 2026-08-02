@@ -1,14 +1,7 @@
 module gunbc.source_integration_landing_spine
 
-import std.types {
-  Bool,
-  ContentHash,
-  Int,
-  List,
-  NonEmptyStr,
-  String,
-  Timestamp,
-}
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
+import std.content_hash { ContentHash }
 import std.integer { PositiveInt }
 import std.measure { Minute, minute }
 import v2.std.optional { Optional, Present, Absent }

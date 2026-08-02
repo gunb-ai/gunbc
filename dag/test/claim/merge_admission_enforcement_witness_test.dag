@@ -3,11 +3,10 @@ module test.claim.merge_admission_enforcement_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data scenario_base_b0: ContentHash = "merge-admission-enforce-base-b0"
-data scenario_base_b1: ContentHash = "merge-admission-enforce-base-b1"
-data scenario_roster_r1: ContentHash = "merge-admission-enforce-roster-r1"
-data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
-
+data scenario_base_b0: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-enforce-base-b0")
+data scenario_base_b1: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-enforce-base-b1")
+data scenario_roster_r1: GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-enforce-roster-r1")
+data scenario_head: CommitSha = "abc1234def5678901234567890abcd1234567890"
 data fresh_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,

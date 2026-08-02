@@ -1,6 +1,7 @@
 module test.claim.tool_pin_witness
 
-import std.types { NonEmptyStr, String, Bool, Int, ContentHash }
+import std.types { NonEmptyStr, String, Bool, Int }
+import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.pin {
@@ -29,8 +30,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data cargo_identity: ContentHash = "sha256-cargo-1930-aarch64" as ContentHash
-data other_identity: ContentHash = "sha256-cargo-1920-aarch64" as ContentHash
+data cargo_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-1930-aarch64" as NonEmptyStr)
+data other_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-1920-aarch64" as NonEmptyStr)
 
 data cargo_tool: CliTool = CliTool {
   name: "cargo",
@@ -92,9 +93,11 @@ test fn mismatched_identity_refuses() -> Bool {
       ((subj.name as String) == "cargo") && match c {
         ObservedIdentityMismatch { expected: e, observed: o } =>
           (e == cargo_identity) && (o == other_identity)
+        CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
         ConstraintIsNotIdentity { constraint: _ } => false
         PinAbsent => false
         TrackedResolutionUnrecorded { channel: _ } => false
+        CitedDigestIdentityUnprojectable => false
       }
     PinIntegrityAdmitted { pin: _ } => false
   }
@@ -106,8 +109,10 @@ test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
       ((subj.name as String) == "jq") && match c {
         TrackedResolutionUnrecorded { channel: ch } => (ch as String) == "latest"
         ObservedIdentityMismatch { expected: _, observed: _ } => false
+        CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
         ConstraintIsNotIdentity { constraint: _ } => false
         PinAbsent => false
+        CitedDigestIdentityUnprojectable => false
       }
     PinIntegrityAdmitted { pin: _ } => false
   }
@@ -135,6 +140,8 @@ test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
         PinAbsent => false
         TrackedResolutionUnrecorded { channel: _ } => false
         ObservedIdentityMismatch { expected: _, observed: _ } => false
+        CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
+        CitedDigestIdentityUnprojectable => false
       }
     PinIntegrityAdmitted { pin: _ } => false
   }
@@ -148,6 +155,8 @@ test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
         ConstraintIsNotIdentity { constraint: _ } => false
         TrackedResolutionUnrecorded { channel: _ } => false
         ObservedIdentityMismatch { expected: _, observed: _ } => false
+        CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
+        CitedDigestIdentityUnprojectable => false
       }
     PinIntegrityAdmitted { pin: _ } => false
   }
@@ -229,9 +238,9 @@ data second_subject_double_bound_row_finding_note: String = "review 44886, and i
 
 data pin_channel_restates_subject_reference_finding_note: String = "THE FINDING THIS SECOND SUBJECT EARNED, which is the actual argument for having one. A generic's second consumer is supposed to expose where the dimension was shaped around its first consumer, and it did. ActionRef.ref is a moving GitHub major tag (v5 tracks the latest 5.x), so it is a CONSTRAINT-like reference, not an identity — which is why Pin<ActionRef> is sound where Pin<OciDescriptor> was not, and why version 5.0.1 above is a SELECTION satisfying that reference rather than a restatement of it. That is the same requirement-versus-selection distinction already defended for CliTool.min_version, and it holds here for the same reason. But it does NOT extend to the selection axis: had this pin been written with TrackedChannel { channel: \"v5\" }, the channel string would RESTATE subject.ref, two writable fields holding one fact — the same duplication shape review 44850 rejected on the identity axis, one axis over. The tell is that PinSelection.TrackedChannel.channel is subject-agnostic while the channel it names may already live ON the subject: for a CliTool the channel is external (latest), for an ActionRef it IS subject.ref. So channel is arguably a subject PROJECTION wearing the shape of a generic field. Not fixed here, and deliberately not papered over with a caveat: the fix is either a projection on each instantiation (the cli_tool_pin_key_of shape, which is where subject-specific projections already belong) or a selection variant that names no channel of its own, and choosing between those is dimension surgery that wants its own review rather than a rider on a witness. dissolve-on: feature:pin-selection-channel-projection. Until then this witness uses ExactPin, which has no channel field and therefore cannot exhibit the duplication."
 
-data action_ref_pinned_identity: ContentHash = "sha256-checkout-v5-commit" as ContentHash
+data action_ref_pinned_identity: ContentHash = content_hash_of_value(value: "sha256-checkout-v5-commit" as NonEmptyStr)
 
-data action_ref_other_identity: ContentHash = "sha256-checkout-v5-other-commit" as ContentHash
+data action_ref_other_identity: ContentHash = content_hash_of_value(value: "sha256-checkout-v5-other-commit" as NonEmptyStr)
 
 data action_ref_synthetic_identity_note: String = "The two identities above are OBVIOUSLY synthetic and deliberately so, in the same style as cargo_identity at the top of this module. Writing a real 40-hex commit SHA here and calling it actions/upload-artifact@v2 would fabricate an upstream fact inside a fail-closed carrier — the failure admit_legacy_cli_tool's own note forbids — and it would ALSO create a second authority for that SHA the day the lane pins the action for real. What this witness proves is structural (the dimension admits the subject, and refuses on mismatch); it makes no claim about upstream truth, so a value that could never be mistaken for a real digest is the honest fixture."
 
@@ -283,9 +292,11 @@ test fn second_subject_refuses_on_identity_mismatch_too() -> Bool {
              ObservedIdentityMismatch { expected: e, observed: o } =>
                ((e as String) == (action_ref_pinned_identity as String))
                  && ((o as String) == (action_ref_other_identity as String))
+             CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
              ConstraintIsNotIdentity { constraint: _ } => false
              PinAbsent => false
              TrackedResolutionUnrecorded { channel: _ } => false
+             CitedDigestIdentityUnprojectable => false
            }
   }
 }

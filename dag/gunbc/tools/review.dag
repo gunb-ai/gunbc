@@ -151,9 +151,11 @@ func review_pr(
   }
 }
 
+data review_cycle_default_scope_note: String = "THE DEFAULTS PROJECT FROM gunbc.repository RATHER THAN RESPELLING THE SLUG, closing the last of the five nicknames (review 46301). One hazard is recorded with it because it is not visible at this line: a default argument expression is evaluated in the CALLER'S scope, not this module's, so a future caller in a module that does not import gunbc.repository would die at the call site with an undefined variable naming something it never wrote. That is safe today only because review_cycle has no in-corpus caller - the one reference is a command string invoking review_codex's function of the same name - so the default is unreachable rather than proven. A caller that appears must import gunbc.repository, or pass owner and repo explicitly, which is the better habit anyway."
+
 func review_cycle(
-  owner: String = "gunb-ai",
-  repo: String = "gunbc"
+  owner: String = gunbc_repository.owner,
+  repo: String = gunbc_repository.name
 ) -> { reviewed_count: Int } {
 
   upsert_tagged_cron_tab(

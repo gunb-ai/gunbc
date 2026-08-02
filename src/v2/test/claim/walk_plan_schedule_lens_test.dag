@@ -19,7 +19,7 @@ import std.realization_schedule {
   runnable_resource_profile,
   runnable_resource_profile_negligible,
 }
-import std.types { ContentHash }
+import std.content_hash { ContentHash, content_hash_of_value }
 import v2.lens.schedule_lens { walk_plan_schedule_lens_verdict_for_ci_floor }
 import v2.std.collection { List }
 import v2.std.lens_verdict { Holds, LensVerdict, Violation, NotApplicable, Unrealized }
@@ -28,7 +28,7 @@ import v2.workflow.ci_floor_plan { gunbc_ci_floor_schedule_lens_holds }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data synthetic_target: ContentHash = "walk-plan-schedule-lens-v1"
+data synthetic_target: ContentHash = content_hash_of_value(value: "walk-plan-schedule-lens-v1")
 data synthetic_compile_gate_fn: String = "dag_compile_clean_gate_passes"
 data synthetic_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
