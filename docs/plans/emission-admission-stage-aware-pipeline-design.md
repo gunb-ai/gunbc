@@ -1,5 +1,16 @@
 # Emission admission + stage-aware pipeline (declared-change vs regression)
 
+> **AMENDED — awaiting operator sign-off.** The nine corrections outstanding against the merged
+> first revision are applied (§12); this revision has not been signed. **This document does not
+> authorize promotion, warm reuse, recovery-anchor release, or deletion of a prior compiler
+> generation. Candidate/shadow generation may continue.** That clause stands until the operator
+> signs — not until the corrections land.
+>
+> No roadmap acceptance and no promotion authority derives from this document.
+
+*(This replaces the rough-draft banner that recorded the nine corrections as outstanding. They
+are no longer outstanding; the document is no longer a rough draft; it is also not signed.)*
+
 **Status:** design-only (model-before-implement). This document is the deliverable for
 work item `node://adhoc-48a1f19c-1f8` (session calm-eagle-92). No load-bearing `.dag`
 carrier lands in the design PR; each implementation stage below is a separately dispatched,
@@ -497,17 +508,31 @@ not "counted debt" — a reachability question that has not been answered has no
 and the fail-closed arm is the expensive one. **There must be no authored `formatting_only`
 anywhere in the realization.**
 
-*Corpus fact establishing that this cannot be shortcut today* (measured 2026-08-02 while
-probing a G0 carrier since withdrawn): `gunbc.generated_artifact`'s existing axes do **not**
-discriminate executability. `artifact_commit_policy` files both
-`src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs` and `.gitignore` under
-`CommitRequired { consumer: GitProtocol }`, so consumer identity cannot stand in for
-reachability. A second gap sits beside it: emitted stage0 Rust
-(`gunbc.stage0_emit_plan_generated` `generated_stage0_paths`) is genuinely an executable
-emission surface but is absent from the committed generated-artifact registry, and nothing
-today derives **which compiler module emitted a given `.rs` path** — so an authorization minted
-for a `.dag` module cannot be checked against a `.rs` surface. Both are prerequisites for this
-section's realization, not incidental notes.
+**Two prerequisites, measured against the live tree 2026-08-02** (while probing a G0 carrier
+since withdrawn, and independently re-verified against the carrier). They are prerequisites for
+this section's realization, not incidental notes.
+
+**(a) The existing axis is wrong, not merely absent.** `gunbc.generated_artifact`'s
+`artifact_commit_policy` assigns `CommitRequired { consumer: GitProtocol }` to
+`Stage0CrateLayoutGeneratedRsArtifact` *and* to `GitignoreArtifact` — a compiled Rust source and
+a git config file carry the identical classification, so consumer identity cannot separate
+executable from non-executable. But the diagnosis is not *a missing axis*: **the consumer of a
+generated `.rs` file is `rustc`. Git is how the file is stored.** Labelling its consumer
+`GitProtocol` conflates storage with consumption, and it is the same conflation for all four
+`Stage0*` rows — three `.dag` artifacts whose consumer is the gunbc compiler, and one `.rs`
+whose consumer is `rustc`, all filed under the protocol that merely carries them. That reframes
+the prerequisite from *invent a new fact* to **correct a fact already carried**, which is the
+cheaper and more likely repair.
+
+**(b) There is no emitted-artifact-to-module join.** `GeneratedArtifact` is a closed enum of
+specific artifacts and emitted stage0 Rust as a surface is not among them
+(`gunbc.stage0_emit_plan_generated` `generated_stage0_paths` is a separate roster), and nothing
+today derives **which compiler module emitted a given `.rs` path**. So an authorization minted
+for a `.dag` module cannot be checked against a `.rs` surface at all. This also constrains
+§10 stage 5: a transition exercise over an emitted `.rs` artifact has no identity join today,
+and condition 4 of §3.8 — every receipt naming the same exact artifact identities — cannot be
+satisfied for such a surface until the join exists. Stated as a prerequisite rather than
+modelled around.
 
 ---
 
@@ -749,10 +774,39 @@ stage-execution receipt of stage 1 is that measurement, and minting a second one
 
 ---
 
-## 11. What this document is not
+## 11. The superseded sign-off bar, and why it did not catch this
 
-The first revision ended in a sign-off bar — a checklist whose completion read as merge
-readiness. That framing is **removed**: it is what let #7681 merge before its review finished.
+The first revision ended in a sign-off bar whose completion read as merge readiness. It is
+**retained here as a record, annotated**, rather than deleted — the durable lesson is not that
+the bar was incomplete but *how* it failed, and that lesson would be lost with the text:
+
+> **Every item it named is satisfiable while the highest-stakes concepts stay undefined.**
+
+Read the list against the merged draft it passed. §2's symbols did resolve. §3's obligations
+were explicit. §4 did state fix-forward. §5's graph was there. §9's decisions were recorded.
+The doc-graph bind landed. No code shipped. All eight items met — while `FixForwardProof` was a
+field name with no structure, `StageStamp` was named and never typed, and there was no
+generation zero at all. **A checklist that counts sections cannot detect an undefined concept
+inside one.** That is why §8's witness table now asks, for every row, which *mutation must
+change the verdict*: a bar phrased as presence is satisfiable by presence, and a bar phrased as
+discrimination is not.
+
+The original items, retained verbatim as the record:
+
+1. All symbols in §2 resolve on main (grep-verified).
+2. §3 obligations are explicit — not reduced to declared-change + lineage alone.
+3. §4 states fix-forward (not rollback-only) de-risk.
+4. §5 temporal graph is explicit.
+5. §9 operator decisions are recorded (not open questions).
+6. Doc graph bind lands (`gunbc.doc_graph_roots` → this slug).
+7. No implementation code ships in the design PR.
+8. Candidate generation through the direct Rust door remains unblocked; only promotion
+   and authoritative admission are gated.
+
+### What this document is not
+
+The bar is superseded as a *readiness* device: it is what let #7681 merge before its review
+finished.
 
 - This document confers **no merge readiness**. Being written does not make it accepted.
 - It confers **no promotion authority**. Nothing here authorizes a generation to be promoted,
@@ -763,9 +817,10 @@ readiness. That framing is **removed**: it is what let #7681 merge before its re
 - It ships **no implementation code**, and each stage in §10 is a separately dispatched,
   separately reviewed PR.
 
-One constraint from the first revision survives unchanged, because it is a scope statement
-rather than a readiness claim: **candidate generation through the direct Rust door remains
-unblocked**. Only promotion and authoritative admission are gated.
+Item 8 above is the one entry that survives as a live constraint rather than as record, because
+it is a scope statement and not a readiness claim: candidate generation through the direct Rust
+door remains unblocked, and only promotion and authoritative admission are gated. It is carried
+into the staged plan as §10 stage 7.
 
 ---
 
