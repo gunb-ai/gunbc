@@ -192,8 +192,6 @@ fn witness_entry_execution_status(
   entry: FilePath,
   scan_dirs: List<String>,
   declared_entries: List<String>,
-  scan_dirs: List<String>,
-  declared_entries: List<String>,
   exclusion_patterns: List<String>,
   offline_patterns: List<String>,
 ) -> WitnessExecutionStatus {
