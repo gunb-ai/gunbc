@@ -55,6 +55,10 @@ import gunbc.guarantee_probe_corpus {
   probe_ids_are_lexicographically_ordered,
   synthetic_program_subject_revision,
   synthetic_program_harness_revision,
+  v1_compile_harness_revision,
+  guarantee_probe_dark_suite_dispositions,
+  DarkSuiteWitnessDisposition,
+  MigratedToEnrolledDagProbe,
 }
 import gunbc.guarantee_measurement {
   observed_is_verdict,
@@ -71,6 +75,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.algebra { fold_list }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.optional { Present, Absent }
 
@@ -83,10 +88,15 @@ fn census_of(source: String) -> CompileDiagnosticCensus {
 }
 
 fn witness_harness_revision(probe: GuaranteeProbeId) -> MeasurementRevision {
-  synthetic_program_harness_revision(
-    probe: probe,
-    harness_material: guarantee_probe_corpus_witness_scope_note as NonEmptyStr,
-  )
+  match active_probe_row(probe: probe) {
+    Present { value: row } =>
+      v1_compile_harness_revision(probe: probe, expectation: row.expectation)
+    Absent =>
+      v1_compile_harness_revision(
+        probe: probe,
+        expectation: ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as NonEmptyStr },
+      )
+  }
 }
 
 data call_mislabel_source: String = "module probe_call_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
@@ -359,13 +369,17 @@ test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
   mislabel_subject != surplus_subject && mislabel_harness != surplus_harness
 }
 
-test fn harness_revision_tracks_harness_material_not_probe_id_alone() -> Bool {
-  let scope_harness = witness_harness_revision(probe: call_mislabel_red_probe)
-  let alt_harness = synthetic_program_harness_revision(
-    probe: call_mislabel_red_probe,
-    harness_material: "alternate witness scope" as NonEmptyStr,
-  )
-  scope_harness != alt_harness
+test fn harness_revision_tracks_expectation_not_probe_id_alone() -> Bool {
+  match active_probe_row(probe: call_mislabel_red_probe) {
+    Present { value: mislabel } =>
+      match active_probe_row(probe: call_shape_green_probe) {
+        Present { value: green } =>
+          v1_compile_harness_revision(probe: call_mislabel_red_probe, expectation: mislabel.expectation)
+            != v1_compile_harness_revision(probe: call_mislabel_red_probe, expectation: green.expectation)
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn synthetic_revisions_use_content_fingerprint_not_git_revision() -> Bool {
@@ -409,6 +423,22 @@ test fn canonical_probe_rows_bind_class_path_and_probe() -> Bool {
           && (row.path as String) == (v1_compile_rust_path_id as String)
       Absent => false
     }
+}
+
+test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
+  let dispositions = guarantee_probe_dark_suite_dispositions()
+  count(dispositions) == 3
+    && fold_list(
+      xs: dispositions,
+      empty: 0,
+      cons: fn(acc, d) {
+        match d {
+          MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: gate } =>
+            acc + count(probes)
+              + if (gate as String) == "gap-analysis-sec-11-item-9-finite-classification" { 0 } else { 1000 }
+        }
+      },
+    ) == 7
 }
 
 test fn v2_translate_identities_are_declared() -> Bool {

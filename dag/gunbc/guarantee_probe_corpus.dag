@@ -1,7 +1,7 @@
 module gunbc.guarantee_probe_corpus
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.content_hash { content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 import std.string_type { string_is_lexicographically_before }
 import std.nat { Nat }
 import gunbc.guarantee_measurement {
@@ -21,7 +21,7 @@ import gunbc.guarantee_measurement {
 import v2.std.optional { Present, Absent }
 import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
 import v2.std.algebra { fold_list }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, Node, content_hash }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -39,7 +39,7 @@ data guarantee_probe_corpus_path_scope_note: String = "TWO LANDED PATHS IN THE C
 
 data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. guarantee_probe_ids_reserved holds OPEN follow-on identities (gunbc#7555) outside the digest until their control merges. Callers must not re-sort; the active roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt as MeasurementRevision (GitRevision | ContentFingerprint). build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures mint ContentFingerprint revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision fingerprints caller-supplied subject material (structural description or fixture body, never a bare label alone); synthetic_program_harness_revision fingerprints probe id plus harness material (witness scope note content). dissolve-on ladder-baseline stage naming real GitRevision subject_revision/harness_revision commits."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt as MeasurementRevision (GitRevision | ContentFingerprint). build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures mint ContentFingerprint revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision_from_node fingerprints the executed Node fixture via v2.std.node.content_hash; v1_compile_harness_revision and v2_infer_eval_harness_revision fingerprint the executing harness spine plus the registry row's ProbeExpectation (never prose scope notes). dissolve-on ladder-baseline stage naming real GitRevision subject_revision/harness_revision commits."
 
 fn synthetic_program_subject_revision(source: String) -> MeasurementRevision {
   ContentFingerprint { digest: content_hash_atom(value: source as NonEmptyStr) }
@@ -156,6 +156,108 @@ fn probe_expectation_fold<R>(e: ProbeExpectation, fold: ProbeExpectationFold<R>)
     ExpectZeroDiagnostics => fold.zero_diagnostics
     ExpectAcceptedCounted { diagnostic_class: d } => fold.accepted_counted(d)
   }
+}
+
+data v1_compile_probe_harness_spine: NonEmptyStr = "compile_dag_diagnostic_census|probe_observation_from_census|probe_row_expectation_holds|probe_expectation_fold" as NonEmptyStr
+
+data v2_infer_eval_probe_harness_spine: NonEmptyStr = "infer|probe_observation_from_accepted_infer_diagnostics|receipt_matches_v2_infer_eval_probe_row|join_receipt_to_path" as NonEmptyStr
+
+fn expectation_harness_digest(e: ProbeExpectation) -> Fnv1a64Structural {
+  probe_expectation_fold(
+    e: e,
+    fold: ProbeExpectationFold {
+      blocking_refusal: fn(d) {
+        content_hash_tagged_structural(
+          tag: "blocking-refusal" as NonEmptyStr,
+          payload: content_hash_atom(value: d),
+        )
+      },
+      zero_diagnostics: content_hash_atom(value: "zero-diagnostics" as NonEmptyStr),
+      accepted_counted: fn(d) {
+        content_hash_tagged_structural(
+          tag: "accepted-counted" as NonEmptyStr,
+          payload: content_hash_atom(value: d),
+        )
+      },
+    },
+  )
+}
+
+fn harness_digest_from_spine_and_expectation(spine: NonEmptyStr, expectation: ProbeExpectation) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: spine),
+    right: expectation_harness_digest(e: expectation),
+  )
+}
+
+fn synthetic_program_harness_revision_from_digest(probe: GuaranteeProbeId, digest: Fnv1a64Structural) -> MeasurementRevision {
+  ContentFingerprint {
+    digest: content_hash_tagged_structural(
+      tag: "guarantee-probe-harness-v1" as NonEmptyStr,
+      payload: content_hash_combine_structural(
+        left: content_hash_atom(value: probe as NonEmptyStr),
+        right: digest,
+      ),
+    ),
+  }
+}
+
+fn v1_compile_harness_revision(probe: GuaranteeProbeId, expectation: ProbeExpectation) -> MeasurementRevision {
+  synthetic_program_harness_revision_from_digest(
+    probe: probe,
+    digest: harness_digest_from_spine_and_expectation(
+      spine: v1_compile_probe_harness_spine,
+      expectation: expectation,
+    ),
+  )
+}
+
+fn v2_infer_eval_harness_revision(probe: GuaranteeProbeId, expectation: ProbeExpectation) -> MeasurementRevision {
+  synthetic_program_harness_revision_from_digest(
+    probe: probe,
+    digest: harness_digest_from_spine_and_expectation(
+      spine: v2_infer_eval_probe_harness_spine,
+      expectation: expectation,
+    ),
+  )
+}
+
+fn synthetic_infer_eval_subject_revision_from_node(node: Node) -> MeasurementRevision {
+  ContentFingerprint {
+    digest: content_hash_tagged_structural(
+      tag: "v2-infer-eval-subject-node-v1" as NonEmptyStr,
+      payload: content_hash(n: node),
+    ),
+  }
+}
+
+type DarkSuiteWitnessDisposition
+  = MigratedToEnrolledDagProbe {
+      rust_witness: NonEmptyStr,
+      dag_probes: List<GuaranteeProbeId>,
+      rust_retained_until: NonEmptyStr,
+    }
+
+data guarantee_probe_dark_suite_disposition_note: String = "Slice 1 MIGRATES landed wall REDs into enrolled .dag probes without dissolving the dark Rust suite (gap-analysis sec 11 item 9 operator ruling): each row names the executing .dag probe(s), the retained Rust witness they replace on the floor, and the finite-classification gate that must disposition the Rust copy before deletion. MIGRATE never duplicate means one enrolled measurement authority per class — not silent parallel maintenance forever."
+
+fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition> {
+  [
+    MigratedToEnrolledDagProbe {
+      rust_witness: "call_shape_wall_witness" as NonEmptyStr,
+      dag_probes: [call_mislabel_red_probe, call_surplus_red_probe, call_shape_green_probe],
+      rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
+    },
+    MigratedToEnrolledDagProbe {
+      rust_witness: "method_existence_wall_witness" as NonEmptyStr,
+      dag_probes: [method_missing_red_probe, method_green_probe],
+      rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
+    },
+    MigratedToEnrolledDagProbe {
+      rust_witness: "declared_type_conformance_witness" as NonEmptyStr,
+      dag_probes: [conformance_scalar_red_probe, conformance_green_probe],
+      rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
+    },
+  ]
 }
 
 type GuaranteeProbeRow {
