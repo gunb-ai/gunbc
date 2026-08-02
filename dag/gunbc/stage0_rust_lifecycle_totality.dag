@@ -22,7 +22,7 @@ import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate, role-without-disposition, disposition-without-retirement-trigger. Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery (is the tracked census non-empty and consistent with admitted disposition paths — no stale or duplicate lifecycle entries?) and decision (does every tracked path carry a disposition?) stay separate axes."
+data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate, role-without-disposition, ill-formed maintenance-disposition shape (rust_maintenance_disposition_well_formed on residue rows). Retirement trigger is follow-on work per gunbc.stage0_rust_source_lifecycle_scaffold zero_hand_maintained_rust_finish_line_attachment_note — not modeled here. Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery (is the tracked census non-empty and consistent with admitted disposition paths — no stale or duplicate lifecycle entries?) and decision (does every tracked path carry a disposition?) stay separate axes."
 
 data empty_string_list: List<String> = []
 
@@ -35,7 +35,7 @@ type LifecycleTotalityReceipt
       stale_disposition_paths: List<String>,
       duplicate_disposition_paths: List<String>,
       role_without_disposition_paths: List<String>,
-      disposition_without_retirement_trigger_paths: List<String>
+      ill_formed_maintenance_disposition_paths: List<String>
     }
   | LifecycleTotalityObservationRefused
 
@@ -101,7 +101,7 @@ fn exact_role_without_disposition_paths(
   )
 }
 
-fn row_lacks_retirement_trigger(row: RustSourceLifecycleRow) -> Bool {
+fn row_has_ill_formed_maintenance_disposition(row: RustSourceLifecycleRow) -> Bool {
   any(
     xs: row.maintenance_dispositions,
     predicate: fn(disposition) {
@@ -110,11 +110,11 @@ fn row_lacks_retirement_trigger(row: RustSourceLifecycleRow) -> Bool {
   )
 }
 
-fn exact_disposition_without_retirement_trigger_paths() -> List<String> {
+fn exact_ill_formed_maintenance_disposition_paths() -> List<String> {
   list_map(
     xs: filter(
       xs: rust_source_lifecycle_residue_rows,
-      predicate: fn(row) { row_lacks_retirement_trigger(row: row) }
+      predicate: fn(row) { row_has_ill_formed_maintenance_disposition(row: row) }
     ),
     f: fn(row) { row.path }
   )
@@ -156,7 +156,7 @@ fn lifecycle_totality_receipt(
             cargo_bin_repo_paths: cargo_bin_repo_paths,
             disposition_paths: maintenance_disposition_paths
           ),
-          disposition_without_retirement_trigger_paths: exact_disposition_without_retirement_trigger_paths()
+          ill_formed_maintenance_disposition_paths: exact_ill_formed_maintenance_disposition_paths()
         }
       }
     RustManifestReadRefused { detail: detail } => LifecycleTotalityObservationRefused
@@ -175,7 +175,7 @@ fn lifecycle_discovery_complete(receipt: LifecycleTotalityReceipt) -> Bool {
       maintenance_disposition_paths: maintenance_disposition_paths,
       unclassified_paths: unclassified_paths,
       role_without_disposition_paths: role_without_disposition_paths,
-      disposition_without_retirement_trigger_paths: disposition_without_retirement_trigger_paths
+      ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>
       length(xs: tracked) > 0
         && length(xs: stale) == 0
@@ -194,7 +194,7 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
       stale_disposition_paths: stale_disposition_paths,
       duplicate_disposition_paths: duplicate_disposition_paths,
       role_without_disposition_paths: role_without_disposition_paths,
-      disposition_without_retirement_trigger_paths: disposition_without_retirement_trigger_paths
+      ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>
       length(xs: unclassified) == 0
     LifecycleTotalityObservationRefused => false

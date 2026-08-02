@@ -43,7 +43,7 @@ test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool
       stale_disposition_paths: stale_disposition_paths,
       duplicate_disposition_paths: duplicate_disposition_paths,
       role_without_disposition_paths: role_without_disposition_paths,
-      disposition_without_retirement_trigger_paths: disposition_without_retirement_trigger_paths
+      ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>
       paths == ["orphan.rs"] && !lifecycle_decision_complete(
         receipt: lifecycle_totality_receipt(
