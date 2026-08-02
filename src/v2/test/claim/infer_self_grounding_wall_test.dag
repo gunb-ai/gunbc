@@ -9,10 +9,10 @@ import gunbc.guarantee_probe_corpus {
   non_empty_diagnostics_count_reason,
   observation_is_clean,
   active_v2_infer_eval_probe_row,
-  executed_probe_ids_for_probe,
   receipt_matches_v2_infer_eval_probe_row,
   synthetic_infer_eval_subject_revision,
   synthetic_program_harness_revision,
+  GuaranteeProbeId,
 }
 import gunbc.guarantee_measurement {
   join_receipt_to_path,
@@ -53,14 +53,21 @@ import v2.std.node {
   Named,
 }
 import v2.std.witness { Holds, Violates }
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, CommitSha }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wall_value_node_subject_label: NonEmptyStr = "wall_value_node" as NonEmptyStr
-data dag_pick_if_body_subject_label: NonEmptyStr = "dag_pick_if_body_fixture" as NonEmptyStr
+data wall_value_node_subject_material: NonEmptyStr = "ComputationNode:Value:children=[]" as NonEmptyStr
+data dag_pick_if_body_subject_material: NonEmptyStr = "Branch:Atom(true):then=Int(1):else=Int(2)" as NonEmptyStr
 
 data wall_subject_note: String = "Discriminating witnesses for the v2 self-grounding wall. The defect these pin was measured by execution on main at a589c5f0179: v2's infer routed nine of the closed vocabulary's twelve node kinds through solve_constraints with the singleton candidate set [root] under a predicate reducing to root == root, and stamped the result canonical. Because a grounding's structural evidence IS the node's resolved type, every such node was typed as ITSELF. Two arms are asserted in both directions: the construction authority refuses self-evidence (and still accepts a real derived type), and canonical_grounding_for_node — the reader 06_translate's coerce_grounded_node funnels through — now refuses the Conj/Disj groundings it previously handed back with evidence == source. Executing frontier witnesses below also join gunbc.guarantee_probe_corpus InferToEval identities (v2-self-grounding-frontier / v2-infer-eval / v2-self-grounding-frontier-value-red)."
+
+fn infer_wall_harness_revision(probe: GuaranteeProbeId) -> CommitSha {
+  synthetic_program_harness_revision(
+    probe: probe,
+    harness_material: wall_subject_note as NonEmptyStr,
+  )
+}
 
 fn wall_atom(s: Symbol) -> Node {
   Node {
@@ -285,9 +292,8 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
                   receipt: build_v2_infer_eval_receipt(
                     row: row,
                     observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                    executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
-                    subject_revision: synthetic_infer_eval_subject_revision(fixture_label: wall_value_node_subject_label),
-                    harness_revision: synthetic_program_harness_revision(probe: row.probe),
+                    subject_revision: synthetic_infer_eval_subject_revision(subject_material: wall_value_node_subject_material),
+                    harness_revision: infer_wall_harness_revision(probe: row.probe),
                   ),
                   row: row,
                 )
@@ -295,9 +301,8 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
                   receipt: build_v2_infer_eval_receipt(
                     row: row,
                     observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                    executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
-                    subject_revision: synthetic_infer_eval_subject_revision(fixture_label: wall_value_node_subject_label),
-                    harness_revision: synthetic_program_harness_revision(probe: row.probe),
+                    subject_revision: synthetic_infer_eval_subject_revision(subject_material: wall_value_node_subject_material),
+                    harness_revision: infer_wall_harness_revision(probe: row.probe),
                   ),
                   paths: guarantee_probe_paths(),
                 ) {
@@ -329,9 +334,8 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
               receipt: build_v2_infer_eval_receipt(
                 row: row,
                 observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
-                subject_revision: synthetic_infer_eval_subject_revision(fixture_label: dag_pick_if_body_subject_label),
-                harness_revision: synthetic_program_harness_revision(probe: row.probe),
+                subject_revision: synthetic_infer_eval_subject_revision(subject_material: dag_pick_if_body_subject_material),
+                harness_revision: infer_wall_harness_revision(probe: row.probe),
               ),
               row: row,
             )
@@ -339,9 +343,8 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
               receipt: build_v2_infer_eval_receipt(
                 row: row,
                 observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
-                subject_revision: synthetic_infer_eval_subject_revision(fixture_label: dag_pick_if_body_subject_label),
-                harness_revision: synthetic_program_harness_revision(probe: row.probe),
+                subject_revision: synthetic_infer_eval_subject_revision(subject_material: dag_pick_if_body_subject_material),
+                harness_revision: infer_wall_harness_revision(probe: row.probe),
               ),
               paths: guarantee_probe_paths(),
             ) {

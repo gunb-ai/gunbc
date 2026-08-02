@@ -38,23 +38,26 @@ data guarantee_probe_corpus_path_scope_note: String = "THREE PATHS FOR THE LANDE
 
 data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. guarantee_probe_ids_reserved holds OPEN follow-on identities (gunbc#7555) outside the digest until their control merges. Callers must not re-sort; the active roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row plus the caller-supplied executed_probe_ids roster (probe_set_digest is derived from exactly that list, never silently widened to the full active registry). Until the baseline stage supplies anchor git commits, witness fixtures derive revisions from measured content: synthetic_program_subject_revision fingerprints the compiled source text; synthetic_infer_eval_subject_revision fingerprints the named infer fixture; synthetic_program_harness_revision fingerprints the executing probe id under a stable harness tag. These are honest SyntheticProgram identities, not git SHAs — dissolve-on ladder-baseline stage naming real subject_revision/harness_revision commits."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures derive revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision fingerprints caller-supplied subject material (structural description or fixture body, never a bare label alone); synthetic_program_harness_revision fingerprints probe id plus harness material (witness scope note content). These are honest SyntheticProgram identities, not git SHAs — dissolve-on ladder-baseline stage naming real subject_revision/harness_revision commits."
 
 fn synthetic_program_subject_revision(source: String) -> CommitSha {
   content_hash_atom(value: source as NonEmptyStr).digest as CommitSha
 }
 
-fn synthetic_infer_eval_subject_revision(fixture_label: NonEmptyStr) -> CommitSha {
+fn synthetic_infer_eval_subject_revision(subject_material: NonEmptyStr) -> CommitSha {
   content_hash_tagged_structural(
     tag: "v2-infer-eval-subject-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: fixture_label),
+    payload: content_hash_atom(value: subject_material),
   ).digest as CommitSha
 }
 
-fn synthetic_program_harness_revision(probe: GuaranteeProbeId) -> CommitSha {
+fn synthetic_program_harness_revision(probe: GuaranteeProbeId, harness_material: NonEmptyStr) -> CommitSha {
   content_hash_tagged_structural(
     tag: "guarantee-probe-harness-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: probe as NonEmptyStr),
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: probe as NonEmptyStr),
+      right: content_hash_atom(value: harness_material),
+    ),
   ).digest as CommitSha
 }
 
@@ -538,10 +541,10 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus) -> ProbeObserv
 fn build_v1_compile_receipt(
   row: V1CompileProbeRow,
   census: CompileDiagnosticCensus,
-  executed_probe_ids: List<GuaranteeProbeId>,
   subject_revision: CommitSha,
   harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
+  let executed_probe_ids = executed_probe_ids_for_probe(probe: row.probe)
   GuaranteeMeasurementReceipt {
     class: row.class,
     path: v1_compile_rust_path_id,
@@ -564,10 +567,10 @@ fn receipt_joins_v1_compile_path(receipt: GuaranteeMeasurementReceipt) -> Bool {
 fn build_v2_infer_eval_receipt(
   row: V2InferEvalProbeRow,
   observed: ProbeObservation,
-  executed_probe_ids: List<GuaranteeProbeId>,
   subject_revision: CommitSha,
   harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
+  let executed_probe_ids = executed_probe_ids_for_probe(probe: row.probe)
   GuaranteeMeasurementReceipt {
     class: row.class,
     path: v2_infer_eval_path_id,

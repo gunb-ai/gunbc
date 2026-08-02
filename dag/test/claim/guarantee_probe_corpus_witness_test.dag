@@ -79,6 +79,13 @@ fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
+fn witness_harness_revision(probe: GuaranteeProbeId) -> CommitSha {
+  synthetic_program_harness_revision(
+    probe: probe,
+    harness_material: guarantee_probe_corpus_witness_scope_note as NonEmptyStr,
+  )
+}
+
 data call_mislabel_source: String = "module probe_call_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
 
 data call_surplus_source: String = "module probe_call_surplus\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(1, 2, 3) }\n"
@@ -184,13 +191,11 @@ test fn conformance_green_control_has_zero_diagnostics() -> Bool {
 test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
   match active_v1_compile_probe_row(probe: call_mislabel_red_probe) {
     Present { value: row } =>
-      let executed = executed_probe_ids_for_probe(probe: row.probe)
       let receipt = build_v1_compile_receipt(
         row: row,
         census: census_of(source: call_mislabel_source),
-        executed_probe_ids: executed,
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
-        harness_revision: synthetic_program_harness_revision(probe: row.probe),
+        harness_revision: witness_harness_revision(probe: row.probe),
       )
       receipt_joins_v1_compile_path(receipt: receipt)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
@@ -206,9 +211,8 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
       let receipt = build_v1_compile_receipt(
         row: row,
         census: census,
-        executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
         subject_revision: synthetic_program_subject_revision(source: method_missing_source),
-        harness_revision: synthetic_program_harness_revision(probe: row.probe),
+        harness_revision: witness_harness_revision(probe: row.probe),
       )
       observed_is_verdict(o: receipt.observed)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
@@ -226,9 +230,8 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
       let receipt = build_v1_compile_receipt(
         row: row,
         census: census_of(source: call_shape_green_source),
-        executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
         subject_revision: synthetic_program_subject_revision(source: call_shape_green_source),
-        harness_revision: synthetic_program_harness_revision(probe: row.probe),
+        harness_revision: witness_harness_revision(probe: row.probe),
       )
       observation_is_clean(o: receipt.observed)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
@@ -334,9 +337,8 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
                 && observation_is_clean(o: build_v1_compile_receipt(
                   row: row,
                   census: census,
-                  executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
                   subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
-                  harness_revision: synthetic_program_harness_revision(probe: row.probe),
+                  harness_revision: witness_harness_revision(probe: row.probe),
                 ).observed) == false
             Absent => false
           }
@@ -349,8 +351,8 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
 test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
   let mislabel_subject = synthetic_program_subject_revision(source: call_mislabel_source)
   let surplus_subject = synthetic_program_subject_revision(source: call_surplus_source)
-  let mislabel_harness = synthetic_program_harness_revision(probe: call_mislabel_red_probe)
-  let surplus_harness = synthetic_program_harness_revision(probe: call_surplus_red_probe)
+  let mislabel_harness = witness_harness_revision(probe: call_mislabel_red_probe)
+  let surplus_harness = witness_harness_revision(probe: call_surplus_red_probe)
   mislabel_subject != surplus_subject && mislabel_harness != surplus_harness
 }
 
@@ -361,9 +363,8 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
       let receipt = build_v1_compile_receipt(
         row: row,
         census: census_of(source: call_mislabel_source),
-        executed_probe_ids: executed,
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
-        harness_revision: synthetic_program_harness_revision(probe: row.probe),
+        harness_revision: witness_harness_revision(probe: row.probe),
       )
       (receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
         && !((receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))
