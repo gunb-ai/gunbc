@@ -701,6 +701,15 @@ data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
 ]
 
 data compiler_frontier_sweep_order: List<String> = [
+  "src/v2/compiler/04_infer.dag",
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/06_translate.dag",
+  "src/v2/compiler/05_emit.dag",
+  "src/v2/compiler/program_partition.dag",
+  "src/v2/compiler/02_parse.dag",
+  "src/v2/compiler/source_authority.dag",
+  "src/v2/compiler/00_compile.dag",
+  "src/v2/compiler/03_ingest.dag",
   "src/v2/compiler/parse_engine_hooks.dag",
   "src/v2/compiler/use_site_verdict.dag",
   "src/v2/compiler/discovery_enumeration.dag",
@@ -712,20 +721,11 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/03_normalize.dag",
   "src/v2/compiler/03_resolve.dag",
   "src/v2/compiler/03_name_resolve.dag",
-  "src/v2/compiler/04_infer.dag",
-  "src/v2/compiler/05_eval.dag",
-  "src/v2/compiler/06_translate.dag",
-  "src/v2/compiler/05_emit.dag",
   "src/v2/compiler/emit_module.dag",
   "src/v2/compiler/05_emit_orchestration.dag",
-  "src/v2/compiler/program_partition.dag",
   "src/v2/compiler/emit_semantic_decl.dag",
   "src/v2/compiler/emit_host.dag",
   "src/v2/compiler/emit_produced.dag",
-  "src/v2/compiler/02_parse.dag",
-  "src/v2/compiler/source_authority.dag",
-  "src/v2/compiler/00_compile.dag",
-  "src/v2/compiler/03_ingest.dag",
   "src/v2/compiler/03_body_producer.dag",
   "src/v2/compiler/program_assembly.dag"
 ]
