@@ -18,7 +18,7 @@ import gunbc.resolved_graph_cache_hand_rust_scaffold {
 }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
-import v2.std.algebra { fold, length }
+import v2.std.algebra { length }
 
 data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt (reviews 46781/46990): scaffold bind on lookup_verified_probe; full #7534 Rust census (seven paths, per-path net deltas summing to loc_delta_net); consumer bridge defers to materialization_provider_consumer_hand_rust_witness_test.dag. Discriminators executed by cargo test -p v1-compiler-tests resolve_cross_process_cache_test -- --nocapture."
 
