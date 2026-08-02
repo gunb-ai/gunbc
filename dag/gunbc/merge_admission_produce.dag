@@ -10,16 +10,8 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.git.object_store {
   GitObjectId,
-  GitSha1ObjectId,
-  GitSha256ObjectId,
-  GitObjectFormatSha1,
-  GitObjectFormatSha256,
-  git_decode_object_id_text,
-  git_sha1_object_id,
-  git_sha256_object_id,
+  git_object_id_from_untagged_hex,
   git_object_id_wire_hex,
-  GitObjectIdTextDecoded,
-  GitObjectIdTextRefused,
 }
 import extdeps.github.checks {
   CheckConclusion,
@@ -162,24 +154,6 @@ fn parse_gate_roster_hash_wire(line: String) -> GateRosterHash? {
   }
 }
 
-fn parse_git_tree_object_id(hex: String) -> GitObjectId? {
-  if length(hex) == 40 {
-    match git_decode_object_id_text(format: GitObjectFormatSha1, text: hex) {
-      GitObjectIdTextDecoded { oid } =>
-        Present { value: oid }
-      GitObjectIdTextRefused { cause: _ } => none
-    }
-  } else if length(hex) == 64 {
-    match git_decode_object_id_text(format: GitObjectFormatSha256, text: hex) {
-      GitObjectIdTextDecoded { oid } =>
-        Present { value: oid }
-      GitObjectIdTextRefused { cause: _ } => none
-    }
-  } else {
-    none
-  }
-}
-
 fn render_gate_roster_hash_wire(hash: GateRosterHash) -> String {
   serialize_content_hash(hash: as_content_hash_structural(structural: hash)) as String
 }
@@ -212,7 +186,7 @@ fn observe_merge_target_tree_hash(ref: GitRef) -> MergeTargetTreeHashObservation
         cause: "git.Inspect.ShowTree exited 0 but stdout tree hash was empty",
       }
     } else {
-      match parse_git_tree_object_id(hex: hash) {
+      match git_object_id_from_untagged_hex(hex: hash) {
         Present { value: tree_hash } =>
           MergeTargetTreeHashOk { hash: tree_hash }
         Absent =>
@@ -277,7 +251,7 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
   } else {
     match parse_check_conclusion(raw: lines.skip(n: 2).first()) {
       Present { value: conclusion } =>
-        match parse_git_tree_object_id(hex: lines.first()) {
+        match git_object_id_from_untagged_hex(hex: lines.first()) {
           Present { value: base_tree_hash } =>
             match parse_gate_roster_hash_wire(line: lines.skip(n: 1).first()) {
               Absent => none
