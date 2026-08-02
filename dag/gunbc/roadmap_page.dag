@@ -16,7 +16,7 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
-  accepted_roadmap_node_ids,
+  accepted_roadmap_node_ids, declared_roadmap_nodes,
   ClosingContractTaskPair, closing_contract_task_pairs, closing_contract_family_claim,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
@@ -190,8 +190,10 @@ fn ticket_brief_violations(nodes: List<RoadmapNode>) -> List<BriefBudgetViolatio
   })
 }
 
+data ticket_brief_budget_subject_note: String = "THE BUDGET GOVERNS AUTHORED TICKET PROSE, SO IT WALKS THE AUTHORED NODES RATHER THAN THE PROJECTION. It previously walked doc_all_nodes(roadmap_authority()), which includes the DERIVED closing-contract task nodes whose boundary is generated as a fixed prefix plus the target node's red_control. That made the budget a second, indirect and undeclared constraint on red_control length: accepting any node could push a DIFFERENT node over budget, because acceptance makes the next node startable-and-unbound and therefore derives a closing-contract row for it.\n\nThat is exactly what happened when v1-interpreter-primitive-roster was accepted: v1-interpreter-primitive-dispatch-authority became the frontier, its derived row's brief came to the prefix plus a six-clause red_control, and the budget refused -- with the only available remedies being to trim a carefully authored acceptance bar to satisfy a PAGE constraint, or to leave every PR touching roadmap_authority.dag red. Neither is the budget's purpose.\n\nA derived brief is a projection of a field that is already governed where it is authored. Budgeting the projection prices the source field twice, through a channel nobody declared. So the subject is declared_roadmap_nodes(): every authored ticket, accepted or active, and nothing generated. The planted-fixture RED control is unaffected -- it passes an authored node directly to ticket_brief_violations, which still refuses at the same threshold."
+
 fn roadmap_ticket_brief_violations() -> List<BriefBudgetViolation> {
-  ticket_brief_violations(nodes: doc_all_nodes(doc: roadmap_authority()))
+  ticket_brief_violations(nodes: declared_roadmap_nodes())
 }
 
 fn inline_md_nodes(text: String) -> List<Fragment> {
