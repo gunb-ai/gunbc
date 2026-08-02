@@ -25,7 +25,8 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, build_multi_entry_index_with_shared_caches, make_eval_context,
     new_shared_typecheck_caches, reset_typecheck_compute_count, resolve_entry_graph,
     resolve_entry_with_index, run_claim, typecheck_compute_count,
-    with_typecheck_compute_count_receipt, workspace_root, ClaimOutcome, MultiEntryIndex,
+    typed_module_cache_content_keys_for_test, with_typecheck_compute_count_receipt, workspace_root,
+    ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -457,131 +458,30 @@ fn cross_worker_shared_typecheck_cache_purity() {
     }
 }
 
-/// Partial all-hit-probe abandonment must not double-count early cache hits.
+/// Within one shared typed-cache authority, entry order cannot change the set of
+/// distinct module content computations (and therefore cannot change its count). This
+/// is the durable cache law; no historical ratio or per-request observation machinery
+/// is retained.
 #[test]
-fn repeated_typecheck_attribution_partial_probe_hit_single_row_per_module() {
-    use v1_compiler::cli_run::{
-        arm_repeated_typecheck_attribution_probe, clear_repeated_typecheck_attribution_entry,
-        disarm_repeated_typecheck_attribution_probe, set_repeated_typecheck_attribution_entry,
-        with_repeated_typecheck_attribution_receipt,
-    };
-
-    with_repeated_typecheck_attribution_receipt(|| {
-        let fx = Fixture::new("slice2-partial-probe");
-        let index = build_multi_entry_index(&fx.roots);
-        // Warm the shared prefix so entry_b's all-hit probe records u.common as a hit, then
-        // abandons on a genuine miss — the slow reconcile path must not duplicate that hit.
-        resolve_entry_with_index(&index, &fx.entry_a).expect("warm entry_a");
-
-        arm_repeated_typecheck_attribution_probe();
-        set_repeated_typecheck_attribution_entry(&fx.entry_b);
-        resolve_entry_with_index(&index, &fx.entry_b).expect("resolve b with probe");
-        clear_repeated_typecheck_attribution_entry();
-        let run = disarm_repeated_typecheck_attribution_probe().expect("probe armed");
-
-        let common_rows: Vec<_> = run
-            .rows
-            .iter()
-            .filter(|r| r.entry == fx.entry_b && r.module_path == "u.common")
-            .collect();
-        assert_eq!(
-            common_rows.len(),
-            1,
-            "exactly one row for (entry_b, u.common); got {common_rows:?}"
-        );
-    });
-}
-
-/// Slice-2 attribution receipt: shared prefix modules are cache hits on the second entry.
-#[test]
-fn repeated_typecheck_attribution_records_shared_prefix_hits() {
-    use v1_compiler::cli_run::{
-        arm_repeated_typecheck_attribution_probe, clear_repeated_typecheck_attribution_entry,
-        disarm_repeated_typecheck_attribution_probe, set_repeated_typecheck_attribution_entry,
-        with_repeated_typecheck_attribution_receipt, TypedCacheDisposition,
-    };
-
-    with_repeated_typecheck_attribution_receipt(|| {
-        let fx = Fixture::new("slice2-attribution");
-        let index = build_multi_entry_index(&fx.roots);
-        arm_repeated_typecheck_attribution_probe();
-
-        set_repeated_typecheck_attribution_entry(&fx.entry_a);
-        resolve_entry_with_index(&index, &fx.entry_a).expect("resolve a");
-        clear_repeated_typecheck_attribution_entry();
-
-        set_repeated_typecheck_attribution_entry(&fx.entry_b);
-        resolve_entry_with_index(&index, &fx.entry_b).expect("resolve b");
-        clear_repeated_typecheck_attribution_entry();
-
-        let run = disarm_repeated_typecheck_attribution_probe().expect("probe armed");
-        let hits = run
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Hit)
-            .count();
-        let misses = run
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Miss)
-            .count();
-        assert!(
-            hits > 0,
-            "entry_b must observe cache hits for the shared u.common prefix (hits={hits}, misses={misses})"
-        );
-        assert!(
-            run.rows.iter().any(|r| {
-                r.module_path == "u.common"
-                    && r.cache_disposition == TypedCacheDisposition::Hit
-                    && r.first_computing_entry.as_deref() == Some(fx.entry_a.as_str())
-                    && r.later_requester_count >= 1
-            }),
-            "u.common must attribute first compute to entry_a and count entry_b as a later requester"
-        );
-        assert_eq!(
-            run.entry_timings.len(),
-            2,
-            "one timing row per resolved entry"
-        );
-    });
-}
-
-/// Reordering selected entries against one shared index preserves the distinct compute set.
-#[test]
-fn repeated_typecheck_attribution_reorder_preserves_distinct_computes() {
-    use v1_compiler::cli_run::{
-        arm_repeated_typecheck_attribution_probe, clear_repeated_typecheck_attribution_entry,
-        disarm_repeated_typecheck_attribution_probe, set_repeated_typecheck_attribution_entry,
-        with_repeated_typecheck_attribution_receipt, TypedCacheDisposition,
-    };
-
-    with_repeated_typecheck_attribution_receipt(|| {
-        let fx = Fixture::new("slice2-reorder");
-        let distinct_miss_keys = |order: &[&str]| -> std::collections::BTreeSet<String> {
+fn shared_typecheck_distinct_compute_count_is_order_invariant() {
+    with_typecheck_compute_count_receipt(|| {
+        let fx = Fixture::new("order-invariant-distinct-computes");
+        let compute_keys = |first: &str, second: &str| {
             let index = build_multi_entry_index(&fx.roots);
-            arm_repeated_typecheck_attribution_probe();
-            for entry in order {
-                set_repeated_typecheck_attribution_entry(entry);
-                resolve_entry_with_index(&index, entry).expect("resolve");
-                clear_repeated_typecheck_attribution_entry();
-            }
-            let snap = disarm_repeated_typecheck_attribution_probe().expect("armed");
-            snap.rows
-                .into_iter()
-                .filter(|r| r.cache_disposition == TypedCacheDisposition::Miss)
-                .map(|r| r.module_key)
-                .collect()
+            resolve_entry_with_index(&index, first).expect("resolve first entry");
+            resolve_entry_with_index(&index, second).expect("resolve second entry");
+            typed_module_cache_content_keys_for_test(&index)
         };
 
-        let ab = distinct_miss_keys(&[&fx.entry_a, &fx.entry_b]);
-        let ba = distinct_miss_keys(&[&fx.entry_b, &fx.entry_a]);
-        assert_eq!(
-            ab, ba,
-            "resolve order must not change which module content keys are genuinely computed"
-        );
+        let ab = compute_keys(&fx.entry_a, &fx.entry_b);
+        let ba = compute_keys(&fx.entry_b, &fx.entry_a);
         assert!(
             !ab.is_empty(),
-            "fixture must produce at least one genuine compute on a cold shared index"
+            "fixture must perform at least one cold computation"
+        );
+        assert_eq!(
+            ab, ba,
+            "entry order must not change the distinct module-content computation set"
         );
     });
 }

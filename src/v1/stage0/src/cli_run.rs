@@ -1,6 +1,7 @@
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -800,14 +801,6 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER,
             "cli_run_selected_closure_overlap_probe"
-        );
-    }
-
-    #[test]
-    fn repeated_typecheck_attribution_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_REPEATED_TYPECHECK_ATTRIBUTION_SCAFFOLD_MARKER,
-            "cli_run_repeated_typecheck_attribution_probe"
         );
     }
 
@@ -6595,7 +6588,11 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// per (thread, canonical roots) and reused, so consumers that resolve distinct entries
 /// against it share one typed_module_cache — the union closure typechecks once per node.
 /// Roots are canonicalized (`canonical_shared_index_roots`) before both keying and
-/// building, so path-spelling variants of the same pool cannot fork the universe.
+/// building, so path-spelling variants of the same pool cannot fork the INDEX.
+/// This does not canonicalize independently-read `SourceFile` objects: a consumer
+/// that joins absolute-path reads to this relative-path index can still fork source
+/// identity. The divergence census walls that site with parent-owned `Rc` identity;
+/// the class-wide next rung is canonical `SourceFile` identity at construction.
 fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
@@ -6807,6 +6804,16 @@ pub fn parse_cache_paths_for_test(index: &MultiEntryIndex) -> Vec<String> {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
     index.typed_module_cache.borrow().len()
+}
+
+/// Test-only projection of the durable typed-cache authority: the content keys whose
+/// computations populated this private index. A fresh, non-evicting test index makes
+/// this exactly the distinct-computation set without retaining request attribution.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_content_keys_for_test(
+    index: &MultiEntryIndex,
+) -> std::collections::BTreeSet<String> {
+    index.typed_module_cache.borrow().keys().cloned().collect()
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -7096,527 +7103,6 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
-}
-
-// --- Repeated typecheck attribution probe (entry-graph-union slice 2 / lane ci-cost) ---
-// ONE-SHOT INSTRUMENT: per (entry, typed module content key) records cache disposition,
-// compute wall on miss, and cross-entry first-computer / later-requester counts against
-// ONE shared `MultiEntryIndex`. Verdict taken 2026-08-01 (§F); measurement orchestration
-// deletes after merged-SHA provenance receipt — see `cli_run_repeated_typecheck_attribution_probe`
-// scaffold below for the intrinsic trigger (not #7534).
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypedCacheDisposition {
-    Hit,
-    Miss,
-    Refused,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryModuleTypecheckRow {
-    pub entry: String,
-    pub module_key: String,
-    pub module_path: String,
-    pub in_closure: bool,
-    pub cache_disposition: TypedCacheDisposition,
-    pub typecheck_compute_ns: u128,
-    pub first_computing_entry: Option<String>,
-    pub later_requester_count: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryReconcileTiming {
-    pub entry: String,
-    pub reconcile_assembly_ns: u128,
-    pub typecheck_compute_ns: u128,
-    pub resolve_nanos: u128,
-}
-
-#[derive(Clone)]
-struct ModuleKeyTracker {
-    first_computing_entry: String,
-    requesters_seen: u64,
-}
-
-/// Captured rows from an armed attribution probe (entry-graph-union slice 2).
-#[derive(Debug, Clone)]
-pub struct RepeatedTypecheckAttributionSnapshot {
-    pub rows: Vec<EntryModuleTypecheckRow>,
-    pub entry_timings: Vec<EntryReconcileTiming>,
-    pub distinct_first_computes: usize,
-}
-
-struct RepeatedTypecheckAttributionRun {
-    key_tracker: HashMap<String, ModuleKeyTracker>,
-    rows: Vec<EntryModuleTypecheckRow>,
-    entry_timings: Vec<EntryReconcileTiming>,
-    all_hit_probe_rows: Vec<EntryModuleTypecheckRow>,
-    all_hit_probe_active: bool,
-    observed_entry_module_keys: HashSet<(String, String)>,
-}
-
-/// Aggregated repeated-typecheck attribution (entry-graph-union slice 2).
-#[derive(Debug, Clone)]
-pub struct RepeatedTypecheckAttributionMeasurement {
-    pub source_roots: Vec<String>,
-    pub scan_dirs: Vec<String>,
-    pub head_sha: String,
-    pub diff_base_override: Option<String>,
-    pub selected_entries: Vec<String>,
-    pub skipped_entries: Vec<String>,
-    pub max_entries_applied: Option<usize>,
-    /// Zero-based index into the production roster before `--max-entries` truncation.
-    pub entry_offset_applied: Option<usize>,
-    pub sum_closure_memberships: usize,
-    pub union_modules: usize,
-    pub membership_duplication_factor: Option<f64>,
-    pub rows: Vec<EntryModuleTypecheckRow>,
-    pub entry_timings: Vec<EntryReconcileTiming>,
-    pub total_cache_hits: usize,
-    pub total_cache_misses: usize,
-    pub total_cache_refusals: usize,
-    /// Sum of `typecheck_compute_ns` on every cache miss (first + repeated).
-    pub total_typecheck_compute_ns: u128,
-    /// Misses that re-paid typecheck for a module identity already computed earlier in this run.
-    pub repeated_typecheck_misses: usize,
-    /// Typecheck wall on first-computation misses only (`later_requester_count == 0`).
-    pub first_computation_typecheck_ns: u128,
-    /// Typecheck wall on repeated misses (`later_requester_count > 0` at observation).
-    pub repeated_typecheck_compute_ns: u128,
-    /// Per-module selected-entry fanout (from slice-1 overlap machinery), descending.
-    pub fanout_by_module: Vec<(String, usize)>,
-    pub memory: RepeatedTypecheckAttributionMemoryObservation,
-    pub key_summaries: Vec<ModuleKeyAttributionSummary>,
-    /// Cache hits / (hits + misses) — diagnostic only, NOT the decision metric.
-    pub cache_hit_ratio: Option<f64>,
-    /// Distinct first-computes vs total observations.
-    pub compute_duplication_factor: Option<f64>,
-    /// THE decision quantity: `repeated_typecheck_compute_ns / total_typecheck_compute_ns`.
-    pub decision_ratio: Option<f64>,
-}
-
-impl RepeatedTypecheckAttributionMeasurement {
-    pub fn selected_count(&self) -> usize {
-        self.selected_entries.len()
-    }
-}
-
-impl RepeatedTypecheckAttributionRun {
-    fn into_measurement(
-        self,
-        source_roots: Vec<String>,
-        scan_dirs: Vec<String>,
-        head_sha: String,
-        diff_base_override: Option<String>,
-        selected_entries: Vec<String>,
-        skipped_entries: Vec<String>,
-        max_entries_applied: Option<usize>,
-        entry_offset_applied: Option<usize>,
-        sum_closure_memberships: usize,
-        union_modules: usize,
-    ) -> RepeatedTypecheckAttributionMeasurement {
-        Self::snapshot_into_measurement(
-            RepeatedTypecheckAttributionSnapshot {
-                distinct_first_computes: self.key_tracker.len(),
-                rows: self.rows,
-                entry_timings: self.entry_timings,
-            },
-            source_roots,
-            scan_dirs,
-            head_sha,
-            diff_base_override,
-            selected_entries,
-            skipped_entries,
-            max_entries_applied,
-            entry_offset_applied,
-            sum_closure_memberships,
-            union_modules,
-            Vec::new(),
-            RepeatedTypecheckAttributionMemoryObservation::capture_pair(None, None),
-        )
-    }
-
-    fn snapshot_into_measurement(
-        snap: RepeatedTypecheckAttributionSnapshot,
-        source_roots: Vec<String>,
-        scan_dirs: Vec<String>,
-        head_sha: String,
-        diff_base_override: Option<String>,
-        selected_entries: Vec<String>,
-        skipped_entries: Vec<String>,
-        max_entries_applied: Option<usize>,
-        entry_offset_applied: Option<usize>,
-        sum_closure_memberships: usize,
-        union_modules: usize,
-        fanout_by_module: Vec<(String, usize)>,
-        memory: RepeatedTypecheckAttributionMemoryObservation,
-    ) -> RepeatedTypecheckAttributionMeasurement {
-        let total_cache_hits = snap
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Hit)
-            .count();
-        let total_cache_misses = snap
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Miss)
-            .count();
-        let total_cache_refusals = snap
-            .rows
-            .iter()
-            .filter(|r| r.cache_disposition == TypedCacheDisposition::Refused)
-            .count();
-        let mut total_typecheck_compute_ns: u128 = 0;
-        let mut first_computation_typecheck_ns: u128 = 0;
-        let mut repeated_typecheck_compute_ns: u128 = 0;
-        let mut repeated_typecheck_misses: usize = 0;
-        for row in &snap.rows {
-            if row.cache_disposition != TypedCacheDisposition::Miss {
-                continue;
-            }
-            total_typecheck_compute_ns += row.typecheck_compute_ns;
-            if row.later_requester_count > 0 {
-                repeated_typecheck_misses += 1;
-                repeated_typecheck_compute_ns += row.typecheck_compute_ns;
-            } else {
-                first_computation_typecheck_ns += row.typecheck_compute_ns;
-            }
-        }
-        let observed = total_cache_hits + total_cache_misses;
-        let cache_hit_ratio = if observed == 0 {
-            None
-        } else {
-            Some(total_cache_hits as f64 / observed as f64)
-        };
-        let decision_ratio = if total_typecheck_compute_ns == 0 {
-            None
-        } else {
-            Some(repeated_typecheck_compute_ns as f64 / total_typecheck_compute_ns as f64)
-        };
-        let compute_duplication_factor = if snap.distinct_first_computes == 0 {
-            None
-        } else {
-            Some(snap.rows.len() as f64 / snap.distinct_first_computes as f64)
-        };
-        let membership_duplication_factor = if union_modules == 0 {
-            None
-        } else {
-            Some(sum_closure_memberships as f64 / union_modules as f64)
-        };
-        let fanout_by_path: HashMap<String, usize> = fanout_by_module
-            .iter()
-            .map(|(name, count)| (name.clone(), *count))
-            .collect();
-        let mut key_summaries_map: std::collections::HashMap<String, ModuleKeyAttributionSummary> =
-            std::collections::HashMap::new();
-        for row in &snap.rows {
-            let entry = key_summaries_map
-                .entry(row.module_key.clone())
-                .or_insert_with(|| ModuleKeyAttributionSummary {
-                    module_key: row.module_key.clone(),
-                    module_path: row.module_path.clone(),
-                    selected_entry_fanout: fanout_by_path
-                        .get(&row.module_path)
-                        .copied()
-                        .unwrap_or(0),
-                    hit_count: 0,
-                    miss_count: 0,
-                    recompute_count: 0,
-                });
-            match row.cache_disposition {
-                TypedCacheDisposition::Hit => entry.hit_count += 1,
-                TypedCacheDisposition::Miss => {
-                    entry.miss_count += 1;
-                    if row.later_requester_count > 0 {
-                        entry.recompute_count += 1;
-                    }
-                }
-                TypedCacheDisposition::Refused => {}
-            }
-        }
-        let mut key_summaries: Vec<ModuleKeyAttributionSummary> =
-            key_summaries_map.into_values().collect();
-        key_summaries.sort_by(|a, b| {
-            b.recompute_count
-                .cmp(&a.recompute_count)
-                .then_with(|| b.miss_count.cmp(&a.miss_count))
-                .then_with(|| a.module_key.cmp(&b.module_key))
-        });
-        RepeatedTypecheckAttributionMeasurement {
-            source_roots,
-            scan_dirs,
-            head_sha,
-            diff_base_override,
-            selected_entries,
-            skipped_entries,
-            max_entries_applied,
-            entry_offset_applied,
-            sum_closure_memberships,
-            union_modules,
-            membership_duplication_factor,
-            rows: snap.rows,
-            entry_timings: snap.entry_timings,
-            total_cache_hits,
-            total_cache_misses,
-            total_cache_refusals,
-            total_typecheck_compute_ns,
-            repeated_typecheck_misses,
-            first_computation_typecheck_ns,
-            repeated_typecheck_compute_ns,
-            fanout_by_module,
-            memory,
-            key_summaries,
-            cache_hit_ratio,
-            compute_duplication_factor,
-            decision_ratio,
-        }
-    }
-}
-
-static REPEATED_TYPECHECK_ATTRIBUTION_RUN: Mutex<Option<RepeatedTypecheckAttributionRun>> =
-    Mutex::new(None);
-
-/// Run an attribution-probe receipt test with exclusive access to the process-wide probe
-/// and `TYPECHECK_COMPUTE_COUNT` (resolves bump the counter; same lock as counter receipts).
-pub fn with_repeated_typecheck_attribution_receipt<R>(f: impl FnOnce() -> R) -> R {
-    let _guard = UNION_RESOLVE_PROCESS_RECEIPT_LOCK
-        .lock()
-        .expect("union resolve process receipt lock poisoned");
-    f()
-}
-
-thread_local! {
-    static REPEATED_TYPECHECK_ATTRIBUTION_ENTRY: RefCell<Option<String>> =
-        const { RefCell::new(None) };
-}
-
-pub(crate) const CLI_RUN_REPEATED_TYPECHECK_ATTRIBUTION_SCAFFOLD_MARKER: &str =
-    "cli_run_repeated_typecheck_attribution_probe";
-
-pub fn arm_repeated_typecheck_attribution_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    *guard = Some(RepeatedTypecheckAttributionRun {
-        key_tracker: HashMap::new(),
-        rows: Vec::new(),
-        entry_timings: Vec::new(),
-        all_hit_probe_rows: Vec::new(),
-        all_hit_probe_active: false,
-        observed_entry_module_keys: HashSet::new(),
-    });
-}
-
-pub fn set_repeated_typecheck_attribution_entry(entry: &str) {
-    REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| {
-        *cell.borrow_mut() = Some(entry.to_string());
-    });
-}
-
-pub fn clear_repeated_typecheck_attribution_entry() {
-    REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| {
-        *cell.borrow_mut() = None;
-    });
-}
-
-pub fn disarm_repeated_typecheck_attribution_probe() -> Option<RepeatedTypecheckAttributionSnapshot>
-{
-    clear_repeated_typecheck_attribution_entry();
-    REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned")
-        .take()
-        .map(|run| RepeatedTypecheckAttributionSnapshot {
-            distinct_first_computes: run.key_tracker.len(),
-            rows: run.rows,
-            entry_timings: run.entry_timings,
-        })
-}
-
-fn repeated_typecheck_attribution_armed() -> bool {
-    REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .ok()
-        .is_some_and(|g| g.is_some())
-}
-
-fn repeated_typecheck_attribution_begin_all_hit_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    if let Some(run) = guard.as_mut() {
-        run.all_hit_probe_active = true;
-        run.all_hit_probe_rows.clear();
-    }
-}
-
-fn repeated_typecheck_attribution_abort_all_hit_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    if let Some(run) = guard.as_mut() {
-        run.all_hit_probe_active = false;
-        run.all_hit_probe_rows.clear();
-    }
-}
-
-fn repeated_typecheck_attribution_commit_all_hit_probe() {
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    run.all_hit_probe_active = false;
-    let buffered = std::mem::take(&mut run.all_hit_probe_rows);
-    for row in buffered {
-        commit_repeated_typecheck_attribution_row(run, row);
-    }
-}
-
-fn commit_repeated_typecheck_attribution_row(
-    run: &mut RepeatedTypecheckAttributionRun,
-    row: EntryModuleTypecheckRow,
-) {
-    let dedupe_key = (row.entry.clone(), row.module_key.clone());
-    if !run.observed_entry_module_keys.insert(dedupe_key) {
-        return;
-    }
-    let module_key = row.module_key.clone();
-    let disposition = row.cache_disposition;
-    if disposition == TypedCacheDisposition::Miss && !run.key_tracker.contains_key(&module_key) {
-        run.key_tracker.insert(
-            module_key.clone(),
-            ModuleKeyTracker {
-                first_computing_entry: row.entry.clone(),
-                requesters_seen: 0,
-            },
-        );
-    }
-    run.rows.push(row);
-    match disposition {
-        TypedCacheDisposition::Miss | TypedCacheDisposition::Hit => {
-            if let Some(tracker) = run.key_tracker.get_mut(&module_key) {
-                tracker.requesters_seen += 1;
-            }
-        }
-        TypedCacheDisposition::Refused => {}
-    }
-}
-
-fn build_repeated_typecheck_attribution_row(
-    run: &RepeatedTypecheckAttributionRun,
-    entry: String,
-    module_path: &str,
-    module_key: &str,
-    disposition: TypedCacheDisposition,
-    typecheck_compute_ns: u128,
-) -> EntryModuleTypecheckRow {
-    let (first_computing_entry, later_requester_count) = match run.key_tracker.get(module_key) {
-        Some(tracker) => (
-            Some(tracker.first_computing_entry.clone()),
-            tracker.requesters_seen,
-        ),
-        None if disposition == TypedCacheDisposition::Miss => (Some(entry.clone()), 0),
-        None => (None, 0),
-    };
-    EntryModuleTypecheckRow {
-        entry,
-        module_key: module_key.to_string(),
-        module_path: module_path.to_string(),
-        in_closure: true,
-        cache_disposition: disposition,
-        typecheck_compute_ns,
-        first_computing_entry,
-        later_requester_count,
-    }
-}
-
-fn observe_repeated_typecheck_attribution_module(
-    module_path: &str,
-    module_key: &str,
-    disposition: TypedCacheDisposition,
-    typecheck_compute_ns: u128,
-) {
-    if !repeated_typecheck_attribution_armed() {
-        return;
-    }
-    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| cell.borrow().clone())
-    else {
-        return;
-    };
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    let row = build_repeated_typecheck_attribution_row(
-        run,
-        entry,
-        module_path,
-        module_key,
-        disposition,
-        typecheck_compute_ns,
-    );
-    if run.all_hit_probe_active {
-        run.all_hit_probe_rows.push(row);
-        return;
-    }
-    commit_repeated_typecheck_attribution_row(run, row);
-}
-
-fn observe_repeated_typecheck_attribution_refused(module_path: &str, cause: &str) {
-    if !repeated_typecheck_attribution_armed() {
-        return;
-    }
-    let Some(entry) = REPEATED_TYPECHECK_ATTRIBUTION_ENTRY.with(|cell| cell.borrow().clone())
-    else {
-        return;
-    };
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    let row = EntryModuleTypecheckRow {
-        entry,
-        module_key: format!("refused:{cause}"),
-        module_path: module_path.to_string(),
-        in_closure: true,
-        cache_disposition: TypedCacheDisposition::Refused,
-        typecheck_compute_ns: 0,
-        first_computing_entry: None,
-        later_requester_count: 0,
-    };
-    if run.all_hit_probe_active {
-        run.all_hit_probe_rows.push(row);
-        return;
-    }
-    commit_repeated_typecheck_attribution_row(run, row);
-}
-
-pub fn note_repeated_typecheck_attribution_entry_timing(
-    entry: &str,
-    stage_nanos: &ResolveStageNanos,
-    resolve_nanos: u128,
-) {
-    if !repeated_typecheck_attribution_armed() {
-        return;
-    }
-    let mut guard = REPEATED_TYPECHECK_ATTRIBUTION_RUN
-        .lock()
-        .expect("repeated typecheck attribution run lock poisoned");
-    let Some(run) = guard.as_mut() else {
-        return;
-    };
-    run.entry_timings.push(EntryReconcileTiming {
-        entry: entry.to_string(),
-        reconcile_assembly_ns: stage_nanos.reconcile_assembly,
-        typecheck_compute_ns: stage_nanos.typecheck_compute,
-        resolve_nanos,
-    });
 }
 
 fn shared_caches_read<'a>(
@@ -9239,6 +8725,24 @@ pub struct ResolveStageNanos {
     pub assembly_schedule: u128,
     /// `try_reconcile_all_cache_hits` pass 1: per-module content key + store probe.
     pub assembly_probe: u128,
+    /// Closure vectors and the final `ResolvedGraph` view (per entry).
+    pub assembly_graph: u128,
+    /// Closure-scoped symbol-index census construction (per entry with cache misses).
+    pub assembly_symbol_index: u128,
+    /// Whole-pool qualified fill lookup/build (per index; later calls are memo hits).
+    pub assembly_pool_fill: u128,
+    /// Merge the closure census with the pool qualified fill (per entry with misses).
+    pub assembly_symbol_index_merge: u128,
+    /// Closure variant-owner base construction (per entry with cache misses).
+    pub assembly_variant_base: u128,
+    /// Compose the closure index with one source tree's bare census (once per root used).
+    pub assembly_root_symbol_index: u128,
+    /// Variant-owner base for a composed per-root symbol index (once per root used).
+    pub assembly_root_variant_base: u128,
+    /// Interface/variant surface installation (per computed or cached module membership).
+    pub assembly_environment: u128,
+    /// Diagnostic chunk/fork-ledger collection and diagnostic flattening.
+    pub assembly_diagnostics: u128,
     /// `item_registry` merge fold across the closure's typed modules.
     pub assembly_registry: u128,
     /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
@@ -9296,6 +8800,15 @@ impl ResolveStageNanos {
         self.ownership += other.ownership;
         self.assembly_schedule += other.assembly_schedule;
         self.assembly_probe += other.assembly_probe;
+        self.assembly_graph += other.assembly_graph;
+        self.assembly_symbol_index += other.assembly_symbol_index;
+        self.assembly_pool_fill += other.assembly_pool_fill;
+        self.assembly_symbol_index_merge += other.assembly_symbol_index_merge;
+        self.assembly_variant_base += other.assembly_variant_base;
+        self.assembly_root_symbol_index += other.assembly_root_symbol_index;
+        self.assembly_root_variant_base += other.assembly_root_variant_base;
+        self.assembly_environment += other.assembly_environment;
+        self.assembly_diagnostics += other.assembly_diagnostics;
         self.assembly_registry += other.assembly_registry;
         self.assembly_services += other.assembly_services;
         self.assembly_rewire += other.assembly_rewire;
@@ -9329,9 +8842,45 @@ impl ResolveStageNanos {
             + self.ownership
             + self.assembly_schedule
             + self.assembly_probe
+            + self.assembly_graph
+            + self.assembly_symbol_index
+            + self.assembly_pool_fill
+            + self.assembly_symbol_index_merge
+            + self.assembly_variant_base
+            + self.assembly_root_symbol_index
+            + self.assembly_root_variant_base
+            + self.assembly_environment
+            + self.assembly_diagnostics
             + self.assembly_registry
             + self.assembly_services
-            + self.assembly_rewire
+            + self.assembly_rewire_type_env
+            + self.assembly_rewire_import_str
+            + self.assembly_rewire_func_env
+            + self.assembly_emit_info
+    }
+
+    /// Exclusive rows nested inside one reconcile span. Callers must subtract a
+    /// pre-span snapshot: the thread-local slot can already contain assembly work
+    /// performed while loading the entry (notably whole-tree census preparation).
+    fn reconcile_attributed_total(&self) -> u128 {
+        self.typecheck_compute
+            + self.parent_envs
+            + self.assembly_schedule
+            + self.assembly_probe
+            + self.assembly_graph
+            + self.assembly_symbol_index
+            + self.assembly_pool_fill
+            + self.assembly_symbol_index_merge
+            + self.assembly_variant_base
+            + self.assembly_root_symbol_index
+            + self.assembly_root_variant_base
+            + self.assembly_environment
+            + self.assembly_diagnostics
+            + self.assembly_registry
+            + self.assembly_services
+            + self.assembly_rewire_type_env
+            + self.assembly_rewire_import_str
+            + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
 }
@@ -9349,6 +8898,15 @@ thread_local! {
             ownership: 0,
             assembly_schedule: 0,
             assembly_probe: 0,
+            assembly_graph: 0,
+            assembly_symbol_index: 0,
+            assembly_pool_fill: 0,
+            assembly_symbol_index_merge: 0,
+            assembly_variant_base: 0,
+            assembly_root_symbol_index: 0,
+            assembly_root_variant_base: 0,
+            assembly_environment: 0,
+            assembly_diagnostics: 0,
             assembly_registry: 0,
             assembly_services: 0,
             assembly_rewire: 0,
@@ -9656,8 +9214,8 @@ pub fn exclusive_cost_partition_from(
 
     // Exclusive by construction: within one resolve span these windows are sequential and
     // disjoint. Reconcile's interior is split into its per-module rows plus the residue
-    // the reconcile window itself derives; `assembly_rewire` stands for its three
-    // sub-passes, which are carried as inclusive rows below.
+    // the reconcile window itself derives. The three rewire passes are exclusive peers;
+    // `assembly_rewire` is only a separately printed inclusive observation.
     let exclusive = vec![
         CostPartitionRow {
             name: "load",
@@ -9692,6 +9250,42 @@ pub fn exclusive_cost_partition_from(
             nanos: st.assembly_probe,
         },
         CostPartitionRow {
+            name: "assembly_graph",
+            nanos: st.assembly_graph,
+        },
+        CostPartitionRow {
+            name: "assembly_symbol_index",
+            nanos: st.assembly_symbol_index,
+        },
+        CostPartitionRow {
+            name: "assembly_pool_fill",
+            nanos: st.assembly_pool_fill,
+        },
+        CostPartitionRow {
+            name: "assembly_symbol_index_merge",
+            nanos: st.assembly_symbol_index_merge,
+        },
+        CostPartitionRow {
+            name: "assembly_variant_base",
+            nanos: st.assembly_variant_base,
+        },
+        CostPartitionRow {
+            name: "assembly_root_symbol_index",
+            nanos: st.assembly_root_symbol_index,
+        },
+        CostPartitionRow {
+            name: "assembly_root_variant_base",
+            nanos: st.assembly_root_variant_base,
+        },
+        CostPartitionRow {
+            name: "assembly_environment",
+            nanos: st.assembly_environment,
+        },
+        CostPartitionRow {
+            name: "assembly_diagnostics",
+            nanos: st.assembly_diagnostics,
+        },
+        CostPartitionRow {
             name: "assembly_registry",
             nanos: st.assembly_registry,
         },
@@ -9700,8 +9294,16 @@ pub fn exclusive_cost_partition_from(
             nanos: st.assembly_services,
         },
         CostPartitionRow {
-            name: "assembly_rewire",
-            nanos: st.assembly_rewire,
+            name: "assembly_rewire_type_env",
+            nanos: st.assembly_rewire_type_env,
+        },
+        CostPartitionRow {
+            name: "assembly_rewire_import_str",
+            nanos: st.assembly_rewire_import_str,
+        },
+        CostPartitionRow {
+            name: "assembly_rewire_func_env",
+            nanos: st.assembly_rewire_func_env,
         },
         CostPartitionRow {
             name: "assembly_emit_info",
@@ -9717,21 +9319,6 @@ pub fn exclusive_cost_partition_from(
         },
     ];
     let inclusive = vec![
-        InclusiveCostRow {
-            name: "assembly_rewire_type_env",
-            nanos: st.assembly_rewire_type_env,
-            contained_in: "assembly_rewire",
-        },
-        InclusiveCostRow {
-            name: "assembly_rewire_import_str",
-            nanos: st.assembly_rewire_import_str,
-            contained_in: "assembly_rewire",
-        },
-        InclusiveCostRow {
-            name: "assembly_rewire_func_env",
-            nanos: st.assembly_rewire_func_env,
-            contained_in: "assembly_rewire",
-        },
         // Inside `load` — the split that decides whether a per-source content-hash memo
         // suffices. `load_reference_scan` is the only part that is a pure function of
         // source content; `load_import_closure` carries file I/O and pool bookkeeping.
@@ -10035,13 +9622,6 @@ fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u128) {
                 .or_default()
                 .accumulate(&this_entry);
         });
-        if repeated_typecheck_attribution_armed() {
-            note_repeated_typecheck_attribution_entry_timing(
-                entry_file,
-                &this_entry,
-                elapsed_nanos,
-            );
-        }
     }
 }
 
@@ -10427,24 +10007,33 @@ fn resolved_graph_from_sources_with_index(
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
     set_phase(FloorPhase::Typecheck, entry_file);
+    let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
-    // Assembly residue = reconcile wall minus the per-module rows its internals
-    // accumulated into the slot during this call (typecheck computes + parent envs).
+    // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
+    // containing reconcile span. A timing overlap is an attribution refusal, never a
+    // saturating clamp to a plausible zero.
     let reconcile_total = reconcile_started.elapsed().as_nanos();
-    resolve_stage_slot_add(|s| {
-        s.reconcile_assembly += reconcile_total.saturating_sub(
-            s.typecheck_compute
-                + s.parent_envs
-                + s.assembly_schedule
-                + s.assembly_probe
-                + s.assembly_registry
-                + s.assembly_services
-                + s.assembly_rewire
-                + s.assembly_emit_info,
-        );
-    });
+    let measured = resolve_stage_slot_snapshot();
+    let reconcile_attributed_after = measured.reconcile_attributed_total();
+    let reconcile_attributed = reconcile_attributed_after
+        .checked_sub(reconcile_attributed_before)
+        .ok_or_else(|| {
+            format!(
+                "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
+             {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
+            )
+        })?;
+    let assembly_other = reconcile_total
+        .checked_sub(reconcile_attributed)
+        .ok_or_else(|| {
+            format!(
+                "assembly attribution refused: OverAttributed {{ sum_exclusive_nanos: \
+             {reconcile_attributed}, parent_span_nanos: {reconcile_total} }}"
+            )
+        })?;
+    resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
 
     let has_type_errors = typed
         .diagnostics
@@ -10772,6 +10361,7 @@ fn finish_resolved_graph_assembly(
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
+    let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
         let mut acc = im::Vector::new();
         for chunk in &diag_chunks {
@@ -10785,6 +10375,7 @@ fn finish_resolved_graph_assembly(
             "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
         );
     }
+    resolve_stage_slot_add(|s| s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos());
     let rewire_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
@@ -10806,12 +10397,15 @@ fn finish_resolved_graph_assembly(
     let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
-    Ok(Rc::new(ResolvedGraph {
+    let graph_started = std::time::Instant::now();
+    let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
         diagnostics,
         emit_graph_info,
-    }))
+    });
+    resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
+    Ok(graph)
 }
 
 /// When every module in the closure is already in the typed cache, skip the
@@ -10836,24 +10430,6 @@ fn try_reconcile_all_cache_hits(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
 ) -> Result<Option<Rc<ResolvedGraph>>, String> {
-    let attribution_probe = repeated_typecheck_attribution_armed();
-    if attribution_probe {
-        repeated_typecheck_attribution_begin_all_hit_probe();
-    }
-    struct AllHitProbeAbort {
-        suppress_abort: bool,
-    }
-    impl Drop for AllHitProbeAbort {
-        fn drop(&mut self) {
-            if !self.suppress_abort {
-                repeated_typecheck_attribution_abort_all_hit_probe();
-            }
-        }
-    }
-    let mut probe_guard = attribution_probe.then(|| AllHitProbeAbort {
-        suppress_abort: false,
-    });
-
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -10900,12 +10476,6 @@ fn try_reconcile_all_cache_hits(
                 resolve_stage_slot_add(|s| s.assembly_probe += probe_started.elapsed().as_nanos());
                 return Ok(None);
             };
-            observe_repeated_typecheck_attribution_module(
-                mod_name,
-                &typed_key,
-                TypedCacheDisposition::Hit,
-                0,
-            );
             // Record this confirmed hit's cache keys with the armed schedule retention
             // (idempotent; no-op when unarmed) — the all-hits PROBE must register keys just
             // like the slow reconcile loop at `reconcile_with_typed_cache`, else a prewarmed
@@ -10953,7 +10523,10 @@ fn try_reconcile_all_cache_hits(
     let empty_parent_diags = Rc::new(im::Vector::new());
     for tc_result in results.into_iter() {
         let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
+        let graph_started = std::time::Instant::now();
         modules_vec.push_back(tc_result.typed.clone());
+        resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
+        let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
         for fork in tc_result.binding_forks.iter() {
@@ -10963,13 +10536,9 @@ fn try_reconcile_all_cache_hits(
                 cross_tree_fork_count += 1;
             }
         }
-    }
-
-    if let Some(mut guard) = probe_guard.take() {
-        guard.suppress_abort = true;
-    }
-    if attribution_probe {
-        repeated_typecheck_attribution_commit_all_hit_probe();
+        resolve_stage_slot_add(|s| {
+            s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos()
+        });
     }
 
     finish_resolved_graph_assembly(
@@ -11300,10 +10869,19 @@ fn build_symbol_index_for_reconcile(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<SymbolIndex>, String> {
-    Ok(v1_compiler_infer::symbol_index_with_qualified_fill(
-        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices),
-        pool_qualified_fill(index)?,
-    ))
+    let symbol_index_started = std::time::Instant::now();
+    let symbol_index =
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
+    resolve_stage_slot_add(|s| {
+        s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
+    });
+    let pool_fill_started = std::time::Instant::now();
+    let pool_fill = pool_qualified_fill(index)?;
+    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_started.elapsed().as_nanos());
+    let merge_started = std::time::Instant::now();
+    let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
+    resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
+    Ok(merged)
 }
 
 fn reconcile_with_typed_cache(
@@ -11325,12 +10903,14 @@ fn reconcile_with_typed_cache(
     // (a result is a function of the module and its import closure, not of dispatch order)
     // is the same assumption the shared typed cache already ships on, held by the
     // every-order equivalence oracles (§6.1).
+    let graph_started = std::time::Instant::now();
     let closure_modules: Vec<Rc<v1_compiler_resolve::ResolvedModule>> =
         graph.modules.iter().cloned().collect();
     let closure_names: Vec<String> = closure_modules
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
+    resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
     let schedule_started = std::time::Instant::now();
     let (schedule, cycle_residue_slots) =
         module_schedule_batches(&closure_modules, &closure_names, index);
@@ -11367,10 +10947,14 @@ fn reconcile_with_typed_cache(
     // depends only on (global_bare, si), so it is computed once per symbol index —
     // once here for the closure index, once per composed per-root index below —
     // instead of rescanning the census inside every module's build_module_context.
+    let variant_base_started = std::time::Instant::now();
     let closure_variant_base = v1_compiler_infer::build_global_bare_variant_locals(
         symbol_index.global_bare.clone(),
         source_indices.clone(),
     );
+    resolve_stage_slot_add(|s| {
+        s.assembly_variant_base += variant_base_started.elapsed().as_nanos()
+    });
     let mut tree_symbol_index_memo: std::collections::HashMap<
         String,
         (
@@ -11432,21 +11016,10 @@ fn reconcile_with_typed_cache(
                         next_pending.push(slot);
                         continue;
                     }
-                    Err(e) => {
-                        observe_repeated_typecheck_attribution_refused(&mod_name, &e);
-                        return Err(e);
-                    }
+                    Err(e) => return Err(e),
                 };
                 let cached = index_get_typed(index, &typed_key)?;
                 let was_cache_hit = cached.is_some();
-                if was_cache_hit {
-                    observe_repeated_typecheck_attribution_module(
-                        &mod_name,
-                        &typed_key,
-                        TypedCacheDisposition::Hit,
-                        0,
-                    );
-                }
                 // Record this module's cache keys with the armed schedule retention
                 // (idempotent; hit or miss) so its state can be dropped exactly when no
                 // remaining scheduled entry reaches it. Keyed by `decl_file` — the same
@@ -11485,7 +11058,6 @@ fn reconcile_with_typed_cache(
                                 render_typecheck_begin_line_mirror(&mod_name, typecheck_emoji())
                             );
                         }
-                        let module_tc_started = std::time::Instant::now();
                         // Same-tree bare underlay for the module being typechecked
                         // (bare = own tree, qualified = whole pool); out-of-root
                         // modules keep the closure-only bare universe.
@@ -11494,19 +11066,29 @@ fn reconcile_with_typed_cache(
                                 Some(root) => match tree_symbol_index_memo.get(&root) {
                                     Some(hit) => hit.clone(),
                                     None => {
+                                        let root_symbol_index_started = std::time::Instant::now();
                                         let composed =
                                             v1_compiler_infer::symbol_index_with_bare_fill(
                                                 symbol_index.clone(),
                                                 tree_bare_census_for_root(index, &root)?,
                                             );
+                                        resolve_stage_slot_add(|s| {
+                                            s.assembly_root_symbol_index +=
+                                                root_symbol_index_started.elapsed().as_nanos()
+                                        });
                                         // The composed index's global_bare = closure ∪ tree,
                                         // so its variant base is computed from the composed
                                         // map — once per root, beside the index it belongs to.
+                                        let root_variant_base_started = std::time::Instant::now();
                                         let base =
                                             v1_compiler_infer::build_global_bare_variant_locals(
                                                 composed.global_bare.clone(),
                                                 source_indices.clone(),
                                             );
+                                        resolve_stage_slot_add(|s| {
+                                            s.assembly_root_variant_base +=
+                                                root_variant_base_started.elapsed().as_nanos()
+                                        });
                                         tree_symbol_index_memo
                                             .insert(root, (composed.clone(), base.clone()));
                                         (composed, base)
@@ -11514,6 +11096,7 @@ fn reconcile_with_typed_cache(
                                 },
                                 None => (symbol_index.clone(), closure_variant_base.clone()),
                             };
+                        let module_tc_started = std::time::Instant::now();
                         let computed = v1_compiler_infer::typecheck_module(
                             resolved.clone(),
                             module_index.clone(),
@@ -11537,12 +11120,6 @@ fn reconcile_with_typed_cache(
                         // threshold below — the receipt is the complete record, the render
                         // line a projection (one record, two projections).
                         note_module_typecheck_wall(&mod_name, module_tc_ms);
-                        observe_repeated_typecheck_attribution_module(
-                            &mod_name,
-                            &typed_key,
-                            TypedCacheDisposition::Miss,
-                            module_tc_elapsed.as_nanos(),
-                        );
                         if module_tc_ms >= 2_000 {
                             let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                             eprintln!(
@@ -11558,6 +11135,7 @@ fn reconcile_with_typed_cache(
                         computed
                     }
                 };
+                let environment_started = std::time::Instant::now();
                 note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
                 let typed = tc_result.typed.clone();
                 let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
@@ -11570,6 +11148,9 @@ fn reconcile_with_typed_cache(
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
+                resolve_stage_slot_add(|s| {
+                    s.assembly_environment += environment_started.elapsed().as_nanos()
+                });
                 progressed = true;
             }
             if !progressed {
@@ -11621,7 +11202,10 @@ fn reconcile_with_typed_cache(
                 closure_names[slot]
             )
         });
+        let graph_started = std::time::Instant::now();
         modules_vec.push_back(tc_result.typed.clone());
+        resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
+        let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
         for fork in tc_result.binding_forks.iter() {
@@ -11631,6 +11215,9 @@ fn reconcile_with_typed_cache(
                 cross_tree_fork_count += 1;
             }
         }
+        resolve_stage_slot_add(|s| {
+            s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos()
+        });
     }
 
     finish_resolved_graph_assembly(
@@ -12501,6 +12088,14 @@ pub(crate) fn prime_witness_execution_legs<'a>(
     index: &MultiEntryIndex,
     entries: impl IntoIterator<Item = &'a str>,
 ) {
+    prime_witness_execution_legs_from_authority(index, None, entries)
+}
+
+fn prime_witness_execution_legs_from_authority<'a>(
+    subject_index: &MultiEntryIndex,
+    inherited_authority_roots: Option<&[String]>,
+    entries: impl IntoIterator<Item = &'a str>,
+) {
     let mut distinct: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for entry in entries {
         let rel = repo_relative_dag_path(entry);
@@ -12511,14 +12106,21 @@ pub(crate) fn prime_witness_execution_legs<'a>(
     if distinct.is_empty() {
         return;
     }
-    let (graph, indices) =
-        resolve_entry_with_index(index, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "witness execution leg: resolve census authority \
+    let resolved = match inherited_authority_roots {
+        None => resolve_entry_with_index(
+            subject_index,
+            WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY,
+        ),
+        Some(roots) => {
+            resolve_entry_graph_shared(roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+        }
+    };
+    let (graph, indices) = resolved.unwrap_or_else(|e| {
+        panic!(
+            "witness execution leg: resolve census authority \
                      {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY}: {e} (refuse)"
-                )
-            });
+        )
+    });
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     for rel in distinct {
         let leg = match eval_census_string_fn(&ctx, "census_execution_leg_label", &rel) {
@@ -15031,6 +14633,13 @@ pub struct DiscoveryWitnessOutcome {
     pub execution_leg: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionSkippedDiscoveryRow {
+    pub entry: String,
+    pub function: String,
+    pub provenance: String,
+}
+
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
 /// Counted and logged at roster build — never a silent skip (§5 deferred-and-detected).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15059,6 +14668,9 @@ pub struct DiscoverySummary {
     pub deferred_rows: Vec<DeferredDiscoveryRow>,
     /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
     pub predicted_unaffected: Vec<(String, String)>,
+    /// Applied mode: enrolled rows retained with the provenance by which affected-set
+    /// selection declined execution. This is an honest nonfailure, never absence-as-pass.
+    pub selection_skipped_rows: Vec<SelectionSkippedDiscoveryRow>,
     /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
     /// counted, typed attribution of a missing selection edge (never a rerun trigger).
     pub divergences: Vec<String>,
@@ -15639,54 +15251,6 @@ pub fn cgroup_memory_events_high() -> Option<u64> {
         }
         parts.next()?.parse().ok()
     })
-}
-
-fn git_head_sha_or_err() -> Result<String, String> {
-    std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| format!("git rev-parse HEAD: {e}"))
-        .and_then(|o| {
-            if o.status.success() {
-                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
-            } else {
-                Err("git rev-parse HEAD failed".to_string())
-            }
-        })
-}
-
-/// Process memory readings for repeated-typecheck attribution (slice 2).
-///
-/// VmHWM is process-wide high water — it includes selector setup, index construction,
-/// and every resolved entry, not an isolated "attribution retention peak".
-#[derive(Debug, Clone)]
-pub struct RepeatedTypecheckAttributionMemoryObservation {
-    pub rss_before_measurement_bytes: Option<u64>,
-    pub rss_after_measurement_bytes: Option<u64>,
-    pub process_vm_hwm_bytes: Option<u64>,
-    pub cgroup_memory_events_high: Option<u64>,
-}
-
-impl RepeatedTypecheckAttributionMemoryObservation {
-    pub fn capture_pair(before: Option<u64>, after: Option<u64>) -> Self {
-        Self {
-            rss_before_measurement_bytes: before,
-            rss_after_measurement_bytes: after,
-            process_vm_hwm_bytes: peak_rss_vhwm_bytes(),
-            cgroup_memory_events_high: cgroup_memory_events_high(),
-        }
-    }
-}
-
-/// Per typed module content key rollup for the detailed attribution receipt.
-#[derive(Debug, Clone)]
-pub struct ModuleKeyAttributionSummary {
-    pub module_key: String,
-    pub module_path: String,
-    pub selected_entry_fanout: usize,
-    pub hit_count: usize,
-    pub miss_count: usize,
-    pub recompute_count: usize,
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
@@ -16887,314 +16451,6 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
     out
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_repeated_typecheck_attribution_probe`):
-// ROADMAP lane `ci-cost`, subject `entry-graph-union-construction` slice 2
-// (gunbc.roadmap_authority id `entry-graph-union-construction` — same row as slice 1).
-// VERDICT TAKEN 2026-08-01 (`entry-graph-union-slice2-typecheck-attribution.md` §F):
-// at N≤50 repeated typecheck compute is zero — union construction NO-GO on this hypothesis.
-// §4b + §G: law tests stay enrolled until deletion; measurement orchestration deletes after
-// merged-SHA provenance receipt (NOT tied to #7534 — unrelated exact-tree consumer).
-// DELETE WHEN dissolved (measurement orchestration — ~400 LOC incl. bin + probe plumbing):
-// `RepeatedTypecheckAttributionMeasurement`, `measure_repeated_typecheck_attribution`,
-// `render_repeated_typecheck_attribution_json`, `render_repeated_typecheck_attribution_receipt_json`,
-// `repeated_typecheck_attribution_arithmetic`, flag-gated `arm_*`/`observe_*`/`note_*` hooks,
-// and `src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs`.
-// Trigger (intrinsic): candidate receipts accepted → merge → one representative 50-entry
-// cell + reorder control on merged main → archive receipt → delete (this lane's final commit
-// or named follow-up immediately after; never smuggled into another PR's rebase).
-// RETAIN through deletion: `repeated_typecheck_attribution_*` law tests in v1-compiler-tests
-// (once-per-content-key, later-requester hits, order-invariant distinct computes).
-// Receipt: `rg -c cli_run_repeated_typecheck_attribution_probe src/v1/stage0/src/cli_run.rs`
-// returns 4 while the scaffold stands (this block, the const, and its declaration test).
-// Not a compiler_frontier `.dag` row (seed-Rust) and not enrolled in `gunbc.ci_release_bins`.
-pub fn measure_repeated_typecheck_attribution(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-    explicit_entries: &[String],
-    max_entries: Option<usize>,
-    entry_offset: Option<usize>,
-) -> Result<RepeatedTypecheckAttributionMeasurement, String> {
-    let rss_before = current_rss_bytes();
-
-    let (head_sha, diff_base_override, skipped_entries, production_selected, overlap_membership) =
-        if explicit_entries.is_empty() {
-            let overlap = measure_selected_entry_closure_overlap(
-                source_roots,
-                scan_dirs,
-                exclude_substrings,
-                discovery_scope_dirs,
-            )?;
-            (
-                overlap.head_sha,
-                overlap.diff_base_override,
-                overlap.skipped_entries,
-                overlap.selected_entries.clone(),
-                Some((
-                    overlap.sum_closure_memberships,
-                    overlap.union_modules,
-                    overlap.fanout_by_module.clone(),
-                )),
-            )
-        } else {
-            (
-                git_head_sha_or_err()?,
-                std::env::var("GUNBC_CI_DIFF_BASE").ok(),
-                Vec::new(),
-                Vec::new(),
-                None,
-            )
-        };
-
-    let mut selected_entries = if explicit_entries.is_empty() {
-        production_selected.clone()
-    } else {
-        explicit_entries.to_vec()
-    };
-    if !explicit_entries.is_empty() && entry_offset.unwrap_or(0) > 0 {
-        return Err(
-            "repeated typecheck attribution: --entry-offset requires production selection \
-             (fail-closed)"
-                .to_string(),
-        );
-    }
-    let roster_len = selected_entries.len();
-    let offset = entry_offset.unwrap_or(0);
-    if offset > 0 {
-        if offset >= roster_len {
-            return Err(format!(
-                "repeated typecheck attribution: entry offset {offset} >= roster len \
-                 {roster_len} (fail-closed)"
-            ));
-        }
-        selected_entries = selected_entries[offset..].to_vec();
-    }
-    let entry_offset_applied = entry_offset.filter(|&o| o > 0);
-    let pre_cap_len = selected_entries.len();
-    if let Some(cap) = max_entries {
-        selected_entries.truncate(cap);
-    }
-    let max_entries_applied = max_entries.filter(|cap| *cap < pre_cap_len);
-
-    if selected_entries.is_empty() {
-        return Err(
-            "repeated typecheck attribution: zero entries to measure (fail-closed)".to_string(),
-        );
-    }
-
-    let (sum_closure_memberships, union_modules, fanout_by_module) =
-        if let Some((sum, union, fanout)) = overlap_membership
-            .filter(|_| explicit_entries.is_empty() && selected_entries == production_selected)
-        {
-            (sum, union, fanout)
-        } else {
-            let membership_index = process_shared_index(source_roots);
-            closure_overlap_membership_for_entries(&membership_index, &selected_entries)?
-        };
-
-    let index = build_multi_entry_index(source_roots);
-    arm_repeated_typecheck_attribution_probe();
-
-    for entry in &selected_entries {
-        set_repeated_typecheck_attribution_entry(entry);
-        resolve_entry_with_index(&index, entry).map_err(|e| {
-            disarm_repeated_typecheck_attribution_probe();
-            format!("repeated typecheck attribution: resolve refused for '{entry}': {e}")
-        })?;
-        clear_repeated_typecheck_attribution_entry();
-    }
-
-    let snap = disarm_repeated_typecheck_attribution_probe().ok_or_else(|| {
-        "repeated typecheck attribution: probe disarmed empty (internal)".to_string()
-    })?;
-
-    let rss_after = current_rss_bytes();
-    let memory = RepeatedTypecheckAttributionMemoryObservation::capture_pair(rss_before, rss_after);
-
-    Ok(RepeatedTypecheckAttributionRun::snapshot_into_measurement(
-        snap,
-        source_roots.to_vec(),
-        scan_dirs.to_vec(),
-        head_sha,
-        diff_base_override,
-        selected_entries,
-        skipped_entries,
-        max_entries_applied,
-        entry_offset_applied,
-        sum_closure_memberships,
-        union_modules,
-        fanout_by_module,
-        memory,
-    ))
-}
-
-/// Machine-readable projection of the repeated-typecheck attribution measurement.
-pub fn render_repeated_typecheck_attribution_json(
-    m: &RepeatedTypecheckAttributionMeasurement,
-) -> String {
-    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
-    let opt_f64 = |v: Option<f64>| match v {
-        Some(f) => format!("{f:.6}"),
-        None => "null".to_string(),
-    };
-    let opt_str = |o: &Option<String>| match o {
-        Some(v) => format!("\"{}\"", esc(v.clone())),
-        None => "null".to_string(),
-    };
-
-    let mut out = String::from("{\"subject\":{\"head_sha\":\"");
-    out.push_str(&esc(m.head_sha.clone()));
-    out.push_str("\",\"diff_base_override\":");
-    out.push_str(&opt_str(&m.diff_base_override));
-    out.push_str(",\"selected_entries\":");
-    out.push_str(&m.selected_count().to_string());
-    out.push_str(",\"max_entries_applied\":");
-    out.push_str(&match m.max_entries_applied {
-        Some(n) => n.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"entry_offset_applied\":");
-    out.push_str(&match m.entry_offset_applied {
-        Some(n) => n.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str("},\"membership\":{\"sum_closure_memberships\":");
-    out.push_str(&m.sum_closure_memberships.to_string());
-    out.push_str(",\"union_modules\":");
-    out.push_str(&m.union_modules.to_string());
-    out.push_str(",\"duplication_factor\":");
-    out.push_str(&opt_f64(m.membership_duplication_factor));
-    out.push_str("},\"attribution\":{\"total_cache_hits\":");
-    out.push_str(&m.total_cache_hits.to_string());
-    out.push_str(",\"total_cache_misses\":");
-    out.push_str(&m.total_cache_misses.to_string());
-    out.push_str(",\"total_cache_refusals\":");
-    out.push_str(&m.total_cache_refusals.to_string());
-    out.push_str(",\"total_typecheck_compute_ns\":");
-    out.push_str(&m.total_typecheck_compute_ns.to_string());
-    out.push_str(",\"repeated_typecheck_misses\":");
-    out.push_str(&m.repeated_typecheck_misses.to_string());
-    out.push_str(",\"first_computation_typecheck_ns\":");
-    out.push_str(&m.first_computation_typecheck_ns.to_string());
-    out.push_str(",\"repeated_typecheck_compute_ns\":");
-    out.push_str(&m.repeated_typecheck_compute_ns.to_string());
-    out.push_str(",\"cache_hit_ratio\":");
-    out.push_str(&opt_f64(m.cache_hit_ratio));
-    out.push_str(",\"compute_duplication_factor\":");
-    out.push_str(&opt_f64(m.compute_duplication_factor));
-    out.push_str(",\"decision_ratio\":");
-    out.push_str(&opt_f64(m.decision_ratio));
-    out.push_str(",\"memory\":{");
-    out.push_str("\"rss_before_measurement_bytes\":");
-    out.push_str(&match m.memory.rss_before_measurement_bytes {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"rss_after_measurement_bytes\":");
-    out.push_str(&match m.memory.rss_after_measurement_bytes {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"process_vm_hwm_bytes\":");
-    out.push_str(&match m.memory.process_vm_hwm_bytes {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str(",\"cgroup_memory_events_high\":");
-    out.push_str(&match m.memory.cgroup_memory_events_high {
-        Some(b) => b.to_string(),
-        None => "null".to_string(),
-    });
-    out.push_str("}");
-    out.push_str("},\"entry_timings\":[");
-    for (i, t) in m.entry_timings.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"entry\":\"");
-        out.push_str(&esc(t.entry.clone()));
-        out.push_str("\",\"reconcile_assembly_ns\":");
-        out.push_str(&t.reconcile_assembly_ns.to_string());
-        out.push_str(",\"typecheck_compute_ns\":");
-        out.push_str(&t.typecheck_compute_ns.to_string());
-        out.push_str(",\"resolve_nanos\":");
-        out.push_str(&t.resolve_nanos.to_string());
-        out.push('}');
-    }
-    out.push_str("],\"interpretation_bound\":\"");
-    out.push_str(&esc(
-        "Per (entry, typed module content key) observations against ONE shared \
-         MultiEntryIndex. decision_ratio = repeated_typecheck_compute_ns / \
-         total_typecheck_compute_ns (NOT closure duplication). Refused rows are a \
-         third state, never folded into hits."
-            .to_string(),
-    ));
-    out.push_str("\"}");
-    out
-}
-
-/// Full per-row and per-key receipt for slice-2 attribution (written to disk).
-pub fn render_repeated_typecheck_attribution_receipt_json(
-    m: &RepeatedTypecheckAttributionMeasurement,
-) -> String {
-    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
-    let disposition = |d: TypedCacheDisposition| match d {
-        TypedCacheDisposition::Hit => "Hit",
-        TypedCacheDisposition::Miss => "Miss",
-        TypedCacheDisposition::Refused => "Refused",
-    };
-    let opt_str = |o: &Option<String>| match o {
-        Some(v) => format!("\"{}\"", esc(v.clone())),
-        None => "null".to_string(),
-    };
-
-    let mut out = String::from("{\"summary\":");
-    out.push_str(&render_repeated_typecheck_attribution_json(m));
-    out.push_str(",\"rows\":[");
-    for (i, row) in m.rows.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"entry\":\"");
-        out.push_str(&esc(row.entry.clone()));
-        out.push_str("\",\"module_key\":\"");
-        out.push_str(&esc(row.module_key.clone()));
-        out.push_str("\",\"module_path\":\"");
-        out.push_str(&esc(row.module_path.clone()));
-        out.push_str("\",\"cache_disposition\":\"");
-        out.push_str(disposition(row.cache_disposition));
-        out.push_str("\",\"typecheck_compute_ns\":");
-        out.push_str(&row.typecheck_compute_ns.to_string());
-        out.push_str(",\"first_computing_entry\":");
-        out.push_str(&opt_str(&row.first_computing_entry));
-        out.push_str(",\"later_requester_count\":");
-        out.push_str(&row.later_requester_count.to_string());
-        out.push('}');
-    }
-    out.push_str("],\"key_summaries\":[");
-    for (i, key) in m.key_summaries.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"module_key\":\"");
-        out.push_str(&esc(key.module_key.clone()));
-        out.push_str("\",\"module_path\":\"");
-        out.push_str(&esc(key.module_path.clone()));
-        out.push_str("\",\"selected_entry_fanout\":");
-        out.push_str(&key.selected_entry_fanout.to_string());
-        out.push_str(",\"hit_count\":");
-        out.push_str(&key.hit_count.to_string());
-        out.push_str(",\"miss_count\":");
-        out.push_str(&key.miss_count.to_string());
-        out.push_str(",\"recompute_count\":");
-        out.push_str(&key.recompute_count.to_string());
-        out.push('}');
-    }
-    out.push_str("]}");
-    out
-}
-
 pub fn discover_floor_witness_roster(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -17542,6 +16798,10 @@ pub enum NodeFrontierSelectionMode {
 
 pub struct DiscoveryCorpusOptions {
     pub node_frontier_selection: NodeFrontierSelectionMode,
+    /// Module universe that owns executor decisions such as affected-set selection and witness
+    /// execution-leg classification. Normally identical to `source_roots`; scoped batches
+    /// inherit the enclosing walk roots so executor machinery does not widen the witness subject.
+    pub execution_authority_source_roots: Vec<String>,
     pub explicit_roster_only: bool,
     /// Path-substring exclusion list. Non-plan callers default to
     /// `witness_exclusion_substrings()`; plan-driven paths supply this from
@@ -17582,6 +16842,7 @@ impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
             node_frontier_selection: NodeFrontierSelectionMode::Off,
+            execution_authority_source_roots: vec![],
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
@@ -19586,6 +18847,12 @@ pub fn run_discovery_corpus_with_options(
     out
 }
 
+pub fn expand_explicit_witness_entries(
+    explicit_entries: &[(String, String)],
+) -> Result<Vec<(String, String)>, String> {
+    test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
+}
+
 fn run_discovery_corpus_with_options_inner(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -19647,6 +18914,13 @@ fn run_discovery_corpus_with_options_inner(
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
     let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
+    if options.execution_authority_source_roots.is_empty() {
+        return Err(
+            "discovery execution requires an explicit executor-authority source-root universe"
+                .to_string(),
+        );
+    }
+    let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
     // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
@@ -19717,7 +18991,7 @@ fn run_discovery_corpus_with_options_inner(
     // the post-resolve union so this pre-resolve count stays paired with calibration.
     let preresolve_calibration_started = std::time::Instant::now();
     let pre_resolve_closure_nodes = {
-        let prefix_entries: &[&str] = if selection_enabled {
+        let prefix_entries: &[&str] = if selection_enabled && execution_authority_is_subject {
             &[FLOOR_RUNNER_ENTRY]
         } else {
             &[]
@@ -19765,10 +19039,20 @@ fn run_discovery_corpus_with_options_inner(
     );
     let runner_resolve_started = std::time::Instant::now();
     let floor_runner_ctx = if selection_enabled {
-        // Resolve the floor runner through the SAME shared index as the rows (union-resolve
-        // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
-        // with the roster, so co-resolving here means that prefix is not typechecked twice.
-        match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+        let resolved = if execution_authority_is_subject {
+            // Ordinary discovery consumes one source-root authority, so preserve the shared
+            // prefix resolve and its measured retention behavior.
+            resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
+        } else {
+            // Scoped discovery keeps its subject universe narrow. The selector is an enclosing
+            // walk authority and resolves against that walk's roots without entering the subject
+            // index, digest, or clamp population.
+            resolve_entry_graph(
+                &options.execution_authority_source_roots,
+                FLOOR_RUNNER_ENTRY,
+            )
+        };
+        match resolved {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
@@ -19848,7 +19132,12 @@ fn run_discovery_corpus_with_options_inner(
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
     // per worker — and width is adaptive, so "n is small here" is not a fact that stays
     // true (§6). One build covers the run; workers only read the process-wide memo.
-    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
+    prime_witness_execution_legs_from_authority(
+        &index,
+        (!execution_authority_is_subject)
+            .then_some(options.execution_authority_source_roots.as_slice()),
+        rows.iter().map(|row| row.entry.as_str()),
+    );
 
     // Arm the observation heartbeat's entry total at the same grain the drain walks
     // (entry-groups), now that the roster is known — never a fabricated 0-of-0, and
@@ -19871,6 +19160,7 @@ fn run_discovery_corpus_with_options_inner(
                 &changed_paths,
                 &diff_edits,
                 floor_runner_ctx.as_ref(),
+                execution_authority_is_subject,
                 whole_tree_published_keys.clone(),
                 options.witness_budget_policy(),
                 ShardStyle {
@@ -19984,6 +19274,7 @@ fn run_discovery_corpus_with_options_inner(
                         &changed_paths,
                         &diff_edits,
                         floor_runner_ctx.as_ref(),
+                        execution_authority_is_subject,
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
@@ -20027,6 +19318,8 @@ fn run_discovery_corpus_with_options_inner(
                 ));
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
+            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
+            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
             let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::new();
@@ -20046,6 +19339,7 @@ fn run_discovery_corpus_with_options_inner(
                 let abort_for_worker = abort.clone();
                 let governor_for_worker = governor.clone();
                 let roots = source_roots_owned.clone();
+                let execution_authority_roots = execution_authority_roots_owned.clone();
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
@@ -20086,7 +19380,12 @@ fn run_discovery_corpus_with_options_inner(
                             None => build_multi_entry_index(&roots),
                         };
                         let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                            match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+                            let resolved = if execution_authority_is_subject_for_workers {
+                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
+                            } else {
+                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
+                            };
+                            match resolved {
                                 Ok((graph, source_indices)) => {
                                     Some(make_eval_context(&graph, source_indices, execution_mode))
                                 }
@@ -20126,6 +19425,7 @@ fn run_discovery_corpus_with_options_inner(
                                 &paths,
                                 &seeds,
                                 runner.as_ref(),
+                                execution_authority_is_subject_for_workers,
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
@@ -20214,6 +19514,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         skipped: 0,
         deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
+        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
@@ -20231,6 +19532,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged
             .predicted_unaffected
             .extend(summary.predicted_unaffected);
+        merged
+            .selection_skipped_rows
+            .extend(summary.selection_skipped_rows);
         merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
@@ -20463,6 +19767,7 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
+    execution_authority_is_subject: bool,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
     budgets: WitnessBudgetPolicy,
     style: ShardStyle,
@@ -20473,6 +19778,7 @@ fn run_discovery_rows(
         skipped: 0,
         deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
+        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
@@ -20483,18 +19789,17 @@ fn run_discovery_rows(
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
     };
-    // One context build for the whole roster, on this thread, while its shared index is warm.
-    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
-
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
-    // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
-    // context: the floor runner closure is resolved once per shard and its modules are resident
-    // for the shard's lifetime, so they are part of the memory this count is paired against
-    // (the entry-selection prefix context was retired with the import-closure reground — the
-    // entry_file_touched decision now reads the module-graph facts, no interpreter context).
+    // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
+    // batch's floor-runner prefix shares that subject universe and is included; a scoped batch's
+    // inherited selector authority is deliberately excluded from the subject digest/clamp grain.
     // Row closures fold in below as each entry resolves.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx].into_iter().flatten() {
+    for prefix_ctx in [floor_runner_ctx]
+        .into_iter()
+        .flatten()
+        .filter(|_| execution_authority_is_subject)
+    {
         collect_typed_module_names(
             prefix_ctx.modules.iter().cloned(),
             &prefix_ctx.source_indices,
@@ -20577,6 +19882,13 @@ fn run_discovery_rows(
                 ctx = None;
             }
             summary.skipped += 1;
+            summary
+                .selection_skipped_rows
+                .push(SelectionSkippedDiscoveryRow {
+                    entry: row.entry.clone(),
+                    function: row.function.clone(),
+                    provenance: "skip-before-resolve-fast-path".to_string(),
+                });
             if floor_verbose() {
                 eprintln!(
                     "SKIP [assumed-green node-frontier] {} ({})",
@@ -20689,6 +20001,13 @@ fn run_discovery_rows(
             match selection {
                 NodeFrontierSelectionMode::Applied => {
                     summary.skipped += 1;
+                    summary
+                        .selection_skipped_rows
+                        .push(SelectionSkippedDiscoveryRow {
+                            entry: row.entry.clone(),
+                            function: row.function.clone(),
+                            provenance: "node-frontier-selection".to_string(),
+                        });
                     if floor_verbose() {
                         eprintln!(
                             "SKIP [assumed-green node-frontier] {} ({})",
@@ -24892,6 +24211,7 @@ mod discovery_summary_merge_tests {
             skipped: 0,
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
+            selection_skipped_rows: Vec::new(),
             divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![
@@ -25105,6 +24425,7 @@ mod discovery_summary_merge_tests {
             DiscoveryWidthPolicy::Serial,
             DiscoveryCorpusOptions {
                 node_frontier_selection: NodeFrontierSelectionMode::Off,
+                execution_authority_source_roots: roots.clone(),
                 explicit_roster_only: true,
                 exclude_substrings: Vec::new(),
                 ..Default::default()
@@ -26318,6 +25639,310 @@ pub fn bare_ref_reachability_for_name(
 // against the landed SymbolIndex containment walk (lexical + global-unique only).
 // Method: direct observation of each mechanism's return value — NOT diagnostics.
 
+pub const RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH: &str =
+    "target/resolution-divergence-phase-receipt.tsv";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolutionDivergencePhase {
+    ParentPlanResolve,
+    ChildLaunch,
+    ChildWholeTreeResolve,
+    ParentWholeTreeResolve,
+    CensusTraversal,
+    OutputProjection,
+}
+
+impl ResolutionDivergencePhase {
+    fn label(self) -> &'static str {
+        match self {
+            Self::ParentPlanResolve => "parent_plan_resolve",
+            Self::ChildLaunch => "child_launch",
+            Self::ChildWholeTreeResolve => "child_whole_tree_resolve",
+            Self::ParentWholeTreeResolve => "parent_whole_tree_resolve",
+            Self::CensusTraversal => "census_traversal",
+            Self::OutputProjection => "output_projection",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolutionDivergencePhaseState {
+    Started,
+    Completed,
+    Skipped,
+}
+
+impl ResolutionDivergencePhaseState {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Completed => "completed",
+            Self::Skipped => "skipped",
+        }
+    }
+}
+
+fn resolution_divergence_phase_receipt_process_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn resolution_divergence_phase_receipt_timestamp_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn resolution_divergence_phase_receipt_pressure_avg10(path: &str) -> String {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|body| {
+            body.lines()
+                .find(|line| line.starts_with("some "))
+                .and_then(|line| {
+                    line.split_whitespace()
+                        .find(|field| field.starts_with("avg10="))
+                })
+                .and_then(|field| field.strip_prefix("avg10="))
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unavailable".to_string())
+}
+
+fn resolution_divergence_phase_receipt_contention() -> (String, String, String, String) {
+    let host = std::env::var("RUNNER_NAME")
+        .ok()
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            std::fs::read_to_string("/etc/hostname")
+                .ok()
+                .map(|name| name.trim().to_string())
+                .filter(|name| !name.is_empty())
+        })
+        .unwrap_or_else(|| "unavailable".to_string());
+    let loadavg_1m = std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|body| body.split_whitespace().next().map(str::to_string))
+        .unwrap_or_else(|| "unavailable".to_string());
+    (
+        host,
+        loadavg_1m,
+        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/cpu"),
+        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/memory"),
+    )
+}
+
+fn resolution_divergence_phase_elapsed_ms(
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+) -> Option<u128> {
+    static STARTS: OnceLock<Mutex<std::collections::HashMap<&'static str, std::time::Instant>>> =
+        OnceLock::new();
+    let mut starts = STARTS
+        .get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .expect("resolution-divergence phase start lock poisoned");
+    match state {
+        ResolutionDivergencePhaseState::Started => {
+            starts.insert(phase.label(), std::time::Instant::now());
+            None
+        }
+        ResolutionDivergencePhaseState::Completed => starts
+            .remove(phase.label())
+            .map(|started| started.elapsed().as_millis()),
+        ResolutionDivergencePhaseState::Skipped => Some(0),
+    }
+}
+
+fn resolution_divergence_phase_receipt_sanitize(detail: &str) -> String {
+    detail
+        .replace('\t', " ")
+        .replace('\n', " ")
+        .replace('\r', " ")
+}
+
+fn write_resolution_divergence_phase_receipt_row_at(
+    path: &Path,
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+    detail: &str,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: create {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let is_new = !path.exists();
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: open {}: {e}",
+                path.display()
+            )
+        })?;
+    if is_new {
+        writeln!(
+            file,
+            "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
+        )
+        .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+    }
+    let elapsed_ms = resolution_divergence_phase_elapsed_ms(phase, state)
+        .map(|n| n.to_string())
+        .unwrap_or_default();
+    let (host, loadavg_1m, cpu_psi_some_avg10, memory_psi_some_avg10) =
+        resolution_divergence_phase_receipt_contention();
+    let process_name = resolution_divergence_phase_receipt_process_name();
+    let row = format!(
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        resolution_divergence_phase_receipt_timestamp_ms(),
+        std::process::id(),
+        process_name,
+        resolution_divergence_phase_receipt_sanitize(&host),
+        loadavg_1m,
+        cpu_psi_some_avg10,
+        memory_psi_some_avg10,
+        phase.label(),
+        state.label(),
+        elapsed_ms,
+        resolution_divergence_phase_receipt_sanitize(detail),
+    );
+    writeln!(file, "{row}")
+        .map_err(|e| format!("resolution-divergence phase receipt: row write: {e}"))?;
+    file.sync_data().map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: sync {}: {e}",
+            path.display()
+        )
+    })?;
+    // The Actions runner worktree is ephemeral and this receipt is deliberately
+    // kill-safe. Stream each fsynced parent row to the durable job log as well as
+    // the TSV, so a deadline kill preserves phase and contention evidence without
+    // adding a generated-workflow upload side channel. Standalone adapter output
+    // remains byte-identical because only claim_executor emits this transport mark.
+    if process_name == "claim_executor" {
+        eprintln!("[resolution-divergence-phase-receipt]\t{row}");
+    }
+    Ok(())
+}
+
+pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
+    let path = Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: create {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let mut file = std::fs::File::create(path).map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: reset {}: {e}",
+            path.display()
+        )
+    })?;
+    writeln!(
+        file,
+        "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
+    )
+    .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+    file.sync_data().map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: reset sync {}: {e}",
+            path.display()
+        )
+    })
+}
+
+pub fn record_resolution_divergence_phase(
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+    detail: &str,
+) -> Result<(), String> {
+    write_resolution_divergence_phase_receipt_row_at(
+        Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH),
+        phase,
+        state,
+        detail,
+    )
+}
+
+static RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS: Mutex<Option<SilentPickTelemetry>> =
+    Mutex::new(None);
+
+/// Arm the telemetry that the divergence census consumes before the parent-owned
+/// plan graph is resolved. The subprocess used to arm the same observation around
+/// its duplicate cold resolve; retaining it here makes the cut observational rather
+/// than a silent loss of the gate's resolution evidence.
+pub fn resolution_divergence_parent_plan_capture_begin() -> Result<(), String> {
+    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
+        None;
+    crate::v1_rt::resolution_silent_pick_enable();
+    Ok(())
+}
+
+/// Seal the parent plan's telemetry after its single resolve and make it available
+/// to the later read-only witness traversal, regardless of which executor thread
+/// evaluates that witness.
+pub fn resolution_divergence_parent_plan_capture_finish() -> Result<(), String> {
+    let telemetry = crate::v1_rt::resolution_silent_pick_disable();
+    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
+        Some(telemetry);
+    // Continue recording on the pump thread after the plan. Modules resolved by
+    // intervening falsifier work may be cache hits by the time this witness runs;
+    // keeping the observation armed preserves those first-resolution rows without
+    // asking the shared index to recompute them.
+    crate::v1_rt::resolution_silent_pick_enable();
+    Ok(())
+}
+
+fn resolution_divergence_parent_plan_silent_picks() -> Result<SilentPickTelemetry, String> {
+    RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| {
+            "resolution-divergence census refused: parent plan telemetry was not captured"
+                .to_string()
+        })
+}
+
+fn resolution_divergence_combine_silent_pick_telemetry(
+    mut earlier: SilentPickTelemetry,
+    later: SilentPickTelemetry,
+) -> SilentPickTelemetry {
+    for row in later.global_bare_lcp_picks {
+        if !earlier.global_bare_lcp_picks.contains(&row) {
+            earlier.global_bare_lcp_picks.push(row);
+        }
+    }
+    for row in later.global_bare_lcp_ties {
+        if !earlier.global_bare_lcp_ties.contains(&row) {
+            earlier.global_bare_lcp_ties.push(row);
+        }
+    }
+    for row in later.fn_parent_first_hits {
+        if !earlier.fn_parent_first_hits.contains(&row) {
+            earlier.fn_parent_first_hits.push(row);
+        }
+    }
+    earlier
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContainmentResolveVia {
     Lexical,
@@ -27047,14 +26672,23 @@ pub fn resolution_divergence_census_live(
 /// or any other consumer.
 pub fn resolution_divergence_census_live_closure_scoped(
 ) -> Result<ResolutionDivergenceCensus, String> {
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ChildWholeTreeResolve,
+        ResolutionDivergencePhaseState::Started,
+        "closure-scoped source load + resolve",
+    )?;
     let roots = default_source_roots();
-    let mei = build_multi_entry_index_primary_precedence(&roots);
-    let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
+    let sources = resolution_divergence_closure_scoped_sources(&roots)?;
     let modules_resolved = sources.len();
     crate::v1_rt::resolution_silent_pick_enable();
     let resolve_result = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
     let (graph, source_indices) = resolve_result?;
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ChildWholeTreeResolve,
+        ResolutionDivergencePhaseState::Completed,
+        &format!("modules={modules_resolved}"),
+    )?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         graph.as_ref(),
         source_indices,
@@ -27062,11 +26696,76 @@ pub fn resolution_divergence_census_live_closure_scoped(
         None,
         None,
     );
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::CensusTraversal,
+        ResolutionDivergencePhaseState::Started,
+        &format!("modules={modules_resolved}"),
+    )?;
     let mut census = resolution_divergence_census_from_ctx(&ctx);
     census.modules_resolved = modules_resolved;
     census.modules_excluded = 0;
     merge_silent_pick_telemetry(&mut census, silent_picks);
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::CensusTraversal,
+        ResolutionDivergencePhaseState::Completed,
+        &format!("sites_checked={}", census.sites_checked),
+    )?;
     Ok(census)
+}
+
+/// Cold closure membership for the standalone adapter. It has no parent index, so
+/// it retains the declared primary-precedence pool build used before the in-process
+/// cut.
+fn resolution_divergence_closure_scoped_sources(
+    roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let membership_index = build_multi_entry_index_primary_precedence(roots);
+    load_compile_clean_entry_sources(roots, &membership_index, None)
+}
+
+/// Closure membership over source objects the parent index already owns.
+///
+/// `process_shared_index` canonicalizes absolute CI roots to workspace-relative
+/// spellings. Re-reading every first-root file from `default_source_roots` creates
+/// new absolute-path `SourceFile`s; resolving imports then pulls the same modules'
+/// relative-path objects from the index, so every declaration appears twice. Seed
+/// the closure from the index's existing `Rc<SourceFile>` values instead. This is a
+/// read-only index walk: no second whole-tree disk load and no second index build.
+/// The executable frozen control walls this consumer with `Rc::ptr_eq`; other
+/// `default_source_roots` consumers remain an explicitly separate construction-time
+/// identity class, tracked by `node://adhoc-0c214548-ded` and dissolved when
+/// `SourceFile` construction canonicalizes paths. Content equality is NOT an oracle
+/// for this class: the forked objects have identical bytes, so only object identity
+/// distinguishes the bad state. Keep the pointer-identity control enrolled when the
+/// construction wall lands as evidence that the higher rung is real.
+fn resolution_divergence_closure_scoped_sources_from_shared_index(
+    index: &MultiEntryIndex,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let first_root = index.source_roots.first().ok_or_else(|| {
+        "resolution-divergence census refused: parent shared index has no source roots".to_string()
+    })?;
+    let first_root_only = std::slice::from_ref(first_root);
+    let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .source_files
+        .values()
+        .filter(|sf| {
+            let rel = workspace_relative_repo_path(&sf.path);
+            source_tree_root_of(first_root_only, &rel).is_some()
+        })
+        .cloned()
+        .collect();
+    entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
+    if entry_sources.is_empty() {
+        return Err(format!(
+            "resolution-divergence census refused: parent shared index has no modules under first root '{first_root}'"
+        ));
+    }
+    let sources = resolve_transitively(
+        entry_sources,
+        &index.source_files,
+        &index.module_graph_facts,
+    )?;
+    extend_sources_to_both_closure_fixpoint(sources, index)
 }
 
 /// A silent-pick row that also lands in the census's own containment_ambiguous
@@ -27475,6 +27174,168 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
     lines.join("\n")
 }
 
+/// Byte projection and gate verdict shared by the in-process CI witness and the
+/// standalone adapter. Keeping both consumers on this value prevents the process
+/// cut from growing a second verdict or output-format authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolutionDivergenceCensusProjection {
+    pub stdout: String,
+    pub stderr: Option<String>,
+    pub exit_code: u8,
+    pub receipt_detail: &'static str,
+}
+
+pub fn project_resolution_divergence_census(
+    census: &ResolutionDivergenceCensus,
+) -> ResolutionDivergenceCensusProjection {
+    let report = format_resolution_divergence_census(census);
+    if census.sites_checked == 0 {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(
+                "resolution_divergence_census: no bare call sites in resolved corpus".to_string(),
+            ),
+            exit_code: 2,
+            receipt_detail: "refused: no bare call sites",
+        };
+    }
+    if let Some(refusal) = resolution_divergence_fn_parent_first_hit_subset_refusal(census) {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(refusal),
+            exit_code: 1,
+            receipt_detail: "refused: fn-parent subset violation",
+        };
+    }
+    if let Some(refusal) = resolution_divergence_silent_pick_refusal(census) {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(refusal),
+            exit_code: 1,
+            receipt_detail: "refused: genuine silent pick",
+        };
+    }
+    let raw_telemetry_count = census.silent_pick_global_bare_lcp_rows.len()
+        + census.silent_pick_global_bare_lcp_tie_rows.len()
+        + census.silent_pick_fn_parent_first_hit_rows.len();
+    ResolutionDivergenceCensusProjection {
+        stdout: format!(
+            "{report}\nSILENT-PICK-GATE: clean (0 genuine silent picks — {} raw telemetry site(s) filtered as benign whole-pool overlap via containment_ambiguous/diverge join, sites_checked={})",
+            raw_telemetry_count, census.sites_checked,
+        ),
+        stderr: None,
+        exit_code: 0,
+        receipt_detail: "clean gate verdict",
+    }
+}
+
+/// CI witness implementation over the parent process's shared SymbolIndex. The old
+/// adapter launched `resolution_divergence_census --closure-scoped`, which built a
+/// second index and cold-resolved the closure in a child process. This path keeps the
+/// closure-scoped source authority and resolver semantics while reusing the parent's
+/// typed-module cache; no child process or child resolve exists.
+pub fn resolution_divergence_silent_pick_gate_in_process(
+    _calling_ctx: &v1_interpreter::InterpContext,
+) -> bool {
+    let run = || -> Result<ResolutionDivergenceCensusProjection, String> {
+        // Parent-plan capture leaves observation armed so cache misses between the
+        // plan and this witness are retained. Bracket every fallible setup step and
+        // disable before propagating its result: a closure-membership or receipt-I/O
+        // refusal must not leak the global observation state into later work.
+        let resolve_setup = (|| -> Result<_, String> {
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ChildLaunch,
+                ResolutionDivergencePhaseState::Skipped,
+                "in-process witness; no child launched",
+            )?;
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ChildWholeTreeResolve,
+                ResolutionDivergencePhaseState::Skipped,
+                "in-process census uses parent-owned shared index",
+            )?;
+
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ParentWholeTreeResolve,
+                ResolutionDivergencePhaseState::Started,
+                "parent shared-index closure walk + resolve",
+            )?;
+            let roots = default_source_roots();
+            let index = process_shared_index(&roots);
+            let sources = resolution_divergence_closure_scoped_sources_from_shared_index(&index)?;
+            let modules_resolved = sources.len();
+            let (graph, source_indices, _) = resolved_graph_from_sources_with_index(
+                &index,
+                sources,
+                ResolveTypecheckGate::Strict,
+                "resolution-divergence-census-in-process",
+                ResolvedGraphMemoShare::Ephemeral,
+            )?;
+            Ok((graph, source_indices, modules_resolved))
+        })();
+        let subsequent_silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+        let (graph, source_indices, modules_resolved) = resolve_setup?;
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::ParentWholeTreeResolve,
+            ResolutionDivergencePhaseState::Completed,
+            &format!("modules={modules_resolved}; shared_index=true"),
+        )?;
+        let ctx = v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            v1_interpreter::ExecutionMode::Wet,
+            None,
+            None,
+        );
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Started,
+            &format!("modules={modules_resolved}"),
+        )?;
+        let mut census = resolution_divergence_census_from_ctx(&ctx);
+        census.modules_resolved = modules_resolved;
+        census.modules_excluded = 0;
+        let silent_picks = resolution_divergence_combine_silent_pick_telemetry(
+            resolution_divergence_parent_plan_silent_picks()?,
+            subsequent_silent_picks,
+        );
+        merge_silent_pick_telemetry(&mut census, silent_picks);
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Completed,
+            &format!("sites_checked={}", census.sites_checked),
+        )?;
+
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::OutputProjection,
+            ResolutionDivergencePhaseState::Started,
+            "format report and gate verdict",
+        )?;
+        Ok(project_resolution_divergence_census(&census))
+    };
+
+    match run() {
+        Ok(projection) => {
+            println!("{}", projection.stdout);
+            if let Some(stderr) = &projection.stderr {
+                eprintln!("{stderr}");
+            }
+            if let Err(e) = record_resolution_divergence_phase(
+                ResolutionDivergencePhase::OutputProjection,
+                ResolutionDivergencePhaseState::Completed,
+                projection.receipt_detail,
+            ) {
+                eprintln!("resolution_divergence_census: {e}");
+                return false;
+            }
+            projection.exit_code == 0
+        }
+        Err(e) => {
+            eprintln!("resolution_divergence_census: {e}");
+            false
+        }
+    }
+}
+
 fn containment_via_label(via: &ContainmentResolveVia) -> &'static str {
     match via {
         ContainmentResolveVia::Lexical => "lexical",
@@ -27853,14 +27714,75 @@ mod resolution_divergence_census_tests {
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
         func_sig_if_resolved, import_chain_owner, lookup_resolved_sig,
         resolution_divergence_census_live, resolution_divergence_silent_pick_refusal,
-        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
+        whole_tree_resolved_ctx, write_resolution_divergence_phase_receipt_row_at,
+        ContainmentResolve, ResolutionDivergenceBucket, ResolutionDivergencePhase,
+        ResolutionDivergencePhaseState, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
+    use std::rc::Rc;
 
     fn write_fixture(root: &std::path::Path, rel: &str, content: &str) {
         let path = root.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).expect("mkdir");
         std::fs::write(&path, content).expect("write dag");
+    }
+
+    #[test]
+    fn phase_receipt_persists_started_before_completed_with_distinct_timing() {
+        let receipt = std::env::temp_dir().join(format!(
+            "gunbc-resolution-divergence-phase-receipt-{}.tsv",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&receipt);
+        write_resolution_divergence_phase_receipt_row_at(
+            &receipt,
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Started,
+            "fixture\nstart",
+        )
+        .expect("started row");
+        write_resolution_divergence_phase_receipt_row_at(
+            &receipt,
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Completed,
+            "fixture complete",
+        )
+        .expect("completed row");
+        let body = std::fs::read_to_string(&receipt).expect("read receipt");
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines.len(), 3, "header plus one row per transition");
+        assert!(lines[0].contains("elapsed_ms"));
+        assert!(lines[1].contains("\tcensus_traversal\tstarted\t\tfixture start"));
+        assert!(lines[2].contains("\tcensus_traversal\tcompleted\t"));
+        assert_eq!(lines[1].split('\t').count(), 11);
+        assert_eq!(lines[2].split('\t').count(), 11);
+        let _ = std::fs::remove_file(receipt);
+    }
+
+    #[test]
+    fn parent_and_shared_index_telemetry_join_without_cache_hit_duplicates() {
+        let parent_row = crate::v1_rt::GlobalBareLcpPickSite {
+            env_module_path: "test.parent".to_string(),
+            name: "shared".to_string(),
+            candidate_count: 2,
+            chosen_module_path: "test.choice".to_string(),
+        };
+        let later_row = crate::v1_rt::GlobalBareLcpPickSite {
+            env_module_path: "test.later".to_string(),
+            name: "shared".to_string(),
+            candidate_count: 3,
+            chosen_module_path: "test.other_choice".to_string(),
+        };
+        let earlier = crate::v1_rt::SilentPickTelemetry {
+            global_bare_lcp_picks: vec![parent_row.clone()],
+            ..Default::default()
+        };
+        let later = crate::v1_rt::SilentPickTelemetry {
+            global_bare_lcp_picks: vec![parent_row.clone(), later_row.clone()],
+            ..Default::default()
+        };
+        let joined = super::resolution_divergence_combine_silent_pick_telemetry(earlier, later);
+        assert_eq!(joined.global_bare_lcp_picks, vec![parent_row, later_row]);
     }
 
     /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
@@ -27888,6 +27810,86 @@ mod resolution_divergence_census_tests {
         super::process_workspace_root()
             .join("target")
             .join(format!("gunbc-resdiv-posctl-{}", std::process::id()))
+    }
+
+    #[test]
+    fn shared_index_cut_preserves_frozen_census_output_and_verdict() {
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-resdiv-shared-cut-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "callee.dag",
+            r#"module test.sharedcut.callee
+
+import std.types { Bool }
+
+fn identity(a: Bool) -> Bool {
+  return a
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "caller.dag",
+            r#"module test.sharedcut.caller
+
+import std.types { Bool }
+import test.sharedcut.callee { identity }
+
+fn caller() -> Bool {
+  return identity(False)
+}
+"#,
+        );
+        let roots = fixture_roots(&fixture);
+        let before = resolution_divergence_census_live(&roots, &[]).expect("legacy cold census");
+
+        // Match production exactly: derive membership from source objects the
+        // canonicalized parent index already owns, then resolve through that index.
+        // The absolute fixture roots intentionally differ in spelling from the
+        // canonical index; re-reading them would mint absolute entry objects alongside
+        // the relative provider objects and reintroduce every module twice.
+        let index = super::process_shared_index(&roots);
+        let sources =
+            super::resolution_divergence_closure_scoped_sources_from_shared_index(index.as_ref())
+                .expect("parent-owned closure-scoped fixture sources");
+        assert!(
+            sources.iter().all(|source| index
+                .source_files
+                .values()
+                .any(|owned| Rc::ptr_eq(source, owned))),
+            "the in-process cut must not reload any source outside the parent index",
+        );
+        let modules_resolved = sources.len();
+        crate::v1_rt::resolution_silent_pick_enable();
+        let resolve_result = super::resolved_graph_from_sources_with_index(
+            index.as_ref(),
+            sources,
+            super::ResolveTypecheckGate::Strict,
+            "resolution-divergence-shared-cut-control",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        );
+        let telemetry = crate::v1_rt::resolution_silent_pick_disable();
+        let (graph, source_indices, _) = resolve_result.expect("shared-index resolve");
+        let ctx = crate::v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            Wet,
+            None,
+            None,
+        );
+        let mut after = super::resolution_divergence_census_from_ctx(&ctx);
+        after.modules_resolved = modules_resolved;
+        super::merge_silent_pick_telemetry(&mut after, telemetry);
+
+        assert_eq!(
+            super::project_resolution_divergence_census(&after),
+            super::project_resolution_divergence_census(&before),
+            "the process-boundary cut must preserve census bytes and gate verdict on a frozen tree",
+        );
+        let _ = std::fs::remove_dir_all(fixture);
     }
 
     #[test]
@@ -35696,9 +35698,9 @@ mod exclusive_cost_partition_law {
     }
 
     #[test]
-    fn rewire_sub_rows_are_inclusive_and_never_enter_the_exclusive_sum() {
-        // Double-counting control: the three rewire sub-passes are contained in
-        // `assembly_rewire`. Adding them to the sum would over-attribute by their total.
+    fn rewire_sub_rows_are_exclusive_and_total_is_observation_only() {
+        // The three non-overlapping passes enter the partition directly. Their enclosing
+        // timer remains available on the text receipt but cannot become a quoted share.
         let st = ResolveStageNanos {
             assembly_rewire: 300,
             assembly_rewire_type_env: 100,
@@ -35710,18 +35712,15 @@ mod exclusive_cost_partition_law {
         assert_eq!(p.sum_exclusive_nanos(), 300);
         assert_eq!(p.remainder_nanos, 700);
 
-        // Exactly the three rewire sub-passes name `assembly_rewire` as their parent, and
-        // they account for all of it. Filtered rather than counting `p.inclusive` wholesale:
-        // other exclusive rows carry their own sub-rows, and a global count would make this
-        // control fail every time an unrelated row gains one -- which is what happened when
-        // the `load_*` sub-attribution landed.
-        let rewire: Vec<_> = p
-            .inclusive
-            .iter()
-            .filter(|r| r.contained_in == "assembly_rewire")
-            .collect();
-        assert_eq!(rewire.len(), 3);
-        assert_eq!(rewire.iter().map(|r| r.nanos).sum::<u128>(), 300);
+        assert_eq!(p.share_of_parent("assembly_rewire"), None);
+        assert_eq!(
+            p.exclusive
+                .iter()
+                .filter(|r| r.name.starts_with("assembly_rewire_"))
+                .map(|r| r.nanos)
+                .sum::<u128>(),
+            300
+        );
 
         // The invariant that actually matters, over every inclusive row from every parent:
         // an inclusive row is contained in some other row (exclusive, or another inclusive
@@ -35853,206 +35852,6 @@ mod selected_entry_closure_overlap_arithmetic {
         let json = render_selected_entry_closure_overlap_json(&m);
         assert!(json.contains("\"duplication_factor\":null"));
         assert!(json.contains("\"max\":null"));
-    }
-}
-
-#[cfg(test)]
-mod repeated_typecheck_attribution_arithmetic {
-    use super::*;
-
-    fn measurement_from_rows(
-        rows: Vec<EntryModuleTypecheckRow>,
-        key_tracker: HashMap<String, ModuleKeyTracker>,
-        sum_memberships: usize,
-        union_modules: usize,
-    ) -> RepeatedTypecheckAttributionMeasurement {
-        RepeatedTypecheckAttributionRun {
-            key_tracker,
-            rows,
-            entry_timings: Vec::new(),
-            all_hit_probe_rows: Vec::new(),
-            all_hit_probe_active: false,
-            observed_entry_module_keys: HashSet::new(),
-        }
-        .into_measurement(
-            vec!["dag".to_string()],
-            vec!["dag/test/claim".to_string()],
-            "0".repeat(40),
-            None,
-            vec!["a".to_string(), "b".to_string()],
-            Vec::new(),
-            None,
-            None,
-            sum_memberships,
-            union_modules,
-        )
-    }
-
-    #[test]
-    fn perfect_sharing_yields_zero_decision_ratio() {
-        // Two entries, one shared module: first miss, second hit → cache_hit_ratio 0.5,
-        // but decision_ratio 0 (no repeated typecheck compute).
-        let rows = vec![
-            EntryModuleTypecheckRow {
-                entry: "a".into(),
-                module_key: "k1".into(),
-                module_path: "std.types".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 100,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 0,
-            },
-            EntryModuleTypecheckRow {
-                entry: "b".into(),
-                module_key: "k1".into(),
-                module_path: "std.types".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Hit,
-                typecheck_compute_ns: 0,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 1,
-            },
-        ];
-        let mut tracker = HashMap::new();
-        tracker.insert(
-            "k1".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "a".to_string(),
-                requesters_seen: 2,
-            },
-        );
-        let m = measurement_from_rows(rows, tracker, 2, 1);
-        assert_eq!(m.total_cache_hits, 1);
-        assert_eq!(m.total_cache_misses, 1);
-        assert_eq!(m.repeated_typecheck_misses, 0);
-        assert_eq!(m.cache_hit_ratio, Some(0.5));
-        assert_eq!(m.decision_ratio, Some(0.0));
-        assert_eq!(m.total_typecheck_compute_ns, 100);
-        assert_eq!(m.repeated_typecheck_compute_ns, 0);
-    }
-
-    #[test]
-    fn repeated_recompute_raises_decision_ratio() {
-        let rows = vec![
-            EntryModuleTypecheckRow {
-                entry: "a".into(),
-                module_key: "k1".into(),
-                module_path: "m1".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 100,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 0,
-            },
-            EntryModuleTypecheckRow {
-                entry: "b".into(),
-                module_key: "k1".into(),
-                module_path: "m1".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 50,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 1,
-            },
-        ];
-        let mut tracker = HashMap::new();
-        tracker.insert(
-            "k1".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "a".to_string(),
-                requesters_seen: 2,
-            },
-        );
-        let m = measurement_from_rows(rows, tracker, 2, 1);
-        assert_eq!(m.repeated_typecheck_misses, 1);
-        assert_eq!(m.repeated_typecheck_compute_ns, 50);
-        assert_eq!(m.decision_ratio, Some(50.0 / 150.0));
-    }
-
-    #[test]
-    fn no_sharing_yields_zero_decision_ratio() {
-        let rows = vec![
-            EntryModuleTypecheckRow {
-                entry: "a".into(),
-                module_key: "k1".into(),
-                module_path: "m1".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 50,
-                first_computing_entry: Some("a".into()),
-                later_requester_count: 0,
-            },
-            EntryModuleTypecheckRow {
-                entry: "b".into(),
-                module_key: "k2".into(),
-                module_path: "m2".into(),
-                in_closure: true,
-                cache_disposition: TypedCacheDisposition::Miss,
-                typecheck_compute_ns: 50,
-                first_computing_entry: Some("b".into()),
-                later_requester_count: 0,
-            },
-        ];
-        let mut tracker = HashMap::new();
-        tracker.insert(
-            "k1".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "a".to_string(),
-                requesters_seen: 1,
-            },
-        );
-        tracker.insert(
-            "k2".to_string(),
-            ModuleKeyTracker {
-                first_computing_entry: "b".to_string(),
-                requesters_seen: 1,
-            },
-        );
-        let m = measurement_from_rows(rows, tracker, 2, 2);
-        assert_eq!(m.decision_ratio, Some(0.0));
-        assert_eq!(m.repeated_typecheck_misses, 0);
-        assert_eq!(m.compute_duplication_factor, Some(1.0));
-        assert_eq!(m.membership_duplication_factor, Some(1.0));
-    }
-
-    #[test]
-    fn cache_hits_carry_zero_typecheck_compute_ns() {
-        let rows = vec![EntryModuleTypecheckRow {
-            entry: "b".into(),
-            module_key: "k1".into(),
-            module_path: "m1".into(),
-            in_closure: true,
-            cache_disposition: TypedCacheDisposition::Hit,
-            typecheck_compute_ns: 0,
-            first_computing_entry: Some("a".into()),
-            later_requester_count: 1,
-        }];
-        let m = measurement_from_rows(rows, HashMap::new(), 1, 1);
-        assert!(
-            m.rows
-                .iter()
-                .filter(|r| r.cache_disposition == TypedCacheDisposition::Hit)
-                .all(|r| r.typecheck_compute_ns == 0),
-            "genuine shared-store hits must not carry typecheck wall"
-        );
-    }
-
-    #[test]
-    fn refused_rows_are_not_counted_as_hits() {
-        let rows = vec![EntryModuleTypecheckRow {
-            entry: "a".into(),
-            module_key: "refused:cause".into(),
-            module_path: "m1".into(),
-            in_closure: true,
-            cache_disposition: TypedCacheDisposition::Refused,
-            typecheck_compute_ns: 0,
-            first_computing_entry: None,
-            later_requester_count: 0,
-        }];
-        let m = measurement_from_rows(rows, HashMap::new(), 1, 1);
-        assert_eq!(m.total_cache_hits, 0);
-        assert_eq!(m.total_cache_refusals, 1);
     }
 }
 

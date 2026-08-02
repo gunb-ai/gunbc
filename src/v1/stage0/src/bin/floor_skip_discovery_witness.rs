@@ -49,6 +49,7 @@ fn discovery_options(skip: bool) -> DiscoveryCorpusOptions {
         } else {
             NodeFrontierSelectionMode::Off
         },
+        execution_authority_source_roots: floor_skip_source_roots(),
         explicit_roster_only: true,
         ..Default::default()
     }
@@ -152,6 +153,7 @@ fn run_injected_diff_roster_with_mode(
         DiscoveryWidthPolicy::Serial,
         DiscoveryCorpusOptions {
             node_frontier_selection: mode,
+            execution_authority_source_roots: floor_skip_source_roots(),
             explicit_roster_only: true,
             ..Default::default()
         },

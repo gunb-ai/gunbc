@@ -1,0 +1,72 @@
+module test.claim.githooks_repo_local_git_config_emit
+
+import gunbc.githooks_repo_local_git_config_emit {
+  emit_repo_local_git_config_converge_shell,
+  githooks_repo_local_git_config_emit_note,
+  githooks_repo_local_git_config_emit_dissolution_trigger,
+  githooks_repo_local_git_config_emit_shell_emit_scaffold,
+}
+import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
+import gunbc.repo_local_git_config {
+  reconcile_install_argv,
+  generated_artifact_merge_driver_key,
+  generated_artifact_merge_driver_value,
+  core_hooks_path_key,
+  core_hooks_path_value,
+  RepoLocalGitConfigBinding,
+}
+import extdeps.git { git_shell_join_argv }
+import std.disposition { Scaffold }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_converge_shell_uses_reconcile_install_argv() -> Bool {
+  let shell = emit_repo_local_git_config_converge_shell()
+  let merge_cmd = git_shell_join_argv(
+    argv: reconcile_install_argv(
+      binding: RepoLocalGitConfigBinding {
+        key: generated_artifact_merge_driver_key,
+        value: generated_artifact_merge_driver_value,
+      }
+    )
+  )
+  let hooks_cmd = git_shell_join_argv(
+    argv: reconcile_install_argv(
+      binding: RepoLocalGitConfigBinding {
+        key: core_hooks_path_key,
+        value: core_hooks_path_value,
+      }
+    )
+  )
+  string_contains(s: shell, pattern: merge_cmd)
+    && string_contains(s: shell, pattern: hooks_cmd)
+}
+
+test fn witness_pre_commit_enrolls_converge_shell() -> Bool {
+  let sh = expected_githooks_pre_commit_sh()
+  string_contains(s: sh, pattern: githooks_repo_local_git_config_emit_dissolution_trigger)
+    && string_contains(s: sh, pattern: "merge.generated-artifact.driver")
+    && string_contains(s: sh, pattern: "core.hooksPath")
+}
+
+test fn witness_pre_push_enrolls_converge_shell() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  string_contains(s: sh, pattern: githooks_repo_local_git_config_emit_dissolution_trigger)
+    && string_contains(s: sh, pattern: "merge.generated-artifact.driver")
+    && string_contains(s: sh, pattern: "core.hooksPath")
+}
+
+test fn witness_converge_shell_emit_is_scaffold() -> Bool {
+  match githooks_repo_local_git_config_emit_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_degradation_note_names_hooks_path_seed() -> Bool {
+  string_contains(s: githooks_repo_local_git_config_emit_note, pattern: "hooksPath")
+    && string_contains(s: githooks_repo_local_git_config_emit_note, pattern: "degrade")
+    && string_contains(s: githooks_repo_local_git_config_emit_dissolution_trigger, pattern: "dissolve-on")
+}
