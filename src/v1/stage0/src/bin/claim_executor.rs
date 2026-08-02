@@ -5067,22 +5067,22 @@ fn run_walk(
     }
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
-    eprintln!("[floor-phase] phase=resolve-receipt state=started");
+    trace_floor_phase("resolve-receipt", "started", "");
     let resolve_receipt_ok = !emit_ordinary_floor_receipts || write_resolve_receipt(&batch_records);
-    eprintln!("[floor-phase] phase=resolve-receipt state=completed");
-    eprintln!("[floor-phase] phase=batch-wall-receipt state=started");
+    trace_floor_phase("resolve-receipt", "completed", "");
+    trace_floor_phase("batch-wall-receipt", "started", "");
     let batch_wall_receipt_ok =
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
-    eprintln!("[floor-phase] phase=batch-wall-receipt state=completed");
-    eprintln!("[floor-phase] phase=gate-warm-cost-receipt state=started");
+    trace_floor_phase("batch-wall-receipt", "completed", "");
+    trace_floor_phase("gate-warm-cost-receipt", "started", "");
     let gate_warm_cost_receipt_ok = !emit_ordinary_floor_receipts
         || write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
-    eprintln!("[floor-phase] phase=gate-warm-cost-receipt state=completed");
-    eprintln!("[floor-phase] phase=witness-row-cost-receipt state=started");
+    trace_floor_phase("gate-warm-cost-receipt", "completed", "");
+    trace_floor_phase("witness-row-cost-receipt", "started", "");
     let witness_row_cost_receipt_ok = !emit_ordinary_floor_receipts
         || write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
-    eprintln!("[floor-phase] phase=witness-row-cost-receipt state=completed");
-    eprintln!("[floor-phase] phase=witness-row-cost-drift-receipt state=started");
+    trace_floor_phase("witness-row-cost-receipt", "completed", "");
+    trace_floor_phase("witness-row-cost-drift-receipt", "started", "");
     let witness_row_cost_drift_receipt_ok = if !emit_ordinary_floor_receipts {
         true
     } else if falsifier_cadence {
@@ -5095,10 +5095,10 @@ fn run_walk(
     } else {
         true
     };
-    eprintln!("[floor-phase] phase=witness-row-cost-drift-receipt state=completed");
+    trace_floor_phase("witness-row-cost-drift-receipt", "completed", "");
     // Written on EVERY exit path, red included — a red run is precisely when the
     // alert needs to know which component failed (gunbc.floor_component_receipt).
-    eprintln!("[floor-phase] phase=floor-component-receipt state=started");
+    trace_floor_phase("floor-component-receipt", "started", "");
     let floor_component_receipt_ok = !emit_ordinary_floor_receipts
         || write_floor_component_receipt_at(
             std::path::Path::new("target"),
@@ -5106,15 +5106,16 @@ fn run_walk(
             &batch_records,
             batches.len(),
         );
-    eprintln!("[floor-phase] phase=floor-component-receipt state=completed");
+    trace_floor_phase("floor-component-receipt", "completed", "");
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
-    eprintln!(
-        "[floor-phase] phase=materialization-ledger-harvest state=started contexts={}",
-        walk_memo.len()
+    trace_floor_phase(
+        "materialization-ledger-harvest",
+        "started",
+        &format!("contexts={}", walk_memo.len()),
     );
     drop(walk_memo);
-    eprintln!("[floor-phase] phase=materialization-ledger-harvest state=completed");
+    trace_floor_phase("materialization-ledger-harvest", "completed", "");
     let materialization_receipt_ok =
         !emit_ordinary_floor_receipts || write_materialization_receipt();
     // Ordinary-floor verdict INCLUDING receipt construction: a receipt-write failure
@@ -5640,8 +5641,67 @@ fn run_perturb_check(
 }
 
 const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
+const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
 const SCOPED_WITNESS_BATCH_MANIFEST_PATH: &str = "target/scoped-witness-batch-manifest.tsv";
 const FLOOR_WORKER_OBSERVATION_RECEIPT_PATH: &str = "target/floor-worker-observation-receipt.tsv";
+
+fn append_floor_phase_journal(phase: &str, state: &str, detail: &str) {
+    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
+        return;
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!(
+                "claim_executor: create floor phase journal directory {}: {e}",
+                parent.display()
+            );
+            return;
+        }
+    }
+    let mut file = match fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: open floor phase journal {}: {e}",
+                path.display()
+            );
+            return;
+        }
+    };
+    let unix_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
+    let row = format!(
+        "{unix_millis}\t{}\t{phase}\t{state}\t{clean_detail}\n",
+        std::process::id()
+    );
+    use std::io::Write as _;
+    if let Err(e) = file
+        .write_all(row.as_bytes())
+        .and_then(|()| file.flush())
+        .and_then(|()| file.sync_data())
+    {
+        eprintln!(
+            "claim_executor: persist floor phase journal {}: {e}",
+            path.display()
+        );
+    }
+}
+
+fn trace_floor_phase(phase: &str, state: &str, detail: &str) {
+    // Persist first: stdout is the channel under diagnosis and may block before
+    // the runner can surface the marker.  The workflow reads this synced journal
+    // from an always-running post-step after the floor process group is gone.
+    append_floor_phase_journal(phase, state, detail);
+    if detail.is_empty() {
+        eprintln!("[floor-phase] phase={phase} state={state}");
+    } else {
+        eprintln!("[floor-phase] phase={phase} state={state} {detail}");
+    }
+}
 
 #[derive(Clone, PartialEq, Eq)]
 enum FloorWorkerRole {
@@ -5951,8 +6011,26 @@ fn spawn_floor_worker(
             .try_wait()
             .map_err(|e| format!("observe floor worker `{worker}`: {e}"))?
         {
-            Some(status) => break status,
+            Some(status) => {
+                append_floor_phase_journal(
+                    "coordinator-wait",
+                    "completed",
+                    &format!(
+                        "worker={worker} elapsed_seconds={}",
+                        wait_started.elapsed().as_secs()
+                    ),
+                );
+                break status;
+            }
             None => {
+                append_floor_phase_journal(
+                    "coordinator-wait",
+                    "running",
+                    &format!(
+                        "worker={worker} elapsed_seconds={}",
+                        wait_started.elapsed().as_secs()
+                    ),
+                );
                 eprintln!(
                     "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
                     wait_started.elapsed().as_secs()
@@ -5995,6 +6073,9 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     }
     let _ = fs::remove_file(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH);
     let _ = fs::remove_file(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
+    if let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) {
+        let _ = fs::remove_file(path);
+    }
     if let Err(msg) = initialize_scoped_witness_receipt() {
         eprintln!("claim_executor: floor coordinator receipt arm refusal: {msg}");
         return Some(ExitCode::from(1));

@@ -27,6 +27,8 @@ import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import v2.workflow.ci_floor_peak_emit {
   ci_cgroup_peak_locate_shell,
+  ci_floor_phase_journal_env_name,
+  ci_floor_phase_journal_path,
   ci_floor_peak_pre_script,
   ci_floor_peak_post_script
 }
@@ -323,7 +325,9 @@ fn ci_floor_step() -> Step {
     id: Present { value: "floor" },
     run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -417,7 +421,9 @@ fn ci_floor_peak_post_step() -> Step {
     id: none,
     run: ci_floor_peak_post_script(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
