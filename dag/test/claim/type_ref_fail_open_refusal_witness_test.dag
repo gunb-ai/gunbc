@@ -114,14 +114,16 @@ test fn regenerator_declared_offline_authoring_tool() -> Bool {
   string_contains(s: type_ref_roster_regenerator_choice, pattern: "CHOICE (b)")
     && string_contains(s: type_ref_roster_regenerator_choice, pattern: "OFFLINE AUTHORING TOOL")
     && string_contains(s: type_ref_roster_regenerator_choice, pattern: "NEVER invoked from CI")
-    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "HALF 1 PURE")
-    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "HALF 2 HOST-EFFECT")
+    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "SINGLE AUTHORITY")
+    && string_contains(s: type_ref_roster_regenerator_choice, pattern: "HALF 2")
 }
 
-test fn pure_regen_dissolve_landed_in_dag_fold() -> Bool {
-  string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "DISSOLVED")
-    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "type_ref_fold_labeled_sites_to_roster_buckets")
-    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "must not return as a second authority")
+test fn pure_regen_single_authority_is_offline_python() -> Bool {
+  string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "RETRACTED")
+    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "review 47277")
+    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "SINGLE AUTHORITY")
+    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "regenerate_from_census.py")
+    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "never keep both")
 }
 
 test fn host_effect_classify_is_procedure_not_scaffold() -> Bool {
