@@ -33,7 +33,7 @@ import gunbc.type_reference_binding_context {
   type_reference_binding_context_authority_note,
 }
 
-data type_reference_binding_context_witness_note: String = "N2 slice 2 PR-A builder witnesses (quiet-hawk-219): RESOLVE-path only — TypeReferenceBindingContext input projection + containment-tree exposure derivation for the v1 typecheck masked-leaf changeover (emit-side item_registry leaf-collision is a separate path; see gunbc.type_reference_binding_context type_reference_binding_context_path_scope_note). Cross-module kernel bind uses builder-produced inputs with RootExposure from module-root containment — never hand-authored std rosters. Pool-coincidence refusal uses explicit ModuleExposure override on the slice-1 control-3 shape. PR-B wires resolve_node_bounded after 7515 lands."
+data type_reference_binding_context_witness_note: String = "N2 slice 2 PR-A builder witnesses (quiet-hawk-219): RESOLVE-path only — see gunbc.type_reference_binding_context type_reference_binding_context_path_scope_note (emit-side #7705 RED control is LIVE, separate instance, warm-wolf-814). TypeReferenceBindingContext input projection + containment-tree exposure derivation for the v1 typecheck masked-leaf changeover. Cross-module kernel bind uses builder-produced inputs with RootExposure from module-root containment. Pool-coincidence refusal uses explicit ModuleExposure override on slice-1 control-3. PR-B wires resolve_node_bounded after 7515."
 
 fn trbc_module_path(dotted: String) -> NonEmptyStr {
   dotted as NonEmptyStr
