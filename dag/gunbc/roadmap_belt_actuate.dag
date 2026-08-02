@@ -1598,14 +1598,14 @@ fn belt_pass_outcome_from_json(doc: JsonValue) -> BeltPassOutcome {
               BeltPassFailed { reason: r }
             _ => BeltPassFailed { reason: "belt tick pass failed" }
           }
-        _ => BeltPassDeferred { reason: "unknown belt tick pass outcome" }
+        _ => BeltPassRefused { reason: "belt tick pass outcome is unknown" }
       }
     JsonMemberAbsent =>
-      BeltPassDeferred { reason: "belt tick pass outcome missing" }
+      BeltPassRefused { reason: "belt tick pass outcome is missing" }
     JsonMemberDuplicated { count: _ } =>
-      BeltPassDeferred { reason: "belt tick pass outcome duplicated" }
+      BeltPassRefused { reason: "belt tick pass outcome is duplicated" }
     JsonMemberNotAnObject =>
-      BeltPassDeferred { reason: "belt tick pass outcome unreadable" }
+      BeltPassRefused { reason: "belt tick pass outcome is unreadable" }
   }
 }
 
@@ -1643,7 +1643,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
 fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcome {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: pass_doc } => belt_pass_outcome_from_json(doc: pass_doc)
-    _ => BeltPassDeferred { reason: join(["belt tick receipt ", key, " is missing"], "") }
+    _ => BeltPassRefused { reason: join(["belt tick receipt ", key, " is missing"], "") }
   }
 }
 
@@ -1672,10 +1672,10 @@ fn belt_tick_receipt_for_presentation_for_instance(
       BeltTickReceiptUnreadable { reason: r } =>
         BeltTickReceipt {
           observed_at: "",
-          spawn_pass: BeltPassDeferred { reason: "" },
-          teardown_pass: BeltPassDeferred { reason: "" },
-          verify_pass: BeltPassDeferred { reason: r },
-          publish_pass: BeltPassDeferred { reason: "" },
+          spawn_pass: BeltPassRefused { reason: r },
+          teardown_pass: BeltPassRefused { reason: r },
+          verify_pass: BeltPassRefused { reason: r },
+          publish_pass: BeltPassRefused { reason: r },
         }
     }
   }
@@ -2849,35 +2849,13 @@ fn belt_verify_attempts() -> List<BeltVerifyOutcome> {
   )
 }
 
-fn belt_verify_outcome_is_write_failure(o: BeltVerifyOutcome) -> Bool {
-  match o {
-    VerifyWriteFailed { node_id: _, detail: _ } => true
-    VerifyEvidenceUnreadable { node_id: _, detail: _ } => true
-    VerifyDeferred { node_id: _, reason: _ } => false
-    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
-  }
-}
-
-fn belt_verify_outcome_is_ledger_refusal(o: BeltVerifyOutcome) -> Bool {
-  match o {
+fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassOutcome {
+  let ledger_refusals = outcomes |> filter(o => match o {
     VerifyDeferred { node_id: nid, reason: _ } => nid == ""
     VerifyWriteFailed { node_id: _, detail: _ } => false
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
-  }
-}
-
-fn belt_verify_outcome_is_deferred(o: BeltVerifyOutcome) -> Bool {
-  match o {
-    VerifyDeferred { node_id: nid, reason: _ } => nid != ""
-    VerifyWriteFailed { node_id: _, detail: _ } => false
-    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
-    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
-  }
-}
-
-fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassOutcome {
-  let ledger_refusals = outcomes |> filter(o => belt_verify_outcome_is_ledger_refusal(o: o))
+  })
   if count(ledger_refusals) > 0 {
     match ledger_refusals.first() {
       Present { value: VerifyDeferred { node_id: _, reason: r } } =>
@@ -2886,11 +2864,21 @@ fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassO
         BeltPassRefused { reason: "the attempts ledger is unobservable" }
     }
   } else {
-    if any(outcomes, o => belt_verify_outcome_is_write_failure(o: o)) {
+    if any(outcomes, o => match o {
+      VerifyWriteFailed { node_id: _, detail: _ } => true
+      VerifyEvidenceUnreadable { node_id: _, detail: _ } => true
+      VerifyDeferred { node_id: _, reason: _ } => false
+      VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    }) {
       BeltPassFailed { reason: "one or more verification outcomes could not be recorded" }
     } else {
       if count(outcomes) > 0
-        && all(outcomes, o => belt_verify_outcome_is_deferred(o: o)) {
+        && all(outcomes, o => match o {
+          VerifyDeferred { node_id: nid, reason: _ } => nid != ""
+          VerifyWriteFailed { node_id: _, detail: _ } => false
+          VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+          VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+        }) {
         BeltPassDeferred {
           reason: "no attempt is ready for verification on this tick",
         }
@@ -2926,9 +2914,9 @@ data belt_attempt_presentation_note: String = "The wire join of the two authorit
 fn belt_workflow_attempt_presentation_json(
   progress: WorkflowAttemptProgress,
 ) -> JsonValue {
-  belt_workflow_attempt_presentation_json_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  belt_workflow_attempt_presentation_json_with_tick(
     progress: progress,
+    tick: belt_tick_receipt_absent_for_presentation(),
   )
 }
 
@@ -2936,7 +2924,16 @@ fn belt_workflow_attempt_presentation_json_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> JsonValue {
-  let tick = belt_tick_receipt_for_presentation_for_instance(instance: instance)
+  belt_workflow_attempt_presentation_json_with_tick(
+    progress: progress,
+    tick: belt_tick_receipt_for_presentation_for_instance(instance: instance),
+  )
+}
+
+fn belt_workflow_attempt_presentation_json_with_tick(
+  progress: WorkflowAttemptProgress,
+  tick: BeltTickReceipt,
+) -> JsonValue {
   json_object(members: concat(
     workflow_attempt_progress_json_members(progress: progress),
     [
@@ -2962,19 +2959,24 @@ fn belt_tick_receipt_wire_json_for_instance(
       json_kv(key: "present", value: json_bool(b: false)),
     ])
   } else {
-    if string_contains(s: read.content, pattern: belt_tick_receipt_schema) {
-      json_object(members: [
-        json_kv(key: "present", value: json_bool(b: true)),
-        json_kv(key: "raw", value: json_string(s: read.content)),
-      ])
-    } else {
-      json_object(members: [
-        json_kv(key: "present", value: json_bool(b: false)),
-        json_kv(
-          key: "unreadable_reason",
-          value: json_string(s: "the persisted belt tick receipt has an unknown schema"),
-        ),
-      ])
+    match belt_tick_receipt_decode(raw: read.content) {
+      BeltTickReceiptPresent { receipt } =>
+        json_object(members: [
+          json_kv(key: "present", value: json_bool(b: true)),
+          json_kv(key: "receipt", value: belt_tick_receipt_json_value(receipt: receipt)),
+        ])
+      BeltTickReceiptAbsent =>
+        json_object(members: [
+          json_kv(key: "present", value: json_bool(b: false)),
+        ])
+      BeltTickReceiptUnreadable { reason: r } =>
+        json_object(members: [
+          json_kv(key: "present", value: json_bool(b: false)),
+          json_kv(
+            key: "unreadable_reason",
+            value: json_string(s: r),
+          ),
+        ])
     }
   }
 }
@@ -3862,28 +3864,14 @@ fn belt_publication_credential() -> PublicationCredentialSource {
   }
 }
 
-fn belt_publish_outcome_is_ledger_refusal(o: BeltPublishOutcome) -> Bool {
-  match o {
+fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPassOutcome {
+  let ledger_refusals = outcomes |> filter(o => match o {
     PublishDeferred { node_id: nid, reason: _ } => nid == ""
     PublishWriteFailed { node_id: _, detail: _ } => false
     PublishEvidenceUnreadable { node_id: _, detail: _ } => false
     PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
     PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-  }
-}
-
-fn belt_publish_outcome_is_write_failure(o: BeltPublishOutcome) -> Bool {
-  match o {
-    PublishWriteFailed { node_id: _, detail: _ } => true
-    PublishEvidenceUnreadable { node_id: _, detail: _ } => true
-    PublishDeferred { node_id: _, reason: _ } => false
-    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
-    PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-  }
-}
-
-fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPassOutcome {
-  let ledger_refusals = outcomes |> filter(o => belt_publish_outcome_is_ledger_refusal(o: o))
+  })
   if count(ledger_refusals) > 0 {
     match ledger_refusals.first() {
       Present { value: PublishDeferred { node_id: _, reason: r } } =>
@@ -3892,7 +3880,13 @@ fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPas
         BeltPassRefused { reason: "the attempts ledger is unobservable" }
     }
   } else {
-    if any(outcomes, o => belt_publish_outcome_is_write_failure(o: o)) {
+    if any(outcomes, o => match o {
+      PublishWriteFailed { node_id: _, detail: _ } => true
+      PublishEvidenceUnreadable { node_id: _, detail: _ } => true
+      PublishDeferred { node_id: _, reason: _ } => false
+      PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+      PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+    }) {
       BeltPassFailed { reason: "one or more publication outcomes could not be recorded" }
     } else {
       BeltPassRecorded
@@ -3931,7 +3925,7 @@ fn belt_verification_presentation_detail(
             BeltPassRefused { reason: r } =>
               join(["Verification blocked · ", r], "")
             BeltPassFailed { reason: r } =>
-              join(["Verification refused · ", r], "")
+              join(["Verification failed · ", r], "")
             BeltPassDeferred { reason: _ } =>
               "Verification queued - next belt tick"
             BeltPassRecorded =>
