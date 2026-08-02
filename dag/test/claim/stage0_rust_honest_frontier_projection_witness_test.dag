@@ -9,6 +9,7 @@ import gunbc.stage0_rust_honest_frontier_integration {
 import gunbc.stage0_rust_honest_frontier_projection {
   HandAuthoredLOC,
   HandCapability,
+  RetirementTrigger,
   honest_frontier_projection_witness_observation,
   stage0_rust_honest_frontier_deferred_axes,
   stage0_rust_honest_frontier_projection_note
@@ -90,7 +91,8 @@ test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> 
 test fn honest_frontier_projection_declares_deferred_axes() -> Bool {
   stage0_rust_honest_frontier_deferred_axes == [
     HandAuthoredLOC,
-    HandCapability
+    HandCapability,
+    RetirementTrigger
   ]
     && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandAuthoredLOC")
     && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "stage0_rust_honest_frontier_integration")

@@ -7,7 +7,9 @@ import gunbc.stage0_rust_lifecycle_totality {
   lifecycle_discovery_complete,
   lifecycle_totality_receipt,
   lifecycle_totality_witness_observation,
-  stage0_rust_lifecycle_totality_note
+  stage0_rust_lifecycle_totality_note,
+  stage0_rust_lifecycle_totality_underived_axes,
+  RetirementTrigger
 }
 import gunbc.stage0_rust_host_observation { RustManifestObserved }
 import std.content_hash { Fnv1a64Structural }
@@ -66,6 +68,12 @@ test fn lifecycle_totality_discovery_and_decision_are_separate() -> Bool {
   )
   lifecycle_discovery_complete(receipt: receipt)
     && !lifecycle_decision_complete(receipt: receipt)
+}
+
+test fn lifecycle_totality_counts_retirement_trigger_as_underived_axis() -> Bool {
+  stage0_rust_lifecycle_totality_underived_axes == [RetirementTrigger]
+    && length(xs: stage0_rust_lifecycle_totality_underived_axes) == 1
+    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "stage0_rust_lifecycle_totality_underived_axes")
 }
 
 test fn lifecycle_totality_positive_control_decision_complete() -> Bool {
