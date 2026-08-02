@@ -3,7 +3,8 @@
 //! Loading a provider must make its declaration data available to resolution without
 //! making every declaration visible to every consumer. Today the latter still happens:
 //! a selective import loads the provider, after which a declaration omitted from the
-//! authored name list resolves with only an `UnlistedImportUse` advisory.
+//! authored name list resolves silently. An unrelated module loading the provider also
+//! makes that declaration resolve in a consumer with no provider import edge at all.
 //!
 //! The ignored tests state the intended refusal and deliberately fail on the current
 //! resolver. Wave B will remove `#[ignore]` when it installs the visibility wall. The
@@ -24,6 +25,10 @@ const HOMONYM_PROVIDER: &str = "module visibility_fixture.homonym_provider\n\
 const DIRECT_IMPORT_BRIDGE: &str = "module visibility_fixture.bridge\n\
     import visibility_fixture.provider { NotImported }\n\
     data BridgeAnchor: Int = NotImported\n";
+
+const UNRELATED_LOADER: &str = "module visibility_fixture.unrelated_loader\n\
+    import visibility_fixture.provider { Imported }\n\
+    data LoaderValue: Int = Imported\n";
 
 fn hard_messages(files: &[(&str, &str)]) -> Vec<String> {
     diagnostic_messages(&compile_multi(files))
@@ -69,10 +74,45 @@ fn omitted_declaration_currently_false_greens_from_loaded_pool() {
          {messages:?}"
     );
     assert!(
-        messages.iter().any(|message| {
-            message.starts_with("unlisted import use") && message.contains("NotImported")
-        }),
-        "the false green must remain visible as an UnlistedImportUse advisory: {messages:?}"
+        !messages
+            .iter()
+            .any(|message| message.contains("NotImported")),
+        "the current false green is fully silent even with a pool homonym; a diagnostic \
+         unexpectedly named `NotImported`: {messages:?}"
+    );
+}
+
+#[test]
+fn unrelated_module_loading_provider_creates_pool_coincidence_false_green() {
+    let consumer = "module visibility_fixture.pool_consumer\n\
+        data observed: Int = NotImported\n";
+
+    let without_loader = diagnostic_messages(&compile_multi(&[("consumer.dag", consumer)]));
+    assert!(
+        without_loader
+            .iter()
+            .any(|message| message.contains("NotImported")),
+        "RED control: without the unrelated loader, the consumer's bare declaration must \
+         not resolve: {without_loader:?}"
+    );
+
+    let with_loader = [
+        ("provider.dag", PROVIDER),
+        ("unrelated_loader.dag", UNRELATED_LOADER),
+        ("consumer.dag", consumer),
+    ];
+    let messages = diagnostic_messages(&compile_multi(&with_loader));
+    assert!(
+        hard_messages(&with_loader).is_empty(),
+        "FALSE GREEN: module C importing the provider for `Imported` currently makes \
+         `NotImported` resolve in unrelated module B: {messages:?}"
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|message| message.contains("NotImported")),
+        "the unrelated-loader pool coincidence is currently a silent false green; got \
+         a diagnostic naming `NotImported`: {messages:?}"
     );
 }
 
