@@ -1,0 +1,104 @@
+module test.claim.cited_symbol_resolution_witness_test
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
+import v2.std.decl_index { DeclFact, FnItem, decl_facts }
+import v2.std.decl_ref_resolution {
+  resolve_declaration_ref,
+  Resolved,
+  Refused,
+  DeclAbsent,
+  AmbiguousBinding,
+  cited_declaration_ref_refusal_count,
+  declaration_refs_in_corpus,
+}
+
+data cited_symbol_resolution_witness_note: String = "G1 feature:cited-symbol-resolution — resolve_declaration_ref is the single authority: exactly one decl_facts row for the logical qualified name, or a typed refusal (DeclAbsent / AmbiguousBinding / NamedFieldAbsent). Positive controls use live production symbols; RED controls plant dangling and double-bound names on synthetic refs without mutating the corpus."
+
+test fn cited_symbol_resolves_node_kind_authority() -> Bool {
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NodeKind",
+      field: WholeDeclaration,
+    },
+    facts: decl_facts(pool_roots: witness_layer_roots)
+  ) {
+    Resolved { fact: f } => f.qualified_name == "std.node.NodeKind"
+    Refused { cause: _ } => false
+  }
+}
+
+test fn cited_symbol_resolves_decl_ref_constructor() -> Bool {
+  match resolve_declaration_ref(
+    ref: decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
+    facts: decl_facts(pool_roots: witness_layer_roots)
+  ) {
+    Resolved { fact: _ } => true
+    Refused { cause: _ } => false
+  }
+}
+
+test fn cited_symbol_refuses_dangling_decl_name() -> Bool {
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NoSuchDecl_G1_RED",
+      field: WholeDeclaration,
+    },
+    facts: decl_facts(pool_roots: witness_layer_roots)
+  ) {
+    Refused { cause: DeclAbsent } => true
+    Resolved { fact: _ } => false
+  }
+}
+
+test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
+  let facts = [
+    DeclFact {
+      qualified_name: "synthetic.g1_ambiguous",
+      name: "g1_ambiguous",
+      kind: FnItem,
+      node: enforcement_red_probe_body_leaf,
+      rel_path: "synthetic/a.dag",
+    },
+    DeclFact {
+      qualified_name: "synthetic.g1_ambiguous",
+      name: "g1_ambiguous",
+      kind: FnItem,
+      node: enforcement_red_probe_body_leaf,
+      rel_path: "synthetic/b.dag",
+    },
+  ]
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "synthetic",
+      decl_name: "g1_ambiguous",
+      field: WholeDeclaration,
+    },
+    facts: facts
+  ) {
+    Refused { cause: AmbiguousBinding { match_count: 2 } } => true
+    Resolved { fact: _ } => false
+  }
+}
+
+test fn cited_symbol_corpus_has_zero_refusals_on_witness_layer() -> Bool {
+  cited_declaration_ref_refusal_count(
+    refs: declaration_refs_in_corpus(pool_roots: witness_layer_roots),
+    facts: decl_facts(pool_roots: witness_layer_roots)
+  ) == 0
+}
+
+test fn cited_symbol_corpus_refusal_count_red_on_dangling_fixture() -> Bool {
+  let facts = decl_facts(pool_roots: witness_layer_roots)
+  let dangling = [
+    DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NoSuchDecl_G1_RED",
+      field: WholeDeclaration,
+    },
+  ]
+  cited_declaration_ref_refusal_count(refs: dangling, facts: facts) == 1
+}

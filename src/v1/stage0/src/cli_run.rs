@@ -17230,6 +17230,53 @@ fn quoted_field_value(s: &str, field: &str) -> Option<String> {
     Some(tail[..close].to_string())
 }
 
+/// Extract every `DeclarationRef { module_path: "..", decl_name: "..", field: .. }` literal
+/// from a source file as typed `std.decl_ref.DeclarationRef` rows (G1 cited-symbol resolution).
+pub fn extract_declaration_refs_from_source(content: &str) -> Vec<Rc<crate::std_decl_ref::DeclarationRef>> {
+    use crate::std_decl_ref::{DeclField, DeclarationRef};
+    const NEEDLE: &str = "DeclarationRef {";
+    let mut out = Vec::new();
+    let mut rest = content;
+    while let Some(pos) = rest.find(NEEDLE) {
+        let after = &rest[pos + NEEDLE.len()..];
+        if let (Some(mp), Some(dn)) = (
+            quoted_field_value(after, "module_path:"),
+            quoted_field_value(after, "decl_name:"),
+        ) {
+            let field = if after.contains("NamedField") {
+                Rc::new(DeclField::NamedField {
+                    field_name: quoted_field_value(after, "field_name:").unwrap_or_default(),
+                })
+            } else {
+                Rc::new(DeclField::WholeDeclaration)
+            };
+            out.push(Rc::new(DeclarationRef {
+                module_path: mp,
+                decl_name: dn,
+                field,
+            }));
+        }
+        rest = after;
+    }
+    out
+}
+
+/// Whole-tree `DeclarationRef` literal extraction for `declaration_refs_in_corpus` (G1).
+pub fn declaration_refs_for_roots(source_roots: &[String]) -> Vec<Rc<crate::std_decl_ref::DeclarationRef>> {
+    let mut out = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                out.extend(extract_declaration_refs_from_source(&content));
+            }
+        }
+    }
+    out
+}
+
 /// Resolve WallNow authorities against the kind-agnostic top-level decl table of their
 /// declaring module. Returns the unresolved refs as `(declaring_file, module_path, decl_name)`;
 /// empty = the construction->authority graph is TOTAL.
@@ -24859,6 +24906,18 @@ mod construction_justification_hygiene_tests {
 
     // Parse unit: extraction pulls (module_path, decl_name) from a WallNow authority,
     // whitespace/newline tolerant, and ignores non-WallNow DeclarationRef binds.
+    #[test]
+    fn extract_declaration_refs_from_source_captures_bind_and_authority() {
+        let authority = "  class: WallNow {\n    mechanism: SubstrateMandatoryTag,\n    authority: DeclarationRef { module_path: \"v2.std.node\", decl_name: \"NodeKind\", field: WholeDeclaration }\n  }\n";
+        let bind = "  bind: DeclarationRef { module_path: \"x.y\", decl_name: \"Z\", field: WholeDeclaration }\n";
+        let refs = super::extract_declaration_refs_from_source(&(authority.to_string() + bind));
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0].module_path, "v2.std.node");
+        assert_eq!(refs[0].decl_name, "NodeKind");
+        assert_eq!(refs[1].module_path, "x.y");
+        assert_eq!(refs[1].decl_name, "Z");
+    }
+
     #[test]
     fn wall_now_authority_refs_extraction() {
         let src = "  class: WallNow {\n    mechanism: SubstrateMandatoryTag,\n    authority: DeclarationRef { module_path: \"v2.std.node\", decl_name: \"NodeKind\", field: WholeDeclaration }\n  }\n";

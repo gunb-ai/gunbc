@@ -45,5 +45,6 @@ data live_read_carrier_callee_symbols_v0: List<String> = [
   "filesystem_read",
   "module_declaration_facts",
   "module_declaration_facts_live",
-  "decl_facts"
+  "decl_facts",
+  "declaration_refs_in_corpus"
 ]

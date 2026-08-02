@@ -10919,6 +10919,15 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.declaration_refs_in_corpus" { "declaration_refs_in_corpus" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "declaration_refs_in_corpus")?;
+                Ok(Some(crate::coproduct_reflection::eval_declaration_refs_in_corpus(
+                    $ctx,
+                    &pool_roots,
+                )?))
+            },
+
             arm "free_call.module_declaration_facts" { "module_declaration_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "module_declaration_facts")?;

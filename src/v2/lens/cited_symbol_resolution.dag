@@ -1,0 +1,26 @@
+module v2.lens.cited_symbol_resolution
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding,
+}
+import v2.std.decl_index { decl_facts }
+import v2.std.decl_ref_resolution {
+  cited_declaration_ref_refusal_count,
+  declaration_refs_in_corpus,
+}
+
+data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef in the witness-layer corpus resolves to exactly one decl_facts row, or refuses. Corpus extraction is host-seamed (declaration_refs_in_corpus scans DeclarationRef { literals); resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts — single authority, no per-kind fork. Zero production behavior change until enrollment widens; this lens is the discriminating consumer that makes dangling scaffold binds visible. dissolve-on: substrate refuses unwritable DeclarationRef at construction; host corpus scan deletes when the Node-tree reader lands."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
+
+fn cited_symbol_resolution_violation_count() -> Int {
+  cited_declaration_ref_refusal_count(
+    refs: declaration_refs_in_corpus(pool_roots: witness_layer_roots),
+    facts: decl_facts(pool_roots: witness_layer_roots)
+  )
+}
