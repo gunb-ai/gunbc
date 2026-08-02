@@ -1214,7 +1214,17 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
     units
 }
 
+/// `ctx` exists solely to reach the failure-receipt companion on a red witness.
+///
+/// `cli_run`'s summary path has projected companion receipts since the Lane B agreement work,
+/// but THIS binary — the one the CI floor actually runs — did not, so the same witness was
+/// loud locally and mute in CI. That divergence is what let ten consecutive
+/// `extdeps_scope_placement_gate_passes` reds on main report only `returned Bool(false)`,
+/// naming neither the refusing arm nor the offending path. Both surfaces now read the one
+/// derivation (`cli_run::failure_receipt_companion`) and the one runner
+/// (`cli_run::run_claim_failure_receipt`); a witness with no companion is unchanged.
 fn claim_result_for_outcome(
+    ctx: &InterpContext,
     function: String,
     entry: String,
     outcome: ClaimOutcome,
@@ -1236,10 +1246,21 @@ fn claim_result_for_outcome(
             budget_refusal: None,
         },
         ClaimOutcome::Fail => ClaimResult {
+            detail: {
+                let mut detail = "returned Bool(false)".to_string();
+                if let Some(companion) = v1_compiler::cli_run::failure_receipt_companion(&function)
+                {
+                    let receipt = v1_compiler::cli_run::run_claim_failure_receipt(ctx, &companion);
+                    if !receipt.is_empty() {
+                        detail.push_str(" | ");
+                        detail.push_str(&receipt);
+                    }
+                }
+                detail
+            },
             function,
             entry: entry.clone(),
             ok: false,
-            detail: "returned Bool(false)".to_string(),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -1436,7 +1457,14 @@ fn run_shared_entry_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(
+                &ctx,
+                function.clone(),
+                entry.to_string(),
+                outcome,
+                wall_nanos,
+                rn,
+            )
         })
         .collect()
 }
@@ -1507,7 +1535,14 @@ fn run_memo_shared_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(
+                ctx,
+                function.clone(),
+                entry.to_string(),
+                outcome,
+                wall_nanos,
+                rn,
+            )
         })
         .collect()
 }

@@ -21,7 +21,11 @@ import gunbc.extdeps_scope_frontier {
   DiffAddedObservation, DiffAdded, DiffObserveFailed, DiffParseTruncated,
 }
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
-import tools.extdeps_scope_placement_gate { manifest_remove_only_exit }
+import tools.extdeps_scope_placement_gate {
+  manifest_remove_only_exit,
+  scope_placement_membership_verdict, scope_placement_freeze_verdict,
+  scope_placement_failure_reason,
+}
 import std.process { ProcessExit, ExitSuccess }
 import extdeps.vendor.microsoft
 import extdeps.vendor.atlassian
@@ -245,6 +249,58 @@ test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool {
     machinery: scope_machinery_exempt_paths,
   )
   (refused |> count) == 0
+}
+
+data base_split_witness_note: String = "THE discriminating controls for the two-base split. The defect they pin: while both arms read legacy_manifest_freeze_sha..HEAD, an unrostered file already on main refused every branch, so the blocked party was never the party at fault. unrostered_only_in_freeze_population_does_not_refuse_membership goes RED the moment the membership arm is fed the freeze-base population again, which is exactly the regression to catch — it cannot be satisfied by editing a roster, only by feeding the arm the wrong base. Its positive control sits beside it so the pair discriminates in both directions rather than passing because nothing refuses at all."
+
+fn exit_reason_of(e: ProcessExit) -> String {
+  scope_placement_failure_reason(exit: e)
+}
+
+fn exit_is_success(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
+  let verdict = scope_placement_membership_verdict(
+    observation: DiffAdded { paths: ["dag/extdeps/browser/opera.dag"] }
+  )
+  !exit_is_success(e: verdict)
+    && string_contains(s: exit_reason_of(e: verdict), pattern: "dag/extdeps/browser/opera.dag")
+    && string_contains(s: exit_reason_of(e: verdict), pattern: "THIS CHANGE")
+}
+
+test fn unrostered_only_in_freeze_population_does_not_refuse_membership() -> Bool {
+  exit_is_success(
+    e: scope_placement_membership_verdict(observation: DiffAdded { paths: [] })
+  )
+}
+
+test fn red_membership_arm_refuses_unreadable_observation() -> Bool {
+  !exit_is_success(e: scope_placement_membership_verdict(observation: DiffObserveFailed))
+    && !exit_is_success(e: scope_placement_membership_verdict(observation: DiffParseTruncated))
+}
+
+test fn green_membership_arm_admits_rostered_addition() -> Bool {
+  exit_is_success(
+    e: scope_placement_membership_verdict(
+      observation: DiffAdded { paths: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag"] }
+    )
+  )
+}
+
+test fn red_freeze_arm_refuses_unreadable_observation() -> Bool {
+  !exit_is_success(e: scope_placement_freeze_verdict(observation: DiffObserveFailed))
+    && !exit_is_success(e: scope_placement_freeze_verdict(observation: DiffParseTruncated))
+}
+
+test fn failure_reason_is_empty_only_on_success() -> Bool {
+  exit_reason_of(e: ExitSuccess) == ""
+    && exit_reason_of(
+         e: scope_placement_membership_verdict(
+           observation: DiffAdded { paths: ["dag/extdeps/browser/opera.dag"] }
+         )
+       ) != ""
 }
 
 fn synthetic_manifest_add_diff() -> String {
