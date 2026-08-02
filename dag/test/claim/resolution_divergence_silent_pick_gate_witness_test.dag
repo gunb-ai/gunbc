@@ -19,7 +19,7 @@ fn resolution_divergence_in_process_seed_receipt_holds() -> Bool {
         && bind.decl_name == "resolution_divergence_in_process_seed_deferral"
         && string_contains(
           s: resolution_divergence_in_process_seed_receipt,
-          pattern: "net +728",
+          pattern: "net +735",
         )
         && string_contains(
           s: resolution_divergence_in_process_seed_deferral,
