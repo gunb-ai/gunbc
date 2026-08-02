@@ -70,7 +70,7 @@ pub enum OverflowReturnValueRule {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum IntegerOverflowSemantics<E> {
+pub enum IntegerOverflowSemantics<E: Clone> {
     OverflowReturns { value_rule: OverflowReturnValueRule },
     OverflowRaises { effect: E },
     OverflowUndefined,
