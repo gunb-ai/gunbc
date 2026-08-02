@@ -20,10 +20,12 @@ sudo -n /usr/sbin/visudo -cf "$_gunbc_stage/gunbc-deploy.sudoers"
 sudo -n install -m 0440 "$_gunbc_stage/gunbc-deploy.sudoers" /etc/sudoers.d/gunbc-deploy
 sudo -n /usr/sbin/visudo -cf /etc/sudoers.d/gunbc-deploy
 sudo -n tailscale serve --https=443 off
-sudo -n systemctl disable --now gunbc-roadmap-belt.timer 2>/dev/null || true
+_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap-belt.timer' '--property=LoadState' '--value')
+if '[' "$_gunbc_load_state" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap-belt.timer'; fi
 sudo -n rm -f /etc/systemd/system/gunbc-roadmap-belt.timer /etc/systemd/system/gunbc-roadmap-belt.service
 sudo -n systemctl daemon-reload
-sudo -n systemctl disable --now gunbc-roadmap.service 2>/dev/null || true
+_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap.service' '--property=LoadState' '--value')
+if '[' "$_gunbc_load_state" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi
 sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service
 sudo -n systemctl daemon-reload
 sudo -n rm -d /opt/gunbc/attempt-state

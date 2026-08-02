@@ -1,6 +1,35 @@
 module std.string_type
 
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, Ordering, Less, Equal, Greater, ordering_is_less }
 import std.types { Char }
 
 type String = FreeMonoid<Char>
+
+fn string_lex_compare(left: String, right: String) -> Ordering {
+  let left_len = string_length(s: left)
+  let right_len = string_length(s: right)
+  if left_len == 0 && right_len == 0 {
+    Equal
+  } else if left_len == 0 {
+    Less
+  } else if right_len == 0 {
+    Greater
+  } else {
+    let left_cp = code_point(ch: char_at(s: left, i: 0))
+    let right_cp = code_point(ch: char_at(s: right, i: 0))
+    if left_cp < right_cp {
+      Less
+    } else if left_cp > right_cp {
+      Greater
+    } else {
+      string_lex_compare(
+        left: substring(s: left, start: 1, end: left_len),
+        right: substring(s: right, start: 1, end: right_len),
+      )
+    }
+  }
+}
+
+fn string_is_lexicographically_before(left: String, right: String) -> Bool {
+  ordering_is_less(o: string_lex_compare(left: left, right: right))
+}

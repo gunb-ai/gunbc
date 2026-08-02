@@ -20,13 +20,8 @@ import extdeps.hardware { Hardware }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier {
-  FrontierRow,
-  TriggerProse,
-  decl_ref,
-  decl_field_ref,
-  frontier_row_decl,
-}
+import std.roster_frontier { FrontierRow, TriggerProse, frontier_row_decl }
+import std.decl_ref { decl_ref, decl_field_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

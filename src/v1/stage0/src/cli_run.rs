@@ -51,18 +51,18 @@ pub(crate) mod test_module_hygiene_bridge;
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
-};
-pub use materialization_provider_consumer::{
-    serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
+    resolve_closure_request_key_from_digests, resolved_graph_parts_semantic_digest,
+    serve_resolved_graph_stored_disk_probe, serve_resolved_graph_stored_disk_probe_for_test,
     ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, faithful_probe_unavailable_gap, lookup as cross_process_lookup,
-    probe as cross_process_probe, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    supports_faithful_probe, transform_content_digest, write as cross_process_write,
-    CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
+    closure_content_digest, faithful_probe_unavailable_gap,
+    lookup_verified_probe as cross_process_lookup_verified_probe, probe as cross_process_probe,
+    resolved_graph_cache_root_from_env, subject_digest_for_closure, supports_faithful_probe,
+    transform_content_digest, write as cross_process_write, CacheLookupResult, CacheProbeResult,
+    CacheRejectReason, CachedResolvedGraph,
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
@@ -10120,41 +10120,83 @@ fn compile_clean_diags_from_resolved_stages(
     Rc::new(acc)
 }
 
-fn serve_resolved_graph_disk_hit_through_provider(
-    sources: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        Rc<im::Vector<Rc<ErrorNode>>>,
-    ),
-    String,
-> {
-    let closure_digest = closure_content_digest(sources);
-    let compiler_digest = transform_content_digest();
-    match serve_resolved_graph_v1_disk_probe(&closure_digest, &compiler_digest)? {
-        ResolvedGraphProviderOutcome::Hit => Err(
-            "resolved-graph-cache provider served disk hit but compile-clean diagnostic union is not installed from artifact"
-                .to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Err(format!(
-            "resolved-graph-cache provider refused incomplete disk hit: missing {missing:?}"
-        )),
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Err(
-            "resolved-graph-cache provider refused disk hit: wrong artifact key".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::Miss => Err(
-            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedKindMismatch => Err(
-            "resolved-graph-cache provider refused disk hit: kind mismatch".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
-            "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
+fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
+    match outcome {
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact => {
+            Some("resolved-graph-cache provider refused disk hit: wrong artifact key".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedKindMismatch => {
+            Some("resolved-graph-cache provider refused disk hit: kind mismatch".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedWrongContent => {
+            Some("resolved-graph-cache provider refused disk hit: wrong content".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash => {
+            Some(
+                "resolved-graph-cache provider refused disk hit: cross-family content hash at fnv1a64 seam"
+                    .to_string(),
+            )
+        }
+        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
+        ResolvedGraphProviderOutcome::Miss => {
+            Some("resolved-graph-cache provider refused disk hit: probe miss".to_string())
+        }
+        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Some(format!(
+            "resolved-graph-cache provider refused disk hit: incomplete artifact (missing: {})",
+            missing.join(", ")
+        )),
+        ResolvedGraphProviderOutcome::Hit => None,
+    }
+}
+
+#[doc(hidden)]
+pub fn provider_integrity_refusal_message_for_test(
+    outcome: ResolvedGraphProviderOutcome,
+) -> Option<String> {
+    provider_integrity_refusal_message(outcome)
+}
+
+fn install_cross_process_materialization_hit(
+    index: &MultiEntryIndex,
+    subject: &str,
+    cached: CachedResolvedGraph,
+    memo_share: ResolvedGraphMemoShare,
+) -> (
+    Rc<v1_compiler_compile::ResolvedGraph>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+    Rc<im::Vector<Rc<ErrorNode>>>,
+) {
+    if memo_share == ResolvedGraphMemoShare::Memoize {
+        index.resolved_graph_memo.borrow_mut().insert(
+            subject.to_string(),
+            (
+                cached.graph.clone(),
+                cached.source_indices.clone(),
+                cached.compile_clean_diags.clone(),
+            ),
+        );
+    }
+    (
+        cached.graph,
+        cached.source_indices,
+        cached.compile_clean_diags,
+    )
+}
+
+fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
+    match reason {
+        CacheRejectReason::ContentDigestMismatch => {
+            "resolved-graph-cache refused poisoned artifact: content digest mismatch".to_string()
+        }
+        CacheRejectReason::BackendKeyMalformed => {
+            "resolved-graph-cache refused artifact: backend key malformed".to_string()
+        }
+        CacheRejectReason::PartDecodeFailure => {
+            "resolved-graph-cache refused artifact: part decode failure after hash verification"
+                .to_string()
+        }
     }
 }
 
@@ -10201,29 +10243,78 @@ fn resolved_graph_from_sources_with_index(
     {
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
-    // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
-    // the share above on hit so later same-subject demands never re-decode. CI leaves
-    // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
-    // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
+    // Cross-process store tier: opt-in via `GUNBC_RESOLVED_GRAPH_CACHE_DIR` only.
+    // Installs into the share above on hit so later same-subject demands never
+    // re-decode. Floor/CI leave it unset (mechanism-inventory-red-controls: inert
+    // on floor); only explicit test harnesses arm the disk tier.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        match cross_process_probe(&cache_root, &subject) {
-            CacheProbeResult::Hit(_probe) if !cross_process_provider_routing_suppressed() => {
-                if !supports_faithful_probe() {
-                    return Err(format!(
-                        "resolved-graph-cache provider refused faithful probe: {}",
-                        faithful_probe_unavailable_gap()
+        if !cross_process_provider_routing_suppressed() {
+            match cross_process_probe(&cache_root, &subject) {
+                CacheProbeResult::Hit(probe) => {
+                    if !supports_faithful_probe() {
+                        return Err(format!(
+                            "resolved-graph-cache provider refused faithful probe: {}",
+                            faithful_probe_unavailable_gap()
+                        ));
+                    }
+                    let parts = &probe.parts;
+                    let closure_digest = closure_content_digest(&sources);
+                    let compiler_digest = transform_content_digest();
+                    match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
+                        &closure_digest,
+                        &compiler_digest,
+                        &probe.stored_request_key,
+                        &probe.stored_semantic_digest,
+                        parts,
+                    ) {
+                        Ok(ResolvedGraphProviderOutcome::Hit) => {
+                            match cross_process_lookup_verified_probe(&cache_root, &subject, &probe)
+                            {
+                                CacheLookupResult::Hit(cached) => {
+                                    return Ok(install_cross_process_materialization_hit(
+                                        index, &subject, cached, memo_share,
+                                    ));
+                                }
+                                CacheLookupResult::RejectedHit(reason) => {
+                                    return Err(cross_process_cache_integrity_refusal(reason));
+                                }
+                                CacheLookupResult::Miss => {
+                                    return Err(
+                                        "resolved-graph-cache lookup miss after provider hit"
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                        Ok(other) => {
+                            if let Some(msg) = provider_integrity_refusal_message(other) {
+                                return Err(msg);
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                CacheProbeResult::LegacyMigrationRequired { .. } => {
+                    // Cold rebuild is the declared migration disposition — never route
+                    // legacy on-disk rows through the v3 provider probe.
+                }
+                CacheProbeResult::RejectedHit(CacheRejectReason::ContentDigestMismatch) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::ContentDigestMismatch,
                     ));
                 }
-                match cross_process_lookup(&cache_root, &subject) {
-                    CacheLookupResult::Hit(_cached) => {
-                        return serve_resolved_graph_disk_hit_through_provider(&sources);
-                    }
-                    CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+                CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::BackendKeyMalformed,
+                    ));
                 }
+                CacheProbeResult::RejectedHit(CacheRejectReason::PartDecodeFailure) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::PartDecodeFailure,
+                    ));
+                }
+                CacheProbeResult::Miss => {}
             }
-            CacheProbeResult::Hit(_)
-            | CacheProbeResult::RejectedHit(_)
-            | CacheProbeResult::Miss => {}
         }
     }
 
@@ -10433,8 +10524,32 @@ fn resolved_graph_from_sources_with_index(
         // the swallowed error hid that big closures never landed on disk (only
         // the prelude artifact ever existed), which mis-shaped a whole OOM
         // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
-        if let Err(e) = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref())
-        {
+        let closure_digest = closure_content_digest(&sources);
+        let compiler_digest = transform_content_digest();
+        let encoded = crate::resolved_graph_cache::encode_resolved_graph_parts(
+            &typed,
+            source_indices.as_ref(),
+            &compile_clean_diags,
+        )?;
+        let stored_request_key =
+            resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)?;
+        let stored_semantic_digest = resolved_graph_parts_semantic_digest(
+            &encoded.graph_digest,
+            encoded.graph_bytes.len() as u64,
+            &encoded.indices_digest,
+            encoded.indices_bytes.len() as u64,
+            &encoded.union_digest,
+            encoded.union_bytes.len() as u64,
+        )?;
+        if let Err(e) = cross_process_write(
+            &cache_root,
+            &subject,
+            &typed,
+            source_indices.as_ref(),
+            &compile_clean_diags,
+            &stored_request_key,
+            &stored_semantic_digest,
+        ) {
             eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
         }
     }
@@ -12317,11 +12432,19 @@ pub fn whole_tree_ancestry_retention_probe(
     Ok(())
 }
 
-/// Companion to a `*_holds` witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
+/// Companion to a Bool witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
 /// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
-fn failure_receipt_companion(function: &str) -> Option<String> {
+///
+/// Both witness-naming conventions in the corpus are recognized: `_holds` (claim witnesses)
+/// and `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`). The
+/// gate witnesses were unreachable from this channel while only `_holds` was stripped, which
+/// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
+/// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
+/// the derivation cannot invent a required hook for a witness that has none.
+pub fn failure_receipt_companion(function: &str) -> Option<String> {
     function
         .strip_suffix("_holds")
+        .or_else(|| function.strip_suffix("_passes"))
         .map(|base| format!("{base}_failure_receipt"))
 }
 
@@ -13722,7 +13845,8 @@ pub fn handle_serve(
         eprintln!("error: provide at least one --source-root");
         std::process::exit(1);
     }
-    let sources = match load_sources_for_entry(&source_roots, &entry_file) {
+    let index = process_shared_index(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
         Ok(sources) => sources,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -13730,29 +13854,34 @@ pub fn handle_serve(
         }
     };
     eprintln!("resolved {} sources", sources.len());
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    let has_errors = result
-        .diagnostics
-        .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
-    if has_errors {
-        for d in result.diagnostics.iter() {
-            if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-                eprintln!("error: {}", diagnostic_to_message(d.diagnostic.clone()));
-            }
-        }
-        std::process::exit(1);
-    }
-    let graph = match result.graph.as_ref() {
-        Some(g) => g,
-        None => {
-            eprintln!("error: compilation produced no graph");
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        &entry_file,
+        ResolvedGraphMemoShare::Memoize,
+    ) {
+        Ok(parts) => parts,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
             std::process::exit(1);
         }
     };
+    if compile_clean_diags
+        .iter()
+        .any(|d| compile_clean_diagnostic_is_hard(d))
+    {
+        for d in compile_clean_diags
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+        {
+            eprintln!("error: {}", format_error_node(d, &source_indices));
+        }
+        std::process::exit(1);
+    }
     let ctx = v1_interpreter::InterpContext::new(
-        graph,
-        result.source_indices.clone(),
+        &graph,
+        source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
     let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
@@ -31029,8 +31158,144 @@ struct TestMigrationDebtReport {
     entries: Vec<TestMigrationDebtEntry>,
 }
 
+struct TestMigrationBehaviorDiscoveryReport {
+    legacy_behavior_ids: Vec<String>,
+    witness_behavior_ids: Vec<String>,
+    errors: Vec<String>,
+}
+
 fn test_migration_debt_v1_test_dir() -> PathBuf {
     workspace_root().join("src/v1/tests/src")
+}
+
+fn test_migration_named_fn_after_attribute<'a, I>(lines: &mut I) -> Option<String>
+where
+    I: Iterator<Item = &'a str>,
+{
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("#[") {
+            continue;
+        }
+        let after_visibility = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
+        let after_async = after_visibility
+            .strip_prefix("async ")
+            .unwrap_or(after_visibility);
+        return after_async
+            .strip_prefix("fn ")
+            .and_then(|rest| rest.split('(').next())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string);
+    }
+    None
+}
+
+fn test_migration_rust_test_fn_names(content: &str) -> Result<Vec<String>, String> {
+    let mut lines = content.lines();
+    let mut names = Vec::new();
+    while let Some(line) = lines.next() {
+        if line.trim() != "#[test]" {
+            continue;
+        }
+        match test_migration_named_fn_after_attribute(&mut lines) {
+            Some(name) => names.push(name),
+            None => return Err("#[test] is not followed by a named Rust function".to_string()),
+        }
+    }
+    Ok(names)
+}
+
+fn test_migration_dag_test_fn_names(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("test fn ")
+                .and_then(|rest| rest.split('(').next())
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDiscoveryReport {
+    let dir = test_migration_debt_v1_test_dir();
+    let mut legacy_behavior_ids = Vec::new();
+    let mut witness_behavior_ids = Vec::new();
+    let mut errors = Vec::new();
+
+    match std::fs::read_dir(&dir) {
+        Ok(read_dir) => {
+            let mut paths: Vec<PathBuf> = read_dir
+                .filter_map(|entry| match entry {
+                    Ok(entry) => Some(entry.path()),
+                    Err(err) => {
+                        errors.push(format!("read legacy test directory entry: {err}"));
+                        None
+                    }
+                })
+                .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+                .collect();
+            paths.sort();
+            for path in paths {
+                let repo_path = path
+                    .strip_prefix(workspace_root())
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => match test_migration_rust_test_fn_names(&content) {
+                        Ok(names) => legacy_behavior_ids
+                            .extend(names.into_iter().map(|name| format!("{repo_path}::{name}"))),
+                        Err(err) => errors.push(format!("{repo_path}: {err}")),
+                    },
+                    Err(err) => errors.push(format!("read {repo_path}: {err}")),
+                }
+            }
+        }
+        Err(err) => errors.push(format!("read {}: {err}", dir.display())),
+    }
+
+    for (path, content) in corpus_dag_files() {
+        witness_behavior_ids.extend(
+            test_migration_dag_test_fn_names(&content)
+                .into_iter()
+                .map(|name| format!("{}::{name}", normalize_repo_path(&path))),
+        );
+    }
+
+    legacy_behavior_ids.sort();
+    legacy_behavior_ids.dedup();
+    witness_behavior_ids.sort();
+    witness_behavior_ids.dedup();
+    TestMigrationBehaviorDiscoveryReport {
+        legacy_behavior_ids,
+        witness_behavior_ids,
+        errors,
+    }
+}
+
+fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
+    static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
+    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
+}
+
+pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
+    test_migration_behavior_discovery_report()
+        .legacy_behavior_ids
+        .clone()
+}
+
+pub fn test_migration_witness_behavior_ids() -> Vec<String> {
+    test_migration_behavior_discovery_report()
+        .witness_behavior_ids
+        .clone()
+}
+
+pub fn test_migration_behavior_discovery_holds() -> bool {
+    test_migration_behavior_discovery_report().errors.is_empty()
 }
 
 fn test_migration_debt_stem(name: &str) -> String {

@@ -14,6 +14,11 @@ import extdeps.tailscale.serve {
   ScopedRemovalUnsupported,
   ScopedRemovalUnobserved,
 }
+import extdeps.systemd.systemctl {
+  systemctl_disable_now_argv,
+  systemctl_show_load_state_argv,
+}
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -56,7 +61,6 @@ import gunbc.live_deploy.operations {
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
-  systemctl_disable_now_command,
 }
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
@@ -68,6 +72,17 @@ import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_if_from_stmts,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_lit,
+  bash_build_word_var,
+}
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import v2.std.node { Node }
 import gunbc.ci_deploy_access {
   DeployAccess,
   ci_deploy_srv1_access_or_refusal,
@@ -85,6 +100,8 @@ data live_deploy_retract_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSE
 
 data live_deploy_ensure_dep_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy ensure-dependency intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid reconcile-step shell, so the per-dep ConvergePlan step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
+data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ systemd runtime-retirement intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid deploy shell, so the committed retract artifact drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
     run: Run {
@@ -94,6 +111,64 @@ fn deploy_raw(command: String) -> PipelineStep {
       capture: Absent
     }
   }
+}
+
+fn systemctl_disable_now_argv_for_deploy(unit: NonEmptyStr, privileged: Bool) -> List<String> {
+  if privileged {
+    concat(["sudo", "-n"], systemctl_disable_now_argv(unit: unit))
+  } else {
+    systemctl_disable_now_argv(unit: unit)
+  }
+}
+
+data systemctl_disable_now_if_present_note: String = "Runtime retirement is idempotent only for the explicit systemd LoadState=not-found observation. The decision is a bash grammar tree at this foreign-executor realization edge: a fail-fast assignment captures LoadState, then a modeled If disables every state other than not-found. A show/read failure therefore stops before the conditional, and a disable/stop failure remains loud. This replaces the former `2>/dev/null || true` without smuggling command substitution or control flow through a String leaf."
+
+fn systemctl_load_state_assignment_intent(unit: NonEmptyStr) -> Node {
+  bash_build_assign(
+    name: "_gunbc_load_state",
+    value: bash_build_word_cmdsubst(
+      body: bash_build_command_from_lits(
+        lits: systemctl_show_load_state_argv(unit: unit)
+      )
+    )
+  )
+}
+
+fn systemctl_disable_now_when_loaded_intent(unit: NonEmptyStr, privileged: Bool) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: "_gunbc_load_state"),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: systemd_unit_load_state_not_found_wire as String),
+    ]),
+    then_stmts: [
+      bash_build_command_from_lits(
+        lits: systemctl_disable_now_argv_for_deploy(unit: unit, privileged: privileged)
+      )
+    ]
+  )
+}
+
+fn bash_intent_command_or_poison(intent: Node) -> String {
+  match bash_fold_serialize_node(stmt: intent) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
+  }
+}
+
+fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -> List<PipelineStep> {
+  [
+    deploy_raw(command: bash_intent_command_or_poison(
+      intent: systemctl_load_state_assignment_intent(unit: unit)
+    )),
+    deploy_raw(command: bash_intent_command_or_poison(
+      intent: systemctl_disable_now_when_loaded_intent(unit: unit, privileged: privileged)
+    )),
+  ]
 }
 
 fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
@@ -427,18 +502,22 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     TailscaleServeMapping => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    SystemdUnit => [
-      deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
-      deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-    ]
-    BeltTimerUnit => [
-      deploy_raw(command: concat(systemctl_disable_now_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true), " 2>/dev/null || true")),
-      deploy_raw(command: join([
-        "sudo -n rm -f ", art.path as String, " ", deployment_belt_service_unit_path(names: spec.names) as String,
-      ], "")),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-    ]
+    SystemdUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
+      [
+        deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
+        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      ]
+    )
+    BeltTimerUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: join([
+          "sudo -n rm -f ", art.path as String, " ", deployment_belt_service_unit_path(names: spec.names) as String,
+        ], "")),
+        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      ]
+    )
     DispatchWorktreeRoot => [
       deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
     ]
