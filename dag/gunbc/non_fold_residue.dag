@@ -121,6 +121,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_frontier_probe },
   },
   FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_probe_located_stage_for_emit_outcome" },
+    reason: nfr_reason_frontier_probe,
+    trigger: TriggerProse { text: nfr_dissolve_frontier_probe },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_upstream_semantic_refusal_located_reason" },
+    reason: nfr_reason_frontier_probe,
+    trigger: TriggerProse { text: nfr_dissolve_frontier_probe },
+  },
+  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step" },
     reason: nfr_reason_orch_emit,
     trigger: TriggerProse { text: nfr_dissolve_orch_emit },
