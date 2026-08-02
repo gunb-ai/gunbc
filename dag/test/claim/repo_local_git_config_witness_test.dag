@@ -88,12 +88,12 @@ test fn witness_install_argv_uses_extdeps_shape_holds() -> Bool {
 test fn witness_actuator_in_repo_argv_derives_from_extdeps_shape_holds() -> Bool {
   let repo = "/tmp/gunbc-repo-local-git-config-witness" as FilePath
   let binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
-  shape_git_config_local_in_repo_argv(repo: repo, key: binding.key, value: binding.value)
-    == ["git", "-C", repo as String, "config", "--local", binding.key, binding.value]
-    && shape_git_config_local_get_in_repo_argv(repo: repo, key: binding.key)
-    == ["git", "-C", repo as String, "config", "--local", "--get", binding.key]
-    && reconcile_install_argv(binding: binding)
-    == shape_git_config_local_argv(key: binding.key, value: binding.value)
+  let in_repo_set = shape_git_config_local_in_repo_argv(repo: repo, key: binding.key, value: binding.value)
+  let in_repo_get = shape_git_config_local_get_in_repo_argv(repo: repo, key: binding.key)
+  let install_argv = reconcile_install_argv(binding: binding)
+  in_repo_set == ["git", "-C", repo as String, "config", "--local", binding.key, binding.value]
+    && in_repo_get == ["git", "-C", repo as String, "config", "--local", "--get", binding.key]
+    && install_argv == shape_git_config_local_argv(key: binding.key, value: binding.value)
 }
 
 test fn witness_red_global_get_argv_not_read_back_authority_holds() -> Bool {
