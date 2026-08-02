@@ -51,6 +51,8 @@ pub fn resolved_graph_cache_cap_bytes() -> u64 {
 pub enum CacheRejectReason {
     ContentDigestMismatch,
     BackendKeyMalformed,
+    /// Per-part byte digest matched but serde decode failed — codec drift or corruption.
+    PartDecodeFailure,
 }
 
 /// Per-output digests and byte sizes for a FORMAT_VERSION 3 artifact — derived
@@ -716,7 +718,7 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
         let start = part.offset as usize;
         let end = start + part.length as usize;
         if end > payload_bytes.len() {
-            return CacheLookupResult::Miss;
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
         }
         let slice = &payload_bytes[start..end];
         if v1_rt::bytes_identity_hash(slice) != part.digest {
@@ -729,15 +731,21 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
     let union_bytes = &part_slices[2];
     let decoded_graph = match decode_graph_part(graph_bytes) {
         Ok(g) => g,
-        Err(_) => return CacheLookupResult::Miss,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure);
+        }
     };
     let si_plain = match decode_source_indices_part(indices_bytes) {
         Ok(si) => si,
-        Err(_) => return CacheLookupResult::Miss,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure);
+        }
     };
     let compile_clean_diags = match decode_compile_clean_union_part(union_bytes) {
         Ok(d) => d,
-        Err(_) => return CacheLookupResult::Miss,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure);
+        }
     };
     let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> =
         Rc::new(si_plain.into_iter().map(|(k, v)| (k, Rc::new(v))).collect());
@@ -795,12 +803,7 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
     let header = match parse_v3_header(&header_bytes, expected_subject, file_len) {
         Ok(h) => h,
-        Err(CacheRejectReason::ContentDigestMismatch) => {
-            return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
-        }
-        Err(CacheRejectReason::BackendKeyMalformed) => {
-            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-        }
+        Err(reason) => return CacheLookupResult::RejectedHit(reason),
     };
     decode_v3_payload_from_file(&mut file, header)
 }
@@ -842,12 +845,7 @@ fn read_cached_file_verified_probe(
     let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
     let header = match parse_v3_header(&header_bytes, expected_subject, file_len) {
         Ok(h) => h,
-        Err(CacheRejectReason::ContentDigestMismatch) => {
-            return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
-        }
-        Err(CacheRejectReason::BackendKeyMalformed) => {
-            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-        }
+        Err(reason) => return CacheLookupResult::RejectedHit(reason),
     };
     match approved_probe_matches_v3_header(&header, approved) {
         Ok(()) => decode_v3_payload_from_file(&mut file, header),

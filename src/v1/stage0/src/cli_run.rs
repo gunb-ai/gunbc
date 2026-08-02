@@ -10187,6 +10187,10 @@ fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
         CacheRejectReason::BackendKeyMalformed => {
             "resolved-graph-cache refused artifact: backend key malformed".to_string()
         }
+        CacheRejectReason::PartDecodeFailure => {
+            "resolved-graph-cache refused artifact: part decode failure after hash verification"
+                .to_string()
+        }
     }
 }
 
@@ -10305,6 +10309,11 @@ fn resolved_graph_from_sources_with_index(
                 CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {
                     return Err(cross_process_cache_integrity_refusal(
                         CacheRejectReason::BackendKeyMalformed,
+                    ));
+                }
+                CacheProbeResult::RejectedHit(CacheRejectReason::PartDecodeFailure) => {
+                    return Err(cross_process_cache_integrity_refusal(
+                        CacheRejectReason::PartDecodeFailure,
                     ));
                 }
                 CacheProbeResult::Miss => {}

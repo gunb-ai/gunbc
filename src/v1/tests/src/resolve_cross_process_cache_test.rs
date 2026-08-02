@@ -51,6 +51,7 @@ use v1_compiler::resolved_graph_cache::{
     UNION_PART_ABSENT_DIGEST,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
+use v1_compiler::v1_rt::bytes_identity_hash;
 
 fn empty_compile_clean_diags() -> Vector<Rc<v1_compiler::v1_std_core::ErrorNode>> {
     Vector::new()
@@ -466,6 +467,58 @@ fn trailing_payload_bytes_refuse_as_backend_key_malformed() {
         CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
         other => panic!("expected BackendKeyMalformed lookup, got {other:?}"),
     }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn hash_verified_part_decode_failure_refuses_not_miss() {
+    const V3_HEADER_LEN: usize = 8 + 4 + 16 + 16 + 16 + 16 + 8 + 3 * (8 + 8 + 16);
+
+    let dir = temp_dir("decode-fail");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    bytes[V3_HEADER_LEN] ^= 0x01;
+    let payload_len = u64::from_le_bytes(bytes[76..84].try_into().unwrap()) as usize;
+    let graph_len = u64::from_le_bytes(bytes[92..100].try_into().unwrap()) as usize;
+    let payload_slice = bytes[V3_HEADER_LEN..V3_HEADER_LEN + payload_len].to_vec();
+    let graph_digest = bytes_identity_hash(&payload_slice[0..graph_len]);
+    bytes[100..116].copy_from_slice(graph_digest.as_bytes());
+    let payload_integrity = bytes_identity_hash(&payload_slice);
+    bytes[28..44].copy_from_slice(payload_integrity.as_bytes());
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("corrupt write");
+
+    let decodes_before = decode_count();
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure) => {}
+        other => panic!("expected PartDecodeFailure RejectedHit, got {other:?}"),
+    }
+    assert_eq!(
+        decode_count(),
+        decodes_before,
+        "decode failure must refuse without cold rebuild"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
