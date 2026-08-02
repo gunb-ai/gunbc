@@ -1647,37 +1647,32 @@ fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcome
   }
 }
 
-fn belt_tick_receipt_absent_for_presentation() -> BeltTickReceipt {
-  BeltTickReceipt {
-    observed_at: "",
-    spawn_pass: BeltPassDeferred { reason: "" },
-    teardown_pass: BeltPassDeferred { reason: "" },
-    verify_pass: BeltPassDeferred { reason: "no belt tick receipt on disk" },
-    publish_pass: BeltPassDeferred { reason: "" },
+type SpawnWorkdirInstanceLookup
+  = SpawnWorkdirInstanceResolved { instance: HostDashboardInstance }
+  | UnknownSpawnWorkdir { workdir: String }
+
+fn belt_dashboard_instance_lookup_for_spawn_workdir(
+  workdir: String,
+) -> SpawnWorkdirInstanceLookup {
+  if workdir == (srv1_green_dashboard_instance().repo_root as String) {
+    SpawnWorkdirInstanceResolved { instance: srv1_green_dashboard_instance() }
+  } else if workdir == (srv1_live_dashboard_instance().repo_root as String) {
+    SpawnWorkdirInstanceResolved { instance: srv1_live_dashboard_instance() }
+  } else {
+    UnknownSpawnWorkdir { workdir: workdir }
   }
 }
 
-fn belt_tick_receipt_for_presentation_for_instance(
+fn belt_tick_receipt_read_for_instance(
   instance: HostDashboardInstance,
-) -> BeltTickReceipt {
+) -> BeltTickReceiptRead {
   let read = Filesystem.Read(
     path: belt_tick_receipt_path_for_instance(instance: instance),
   )
   if !read.success || trim(read.content) == "" {
-    belt_tick_receipt_absent_for_presentation()
+    BeltTickReceiptAbsent
   } else {
-    match belt_tick_receipt_decode(raw: read.content) {
-      BeltTickReceiptPresent { receipt } => receipt
-      BeltTickReceiptAbsent => belt_tick_receipt_absent_for_presentation()
-      BeltTickReceiptUnreadable { reason: r } =>
-        BeltTickReceipt {
-          observed_at: "",
-          spawn_pass: BeltPassRefused { reason: r },
-          teardown_pass: BeltPassRefused { reason: r },
-          verify_pass: BeltPassRefused { reason: r },
-          publish_pass: BeltPassRefused { reason: r },
-        }
-    }
+    belt_tick_receipt_decode(raw: read.content)
   }
 }
 
@@ -1758,14 +1753,6 @@ fn belt_tick_receipt_write_for_instance(
         write.error,
       ], ""),
     }
-  }
-}
-
-fn belt_dashboard_instance_for_spawn_workdir(workdir: String) -> HostDashboardInstance {
-  if workdir == (srv1_green_dashboard_instance().repo_root as String) {
-    srv1_green_dashboard_instance()
-  } else {
-    srv1_live_dashboard_instance()
   }
 }
 
@@ -1881,9 +1868,12 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
 
 data belt_run_once_note: String = "The runnable belt entrypoint: one tick against the LIVE roadmap. Reads the roadmap authority + merged PRs, builds the ready frontier, and runs belt_tick_default_workdir (Running, default capacity, belt_actuate_workdir). Zero-arg so it is invokable directly (gunbc run --function belt_run_once_json, wet), spawning a real tmux session through dispatch_cli_provider on the host it runs on. belt_run_once returns the typed BeltTickResult; belt_run_once_json projects it to a receipt (observe verdict, occupied/free/deferred, per-node spawn/teardown outcomes, refusal count) so the operator sees exactly what one tick did — no fabricated summary. Idempotent: a spawned session is observed live next tick and reconciles to noop."
 
-fn belt_run_once_in(spawn_workdir: String) -> BeltTickResult {
+fn belt_run_once_in(
+  instance: HostDashboardInstance,
+  spawn_workdir: String,
+) -> BeltTickResult {
   belt_tick_for_instance(
-    instance: belt_dashboard_instance_for_spawn_workdir(workdir: spawn_workdir),
+    instance: instance,
     state: roadmap_belt_default_run_state,
     frontier: spawn_frontier(doc: roadmap_authority(), merged: authored_merged_prs()),
     cap: roadmap_belt_default_capacity,
@@ -1892,7 +1882,10 @@ fn belt_run_once_in(spawn_workdir: String) -> BeltTickResult {
 }
 
 fn belt_run_once() -> BeltTickResult {
-  belt_run_once_in(spawn_workdir: belt_actuate_workdir as String)
+  belt_run_once_in(
+    instance: srv1_live_dashboard_instance(),
+    spawn_workdir: belt_actuate_workdir as String,
+  )
 }
 
 fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
@@ -2914,9 +2907,9 @@ data belt_attempt_presentation_note: String = "The wire join of the two authorit
 fn belt_workflow_attempt_presentation_json(
   progress: WorkflowAttemptProgress,
 ) -> JsonValue {
-  belt_workflow_attempt_presentation_json_with_tick(
+  belt_workflow_attempt_presentation_json_with_tick_read(
     progress: progress,
-    tick: belt_tick_receipt_absent_for_presentation(),
+    tick_read: BeltTickReceiptAbsent,
   )
 }
 
@@ -2924,15 +2917,15 @@ fn belt_workflow_attempt_presentation_json_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> JsonValue {
-  belt_workflow_attempt_presentation_json_with_tick(
+  belt_workflow_attempt_presentation_json_with_tick_read(
     progress: progress,
-    tick: belt_tick_receipt_for_presentation_for_instance(instance: instance),
+    tick_read: belt_tick_receipt_read_for_instance(instance: instance),
   )
 }
 
-fn belt_workflow_attempt_presentation_json_with_tick(
+fn belt_workflow_attempt_presentation_json_with_tick_read(
   progress: WorkflowAttemptProgress,
-  tick: BeltTickReceipt,
+  tick_read: BeltTickReceiptRead,
 ) -> JsonValue {
   json_object(members: concat(
     workflow_attempt_progress_json_members(progress: progress),
@@ -2942,7 +2935,10 @@ fn belt_workflow_attempt_presentation_json_with_tick(
       json_kv(
         key: "verification_presentation",
         value: json_string(
-          s: belt_verification_presentation_detail(progress: progress, tick: tick),
+          s: belt_verification_presentation_detail(
+            progress: progress,
+            tick_read: tick_read,
+          ),
         ),
       ),
     ]))
@@ -3312,25 +3308,33 @@ fn belt_run_once_cli() -> ProcessExit {
 }
 
 fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
-  let instance = belt_dashboard_instance_for_spawn_workdir(workdir: spawn_workdir)
-  let t = belt_run_once_in(spawn_workdir: spawn_workdir)
-  let tick_receipt = belt_tick_receipt_from_result(
-    result: t,
-    observed_at: belt_tick_observed_at(),
-  )
-  match belt_tick_receipt_write_for_instance(instance: instance, receipt: tick_receipt) {
-    BeltPassFailed { reason: r } =>
+  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: spawn_workdir) {
+    UnknownSpawnWorkdir { workdir: w } =>
       exit_failure(reason: join([
-        serialize_json(v: belt_tick_result_json_value(t: t)),
-        "\n",
-        r,
+        "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
+        w,
       ], ""))
-    BeltPassRecorded =>
-      ExitSuccess
-    BeltPassDeferred { reason: r } =>
-      exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
-    BeltPassRefused { reason: r } =>
-      exit_failure(reason: join(["belt tick receipt write returned refused: ", r], ""))
+    SpawnWorkdirInstanceResolved { instance } => {
+      let t = belt_run_once_in(instance: instance, spawn_workdir: spawn_workdir)
+      let tick_receipt = belt_tick_receipt_from_result(
+        result: t,
+        observed_at: belt_tick_observed_at(),
+      )
+      match belt_tick_receipt_write_for_instance(instance: instance, receipt: tick_receipt) {
+        BeltPassFailed { reason: r } =>
+          exit_failure(reason: join([
+            serialize_json(v: belt_tick_result_json_value(t: t)),
+            "\n",
+            r,
+          ], ""))
+        BeltPassRecorded =>
+          ExitSuccess
+        BeltPassDeferred { reason: r } =>
+          exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
+        BeltPassRefused { reason: r } =>
+          exit_failure(reason: join(["belt tick receipt write returned refused: ", r], ""))
+      }
+    }
   }
 }
 
@@ -3907,7 +3911,7 @@ fn belt_verification_segment(progress: WorkflowAttemptProgress) -> WorkflowSegme
 
 fn belt_verification_presentation_detail(
   progress: WorkflowAttemptProgress,
-  tick: BeltTickReceipt,
+  tick_read: BeltTickReceiptRead,
 ) -> String {
   match belt_verification_segment(progress: progress) {
     Present { value: segment } =>
@@ -3921,19 +3925,26 @@ fn belt_verification_presentation_detail(
         WorkflowSegmentActive =>
           join(["Verification running · ", progress.validation_summary], "")
         WorkflowSegmentPending =>
-          match tick.verify_pass {
-            BeltPassRefused { reason: r } =>
-              join(["Verification blocked · ", r], "")
-            BeltPassFailed { reason: r } =>
-              join(["Verification failed · ", r], "")
-            BeltPassDeferred { reason: _ } =>
-              "Verification queued - next belt tick"
-            BeltPassRecorded =>
-              if string_contains(s: segment.detail, pattern: "could not be read") {
-                join(["Verification refused · ", segment.detail], "")
-              } else {
-                join(["Verification queued - next belt tick · ", segment.detail], "")
+          match tick_read {
+            BeltTickReceiptPresent { receipt } =>
+              match receipt.verify_pass {
+                BeltPassRefused { reason: r } =>
+                  join(["Verification blocked · ", r], "")
+                BeltPassFailed { reason: r } =>
+                  join(["Verification failed · ", r], "")
+                BeltPassDeferred { reason: _ } =>
+                  "Verification queued - next belt tick"
+                BeltPassRecorded =>
+                  if string_contains(s: segment.detail, pattern: "could not be read") {
+                    join(["Verification refused · ", segment.detail], "")
+                  } else {
+                    join(["Verification queued - next belt tick · ", segment.detail], "")
+                  }
               }
+            BeltTickReceiptAbsent =>
+              "Verification queued - next belt tick"
+            BeltTickReceiptUnreadable { reason: r } =>
+              join(["Verification blocked · belt tick receipt unreadable: ", r], "")
           }
       }
     Absent =>
