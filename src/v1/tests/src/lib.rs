@@ -80,6 +80,7 @@ mod group_completion_construction_test;
 mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
+mod import_visibility_pool_coincidence_test;
 #[cfg(test)]
 mod int_pow_bounded_test;
 #[cfg(test)]

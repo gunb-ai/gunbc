@@ -204,11 +204,18 @@ fn reference_derived_closure_missing_capabilities(
   admissions: List<ReferenceDerivedClosureAdmission>,
 ) -> List<ReferenceDerivedClosureCapability> {
   reference_derived_closure_required_capabilities()
-    |> filter(required => !(admissions |> any(admission => match admission {
-      ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required
-      ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
-      ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
-    })))
+    |> filter(required =>
+      !(admissions |> any(admission => match admission {
+        ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required
+        ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
+        ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
+      }))
+        || admissions |> any(admission => match admission {
+          ReferenceDerivedClosureEstablished { receipt: _ } => false
+          ReferenceDerivedClosureRefused { capability, failure: _ } => capability == required
+          ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required
+        })
+    )
 }
 
 fn reference_derived_closure_closing_frontier_count(

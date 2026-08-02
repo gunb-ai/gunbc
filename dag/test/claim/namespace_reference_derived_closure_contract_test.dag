@@ -272,3 +272,13 @@ test fn witness_duplicate_admission_cannot_erase_missing_capability() -> Bool {
     && reference_derived_closure_closing_frontier_count(admissions: [one, one]) == 5
     && !reference_derived_closure_closing_contract_holds(admissions: [one, one])
 }
+
+test fn witness_refusal_vetoes_a_contradictory_established_receipt() -> Bool {
+  let refusal = assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+    neighbour: oid(value: 1),
+    binding_outcome: p1_outcome(supplied_candidates: []),
+  })
+  let contradictory = append(positive_admissions(), items: [refusal])
+  reference_derived_closure_closing_frontier_count(admissions: contradictory) == 1
+    && !reference_derived_closure_closing_contract_holds(admissions: contradictory)
+}
