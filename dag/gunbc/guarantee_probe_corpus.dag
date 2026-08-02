@@ -13,7 +13,7 @@ import gunbc.guarantee_measurement {
   GuaranteeMeasurementReceipt,
   probe_set_digest,
   guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
-  join_receipt_to_path, ReceiptJoined,
+  join_receipt_to_path, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
 }
 import v2.std.optional { Present, Absent }
 import std.algebra { Ordering, Less, Equal, Greater }
