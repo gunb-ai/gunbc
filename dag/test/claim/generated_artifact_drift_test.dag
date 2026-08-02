@@ -10,7 +10,8 @@ import gunbc.generated_artifact {
   HealRepairAuthorCommitRequired, HealRepairMixed,
   generated_artifact_registry,
   committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed,
-  artifact_heal_policy, artifact_is_auto_push_eligible,
+  artifact_heal_policy,
+  partition_committed_by_heal_policy,
   auto_push_eligible_committed_artifacts, author_commit_required_committed_artifacts,
   classify_heal_repair_paths, path_requires_author_commit,
   registry_contains
@@ -184,8 +185,8 @@ test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
     && heal_policy_is(a: DesignArtifact, expected: AutoPushEligible)
     && (count(author_commit_required_committed_artifacts()) == 2)
     && (count(auto_push_eligible_committed_artifacts()) == count(committed_generated_artifacts()) - 2)
-    && artifact_is_auto_push_eligible(a: CiYamlArtifact) == false
-    && artifact_is_auto_push_eligible(a: GitignoreArtifact) == true
+    && (count(partition_committed_by_heal_policy().author_commit) == 2)
+    && (count(partition_committed_by_heal_policy().auto_push) == count(committed_generated_artifacts()) - 2)
     && path_requires_author_commit(path: ".github/workflows/ci.yml")
     && path_requires_author_commit(path: ".github/workflows/falsifier.yml")
     && !path_requires_author_commit(path: ".gitignore")

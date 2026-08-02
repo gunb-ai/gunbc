@@ -116,19 +116,34 @@ fn artifact_heal_policy(a: GeneratedArtifact) -> HealPolicy {
   }
 }
 
-fn artifact_is_auto_push_eligible(a: GeneratedArtifact) -> Bool {
-  match artifact_heal_policy(a: a) {
-    AutoPushEligible => true
-    AuthorCommitRequired { consumer: _ } => false
-  }
+type CommittedHealPartition = {
+  auto_push: List<GeneratedArtifact>,
+  author_commit: List<GeneratedArtifact>
+}
+
+fn partition_committed_by_heal_policy() -> CommittedHealPartition {
+  fold(committed_generated_artifacts(), init: CommittedHealPartition { auto_push: [], author_commit: [] }, f: fn(acc, a) {
+    match artifact_heal_policy(a: a) {
+      AutoPushEligible =>
+        CommittedHealPartition {
+          auto_push: concat(acc.auto_push, [a]),
+          author_commit: acc.author_commit
+        }
+      AuthorCommitRequired { consumer: _ } =>
+        CommittedHealPartition {
+          auto_push: acc.auto_push,
+          author_commit: concat(acc.author_commit, [a])
+        }
+    }
+  })
 }
 
 fn auto_push_eligible_committed_artifacts() -> List<GeneratedArtifact> {
-  filter(committed_generated_artifacts(), a => artifact_is_auto_push_eligible(a: a))
+  partition_committed_by_heal_policy().auto_push
 }
 
 fn author_commit_required_committed_artifacts() -> List<GeneratedArtifact> {
-  filter(committed_generated_artifacts(), a => !artifact_is_auto_push_eligible(a: a))
+  partition_committed_by_heal_policy().author_commit
 }
 
 fn auto_push_eligible_committed_artifact_paths() -> List<String> {
