@@ -1416,7 +1416,7 @@ pub enum CompileDiagnosticCensus {
 /// interpreter's disposition of the same program and nothing about other emission targets.
 pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::v1_compiler_infer_env::with_type_ref_hit_ne_bind_measure(|| {
+        crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();
             let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
             v1_compiler_compile::compile_sources(

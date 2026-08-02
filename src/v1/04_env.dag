@@ -847,11 +847,7 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   }
 }
 
-data type_ref_hit_ne_bind_measure_active_note: String = "Host thread-local armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). .dag default body is false; seed Rust reads the thread-local. Zero production gates consult this."
-
-fn type_ref_hit_ne_bind_measure_active() -> Bool {
-  false
-}
+data type_ref_hit_ne_bind_measure_active_note: String = "Host bracket in v1_rt (type_ref_hit_ne_bind_measure_active / _set / with_type_ref_hit_ne_bind_measure) — same shape as name_resolution_policy_is_namespace_only. Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false = production fail-open. Zero production gates consult this. No .dag body can flip it."
 
 data type_ref_measure_binding_authority_fn_note: String = "MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm."
 
