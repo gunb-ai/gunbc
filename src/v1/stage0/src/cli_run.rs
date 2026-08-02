@@ -1400,8 +1400,9 @@ pub enum CompileDiagnosticCensus {
 }
 
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
-/// `.dag` program through the **same** path [`compile_dag_rust_emit_check`] takes, and report the
-/// full per-class diagnostic census the compile produced.
+/// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
+/// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
+/// compile produced.
 ///
 /// MEASUREMENT ONLY. Nothing here judges acceptance and nothing is filtered: every diagnostic the
 /// compile emitted appears, advisories included, with `blocking` carried **as data** read through
@@ -1410,9 +1411,14 @@ pub enum CompileDiagnosticCensus {
 /// discards class identity, severity, and every advisory — the three facts a guarantee probe needs
 /// in order to state which judgment fired rather than merely that something refused.
 ///
-/// Scope, stated so a receipt cannot claim coverage it does not have: this is the v1 pipeline to
-/// the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
-/// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes. It observes nothing about the
+/// Scope, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): this is the v1
+/// pipeline to the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
+/// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes — **with**
+/// [`crate::v1_rt::with_type_ref_hit_ne_bind_measure`] armed for the nested compile (N1a). That
+/// bracket is census-only: for masked, pool-present, non-authority type refs it can emit blocking
+/// `UnresolvedType` while [`compile_dag_rust_emit_check`] (measure off) stays on the production
+/// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
+/// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
 pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
