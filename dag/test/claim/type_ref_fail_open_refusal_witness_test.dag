@@ -26,6 +26,7 @@ import gunbc.type_ref_binding_authority_debt {
   type_ref_debt_freeze_vs_provisional_delta_note,
   type_ref_debt_site_disposition_note,
   type_ref_debt_universe_openness_note,
+  type_ref_admission_path_coverage_note,
   type_ref_import_add_discriminator_note,
   type_ref_class_b_explicitation_count,
   type_ref_class_b_explicitation_count_note,
@@ -176,6 +177,14 @@ test fn debt_universe_openness_is_declared_interim() -> Bool {
     && string_contains(s: type_ref_debt_universe_openness_note, pattern: "BOUNDED INTERIM")
     && string_contains(s: type_ref_debt_universe_openness_note, pattern: "N2 containment")
     && string_contains(s: type_ref_debt_universe_openness_note, pattern: "rung inflation")
+}
+
+test fn admission_path_coverage_names_mock_precompute_gap() -> Bool {
+  string_contains(s: type_ref_admission_path_coverage_note, pattern: "KNOWN-UNCOVERED PATH")
+    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "PublishedMockCase")
+    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "local tooling only")
+    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "resolve_published_mock_keys")
+    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "type_ref_unresolved_admitted_for_compile_clean")
 }
 
 test fn import_add_discriminator_is_explicitation_vs_padding() -> Bool {
