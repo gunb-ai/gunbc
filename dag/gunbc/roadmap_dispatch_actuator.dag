@@ -43,7 +43,7 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
-import extdeps.git { shape_git_worktree_add_argv }
+import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -361,6 +361,25 @@ fn dispatch_worktree_path_for_instance(
     node_id as String,
     "-a",
     attempt_key,
+  ], "")
+}
+
+data dispatch_verification_checkout_path_note: String = "Verification validates the committed head in a DETACHED checkout, never the mutable implementation worktree the agent may still be editing. The path is head-addressed beside the attempt worktree so multiple heads per attempt each retain their own immutable tree without colliding on the branch checkout."
+
+fn dispatch_verification_checkout_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    instance.dispatch_worktree_root as String,
+    "/",
+    node_id as String,
+    "-a",
+    attempt_key,
+    "-verify-",
+    head_sha,
   ], "")
 }
 
@@ -882,6 +901,23 @@ fn git_worktree_add_argv_for_instance(
       path: worktree_path as FilePath,
       branch: branch_name as NonEmptyStr,
       remote_ref: remote_ref as GitRef,
+    ),
+  )
+}
+
+fn git_worktree_add_detached_argv_for_instance(
+  instance: HostDashboardInstance,
+  worktree_path: String,
+  commit_sha: String,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: GitWorkspaceCapability,
+    ),
+    args: shape_git_worktree_add_detached_argv(
+      path: worktree_path as FilePath,
+      commit: commit_sha as GitRef,
     ),
   )
 }
