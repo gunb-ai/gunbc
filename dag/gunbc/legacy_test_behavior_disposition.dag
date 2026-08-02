@@ -341,20 +341,6 @@ data empty_optional_unwrap_disposition: LegacyTestBehaviorDisposition = DeleteLo
   reason: "NO gunbc CODE IS IN THIS TEST'S LOOP. It builds an empty Vec in Rust, calls Option::expect on the resulting None inside catch_unwind and asserts a panic, then calls unwrap_or_default and asserts it yields 0. Both are guarantees of the Rust standard library, true independently of anything this repository emits, and neither invokes the compiler, the emitter, or any fixture source. It is a demonstration of why the emitter's choice matters, written as a test — valuable as documentation, worth nothing as an oracle, because no change to gunbc can make it fail. The fact it is really about — that the emitter chooses the aborting shape and never the fabricating one — is asserted where that choice is actually made, by the migrated call-site witness's exclusion of unwrap_or_default and unwrap_or_else. Deleted for having no gunbc-observable failure mode, not to reduce a count." as NonEmptyStr,
 }
 
-fn witness_exclusion_pattern_pick(
-  acc: String,
-  entry: FilePath,
-  pattern: String,
-) -> String {
-  if acc != "" {
-    acc
-  } else if string_contains(s: entry as String, pattern: pattern) {
-    pattern
-  } else {
-    ""
-  }
-}
-
 fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
   [
     c_compilation_unit_leaf_disposition,
