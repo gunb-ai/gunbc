@@ -179,25 +179,16 @@ pub enum CacheWriteOutcome {
     AlreadyExists,
 }
 
-/// The cross-process resolved-graph disk cache defaults to `.gunbc/resolved-graph-cache`
-/// under the process cwd outside CI. Set `GUNBC_RESOLVED_GRAPH_CACHE_DIR` to override.
-/// CI floor jobs leave it unset (no cross-run inheritance). `GITHUB_ACTIONS` disables
-/// the default so PR jobs never inherit warmed artifacts.
+/// Cross-process disk cache is **opt-in**: returns `Some` only when
+/// `GUNBC_RESOLVED_GRAPH_CACHE_DIR` is set. Unset env means no cross-process tier
+/// (in-process `resolved_graph_memo` still serves same-process repeats).
 ///
-/// Rationale for cwd-scoped default (not always-on temp_dir): an earlier always-on
-/// `.temp_dir()` default OOM'd concurrent floor shards sharing one host temp tree;
-/// cwd scope narrows blast radius to the invoking workspace and pairs with the modeled
-/// `SizeBounded` cap. Opt-in only — unset env means no cross-process tier in CI.
+/// Prior always-on `temp_dir()` default was reverted (#5789): it buffered whole
+/// cache files and OOM'd concurrent floor shards on a shared host temp tree.
+/// Default-on cwd cache is likewise deferred until IO realization streams rather
+/// than buffers whole payloads (mechanism-inventory-red-controls; review 47005).
 pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR") {
-        return Some(PathBuf::from(dir));
-    }
-    if std::env::var_os("GITHUB_ACTIONS").is_some() {
-        return None;
-    }
-    std::env::current_dir()
-        .ok()
-        .map(|d| d.join(".gunbc").join("resolved-graph-cache"))
+    std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
 }
 
 thread_local! {
