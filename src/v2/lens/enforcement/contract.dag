@@ -611,10 +611,12 @@ fn lens_contract_pending_step(acc: List<LensIdV0>, c: LensContract) -> List<Lens
   }
 }
 
+data lens_contract_pending_empty_ids: List<LensIdV0> = []
+
 fn lens_contracts_pending_fn_body_reflection() -> List<LensIdV0> {
   fold_list(
     xs: lens_contract_registry,
-    empty: [],
+    empty: lens_contract_pending_empty_ids,
     cons: lens_contract_pending_step
   )
 }
@@ -637,7 +639,6 @@ fn lens_id_pending_fn_body_reflection(id: LensIdV0) -> Bool {
 
 fn lens_contract_pending_inventory_holds() -> Bool {
   for_all(xs: lens_contract_registry, predicate: fn(c) {
-    contract_pending_fn_body_reflection(c: c)
-      == lens_id_pending_fn_body_reflection(id: c.entry.lens_id)
+    contract_pending_fn_body_reflection(c: c) == lens_id_pending_fn_body_reflection(id: c.entry.lens_id)
   })
 }

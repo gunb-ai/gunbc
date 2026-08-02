@@ -200,8 +200,7 @@ test fn pending_inventory_derived_from_registry() -> Bool {
 }
 
 test fn pending_plus_receipted_partitions_registry() -> Bool {
-  lens_contracts_pending_fn_body_reflection_count() + lens_contracts_receipted_count()
-    == length(xs: lens_contract_registry)
+  (lens_contracts_pending_fn_body_reflection_count() + lens_contracts_receipted_count()) == length(xs: lens_contract_registry)
 }
 
 test fn bound_consumer_contracts_are_receipted_live() -> Bool {
