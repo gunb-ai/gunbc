@@ -56,6 +56,7 @@ import gunbc.guarantee_probe_corpus {
 }
 import gunbc.guarantee_measurement {
   observed_is_verdict,
+  MeasurementRevision, ContentFingerprint, GitRevision,
   guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
   probe_set_digest,
 }
@@ -79,7 +80,7 @@ fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn witness_harness_revision(probe: GuaranteeProbeId) -> CommitSha {
+fn witness_harness_revision(probe: GuaranteeProbeId) -> MeasurementRevision {
   synthetic_program_harness_revision(
     probe: probe,
     harness_material: guarantee_probe_corpus_witness_scope_note as NonEmptyStr,
@@ -363,6 +364,13 @@ test fn harness_revision_tracks_harness_material_not_probe_id_alone() -> Bool {
     harness_material: "alternate witness scope" as NonEmptyStr,
   )
   scope_harness != alt_harness
+}
+
+test fn synthetic_revisions_use_content_fingerprint_not_git_revision() -> Bool {
+  match synthetic_program_subject_revision(source: call_mislabel_source) {
+    ContentFingerprint { digest: _ } => true
+    GitRevision { commit: _ } => false
+  }
 }
 
 test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
