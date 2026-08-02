@@ -274,10 +274,21 @@ type TokenSequenceItemKind
   = TokenSequenceConcreteToken
   | TokenSequenceNonterminal
 
-data translate_grounding_gate_absent_facts_note: String = "Refuse only recorded GroundingNotDerived on the Holds arm, routing that variant through canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic propagates (review 46789). DerivedGrounding on Holds accepts without re-running canonical admission: staging composed-facts trees (manual emit witnesses) carry DerivedGrounding with atom algebra refs that infer already admitted for test purposes but canonical_grounding_from_inferred_facts would refuse via algebra_ref_is_grounded — that coherence class is infer's on the Accepted path, not translate's underived containment slice. infer_facts_lookup_miss (Violates) is a different class: emit_orchestration's synthetic InferredTree carries an empty facts map by construction (orch_emit_facts_lookup), so lookup miss means no infer judgment exists, not an underived one recorded on the Accepted path. Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts. translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate — no carve-out for recorded underived facts. translate_derived_parent_underived_child_gate applies translate_grounding_derived_gate on every fold attach; translate_grounding_derived_gate_subtree covers bodied-arrow and import-carrier shortcuts that preserve producer IR without fold_node (review 46681). TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty children and facts.lookup keys on structural node equality."
+data translate_grounding_gate_absent_facts_note: String = "Refuse only recorded GroundingNotDerived on the Holds arm, routing that variant through canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic propagates (review 46789). DerivedGrounding on Holds accepts without re-running canonical admission: staging composed-facts trees (manual emit witnesses) carry DerivedGrounding with atom algebra refs that infer already admitted for test purposes but canonical_grounding_from_inferred_facts would refuse via algebra_ref_is_grounded — that coherence class is infer's on the Accepted path, not translate's underived containment slice. infer_facts_lookup_miss (Violates) is a different class: emit_orchestration's synthetic InferredTree carries an empty facts map by construction (orch_emit_facts_lookup), so lookup miss means no infer judgment exists, not an underived one recorded on the Accepted path. Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts. translate_emission_root_frontier_exempt names infer's Accepted-path grounding frontier for bodyless emission-root carriers: when tree.root is a bodyless Arrow, every node in the tree keeps infer's GroundingNotDerived frontier and translate_grounding_derived_gate admits without canonical re-admission — cross-language/inhabitant-neutralization emit stays green while poison-root and mixed-tree witnesses still refuse because their roots are not bodyless emission carriers. translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate. translate_derived_parent_underived_child_gate applies translate_grounding_derived_gate on every fold attach; translate_grounding_derived_gate_subtree covers bodied-arrow and import-carrier shortcuts that preserve producer IR without fold_node (review 46681). TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty children and facts.lookup keys on structural node equality."
+
+fn translate_emission_root_frontier_exempt(tree: InferredTree) -> Bool {
+  match tree.root.kind {
+    TypeNode { connective: Arrow } =>
+      !target_value_expr_arrow_has_value_expression_body(arrow: tree.root)
+    _ => false
+  }
+}
 
 fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<Empty> {
-  match inferred_facts_witness_for_node(tree: tree, node: node) {
+  if translate_emission_root_frontier_exempt(tree: tree) {
+    outcome_accepted(Empty)
+  } else {
+    match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
         GroundingNotDerived { node: _ } =>
@@ -290,6 +301,7 @@ fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<E
       }
     Violates { diagnostic: _ } =>
       outcome_accepted(Empty)
+    }
   }
 }
 
