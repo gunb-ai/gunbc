@@ -26,6 +26,15 @@ import v2.lens.enforcement.standing_intent {
   whole_corpus_scope, standing_intent_complexity_repo_wide
 }
 import v2.lens.enforcement.gate { lens_closure_question_zero_holds }
+import v2.lens.enforcement.inventory {
+  derive_lens_enforcement_inventory, LensEnforcementInventoryRow,
+  inventory_reconciles_registry_both_ways,
+  inventory_unbound_rows_match_contract_unbound, inventory_contains_lens_id,
+  find_inventory_row, inventory_application_count_for_lens,
+  InventoryRowAbsent, InventoryRowFound, EvaluatedScopeAbsent, EvaluatedScopePresent,
+  SupportHeld, SupportGap
+}
+import v2.lens.enforcement.standing_intent { standing_intent_registry }
 import std.realization_schedule { ScheduleWitnessEntry }
 
 data enforcement_live_scope_leg_evaluated_scope_note: String = "Phase 0A honesty: live_receipt_for_contract passes desired_scope: whole_corpus_scope deliberately, NOT contract.claimed_scope. Passing claimed_scope would self-certify (claimed covers claimed by construction) and, worse, would green Cost's scope leg on decl_facts name discovery alone (~1400 discovered fn names, 0 body-evaluated). The honest model needs three facts — required_scope, claimed_scope, evaluated_scope — with meaningful checks claimed-covers-required and evaluated-covers-claimed; evaluated_scope does not exist until execution receipts land. Do NOT pass claimed_scope here until evaluated_scope exists."
@@ -120,4 +129,18 @@ fn body_unavailable_count_live() -> Int {
 
 fn body_judged_count_live() -> Int {
   body_judged_count_of(facts: enforcement_corpus_facts())
+}
+
+fn lens_enforcement_inventory_live() -> List<LensEnforcementInventoryRow> {
+  let facts = enforcement_corpus_facts()
+  let ci_entries = enforcement_ci_witness_entries()
+  let prepush_entries = enforcement_prepush_witness_entries()
+  derive_lens_enforcement_inventory(
+    contracts: lens_contract_registry,
+    intents: standing_intent_registry,
+    receipts: coverage_receipts_from(facts: facts),
+    facts: facts,
+    ci_entries: ci_entries,
+    prepush_entries: prepush_entries
+  )
 }

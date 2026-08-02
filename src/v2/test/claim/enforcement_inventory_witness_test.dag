@@ -1,0 +1,82 @@
+module v2.test.claim.enforcement_inventory_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data enforcement_inventory_self_audit_note: String = "Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool predicate). Inventory rows are a pure fold over lens_contract_registry with no stored ledger. Support status is on LensEnforcementApplication rows, not lens_id. evaluated_scope is typed absent on every application until Phase 1. Scope leg and whole_corpus_scope constant were not modified."
+
+test fn inventory_reconciles_registry_both_ways_live() -> Bool {
+  let inventory = lens_enforcement_inventory_live()
+  inventory_reconciles_registry_both_ways(
+    inventory: inventory,
+    contracts: lens_contract_registry
+  )
+}
+
+test fn inventory_unbound_rows_match_contract_unbound_live() -> Bool {
+  inventory_unbound_rows_match_contract_unbound(
+    inventory: lens_enforcement_inventory_live(),
+    contracts: lens_contract_registry
+  )
+}
+
+test fn unbound_lenses_remain_in_inventory_live() -> Bool {
+  unbound_contract_count() > 0
+    && inventory_contains_lens_id(
+      inventory: lens_enforcement_inventory_live(),
+      id: Complexity
+    )
+    && inventory_contains_lens_id(
+      inventory: lens_enforcement_inventory_live(),
+      id: EffectReach
+    )
+}
+
+test fn cost_has_contract_and_standing_intent_applications_live() -> Bool {
+  inventory_application_count_for_lens(
+    inventory: lens_enforcement_inventory_live(),
+    id: Cost
+  ) >= 2
+}
+
+test fn cost_repo_wide_application_reports_support_gap_live() -> Bool {
+  match find_inventory_row(inventory: lens_enforcement_inventory_live(), id: Cost) {
+    InventoryRowAbsent => false
+    InventoryRowFound { value: row } =>
+      fold_list(
+        xs: row.applications,
+        empty: false,
+        cons: fn(found, app) {
+          found || ((app.standing_intent_id == "complexity.repo-wide")
+            && match app.support {
+              SupportGap { gap: _ } => true
+              SupportHeld => false
+            })
+        }
+      )
+  }
+}
+
+test fn cost_contract_consumer_application_support_held_live() -> Bool {
+  match find_inventory_row(inventory: lens_enforcement_inventory_live(), id: Cost) {
+    InventoryRowAbsent => false
+    InventoryRowFound { value: row } =>
+      fold_list(
+        xs: row.applications,
+        empty: false,
+        cons: fn(found, app) {
+          found || ((app.application_id == "contract.consumer.src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag::complexity_budget_roster_family_gate_holds")
+            && match app.support {
+              SupportHeld => true
+              SupportGap { gap: _ } => false
+            })
+        }
+      )
+  }
+}
+
+test fn inventory_rows_report_evaluated_scope_absent_live() -> Bool {
+  for_all(xs: lens_enforcement_inventory_live(), predicate: fn(row) {
+    inventory_row_evaluated_scope_absent(row: row)
+  })
+}
