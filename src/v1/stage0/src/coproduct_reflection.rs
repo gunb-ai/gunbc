@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::cli_run::{
-    collect_dag_files_tolerant, declaration_refs_for_roots, extract_module_path, is_test_dag,
-    repo_rel, workspace_root,
+    collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
 };
 use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_env::lookup_binding_by_name;
@@ -1223,44 +1222,6 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
-            ])),
-        });
-    }
-    Ok(crate::v1_interpreter::list_value(rows))
-}
-
-fn marshal_decl_field(ctx: &InterpContext, field: &crate::std_decl_ref::DeclField) -> Value {
-    use crate::std_decl_ref::DeclField;
-    match field {
-        DeclField::WholeDeclaration => Value::Variant {
-            type_name: ctx.sym("DeclField"),
-            variant_name: ctx.sym("WholeDeclaration"),
-            fields: Rc::new(vec![]),
-        },
-        DeclField::NamedField { field_name } => Value::Variant {
-            type_name: ctx.sym("DeclField"),
-            variant_name: ctx.sym("NamedField"),
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("field_name"), Value::Str(field_name.clone())),
-            ])),
-        },
-    }
-}
-
-/// Host builtin backing `v2.std.decl_ref_resolution.declaration_refs_in_corpus` (G1).
-pub fn eval_declaration_refs_in_corpus(
-    ctx: &InterpContext,
-    pool_roots: &[String],
-) -> InterpResult<Value> {
-    let refs = declaration_refs_for_roots(pool_roots);
-    let mut rows = Vec::with_capacity(refs.len());
-    for r in refs {
-        rows.push(Value::Record {
-            type_name: ctx.sym("DeclarationRef"),
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("module_path"), Value::Str(r.module_path.clone())),
-                (ctx.sym("decl_name"), Value::Str(r.decl_name.clone())),
-                (ctx.sym("field"), marshal_decl_field(ctx, &*r.field)),
             ])),
         });
     }
