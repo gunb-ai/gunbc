@@ -5,7 +5,6 @@ import v2.compiler.self_host.candidate_generation {
   provenanced_rust_artifact_seed_independent
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_expected_source,
   direct_rust_door_inferred_tree,
   direct_rust_door_module_path,
   direct_rust_door_target_model
@@ -41,7 +40,7 @@ import v2.std.node {
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: the v2 emit path writes Rust source through serialize_target composed with translate (v2.compiler.emit via candidate_generation.mint_provenanced_rust_artifact) without v1.compiler.emit_rust in the realized closure."
+data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: mint_provenanced_rust_artifact with V2EmitterInterpreted and a realized closure excluding v1.compiler.emit_rust establishes the capability; byte-equality against rust_source_text is owned by the discriminating provenance witness, not this admission fold."
 
 data v2_emitter_direct_rust_door_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. When candidate_generation wires serialize_target and the seed-independent written-source check executes green, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to ordinary discovery as the permanent direct-rust-door regression wall."
 
@@ -106,9 +105,7 @@ fn assess_written_source_independent_of_seed_emitter() -> DirectRustDoorAdmissio
     realized_closure: v2_interpreted_emitter_closure_authority()
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
-      if artifact.source.carried == direct_rust_door_expected_source
-        && provenanced_rust_artifact_seed_independent(artifact: artifact)
-      {
+      if provenanced_rust_artifact_seed_independent(artifact: artifact) {
         established(capability: WrittenSourceIndependentOfSeedEmitter)
       } else {
         refused(

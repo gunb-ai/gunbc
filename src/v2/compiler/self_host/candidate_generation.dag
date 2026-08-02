@@ -69,6 +69,8 @@ data direct_rust_door_probe_entry: String = "src/v2/test/claim/self_host/direct_
 
 data direct_rust_door_probe_function: String = "witness_direct_rust_door_provenanced_artifact_holds"
 
+data direct_rust_door_cargo_toml_scaffold_note: String = "SCAFFOLD: feature:medium_structure_containment — direct_rust_door_cargo_toml is a hand-authored TOML medium piped into Filesystem.Write without grammar-emitted Cargo.toml serialization (transport-is-a-handler debt). dissolve-on: emit the fixture workspace manifest through the target-model / serialize_target path (or a cited Toml medium carrier) so write_rust_workspace stops writing a raw string literal; this note and direct_rust_door_cargo_toml delete together."
+
 data direct_rust_door_cargo_toml: String = "[package]\nname = \"direct_rust_door_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
 fn generate_stage_candidate_from_ingest(
