@@ -2,7 +2,6 @@
 // Source module: extdeps.container.oci.digest
 
 use self::OciContentDigest::*;
-use self::OpenContainersImageSpecification::*;
 pub use crate::extdeps_external_authority::{
     ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 };
@@ -20,7 +19,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn oci_digest_external_authority() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
@@ -34,32 +33,6 @@ pub fn oci_digest_external_authority() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
-    thread_local! {
-        static CACHED: Rc<ExternalAuthority> = {
-            oci_digest_external_authority()
-        };
-    }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum OpenContainersImageSpecification {
-    OpenContainersImageSpecificationAuthority,
-}
-
-pub fn opencontainers_image_specification() -> OpenContainersImageSpecification {
-    thread_local! {
-        static CACHED: OpenContainersImageSpecification = {
-            OpenContainersImageSpecification::OpenContainersImageSpecificationAuthority
-        };
-    }
-    CACHED.with(|c: &OpenContainersImageSpecification| c.clone())
-}
-
 pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     thread_local! {
             static CACHED: Rc<ExternalModelScope> = {
@@ -67,16 +40,25 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
         subject: Rc::new(ExternalSubjectRef {
         declaration: Rc::new(DeclarationRef {
         module_path: "extdeps.container.oci.digest".to_string(),
-        decl_name: "opencontainers_image_specification".to_string(),
+        decl_name: "OciContentDigest".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
     }),
     }),
-        first_citation: oci_digest_external_authority(),
+        first_citation: extdeps_external_authority_anchor(),
         further_citations: Rc::new(vec![]),
     })
             };
         }
     CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
+}
+
+pub fn qualified_self_reference_emit_defect_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHY first_citation IS A BARE REFERENCE HERE WHILE THE actions_environment PRECEDENT WRITES A DOTTED PATH, recorded because it is a live emitter defect rather than a style preference. Writing first_citation: extdeps.container.oci.digest.extdeps_external_authority_anchor -- the fully qualified self-reference, exactly the form dag/extdeps/github/actions_environment.dag uses -- emits crate::extdeps_cargo::extdeps_external_authority_anchor.clone(): the WRONG MODULE (extdeps_cargo is unrelated to this one) and a fn item rather than a call, so the generated stage0 fails to compile with E0308. The bare same-module reference emits extdeps_external_authority_anchor() correctly.\n\nTHE PRECEDENT NEVER EXERCISED THIS. dag/extdeps/github/actions_environment.dag is not in the regen input closure, so no generated Rust is produced from it and its dotted spelling has never reached the emitter. This module IS in that closure, which is why the defect surfaced here first and why copying the precedent verbatim is not safe.\n\nTHIS IS NOT A DODGE, AND THE DISTINCTION MATTERS (DESIGN.md 5, unmarked workaround): a bare reference to a sibling declaration in the SAME module is the natural spelling, not a respelling chosen to avoid an obstacle. What would have been a workaround is silently picking it and saying nothing, which is why this row exists. The defect is real, is not fixed here, and is not this PR to fix: qualified declaration references in a data initializer resolve to the wrong module and lose their call. DISSOLVE-ON: the emitter resolving a qualified declaration reference to its declaring module and emitting a call, at which point either spelling works and this note deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn oci_content_digest_note() -> String {
@@ -333,6 +315,3 @@ pub fn oci_sha256_content_digest(hex: String) -> Option<Rc<OciContentDigest>> {
 pub fn oci_content_digest_from_validated_sha256(digest: Rc<Sha256Digest>) -> Rc<OciContentDigest> {
     Rc::new(OciContentDigest::OciSha256Digest(digest.clone()))
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct OpenContainersImageSpecificationAuthority;
