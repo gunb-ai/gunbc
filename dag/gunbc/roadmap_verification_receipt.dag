@@ -709,20 +709,27 @@ fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDe
                                             receipt: VerificationReceipt {
                                               subject: subject,
                                               oracle_identity: oracle_identity,
-                                              executions: map(readable, x => match x {
-                                                Present { value: v } => v
-                                                Absent => ValidationExecution {
-                                                  validation: CargoFmtValidation,
-                                                  command: ModeledValidationCommand {
-                                                    label: "" as NonEmptyStr,
-                                                    program: "" as FilePath,
-                                                    args: [],
-                                                  },
-                                                  exit_code: 0,
-                                                  stdout: "",
-                                                  stderr: "",
-                                                }
-                                              }),
+                                              executions: map(
+                                                filter(readable, x => match x {
+                                                  Present { value: _ } => true
+                                                  Absent => false
+                                                }),
+                                                x => match x {
+                                                  Present { value: v } => v
+                                                  Absent =>
+                                                    ValidationExecution {
+                                                      validation: CargoFmtValidation,
+                                                      command: ModeledValidationCommand {
+                                                        label: "decode-placeholder" as NonEmptyStr,
+                                                        program: "/dev/null" as FilePath,
+                                                        args: [],
+                                                      },
+                                                      exit_code: 0,
+                                                      stdout: "",
+                                                      stderr: "",
+                                                    }
+                                                },
+                                              ),
                                               verdict: verdict,
                                             },
                                           }

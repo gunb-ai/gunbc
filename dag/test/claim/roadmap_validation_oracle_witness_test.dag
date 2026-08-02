@@ -15,6 +15,7 @@ import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
+import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessExited }
 import gunbc.roadmap_publish {
   PublicationReceiptSource,
   ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
@@ -27,7 +28,16 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_kind_key,
   workflow_segment_state_key,
 }
-import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessExited }
+import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  VerificationSubjectObserved,
+  VerificationReceipt,
+  ValidationExecution,
+  VerificationReceiptAbsent,
+  VerificationReceiptPresent,
+  verification_receipt_json,
+}
+import gunbc.roadmap_model { RoadmapNodeIdentity }
 import extdeps.version { VersionIdentity }
 import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
@@ -35,6 +45,7 @@ import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   GunbcClaimValidation,
   CargoTestValidation,
+  ModeledValidationCommand,
 }
 import gunbc.roadmap_validation_oracle {
   ValidationOracleRef,
@@ -697,6 +708,18 @@ test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
 
 data verify_lamp_note: String = "The lamp is the seam where the distinction has to survive, because it is what a human actually looks at. These assert the three verdicts land on three DIFFERENT segment states and that an absent receipt still reads pending — the last one being the property the old hardcoded lamp had for free and that a receipt-reading lamp could easily lose, since the tempting shortcut is to paint Verify from the agent's own completion."
 
+data verify_fixture_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+
+fn verify_fixture_subject() -> VerificationSubject {
+  VerificationSubject {
+    node_identity: "rnfx-verify-lamp" as NonEmptyStr as RoadmapNodeIdentity,
+    criteria_digest: content_hash_atom(value: "verify-lamp-criteria"),
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface" as NonEmptyStr,
+    head_sha: verify_fixture_head,
+  }
+}
+
 fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
   WorkflowAttemptEvidence {
     node_id: "v1-emitter-fixed-point",
@@ -712,8 +735,14 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     provider_events_error: "",
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     validation_summary: "gunbc run --claim-run",
-    validation_receipt_readable: receipt != "",
-    validation_receipt: receipt,
+    verification_subject: VerificationSubjectObserved {
+      subject: verify_fixture_subject(),
+    },
+    verification_source: if receipt == "" {
+      VerificationReceiptAbsent
+    } else {
+      VerificationReceiptPresent { text: receipt }
+    },
     publication_subject: PublicationSubjectObserved {
       subject: PublicationSubject {
         node_id: "pub-fixture-node",
@@ -748,12 +777,32 @@ fn verify_lamp_state(receipt: String) -> String {
 }
 
 fn receipt_for(verdict: ValidationVerdict) -> String {
-  validation_receipt_json(
-    verdict: verdict,
-    observations: observe_witness(
-      source_readable: true,
-      source: witness_source_at_dispatch(),
-    ),
+  verification_receipt_json(
+    receipt: VerificationReceipt {
+      subject: verify_fixture_subject(),
+      oracle_identity: pinned_identity(),
+      executions: [
+        ValidationExecution {
+          validation: GunbcClaimValidation {
+            entry: "dag/test/claim/roadmap_validation_oracle_witness_test.dag" as FilePath,
+            function: "verify_lamp_stays_pending_without_a_receipt" as NonEmptyStr,
+          },
+          command: ModeledValidationCommand {
+            label: "gunbc-claim" as NonEmptyStr,
+            program: "/opt/gunbc/bin/gunbc" as FilePath,
+            args: ["run", "--claim-run"],
+          },
+          exit_code: if validation_verdict_key(verdict: verdict) == "failed" { 1 } else { 0 },
+          stdout: if validation_verdict_key(verdict: verdict) == "passed" { "true\n" } else { "" },
+          stderr: if validation_verdict_key(verdict: verdict) == "failed" {
+            "claim returned false"
+          } else {
+            ""
+          },
+        },
+      ],
+      verdict: verdict,
+    },
   )
 }
 

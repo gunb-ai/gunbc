@@ -70,10 +70,24 @@ import gunbc.workflow_reconcile {
   workflow_reconcile_status_key,
 }
 import gunbc.roadmap_validation_oracle {
-  ValidationReceiptDecode,
-  ValidationReceiptDecoded,
-  ValidationReceiptUndecodable,
-  validation_receipt_decode,
+  validation_verdict_detail,
+  validation_verdict_key,
+}
+import gunbc.roadmap_verification_receipt {
+  VerificationSubjectObservation,
+  VerificationSubjectObserved,
+  VerificationSubjectUnobserved,
+  VerificationReceiptFileSource,
+  VerificationEvidence,
+  VerificationEvidenceForSubject,
+  VerificationEvidenceForAnotherSubject,
+  VerificationEvidenceLegacyAttemptLevel,
+  VerificationFileEvidence,
+  VerificationFileAbsent,
+  VerificationFileUnreadable,
+  VerificationFileDecoded,
+  verification_file_evidence_for,
+  verification_evidence_moves_lamp,
 }
 import gunbc.roadmap_publish {
   PublicationSubject,
@@ -121,8 +135,8 @@ type WorkflowAttemptEvidence {
   provider_events_error: String
   process: WorkerProcessEvidence
   validation_summary: String
-  validation_receipt_readable: Bool
-  validation_receipt: String
+  verification_subject: VerificationSubjectObservation
+  verification_source: VerificationReceiptFileSource
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
 }
@@ -474,35 +488,67 @@ fn publication_segment(
   }
 }
 
-fn verification_receipt_segment(receipt: String) -> WorkflowSegment {
-  match validation_receipt_decode(receipt: receipt) {
-    ValidationReceiptUndecodable { reason } =>
+fn verification_evidence_segment(
+  evidence: VerificationFileEvidence,
+) -> WorkflowSegment {
+  match evidence {
+    VerificationFileAbsent =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "the declared validation has not run yet for this attempt's head: no exact-head verification receipt exists yet. This is an absent observation, not a judgment that validation passed",
+      }
+    VerificationFileUnreadable { reason } =>
       WorkflowSegment {
         kind: VerificationWorkflowSegment,
         state: WorkflowSegmentRefused,
-        detail: reason,
+        detail: join([
+          "a verification receipt exists for this attempt's head and this reader cannot decode it: ",
+          reason,
+        ], ""),
       }
-    ValidationReceiptDecoded { verdict_key } =>
-      WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: if verdict_key == "not_run" {
-          WorkflowSegmentPending
-        } else if verdict_key == "passed" {
-          WorkflowSegmentComplete
-        } else if verdict_key == "failed" {
-          WorkflowSegmentFailed
-        } else {
-          WorkflowSegmentRefused
-        },
-        detail: if verdict_key == "not_run" {
-          "the declared validation has not run yet; this pending state is read from the attempt's own receipt rather than inferred from its absence"
-        } else {
-          join([
-            "declared validation ",
-            verdict_key,
-            " against the oracle pinned at dispatch",
-          ], "")
-        },
+    VerificationFileDecoded { evidence: decoded } =>
+      match decoded {
+        VerificationEvidenceForSubject { receipt } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: if verification_evidence_moves_lamp(evidence: decoded) {
+              WorkflowSegmentComplete
+            } else if validation_verdict_key(verdict: receipt.verdict) == "failed" {
+              WorkflowSegmentFailed
+            } else if validation_verdict_key(verdict: receipt.verdict) == "not_run" {
+              WorkflowSegmentPending
+            } else {
+              WorkflowSegmentRefused
+            },
+            detail: join([
+              validation_verdict_detail(verdict: receipt.verdict),
+              " (",
+              receipt.subject.branch as String,
+              " at ",
+              receipt.subject.head_sha as String,
+              ")",
+            ], ""),
+          }
+        VerificationEvidenceForAnotherSubject { field, expected, found } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: WorkflowSegmentRefused,
+            detail: join([
+              "a verification receipt was read for this attempt and it answers a different question: ",
+              field as String, " should be ", expected, " and the receipt records ", found,
+            ], ""),
+          }
+        VerificationEvidenceLegacyAttemptLevel { verdict_key } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: WorkflowSegmentPending,
+            detail: join([
+              "this attempt carries only a legacy attempt-level validation receipt (",
+              verdict_key,
+              "); exact-head verification evidence is required before the Verify lamp can move",
+            ], ""),
+          }
       }
   }
 }
@@ -510,45 +556,48 @@ fn verification_receipt_segment(receipt: String) -> WorkflowSegment {
 fn verification_segment(
   provider: ProviderExecutionState,
   validation_summary: String,
-  validation_receipt_readable: Bool,
-  validation_receipt: String,
+  verification_subject: VerificationSubjectObservation,
+  verification_source: VerificationReceiptFileSource,
 ) -> WorkflowSegment {
-  if validation_receipt_readable && trim(validation_receipt) != "" {
-    verification_receipt_segment(receipt: validation_receipt)
-  } else {
-  match provider {
-    ProviderCompleted { activity: _ } =>
+  match verification_subject {
+    VerificationSubjectUnobserved { reason } =>
       WorkflowSegment {
         kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentPending,
+        state: WorkflowSegmentRefused,
         detail: join([
-          "awaiting independent validation receipt",
-          if validation_summary == "" {
-            ""
-          } else {
-            join([": ", validation_summary], "")
-          },
+          "this attempt has no exact head to adjudicate verification against, so no receipt can be checked for it: ",
+          reason,
         ], ""),
       }
-    ProviderFailed { activity: _, detail: _ } =>
-      WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentPending,
-        detail: "not reached because the agent failed",
+    VerificationSubjectObserved { subject } =>
+      if match verification_source {
+        VerificationReceiptAbsent => true
+        VerificationReceiptUnreadable { detail: _ } => false
+        VerificationReceiptPresent { text: _ } => false
+      } && match provider {
+        ProviderCompleted { activity: _ } => true
+        _ => false
+      } {
+        WorkflowSegment {
+          kind: VerificationWorkflowSegment,
+          state: WorkflowSegmentPending,
+          detail: join([
+            "awaiting independent exact-head validation receipt",
+            if validation_summary == "" {
+              ""
+            } else {
+              join([": ", validation_summary], "")
+            },
+          ], ""),
+        }
+      } else {
+        verification_evidence_segment(
+          evidence: verification_file_evidence_for(
+            expected: subject,
+            source: verification_source,
+          ),
+        )
       }
-    ProviderEventsRefused { activity: _, detail: _ } =>
-      WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentPending,
-        detail: "not reached because agent evidence is refused",
-      }
-    _ =>
-      WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentPending,
-        detail: "waits for a terminal agent event",
-      }
-  }
   }
 }
 
@@ -595,8 +644,8 @@ fn workflow_segment_from_evidence(
       verification_segment(
         provider: provider,
         validation_summary: evidence.validation_summary,
-        validation_receipt_readable: evidence.validation_receipt_readable,
-        validation_receipt: evidence.validation_receipt,
+        verification_subject: evidence.verification_subject,
+        verification_source: evidence.verification_source,
       )
     PublicationWorkflowSegment =>
       publication_segment(
