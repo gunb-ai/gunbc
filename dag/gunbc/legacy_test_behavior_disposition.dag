@@ -365,7 +365,7 @@ data c_compilation_unit_leaf_disposition: LegacyTestBehaviorDisposition = Covere
   distinguishing_failure: "The legacy Rust test is only a wrapper that resolves this exact .dag entry and requires witness_r3_header_source_object_paths to pass. That witness checks the R3 header/source/object path split; collapsing a path arm or changing the unit spelling makes the .dag witness return false, so deleting the wrapper removes no independent oracle." as NonEmptyStr,
 }
 
-data dag_comment_wall_family_closed_loop_note: String = "THE FIRST FAMILY CARRIED THROUGH THE WHOLE LOOP — classified, then deleted — and the receipt for what this loop costs this graph. Subject: after the comment-ban wall, a solidus pair or a slash-star outside a string literal must refuse, a string literal containing a solidus pair must still be accepted, and comment-free source must still compile. Classification authored four CoveredByWitness rows over src/v1/tests/src/dag_comment_wall_test.rs (gunbc#7687); deletion removed that module and those rows together (gunbc#7690). THE ORDER IS NOT A DETAIL AND THE ROWS ARE NOT OPTIONAL BOOKKEEPING: a disposition whose behavior no longer discovers is stale, and this graph refuses stale rows, so classification rows are scoped to the live population by construction and cannot outlive the tests they classify. Whichever change a reader sees first, the invariant is the same — rows and behaviors depart together. The dag_comment_wall_family row and its live completion projection departed for the same reason: family membership is DERIVED from discovered identities, so a drained family discovers nothing and its completion fn refuses rather than reading as finished. The LegacyTestBehaviorFamily carrier and its fixture controls stay for the families still ahead.\n\nWHAT SURVIVES IS THE EVIDENCE, NOT THE ARGUMENT ABOUT IT (DESIGN 4b(4)): the four executing probes in v2.test.round_trip.dag_comment_wall_test — dag_comment_wall_clean_source_compiles, dag_comment_wall_line_comment_refused, dag_comment_wall_block_comment_refused, dag_comment_wall_slash_slash_inside_string_compiles — remain enrolled as the permanent regression wall, and that module note carries why each is discriminating. They are what made deletion safe and they outlive both the deleted module and the rows that argued for it.\n\nTHE NUMBER THIS RECORDS, because it is the one a reader will get wrong: deletion does NOT move the unclassified frontier. Discovered behaviors and their dispositions depart together, so the difference is unchanged and only the denominator shrinks — measured across this family, discovered 735 to 731 and dispositions 5 to 1 while the frontier stayed at 730. The frontier moves on CLASSIFICATION alone; deletion collects debt classification already discharged. A flat frontier across a deletion wave is the mechanism working, not a stalled lane."
+data dag_comment_wall_family_closed_loop_note: String = "THE FIRST FAMILY CLASSIFIED, AND THE RECEIPT FOR WHY ITS DELETION IS HELD. Subject: after the comment-ban wall, a solidus pair or a slash-star outside a string literal must refuse, a string literal containing a solidus pair must still be accepted, and comment-free source must still compile. Classification authored four CoveredByWitness rows over src/v1/tests/src/dag_comment_wall_test.rs (gunbc#7687). The rows and the legacy module are BOTH still live, deliberately.\n\nWHY DELETION IS HELD, and it is the correction this note exists to carry: the four probes these rows cite are in a directory CI never scans. witness_discovery_scan_dirs is [dag/test/claim, src/v2/test/claim/manual, src/v2/test/claim/emit]; the probes sat in src/v2/test/claim/round_trip, which is in none of them AND matches no exclusion pattern, so they were invisible to discovery by OMISSION rather than by exclusion. Established by execution on the populated main-push log that landed gunbc#7687 — 2000+ witnesses executed, zero from that file — with source_authority_contract_test.dag in the same directory as the control, which also executes zero, making it a lane fact rather than a file fact. An earlier revision of this note said deletion had already removed the module and the rows together; that was written against a local claim_batch run, and claim_batch is not the executor that gates a merge.\n\nTHE RULE THAT FAILED, stated so it is not re-derived: a CoveredByWitness row is a claim that a named witness goes red for the same reason the deleted test existed. A witness that never runs cannot go red for any reason, so co-greenness on a developer machine is not coverage — it is the same specification-without-execution failure one level up from the one this family was migrated to fix. The probes move into a scanned directory and the rows repoint at the new path; deletion follows a CI receipt naming the four probes, never a local run.\n\nWHAT THE ROWS ARE FOR (DESIGN 4b(4)): the four executing probes — dag_comment_wall_clean_source_compiles, dag_comment_wall_line_comment_refused, dag_comment_wall_block_comment_refused, dag_comment_wall_slash_slash_inside_string_compiles — are the permanent regression wall, and their module note carries why each is discriminating against its own accepted control. They are what will make deletion safe once they execute where the merge gate can see them.\n\nTHE INVARIANT THAT STILL HOLDS: a disposition whose behavior no longer discovers is stale and this graph refuses stale rows, so classification rows are scoped to the live population by construction and cannot outlive the tests they classify. Rows and behaviors depart together — which is exactly why holding the deletion holds the rows too, rather than leaving a graph that reads discharged while nothing executes.\n\nTHE NUMBER A READER WILL GET WRONG: deletion does NOT move the unclassified frontier. Discovered behaviors and their dispositions depart together, so the difference is unchanged and only the denominator shrinks. The frontier moves on CLASSIFICATION alone; deletion collects debt classification already discharged. A flat frontier across a deletion wave is the mechanism working, not a stalled lane."
 
 data optional_rendering_family_note: String = "THE v1-EMITTER OPTIONAL-RENDERING FAMILY, family two. Subject: how the Route-A Rust emitter treats a DECLARED optional — the signature it renders for an optional return, and the call-site construction it emits when an optional flows into a non-optional parameter. The two legacy modules are one family because they are two halves of one repair: making the signature render Option<..> faithfully is what EXPOSED the optional-into-required mismatch at call sites, and the fail-closed unwrap is what closes it. Splitting them would leave each half's control arguing about a fact the other half owns.\\n\\nWHY THIS FAMILY WAS MIGRATABLE WHERE THE TYPESCRIPT ONE WAS NOT: the assertions are about EMITTED TEXT, and compile_dag_rust_emit_check already carries emitted-substring inclusion and exclusion through the production compile path, so no host process and no new capability was needed. Where the Rust modules had to slice the emitted text to a single function before asserting a bare `Option<` — because the runtime's own types mention Option and a whole-file scan would pass on them — the migrated witnesses name the WHOLE expected signature instead, which needs no scoping and pins parameter spelling and carrier rendering as well."
 
@@ -460,6 +460,77 @@ data empty_optional_unwrap_disposition: LegacyTestBehaviorDisposition = DeleteLo
   reason: "NO gunbc CODE IS IN THIS TEST'S LOOP. It builds an empty Vec in Rust, calls Option::expect on the resulting None inside catch_unwind and asserts a panic, then calls unwrap_or_default and asserts it yields 0. Both are guarantees of the Rust standard library, true independently of anything this repository emits, and neither invokes the compiler, the emitter, or any fixture source. It is a demonstration of why the emitter's choice matters, written as a test — valuable as documentation, worth nothing as an oracle, because no change to gunbc can make it fail. The fact it is really about — that the emitter chooses the aborting shape and never the fabricating one — is asserted where that choice is actually made, by the migrated call-site witness's exclusion of unwrap_or_default and unwrap_or_else. Deleted for having no gunbc-observable failure mode, not to reduce a count." as NonEmptyStr,
 }
 
+data dag_comment_wall_family_note: String = "THE dag-comment-wall BEHAVIOR FAMILY, the first family carried to completion. Subject: after the comment-ban wall, a `//` or `/* */` outside a string literal must refuse, a string literal containing `//` must still be accepted, and comment-free source must still compile. Before this migration the floor carried the subject only as two FidelityDisposition rows (v2.test.round_trip.dag_comment_wall_test dag_line_comment_is_fail_closed / dag_block_comment_is_fail_closed), which assert what the language model DECLARES and stay green under a tokenizer that re-admits comment-skip — a declaration standing where an execution was available. The four executing probes now in that same file drive the production compile path (compile_dag_rust_emit_check, the compile-clean hard-diagnostic authority) that the Rust module drove through parse_with_table, so each row below names a witness that goes red for the reason its behavior existed rather than a peer that merely stays quiet. Deletability of the Rust module is separate and already authorized at stem grain: the floor witness file shares the stem dag_comment_wall_test, so the delete guard admits the module the moment a change deletes it. Deletion is deliberately NOT part of this change — a disposition whose behavior no longer discovers is stale and refuses, so classification and deletion are separate acts on this graph."
+
+data dag_comment_wall_family: LegacyTestBehaviorFamily = LegacyTestBehaviorFamily {
+  name: "dag-comment-wall" as NonEmptyStr,
+  source_files: ["src/v1/tests/src/dag_comment_wall_test.rs" as FilePath],
+}
+
+data comment_wall_clean_behavior: LegacyTestBehavior = LegacyTestBehavior {
+  source_file: "src/v1/tests/src/dag_comment_wall_test.rs" as FilePath,
+  test_fn: "clean_source_parses" as NonEmptyStr,
+}
+
+data comment_wall_clean_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  test_fn: "dag_comment_wall_clean_source_compiles" as NonEmptyStr,
+}
+
+data comment_wall_clean_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: comment_wall_clean_behavior,
+  witness: comment_wall_clean_witness,
+  distinguishing_failure: "The behavior exists because a wall that refuses comments must not also refuse valid code. The witness compiles the comment-free module comment_wall_clean through the production compile path and requires acceptance, so a wall widened past comments — a tokenizer arm that refuses any source containing a solidus, or a hard diagnostic raised on well-formed input — makes it return false. It is also the accepted control the two refusal witnesses are discriminated against: their probe sources differ from this one only by the comment text, so a fixture defect that redded a refusal probe for an unrelated reason reds this row too instead of passing as a wall." as NonEmptyStr,
+}
+
+data comment_wall_line_behavior: LegacyTestBehavior = LegacyTestBehavior {
+  source_file: "src/v1/tests/src/dag_comment_wall_test.rs" as FilePath,
+  test_fn: "line_comment_fails_to_parse" as NonEmptyStr,
+}
+
+data comment_wall_line_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  test_fn: "dag_comment_wall_line_comment_refused" as NonEmptyStr,
+}
+
+data comment_wall_line_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: comment_wall_line_behavior,
+  witness: comment_wall_line_witness,
+  distinguishing_failure: "Restoring line-comment skipping to the tokenizer is the input this behavior exists to catch. Under that change the probe source `fn probe() -> Bool { true } // comment` stops producing hard diagnostics, compile_dag_rust_emit_check answers true, and the negated witness returns false — the same discriminating input that made the Rust assertion fail, driven through the same compile path. The pre-existing floor row dag_line_comment_is_fail_closed does NOT have this property: it compares a declared FidelityDisposition constant and stays green under exactly that tokenizer edit, which is why the migration added an executing probe rather than citing the declaration." as NonEmptyStr,
+}
+
+data comment_wall_block_behavior: LegacyTestBehavior = LegacyTestBehavior {
+  source_file: "src/v1/tests/src/dag_comment_wall_test.rs" as FilePath,
+  test_fn: "block_comment_fails_to_parse" as NonEmptyStr,
+}
+
+data comment_wall_block_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  test_fn: "dag_comment_wall_block_comment_refused" as NonEmptyStr,
+}
+
+data comment_wall_block_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: comment_wall_block_behavior,
+  witness: comment_wall_block_witness,
+  distinguishing_failure: "The block form is a separate tokenizer arm from the line form, so it carries its own witness rather than sharing one: re-admitting `/* */` skipping alone leaves the line probe red while this probe's source `/* comment */` starts compiling, flipping this witness to false on its own. The floor's declared dag_block_comment_is_fail_closed row is green under that same edit." as NonEmptyStr,
+}
+
+data comment_wall_string_behavior: LegacyTestBehavior = LegacyTestBehavior {
+  source_file: "src/v1/tests/src/dag_comment_wall_test.rs" as FilePath,
+  test_fn: "slash_slash_inside_string_literal_parses" as NonEmptyStr,
+}
+
+data comment_wall_string_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag" as FilePath,
+  test_fn: "dag_comment_wall_slash_slash_inside_string_compiles" as NonEmptyStr,
+}
+
+data comment_wall_string_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: comment_wall_string_behavior,
+  witness: comment_wall_string_witness,
+  distinguishing_failure: "The behavior exists because the wall must stop at the string boundary. A wall implemented by refusing the solidus pair anywhere in the source — the obvious over-broad fix, and the one the Rust module was written against — makes the probe module holding \"https://example.com\" fail to compile and this witness return false. The witness file's own url literal is a second, structurally stronger oracle for the same fact: under that over-broad wall the witness module stops tokenizing and every row in it reds, so this behavior cannot be silently lost." as NonEmptyStr,
+}
+
 fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
   [
     c_compilation_unit_leaf_disposition,
@@ -470,6 +541,10 @@ fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
     required_param_optional_arg_disposition,
     required_param_nonoptional_arg_disposition,
     empty_optional_unwrap_disposition,
+    comment_wall_clean_disposition,
+    comment_wall_line_disposition,
+    comment_wall_block_disposition,
+    comment_wall_string_disposition,
   ]
 }
 
@@ -544,6 +619,16 @@ fn optional_rendering_family_complete_live() -> Bool {
     dispositions: legacy_test_behavior_dispositions(),
     exclusion_patterns: witness_exclusion_patterns_live(),
     offline_patterns: witness_offline_patterns_live(),
+  )
+}
+
+fn dag_comment_wall_family_complete_live() -> Bool {
+  legacy_test_behavior_family_complete(
+    discovery_holds: test_migration_behavior_discovery_holds(),
+    family: dag_comment_wall_family,
+    discovered_legacy: legacy_test_behavior_ids_live(),
+    discovered_witnesses: test_behavior_witness_ids_live(),
+    dispositions: legacy_test_behavior_dispositions(),
   )
 }
 

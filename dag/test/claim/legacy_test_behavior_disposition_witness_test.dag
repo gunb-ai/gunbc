@@ -8,6 +8,7 @@ import gunbc.legacy_test_behavior_disposition {
   LegacyTestBehaviorFamily,
   RetainedNonMigratableBehavior,
   TestBehaviorWitness,
+  dag_comment_wall_family_complete_live,
   legacy_test_behavior_declared_slice_holds,
   legacy_test_behavior_disposition_graph_holds,
   WitnessNotScheduledOffline,
@@ -286,6 +287,10 @@ test fn non_covered_dispositions_are_unaffected_by_the_execution_wall() -> Bool 
     exclusion_patterns: ["fixture/"],
     offline_patterns: [],
   )) == 0
+}
+
+test fn dag_comment_wall_family_is_complete_live() -> Bool {
+  dag_comment_wall_family_complete_live()
 }
 
 test fn legacy_test_behavior_discovery_refusal_cannot_fabricate_green() -> Bool {
