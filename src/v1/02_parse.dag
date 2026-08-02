@@ -1126,6 +1126,18 @@ fn parsed_occurrence_role_for_node(
           ParsedOccurrenceReference { category: FieldOccurrence }
         ExprMethodCall { method_semantics: _ } =>
           ParsedOccurrenceReference { category: MethodOccurrence }
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
+          ParsedOccurrenceReference { category: CallableOccurrence }
+        NoExprData =>
+          match node.body {
+            Present { value: _ } =>
+              match node.type_annotation {
+                Absent =>
+                  ParsedOccurrenceDeclaration { category: CallableOccurrence }
+                Present { value: _ } => ParsedOccurrenceUnclassified
+              }
+            Absent => ParsedOccurrenceUnclassified
+          }
         _ => ParsedOccurrenceUnclassified
       }
     _ => requested
@@ -1462,6 +1474,20 @@ fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineInde
     intern_table: intern_table,
     occurrence_base: intern_table.authored_token_ordinals
   )
+}
+
+data parse_with_table_ready_module_path_note: String = "Projects the parsed module name without naming the module field through a cross-module keyword collision. Bridge consumers (occurrence_binding_parser_walk) read this Present only when parse succeeded."
+
+fn parse_with_table_ready_module_path(parsed: ParseWithTableResult) -> String? {
+  match parsed.result.error {
+    Present { value: _ } => none
+    Absent =>
+      match parsed.result.module {
+        Present { value: module_node } =>
+          Present { value: module_node.name }
+        Absent => none
+      }
+  }
 }
 
 fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
