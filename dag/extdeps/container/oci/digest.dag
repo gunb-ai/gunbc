@@ -10,12 +10,14 @@ import std.content_hash {
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data oci_digest_external_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md"
   }
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = oci_digest_external_authority
 
 type OpenContainersImageSpecification
   = | OpenContainersImageSpecificationAuthority
@@ -30,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps.container.oci.digest.extdeps_external_authority_anchor,
+  first_citation: oci_digest_external_authority,
   further_citations: []
 }
 

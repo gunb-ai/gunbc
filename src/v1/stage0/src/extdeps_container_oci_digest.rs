@@ -2,11 +2,16 @@
 // Source module: extdeps.container.oci.digest
 
 use self::OciContentDigest::*;
-pub use crate::extdeps_external_authority::ExternalAuthority;
+use self::OpenContainersImageSpecification::*;
+pub use crate::extdeps_external_authority::{
+    ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+};
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_content_hash::Sha256Digest;
 pub use crate::std_content_hash::{content_hash_validate_lower_hex_length, sha256_hex_digest};
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -15,7 +20,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn oci_digest_external_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
@@ -27,6 +32,51 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+    thread_local! {
+        static CACHED: Rc<ExternalAuthority> = {
+            oci_digest_external_authority()
+        };
+    }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OpenContainersImageSpecification {
+    OpenContainersImageSpecificationAuthority,
+}
+
+pub fn opencontainers_image_specification() -> OpenContainersImageSpecification {
+    thread_local! {
+        static CACHED: OpenContainersImageSpecification = {
+            OpenContainersImageSpecification::OpenContainersImageSpecificationAuthority
+        };
+    }
+    CACHED.with(|c: &OpenContainersImageSpecification| c.clone())
+}
+
+pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
+    thread_local! {
+            static CACHED: Rc<ExternalModelScope> = {
+                Rc::new(ExternalModelScope {
+        subject: Rc::new(ExternalSubjectRef {
+        declaration: Rc::new(DeclarationRef {
+        module_path: "extdeps.container.oci.digest".to_string(),
+        decl_name: "opencontainers_image_specification".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    }),
+    }),
+        first_citation: oci_digest_external_authority(),
+        further_citations: Rc::new(vec![]),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
 }
 
 pub fn oci_content_digest_note() -> String {
@@ -283,3 +333,6 @@ pub fn oci_sha256_content_digest(hex: String) -> Option<Rc<OciContentDigest>> {
 pub fn oci_content_digest_from_validated_sha256(digest: Rc<Sha256Digest>) -> Rc<OciContentDigest> {
     Rc::new(OciContentDigest::OciSha256Digest(digest.clone()))
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OpenContainersImageSpecificationAuthority;
