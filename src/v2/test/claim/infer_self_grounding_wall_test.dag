@@ -275,25 +275,36 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
         None => false
         Some { diagnostics: nes } =>
           match active_probe_row(probe: v2_frontier_red_probe) {
-            Present { value: row } => {
-              let observed = probe_observation_from_accepted_infer_diagnostics(diagnostics: d)
-              let receipt = build_v2_phase_receipt(
-                row: row,
-                observed: observed,
-                subject_revision: probe_subject_revision_placeholder,
-                harness_revision: probe_harness_revision_placeholder,
-              )
+            Present { value: row } =>
               wall_resolved_type_refused(root: root)
                 && nes.head.reason == ^infer_grounding_not_derived
-                && match join_receipt_to_path(receipt: receipt, paths: guarantee_probe_paths()) {
+                && receipt_matches_probe_row(
+                  receipt: build_v2_phase_receipt(
+                    row: row,
+                    observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                    subject_revision: probe_subject_revision_placeholder,
+                    harness_revision: probe_harness_revision_placeholder,
+                  ),
+                  row: row,
+                )
+                && match join_receipt_to_path(
+                  receipt: build_v2_phase_receipt(
+                    row: row,
+                    observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                    subject_revision: probe_subject_revision_placeholder,
+                    harness_revision: probe_harness_revision_placeholder,
+                  ),
+                  paths: guarantee_probe_paths(),
+                ) {
                   ReceiptJoined { path: p } =>
                     p.acceptance_boundary == InferToEval
-                      && receipt_matches_probe_row(receipt: receipt, row: row)
-                      && wall_frontier_observation_matches_infer(nes: nes, o: observed)
+                      && wall_frontier_observation_matches_infer(
+                        nes: nes,
+                        o: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                      )
                   ReceiptPathUnknown { receipt_path: _ } => false
                   ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
                 }
-            }
             Absent => false
           }
       }
@@ -306,24 +317,31 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match active_probe_row(probe: v2_frontier_green_probe) {
-        Present { value: row } => {
-          let observed = probe_observation_from_accepted_infer_diagnostics(diagnostics: d)
-          let receipt = build_v2_phase_receipt(
-            row: row,
-            observed: observed,
-            subject_revision: probe_subject_revision_placeholder,
-            harness_revision: probe_harness_revision_placeholder,
-          )
+        Present { value: row } =>
           d == None
-            && observation_is_clean(o: observed)
-            && match join_receipt_to_path(receipt: receipt, paths: guarantee_probe_paths()) {
-              ReceiptJoined { path: p } =>
-                p.acceptance_boundary == InferToEval
-                  && receipt_matches_probe_row(receipt: receipt, row: row)
+            && observation_is_clean(o: probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
+            && receipt_matches_probe_row(
+              receipt: build_v2_phase_receipt(
+                row: row,
+                observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                subject_revision: probe_subject_revision_placeholder,
+                harness_revision: probe_harness_revision_placeholder,
+              ),
+              row: row,
+            )
+            && match join_receipt_to_path(
+              receipt: build_v2_phase_receipt(
+                row: row,
+                observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                subject_revision: probe_subject_revision_placeholder,
+                harness_revision: probe_harness_revision_placeholder,
+              ),
+              paths: guarantee_probe_paths(),
+            ) {
+              ReceiptJoined { path: p } => p.acceptance_boundary == InferToEval
               ReceiptPathUnknown { receipt_path: _ } => false
               ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
             }
-        }
         Absent => false
       }
   }
