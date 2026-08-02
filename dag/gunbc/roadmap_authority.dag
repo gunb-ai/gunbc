@@ -5,7 +5,11 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.types { ContentHash }
+import std.content_hash {
+  fnv1a64_structural_hex_digest,
+  Fnv1a64Structural,
+  structural_content_hash,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
@@ -230,6 +234,15 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag" as FilePath,
     function: "observation_emit_frontier_is_zero" as NonEmptyStr,
+  )
+}
+
+data v1_rust_source_observation_execution_contract_note: String = "The node closes only on the nullary wet claim that reads the runner's GITHUB_SHA independently through shell.Env.Get, observes checkout HEAD through the existing Git path, and admits only their exact match. Binding the contract to the pure fold would permit constructed constants to stand in for liveness; binding it to the older population-only witness would prove only that Git returned paths, not that the paths belonged to the workflow subject."
+
+fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag" as FilePath,
+    function: "live_rust_observation_matches_actions_subject" as NonEmptyStr,
   )
 }
 
@@ -1123,7 +1136,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Two rounds of generation for every remaining part, with behaviour, build, and test results."
       )
     ),
-    active(
+    with_execution(active(
       identity: "rn_3KTM8Q5VXB2NRJ7HDW9FZ0CPGA",
       id: "v1-rust-source-observation",
       owner: "self-host",
@@ -1137,7 +1150,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Deciding what each file's fate should be, and the product-reachability question, both belong downstream. This node only makes the population honest.",
         handback: "The live observation, its typed refusals, and a count that comes from enumerating the tracked set rather than from inspection."
       )
-    ),
+    ), v1_rust_source_observation_execution_contract()),
     active(
       identity: "rn_M5WCJ1GDZVJ67JXQN2NBPJKB58",
       id: "v1-honest-frontier",
@@ -1766,7 +1779,15 @@ data scm_prerequisite_acceptance_note: String = "The operator explicitly accepte
 
 data scm_p0_acceptance_evidence_note: String = "P0 acceptance maps the roadmap clauses through test.claim.source_integration_landing_spine_witness witness_p0_roadmap_acceptance_contract_holds: all seven removed closure receipts stay machine-owned; evidence support/challenge/neither/conflict and terminal blocking do not become a preference question; both material alternatives resume by structural position; authorization, self-amendment, exhausted-bound, and permanent-effect failures keep their typed internal refusal and plain terminal projection; stale-parent work retries internally; a committed independently read-back transition stays Landed through projection failure; the audience projection excludes internal theory and manual Git-repair vocabulary; and the successful path retains its ordinary Git compatibility receipt. The same aggregate executes the explicit 50-agent/10-overlap/30-minute stress profile and timestamp non-authority. Handback remains bounded exactly at P0: gunbc.source_integration_landing_spine names the absent P1 proof kernel, P2 capture/edit lens, and P3 effect transport; none is claimed or activated by this receipt."
 
-fn chash(s: String) -> ContentHash { s }
+fn chash(s: String) -> Fnv1a64Structural {
+  match fnv1a64_structural_hex_digest(hex: s) {
+    Present { value: digest } => digest
+    Absent =>
+      structural_content_hash(
+        digest: s as Fnv1a64StructuralDigestHex,
+      )
+  }
+}
 
 fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
   [

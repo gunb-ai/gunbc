@@ -1,8 +1,9 @@
 module test.claim.merge_admission_attempt_witness
 
-import std.types { NonEmptyStr, ContentHash, CommitSha, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, CommitSha, String }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.github.checks { Success, Failure }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_object_id_eq }
 import gunbc.merge_admission {
   TestedSubject,
   WalkAttemptId,
@@ -17,6 +18,9 @@ import gunbc.merge_admission {
   MergeDeniedSubjectMismatch,
   classify_merge_admission_verdict_v2,
   merge_admission_verdict_would_block,
+  merge_admission_witness_git_tree,
+  merge_admission_witness_gate_roster,
+  GateRosterHash,
   gate_roster_content_hash,
   current_gate_roster_hash,
 }
@@ -37,9 +41,10 @@ import gunbc.merge_admission_produce {
   render_receipt_wire,
   render_git_object_id_wire,
   parse_git_object_id_wire,
+  render_gate_roster_hash_wire,
+  parse_gate_roster_hash_wire,
   stamp_floor_receipt_with_conclusion,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -47,7 +52,6 @@ data attempt_a_raw: String = "12345-1-ci"
 data attempt_b_raw: String = "12345-2-ci"
 data head_sha_fx: CommitSha = "abc1234def5678901234567890abcd1234567890"
 data other_head_sha_fx: CommitSha = "0000000111111112222222233333333444444445"
-data roster_fx: ContentHash = "roster-current"
 
 fn attempt_a() -> WalkAttemptId {
   match walk_attempt_id(raw: attempt_a_raw) {
@@ -64,11 +68,15 @@ fn attempt_b() -> WalkAttemptId {
 }
 
 fn base_tree_fx() -> GitObjectId {
-  GitSha1ObjectId { digest: "1111111111111111111111111111111111111111" }
+  merge_admission_witness_git_tree(label: "tree-base-current")
 }
 
 fn base_tree_stale_fx() -> GitObjectId {
-  GitSha1ObjectId { digest: "2222222222222222222222222222222222222222" }
+  merge_admission_witness_git_tree(label: "tree-base-stale")
+}
+
+fn roster_fx() -> GateRosterHash {
+  merge_admission_witness_gate_roster(label: "roster-current")
 }
 
 fn subject_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> TestedSubject {
@@ -76,7 +84,7 @@ fn subject_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> Tes
     attempt_id: attempt,
     head_sha: head,
     base_ref: "origin/main",
-    base_tree: tree,
+    base_tree_hash: tree,
   }
 }
 
@@ -85,8 +93,8 @@ fn receipt_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> Mer
     attempt_id: attempt,
     pr_number: Present { value: 7470 },
     tested_head_sha: head,
-    tested_base_tree: tree,
-    gate_roster_hash: roster_fx,
+    tested_base_tree_hash: tree,
+    gate_roster_hash: roster_fx(),
     conclusion: Success,
   }
 }
@@ -96,8 +104,8 @@ test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree: base_tree_fx(),
-    current_roster_hash: roster_fx,
+    merge_target_tree_hash: base_tree_fx(),
+    current_roster_hash: roster_fx(),
   ) { MergeAdmitted => true  _ => false }
 }
 
@@ -112,7 +120,7 @@ fn synthetic_changed_roster_receipt() -> MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
-    tested_base_tree: base_tree_fx(),
+    tested_base_tree_hash: base_tree_fx(),
     gate_roster_hash: synthetic_changed_roster_hash(),
     conclusion: Success,
   }
@@ -124,7 +132,7 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
       current_attempt_id: attempt_a(),
       tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
       receipt: synthetic_changed_roster_receipt(),
-      merge_target_tree: base_tree_fx(),
+      merge_target_tree_hash: base_tree_fx(),
       current_roster_hash: current_gate_roster_hash,
     ) {
       MergeDeniedStaleRoster => true
@@ -141,7 +149,7 @@ test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bo
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: synthetic_changed_roster_receipt(),
-    merge_target_tree: base_tree_fx(),
+    merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: synthetic_changed_roster_hash(),
   ) {
     MergeAdmitted => true
@@ -158,7 +166,7 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
-    tested_base_tree: base_tree_fx(),
+    tested_base_tree_hash: base_tree_fx(),
     gate_roster_hash: current_gate_roster_hash,
     conclusion: Success,
   }
@@ -166,7 +174,7 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt,
-    merge_target_tree: base_tree_fx(),
+    merge_target_tree_hash: base_tree_fx(),
     current_roster_hash: current_gate_roster_hash,
   ) {
     MergeAdmitted => true
@@ -183,8 +191,8 @@ test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_b(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree: base_tree_fx(),
-    current_roster_hash: roster_fx,
+    merge_target_tree_hash: base_tree_fx(),
+    current_roster_hash: roster_fx(),
   )
   match v { MergeDeniedWrongAttempt => merge_admission_verdict_would_block(v: v)  _ => false }
 }
@@ -194,16 +202,16 @@ test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
     attempt_id: attempt_b(),
     pr_number: none,
     tested_head_sha: other_head_sha_fx,
-    tested_base_tree: base_tree_stale_fx(),
-    gate_roster_hash: "roster-stale",
+    tested_base_tree_hash: base_tree_stale_fx(),
+    gate_roster_hash: merge_admission_witness_gate_roster(label: "roster-stale"),
     conclusion: Failure,
   }
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: r,
-    merge_target_tree: base_tree_fx(),
-    current_roster_hash: roster_fx,
+    merge_target_tree_hash: base_tree_fx(),
+    current_roster_hash: roster_fx(),
   ) { MergeDeniedWrongAttempt => true  _ => false }
 }
 
@@ -214,8 +222,8 @@ test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: other_head_sha_fx),
-    merge_target_tree: base_tree_fx(),
-    current_roster_hash: roster_fx,
+    merge_target_tree_hash: base_tree_fx(),
+    current_roster_hash: roster_fx(),
   )
   match v { MergeDeniedSubjectMismatch => merge_admission_verdict_would_block(v: v)  _ => false }
 }
@@ -225,8 +233,8 @@ test fn receipt_base_tree_that_differs_from_the_captured_subject_refuses() -> Bo
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_stale_fx(), head: head_sha_fx),
-    merge_target_tree: base_tree_stale_fx(),
-    current_roster_hash: roster_fx,
+    merge_target_tree_hash: base_tree_stale_fx(),
+    current_roster_hash: roster_fx(),
   ) { MergeDeniedSubjectMismatch => true  _ => false }
 }
 
@@ -235,8 +243,8 @@ test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> B
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_b(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree: base_tree_fx(),
-    current_roster_hash: roster_fx,
+    merge_target_tree_hash: base_tree_fx(),
+    current_roster_hash: roster_fx(),
   ) { MergeDeniedWrongAttempt => true  _ => false }
 }
 
@@ -245,8 +253,8 @@ test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() ->
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree: base_tree_stale_fx(),
-    current_roster_hash: roster_fx,
+    merge_target_tree_hash: base_tree_stale_fx(),
+    current_roster_hash: roster_fx(),
   ) { MergeDeniedStaleBase => true  _ => false }
 }
 
@@ -256,8 +264,8 @@ test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
     Present { value: parsed } =>
       ((parsed.attempt_id as String) == attempt_a_raw)
         && (parsed.tested_head_sha == head_sha_fx)
-        && git_object_id_eq(left: parsed.tested_base_tree, right: base_tree_fx())
-        && (parsed.gate_roster_hash == roster_fx)
+        && git_object_id_eq(left: parsed.tested_base_tree_hash, right: base_tree_fx())
+        && (parsed.gate_roster_hash == roster_fx())
         && match parsed.pr_number { Present { value: n } => n == 7470  Absent => false }
         && match parsed.conclusion { Success => true  _ => false }
     Absent => false
@@ -269,8 +277,8 @@ test fn wire_v2_roundtrips_without_pr() -> Bool {
     attempt_id: attempt_a(),
     pr_number: none,
     tested_head_sha: head_sha_fx,
-    tested_base_tree: base_tree_fx(),
-    gate_roster_hash: roster_fx,
+    tested_base_tree_hash: base_tree_fx(),
+    gate_roster_hash: roster_fx(),
     conclusion: Success,
   }
   match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
@@ -284,7 +292,7 @@ test fn v1_wire_refused_by_v2_parser() -> Bool {
   let v1 = render_receipt_wire(receipt: stamp_floor_receipt_with_conclusion(
     pr_number: Present { value: 7470 },
     head_sha: head_sha_fx,
-    base_tree_hash: "1111111111111111111111111111111111111111",
+    base_tree_hash: base_tree_fx(),
     conclusion: Success,
   ))
   match parse_receipt_wire_v2(text: v1) {
@@ -308,8 +316,8 @@ test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Boo
     attempt_id: attempt_a(),
     pr_number: none,
     tested_head_sha: head_sha_fx,
-    tested_base_tree: base_tree_fx(),
-    gate_roster_hash: roster_fx,
+    tested_base_tree_hash: base_tree_fx(),
+    gate_roster_hash: roster_fx(),
     conclusion: Success,
   })
   match parse_receipt_wire_v2(text: concat(no_pr, "\nnot-a-number")) {
@@ -333,7 +341,7 @@ test fn tested_subject_wire_roundtrips() -> Bool {
       ((parsed.attempt_id as String) == attempt_a_raw)
         && (parsed.head_sha == head_sha_fx)
         && (parsed.base_ref == "origin/main")
-        && git_object_id_eq(left: parsed.base_tree, right: base_tree_fx())
+        && git_object_id_eq(left: parsed.base_tree_hash, right: base_tree_fx())
     Absent => false
   }
 }
@@ -360,20 +368,33 @@ test fn object_id_wire_refuses_wrong_length_and_nonhex() -> Bool {
 
 test fn object_id_wire_carries_its_format_and_refuses_an_anonymous_hex() -> Bool {
   let sha1_wire = render_git_object_id_wire(oid: base_tree_fx())
-  let sha256 = GitSha256ObjectId { digest: "3333333333333333333333333333333333333333333333333333333333333333" }
   match parse_git_object_id_wire(raw: sha1_wire) {
     Present { value: back } => git_object_id_eq(left: back, right: base_tree_fx())
     Absent => false
   }
-    && match parse_git_object_id_wire(raw: "1111111111111111111111111111111111111111") {
+    && match parse_git_object_id_wire(raw: git_object_id_wire_hex(oid: base_tree_fx()) as String) {
          Present { value: _ } => false
          Absent => true
        }
     && match parse_git_object_id_wire(raw: "md5:1111") { Present { value: _ } => false  Absent => true }
-    && match parse_git_object_id_wire(raw: render_git_object_id_wire(oid: sha256)) {
-         Present { value: back } => !git_object_id_eq(left: back, right: base_tree_fx())
-         Absent => false
-       }
+}
+
+data gate_roster_hash_validation_red_note: String = "Before review 45474, parse_gate_roster_hash_wire cast any nonempty string to GateRosterHash. Blank, non-hex, uppercase, and wrong-length fingerprints all bound into receipts that typechecked while comparing equal to nothing real."
+
+test fn gate_roster_hash_wire_refuses_blank_malformed_and_wrong_length() -> Bool {
+  match parse_gate_roster_hash_wire(line: "") { Present { value: _ } => false  Absent => true }
+    && match parse_gate_roster_hash_wire(line: "not-hex") { Present { value: _ } => false  Absent => true }
+    && match parse_gate_roster_hash_wire(line: "ABCDEF0123456789") { Present { value: _ } => false  Absent => true }
+    && match parse_gate_roster_hash_wire(line: "abc") { Present { value: _ } => false  Absent => true }
+    && match parse_gate_roster_hash_wire(line: "1111111111111111111111111111111111") { Present { value: _ } => false  Absent => true }
+}
+
+test fn gate_roster_hash_wire_roundtrips_valid_fingerprint() -> Bool {
+  let wire = render_gate_roster_hash_wire(hash: roster_fx())
+  match parse_gate_roster_hash_wire(line: wire) {
+    Present { value: back } => back == roster_fx()
+    Absent => false
+  }
 }
 
 test fn attempt_id_composes_from_nonempty_parts() -> Bool {

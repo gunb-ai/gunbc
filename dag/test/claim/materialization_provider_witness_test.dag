@@ -1,6 +1,7 @@
 module test.claim.materialization_provider_witness
 
-import std.types { Bool, Int, List, String, ContentHash }
+import std.types { Bool, Int, List, String }
+import std.content_hash { ContentHash }
 import std.measure { byte_size, measure_count }
 import std.content_hash { content_hash_atom }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }

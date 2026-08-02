@@ -1,6 +1,6 @@
 module test.claim.realization_measurement_keystone
 
-import std.types { ContentHash }
+import std.content_hash { ContentHash, content_hash_of_value }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
@@ -25,7 +25,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
+data sample_subject: ContentHash = content_hash_of_value(value: "witness-subject-realization-measurement-keystone")
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
 data sample_wall_time: NanosecondDuration = nanosecond_duration(count: 5000000)
 data sample_space_a: ByteSize = byte_size(count: 1024)

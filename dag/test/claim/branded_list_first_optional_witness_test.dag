@@ -1,10 +1,15 @@
 module test.claim.branded_list_first_optional_witness
 
-import std.types { ContentHash, List, String }
+import std.types { List, String }
+import std.content_hash {
+  ContentHash,
+  content_hash_of_value,
+  content_hash_eq_structural,
+}
 import v2.std.collection { Present, Absent }
 
 fn hash_list() -> List<ContentHash> {
-  ["a" as ContentHash]
+  [content_hash_of_value(value: "a" as NonEmptyStr)]
 }
 
 fn empty_hash_list() -> List<ContentHash> {
@@ -21,7 +26,17 @@ fn empty_string_list() -> List<String> {
 
 test fn branded_list_first_content_hash_method_nonempty() -> Bool {
   match hash_list().first() {
-    Present { value: h } => h == ("a" as ContentHash)
+    Present { value: h } =>
+      match h {
+        Fnv1a64(left) =>
+          match content_hash_of_value(value: "a" as NonEmptyStr) {
+            Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
+            Sha256Hash(_) => false
+            Sha1Hash(_) => false
+          }
+        Sha256Hash(_) => false
+        Sha1Hash(_) => false
+      }
     Absent => false
   }
 }
@@ -49,7 +64,17 @@ test fn branded_list_first_string_method_empty() -> Bool {
 
 test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
   match hash_list() |> first {
-    Present { value: h } => h == ("a" as ContentHash)
+    Present { value: h } =>
+      match h {
+        Fnv1a64(left) =>
+          match content_hash_of_value(value: "a" as NonEmptyStr) {
+            Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
+            Sha256Hash(_) => false
+            Sha1Hash(_) => false
+          }
+        Sha256Hash(_) => false
+        Sha1Hash(_) => false
+      }
     Absent => false
   }
 }

@@ -1,6 +1,7 @@
 module std.realization_measurement
 
-import std.types { ContentHash, Bool, String, List, Int }
+import std.types { Bool, String, List, Int }
+import std.content_hash { ContentHash }
 import std.nat { Nat, nat_max }
 import std.measure {
   Measure,

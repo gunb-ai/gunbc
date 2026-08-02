@@ -94,7 +94,7 @@ fn self_host_fixpoint_digest_mismatch_diagnostic(
 }
 
 fn source_text_code_unit_digest(text: String) -> Hash {
-  atom_identity_hash(s: text)
+  symbol_identity_digest(sym: text)
 }
 
 fn canonical_emitted_bytes_digest(source: Medium<String>) -> Hash {
