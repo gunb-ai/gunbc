@@ -2,6 +2,7 @@ module std.selected_witness_bundle
 
 import std.types { NonEmptyStr, List, Int, Bool }
 import std.verification { NanosecondDuration }
+import std.measure { ByteSize }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -330,8 +331,8 @@ type NativeWitnessProductionTransitionReceipt {
   native_execution_wall_nanos: NanosecondDuration
   interpreter_oracle_wall_nanos: NanosecondDuration
   fallback_count: Int
-  rss_peak_bytes: Int
-  cgroup_peak_bytes: Int
+  rss_peak_bytes: ByteSize
+  cgroup_peak_bytes: ByteSize
   verdict: NativeProductionTransitionVerdict
   planted_red_equivalent: Bool
 }
@@ -345,8 +346,6 @@ fn native_production_transition_population_holds(
     && receipt.native_count + receipt.interpreted_count == receipt.selected_count
     && receipt.unavailable_count == receipt.fallback_count
     && receipt.fallback_count <= receipt.interpreted_count
-    && receipt.rss_peak_bytes >= 0
-    && receipt.cgroup_peak_bytes >= 0
 }
 
 type NativeBundleFamilyCutoverEvidence {
