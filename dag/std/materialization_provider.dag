@@ -548,20 +548,6 @@ fn resolve_closure_request_key_outcome(
   }
 }
 
-fn resolve_closure_request_key_from_digests(
-  closure_digest: ContentHash,
-  compiler_digest: ContentHash
-) -> ContentHash {
-  match resolve_closure_request_key_outcome(
-    closure_digest: closure_digest,
-    compiler_digest: compiler_digest
-  ) {
-    ResolveClosureRequestKeyReady { key: k } => k
-    ResolveClosureRequestKeyRefused { lookup: _ } =>
-      content_hash_atom(value: "resolve-closure-request-key-cross-family-unreachable")
-  }
-}
-
 fn resolved_graph_parts_semantic_digest_outcome(
   graph_digest: ContentHash,
   graph_bytes: ByteSize,
@@ -609,28 +595,6 @@ fn resolved_graph_parts_semantic_digest_outcome(
               }
           }
       }
-  }
-}
-
-fn resolved_graph_parts_semantic_digest(
-  graph_digest: ContentHash,
-  graph_bytes: ByteSize,
-  indices_digest: ContentHash,
-  indices_bytes: ByteSize,
-  union_digest: ContentHash,
-  union_bytes: ByteSize
-) -> ContentHash {
-  match resolved_graph_parts_semantic_digest_outcome(
-    graph_digest: graph_digest,
-    graph_bytes: graph_bytes,
-    indices_digest: indices_digest,
-    indices_bytes: indices_bytes,
-    union_digest: union_digest,
-    union_bytes: union_bytes
-  ) {
-    ResolvedGraphPartsSemanticDigestReady { digest: d } => d
-    ResolvedGraphPartsSemanticDigestRefused { lookup: _ } =>
-      content_hash_atom(value: "resolved-graph-parts-semantic-digest-cross-family-unreachable")
   }
 }
 
