@@ -457,41 +457,6 @@ fn compiler_identity_input(digest: Fnv1a64Structural) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
 }
 
-fn serve_resolved_graph_v2_disk_probe(
-  closure_digest: ContentHash,
-  compiler_digest: ContentHash,
-  graph_digest: ContentHash,
-  graph_bytes: ByteSize,
-  indices_digest: ContentHash,
-  indices_bytes: ByteSize,
-  union_digest: ContentHash,
-  union_bytes: ByteSize
-) -> ProviderLookup {
-  let req = ResolveClosureRequest {
-    closure_digest: closure_digest,
-    compiler: compiler_identity_input(digest: compiler_digest)
-  }
-  serve_resolved_graph_stored_disk_probe(
-    closure_digest: closure_digest,
-    compiler_digest: compiler_digest,
-    stored_request_key: request_key(req: req),
-    stored_semantic_digest: resolved_graph_parts_semantic_digest(
-      graph_digest: graph_digest,
-      graph_bytes: graph_bytes,
-      indices_digest: indices_digest,
-      indices_bytes: indices_bytes,
-      union_digest: union_digest,
-      union_bytes: union_bytes
-    ),
-    graph_digest: graph_digest,
-    graph_bytes: graph_bytes,
-    indices_digest: indices_digest,
-    indices_bytes: indices_bytes,
-    union_digest: union_digest,
-    union_bytes: union_bytes
-  )
-}
-
 fn resolve_closure_request_key_from_digests(
   closure_digest: ContentHash,
   compiler_digest: ContentHash
