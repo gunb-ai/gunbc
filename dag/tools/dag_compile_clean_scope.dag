@@ -164,8 +164,6 @@ fn witness_entry_roots_are_witness_layer_roots() -> Bool {
 }
 
 fn witness_empty_touched_requires_whole_tree() -> Bool {
-  // Probe short-circuits on empty touched before roster use; live scan is Class C
-  // totality. Duplicate-at-empty is witness_empty_touched_duplicate_roster_refuses_at_admission.
   match compile_clean_scope_disposition_probe(
     touched_paths: [],
     departed_paths: [],
