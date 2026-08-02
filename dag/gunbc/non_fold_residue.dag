@@ -171,7 +171,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/receipts.dag::consumer_receipt_ref_for" },
+    subject: PathSubject { path: "src/v2/lens/enforcement/receipts.dag::consumer_entry_identity_for" },
     reason: nfr_reason_land_red_era,
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
   },
