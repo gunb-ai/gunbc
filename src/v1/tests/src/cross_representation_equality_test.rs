@@ -6,9 +6,18 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpError, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
+// Every dag source in this file imports `std.occurrence_identity` even though no test
+// references it directly: the closures all reach `v2.std.node`, whose occurrence facade
+// references `std.occurrence_identity.*` by bare namespace path (no import), and this
+// helper's pool is import-driven — the bare references bind only if something drags the
+// module into the pool (the #6985 Class-B pool-membership shape, used here deliberately).
+// Without it every ctx in this module fails resolution with "unresolved type
+// 'std.occurrence_identity.…'" — which is how the whole module sat red, unnoticed
+// because the rust suite is local-only (CI removed 2026-07-11).
 const RECEIPTS_SOURCE: &str = r#"
 module test.xrepr
 
+import std.occurrence_identity
 import v2.std.logic { Bool }
 import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.algebra { Cons, Empty }
@@ -38,7 +47,15 @@ fn assert_resolved(resolved: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
+        // `where-refinement unenforced:` is filtered for the same reason
+        // `assert_content_hash_resolved` filters it: std.content_hash's refined hex
+        // carriers entered every closure via v2.std.node, and those advisory rows are
+        // not what these witnesses discriminate.
+        .filter(|m| {
+            !m.starts_with("complexity: ")
+                && !m.starts_with("unlisted import use ")
+                && !m.starts_with("where-refinement unenforced:")
+        })
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -126,6 +143,7 @@ fn genuine_inequalities_stay_false_not_errors() {
 const CALL_CONTRACT_SOURCE: &str = r#"
 module v2.test.callcontract
 
+import std.occurrence_identity
 import v2.std.logic { Bool }
 
 fn takes_tag(tag: Bool) -> Bool { tag }
@@ -143,7 +161,11 @@ fn assert_call_contract_resolved(resolved: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
+        .filter(|m| {
+            !m.starts_with("complexity: ")
+                && !m.starts_with("unlisted import use ")
+                && !m.starts_with("where-refinement unenforced:")
+        })
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -217,17 +239,34 @@ fn valid_application_sites_are_unaffected() {
 const CONTENT_HASH_CROSS_FAMILY_SOURCE: &str = r#"
 module test.contenthashxfamily
 
+import std.occurrence_identity
 import std.content_hash {
   ContentHash,
   Sha256Digest,
   Sha256DigestHex,
   content_hash_of_value,
+  content_hash_atom,
   as_content_hash_cryptographic,
   content_hash_eq_structural,
 }
 import std.types { Bool }
+import extdeps.transports.rest { RestAuthSensitiveIdentity, RestAuthenticated }
 
 data structural: ContentHash = content_hash_of_value(value: "fp-a")
+
+fn authed_identity() -> RestAuthSensitiveIdentity {
+  RestAuthenticated {
+    scheme: "BearerToken"
+    digest: content_hash_atom(value: "BearerToken\0test-replay-token")
+  }
+}
+
+fn other_token_identity() -> RestAuthSensitiveIdentity {
+  RestAuthenticated {
+    scheme: "BearerToken"
+    digest: content_hash_atom(value: "BearerToken\0other-token")
+  }
+}
 data sha256_row: ContentHash = as_content_hash_cryptographic(
   digest: Sha256Digest {
     hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as Sha256DigestHex,
@@ -302,6 +341,42 @@ fn cross_family_content_hash_bare_eq_refuses() {
             Ok(Value::Bool(true)) => {}
             other => panic!("same_family_eq: expected Bool(true), got {other:?}"),
         }
+    });
+}
+
+/// Discriminating witness for the authenticated half of the REST replay identity seam
+/// (gunbc#7648, second finding — review 47017 item 1 on #7650). The model types
+/// `RestAuthenticated.digest` as `Fnv1a64Structural`; before this pin the seed minted
+/// `(sym("digest"), Value::Str(<DefaultHasher hex>))` — a bare string OUTSIDE the fnv1a64
+/// family, so no dag-authored authenticated fixture could ever match a runtime invocation
+/// (the same silent-false fork as `input_digest`, one field over, invisible to the 9/9
+/// unauthenticated replay witnesses).
+///
+/// RED under either half of the old mint: a `Value::Str` digest fails the shape equality;
+/// a DefaultHasher digest fails the value equality against the modeled
+/// `content_hash_atom("<scheme>\0<secret>")` chain. The inequality arm guards that the
+/// digest actually discriminates secrets (a constant digest would pass the first assert
+/// on the wrong grounds).
+#[test]
+fn rest_authenticated_identity_matches_dag_constructed_value() {
+    with_content_hash_ctx(|ctx| {
+        let dag_side = v1_interpreter::run_in_context(ctx, "authed_identity", false)
+            .expect("authed_identity must evaluate");
+        let seed_side =
+            v1_interpreter::rest_authenticated_identity_for_witness("test-replay-token", ctx);
+        assert_eq!(
+            dag_side, seed_side,
+            "seed authenticated-identity mint diverged from the dag-authored \
+             RestAuthenticated (content_hash_atom digest); every authenticated replay \
+             fixture would silently fail to match its runtime invocation"
+        );
+        let other_token = v1_interpreter::run_in_context(ctx, "other_token_identity", false)
+            .expect("other_token_identity must evaluate");
+        assert_ne!(
+            other_token, seed_side,
+            "identities for different secrets must differ — a constant digest would make \
+             the equality arm above pass without discriminating credentials"
+        );
     });
 }
 
