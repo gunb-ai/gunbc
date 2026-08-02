@@ -217,6 +217,29 @@ fn ingested_emit_shape_frontier_tree_from_source(source: String) -> Outcome<Infe
   )
 }
 
+fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      bind_outcome(
+        o: infer(tree: arrow),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: Map {
+                lookup: fn(key) {
+                  Present { value: ingested_classical_not_composed_facts(key: key) }
+                }
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   ingested_staging_inferred_tree_from_source(source: source)
 }
@@ -559,7 +582,7 @@ test fn ingested_classical_not_staging_swapped_emit_refuses_underived_holds() ->
 }
 
 test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
-  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
       ingested_classical_not_verdict_is_pass(
         run: ingested_classical_not_run(
@@ -572,7 +595,7 @@ test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
-  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_swapped_source) {
+  match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_swapped_source) {
     Accepted { value: tree, diagnostics: _ } =>
       ingested_classical_not_verdict_is_semantic_mismatch(
         run: ingested_classical_not_run(
@@ -651,7 +674,7 @@ test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool 
   )
 }
 
-data ingested_classical_not_staging_composed_facts_scaffold: String = "Marked scaffold (lane: witness-realization / emit-host wet legs; owner: v2-inferred-tree-completeness; trigger: carrier split makes incomplete InferredTree unwritable so staging cannot compose over infer judgments). ingested_staging_inferred_tree_from_source is facts-flow-forward: Holds preserves canonical infer facts verbatim, including GroundingNotDerived — never upgrades infer's judgment to hand-composed DerivedGrounding. Violates (lookup miss) alone receives ingested_classical_not_composed_facts as the offline wet-leg frontier until the trigger fires. This is not a second infer authority; it is the same orch-emit miss pattern extended with composed derived facts for nodes infer never judged."
+data ingested_classical_not_staging_composed_facts_scaffold: String = "Marked scaffold (lane: witness-realization / emit-host wet legs; owner: v2-inferred-tree-completeness; trigger: carrier split makes incomplete InferredTree unwritable so staging cannot compose over infer judgments). ingested_staging_inferred_tree_from_source is facts-flow-forward: Holds preserves canonical infer facts verbatim, including GroundingNotDerived — never upgrades infer's judgment to hand-composed DerivedGrounding. Violates (lookup miss) alone receives ingested_classical_not_composed_facts as the offline wet-leg frontier until the trigger fires. ingested_wet_emit_eval_composed_tree_from_source is the separate wet-only carrier: composed DerivedGrounding on every lookup so emit accepts and eval admits facts — never enrolled per-PR and never masquerades as canonical infer output."
 
-data ingested_classical_not_emit_mock_shape_note: String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_source (orch-emit-compatible empty facts map, Violates-only lookup) -> assert emitted Rust TEXT (string compare, no compile), the shape src/v2/test/claim/emit/rust_binop_emit_test.dag already uses for direct emit() assertions. ingested_canonical_inferred_tree_from_source is the pure infer carrier; ingested_classical_not_canonical_emit_refuses_underived_holds and ingested_classical_not_staging_emit_refuses_underived_holds witness translate refuses recorded GroundingNotDerived on canonical and staging carriers respectively. ingested_staging_inferred_tree_from_source carries ingested_classical_not_staging_composed_facts_scaffold. Wet/nightly emit-vs-eval legs (emit_host_classical_not_ingested_equals_eval_holds, emit_on_demand_classical_not_native_one_build_holds, emit_host_native_only_classical_not_holds) use ingested_emit_shape_frontier_tree_from_source — the same empty-facts carrier as the per-PR shape witnesses — because staging now preserves GroundingNotDerived on Holds and cannot emit. Deliberately excludes those wet legs from per-PR CommitCheckEnrollment."
+data ingested_classical_not_emit_mock_shape_note: String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_source (orch-emit-compatible empty facts map) -> assert emitted Rust TEXT (string compare, no compile). ingested_canonical_inferred_tree_from_source is the pure infer carrier; ingested_classical_not_canonical_emit_refuses_underived_holds and ingested_classical_not_staging_emit_refuses_underived_holds witness translate refuses recorded GroundingNotDerived. Wet/nightly emit-vs-eval legs use ingested_wet_emit_eval_composed_tree_from_source (composed facts on every lookup — emit accepts, eval admits); shape-frontier stays emit-only. Deliberately excludes wet legs from per-PR CommitCheckEnrollment."
 
