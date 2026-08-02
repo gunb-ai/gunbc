@@ -22,14 +22,16 @@ import v2.extdeps.languages.rust {
   rust_fixture_emitted_add_fn,
   rust_fn_add_lex,
 }
-import v2.std.algebra { count }
-import v2.std.collection { empty_map }
+import v2.std.algebra { any, filter, length }
+import v2.std.collection { empty_map, List }
 import v2.std.compilers.target_model {
   TargetModel,
   target_model_emit_transforms_empty,
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
   Node,
@@ -37,7 +39,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.optional { Absent, Present }
-import v2.std.types { Bool, Int, List, String }
+import v2.std.text { String }
 
 data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: the v2 emit path writes Rust source through serialize_target composed with translate (v2.compiler.emit via candidate_generation.mint_provenanced_rust_artifact) without v1.compiler.emit_rust in the realized closure."
 
@@ -178,7 +180,7 @@ fn direct_rust_door_missing_capabilities(
 fn direct_rust_door_closing_frontier_count(
   admissions: List<DirectRustDoorAdmission>,
 ) -> Int {
-  count(direct_rust_door_missing_capabilities(admissions: admissions))
+  length(direct_rust_door_missing_capabilities(admissions: admissions))
 }
 
 fn v2_emitter_direct_rust_door_closing_contract_holds(

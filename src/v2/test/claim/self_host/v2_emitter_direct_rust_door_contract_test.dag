@@ -16,13 +16,13 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   v2_emitter_direct_rust_door_acceptance_admissions,
   v2_emitter_direct_rust_door_closing_contract_holds,
 }
-import v2.std.algebra { any, count }
+import v2.std.algebra { any, length }
 import v2.std.logic { Bool }
 
 data v2_emitter_direct_rust_door_contract_witness_note: String = "CONTROLLED FIXTURES for the two-clause closing fold. Production admissions establish both MissingTranslationRuleRefuses and WrittenSourceIndependentOfSeedEmitter after candidate_generation wires serialize_target through v2.compiler.emit. Fixture tests prove the fold rejects planted dishonest admissions and that unavailable rows cannot be erased by duplicate established rows."
 
 test fn witness_required_capability_population_is_two() -> Bool {
-  count(direct_rust_door_required_capabilities()) == 2
+  length(direct_rust_door_required_capabilities()) == 2
 }
 
 test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
@@ -42,7 +42,7 @@ test fn witness_written_source_assessment_establishes_on_fixture() -> Bool {
 
 test fn witness_production_admissions_close_contract_holds() -> Bool {
   let admissions = v2_emitter_direct_rust_door_acceptance_admissions()
-  count(admissions) == 2
+  length(admissions) == 2
     && direct_rust_door_closing_frontier_count(admissions: admissions) == 0
     && v2_emitter_direct_rust_door_closing_contract_holds(admissions: admissions)
     && admissions |> any(admission => match admission {
