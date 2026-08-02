@@ -34,7 +34,10 @@ test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool
       maintenance_disposition_paths: maintenance_disposition_paths,
       unclassified_paths: paths,
       stale_disposition_paths: stale_disposition_paths,
+      duplicate_generated_paths: duplicate_generated_paths,
       duplicate_disposition_paths: duplicate_disposition_paths,
+      duplicate_role_paths: duplicate_role_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>

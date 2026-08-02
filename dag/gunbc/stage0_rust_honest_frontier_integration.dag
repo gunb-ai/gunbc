@@ -19,8 +19,9 @@ import gunbc.stage0_rust_product_reachability {
   ProductReachabilityDerived,
   ProductReachabilityObservationRefused,
   ProductReachabilityReceipt,
-  exact_product_reachable_paths,
-  exact_reachability_refused_paths,
+  RustProductReachabilityVerdict,
+  exact_product_reachable_paths_from_verdicts,
+  exact_reachability_refused_paths_from_verdicts,
   product_reachability_receipt
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
@@ -43,10 +44,10 @@ type HonestFrontierIntegrationReceipt
   | HonestFrontierIntegrationRefused { detail: String }
 
 fn exact_hand_maintained_product_reachable_paths(
-  reachability: ProductReachabilityReceipt
+  verdicts: List<RustProductReachabilityVerdict>
 ) -> List<String> {
   let hand_paths = derived_hand_maintained_stage0_repo_paths()
-  let product_reachable = exact_product_reachable_paths(receipt: reachability)
+  let product_reachable = exact_product_reachable_paths_from_verdicts(verdicts: verdicts)
   filter(
     xs: hand_paths,
     predicate: fn(path) { path_in_list(path: path, paths: product_reachable) }
@@ -54,10 +55,10 @@ fn exact_hand_maintained_product_reachable_paths(
 }
 
 fn exact_hand_maintained_reachability_refused_paths(
-  reachability: ProductReachabilityReceipt
+  verdicts: List<RustProductReachabilityVerdict>
 ) -> List<String> {
   let hand_paths = derived_hand_maintained_stage0_repo_paths()
-  let refused = exact_reachability_refused_paths(receipt: reachability)
+  let refused = exact_reachability_refused_paths_from_verdicts(verdicts: verdicts)
   filter(
     xs: hand_paths,
     predicate: fn(path) { path_in_list(path: path, paths: refused) }
@@ -97,7 +98,10 @@ fn honest_frontier_integration_receipt(
             maintenance_disposition_paths: maintenance_disposition_paths,
             unclassified_paths: unclassified_paths,
             stale_disposition_paths: stale_disposition_paths,
+            duplicate_generated_paths: duplicate_generated_paths,
             duplicate_disposition_paths: duplicate_disposition_paths,
+            duplicate_role_paths: duplicate_role_paths,
+            cross_axis_overlap_paths: cross_axis_overlap_paths,
             role_without_disposition_paths: role_without_disposition_paths,
             ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
           } =>
@@ -109,10 +113,10 @@ fn honest_frontier_integration_receipt(
                 verdicts: verdicts
               } => {
                 let hand_product = exact_hand_maintained_product_reachable_paths(
-                  reachability: reachability
+                  verdicts: verdicts
                 )
                 let hand_refused = exact_hand_maintained_reachability_refused_paths(
-                  reachability: reachability
+                  verdicts: verdicts
                 )
                 HonestFrontierIntegrationDerived {
                   lifecycle: lifecycle,
@@ -167,7 +171,10 @@ fn tracked_rust_unclassified_projection(
           maintenance_disposition_paths: maintenance_disposition_paths,
           unclassified_paths: paths,
           stale_disposition_paths: stale_disposition_paths,
+          duplicate_generated_paths: duplicate_generated_paths,
           duplicate_disposition_paths: duplicate_disposition_paths,
+          duplicate_role_paths: duplicate_role_paths,
+          cross_axis_overlap_paths: cross_axis_overlap_paths,
           role_without_disposition_paths: role_without_disposition_paths,
           ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
         } =>
@@ -187,7 +194,10 @@ fn honest_frontier_discovery_complete(observation: RustSourceHostObservation) ->
       maintenance_disposition_paths: maintenance_disposition_paths,
       unclassified_paths: unclassified_paths,
       stale_disposition_paths: stale_disposition_paths,
+      duplicate_generated_paths: duplicate_generated_paths,
       duplicate_disposition_paths: duplicate_disposition_paths,
+      duplicate_role_paths: duplicate_role_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } => lifecycle_discovery_complete(receipt: receipt)
@@ -204,7 +214,10 @@ fn honest_frontier_decision_complete(observation: RustSourceHostObservation) -> 
       maintenance_disposition_paths: maintenance_disposition_paths,
       unclassified_paths: unclassified_paths,
       stale_disposition_paths: stale_disposition_paths,
+      duplicate_generated_paths: duplicate_generated_paths,
       duplicate_disposition_paths: duplicate_disposition_paths,
+      duplicate_role_paths: duplicate_role_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } => lifecycle_decision_complete(receipt: receipt)

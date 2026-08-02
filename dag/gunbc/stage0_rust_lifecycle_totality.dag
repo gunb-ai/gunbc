@@ -22,7 +22,7 @@ import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate, role-without-disposition, ill-formed maintenance-disposition shape (rust_maintenance_disposition_well_formed on residue rows). stage0_rust_lifecycle_totality_underived_axes names C1 axes the brief requires but this carrier cannot derive yet (counted, not silent). Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery (is the tracked census non-empty and consistent with admitted disposition paths — no stale or duplicate lifecycle entries?) and decision (does every tracked path carry a disposition?) stay separate axes."
+data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate-within-authority (generated, disposition, role rows BEFORE deduplication), cross-axis overlap (generated ∩ disposition), role-without-disposition, ill-formed maintenance-disposition shape. stage0_rust_lifecycle_totality_underived_axes names C1 axes the brief requires but this carrier cannot derive yet (counted, not silent). Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery and decision each require every reported defect dimension to be explicitly zero — not incidental implication."
 
 type LifecycleTotalityUnderivedAxis = RetirementTrigger
 
@@ -43,11 +43,43 @@ type LifecycleTotalityReceipt
       maintenance_disposition_paths: List<String>,
       unclassified_paths: List<String>,
       stale_disposition_paths: List<String>,
+      duplicate_generated_paths: List<String>,
       duplicate_disposition_paths: List<String>,
+      duplicate_role_paths: List<String>,
+      cross_axis_overlap_paths: List<String>,
       role_without_disposition_paths: List<String>,
       ill_formed_maintenance_disposition_paths: List<String>
     }
   | LifecycleTotalityObservationRefused
+
+fn raw_disposition_authority_paths() -> List<String> {
+  list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
+}
+
+fn exact_duplicate_paths_within_authority(paths: List<String>) -> List<String> {
+  fold_list(
+    xs: paths,
+    empty: empty_string_list,
+    cons: fn(acc, path) {
+      if path_occurrence_count(paths: paths, needle: path) > 1
+        && !path_in_list(path: path, paths: acc) {
+        list_snoc_item(xs: acc, item: path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn exact_cross_axis_overlap_paths(
+  generated_paths: List<String>,
+  disposition_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: generated_paths,
+    predicate: fn(path) { path_in_list(path: path, paths: disposition_paths) }
+  )
+}
 
 fn well_formed_maintenance_disposition_paths() -> List<String> {
   list_map(
@@ -83,21 +115,6 @@ fn exact_stale_disposition_paths(
   filter(
     xs: lifecycle_paths,
     predicate: fn(path) { !path_in_list(path: path, paths: tracked_paths) }
-  )
-}
-
-fn exact_duplicate_disposition_paths(lifecycle_paths: List<String>) -> List<String> {
-  fold_list(
-    xs: lifecycle_paths,
-    empty: empty_string_list,
-    cons: fn(acc, path) {
-      if path_occurrence_count(paths: lifecycle_paths, needle: path) > 1
-        && !path_in_list(path: path, paths: acc) {
-        list_snoc_item(xs: acc, item: path)
-      } else {
-        acc
-      }
-    }
   )
 }
 
@@ -145,6 +162,7 @@ fn lifecycle_totality_receipt(
         LifecycleTotalityObservationRefused
       } else {
         let generated_paths = derived_generated_stage0_repo_paths()
+        let raw_disposition_paths = raw_disposition_authority_paths()
         let maintenance_disposition_paths = well_formed_maintenance_disposition_paths()
         let classified_paths = derived_file_grain_classified_repo_paths()
         LifecycleTotalityDerived {
@@ -159,8 +177,18 @@ fn lifecycle_totality_receipt(
             tracked_paths: tracked_paths,
             lifecycle_paths: classified_paths
           ),
-          duplicate_disposition_paths: exact_duplicate_disposition_paths(
-            lifecycle_paths: classified_paths
+          duplicate_generated_paths: exact_duplicate_paths_within_authority(
+            paths: generated_paths
+          ),
+          duplicate_disposition_paths: exact_duplicate_paths_within_authority(
+            paths: raw_disposition_paths
+          ),
+          duplicate_role_paths: exact_duplicate_paths_within_authority(
+            paths: cargo_bin_repo_paths
+          ),
+          cross_axis_overlap_paths: exact_cross_axis_overlap_paths(
+            generated_paths: generated_paths,
+            disposition_paths: raw_disposition_paths
           ),
           role_without_disposition_paths: exact_role_without_disposition_paths(
             cargo_bin_repo_paths: cargo_bin_repo_paths,
@@ -180,7 +208,10 @@ fn lifecycle_discovery_complete(receipt: LifecycleTotalityReceipt) -> Bool {
     LifecycleTotalityDerived {
       tracked_paths: tracked,
       stale_disposition_paths: stale,
-      duplicate_disposition_paths: duplicate,
+      duplicate_generated_paths: duplicate_generated,
+      duplicate_disposition_paths: duplicate_disposition,
+      duplicate_role_paths: duplicate_role,
+      cross_axis_overlap_paths: cross_axis_overlap,
       generated_paths: generated_paths,
       maintenance_disposition_paths: maintenance_disposition_paths,
       unclassified_paths: unclassified_paths,
@@ -189,7 +220,10 @@ fn lifecycle_discovery_complete(receipt: LifecycleTotalityReceipt) -> Bool {
     } =>
       length(xs: tracked) > 0
         && length(xs: stale) == 0
-        && length(xs: duplicate) == 0
+        && length(xs: duplicate_generated) == 0
+        && length(xs: duplicate_disposition) == 0
+        && length(xs: duplicate_role) == 0
+        && length(xs: cross_axis_overlap) == 0
     LifecycleTotalityObservationRefused => false
   }
 }
@@ -202,11 +236,21 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
       maintenance_disposition_paths: maintenance_disposition_paths,
       unclassified_paths: unclassified,
       stale_disposition_paths: stale_disposition_paths,
+      duplicate_generated_paths: duplicate_generated_paths,
       duplicate_disposition_paths: duplicate_disposition_paths,
+      duplicate_role_paths: duplicate_role_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>
       length(xs: unclassified) == 0
+        && length(xs: stale_disposition_paths) == 0
+        && length(xs: duplicate_generated_paths) == 0
+        && length(xs: duplicate_disposition_paths) == 0
+        && length(xs: duplicate_role_paths) == 0
+        && length(xs: cross_axis_overlap_paths) == 0
+        && length(xs: role_without_disposition_paths) == 0
+        && length(xs: ill_formed_maintenance_disposition_paths) == 0
     LifecycleTotalityObservationRefused => false
   }
 }

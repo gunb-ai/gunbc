@@ -1,8 +1,10 @@
 module test.claim.stage0_rust_product_reachability_witness
 
 import gunbc.stage0_rust_product_reachability {
-  NotProductReachable,
   ProductReachabilityDerived,
+  ProductReachabilityExactPathsDerived,
+  ProductReachabilityExactPathsRefused,
+  ProductReachabilityObservationRefused,
   ProductReachable,
   ReachabilityRefused,
   TestOnlyReachable,
@@ -18,6 +20,7 @@ import v2.std.algebra { length }
 test fn product_reachability_note_forbids_tracking_as_proof() -> Bool {
   string_contains(s: stage0_rust_product_reachability_note, pattern: "NOT proof")
     && string_contains(s: stage0_rust_product_reachability_note, pattern: "C2 carrier")
+    && string_contains(s: stage0_rust_product_reachability_note, pattern: "does NOT prove non-reachability")
 }
 
 test fn product_reachability_cargo_bin_is_product_entry() -> Bool {
@@ -42,13 +45,13 @@ test fn product_reachability_test_harness_is_test_only() -> Bool {
   }
 }
 
-test fn product_reachability_tooling_is_not_product() -> Bool {
+test fn product_reachability_tooling_refuses_instead_of_manufacturing_negative() -> Bool {
   match product_reachability_verdict_for_path(
     path: "dag/tools/foo/witness_main.rs",
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   ) {
-    NotProductReachable { path: path, reason: reason } =>
-      path == "dag/tools/foo/witness_main.rs" && reason != ""
+    ReachabilityRefused { path: path, unresolved_edge: edge } =>
+      path == "dag/tools/foo/witness_main.rs" && edge != ""
     _ => false
   }
 }
@@ -64,6 +67,17 @@ test fn product_reachability_red_control_refuses_unresolved_edge() -> Bool {
   }
 }
 
+test fn product_reachability_exact_paths_refuse_on_observation_refusal() -> Bool {
+  match exact_product_reachable_paths(receipt: ProductReachabilityObservationRefused) {
+    ProductReachabilityExactPathsRefused => true
+    _ => false
+  }
+    && match exact_reachability_refused_paths(receipt: ProductReachabilityObservationRefused) {
+      ProductReachabilityExactPathsRefused => true
+      _ => false
+    }
+}
+
 test fn product_reachability_exact_sets_partition_verdicts() -> Bool {
   let receipt = product_reachability_receipt(
     observation: product_reachability_witness_observation(
@@ -77,9 +91,17 @@ test fn product_reachability_exact_sets_partition_verdicts() -> Bool {
   )
   match receipt {
     ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
-      length(xs: exact_product_reachable_paths(receipt: receipt)) == 1
-        && length(xs: exact_reachability_refused_paths(receipt: receipt)) == 1
-        && length(xs: verdicts) == 3
+      match exact_product_reachable_paths(receipt: receipt) {
+        ProductReachabilityExactPathsDerived { paths: product_paths } =>
+          match exact_reachability_refused_paths(receipt: receipt) {
+            ProductReachabilityExactPathsDerived { paths: refused_paths } =>
+              length(xs: product_paths) == 1
+                && length(xs: refused_paths) == 1
+                && length(xs: verdicts) == 3
+            _ => false
+          }
+        _ => false
+      }
     _ => false
   }
 }
