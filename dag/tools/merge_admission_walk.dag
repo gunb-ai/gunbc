@@ -38,7 +38,7 @@ data merge_admission_pr_number_deferred_note: String = "MergeAdmissionReceiptV2.
 
 data merge_admission_current_main_cold_baseline_note: String = "CURRENT-MAIN BEFORE RECEIPT (not the stale pre-unification estimate): GitHub Actions run 30671526012, job 91291716818, head ddbc5fd6aa, 2026-07-31. The cold stamp process occupied 94.26s from the floor group's final receipt at 23:28:39.602Z through ExitSuccess at 23:30:13.861Z. The separate gate step occupied 102.87s from its step start at 23:30:16.977Z through ExitSuccess at 23:31:59.849Z. Combined merge-admission cold-process wall was therefore 197.13s per PR on that current-main receipt. The after number must come from this PR's own on-success receipt; no projected saving is asserted here."
 
-data merge_admission_fetch_stall_deadline_seconds: Seconds = 240 as Seconds
+data merge_admission_fetch_stall_deadline_seconds: Seconds = 240
 
 data merge_admission_fetch_deadline_note: String = "Stage 2 reserves five minutes for the whole postcondition population and gives FetchNoTags a stricter typed 240-second no-progress deadline. The git transport binds that value to http.lowSpeedTime with a one-byte-per-second floor, so a stalled remote read returns through FetchNoTags's located failure result while time remains to write the stage receipt; the 60-minute workflow wrapper is not the fetch watchdog."
 
