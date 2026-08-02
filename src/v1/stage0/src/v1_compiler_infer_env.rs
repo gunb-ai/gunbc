@@ -1553,8 +1553,7 @@ pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -
                     Some(leaf_binding) => {
                         match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
                             Some(indexed) => {
-                                (leaf_binding.resolved.clone().span.clone()
-                                    == indexed.span.clone())
+                                (leaf_binding.resolved.clone().span.clone() == indexed.span.clone())
                             }
                             None => false,
                         }
