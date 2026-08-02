@@ -1,0 +1,74 @@
+module v2.test.claim.self_host.v2_emitter_direct_rust_door_contract
+
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  DirectRustDoorEstablished,
+  DirectRustDoorRefused,
+  DirectRustDoorUnavailable,
+  MissingRuleAcceptedDespiteGap,
+  MissingTranslationRuleRefuses,
+  WrittenSourceIndependentOfSeedEmitter,
+  assess_missing_translation_rule_refuses,
+  candidate_generation_serialize_target_wiring_trigger,
+  direct_rust_door_closing_frontier_count,
+  direct_rust_door_required_capabilities,
+  refused,
+  v2_emitter_direct_rust_door_acceptance_admissions,
+  v2_emitter_direct_rust_door_closing_contract_holds,
+}
+import v2.std.algebra { count }
+import v2.std.logic { Bool }
+
+data v2_emitter_direct_rust_door_contract_witness_note: String = "CONTROLLED FIXTURES for the two-clause closing fold. The production admission seam establishes MissingTranslationRuleRefuses through the rust_add missing-rules fixture and keeps WrittenSourceIndependentOfSeedEmitter unavailable until serialize_target is wired into candidate_generation. These tests prove the fold rejects a planted accept-despite-gap admission and that duplicate established rows cannot erase the unavailable second clause."
+
+test fn witness_required_capability_population_is_two() -> Bool {
+  count(direct_rust_door_required_capabilities()) == 2
+}
+
+test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
+  match assess_missing_translation_rule_refuses() {
+    DirectRustDoorEstablished { capability } => capability == MissingTranslationRuleRefuses
+    _ => false
+  }
+}
+
+test fn witness_production_admissions_leave_one_capability_open() -> Bool {
+  let admissions = v2_emitter_direct_rust_door_acceptance_admissions()
+  count(admissions) == 2
+    && direct_rust_door_closing_frontier_count(admissions: admissions) == 1
+    && !v2_emitter_direct_rust_door_closing_contract_holds(admissions: admissions)
+    && admissions |> any(admission => match admission {
+      DirectRustDoorEstablished { capability } => capability == MissingTranslationRuleRefuses
+      _ => false
+    })
+    && admissions |> any(admission => match admission {
+      DirectRustDoorUnavailable { capability, trigger } =>
+        capability == WrittenSourceIndependentOfSeedEmitter
+          && trigger == candidate_generation_serialize_target_wiring_trigger
+      _ => false
+    })
+}
+
+test fn witness_accept_despite_gap_refusal_fires() -> Bool {
+  match refused(
+    capability: MissingTranslationRuleRefuses,
+    failure: MissingRuleAcceptedDespiteGap,
+  ) {
+    DirectRustDoorRefused { capability, failure } =>
+      capability == MissingTranslationRuleRefuses && failure == MissingRuleAcceptedDespiteGap
+    _ => false
+  }
+}
+
+test fn witness_duplicate_established_cannot_erase_unavailable_capability() -> Bool {
+  let established_missing = assess_missing_translation_rule_refuses()
+  let admissions = [
+    established_missing,
+    established_missing,
+    DirectRustDoorUnavailable {
+      capability: WrittenSourceIndependentOfSeedEmitter,
+      trigger: candidate_generation_serialize_target_wiring_trigger,
+    },
+  ]
+  direct_rust_door_closing_frontier_count(admissions: admissions) == 1
+    && !v2_emitter_direct_rust_door_closing_contract_holds(admissions: admissions)
+}
