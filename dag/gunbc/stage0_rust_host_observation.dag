@@ -12,10 +12,10 @@ import gunbc.stage0_cargo_manifest {
   stage0_cargo_toml_repo_path,
   stage0_package_root
 }
-import std.content_hash { content_hash_atom }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.types { CommitSha, ContentHash, GitRef, String }
+import std.types { CommitSha, GitRef, String }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 
@@ -24,7 +24,7 @@ data stage0_rust_host_observation_note: String = "Rust-source OBSERVATION prereq
 type RustSourceHostObservation
   = RustManifestObserved {
       repository_revision: CommitSha,
-      manifest_content_identity: ContentHash,
+      manifest_content_identity: Fnv1a64Structural,
       tracked_rust_repo_paths: List<String>,
       prior_tracked_rust_repo_paths: List<String>,
       cargo_bin_repo_paths: List<String>

@@ -253,6 +253,34 @@ pub enum Ordering {
     Greater,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OrderingFold<R: Clone> {
+    pub less: R,
+    pub equal: R,
+    pub greater: R,
+    pub _phantom: std::marker::PhantomData<R>,
+}
+
+pub fn ordering_fold<R: Clone>(o: Ordering, fold: Rc<OrderingFold<R>>) -> R {
+    match o.clone() {
+        Ordering::Less => fold.less.clone(),
+        Ordering::Equal => fold.equal.clone(),
+        Ordering::Greater => fold.greater.clone(),
+    }
+}
+
+pub fn ordering_is_less(o: Ordering) -> bool {
+    ordering_fold(
+        o.clone(),
+        Rc::new(OrderingFold {
+            less: true,
+            equal: false,
+            greater: false,
+            _phantom: std::marker::PhantomData,
+        }),
+    )
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]

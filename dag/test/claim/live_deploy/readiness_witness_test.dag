@@ -267,8 +267,8 @@ test fn witness_healthz_publishes_every_served_surface_digest() -> Bool {
 
 test fn witness_served_surface_digest_tracks_the_page() -> Bool {
   let published = roadmap_site_healthz_body()
-  let page_digest = site_artifact_digest(body: served_page_body(page: roadmap_page_for_authority())) as String
-  let js_digest = site_artifact_digest(body: dispatch_client_js_source()) as String
+  let page_digest = site_artifact_digest(body: served_page_body(page: roadmap_page_for_authority())).digest as String
+  let js_digest = site_artifact_digest(body: dispatch_client_js_source()).digest as String
   string_contains(s: published, pattern: page_digest)
     && string_contains(s: published, pattern: js_digest)
     && !(page_digest == js_digest)

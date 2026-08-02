@@ -64,6 +64,7 @@ use crate::resolved_graph_cache::{
     supports_faithful_probe, transform_content_digest, write as cross_process_write,
     CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
 };
+use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -7231,10 +7232,26 @@ fn typed_module_content_key(
             import_hashes.push_back(hash);
         }
     }
+    fn structural_from_wire(hex: String) -> Rc<crate::std_content_hash::Fnv1a64Structural> {
+        fnv1a64_structural_hex_digest(hex).unwrap_or_else(|| {
+            panic!("typed-module content key refused: reconcile digest is not a valid fnv1a64 structural wire form")
+        })
+    }
     Ok(typed_module_key(
-        module_key(source_hash, Rc::new(import_hashes)),
-        transform_content_digest(),
-    ))
+        module_key(
+            structural_from_wire(source_hash),
+            Rc::new(
+                import_hashes
+                    .iter()
+                    .cloned()
+                    .map(|h| structural_from_wire(h))
+                    .collect(),
+            ),
+        ),
+        structural_from_wire(transform_content_digest()),
+    )
+    .digest
+    .clone())
 }
 
 /// Record `mod_name`'s interface hash for downstream key derivation (one entry per
@@ -7246,7 +7263,13 @@ fn note_interface_hash(
 ) {
     interface_hash_by_name.insert(
         mod_name.to_string(),
-        tc_result.typed.interface.summary.interface_hash.clone(),
+        tc_result
+            .typed
+            .interface
+            .summary
+            .interface_hash
+            .digest
+            .clone(),
     );
 }
 
@@ -11876,11 +11899,19 @@ pub fn whole_tree_ancestry_retention_probe(
     Ok(())
 }
 
-/// Companion to a `*_holds` witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
+/// Companion to a Bool witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
 /// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
-fn failure_receipt_companion(function: &str) -> Option<String> {
+///
+/// Both witness-naming conventions in the corpus are recognized: `_holds` (claim witnesses)
+/// and `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`). The
+/// gate witnesses were unreachable from this channel while only `_holds` was stripped, which
+/// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
+/// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
+/// the derivation cannot invent a required hook for a witness that has none.
+pub fn failure_receipt_companion(function: &str) -> Option<String> {
     function
         .strip_suffix("_holds")
+        .or_else(|| function.strip_suffix("_passes"))
         .map(|base| format!("{base}_failure_receipt"))
 }
 
@@ -34012,6 +34043,12 @@ mod process_resolve_store_tests {
 
 #[cfg(test)]
 mod peel_alias_fixpoint_termination {
+    // Seed-retention receipt (DESIGN §7): the bounded wall-clock timeout,
+    // !Send fixture thread, and in-memory CompileResult RED harness are host
+    // test orchestration, retained in cli_run.rs until ROADMAP row
+    // `v1-test-migration` moves these witnesses into test data.
+    // That row gates "Get hand-written Rust in this repository down to zero";
+    // migrate/delete this module when its executing witness is data-driven.
     // §4 boundedness witness for the peel_alias_once_for_field_access fixpoint
     // guard (04_infer.dag peel_alias_fixpoint_guard_note). Discriminating RED:
     // pre-guard, resolve returning the input node itself re-enters the recurse
@@ -34078,18 +34115,77 @@ mod peel_alias_fixpoint_termination {
                 source_visible_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
             });
-            let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+            // The pre-fix firing set: the old peel called this same resolver,
+            // projected `.resolved`, and discarded these diagnostics. The fix
+            // may REVEAL identities from this set; it must never RETIRE one by
+            // changing which resolver judgments fire.
+            let before_projection = crate::v1_compiler_infer_resolve::resolve_node(
                 n.clone(),
-                env,
+                env.clone(),
                 "peel_fixpoint_probe".to_string(),
             );
-            let _ = tx.send((out.name.clone(), out == n));
+            let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                n.clone(),
+                env.clone(),
+                "peel_fixpoint_probe".to_string(),
+            );
+            let termination_probe = (out.resolved.name.clone(), out.resolved == n);
+            let refusal_count = out
+                .diagnostics
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::UnresolvedType { .. }
+                    )
+                })
+                .count();
+            let retired_count = before_projection
+                .diagnostics
+                .iter()
+                .filter(|before| !out.diagnostics.iter().any(|after| after == *before))
+                .count();
+
+            // Positive control for the legitimate quiet probe-miss half: a
+            // non-alias kernel leaf has nothing to peel and no refusal to
+            // report. Keeping this at zero prevents the typed carrier change
+            // from turning ordinary speculative misses into false reds.
+            let plain_int = crate::v1_std_core::leaf_node_with_span(
+                "Int".to_string(),
+                crate::v1_std_core::kernel_span("Int".to_string()),
+            );
+            let quiet = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                plain_int,
+                env.clone(),
+                "peel_quiet_probe".to_string(),
+            );
+            let quiet_diagnostic_count = quiet.diagnostics.len();
+
+            let _ = tx.send((
+                termination_probe,
+                quiet_diagnostic_count,
+                refusal_count,
+                retired_count,
+            ));
         });
-        let (name, is_fixpoint) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
-            "peel_alias_once_for_field_access did not terminate within 30s — the \
+        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count, retired_count) =
+            rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+                "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
-        );
+            );
         assert_eq!(name, "PeelFixpointProbe");
+        assert_eq!(
+            quiet_diagnostic_count, 0,
+            "a legitimate non-alias probe miss must stay quiet"
+        );
+        assert_eq!(
+            refusal_count, 2,
+            "a resolver refusal during speculative peel must remain typed and countable"
+        );
+        assert_eq!(
+            retired_count, 0,
+            "diagnostic propagation may reveal resolver identities but must retire none"
+        );
         // Termination IS the property under test (the pre-guard control run for
         // this fixture is recorded in the PR body; the strip-tree integration
         // RED — whole-tree completion + bounded peel iterations on the #6640
@@ -34098,6 +34194,62 @@ mod peel_alias_fixpoint_termination {
         // decorations on return, so identity is env-shape-dependent while
         // termination + name preservation are not.
         let _ = is_fixpoint;
+    }
+
+    #[test]
+    fn peel_refusals_reach_compile_result_through_inference_consumers() {
+        let source = r#"module peel_consumer_probe
+
+type FieldAlias<T> = FieldAlias<T>
+type RecordAlias<T> = RecordAlias<T>
+
+fn field_probe(x: FieldAlias<Int>) -> Int {
+  x.value
+}
+
+fn record_probe() -> Int {
+  let x = RecordAlias { value: 1 }
+  1
+}
+"#;
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                crate::v1_compiler_compile::SourceFile {
+                    path: "peel_consumer_probe.dag".to_string(),
+                    content: source.to_string(),
+                },
+            )]),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        let resolution_depth_subjects: Vec<String> = result
+            .diagnostics
+            .iter()
+            .filter_map(|d| match &*d.diagnostic {
+                crate::v1_std_core::CompilerDiagnostic::InternalError { message, .. }
+                    if message
+                        .starts_with("internal: type resolution exceeded depth 100 for '") =>
+                {
+                    Some(message.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        let field_alias_count = resolution_depth_subjects
+            .iter()
+            .filter(|message| message.ends_with("'FieldAlias'"))
+            .count();
+        let record_alias_count = resolution_depth_subjects
+            .iter()
+            .filter(|message| message.ends_with("'RecordAlias'"))
+            .count();
+        assert_eq!(
+            field_alias_count, 4,
+            "field-access alias refusals must reach CompileResult.diagnostics"
+        );
+        assert_eq!(
+            record_alias_count, 3,
+            "record-literal alias refusals must reach CompileResult.diagnostics"
+        );
     }
 }
 

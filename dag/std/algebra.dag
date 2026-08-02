@@ -137,6 +137,31 @@ type PartialFunction<K, V> {
 
 type Ordering = Less | Equal | Greater
 
+type OrderingFold<R> {
+  less: R
+  equal: R
+  greater: R
+}
+
+fn ordering_fold<R>(o: Ordering, fold: OrderingFold<R>) -> R {
+  match o {
+    Less => fold.less
+    Equal => fold.equal
+    Greater => fold.greater
+  }
+}
+
+fn ordering_is_less(o: Ordering) -> Bool {
+  ordering_fold(
+    o: o,
+    fold: OrderingFold {
+      less: true,
+      equal: false,
+      greater: false,
+    },
+  )
+}
+
 type AlgebraProfile
   = OrderedRingProfile
   | ApproximateFieldProfile

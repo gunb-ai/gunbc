@@ -1,5 +1,11 @@
 module v1.compiler.infer
-import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_validate_lower_hex_length,
+}
+import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
@@ -99,7 +105,7 @@ import v1.compiler.infer_env {
   lookup_binding_by_name, binding_declares_name
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
-import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 import std.interface_summary {
   InterfaceSummary,
   ExportEntry,
@@ -1137,6 +1143,12 @@ fn where_refinement_is_int_literal_predicate(pred_name: String) -> Bool {
 
 fn where_refinement_is_string_literal_predicate(pred_name: String) -> Bool {
   pred_name == "non_empty"
+    || pred_name == "lower_hex_64"
+    || pred_name == "lower_hex_40"
+    || pred_name == "lower_hex_128"
+    || pred_name == "lower_hex_16"
+    || pred_name == "oci_other_digest_algorithm"
+    || pred_name == "oci_other_digest_encoded"
 }
 
 fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
@@ -1152,6 +1164,26 @@ fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
 fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> Bool? {
   if pred_name == "non_empty" {
     Present { value: string_length(s: value) > 0 }
+  } else if pred_name == "lower_hex_64" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 64),
+    }
+  } else if pred_name == "lower_hex_40" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 40),
+    }
+  } else if pred_name == "lower_hex_128" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 128),
+    }
+  } else if pred_name == "lower_hex_16" {
+    Present {
+      value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 16),
+    }
+  } else if pred_name == "oci_other_digest_algorithm" {
+    Present { value: oci_other_digest_algorithm(value: value) }
+  } else if pred_name == "oci_other_digest_encoded" {
+    Present { value: oci_other_digest_encoded(value: value) }
   } else {
     none
   }
@@ -2534,16 +2566,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
       let base_rt = resolved_type(n: base_typed)
-      let resolved_base = if is_deferred_field_access_base(n: base_rt, env: scope.type_env) {
-        base_rt
+      let base_expansion = if is_deferred_field_access_base(n: base_rt, env: scope.type_env) {
+        NodeResolveResult { resolved: base_rt, diagnostics: [] }
       } else {
         expand_type_for_field_access(n: base_rt, env: scope.type_env, module_name: scope.module_name)
       }
+      let resolved_base = base_expansion.resolved
+      let resolved_base_diags = base_expansion.diagnostics
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
         InferResult {
           typed: make_expr_error_node(kind: SemanticExprError, message: "error type cascade", span: span),
-          diagnostics: base_diags
+          diagnostics: concat(base_diags, resolved_base_diags)
         }
       } else {
       let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
@@ -2565,7 +2599,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           )
           InferResult {
             typed: fa_texpr,
-            diagnostics: base_diags
+            diagnostics: concat(base_diags, resolved_base_diags)
           }
         Absent =>
           let base_is_type_var = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
@@ -2580,7 +2614,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             )
             InferResult {
               typed: fa_texpr,
-              diagnostics: base_diags
+              diagnostics: concat(base_diags, resolved_base_diags)
             }
           } else {
             match check_service_field_access_node(base_type: base_rt, field: field_name, service_registry: scope.service_registry, source_indices: scope.type_env.source_indices) {
@@ -2595,14 +2629,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 )
                 InferResult {
                   typed: fa_texpr,
-                  diagnostics: base_diags
+                  diagnostics: concat(base_diags, resolved_base_diags)
                 }
               Absent =>
                 let error_message = concat("no field '", field_name, "' on type '", authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_base), "'")
                 let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
-                  diagnostics: concat(base_diags, [inference_error(
+                  diagnostics: concat(concat(base_diags, resolved_base_diags), [inference_error(
                     message: error_message,
                     span: span,
                     module_name: scope.module_name
@@ -3849,14 +3883,19 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 
 data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction)."
 
-data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated."
+data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier."
 
-fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
-  let once = resolve_node(n: n, env: env, module_name: module_name).resolved
-  if (once.connective == Conj || once.connective == Disj) {
+fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
+  let once = resolve_node(n: n, env: env, module_name: module_name)
+  let resolved_once = once.resolved
+  if (resolved_once.connective == Conj || resolved_once.connective == Disj) {
     once
-  } else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
-    if once == n { once } else { peel_alias_once_for_field_access(n: once, env: env, module_name: module_name) }
+  } else if resolved_once.connective == NoConnective && resolved_once.children |> count > 0 && resolved_once.inferred == none {
+    if resolved_once == n { once }
+    else {
+      let rest = peel_alias_once_for_field_access(n: resolved_once, env: env, module_name: module_name)
+      NodeResolveResult { resolved: rest.resolved, diagnostics: concat(once.diagnostics, rest.diagnostics) }
+    }
   } else {
     once
   }
@@ -3940,8 +3979,13 @@ fn alias_chain_carrier(n: Node) -> Node {
   else { structural_from_expanded_type(normed: n) }
 }
 
-fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> Node {
-  let peeled = if needs_alias_field_expansion(n: n, env: env) { peel_alias_once_for_field_access(n: n, env: env, module_name: module_name) } else { n }
+fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> NodeResolveResult {
+  let peel_result = if needs_alias_field_expansion(n: n, env: env) {
+    peel_alias_once_for_field_access(n: n, env: env, module_name: module_name)
+  } else {
+    NodeResolveResult { resolved: n, diagnostics: [] }
+  }
+  let peeled = peel_result.resolved
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
@@ -3957,19 +4001,22 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
     } else { structural }
     let fail_closed = lossy && record_has_unresolved_param_field(record: resolved_record, env: env)
     if fail_closed {
-      nominal_type_ref(name: origin_name)
-    } else { resolved_record }
+      NodeResolveResult { resolved: nominal_type_ref(name: origin_name), diagnostics: peel_result.diagnostics }
+    } else { NodeResolveResult { resolved: resolved_record, diagnostics: peel_result.diagnostics } }
   } else {
     let next_name = carrier_name
 
     let is_optional = structural.return_cardinality == CardOptional
     if is_optional {
       let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: lossy)
-      with_optional_cardinality(n: expanded_inner)
+      NodeResolveResult {
+        resolved: with_optional_cardinality(n: expanded_inner.resolved),
+        diagnostics: concat(peel_result.diagnostics, expanded_inner.diagnostics)
+      }
     } else {
     let stop = next_name == "" || emit_map_has(m: seen, key: next_name)
     if stop {
-      structural
+      NodeResolveResult { resolved: structural, diagnostics: peel_result.diagnostics }
     } else {
       match lookup_type_by_name(env: env, name: next_name) {
         Present { value: target } =>
@@ -3982,28 +4029,32 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
           let next_n = if type_arg_count > 0 && !dropped_args {
             alias_chain_target_after_args(target: target, carrier: carrier, env: env)
           } else { target }
-          expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
-        Absent => structural
+          let expanded_next = expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
+          NodeResolveResult {
+            resolved: expanded_next.resolved,
+            diagnostics: concat(peel_result.diagnostics, expanded_next.diagnostics)
+          }
+        Absent => NodeResolveResult { resolved: structural, diagnostics: peel_result.diagnostics }
       }
     }
     }
   }
 }
 
-fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> Node {
+fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
   if is_deferred_field_access_base(n: n, env: env) {
-    n
+    NodeResolveResult { resolved: n, diagnostics: [] }
   } else {
     let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
     expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: false)
   }
 }
 
-fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
+fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
   expand_type_for_field_access_with_seen(n: n, env: env, module_name: module_name, seen: empty_map())
 }
 
-fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<Node>? {
+fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> NodeResolveResult? {
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
     Present { value: decl } =>
       let to_expand = if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {
@@ -4012,10 +4063,7 @@ fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<
           _ => decl
         }
       } else { decl }
-      let expanded = expand_type_for_field_access(n: to_expand, env: scope.type_env, module_name: scope.module_name)
-      if expanded.connective == Conj && expanded.children |> count > 0 {
-        Present { value: expanded.children }
-      } else { none }
+      Present { value: expand_type_for_field_access(n: to_expand, env: scope.type_env, module_name: scope.module_name) }
     Absent => none
   }
 }
@@ -4039,7 +4087,7 @@ fn field_in_any_variant_named(type_name: String, field: String, scope: InferScop
     Present { value: owner } =>
       owner.children |> any(arm =>
         if authored_name_at(source_indices: si, node: arm) == type_name {
-          let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name)
+          let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name).resolved
           let fields = if (ea.connective == Conj) { ea.children } else { arm.children }
           fields |> any(f => authored_name_at(source_indices: si, node: f) == field)
         } else { false }
@@ -4060,22 +4108,42 @@ data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall fro
 data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and lookup_binding_by_name_local consults str_bindings FIRST, so a locally-declared name resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
 
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
-  let struct_fields = match type_name {
+  let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
+  let expected_struct_fields = if instantiated_struct_fields == none {
+    record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
+  } else { none }
+  let expected_variant_node = if instantiated_struct_fields == none && expected_struct_fields == none {
+    match type_name {
+      Present { value: _ } => record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope)
+      Absent => none
+    }
+  } else { none }
+  let alias_struct_expansion = match type_name {
     Present { value: tn } =>
-      match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+      if instantiated_struct_fields == none && expected_struct_fields == none && expected_variant_node == none && expected == none {
+        record_lit_alias_struct_expansion(type_name: tn, scope: scope)
+      } else { none }
+    Absent => none
+  }
+  let struct_fields = match type_name {
+    Present { value: _ } =>
+      match instantiated_struct_fields {
         Present { value: fields } => fields
         Absent =>
-          match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+          match expected_struct_fields {
             Present { value: fields } => fields
             Absent =>
-              match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
+              match expected_variant_node {
                 Present { value: variant_node } => variant_node.children
                 Absent =>
               match expected {
                 Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
                 Absent =>
-                  match record_lit_alias_struct_fields(type_name: tn, scope: scope) {
-                    Present { value: fields } => fields
+                  match alias_struct_expansion {
+                    Present { value: expansion } =>
+                      if expansion.resolved.connective == Conj && expansion.resolved.children |> count > 0 {
+                        expansion.resolved.children
+                      } else { record_lit_expected_fields(type_name: type_name, scope: scope) }
                     Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
                   }
               }
@@ -4083,14 +4151,18 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           }
       }
     Absent =>
-      match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+      match instantiated_struct_fields {
         Present { value: fields } => fields
         Absent =>
-          match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+          match expected_struct_fields {
             Present { value: fields } => fields
             Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
           }
       }
+  }
+  let alias_struct_diags = match alias_struct_expansion {
+    Present { value: expansion } => expansion.diagnostics
+    Absent => []
   }
   let construction_field_names = match type_name {
     Present { value: tn } => record_lit_construction_field_names(type_name: tn, scope: scope)
@@ -4253,7 +4325,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let texpr = make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
-      diagnostics: fi_diags
+      diagnostics: concat(fi_diags, alias_struct_diags)
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
@@ -4338,7 +4410,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(fi_diags, type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
+      diagnostics: concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
     }
   }
 }
@@ -7009,16 +7081,16 @@ fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
   }
 }
 
-fn fn_signature_fingerprint(item: Node, source_indices: Map<String, NewlineIndex>) -> ContentHash {
+fn fn_signature_fingerprint(item: Node, source_indices: Map<String, NewlineIndex>) -> Fnv1a64Structural {
   let params_acc = fold(item.params, init: content_hash_atom(value: "v1-interface-fn-sig-v0"), f: (acc, p) =>
-    content_hash_combine(
+    content_hash_combine_structural(
       left: acc,
       right: content_hash_atom(value: resolved_type_name(n: p, source_indices: source_indices))
     )
   )
   match item.inferred {
     Present { value: Resolved { node: rt } } =>
-      content_hash_combine(
+      content_hash_combine_structural(
         left: params_acc,
         right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: rt))
       )
@@ -7038,9 +7110,9 @@ fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, 
               name: name,
               kind: kind,
               contract: signature_contract(
-                signature: content_hash_tagged(
+                signature: content_hash_tagged_structural(
                   tag: "v1-interface-fn-sig-v0",
-                  payload: content_hash_combine(
+                  payload: content_hash_combine_structural(
                     left: content_hash_atom(value: name),
                     right: fn_signature_fingerprint(item: item, source_indices: source_indices)
                   )
@@ -7056,9 +7128,9 @@ fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, 
                   name: name,
                   kind: kind,
                   contract: signature_contract(
-                    signature: content_hash_tagged(
+                    signature: content_hash_tagged_structural(
                       tag: "v1-interface-sig-v0",
-                      payload: content_hash_combine(
+                      payload: content_hash_combine_structural(
                         left: content_hash_atom(value: binding.name),
                         right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: binding.resolved))
                       )
