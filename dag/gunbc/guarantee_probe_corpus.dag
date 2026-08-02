@@ -1,7 +1,14 @@
 module gunbc.guarantee_probe_corpus
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
+import std.content_hash {
+  Fnv1a64Structural,
+  Fnv1a64StructuralDigestHex,
+  content_hash_atom,
+  content_hash_tagged_structural,
+  content_hash_combine_structural,
+  structural_content_hash,
+}
 import std.string_type { string_is_lexicographically_before }
 import std.nat { Nat }
 import gunbc.guarantee_measurement {
@@ -246,11 +253,15 @@ fn synthetic_program_harness_revision_from_digest(probe: GuaranteeProbeId, diges
   }
 }
 
+fn infer_eval_node_structural_hash(node: Node) -> Fnv1a64Structural {
+  structural_content_hash(digest: content_hash(n: node).digest as Fnv1a64StructuralDigestHex)
+}
+
 fn synthetic_infer_eval_subject_revision_from_node(node: Node) -> MeasurementRevision {
   ContentFingerprint {
     digest: content_hash_tagged_structural(
       tag: "v2-infer-eval-subject-node-v1" as NonEmptyStr,
-      payload: content_hash(n: node),
+      payload: infer_eval_node_structural_hash(node: node),
     ),
   }
 }
