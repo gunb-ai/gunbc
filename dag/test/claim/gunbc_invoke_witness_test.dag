@@ -1,6 +1,7 @@
 module test.claim.gunbc_invoke_witness
 
 import gunbc.cli_invoke {
+  CiFloorPlan,
   claim_executor_run_plan_shell,
   claim_executor_run_plan_transport_argv,
   claim_executor_verify_artifacts_shell,
@@ -53,7 +54,7 @@ test fn gunbc_invoke_scheduler_matches_modeled_shell_holds() -> Bool {
   let modeled = claim_executor_run_plan_shell(
     source_roots: witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-    plan_function: "gunbc_ci_floor_plan",
+    plan_function: CiFloorPlan,
     notice_title: Present { value: gunbc_ci_spec.notice_title },
     rooted: true
   )
@@ -79,7 +80,7 @@ test fn gunbc_invoke_empty_notice_title_omits_flag_holds() -> Bool {
   let shell = claim_executor_run_plan_shell(
     source_roots: witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-    plan_function: "gunbc_ci_floor_plan",
+    plan_function: CiFloorPlan,
     notice_title: Present { value: "" },
     rooted: true
   )
@@ -94,14 +95,14 @@ test fn gunbc_invoke_transport_argv_empty_notice_title_omits_flag_holds() -> Boo
   let argv = claim_executor_run_plan_transport_argv(
     source_roots: witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-    plan_function: "gunbc_ci_floor_plan",
+    plan_function: CiFloorPlan,
     notice_title: Present { value: "" }
   )
   !transport_argv_contains_flag(argv: argv, flag: "--notice-title")
     && claim_executor_run_plan_transport_argv(
       source_roots: witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: "gunbc_ci_floor_plan",
+      plan_function: CiFloorPlan,
       notice_title: Absent
     ) == argv
 }
