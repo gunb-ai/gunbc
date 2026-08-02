@@ -1,13 +1,5 @@
 module tools.resolution_divergence_silent_pick_gate_witness_transport
 
-import tools.host_prelude { run_witness_bin }
-
 fn run_resolution_divergence_silent_pick_gate_witness() -> Bool {
-  resolution_divergence_phase_child_launch(state: "started")
-    && run_witness_bin(
-      var_name: "RESOLUTION_DIVERGENCE_SILENT_PICK_GATE_WITNESS",
-      bin_name: "resolution_divergence_census",
-      args: ["--closure-scoped"]
-    )
-    && resolution_divergence_phase_child_launch(state: "completed")
+  resolution_divergence_silent_pick_gate_in_process()
 }

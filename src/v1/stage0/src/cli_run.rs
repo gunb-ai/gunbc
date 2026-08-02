@@ -26373,31 +26373,70 @@ pub fn record_resolution_divergence_phase(
     )
 }
 
-/// Bootstrap bridge for the current `.dag` child-launch transport. It exists only so
-/// the pre-cut subprocess path can leave a kill-safe launch receipt; the in-process cut
-/// removes its caller and records `Skipped` from the parent instead.
-pub fn resolution_divergence_phase_child_launch(state: String) -> bool {
-    let state = match state.as_str() {
-        "started" => ResolutionDivergencePhaseState::Started,
-        "completed" => ResolutionDivergencePhaseState::Completed,
-        other => {
-            eprintln!(
-                "resolution-divergence phase receipt refused: unknown child-launch state {other:?}"
-            );
-            return false;
-        }
-    };
-    match record_resolution_divergence_phase(
-        ResolutionDivergencePhase::ChildLaunch,
-        state,
-        "subprocess witness adapter",
-    ) {
-        Ok(()) => true,
-        Err(e) => {
-            eprintln!("{e}");
-            false
+static RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS: Mutex<Option<SilentPickTelemetry>> =
+    Mutex::new(None);
+
+/// Arm the telemetry that the divergence census consumes before the parent-owned
+/// plan graph is resolved. The subprocess used to arm the same observation around
+/// its duplicate cold resolve; retaining it here makes the cut observational rather
+/// than a silent loss of the gate's resolution evidence.
+pub fn resolution_divergence_parent_plan_capture_begin() -> Result<(), String> {
+    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
+        None;
+    crate::v1_rt::resolution_silent_pick_enable();
+    Ok(())
+}
+
+/// Seal the parent plan's telemetry after its single resolve and make it available
+/// to the later read-only witness traversal, regardless of which executor thread
+/// evaluates that witness.
+pub fn resolution_divergence_parent_plan_capture_finish() -> Result<(), String> {
+    let telemetry = crate::v1_rt::resolution_silent_pick_disable();
+    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
+        Some(telemetry);
+    // Continue recording on the pump thread after the plan. Modules resolved by
+    // intervening falsifier work may be cache hits by the time this witness runs;
+    // keeping the observation armed preserves those first-resolution rows without
+    // asking the shared index to recompute them.
+    crate::v1_rt::resolution_silent_pick_enable();
+    Ok(())
+}
+
+fn resolution_divergence_parent_plan_silent_picks() -> Result<SilentPickTelemetry, String> {
+    RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| {
+            "resolution-divergence census refused: parent plan telemetry was not captured"
+                .to_string()
+        })
+}
+
+fn resolution_divergence_combine_silent_pick_telemetry(
+    mut earlier: SilentPickTelemetry,
+    later: SilentPickTelemetry,
+) -> SilentPickTelemetry {
+    for row in later.global_bare_lcp_picks {
+        if !earlier.global_bare_lcp_picks.contains(&row) {
+            earlier.global_bare_lcp_picks.push(row);
         }
     }
+    for row in later.global_bare_lcp_ties {
+        if !earlier.global_bare_lcp_ties.contains(&row) {
+            earlier.global_bare_lcp_ties.push(row);
+        }
+    }
+    for row in later.fn_parent_first_hits {
+        if !earlier.fn_parent_first_hits.contains(&row) {
+            earlier.fn_parent_first_hits.push(row);
+        }
+    }
+    earlier
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27577,6 +27616,161 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
     lines.join("\n")
 }
 
+/// Byte projection and gate verdict shared by the in-process CI witness and the
+/// standalone adapter. Keeping both consumers on this value prevents the process
+/// cut from growing a second verdict or output-format authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolutionDivergenceCensusProjection {
+    pub stdout: String,
+    pub stderr: Option<String>,
+    pub exit_code: u8,
+    pub receipt_detail: &'static str,
+}
+
+pub fn project_resolution_divergence_census(
+    census: &ResolutionDivergenceCensus,
+) -> ResolutionDivergenceCensusProjection {
+    let report = format_resolution_divergence_census(census);
+    if census.sites_checked == 0 {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(
+                "resolution_divergence_census: no bare call sites in resolved corpus".to_string(),
+            ),
+            exit_code: 2,
+            receipt_detail: "refused: no bare call sites",
+        };
+    }
+    if let Some(refusal) = resolution_divergence_fn_parent_first_hit_subset_refusal(census) {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(refusal),
+            exit_code: 1,
+            receipt_detail: "refused: fn-parent subset violation",
+        };
+    }
+    if let Some(refusal) = resolution_divergence_silent_pick_refusal(census) {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(refusal),
+            exit_code: 1,
+            receipt_detail: "refused: genuine silent pick",
+        };
+    }
+    let raw_telemetry_count = census.silent_pick_global_bare_lcp_rows.len()
+        + census.silent_pick_global_bare_lcp_tie_rows.len()
+        + census.silent_pick_fn_parent_first_hit_rows.len();
+    ResolutionDivergenceCensusProjection {
+        stdout: format!(
+            "{report}\nSILENT-PICK-GATE: clean (0 genuine silent picks — {} raw telemetry site(s) filtered as benign whole-pool overlap via containment_ambiguous/diverge join, sites_checked={})",
+            raw_telemetry_count, census.sites_checked,
+        ),
+        stderr: None,
+        exit_code: 0,
+        receipt_detail: "clean gate verdict",
+    }
+}
+
+/// CI witness implementation over the parent process's shared SymbolIndex. The old
+/// adapter launched `resolution_divergence_census --closure-scoped`, which built a
+/// second index and cold-resolved the closure in a child process. This path keeps the
+/// closure-scoped source authority and resolver semantics while reusing the parent's
+/// typed-module cache; no child process or child resolve exists.
+pub fn resolution_divergence_silent_pick_gate_in_process(
+    _calling_ctx: &v1_interpreter::InterpContext,
+) -> bool {
+    let run = || -> Result<ResolutionDivergenceCensusProjection, String> {
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::ChildLaunch,
+            ResolutionDivergencePhaseState::Skipped,
+            "in-process witness; no child launched",
+        )?;
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::ChildWholeTreeResolve,
+            ResolutionDivergencePhaseState::Skipped,
+            "in-process census uses parent-owned shared index",
+        )?;
+
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::ParentWholeTreeResolve,
+            ResolutionDivergencePhaseState::Started,
+            "closure-scoped source load + shared-index resolve",
+        )?;
+        let roots = default_source_roots();
+        let index = process_shared_index(&roots);
+        let sources = load_compile_clean_entry_sources(&roots, &index, None)?;
+        let modules_resolved = sources.len();
+        let resolve_result = resolved_graph_from_sources_with_index(
+            &index,
+            sources,
+            ResolveTypecheckGate::Strict,
+            "resolution-divergence-census-in-process",
+            ResolvedGraphMemoShare::Ephemeral,
+        );
+        let subsequent_silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+        let (graph, source_indices, _) = resolve_result?;
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::ParentWholeTreeResolve,
+            ResolutionDivergencePhaseState::Completed,
+            &format!("modules={modules_resolved}; shared_index=true"),
+        )?;
+        let ctx = v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            v1_interpreter::ExecutionMode::Wet,
+            None,
+            None,
+        );
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Started,
+            &format!("modules={modules_resolved}"),
+        )?;
+        let mut census = resolution_divergence_census_from_ctx(&ctx);
+        census.modules_resolved = modules_resolved;
+        census.modules_excluded = 0;
+        let silent_picks = resolution_divergence_combine_silent_pick_telemetry(
+            resolution_divergence_parent_plan_silent_picks()?,
+            subsequent_silent_picks,
+        );
+        merge_silent_pick_telemetry(&mut census, silent_picks);
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Completed,
+            &format!("sites_checked={}", census.sites_checked),
+        )?;
+
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::OutputProjection,
+            ResolutionDivergencePhaseState::Started,
+            "format report and gate verdict",
+        )?;
+        Ok(project_resolution_divergence_census(&census))
+    };
+
+    match run() {
+        Ok(projection) => {
+            println!("{}", projection.stdout);
+            if let Some(stderr) = &projection.stderr {
+                eprintln!("{stderr}");
+            }
+            if let Err(e) = record_resolution_divergence_phase(
+                ResolutionDivergencePhase::OutputProjection,
+                ResolutionDivergencePhaseState::Completed,
+                projection.receipt_detail,
+            ) {
+                eprintln!("resolution_divergence_census: {e}");
+                return false;
+            }
+            projection.exit_code == 0
+        }
+        Err(e) => {
+            eprintln!("resolution_divergence_census: {e}");
+            false
+        }
+    }
+}
+
 fn containment_via_label(via: &ContainmentResolveVia) -> &'static str {
     match via {
         ContainmentResolveVia::Lexical => "lexical",
@@ -27999,6 +28193,32 @@ mod resolution_divergence_census_tests {
         let _ = std::fs::remove_file(receipt);
     }
 
+    #[test]
+    fn parent_and_shared_index_telemetry_join_without_cache_hit_duplicates() {
+        let parent_row = crate::v1_rt::GlobalBareLcpPickSite {
+            env_module_path: "test.parent".to_string(),
+            name: "shared".to_string(),
+            candidate_count: 2,
+            chosen_module_path: "test.choice".to_string(),
+        };
+        let later_row = crate::v1_rt::GlobalBareLcpPickSite {
+            env_module_path: "test.later".to_string(),
+            name: "shared".to_string(),
+            candidate_count: 3,
+            chosen_module_path: "test.other_choice".to_string(),
+        };
+        let earlier = crate::v1_rt::SilentPickTelemetry {
+            global_bare_lcp_picks: vec![parent_row.clone()],
+            ..Default::default()
+        };
+        let later = crate::v1_rt::SilentPickTelemetry {
+            global_bare_lcp_picks: vec![parent_row.clone(), later_row.clone()],
+            ..Default::default()
+        };
+        let joined = super::resolution_divergence_combine_silent_pick_telemetry(earlier, later);
+        assert_eq!(joined.global_bare_lcp_picks, vec![parent_row, later_row]);
+    }
+
     /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
     ///
     /// These are positive controls — the planted divergence lives entirely among
@@ -28024,6 +28244,73 @@ mod resolution_divergence_census_tests {
         super::process_workspace_root()
             .join("target")
             .join(format!("gunbc-resdiv-posctl-{}", std::process::id()))
+    }
+
+    #[test]
+    fn shared_index_cut_preserves_frozen_census_output_and_verdict() {
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-resdiv-shared-cut-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "callee.dag",
+            r#"module test.sharedcut.callee
+
+import std.types { Bool }
+
+fn identity(a: Bool) -> Bool {
+  return a
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "caller.dag",
+            r#"module test.sharedcut.caller
+
+import std.types { Bool }
+import test.sharedcut.callee { identity }
+
+fn caller() -> Bool {
+  return identity(False)
+}
+"#,
+        );
+        let roots = fixture_roots(&fixture);
+        let before = resolution_divergence_census_live(&roots, &[]).expect("legacy cold census");
+
+        let index = super::build_multi_entry_index_primary_precedence(&roots);
+        let sources = super::load_compile_clean_entry_sources(&roots, &index, None)
+            .expect("closure-scoped fixture sources");
+        let modules_resolved = sources.len();
+        crate::v1_rt::resolution_silent_pick_enable();
+        let resolve_result = super::resolved_graph_from_sources_with_index(
+            &index,
+            sources,
+            super::ResolveTypecheckGate::Strict,
+            "resolution-divergence-shared-cut-control",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        );
+        let telemetry = crate::v1_rt::resolution_silent_pick_disable();
+        let (graph, source_indices, _) = resolve_result.expect("shared-index resolve");
+        let ctx = crate::v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            Wet,
+            None,
+            None,
+        );
+        let mut after = super::resolution_divergence_census_from_ctx(&ctx);
+        after.modules_resolved = modules_resolved;
+        super::merge_silent_pick_telemetry(&mut after, telemetry);
+
+        assert_eq!(
+            super::project_resolution_divergence_census(&after),
+            super::project_resolution_divergence_census(&before),
+            "the process-boundary cut must preserve census bytes and gate verdict on a frozen tree",
+        );
+        let _ = std::fs::remove_dir_all(fixture);
     }
 
     #[test]
