@@ -7,13 +7,17 @@ import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.emitter_producer_provenance {
+  advance_producer_emission_receipt_cargo_green,
   BehavioralEquivalent,
+  BuildGreen,
+  BuildRefused,
   mint_producer_emission_receipt,
   ProducerEmissionReceipt,
   RealizedEmitterClosure,
+  realized_closure_for_v2_direct_rust_door_emit_run,
   seed_emit_rust_reachable,
-  V2EmitterInterpreted,
-  BuildRefused
+  source_produced_qualifications,
+  V2EmitterInterpreted
 }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.translate { translate }
@@ -64,6 +68,8 @@ type WrittenProvenancedRustArtifact {
 data candidate_generation_serialize_target_note: String = "Lane B direct v2 Rust door: generate_rust_emission_candidate wires serialize_target composed with translate (v2.compiler.emit); mint_written_provenanced_rust_artifact writes Cargo.toml and src/main.rs through Filesystem.Write so ingest-assemble-infer-translate-serialize-write is one candidate_generation surface."
 
 data direct_rust_door_scaffold_build_cause: Symbol = ^direct_rust_door_scaffold_build
+
+data direct_rust_door_awaiting_cargo_cause: Symbol = ^direct_rust_door_awaiting_cargo
 
 data direct_rust_door_probe_entry: String = "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag"
 
@@ -164,8 +170,8 @@ fn mint_provenanced_rust_artifact(
       match mint_producer_emission_receipt(
         module_path: module_path,
         producer: V2EmitterInterpreted,
-        qualifications: [BehavioralEquivalent],
-        build_result: BuildRefused { cause: direct_rust_door_scaffold_build_cause },
+        qualifications: source_produced_qualifications,
+        build_result: BuildRefused { cause: direct_rust_door_awaiting_cargo_cause },
         behavioral_probe_entry: direct_rust_door_probe_entry,
         behavioral_probe_function: direct_rust_door_probe_function,
         realized_closure: realized_closure
@@ -219,6 +225,55 @@ fn mint_written_provenanced_rust_artifact(
   )
 }
 
+fn generate_provenanced_rust_candidate_from_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  target: TargetModel,
+  module_path: String,
+  realized_closure: RealizedEmitterClosure
+) -> Outcome<ProvenancedRustArtifact> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    f: fn(resolved) {
+      bind_outcome(
+        o: infer(tree: resolved),
+        f: fn(inferred) {
+          mint_provenanced_rust_artifact(
+            inferred: inferred,
+            target: target,
+            module_path: module_path,
+            realized_closure: realized_closure
+          )
+        }
+      )
+    }
+  )
+}
+
+fn advance_written_provenanced_rust_artifact_cargo_green(
+  written: WrittenProvenancedRustArtifact,
+  cargo_green: Bool
+) -> Optional<WrittenProvenancedRustArtifact> {
+  match advance_producer_emission_receipt_cargo_green(
+    prior: written.artifact.producer_receipt,
+    cargo_green: cargo_green
+  ) {
+    Present { value: receipt } =>
+      optional_present(
+        value: WrittenProvenancedRustArtifact {
+          artifact: ProvenancedRustArtifact {
+            source: written.artifact.source,
+            emitted: written.artifact.emitted,
+            producer_receipt: receipt
+          },
+          write: written.write
+        }
+      )
+    Absent => optional_absent()
+  }
+}
+
 fn generate_written_rust_candidate_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
@@ -227,25 +282,6 @@ fn generate_written_rust_candidate_from_ingest(
   realized_closure: RealizedEmitterClosure,
   workspace_dir: String
 ) -> Outcome<WrittenProvenancedRustArtifact> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
-    f: fn(resolved) {
-      bind_outcome(
-        o: infer(tree: resolved),
-        f: fn(inferred) {
-          mint_written_provenanced_rust_artifact(
-            inferred: inferred,
-            target: target,
-            module_path: module_path,
-            realized_closure: realized_closure,
-            workspace_dir: workspace_dir
-          )
-        }
-      )
-    }
-  )
-}
 
 fn provenanced_rust_artifact_seed_independent(
   artifact: ProvenancedRustArtifact

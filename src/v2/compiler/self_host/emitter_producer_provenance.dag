@@ -170,8 +170,18 @@ fn v2_interpreted_emitter_closure_seed_free_holds() -> Bool {
   !seed_emit_rust_reachable(closure: v2_interpreted_emitter_closure)
 }
 
+fn realized_closure_for_v2_direct_rust_door_emit_run() -> RealizedEmitterClosure {
+  RealizedEmitterClosure {
+    emitter_module_paths: [
+      "v2.compiler.self_host.candidate_generation",
+      v2_emit_interpreted_qualified_module,
+      "v2.compiler.translate"
+    ]
+  }
+}
+
 fn v2_interpreted_emitter_closure_authority() -> RealizedEmitterClosure {
-  v2_interpreted_emitter_closure
+  realized_closure_for_v2_direct_rust_door_emit_run()
 }
 
 data v2_emitter_in_seed_emit_rust_closure: String = "V2Emitter* producer mint refused: realized_closure contains v1.compiler.emit_rust (structural construction wall, calm-badger-682 ruling 2026-07-29)"
@@ -204,6 +214,88 @@ fn emitter_producer_mint_admission(
 }
 
 data behavioral_equivalent_qualifications: List<EmissionQualification> = [BehavioralEquivalent]
+
+data source_produced_qualifications: List<EmissionQualification> = [SourceProduced]
+
+data cargo_green_qualifications: List<EmissionQualification> = [SourceProduced, CargoGreen]
+
+data behavioral_equivalent_with_cargo_qualifications: List<EmissionQualification> = [
+  SourceProduced,
+  CargoGreen,
+  BehavioralEquivalent
+]
+
+fn producer_receipt_admits_cargo_green_advance(receipt: ProducerEmissionReceipt) -> Bool {
+  emission_qualifications_list_contains(
+    xs: receipt.qualifications,
+    wanted: SourceProduced
+  )
+    && !emission_qualifications_list_contains(
+      xs: receipt.qualifications,
+      wanted: CargoGreen
+    )
+    && !emission_qualifications_list_contains(
+      xs: receipt.qualifications,
+      wanted: BehavioralEquivalent
+    )
+}
+
+fn producer_receipt_admits_behavioral_equivalent_advance(
+  receipt: ProducerEmissionReceipt
+) -> Bool {
+  match receipt.build_result {
+    BuildGreen =>
+      emission_qualifications_list_contains(
+        xs: receipt.qualifications,
+        wanted: CargoGreen
+      )
+        && !emission_qualifications_list_contains(
+          xs: receipt.qualifications,
+          wanted: BehavioralEquivalent
+        )
+    BuildRefused { cause: _ } => false
+  }
+}
+
+fn advance_producer_emission_receipt_cargo_green(
+  prior: ProducerEmissionReceipt,
+  cargo_green: Bool
+) -> Optional<ProducerEmissionReceipt> {
+  if !cargo_green
+    || !producer_receipt_admits_cargo_green_advance(receipt: prior) {
+    optional_absent()
+  } else {
+    mint_producer_emission_receipt(
+      module_path: prior.module_path,
+      producer: prior.producer,
+      qualifications: cargo_green_qualifications,
+      build_result: BuildGreen,
+      behavioral_probe_entry: prior.behavioral_probe_entry,
+      behavioral_probe_function: prior.behavioral_probe_function,
+      realized_closure: prior.realized_closure
+    )
+  }
+}
+
+fn advance_producer_emission_receipt_behavioral_equivalent(
+  prior: ProducerEmissionReceipt,
+  behavioral_equivalent: Bool
+) -> Optional<ProducerEmissionReceipt> {
+  if !behavioral_equivalent
+    || !producer_receipt_admits_behavioral_equivalent_advance(receipt: prior) {
+    optional_absent()
+  } else {
+    mint_producer_emission_receipt(
+      module_path: prior.module_path,
+      producer: prior.producer,
+      qualifications: behavioral_equivalent_with_cargo_qualifications,
+      build_result: BuildGreen,
+      behavioral_probe_entry: prior.behavioral_probe_entry,
+      behavioral_probe_function: prior.behavioral_probe_function,
+      realized_closure: prior.realized_closure
+    )
+  }
+}
 
 fn scaffold_digest_for_module_path(module_path: String) -> Hash {
   combine_hash(
