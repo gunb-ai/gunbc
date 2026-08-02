@@ -404,6 +404,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut survey_manifest: Option<PathBuf> = None;
     let mut survey_tsv: Option<PathBuf> = None;
     let mut survey_dir: Option<PathBuf> = None;
+    let mut only_modules: Vec<String> = Vec::new();
+    let mut used_module_filter = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -411,6 +413,11 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--source-root" => {
                 i += 1;
                 source_roots.push(require_value(&args, i, "--source-root")?);
+            }
+            "--module" => {
+                i += 1;
+                only_modules.push(require_value(&args, i, "--module")?);
+                used_module_filter = true;
             }
             "--emit-survey-manifest" => {
                 i += 1;
@@ -455,18 +462,28 @@ fn run() -> Result<ExitCode, ExitCode> {
         ExitCode::from(1)
     })?;
 
-    let module_paths = load_compiler_frontier_sweep_order(&source_roots).map_err(|msg| {
+    let mut module_paths = load_compiler_frontier_sweep_order(&source_roots).map_err(|msg| {
         eprintln!("frontier_probe_survey: {msg}");
         ExitCode::from(1)
     })?;
+    if !only_modules.is_empty() {
+        module_paths = only_modules;
+    }
     if module_paths.is_empty() {
-        eprintln!("frontier_probe_survey: {SWEEP_ORDER_DATA} is empty");
+        eprintln!("frontier_probe_survey: no module paths to probe");
         return Err(ExitCode::from(1));
     }
-    eprintln!(
-        "frontier_probe_survey: loaded {} module path(s) from {SWEEP_ORDER_DATA}",
-        module_paths.len()
-    );
+    if used_module_filter {
+        eprintln!(
+            "frontier_probe_survey: probing {} module path(s) (--module filter)",
+            module_paths.len()
+        );
+    } else {
+        eprintln!(
+            "frontier_probe_survey: probing {} module path(s) from {SWEEP_ORDER_DATA}",
+            module_paths.len()
+        );
+    }
 
     let host_failure_reasons = load_host_failure_reasons(&source_roots).map_err(|msg| {
         eprintln!("frontier_probe_survey: {msg}");

@@ -66,6 +66,7 @@ fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
   reason == ^compiler_import_closure_cyclic
     || reason == ^self_host_runner_not_realized
     || reason == ^emit_host_run_transport_unrealized
+    || reason == ^parse_grammar_choice_overlap_residue
 }
 
 fn frontier_blocker_is_upstream_semantic_marker_reason(reason: Symbol) -> Bool {
