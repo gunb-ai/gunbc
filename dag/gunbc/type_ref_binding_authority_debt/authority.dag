@@ -59,3 +59,20 @@ data type_ref_binding_authority_debt_scaffold: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
+data type_ref_generic_use_site_residual_owner: String = "quiet-hawk-219 namespace migration (import deletion) — N2 type-position containment"
+
+data type_ref_generic_use_site_residual_lane: String = "N2 containment binding for type positions (docs/plans/namespace-resolution-design.md; import-strip §14 / docs/plans/import-strip-witness-discovery-cascade-diagnosis.md). Same dissolve lane as type_ref_binding_authority_debt_dissolve_trigger step (2)."
+
+data type_ref_generic_use_site_residual_dissolve_trigger: String = "dissolve-on: N2 swaps type_ref_has_binding_authority's interim import-local body to containment for type positions — at that point is_user_generic_use_site pool expansion without binding-authority UnresolvedType is unwritable by construction (the gate applies to every use-site path, leaf and generic). PRIMARY path is N2 construction, not a second freeze census under a mid-PR arm widen. DELETE WHEN: this residual scaffold + type_ref_generic_use_site_follow_up_note on v1.compiler.resolve, once the N2 body swap lands and a discriminating RED proves generic unbound pool-hits refuse."
+
+data type_ref_generic_use_site_residual_rung_note: String = "§4b honesty: current path = known fail-open substrate arm (is_user_generic_use_site expands pool hit without binding-authority UnresolvedType — silent fabrication class for Generic<T> only). Attainable ceiling = structurally impossible / construction via N2 containment binding. Below ceiling is a named residual, not an undeclared gap. N1 chartered scope = leaf type-ref path only (f531ba548d freeze census); mid-PR widen stripped per quiet-hawk-219 (reviews 47291/47314/47317 decline-apply-now)."
+
+data type_ref_generic_use_site_residual_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.type_ref_binding_authority_debt",
+    decl_name: "type_ref_generic_use_site_residual_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}

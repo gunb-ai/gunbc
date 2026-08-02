@@ -28,7 +28,11 @@ import gunbc.type_ref_binding_authority_debt {
   type_ref_debt_universe_openness_note,
   type_ref_import_add_discriminator_note,
   type_ref_class_b_explicitation_count,
-  type_ref_class_b_explicitation_count_note
+  type_ref_class_b_explicitation_count_note,
+  type_ref_generic_use_site_residual_owner,
+  type_ref_generic_use_site_residual_lane,
+  type_ref_generic_use_site_residual_dissolve_trigger,
+  type_ref_generic_use_site_residual_rung_note
 }
 import std.types { String, Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -184,4 +188,13 @@ test fn class_b_explicitation_count_seeded_and_priced() -> Bool {
   type_ref_class_b_explicitation_count == 36
     && string_contains(s: type_ref_class_b_explicitation_count_note, pattern: "Seed 905307fb = 28")
     && string_contains(s: type_ref_class_b_explicitation_count_note, pattern: "displaced cost")
+}
+
+test fn generic_use_site_residual_is_bounded_disposition() -> Bool {
+  string_contains(s: type_ref_generic_use_site_residual_owner, pattern: "quiet-hawk-219")
+    && string_contains(s: type_ref_generic_use_site_residual_lane, pattern: "N2 containment")
+    && string_contains(s: type_ref_generic_use_site_residual_dissolve_trigger, pattern: "dissolve-on: N2")
+    && string_contains(s: type_ref_generic_use_site_residual_dissolve_trigger, pattern: "type_ref_has_binding_authority")
+    && string_contains(s: type_ref_generic_use_site_residual_rung_note, pattern: "known fail-open")
+    && string_contains(s: type_ref_generic_use_site_residual_rung_note, pattern: "leaf type-ref path only")
 }
