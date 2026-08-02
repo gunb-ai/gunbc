@@ -1,5 +1,6 @@
 module v2.test.claim.infer_self_grounding_wall
 
+import extdeps.filesystem.filesystem_io
 import gunbc.guarantee_probe_corpus {
   v2_frontier_red_probe,
   v2_frontier_green_probe,
