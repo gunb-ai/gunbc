@@ -27288,7 +27288,11 @@ fn resolution_divergence_closure_scoped_sources(
 /// read-only index walk: no second whole-tree disk load and no second index build.
 /// The executable frozen control walls this consumer with `Rc::ptr_eq`; other
 /// `default_source_roots` consumers remain an explicitly separate construction-time
-/// identity class, dissolved when `SourceFile` construction canonicalizes paths.
+/// identity class, tracked by `node://adhoc-0c214548-ded` and dissolved when
+/// `SourceFile` construction canonicalizes paths. Content equality is NOT an oracle
+/// for this class: the forked objects have identical bytes, so only object identity
+/// distinguishes the bad state. Keep the pointer-identity control enrolled when the
+/// construction wall lands as evidence that the higher rung is real.
 fn resolution_divergence_closure_scoped_sources_from_shared_index(
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
