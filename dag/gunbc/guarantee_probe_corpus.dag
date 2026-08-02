@@ -110,6 +110,20 @@ type ProbeExpectation
   | ExpectZeroDiagnostics
   | ExpectAcceptedCounted { diagnostic_class: NonEmptyStr }
 
+type ProbeExpectationFold<R> {
+  blocking_refusal: fn(NonEmptyStr) -> R
+  zero_diagnostics: R
+  accepted_counted: fn(NonEmptyStr) -> R
+}
+
+fn probe_expectation_fold<R>(e: ProbeExpectation, fold: ProbeExpectationFold<R>) -> R {
+  match e {
+    ExpectBlockingRefusal { diagnostic_class: d } => fold.blocking_refusal(d)
+    ExpectZeroDiagnostics => fold.zero_diagnostics
+    ExpectAcceptedCounted { diagnostic_class: d } => fold.accepted_counted(d)
+  }
+}
+
 type GuaranteeProbeRow {
   probe: GuaranteeProbeId
   class: GuaranteeClassId
@@ -426,13 +440,14 @@ fn observation_is_accepted_counted(o: ProbeObservation, wanted: NonEmptyStr) -> 
 }
 
 fn probe_row_observation_holds(observation: ProbeObservation, expectation: ProbeExpectation) -> Bool {
-  match expectation {
-    ExpectZeroDiagnostics => observation_is_clean(o: observation)
-    ExpectBlockingRefusal { diagnostic_class: wanted } =>
-      observation_is_blocking_refusal(o: observation, wanted: wanted)
-    ExpectAcceptedCounted { diagnostic_class: wanted } =>
-      observation_is_accepted_counted(o: observation, wanted: wanted)
-  }
+  probe_expectation_fold(
+    e: expectation,
+    fold: ProbeExpectationFold {
+      blocking_refusal: fn(wanted) { observation_is_blocking_refusal(o: observation, wanted: wanted) },
+      zero_diagnostics: observation_is_clean(o: observation),
+      accepted_counted: fn(wanted) { observation_is_accepted_counted(o: observation, wanted: wanted) },
+    },
+  )
 }
 
 fn probe_row_observation_holds_for_row(observation: ProbeObservation, row: GuaranteeProbeRow) -> Bool {
