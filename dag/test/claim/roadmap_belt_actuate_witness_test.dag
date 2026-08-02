@@ -68,6 +68,8 @@ import gunbc.roadmap_belt_actuate {
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
   belt_tick_receipt_decode,
+  belt_tick_receipt_read_from_filesystem,
+  belt_tick_receipt_wire_json_from_read,
   BeltTickReceiptRead,
   BeltTickReceiptAbsent,
   BeltTickReceiptPresent,
@@ -929,6 +931,8 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && verification_presentation_verify_failed_is_failed()
     && verification_presentation_wire_carries_detail()
     && malformed_pass_reason_makes_receipt_unreadable()
+    && belt_tick_receipt_missing_file_read_is_absent()
+    && belt_tick_receipt_io_failure_read_is_unreadable()
 }
 
 test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
@@ -1107,6 +1111,31 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
   match belt_tick_receipt_decode(raw: raw) {
     BeltTickReceiptUnreadable { reason: r } =>
       string_contains(s: r, pattern: "refused without reason")
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
+  }
+}
+
+test fn belt_tick_receipt_missing_file_read_is_absent() -> Bool {
+  match belt_tick_receipt_read_from_filesystem(
+    success: false,
+    content: "",
+    error: "No such file or directory (os error 2)",
+  ) {
+    BeltTickReceiptAbsent => true
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptUnreadable { reason: _ } => false
+  }
+}
+
+test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
+  match belt_tick_receipt_read_from_filesystem(
+    success: false,
+    content: "",
+    error: "Permission denied (os error 13)",
+  ) {
+    BeltTickReceiptUnreadable { reason: r } =>
+      string_contains(s: r, pattern: "Permission denied")
     BeltTickReceiptPresent { receipt: _ } => false
     BeltTickReceiptAbsent => false
   }

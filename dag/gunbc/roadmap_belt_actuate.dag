@@ -1693,17 +1693,38 @@ fn belt_dashboard_instance_lookup_for_spawn_workdir(
   }
 }
 
+fn belt_tick_receipt_read_from_filesystem(
+  success: Bool,
+  content: String,
+  error: String,
+) -> BeltTickReceiptRead {
+  if success {
+    if trim(content) == "" {
+      BeltTickReceiptAbsent
+    } else {
+      belt_tick_receipt_decode(raw: content)
+    }
+  } else if string_contains(s: error, pattern: "No such file")
+      || string_contains(s: error, pattern: "not found") {
+    BeltTickReceiptAbsent
+  } else {
+    BeltTickReceiptUnreadable {
+      reason: join(["belt tick receipt could not be read: ", error], ""),
+    }
+  }
+}
+
 fn belt_tick_receipt_read_for_instance(
   instance: HostDashboardInstance,
 ) -> BeltTickReceiptRead {
   let read = Filesystem.Read(
     path: belt_tick_receipt_path_for_instance(instance: instance),
   )
-  if !read.success || trim(read.content) == "" {
-    BeltTickReceiptAbsent
-  } else {
-    belt_tick_receipt_decode(raw: read.content)
-  }
+  belt_tick_receipt_read_from_filesystem(
+    success: read.success,
+    content: read.content,
+    error: read.error,
+  )
 }
 
 fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
@@ -1819,8 +1840,6 @@ fn belt_tick_for_instance(
   cap: BeltCapacity,
   spawn_workdir: String,
 ) -> BeltTickResult {
-  let verify_outcomes = belt_verify_attempts_for_instance(instance: instance)
-  let publish_outcomes = belt_publish_attempts_for_instance(instance: instance)
   match belt_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } =>
       BeltTickResult {
@@ -1829,19 +1848,21 @@ fn belt_tick_for_instance(
         reconcile: belt_tick_empty_reconcile(state: state),
         spawn_outcomes: [],
         teardown_outcomes: [],
-        verify_outcomes: verify_outcomes,
-        publish_outcomes: publish_outcomes,
+        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
+        publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
     Observed { live: live } => {
       let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
+      let spawn_outcomes = r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir))
+      let teardown_outcomes = r.teardowns |> map(m => belt_actuate_teardown_member(m: m))
       BeltTickResult {
         observe_refused: false,
         observe_refusal_reason: "",
         reconcile: r,
-        spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir)),
-        teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m)),
-        verify_outcomes: verify_outcomes,
-        publish_outcomes: publish_outcomes,
+        spawn_outcomes: spawn_outcomes,
+        teardown_outcomes: teardown_outcomes,
+        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
+        publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
     }
   }
@@ -2967,50 +2988,48 @@ fn belt_workflow_attempt_presentation_json_with_tick_read(
     ]))
 }
 
+fn belt_tick_receipt_wire_json_from_read(tick_read: BeltTickReceiptRead) -> JsonValue {
+  match tick_read {
+    BeltTickReceiptPresent { receipt } =>
+      json_object(members: [
+        json_kv(key: "present", value: json_bool(b: true)),
+        json_kv(key: "receipt", value: belt_tick_receipt_json_value(receipt: receipt)),
+      ])
+    BeltTickReceiptAbsent =>
+      json_object(members: [
+        json_kv(key: "present", value: json_bool(b: false)),
+      ])
+    BeltTickReceiptUnreadable { reason: r } =>
+      json_object(members: [
+        json_kv(key: "present", value: json_bool(b: false)),
+        json_kv(
+          key: "unreadable_reason",
+          value: json_string(s: r),
+        ),
+      ])
+  }
+}
+
 fn belt_tick_receipt_wire_json_for_instance(
   instance: HostDashboardInstance,
 ) -> JsonValue {
-  let read = Filesystem.Read(
-    path: belt_tick_receipt_path_for_instance(instance: instance),
+  belt_tick_receipt_wire_json_from_read(
+    tick_read: belt_tick_receipt_read_for_instance(instance: instance),
   )
-  if !read.success || trim(read.content) == "" {
-    json_object(members: [
-      json_kv(key: "present", value: json_bool(b: false)),
-    ])
-  } else {
-    match belt_tick_receipt_decode(raw: read.content) {
-      BeltTickReceiptPresent { receipt } =>
-        json_object(members: [
-          json_kv(key: "present", value: json_bool(b: true)),
-          json_kv(key: "receipt", value: belt_tick_receipt_json_value(receipt: receipt)),
-        ])
-      BeltTickReceiptAbsent =>
-        json_object(members: [
-          json_kv(key: "present", value: json_bool(b: false)),
-        ])
-      BeltTickReceiptUnreadable { reason: r } =>
-        json_object(members: [
-          json_kv(key: "present", value: json_bool(b: false)),
-          json_kv(
-            key: "unreadable_reason",
-            value: json_string(s: r),
-          ),
-        ])
-    }
-  }
 }
 
 fn belt_workflow_attempts_json_value_for_instance(
   instance: HostDashboardInstance,
   observed: BeltWorkflowAttempts,
 ) -> JsonValue {
+  let tick_read = belt_tick_receipt_read_for_instance(instance: instance)
   match observed {
     WorkflowAttemptsRefused { reason } =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-workflow/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: true)),
         json_kv(key: "reason", value: json_string(s: reason)),
-        json_kv(key: "belt_tick", value: belt_tick_receipt_wire_json_for_instance(instance: instance)),
+        json_kv(key: "belt_tick", value: belt_tick_receipt_wire_json_from_read(tick_read: tick_read)),
       ])
     WorkflowAttemptsObserved { attempts } =>
       json_object(members: [
@@ -3020,13 +3039,13 @@ fn belt_workflow_attempts_json_value_for_instance(
           key: "attempts",
           value: json_array(elements: map(
             attempts,
-            progress => belt_workflow_attempt_presentation_json_for_instance(
-              instance: instance,
+            progress => belt_workflow_attempt_presentation_json_with_tick_read(
               progress: progress,
+              tick_read: tick_read,
             ),
           )),
         ),
-        json_kv(key: "belt_tick", value: belt_tick_receipt_wire_json_for_instance(instance: instance)),
+        json_kv(key: "belt_tick", value: belt_tick_receipt_wire_json_from_read(tick_read: tick_read)),
       ])
   }
 }
