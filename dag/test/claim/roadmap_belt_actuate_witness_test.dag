@@ -4,6 +4,7 @@ import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
+  RoadmapNodeIdentity,
   IntricacyHigh, VolumeMedium,
   PrsMerged,
   Sized,
@@ -24,6 +25,7 @@ import gunbc.roadmap_publish {
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
 import std.types { CommitSha }
+import std.content_hash { content_hash_atom }
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
@@ -129,6 +131,8 @@ import gunbc.roadmap_belt_actuate {
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  VerificationSubjectObserved,
   VerificationSubjectUnobserved,
   VerificationReceiptAbsent,
 }
@@ -793,11 +797,23 @@ test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
 
 data unreadable_receipt_refuses_note: String = "review 45271, updated for exact-head wiring. The belt now observes the worktree head before reading a receipt, so an instance with no attempt filesystem cannot reach the unreadable-receipt arm through a failed legacy read alone. This witness instead drives the real fn against srv2 preview where neither the node nor the worktree exist, and asserts verification defers with an exact-head or missing-node reason rather than actuating against an unobserved subject."
 
+data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+
+fn fixture_verification_subject(node_id: String) -> VerificationSubject {
+  VerificationSubject {
+    node_identity: node_id as NonEmptyStr as RoadmapNodeIdentity,
+    criteria_digest: content_hash_atom(value: "belt-actuate-fixture"),
+    attempt_key: "feedfacefeedface",
+    branch: join(["dispatch/", node_id, "-afeedfacefeedface"], "") as NonEmptyStr,
+    head_sha: fixture_verification_head,
+  }
+}
+
 fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
   workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
     node_id: node_id,
     attempt_key: "feedfacefeedface",
-    branch: "dispatch/{node_id}-afeedfacefeedface",
+    branch: join(["dispatch/", node_id, "-afeedfacefeedface"], ""),
     modeled_state_present: true,
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
@@ -808,8 +824,8 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     provider_events_error: "",
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     validation_summary: "gunbc run --claim-run",
-    verification_subject: VerificationSubjectUnobserved {
-      reason: "fixture verification subject not established",
+    verification_subject: VerificationSubjectObserved {
+      subject: fixture_verification_subject(node_id: node_id),
     },
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
