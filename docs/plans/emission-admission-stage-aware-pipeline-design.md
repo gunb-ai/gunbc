@@ -838,6 +838,20 @@ reader of the merged first revision can see what moved.
 | 8 | Stages reordered 0–10; stage 2 narrowed to within-revision with no promotion authority | §10's ordering, which stated §3.2 admissibility before the generation state existed |
 | 9 | Witness table rewritten with Subject / Fixture / Expected verdict / **mutation that must change the verdict** | §8's table, which called observing a refusal a GREEN control and whose `RefusedRegression` row named no input |
 
+**Three consequences found while applying them**, changed here though not among the nine:
+
+- **Correction 5 silently invalidated a bridge trigger.** §3.7 listed *new witness roster* as an
+  incompatible-requirement trigger; once the roster moves to `ValidationRevision`, that reading
+  would demand expand-migrate-contract for enrolling a witness. Removed, with the reason stated
+  inline so it cannot return.
+- **`RefusedRegression` was carrying two causes.** §3.3's table let it mean both *moved without a
+  declaration* and *moved with one but the witness failed*, while `RefusedUndeclaredDelta` sat
+  beside it meaning the first. Two causes with different remedies sharing an arm is the
+  state-space conflation DESIGN §5 names; the table now says which is which.
+- **The first revision's stage 9 was a fork.** Guarantee-path measurement rows are not a
+  separate stage — the stage-execution receipt of the new stage 1 *is* that measurement, and a
+  second receipt beside `gunbc.guarantee_measurement` is what §2 exists to prevent.
+
 **Kept from the first revision, unchanged:** the §2 DFS-existing-machinery inventory (reuse, do
 not fork); candidate-cannot-promote-itself; the generation lineage graph; rollback-is-not-fix-forward
 (§4); declared change as distinct from behavioral equivalence (§9 Q2's first clause); and probes
