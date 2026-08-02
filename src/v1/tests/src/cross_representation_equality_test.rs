@@ -146,6 +146,20 @@ fn genuine_inequalities_stay_false_not_errors() {
 // `v2.*`. `module_skips_direct_call_arg_check` still exempts `v2.*` from the argument
 // TYPE judgment only — labels have no representation gap, so shape checking is not behind
 // that exemption (`direct_call_shape_wall_note` in `v1.compiler.infer`).
+//
+// SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral): the helpers below are
+// seed-retained local-only witnesses in an existing `v1-compiler-tests` module (the rust
+// suite is local-only per `gunbc.commit_workflow`, CI removed 2026-07-11). Host-Rust
+// because post-#7519 mismatched call fixtures refuse at compile time and cannot inhabit an
+// Accepted `.dag` claim row; they must be exercised via `compile_to_resolved` in this
+// harness (same class as `compiler_tests::call_shape_wall_witness` and the pre-existing
+// interpreter receipts in this file). Lane: compiler guarantee recovery — ROADMAP closing
+// check `ct_call_shape_wall_witness_test` ("migrates to the probe corpus as this class's
+// durable pair"; sibling of landed direct-call shape wall gunbc#7519).
+// Dissolution: migrate these two witnesses into `gunbc.guarantee_probe_corpus` (or fold
+// into `call_shape_wall_witness` once the `v2.*` module axis is covered there), then
+// delete `compile_contract_source` / `call_shape_diagnostic_msgs` / this section in the
+// same change.
 const CALL_CONTRACT_BAD_SOURCE: &str = r#"
 module v2.test.callcontract
 
