@@ -227,8 +227,8 @@ Within a single requirement revision, admission classifies emission deltas:
 
 | Verdict | Meaning |
 |---|---|
-| `AdmittedDeclared { stages, surfaces, evidence }` | Observed delta ⊆ declared change set; stage stamps consistent |
-| `RefusedRegression { stage, surface, cause }` | Bytes/behavior moved without declaration or with failed witness |
+| `AdmittedDeclared { stages, surfaces, evidence }` | Observed delta ⊆ declared change set; stage-execution receipts (§3.9) consistent with it |
+| `RefusedRegression { stage, surface, cause }` | Moved **with** a declaration, but the required witness failed. Moving *without* a declaration is `RefusedUndeclaredDelta` below — the two causes have different remedies and must not share an arm |
 | `RefusedUndeclaredDelta` | Delta on a registered surface with no `allowed_surface_moves` entry |
 | `RefusedStageMismatch { declared, observed }` | Declared `Infer`-only but emit digest moved (or converse) |
 | `RefusedStaleSubstrate { expected_revision, observed_revision }` | Warm receipt replay against wrong materialization revision |
