@@ -15,28 +15,22 @@ import gunbc.ci_spec {
   ci_heal_generated_artifact_regen_function,
   ci_heal_generated_artifact_gate_entry,
   ci_heal_dispatch_entry,
-<<<<<<< HEAD
   ci_heal_repo_local_git_config_entry,
   ci_heal_repo_local_git_config_function,
   ci_heal_repo_local_git_config_shell_emit_scaffold,
   ci_heal_repo_local_git_config_shell_emit_dissolution_trigger,
   gunbc_ci_heal_commit_push_script,
   gunbc_ci_heal_repo_local_git_config_invoke,
-}
-import std.disposition { Scaffold }
-import gunbc.generated_artifact { committed_generated_artifact_paths, CiYamlArtifact, artifact_path }
-=======
   ci_heal_author_commit_artifact_dir,
   ci_heal_author_commit_artifact_name,
-  ci_heal_author_commit_regen_command,
-  gunbc_ci_heal_commit_push_script
+  ci_heal_author_commit_regen_command
 }
+import std.disposition { Scaffold }
 import gunbc.generated_artifact {
   auto_push_eligible_committed_artifact_paths,
   author_commit_required_committed_artifact_paths,
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, artifact_path
 }
->>>>>>> origin/main
 import gunbc.ci_workflow_expressions { ci_regen_heal_if }
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
@@ -150,7 +144,6 @@ test fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
     && (ci_heal_generated_artifact_gate_entry == "dag/tools/generated_artifact_gate.dag")
 }
 
-<<<<<<< HEAD
 test fn heal_converges_repo_local_git_config() -> Bool {
   (ci_heal_repo_local_git_config_function == "converge")
     && (ci_heal_repo_local_git_config_entry == "dag/gunbc/repo_local_git_config.dag")
@@ -175,10 +168,7 @@ test fn heal_repo_local_git_config_shell_emit_is_scaffold() -> Bool {
   }
 }
 
-test fn heal_commit_scope_is_artifact_only() -> Bool {
-=======
 test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
->>>>>>> origin/main
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: concat("git add \"", artifact_path(a: GitignoreArtifact)))
     && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: CiYamlArtifact)))

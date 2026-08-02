@@ -548,17 +548,13 @@ fn gunbc_ci_heal_binary_source_skew_guard_script() -> String {
   ci_heal_binary_source_skew_guard_script()
 }
 
-<<<<<<< HEAD
-data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH+DISPATCH step creates and classifies a new subject. COMMIT SCOPE remains artifact-only: staging is exactly committed_generated_artifact_paths(), never git add -A, and missing registered paths are loudly skipped. Before mutation it captures PRIOR_HEAD; after the artifact-only commit it captures HEALED_HEAD and the changed artifact population, pushes non-force to the triggering PR branch, then explicitly invokes github.Workflows.CreateDispatch with the branch ref plus HEALED_HEAD as expected_healed_sha. The workflow model binds github.token into the step's GITHUB_TOKEN environment because the modeled service resolves its sole credential authority there and Actions does not export the token context automatically. A clean staged diff is HealNoChange and exits successfully. A mutation is HealProduced, makes the prior run SupersededByHealedHead, and the old run exits nonzero even after a successful dispatch: no result from tree A can authorize tree B. If push or dispatch fails, the job fails loudly; dispatch failure emits HealDispatchRefused and never assumes the GITHUB_TOKEN push produced an event. The dispatched workflow excludes this heal job, requires both github.sha (the GitHub run/check subject) and checkout HEAD to equal the immutable expected SHA before witnesses, and refuses either mismatch. The byte-idempotent fixed point still proves loop safety, but it is no longer used as a substitute for executing revalidation on the healed head. HEAL PUSH HOOKS (crisp-bat-830 2026-08-01): git -c core.hooksPath= push is defensible because hooks are declared feedback-not-enforcement (charter forbids hook-as-wall); the heal writer's real safety wall is lane-1 commit-writer admission (countable follow-up), and an unattended writer disabling its own hooks is exactly why hooks cannot be presented as enforcement."
-=======
 data ci_heal_author_commit_artifact_dir: String = "heal-author-commit-required"
 
 data ci_heal_author_commit_artifact_name: String = "heal-author-commit-required"
 
 data ci_heal_author_commit_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet"
 
-data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH+DISPATCH step creates and classifies a new subject. COMMIT SCOPE is auto-push-eligible artifacts only (auto_push_eligible_committed_artifact_paths): workflow projections under .github/workflows/** are AuthorCommitRequired because the GitHub App token lacks workflows:write and any push touching them is rejected — staging them would be a push the job knows will fail. Author-commit-required drift is detected by git diff on those paths BEFORE staging; when present the step packages the corrected bytes into heal-author-commit-required/, emits HealAuthorCommitRequired naming every affected path plus ci_heal_author_commit_regen_command, and exits 1 as a structural author obligation — never attempting the doomed push. A follow-up upload-artifact step publishes the repair bundle. Auto-push-eligible artifacts alone follow the prior HealNoChange / HealProduced / dispatch / SupersededByHealedHead flow. When BOTH populations drift, auto-push-eligible artifacts are committed and pushed first, then HealAuthorCommitRequired is reported for the workflow paths still requiring author commit. Missing registered paths are loudly skipped."
->>>>>>> origin/main
+data ci_heal_commit_push_note: String = "The heal COMMIT+PUSH+DISPATCH step creates and classifies a new subject. COMMIT SCOPE is auto-push-eligible artifacts only (auto_push_eligible_committed_artifact_paths): workflow projections under .github/workflows/** are AuthorCommitRequired because the GitHub App lacks workflows:write and any push touching them is rejected — staging them would be a push the job knows will fail. Author-commit-required drift is detected by git diff on those paths BEFORE staging; when present the step packages the corrected bytes into heal-author-commit-required/, emits HealAuthorCommitRequired naming every affected path plus ci_heal_author_commit_regen_command, and exits 1 as a structural author obligation — never attempting the doomed push. A follow-up upload-artifact step publishes the repair bundle. Auto-push-eligible artifacts alone follow the prior HealNoChange / HealProduced / dispatch / SupersededByHealedHead flow. When BOTH populations drift, auto-push-eligible artifacts are committed and pushed first, then HealAuthorCommitRequired is reported for the workflow paths still requiring author commit. Missing registered paths are loudly skipped. HEAL PUSH HOOKS: git -c core.hooksPath= push is intentional because hooks are feedback, not enforcement; the unattended writer relies on modeled admission and must not recursively invoke the pre-push convergence hook."
 
 data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -603,22 +599,6 @@ fn ci_heal_shell_lines() -> List<String> {
       "git config user.email \"gunbc-ci-auto-heal@users.noreply.github.com\""
     ],
     concat(
-<<<<<<< HEAD
-      ci_heal_git_add_lines(),
-      [
-        "PRIOR_HEAD=$(git rev-parse HEAD)",
-        "if git diff --cached --quiet; then",
-        "  echo \"HealNoChange head=$PRIOR_HEAD\"",
-        "  exit 0",
-        "else",
-        "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
-        "  git commit -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
-        "  HEALED_HEAD=$(git rev-parse HEAD)",
-        "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
-        "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\"",
-        "  ROOT=$(git rev-parse --show-toplevel)"
-      ]
-=======
       ci_heal_author_commit_drift_lines(),
       concat(
         ci_heal_author_commit_package_lines(),
@@ -637,13 +617,12 @@ fn ci_heal_shell_lines() -> List<String> {
             "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
             "  git commit -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
-            "  git push origin HEAD:${{ github.head_ref || github.ref_name }}",
+            "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
             "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\"",
             "  ROOT=$(git rev-parse --show-toplevel)"
           ]
         )
       )
->>>>>>> origin/main
     )
   )
 }

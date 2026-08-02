@@ -113,9 +113,8 @@ fn committed_generated_artifact_paths() -> List<String> {
   map(committed_generated_artifacts(), a => artifact_path(a: a))
 }
 
-<<<<<<< HEAD
 data artifact_eq_disposition_reference_note: String = "Disposition authority (reference only; do not fork the lifecycle here): gunbc.non_fold_residue.non_fold_residue_frontier enrolls dag/gunbc/generated_artifact.dag::artifact_eq with the typed nfr_reason_land_red_era reason and nfr_dissolve_owning_fold trigger. The live non_fold_residue_clean_holds witness refuses both an unrostered predicate and a stale roster row; its synthetic malformed-row RED witnesses that reason without a dissolution trigger is invalid. This equality residue therefore grows only under that one bounded census row and deletes when the owning fold derives equality from inhabitance."
-=======
+
 fn artifact_heal_policy(a: GeneratedArtifact) -> HealPolicy {
   match artifact_commit_policy(a: a) {
     CommitRequired { consumer: GithubActionsWorkflow } =>
@@ -189,7 +188,6 @@ fn classify_heal_repair_paths(changed_paths: List<String>) -> HealRepairDisposit
     HealRepairMixed { auto_push_paths: auto_push, author_commit_paths: author }
   }
 }
->>>>>>> origin/main
 
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
