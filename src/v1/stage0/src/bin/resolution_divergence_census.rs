@@ -12,12 +12,12 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    format_resolution_divergence_census, resolution_divergence_census_live,
-    resolution_divergence_census_live_closure_scoped, resolution_divergence_census_source_roots,
+    format_resolution_divergence_census, record_resolution_divergence_phase,
+    resolution_divergence_census_live, resolution_divergence_census_live_closure_scoped,
+    resolution_divergence_census_source_roots,
     resolution_divergence_fn_parent_first_hit_subset_refusal,
-    resolution_divergence_silent_pick_refusal, record_resolution_divergence_phase,
-    whole_tree_probe_exclusion_substrings, ResolutionDivergencePhase,
-    ResolutionDivergencePhaseState,
+    resolution_divergence_silent_pick_refusal, whole_tree_probe_exclusion_substrings,
+    ResolutionDivergencePhase, ResolutionDivergencePhaseState,
 };
 
 fn workspace_root() -> PathBuf {
@@ -78,28 +78,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         // same source set the falsifier's whole-tree cold control already resolves
         // cleanly — instead of the default blind directory walk. Additive mode; the
         // default (source_roots empty => dag+src/v2) is untouched below.
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::ChildWholeTreeResolve,
-            ResolutionDivergencePhaseState::Started,
-            "closure-scoped CLI adapter",
-        )
-        .map_err(|e| {
-            eprintln!("resolution_divergence_census: {e}");
-            ExitCode::from(2)
-        })?;
-        let resolved = resolution_divergence_census_live_closure_scoped();
-        if resolved.is_ok() {
-            record_resolution_divergence_phase(
-                ResolutionDivergencePhase::ChildWholeTreeResolve,
-                ResolutionDivergencePhaseState::Completed,
-                "closure-scoped CLI adapter",
-            )
-            .map_err(|e| {
-                eprintln!("resolution_divergence_census: {e}");
-                ExitCode::from(2)
-            })?;
-        }
-        resolved
+        resolution_divergence_census_live_closure_scoped()
     } else {
         if source_roots.is_empty() {
             source_roots = resolution_divergence_census_source_roots(&ws);
@@ -108,15 +87,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
     .map_err(|e| {
         eprintln!("resolution_divergence_census: resolve failed:\n{e}");
-        ExitCode::from(2)
-    })?;
-    record_resolution_divergence_phase(
-        ResolutionDivergencePhase::CensusTraversal,
-        ResolutionDivergencePhaseState::Completed,
-        &format!("sites_checked={}", census.sites_checked),
-    )
-    .map_err(|e| {
-        eprintln!("resolution_divergence_census: {e}");
         ExitCode::from(2)
     })?;
     record_resolution_divergence_phase(
@@ -131,15 +101,30 @@ fn run() -> Result<ExitCode, ExitCode> {
     let report = format_resolution_divergence_census(&census);
     println!("{report}");
     if census.sites_checked == 0 {
+        let _ = record_resolution_divergence_phase(
+            ResolutionDivergencePhase::OutputProjection,
+            ResolutionDivergencePhaseState::Completed,
+            "refused: no bare call sites",
+        );
         eprintln!("resolution_divergence_census: no bare call sites in resolved corpus");
         return Err(ExitCode::from(2));
     }
     if let Some(refusal) = resolution_divergence_fn_parent_first_hit_subset_refusal(&census) {
         eprintln!("{refusal}");
+        let _ = record_resolution_divergence_phase(
+            ResolutionDivergencePhase::OutputProjection,
+            ResolutionDivergencePhaseState::Completed,
+            "refused: fn-parent subset violation",
+        );
         return Err(ExitCode::from(1));
     }
     if let Some(refusal) = resolution_divergence_silent_pick_refusal(&census) {
         eprintln!("{refusal}");
+        let _ = record_resolution_divergence_phase(
+            ResolutionDivergencePhase::OutputProjection,
+            ResolutionDivergencePhaseState::Completed,
+            "refused: genuine silent pick",
+        );
         return Err(ExitCode::from(1));
     }
     let raw_telemetry_count = census.silent_pick_global_bare_lcp_rows.len()

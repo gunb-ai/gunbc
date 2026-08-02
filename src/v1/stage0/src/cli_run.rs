@@ -26247,6 +26247,28 @@ fn resolution_divergence_phase_receipt_timestamp_ms() -> u128 {
         .as_millis()
 }
 
+fn resolution_divergence_phase_elapsed_ms(
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+) -> Option<u128> {
+    static STARTS: OnceLock<Mutex<std::collections::HashMap<&'static str, std::time::Instant>>> =
+        OnceLock::new();
+    let mut starts = STARTS
+        .get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .expect("resolution-divergence phase start lock poisoned");
+    match state {
+        ResolutionDivergencePhaseState::Started => {
+            starts.insert(phase.label(), std::time::Instant::now());
+            None
+        }
+        ResolutionDivergencePhaseState::Completed => starts
+            .remove(phase.label())
+            .map(|started| started.elapsed().as_millis()),
+        ResolutionDivergencePhaseState::Skipped => Some(0),
+    }
+}
+
 fn resolution_divergence_phase_receipt_sanitize(detail: &str) -> String {
     detail
         .replace('\t', " ")
@@ -26280,22 +26302,33 @@ fn write_resolution_divergence_phase_receipt_row_at(
             )
         })?;
     if is_new {
-        writeln!(file, "timestamp_ms\tpid\tprocess\tphase\tstate\tdetail")
-            .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+        writeln!(
+            file,
+            "timestamp_ms\tpid\tprocess\tphase\tstate\telapsed_ms\tdetail"
+        )
+        .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
     }
+    let elapsed_ms = resolution_divergence_phase_elapsed_ms(phase, state)
+        .map(|n| n.to_string())
+        .unwrap_or_default();
     writeln!(
         file,
-        "{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}",
         resolution_divergence_phase_receipt_timestamp_ms(),
         std::process::id(),
         resolution_divergence_phase_receipt_process_name(),
         phase.label(),
         state.label(),
+        elapsed_ms,
         resolution_divergence_phase_receipt_sanitize(detail),
     )
     .map_err(|e| format!("resolution-divergence phase receipt: row write: {e}"))?;
-    file.sync_data()
-        .map_err(|e| format!("resolution-divergence phase receipt: sync {}: {e}", path.display()))
+    file.sync_data().map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: sync {}: {e}",
+            path.display()
+        )
+    })
 }
 
 pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
@@ -26314,8 +26347,11 @@ pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
             path.display()
         )
     })?;
-    writeln!(file, "timestamp_ms\tpid\tprocess\tphase\tstate\tdetail")
-        .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+    writeln!(
+        file,
+        "timestamp_ms\tpid\tprocess\tphase\tstate\telapsed_ms\tdetail"
+    )
+    .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
     file.sync_data().map_err(|e| {
         format!(
             "resolution-divergence phase receipt: reset sync {}: {e}",
@@ -27093,6 +27129,11 @@ pub fn resolution_divergence_census_live(
 /// or any other consumer.
 pub fn resolution_divergence_census_live_closure_scoped(
 ) -> Result<ResolutionDivergenceCensus, String> {
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ChildWholeTreeResolve,
+        ResolutionDivergencePhaseState::Started,
+        "closure-scoped source load + resolve",
+    )?;
     let roots = default_source_roots();
     let mei = build_multi_entry_index_primary_precedence(&roots);
     let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
@@ -27101,6 +27142,11 @@ pub fn resolution_divergence_census_live_closure_scoped(
     let resolve_result = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
     let (graph, source_indices) = resolve_result?;
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ChildWholeTreeResolve,
+        ResolutionDivergencePhaseState::Completed,
+        &format!("modules={modules_resolved}"),
+    )?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         graph.as_ref(),
         source_indices,
@@ -27108,10 +27154,20 @@ pub fn resolution_divergence_census_live_closure_scoped(
         None,
         None,
     );
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::CensusTraversal,
+        ResolutionDivergencePhaseState::Started,
+        &format!("modules={modules_resolved}"),
+    )?;
     let mut census = resolution_divergence_census_from_ctx(&ctx);
     census.modules_resolved = modules_resolved;
     census.modules_excluded = 0;
     merge_silent_pick_telemetry(&mut census, silent_picks);
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::CensusTraversal,
+        ResolutionDivergencePhaseState::Completed,
+        &format!("sites_checked={}", census.sites_checked),
+    )?;
     Ok(census)
 }
 
@@ -27899,7 +27955,9 @@ mod resolution_divergence_census_tests {
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
         func_sig_if_resolved, import_chain_owner, lookup_resolved_sig,
         resolution_divergence_census_live, resolution_divergence_silent_pick_refusal,
-        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
+        whole_tree_resolved_ctx, write_resolution_divergence_phase_receipt_row_at,
+        ContainmentResolve, ResolutionDivergenceBucket, ResolutionDivergencePhase,
+        ResolutionDivergencePhaseState, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
@@ -27907,6 +27965,38 @@ mod resolution_divergence_census_tests {
         let path = root.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).expect("mkdir");
         std::fs::write(&path, content).expect("write dag");
+    }
+
+    #[test]
+    fn phase_receipt_persists_started_before_completed_with_distinct_timing() {
+        let receipt = std::env::temp_dir().join(format!(
+            "gunbc-resolution-divergence-phase-receipt-{}.tsv",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&receipt);
+        write_resolution_divergence_phase_receipt_row_at(
+            &receipt,
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Started,
+            "fixture\nstart",
+        )
+        .expect("started row");
+        write_resolution_divergence_phase_receipt_row_at(
+            &receipt,
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Completed,
+            "fixture complete",
+        )
+        .expect("completed row");
+        let body = std::fs::read_to_string(&receipt).expect("read receipt");
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines.len(), 3, "header plus one row per transition");
+        assert!(lines[0].contains("elapsed_ms"));
+        assert!(lines[1].contains("\tcensus_traversal\tstarted\t\tfixture start"));
+        assert!(lines[2].contains("\tcensus_traversal\tcompleted\t"));
+        assert_eq!(lines[1].split('\t').count(), 7);
+        assert_eq!(lines[2].split('\t').count(), 7);
+        let _ = std::fs::remove_file(receipt);
     }
 
     /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
