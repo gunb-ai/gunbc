@@ -1,6 +1,7 @@
 module gunbc.guarantee_probe_corpus
 
 import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
+import std.string_type { string_is_lexicographically_before }
 import std.nat { Nat }
 import gunbc.guarantee_measurement {
   GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
@@ -16,7 +17,6 @@ import gunbc.guarantee_measurement {
   join_receipt_to_path, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
 }
 import v2.std.optional { Present, Absent }
-import std.algebra { Ordering, Less, Equal, Greater }
 import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
 import v2.std.algebra { fold_list }
 import v2.std.node { Symbol }
@@ -245,39 +245,6 @@ fn guarantee_probe_id_strings() -> List<String> {
   )
 }
 
-fn string_lex_compare(left: String, right: String) -> Ordering {
-  let left_len = string_length(s: left)
-  let right_len = string_length(s: right)
-  if left_len == 0 && right_len == 0 {
-    Equal
-  } else if left_len == 0 {
-    Less
-  } else if right_len == 0 {
-    Greater
-  } else {
-    let left_cp = code_point(ch: char_at(s: left, i: 0))
-    let right_cp = code_point(ch: char_at(s: right, i: 0))
-    if left_cp < right_cp {
-      Less
-    } else if left_cp > right_cp {
-      Greater
-    } else {
-      string_lex_compare(
-        left: substring(s: left, start: 1, end: left_len),
-        right: substring(s: right, start: 1, end: right_len),
-      )
-    }
-  }
-}
-
-fn string_lex_less(left: String, right: String) -> Bool {
-  match string_lex_compare(left: left, right: right) {
-    Less => true
-    Equal => false
-    Greater => false
-  }
-}
-
 type ProbeLexWalk {
   prev: String?
   ok: Bool
@@ -292,7 +259,7 @@ fn probe_ids_are_lexicographically_ordered(ids: List<GuaranteeProbeId>) -> Bool 
       match acc.prev {
         Absent => ProbeLexWalk { prev: Present { value: current }, ok: true }
         Present { value: prev } =>
-          if string_lex_less(left: prev, right: current) {
+          if string_is_lexicographically_before(left: prev, right: current) {
             ProbeLexWalk { prev: Present { value: current }, ok: true }
           } else {
             ProbeLexWalk { prev: Present { value: current }, ok: false }
