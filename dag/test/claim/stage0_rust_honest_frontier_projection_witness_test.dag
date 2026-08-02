@@ -2,7 +2,7 @@ module test.claim.stage0_rust_honest_frontier_projection_witness
 
 import gunbc.stage0_rust_honest_frontier_integration {
   TrackedRustProjectionGitRefused,
-  TrackedRustProjectionReadRefused,
+  TrackedRustProjectionObservationRefused,
   TrackedRustUnclassifiedPaths,
   tracked_rust_unclassified_projection
 }
@@ -83,7 +83,8 @@ test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> 
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
     }
   ) {
-    TrackedRustProjectionReadRefused { detail: detail } => detail != ""
+    TrackedRustProjectionObservationRefused { detail: detail } =>
+      detail == "observed manifest missing repository_revision"
     _ => false
   }
 }
