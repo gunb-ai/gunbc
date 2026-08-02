@@ -16,11 +16,10 @@
 //! committed beneath a discovered `.dag` root before the visibility wall exists. Lane:
 //! namespace, ROADMAP node `namespace-canonical-binding` (“Make name lookup itself
 //! produce that one answer, and delete the old way”), under “Work out what each name can
-//! see, and let that be what a file depends on.” Concrete dissolution: when that node's
-//! production changeover makes the false-green rows refuse, flip them to located-refusal
-//! assertions and delete this Rust module once the same fixture is enrolled as the
-//! namespace lane's `.dag` closing witness; otherwise it deletes with the
-//! `v1-test-migration` prerequisite of `v1-zero-hand-maintained-rust`.
+//! see, and let that be what a file depends on.” Sole dissolution: the change accepting
+//! `namespace-canonical-binding` must move this exact fixture into the namespace lane's
+//! `.dag` closing witness, flip the false-green assertions to require located refusals,
+//! and delete this Rust module in the same change.
 
 use crate::helpers::{compile_multi, diagnostic_messages};
 
