@@ -4,7 +4,10 @@ import gunbc.resolved_graph_cache_hand_rust_scaffold {
   resolved_graph_cache_hand_rust_scaffold,
   resolved_graph_cache_hand_rust_dissolve_trigger,
   resolved_graph_cache_hand_rust_loc_delta_net,
+  resolved_graph_cache_hand_rust_path_loc_deltas_net,
   resolved_graph_cache_hand_rust_paths,
+  resolved_graph_cache_hand_rust_deferred_consumer_scaffold_module,
+  resolved_graph_cache_hand_rust_deferred_consumer_witness_entry,
   resolved_graph_cache_hand_rust_receipt_plan_anchor,
   resolved_graph_cache_hand_rust_receipt_witness_entry,
   resolved_graph_cache_hand_rust_roadmap_lane_anchor,
@@ -15,9 +18,9 @@ import gunbc.resolved_graph_cache_hand_rust_scaffold {
 }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
-import v2.std.algebra { length }
+import v2.std.algebra { fold, length }
 
-data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt for review 46781: pins the seed-retained scaffold bind on v1_compiler.resolved_graph_cache.lookup_verified_probe, names bounded deferral (cli_run_hollowing_plan area 2.6), and cites named discriminators executed by cargo test -p v1-compiler-tests resolve_cross_process_cache_test -- --nocapture."
+data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt (reviews 46781/46990): scaffold bind on lookup_verified_probe; full #7534 Rust census (seven paths, per-path net deltas summing to loc_delta_net); consumer bridge defers to materialization_provider_consumer_hand_rust_witness_test.dag. Discriminators executed by cargo test -p v1-compiler-tests resolve_cross_process_cache_test -- --nocapture."
 
 test fn resolved_graph_cache_hand_rust_scaffold_is_seed_retained() -> Bool {
   match resolved_graph_cache_hand_rust_scaffold {
@@ -32,8 +35,18 @@ test fn resolved_graph_cache_hand_rust_receipt_is_checkable() -> Bool {
     && !(resolved_graph_cache_hand_rust_roadmap_lane_anchor == "")
     && resolved_graph_cache_hand_rust_receipt_witness_entry ==
       "dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag"
-    && resolved_graph_cache_hand_rust_loc_delta_net > 0
-    && (length(xs: resolved_graph_cache_hand_rust_paths) == 2)
+    && resolved_graph_cache_hand_rust_deferred_consumer_scaffold_module ==
+      "gunbc.materialization_provider_consumer_scaffold"
+    && resolved_graph_cache_hand_rust_deferred_consumer_witness_entry ==
+      "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
+    && length(xs: resolved_graph_cache_hand_rust_paths) == 7
+    && length(xs: resolved_graph_cache_hand_rust_path_loc_deltas_net) == 7
+    && resolved_graph_cache_hand_rust_loc_delta_net ==
+      fold(
+        resolved_graph_cache_hand_rust_path_loc_deltas_net,
+        init: 0,
+        f: (acc, delta) => acc + delta
+      )
 }
 
 test fn resolved_graph_cache_hand_rust_discriminating_tests_named() -> Bool {

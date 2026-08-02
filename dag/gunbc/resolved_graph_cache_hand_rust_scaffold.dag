@@ -13,18 +13,37 @@ data resolved_graph_cache_hand_rust_scaffold: Disposition = Scaffold {
   }
 }
 
-data resolved_graph_cache_hand_rust_dissolve_trigger: String = "🟡 dissolve-on: src/v1/stage0/src/resolved_graph_cache.rs — FORMAT v3 cross-process resolved-graph codec (bounded header, per-part digests, lookup_verified_probe TOCTOU seam, legacy v1→v3 migration). The modeled provider surface lives in std.materialization_provider; this scaffold covers the HAND-Rust persistence/verification codec the provider consumer and cli_run cross-process tier route through. DISSOLVES WHEN gunbc.plans.cli_run_hollowing_plan area 2.6 typed module cache / memo subsumes resolved_graph_cache integration into std.materialize duplicate-work identity lattice OR witness-realization lands typed host-effect transport for provider_serve lookups (docs/plans/witness-realization-plan.md)."
+data resolved_graph_cache_hand_rust_dissolve_trigger: String = "🟡 dissolve-on: Dispatch G hand-Rust lane (review 46990 census). Scaffold bind: src/v1/stage0/src/resolved_graph_cache.rs lookup_verified_probe — FORMAT v3 cross-process codec (bounded header, per-part digests, TOCTOU seam, legacy v1→v3 migration). resolved_graph_cache_hand_rust_paths enrolls every Rust file touched by #7534; materialization_provider_consumer.rs + its test defer to gunbc.materialization_provider_consumer_scaffold (paired witness below). cli_run.rs carries cross-process tier integration wiring under the same cli_run_hollowing_plan area 2.6 dissolve trigger. DISSOLVES WHEN gunbc.plans.cli_run_hollowing_plan area 2.6 typed module cache / memo subsumes resolved_graph_cache integration into std.materialize duplicate-work identity lattice OR witness-realization lands typed host-effect transport for provider_serve lookups (docs/plans/witness-realization-plan.md)."
 
-data resolved_graph_cache_hand_rust_loc_delta_net: Int = 1310
+data resolved_graph_cache_hand_rust_loc_delta_net: Int = 1747
 
 data resolved_graph_cache_hand_rust_receipt_plan_anchor: String = "dag/gunbc/plans/cli_run_hollowing_plan.dag#2.6-typed-module-cache-memo"
 
 data resolved_graph_cache_hand_rust_roadmap_lane_anchor: String = "ROADMAP.md §7 Seed interim / gunbc.plans.cli_run_hollowing_plan area 2.6 (typed module cache / memo subsumes resolved_graph_cache integration)"
 
 data resolved_graph_cache_hand_rust_paths: List<String> = [
+  "src/v1/stage0/src/cli_run.rs",
+  "src/v1/stage0/src/cli_run/materialization_provider_consumer.rs",
   "src/v1/stage0/src/resolved_graph_cache.rs",
+  "src/v1/tests/src/ir_fixture_seam_soundness_test.rs",
+  "src/v1/tests/src/materialization_provider_resolved_graph_consumer_test.rs",
   "src/v1/tests/src/resolve_cross_process_cache_test.rs",
+  "src/v1/tests/src/resolved_graph_cache_size_bound_test.rs",
 ]
+
+data resolved_graph_cache_hand_rust_path_loc_deltas_net: List<Int> = [
+  124,
+  174,
+  634,
+  2,
+  198,
+  569,
+  46,
+]
+
+data resolved_graph_cache_hand_rust_deferred_consumer_scaffold_module: String = "gunbc.materialization_provider_consumer_scaffold"
+
+data resolved_graph_cache_hand_rust_deferred_consumer_witness_entry: String = "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
 
 data resolved_graph_cache_hand_rust_test_discriminator_toctou: String = "verified_lookup_refuses_artifact_replaced_after_probe"
 
