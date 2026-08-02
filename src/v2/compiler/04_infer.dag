@@ -172,48 +172,14 @@ type InferredTree {
   facts: Map<Node, InferredFacts>
 }
 
-data infer_emit_staging_descent_axis: Symbol = ^infer_emit_staging_descent
+data infer_emit_shape_frontier_note: String = "Emit-shape frontier carrier (review 47234): translate's only compatibility frontier for missing judgments is infer_facts_lookup_miss (Violates) — an empty facts map means no infer judgment exists, not that a recorded GroundingNotDerived was erased or relabeled. Production emit paths that have not yet grounded every node (cross_language_compile, inhabitant-neutralization witnesses) pass infer_emit_shape_frontier_inferred_tree to emit after infer accepts the neutralized core on infer's own frontier; emit does not consume infer's facts map and cannot bypass translate's refusal of recorded underived facts on a canonical tree. dissolve-on: v2-inferred-tree-completeness makes incomplete InferredTree unwritable on the production emit path."
 
-data infer_emit_staging_composed_facts_note: String = "Emit staging carrier (review 47219): translate refuses every recorded GroundingNotDerived on the Holds arm; the only translate compatibility frontier is infer_facts_lookup_miss (Violates). Cross-language and inhabitant-neutralization emit therefore stage an InferredTree whose facts map carries DerivedGrounding composed for translate admission — never by swallowing infer's typed frontier judgment inside translate. dissolve-on: v2-inferred-tree-completeness makes the staging carrier unwritable on the production emit path."
-
-fn infer_emit_staging_composed_grounding(node: Node) -> CanonicalGrounding {
-  CanonicalGrounding {
-    node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: ^constraint_property_being_canonical,
-        evidence: node
-      },
-      closedness: StructuralPropertyWitness {
-        property: ^constraint_property_candidate_set_closedness,
-        evidence: node
-      }
-    }
-  }
-}
-
-fn infer_emit_staging_composed_facts(node: Node) -> InferredFacts {
-  InferredFacts {
-    grounding: DerivedGrounding {
-      grounding: infer_emit_staging_composed_grounding(node: node)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: v2.std.cardinality.RankingDimension {
-          measured: infer_emit_staging_descent_axis
-        }
-      }
-    }
-  }
-}
-
-fn infer_emit_staging_inferred_tree(canonical: InferredTree) -> InferredTree {
+fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
-    root: canonical.root,
+    root: root,
     facts: Map {
-      lookup: fn(key) {
-        Present { value: infer_emit_staging_composed_facts(node: key) }
+      lookup: fn(_key) {
+        Absent
       }
     }
   }
