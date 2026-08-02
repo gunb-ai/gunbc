@@ -246,6 +246,15 @@ fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract 
   )
 }
 
+data namespace_reference_derived_closure_execution_contract_note: String = "THE SIX-ARM CLOSING DISCRIMINATOR for namespace-reference-derived-closure. The validation is deliberately RED while its production admission seam carries a typed unavailable row for every clause: the closed capability population is the node's own red control, and missing capabilities are a derived set difference, so duplicate evidence cannot hide an unexecuted clause and zero work cannot verify as complete. Clauses (a-d) wait on #7515's structural candidate producer, (e) waits on its reference-derived dependency projection, and (f) waits on the projection's pool-membership-independence wall. The paired fixture suite executes the merged P1 kernel for the first four clauses and proves every clause rejects its planted wrong output, but the bound acceptance witness imports none of those fixtures; it can green only when the gated node supplies production observations. It is enrolled QuarantineProbeExpectRed until that transition."
+
+fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as FilePath,
+    function: "witness_namespace_reference_derived_closure_closing_contract_holds" as NonEmptyStr,
+  )
+}
+
 data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINATOR, authored only after the first P1 carrier made the node's whole completion condition executable. The validation is deliberately RED: its closed capability population is the roadmap node's own bar, and this first slice supplies only the bounded candidate-generation model check. Missing behavior is derived set difference, never a hand-maintained progress count; duplicate passing rows cannot erase it, and a false row remains missing. The contract therefore cannot green on zero progress and cannot confuse a modeled carrier with an executed proof kernel. It is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots. Each later P1 slice adds an executing scenario check without weakening the aggregate. When the final capability greens, that same change removes the expect-red enrollment and promotes the witness to ordinary discovery ratchet."
 
 fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
@@ -593,7 +602,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
-    active_large(
+    with_execution(active_large(
       identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
       id: "namespace-reference-derived-closure",
       owner: "namespace",
@@ -607,7 +616,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No hand-written dependency statements, no falling back to searching everything that happens to be loaded, no mass edits across the repository, and no throwing away which particular name produced which dependency.",
         handback: "The derived dependencies for one real file, matching what was written by hand, with each of the red controls actually run."
       )
-    ),
+    ), namespace_reference_derived_closure_execution_contract()),
     active(
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
       id: "namespace-ambiguity-discharge",

@@ -131,6 +131,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "every required KernelAcceptanceCapability has a passing executing scenario — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall"
   },
   WitnessExclusionRow {
+    pattern: "namespace_reference_derived_closure_acceptance_test.dag",
+    classification: QuarantineProbeExpectRed,
+    reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
+    dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
+  },
+  WitnessExclusionRow {
     pattern: "glob_discovery.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
@@ -768,6 +774,7 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag", f: "compiler_closure_scoped_ingest_module_count_ok_holds"),
   probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds")
+  probe_red(entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag", f: "witness_namespace_reference_derived_closure_closing_contract_holds")
 ]
 
 fn known_red_probe_roster() -> List<ScheduleWitnessEntry> {

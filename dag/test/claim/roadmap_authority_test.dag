@@ -600,6 +600,22 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
     && !id_exists(id: "2-scm-design-partner-shadow")
 }
 
+test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool {
+  match bound_execution_contract_for(id: "namespace-reference-derived-closure") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && validations |> any(validation => match validation {
+          GunbcClaimValidation { entry, function } =>
+            (entry as String) == "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag"
+              && function == "witness_namespace_reference_derived_closure_closing_contract_holds"
+          CargoTestValidation { filter: _ } => false
+          CargoFmtValidation => false
+        })
+  }
+}
+
 test fn witness_projection_is_active_only() -> Bool {
   let out = serialize_markdown_source(
     doc: project_roadmap_to_markdown(
