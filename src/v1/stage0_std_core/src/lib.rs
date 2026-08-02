@@ -93,6 +93,9 @@ pub mod extdeps_uri;
 #[path = "../../stage0/src/extdeps_external_authority.rs"]
 pub mod extdeps_external_authority;
 #[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_container_oci_digest.rs"]
+pub mod extdeps_container_oci_digest;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_units_dimensionless.rs"]
 pub mod extdeps_units_dimensionless;
 #[rustfmt::skip]
