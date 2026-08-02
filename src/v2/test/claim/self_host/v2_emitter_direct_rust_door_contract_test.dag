@@ -1,14 +1,25 @@
 module v2.test.claim.self_host.v2_emitter_direct_rust_door_contract
 
+import v2.compiler.self_host.emitter_producer_provenance {
+  ProducerMintAdmitted,
+  ProducerMintRefused,
+  V2EmitterInterpreted,
+  emitter_producer_mint_admission,
+  mint_v2_interpreted_receipt_with_seed_closure_refuses,
+  v2_interpreted_emitter_closure,
+}
 import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  CandidateGenerationSerializeTargetWiring,
   DirectRustDoorEstablished,
   DirectRustDoorRefused,
   DirectRustDoorUnavailable,
   MissingRuleAcceptedDespiteGap,
   MissingTranslationRuleRefuses,
+  SeedEmitterRequiredForWrittenSource,
   WrittenSourceIndependentOfSeedEmitter,
   assess_missing_translation_rule_refuses,
-  candidate_generation_serialize_target_wiring_trigger,
+  assess_written_source_independent_of_seed_emitter,
+  direct_rust_door_authority_module_path,
   direct_rust_door_closing_frontier_count,
   direct_rust_door_required_capabilities,
   refused,
@@ -18,7 +29,7 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
 import v2.std.algebra { count }
 import v2.std.logic { Bool }
 
-data v2_emitter_direct_rust_door_contract_witness_note: String = "CONTROLLED FIXTURES for the two-clause closing fold. The production admission seam establishes MissingTranslationRuleRefuses through the rust_add missing-rules fixture and keeps WrittenSourceIndependentOfSeedEmitter unavailable until serialize_target is wired into candidate_generation. These tests prove the fold rejects a planted accept-despite-gap admission and that duplicate established rows cannot erase the unavailable second clause."
+data v2_emitter_direct_rust_door_contract_witness_note: String = "CONTROLLED FIXTURES for the two-clause closing fold. The production admission seam establishes MissingTranslationRuleRefuses through the rust_add missing-rules fixture and derives WrittenSourceIndependentOfSeedEmitter from producer provenance — structural seed-closure refusal plus v2-closure admissibility execute green, then a typed unavailable row names CandidateGenerationSerializeTargetWiring because candidate_generation still stops before serialized source. These tests prove the fold rejects a planted accept-despite-gap admission, that duplicate established rows cannot erase the unavailable second clause, and that the second clause is assessed rather than hand-asserted."
 
 test fn witness_required_capability_population_is_two() -> Bool {
   count(direct_rust_door_required_capabilities()) == 2
@@ -27,6 +38,31 @@ test fn witness_required_capability_population_is_two() -> Bool {
 test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
   match assess_missing_translation_rule_refuses() {
     DirectRustDoorEstablished { capability } => capability == MissingTranslationRuleRefuses
+    _ => false
+  }
+}
+
+test fn witness_provenance_structural_wall_refuses_seed_closure() -> Bool {
+  mint_v2_interpreted_receipt_with_seed_closure_refuses(
+    module_path: direct_rust_door_authority_module_path,
+  )
+}
+
+test fn witness_v2_interpreted_closure_admissible_without_seed() -> Bool {
+  match emitter_producer_mint_admission(
+    producer: V2EmitterInterpreted,
+    closure: v2_interpreted_emitter_closure,
+  ) {
+    ProducerMintAdmitted => true
+    ProducerMintRefused { cause: _ } => false
+  }
+}
+
+test fn witness_written_source_assessment_derives_unavailable_from_pipeline() -> Bool {
+  match assess_written_source_independent_of_seed_emitter() {
+    DirectRustDoorUnavailable { capability, trigger } =>
+      capability == WrittenSourceIndependentOfSeedEmitter
+        && trigger == CandidateGenerationSerializeTargetWiring
     _ => false
   }
 }
@@ -43,7 +79,7 @@ test fn witness_production_admissions_leave_one_capability_open() -> Bool {
     && admissions |> any(admission => match admission {
       DirectRustDoorUnavailable { capability, trigger } =>
         capability == WrittenSourceIndependentOfSeedEmitter
-          && trigger == candidate_generation_serialize_target_wiring_trigger
+          && trigger == CandidateGenerationSerializeTargetWiring
       _ => false
     })
 }
@@ -59,15 +95,25 @@ test fn witness_accept_despite_gap_refusal_fires() -> Bool {
   }
 }
 
+test fn witness_seed_emitter_required_for_written_source_refusal_fires() -> Bool {
+  match refused(
+    capability: WrittenSourceIndependentOfSeedEmitter,
+    failure: SeedEmitterRequiredForWrittenSource,
+  ) {
+    DirectRustDoorRefused { capability, failure } =>
+      capability == WrittenSourceIndependentOfSeedEmitter
+        && failure == SeedEmitterRequiredForWrittenSource
+    _ => false
+  }
+}
+
 test fn witness_duplicate_established_cannot_erase_unavailable_capability() -> Bool {
   let established_missing = assess_missing_translation_rule_refuses()
+  let assessed_written = assess_written_source_independent_of_seed_emitter()
   let admissions = [
     established_missing,
     established_missing,
-    DirectRustDoorUnavailable {
-      capability: WrittenSourceIndependentOfSeedEmitter,
-      trigger: candidate_generation_serialize_target_wiring_trigger,
-    },
+    assessed_written,
   ]
   direct_rust_door_closing_frontier_count(admissions: admissions) == 1
     && !v2_emitter_direct_rust_door_closing_contract_holds(admissions: admissions)

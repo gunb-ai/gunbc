@@ -1,5 +1,17 @@
 module v2.compiler.self_host.v2_emitter_direct_rust_door_contract
 
+import v2.compiler.self_host.candidate_generation {
+  candidate_generation_serializes_written_source,
+}
+import v2.compiler.self_host.emitter_producer_provenance {
+  ProducerMintAdmitted,
+  ProducerMintRefused,
+  V2EmitterInterpreted,
+  emitter_producer_mint_admission,
+  mint_v2_interpreted_receipt_with_seed_closure_refuses,
+  v2_emitter_production_routed_count,
+  v2_interpreted_emitter_closure,
+}
 import v2.compiler.translate {
   target_serialize_source_from_model,
   translate_diagnostic_reason_from_symbol,
@@ -26,11 +38,11 @@ import v2.std.node {
 import v2.std.optional { Absent, Present }
 import v2.std.types { Bool, Int, List, String }
 
-data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: the v2 emit path must write Rust source through serialize_target composed with translate without v1.compiler.emit_rust deciding any of it — candidate_generation still stops at translate today, so production admission carries a typed unavailable row naming CandidateGenerationSerializeTargetWiring until that last step is wired. Missing, refused, and unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a missing capability, and zero progress on the second clause stays red even when the first is already established."
+data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: derives from producer provenance — the v2 interpreted closure must be mint-admissible without v1.compiler.emit_rust, a V2EmitterInterpreted claim in the seed-linked harness closure must refuse, candidate_generation must serialize written source, and v2-written modules must carry executed producer receipts — never a hand-asserted flag. Missing, refused, and unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a missing capability, and zero progress on the second clause stays red even when the first is already established."
 
 data v2_emitter_direct_rust_door_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. When candidate_generation wires serialize_target and the seed-independent written-source check executes green, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to ordinary discovery as the permanent direct-rust-door regression wall."
 
-data candidate_generation_serialize_target_wiring_trigger: String = "CandidateGenerationSerializeTargetWiring"
+data direct_rust_door_authority_module_path: String = "src/v2/compiler/self_host/candidate_generation.dag"
 
 data direct_rust_door_emitted_root: Node = rust_fixture_emitted_add_fn
 
@@ -53,6 +65,11 @@ type DirectRustDoorCapability
   = MissingTranslationRuleRefuses
   | WrittenSourceIndependentOfSeedEmitter
 
+type DirectRustDoorTrigger
+  = CandidateGenerationSerializeTargetWiring
+  | NoV2WrittenSourcePopulation
+  | V2WrittenSourceExecutedReceiptWall
+
 type DirectRustDoorScenarioFailure
   = MissingRuleAcceptedDespiteGap
   | MissingRuleWrongDiagnostic
@@ -69,7 +86,7 @@ type DirectRustDoorAdmission
     }
   | DirectRustDoorUnavailable {
       capability: DirectRustDoorCapability,
-      trigger: String,
+      trigger: DirectRustDoorTrigger,
     }
 
 fn established(capability: DirectRustDoorCapability) -> DirectRustDoorAdmission {
@@ -108,6 +125,45 @@ fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
             failure: MissingRuleDiagnosticAbsent,
           )
       }
+  }
+}
+
+fn assess_written_source_independent_of_seed_emitter() -> DirectRustDoorAdmission {
+  if !mint_v2_interpreted_receipt_with_seed_closure_refuses(
+    module_path: direct_rust_door_authority_module_path,
+  ) {
+    refused(
+      capability: WrittenSourceIndependentOfSeedEmitter,
+      failure: SeedEmitterRequiredForWrittenSource,
+    )
+  } else {
+    match emitter_producer_mint_admission(
+      producer: V2EmitterInterpreted,
+      closure: v2_interpreted_emitter_closure,
+    ) {
+      ProducerMintRefused { cause: _ } =>
+        refused(
+          capability: WrittenSourceIndependentOfSeedEmitter,
+          failure: SeedEmitterRequiredForWrittenSource,
+        )
+      ProducerMintAdmitted =>
+        if !candidate_generation_serializes_written_source() {
+          DirectRustDoorUnavailable {
+            capability: WrittenSourceIndependentOfSeedEmitter,
+            trigger: CandidateGenerationSerializeTargetWiring,
+          }
+        } else if v2_emitter_production_routed_count() == 0 {
+          DirectRustDoorUnavailable {
+            capability: WrittenSourceIndependentOfSeedEmitter,
+            trigger: NoV2WrittenSourcePopulation,
+          }
+        } else {
+          DirectRustDoorUnavailable {
+            capability: WrittenSourceIndependentOfSeedEmitter,
+            trigger: V2WrittenSourceExecutedReceiptWall,
+          }
+        }
+    }
   }
 }
 
@@ -151,9 +207,6 @@ fn v2_emitter_direct_rust_door_closing_contract_holds(
 fn v2_emitter_direct_rust_door_acceptance_admissions() -> List<DirectRustDoorAdmission> {
   [
     assess_missing_translation_rule_refuses(),
-    DirectRustDoorUnavailable {
-      capability: WrittenSourceIndependentOfSeedEmitter,
-      trigger: candidate_generation_serialize_target_wiring_trigger,
-    },
+    assess_written_source_independent_of_seed_emitter(),
   ]
 }
