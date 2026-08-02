@@ -24,7 +24,8 @@ import std.occurrence_identity {
   authored_token_ordinal_before,
   authored_token_ordinal_eq,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { declaration_ref_eq }
 import std.occurrence_binding_resolve {
   resolve_reference_occurrence_binding,
   OccurrenceReferenceBindingDecided,
@@ -1266,23 +1267,6 @@ fn section13_population_law_id_eq(
   }
 }
 
-fn section13_declaration_ref_eq(left: DeclarationRef, right: DeclarationRef) -> Bool {
-  left.module_path == right.module_path
-    && left.decl_name == right.decl_name
-    && match left.field {
-      WholeDeclaration =>
-        match right.field {
-          WholeDeclaration => true
-          _ => false
-        }
-      NamedField { field_name: left_field } =>
-        match right.field {
-          NamedField { field_name: right_field } => left_field == right_field
-          _ => false
-        }
-    }
-}
-
 data section13_module_path_is_symbolic_note: String = "Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/' or '.dag'). This is a §5 heuristic standing where a type should stand — the same class occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs positional module identity."
 
 data section13_module_path_is_symbolic_dissolve_on: String = "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling it."
@@ -1395,9 +1379,9 @@ fn section13_observation_joins_receipt(
       match found {
         Present { value: _ } => found
         Absent =>
-          if section13_declaration_ref_eq(
-            left: observation.declaration,
-            right: receipt,
+          if declaration_ref_eq(
+            a: observation.declaration,
+            b: receipt,
           ) && observation.head == required_head {
             Present { value: observation.passed }
           } else {
