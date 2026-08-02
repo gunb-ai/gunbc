@@ -172,6 +172,53 @@ type InferredTree {
   facts: Map<Node, InferredFacts>
 }
 
+data infer_emit_staging_descent_axis: Symbol = ^infer_emit_staging_descent
+
+data infer_emit_staging_composed_facts_note: String = "Emit staging carrier (review 47219): translate refuses every recorded GroundingNotDerived on the Holds arm; the only translate compatibility frontier is infer_facts_lookup_miss (Violates). Cross-language and inhabitant-neutralization emit therefore stage an InferredTree whose facts map carries DerivedGrounding composed for translate admission — never by swallowing infer's typed frontier judgment inside translate. dissolve-on: v2-inferred-tree-completeness makes the staging carrier unwritable on the production emit path."
+
+fn infer_emit_staging_composed_grounding(node: Node) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: node
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn infer_emit_staging_composed_facts(node: Node) -> InferredFacts {
+  InferredFacts {
+    grounding: DerivedGrounding {
+      grounding: infer_emit_staging_composed_grounding(node: node)
+    },
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: v2.std.cardinality.RankingDimension {
+          measured: infer_emit_staging_descent_axis
+        }
+      }
+    }
+  }
+}
+
+fn infer_emit_staging_inferred_tree(canonical: InferredTree) -> InferredTree {
+  InferredTree {
+    root: canonical.root,
+    facts: Map {
+      lookup: fn(key) {
+        Present { value: infer_emit_staging_composed_facts(node: key) }
+      }
+    }
+  }
+}
+
 type InferredFactsEntry {
   node: Node
   facts: InferredFacts

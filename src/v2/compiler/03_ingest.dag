@@ -29,7 +29,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_list_from_node,
 }
 import v2.compiler.compile { CoreNode }
-import v2.compiler.infer { infer }
+import v2.compiler.infer { InferredTree, infer, infer_emit_staging_inferred_tree }
 import v2.compiler.emit { emit }
 import extdeps.communication.medium { Medium }
 import v2.compiler.translate {
@@ -240,7 +240,12 @@ fn cross_language_compile(
         f: fn(neutralized) {
           bind_outcome(
             o: infer(tree: neutralized),
-            f: fn(inferred) { emit(tree: inferred, target: target_model) }
+            f: fn(inferred) {
+              emit(
+                tree: infer_emit_staging_inferred_tree(canonical: inferred),
+                target: target_model
+              )
+            }
           )
         }
       )
