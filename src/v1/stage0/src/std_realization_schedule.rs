@@ -454,7 +454,7 @@ pub enum ScopedWitnessExecutionAuthority {
 pub fn scoped_witness_execution_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ScopedWitnessExecutionAuthority carries PROVENANCE, not an open-ended placeholder: InheritedWalkSourceRoots means every executor-owned .dag decision used while realizing the scoped batch — currently affected-set selection and witness execution-leg classification — resolves from the enclosing walk's source-root authority. The scoped batch cannot author a second root list, so executor machinery cannot enter or move the witness subject universe, its digest, or its measured clamp basis. The one-variant carrier is therefore a construction wall against re-forking the root fact, not hollow generality.".to_string()
+            "ScopedWitnessExecutionAuthority carries PROVENANCE, not an open-ended placeholder: InheritedWalkSourceRoots means every executor-owned .dag decision used while realizing the scoped batch — affected-set selection, witness execution-leg classification, and post-discovery cost/attribution projections — resolves from the enclosing walk's source-root authority. The scoped batch cannot author a second root list, so executor machinery cannot enter or move the witness subject universe, its digest, or its measured clamp basis. The one-variant carrier is therefore a construction wall against re-forking the root fact, not hollow generality.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
