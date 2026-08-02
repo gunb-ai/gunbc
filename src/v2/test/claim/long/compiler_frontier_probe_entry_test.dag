@@ -8,6 +8,7 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierBlockerClass,
   FrontierProbeReceipt,
   NameResolutionGap,
+  ProbeStageEmit,
   RealizationGap,
   SelfEmitReady,
   UnknownProbeCause,
@@ -36,6 +37,10 @@ test fn frontier_probe_entry_blocker_is_emit_surface() -> Bool {
     EmitSurfaceGap => true
     _ => false
   }
+}
+
+test fn frontier_probe_entry_located_stage_is_emit_holds() -> Bool {
+  frontier_probe_entry_receipt().located_stage == ProbeStageEmit
 }
 
 fn frontier_probe_entry_overlay_present() -> Bool {
