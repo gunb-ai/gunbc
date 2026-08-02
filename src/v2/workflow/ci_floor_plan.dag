@@ -10,7 +10,6 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_batch_enrolled,
   falsifier_self_host_wet_known_red_roster
 }
-import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
 import gunbc.ci_materialization { ci_floor_declared_resolve_count }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
@@ -58,7 +57,7 @@ import std.realization_schedule {
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
   ScheduleWitnessEntry,
-  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
+  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
   RunnableResourceProfile,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
@@ -175,6 +174,7 @@ fn entry_kind_is_execution(w: ScheduleWitnessEntry) -> Bool {
   match w.kind {
     ExecutionWitnessKind => true
     CorpusWitnessKind => false
+    NativeBundleWitnessKind => true
   }
 }
 
@@ -1127,22 +1127,14 @@ fn gunbc_falsifier_cadence_witness_batch() -> Runnable {
   }
 }
 
-data gunbc_pr_native_batch_note: String = "Per-PR native batch (P6 routing consumption, 2026-07-22): explicit entries = the equals_eval agreement legs of families the native-routing frontier marks NativeRouted — nothing else. The frontier is the ONE authority for both sides of the floor (this batch enrolls exactly the routed set; nothing else changes), and flips are parity-window-gated data, so at landing the routed set is empty and this appends no batch: zero behavior change until receipts flip a family. Wet profile: the admitted transport cargo-builds cold or runs warm against GUNBC_NATIVE_CACHE_ROOT."
+data gunbc_pr_native_batch_note: String = "Production selected-entry native bundle, slice 1 (2026-08-02): the complete bounded population is meet, join, and complement from std.selected_witness_bundle's SelectedWitnessPlan. One NativeBundleWitnessKind row names the pure .dag process-spec selector; claim_executor preserves that kind and launches one content-addressed Rust bundle whose main directly calls all three members. The interpreter remains an explicitly timed equivalence oracle, and a separately content-addressed all-wrong bundle is the live planted RED. Artifact refusal falls only through the handler's counted typed fallback receipt, never through kind parsing. Scale to the next stable shard when either generated closure exceeds 32 members or measured cold compile / peak cgroup memory exceeds twice this slice's recorded baseline; those are observable code-generation and closure-scaling triggers, not a universal-bundle promise."
 
 fn gunbc_pr_native_entries() -> List<ScheduleWitnessEntry> {
-  fold(
-    native_routed_rows(),
-    init: [],
-    f: fn(acc, row) {
-      concat(acc, [
-        ScheduleWitnessEntry {
-          entry: row.agreement_entry,
-          function: row.agreement_function,
-          kind: ExecutionWitnessKind
-        }
-      ])
-    }
-  )
+  [ScheduleWitnessEntry {
+    entry: "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
+    function: "native_selected_logic_production_spec"
+    kind: NativeBundleWitnessKind
+  }]
 }
 
 fn gunbc_pr_native_batch_enrolled() -> Bool {
@@ -1161,7 +1153,7 @@ fn gunbc_pr_native_batch() -> Runnable {
       heavy_whole_tree_resolve: false,
       spawns_host_compiler: true,
       memory: runnable_memory_substantial(),
-      execution_mode: Hermetic
+      execution_mode: Wet
     )
   }
 }

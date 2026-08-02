@@ -31,7 +31,7 @@ import gunbc.commit_workflow {
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
 import std.realization_schedule {
-  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
+  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams,
 }
 import gunbc.ci_gate {
@@ -127,6 +127,7 @@ fn witness_kind_content_hash_structural(kind: WitnessKind) -> Fnv1a64Structural 
   match kind {
     CorpusWitnessKind => content_hash_atom(value: "CorpusWitnessKind")
     ExecutionWitnessKind => content_hash_atom(value: "ExecutionWitnessKind")
+    NativeBundleWitnessKind => content_hash_atom(value: "NativeBundleWitnessKind")
   }
 }
 

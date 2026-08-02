@@ -25,7 +25,8 @@ use v1_compiler::memory_governor::{
     AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
-    color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+    color_enabled, paint, run_in_context, run_in_context_with_args, sgr, ExecutionMode,
+    InterpContext, Value,
 };
 
 /// Per-LANE budgets for the falsifier's rostered batches, each keyed by the lane's own
@@ -567,6 +568,7 @@ enum Runnable {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
+        native_bundle_entries: Vec<(String, String)>,
         node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
@@ -838,9 +840,12 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => return Err("RunnableDiscoveryBatch missing field `scan_dirs`".to_string()),
             };
-            let explicit_entries = match ctx.field(fields, "explicit_entries") {
+            let (explicit_entries, native_bundle_entries) = match ctx
+                .field(fields, "explicit_entries")
+            {
                 Some(v) => {
                     let mut out = Vec::new();
+                    let mut native = Vec::new();
                     for elem in free_monoid_elems(v, ctx)? {
                         let efields = match elem {
                             Value::Record { fields, .. } => fields,
@@ -852,14 +857,48 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                                 ))
                             }
                         };
-                        out.push((
-                            str_field(efields, "entry", "explicit_entries", ctx)?,
-                            str_field(efields, "function", "explicit_entries", ctx)?,
-                        ));
+                        let entry = str_field(efields, "entry", "explicit_entries", ctx)?;
+                        let function = str_field(efields, "function", "explicit_entries", ctx)?;
+                        match ctx.field(efields, "kind") {
+                            Some(Value::Variant { variant_name, .. })
+                                if ctx.sym_eq(*variant_name, "CorpusWitnessKind")
+                                    || ctx.sym_eq(*variant_name, "ExecutionWitnessKind") =>
+                            {
+                                out.push((entry, function));
+                            }
+                            Some(Value::Variant { variant_name, .. })
+                                if ctx.sym_eq(*variant_name, "NativeBundleWitnessKind") =>
+                            {
+                                native.push((entry, function));
+                            }
+                            Some(Value::Variant { variant_name, .. }) => {
+                                return Err(format!(
+                                    "RunnableDiscoveryBatch explicit entry {entry}::{function}: \
+                                     unhandled WitnessKind `{}` (kind_dispatch_refusal_count=1); \
+                                     refusing instead of interpreting",
+                                    ctx.resolve(*variant_name)
+                                ));
+                            }
+                            Some(other) => {
+                                return Err(format!(
+                                    "RunnableDiscoveryBatch explicit entry {entry}::{function}: \
+                                     WitnessKind is {}, not a variant \
+                                     (kind_dispatch_refusal_count=1)",
+                                    other.type_label_public()
+                                ));
+                            }
+                            None => {
+                                return Err(format!(
+                                    "RunnableDiscoveryBatch explicit entry {entry}::{function}: \
+                                     WitnessKind is absent (kind_dispatch_refusal_count=1); \
+                                     refusing instead of interpreting"
+                                ));
+                            }
+                        }
                     }
-                    out
+                    (out, native)
                 }
-                None => Vec::new(),
+                None => (Vec::new(), Vec::new()),
             };
             let node_frontier_selection = match ctx.field(fields, "node_frontier_selection") {
                 Some(Value::Variant { variant_name, .. }) => {
@@ -915,6 +954,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 source_roots,
                 scan_dirs,
                 explicit_entries,
+                native_bundle_entries,
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
@@ -1131,6 +1171,11 @@ enum BatchUnit {
     UnrunnableSentinel {
         function: String,
     },
+    NativeBundle {
+        entry: String,
+        selector_function: String,
+        execution_mode: ExecutionMode,
+    },
     Discovery {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
@@ -1196,19 +1241,31 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 source_roots,
                 scan_dirs,
                 explicit_entries,
+                native_bundle_entries,
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode,
-            } => units.push(BatchUnit::Discovery {
-                source_roots: source_roots.clone(),
-                scan_dirs: scan_dirs.clone(),
-                explicit_entries: explicit_entries.clone(),
-                node_frontier_selection: *node_frontier_selection,
-                exclude_substrings: exclude_substrings.clone(),
-                discovery_scope_dirs: discovery_scope_dirs.clone(),
-                execution_mode: *execution_mode,
-            }),
+            } => {
+                if !scan_dirs.is_empty() || !explicit_entries.is_empty() {
+                    units.push(BatchUnit::Discovery {
+                        source_roots: source_roots.clone(),
+                        scan_dirs: scan_dirs.clone(),
+                        explicit_entries: explicit_entries.clone(),
+                        node_frontier_selection: *node_frontier_selection,
+                        exclude_substrings: exclude_substrings.clone(),
+                        discovery_scope_dirs: discovery_scope_dirs.clone(),
+                        execution_mode: *execution_mode,
+                    });
+                }
+                for (entry, selector_function) in native_bundle_entries {
+                    units.push(BatchUnit::NativeBundle {
+                        entry: entry.clone(),
+                        selector_function: selector_function.clone(),
+                        execution_mode: *execution_mode,
+                    });
+                }
+            }
         }
     }
     units
@@ -1350,6 +1407,355 @@ fn claim_result_for_outcome(
     }
 }
 
+#[derive(Clone)]
+struct NativeBundleProcessSpec {
+    workspace_dir: String,
+    bundle_identity: String,
+    selected_count: u64,
+    bundle_count: u64,
+    shard_count: u64,
+    files: Vec<(String, String)>,
+    build: Vec<Vec<String>>,
+    run: Vec<String>,
+    expected_stdout: Vec<u8>,
+}
+
+struct NativeTransportObservation {
+    success: bool,
+    compile_skipped: bool,
+    stdout: Vec<u8>,
+    artifact_lookup_nanos: u128,
+    cold_compile_nanos: u128,
+    native_execution_nanos: u128,
+}
+
+fn native_bundle_u64_field(
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
+    name: &str,
+    ctx: &InterpContext,
+) -> Result<u64, String> {
+    match ctx.field(fields, name) {
+        Some(Value::Int(n)) if *n >= 0 => Ok(*n as u64),
+        Some(other) => Err(format!(
+            "native bundle spec field `{name}` must be a non-negative Int, got {}",
+            other.type_label_public()
+        )),
+        None => Err(format!("native bundle spec missing field `{name}`")),
+    }
+}
+
+fn native_bundle_string_list(value: &Value, ctx: &InterpContext) -> Result<Vec<String>, String> {
+    free_monoid_elems(value, ctx)?
+        .into_iter()
+        .map(|item| match item {
+            Value::Str(s) => Ok(s.clone()),
+            other => Err(format!(
+                "native bundle argv element must be String, got {}",
+                other.type_label_public()
+            )),
+        })
+        .collect()
+}
+
+fn native_bundle_spec_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<NativeBundleProcessSpec, String> {
+    let outcome_fields = match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Accepted") => fields,
+        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Rejected") => {
+            return Err("native bundle selector returned typed Rejected".to_string())
+        }
+        other => {
+            return Err(format!(
+            "native bundle selector must return Outcome<NativeSelectedBundleProcessSpec>, got {}",
+            other.type_label_public()
+        ))
+        }
+    };
+    let spec = ctx
+        .field(outcome_fields, "value")
+        .ok_or_else(|| "native bundle Accepted outcome missing `value`".to_string())?;
+    let fields = match spec {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+        other => {
+            return Err(format!(
+                "native bundle selector value must be a record, got {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    let workspace_dir = str_field(fields, "workspace_dir", "native bundle spec", ctx)?;
+    let bundle_identity = str_field(fields, "bundle_identity", "native bundle spec", ctx)?;
+    if bundle_identity.is_empty() || !workspace_dir.contains(&bundle_identity) {
+        return Err(
+            "native bundle artifact identity is absent from its workspace path".to_string(),
+        );
+    }
+    let files_value = ctx
+        .field(fields, "files")
+        .ok_or_else(|| "native bundle spec missing `files`".to_string())?;
+    let mut files = Vec::new();
+    for file in free_monoid_elems(files_value, ctx)? {
+        let ff = match file {
+            Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+            other => {
+                return Err(format!(
+                    "native bundle file must be a record, got {}",
+                    other.type_label_public()
+                ))
+            }
+        };
+        files.push((
+            str_field(ff, "path", "native bundle file", ctx)?,
+            str_field(ff, "text", "native bundle file", ctx)?,
+        ));
+    }
+    let build_value = ctx
+        .field(fields, "build")
+        .ok_or_else(|| "native bundle spec missing `build`".to_string())?;
+    let build = free_monoid_elems(build_value, ctx)?
+        .into_iter()
+        .map(|argv| native_bundle_string_list(argv, ctx))
+        .collect::<Result<Vec<_>, _>>()?;
+    let run = native_bundle_string_list(
+        ctx.field(fields, "run")
+            .ok_or_else(|| "native bundle spec missing `run`".to_string())?,
+        ctx,
+    )?;
+    let expected_stdout = free_monoid_elems(
+        ctx.field(fields, "expected_stdout_octets")
+            .ok_or_else(|| "native bundle spec missing `expected_stdout_octets`".to_string())?,
+        ctx,
+    )?
+    .into_iter()
+    .map(|octet| match octet {
+        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+        _ => Err("native bundle expected stdout contains a non-octet".to_string()),
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+    let spec = NativeBundleProcessSpec {
+        workspace_dir,
+        bundle_identity,
+        selected_count: native_bundle_u64_field(fields, "selected_count", ctx)?,
+        bundle_count: native_bundle_u64_field(fields, "bundle_count", ctx)?,
+        shard_count: native_bundle_u64_field(fields, "shard_count", ctx)?,
+        files,
+        build,
+        run,
+        expected_stdout,
+    };
+    if spec.selected_count != 3 || spec.bundle_count != 1 || spec.shard_count != 1 {
+        return Err(format!(
+            "native bundle bounded-population refusal: selected={} bundle={} shard={} (required 3/1/1)",
+            spec.selected_count, spec.bundle_count, spec.shard_count
+        ));
+    }
+    if spec.files.is_empty() || spec.build.is_empty() || spec.run.is_empty() {
+        return Err("native bundle process spec has empty files/build/run".to_string());
+    }
+    Ok(spec)
+}
+
+fn native_transport_observation(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<NativeTransportObservation, String> {
+    let fields = match value {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+        other => {
+            return Err(format!(
+                "native transport result must be a record, got {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    let boolean = |name: &str| match ctx.field(fields, name) {
+        Some(Value::Bool(v)) => Ok(*v),
+        _ => Err(format!("native transport result missing Bool `{name}`")),
+    };
+    let nanos = |name: &str| native_bundle_u64_field(fields, name, ctx).map(u128::from);
+    let stdout = free_monoid_elems(
+        ctx.field(fields, "stdout_octets")
+            .ok_or_else(|| "native transport result missing stdout".to_string())?,
+        ctx,
+    )?
+    .into_iter()
+    .map(|v| match v {
+        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+        _ => Err("native transport stdout contains a non-octet".to_string()),
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+    Ok(NativeTransportObservation {
+        success: boolean("success")?,
+        compile_skipped: boolean("compile_skipped")?,
+        stdout,
+        artifact_lookup_nanos: nanos("artifact_lookup_nanos")?,
+        cold_compile_nanos: nanos("cold_compile_nanos")?,
+        native_execution_nanos: nanos("native_execution_nanos")?,
+    })
+}
+
+fn run_native_transport(
+    spec: &NativeBundleProcessSpec,
+    ctx: &InterpContext,
+) -> Result<NativeTransportObservation, String> {
+    let value = v1_compiler::v1_interpreter::run_native_bundle_process_cached(
+        ctx,
+        spec.workspace_dir.clone(),
+        &spec.files,
+        &spec.build,
+        &spec.run,
+    )
+    .map_err(|e| e.to_string())?;
+    native_transport_observation(&value, ctx)
+}
+
+fn write_native_transition_receipt(body: &str) -> Result<(), String> {
+    let path = Path::new("target/native-selected-witness-transition-receipt.tsv");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("native transition receipt mkdir: {e}"))?;
+    }
+    fs::write(path, body).map_err(|e| format!("native transition receipt write: {e}"))
+}
+
+fn run_native_bundle_unit(
+    source_roots: &[String],
+    entry: String,
+    selector_function: String,
+    execution_mode: ExecutionMode,
+) -> ClaimResult {
+    let started = Instant::now();
+    let fail = |detail: String| ClaimResult {
+        function: selector_function.clone(),
+        entry: entry.clone(),
+        ok: false,
+        detail,
+        wall_nanos: started.elapsed().as_nanos(),
+        resolve_nanos: 0,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: 0,
+        corpus_witnesses: 3,
+        witness_row_costs: Vec::new(),
+        budget_refusal: None,
+    };
+    if execution_mode != ExecutionMode::Wet {
+        return fail(
+            "NativeBundle handler requires Wet execution_mode (typed envelope refusal)".to_string(),
+        );
+    }
+    let resolve_started = Instant::now();
+    let (graph, indices) = match resolve_entry_graph(source_roots, &entry) {
+        Ok(v) => v,
+        Err(e) => return fail(format!("native bundle selector resolve refusal: {e}")),
+    };
+    let resolve_nanos = resolve_started.elapsed().as_nanos();
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let primary = match run_in_context(&ctx, &selector_function, false)
+        .map_err(|e| e.to_string())
+        .and_then(|v| native_bundle_spec_from_value(&v, &ctx))
+    {
+        Ok(spec) => spec,
+        Err(e) => return fail(format!("native bundle selector refusal: {e}")),
+    };
+    let planted = run_in_context(&ctx, "native_selected_logic_planted_red_spec", false)
+        .map_err(|e| e.to_string())
+        .and_then(|v| native_bundle_spec_from_value(&v, &ctx));
+
+    let cold = run_native_transport(&primary, &ctx);
+    let warm = match &cold {
+        Ok(obs) if obs.success => run_native_transport(&primary, &ctx),
+        _ => Err("primary cold artifact unavailable".to_string()),
+    };
+    let planted_native = planted
+        .as_ref()
+        .map_err(Clone::clone)
+        .and_then(|spec| run_native_transport(spec, &ctx));
+
+    let oracle_started = Instant::now();
+    let oracle_green = matches!(
+        run_claim(&ctx, "native_selected_logic_interpreter_oracle_holds"),
+        ClaimOutcome::Pass
+    );
+    let planted_oracle = matches!(
+        run_claim(&ctx, "native_selected_logic_planted_red_oracle_holds"),
+        ClaimOutcome::Pass
+    );
+    let interpreter_oracle_wall_nanos = oracle_started.elapsed().as_nanos();
+
+    let native_ok = matches!((&cold, &warm), (Ok(c), Ok(w))
+        if c.success && w.success && w.compile_skipped
+            && c.stdout == primary.expected_stdout && w.stdout == primary.expected_stdout);
+    let planted_red_equivalent = planted
+        .as_ref()
+        .ok()
+        .zip(planted_native.as_ref().ok())
+        .map(|(spec, obs)| obs.success && obs.stdout == spec.expected_stdout && planted_oracle)
+        .unwrap_or(false);
+    let accepted = native_ok && oracle_green && planted_red_equivalent;
+    let fallback = !native_ok && oracle_green;
+    let selected = primary.selected_count;
+    let native_count = if native_ok { selected } else { 0 };
+    let interpreted_count = if native_ok { 0 } else { selected };
+    let unavailable_count = if native_ok { 0 } else { selected };
+    let fallback_count = unavailable_count;
+    let cold_compile_wall = cold
+        .as_ref()
+        .ok()
+        .map(|o| o.cold_compile_nanos)
+        .unwrap_or(0);
+    let warm_artifact_hit_wall = warm
+        .as_ref()
+        .ok()
+        .map(|o| o.artifact_lookup_nanos)
+        .unwrap_or(0);
+    let native_execution_wall = warm
+        .as_ref()
+        .ok()
+        .map(|o| o.native_execution_nanos)
+        .unwrap_or(0);
+    let rss_peak = peak_rss_bytes().unwrap_or(0);
+    let cgroup_peak = cgroup_job_measurement().map(|m| m.leaf_peak).unwrap_or(0);
+    let verdict = if accepted {
+        "accepted"
+    } else if fallback {
+        "fallback:native_realization_refused"
+    } else {
+        "refused:equivalence_or_planted_red"
+    };
+    let receipt = format!(
+        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n",
+        primary.bundle_count, primary.shard_count, primary.bundle_identity
+    );
+    if let Err(e) = write_native_transition_receipt(&receipt) {
+        return fail(e);
+    }
+    eprintln!("[native-selected-bundle] {}", receipt.replace('\n', " "));
+    ClaimResult {
+        function: selector_function,
+        entry,
+        ok: accepted || fallback,
+        detail: if accepted {
+            receipt
+        } else if fallback {
+            format!("counted native fallback; {receipt}")
+        } else {
+            format!("native transition refused; {receipt}")
+        },
+        wall_nanos: started.elapsed().as_nanos(),
+        resolve_nanos,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: interpreter_oracle_wall_nanos,
+        corpus_witnesses: selected as usize,
+        witness_row_costs: Vec::new(),
+        budget_refusal: None,
+    }
+}
+
 fn run_batch_unit(
     source_roots: Vec<String>,
     unit: BatchUnit,
@@ -1374,6 +1780,18 @@ fn run_batch_unit(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
         }],
+        BatchUnit::NativeBundle {
+            entry,
+            selector_function,
+            execution_mode,
+        } => {
+            let mut slot =
+                AdmittedSlot::acquire_blocking(&governor, &format!("native-bundle {entry}"));
+            let result =
+                run_native_bundle_unit(&source_roots, entry, selector_function, execution_mode);
+            slot.note_unit_complete();
+            vec![result]
+        }
         BatchUnit::Discovery {
             source_roots: roots,
             scan_dirs,
@@ -5065,6 +5483,7 @@ fn run_perturb_check(
                         source_roots: roots,
                         scan_dirs,
                         explicit_entries,
+                        native_bundle_entries,
                         node_frontier_selection,
                         exclude_substrings,
                         discovery_scope_dirs,
@@ -5073,6 +5492,7 @@ fn run_perturb_check(
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
+                        native_bundle_entries: native_bundle_entries.clone(),
                         node_frontier_selection: *node_frontier_selection,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
@@ -7339,6 +7759,7 @@ mod tests {
             source_roots: vec!["src/v2".to_string()],
             scan_dirs: vec![],
             explicit_entries: vec![],
+            native_bundle_entries: vec![],
             node_frontier_selection: NodeFrontierSelectionMode::Applied,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
@@ -7365,6 +7786,7 @@ mod tests {
                     out.push((String::new(), function.clone()));
                 }
                 BatchUnit::Discovery { .. } => {}
+                BatchUnit::NativeBundle { .. } => {}
             }
         }
         out
@@ -7394,6 +7816,33 @@ mod tests {
             }
             _ => panic!("expected a SharedClaims unit"),
         }
+    }
+
+    #[test]
+    fn native_bundle_kind_becomes_only_a_native_unit() {
+        let batch = vec![Runnable::DiscoveryBatch {
+            source_roots: vec!["src/v2".to_string(), "dag".to_string()],
+            scan_dirs: vec![],
+            explicit_entries: vec![],
+            native_bundle_entries: vec![("bundle.dag".to_string(), "bundle_spec".to_string())],
+            node_frontier_selection: NodeFrontierSelectionMode::Applied,
+            exclude_substrings: vec![],
+            discovery_scope_dirs: vec![],
+            execution_mode: ExecutionMode::Wet,
+        }];
+        let units = group_batch_units(&batch);
+        assert_eq!(
+            units.len(),
+            1,
+            "native kind must not create an interpreter discovery unit"
+        );
+        assert!(matches!(
+            &units[0],
+            BatchUnit::NativeBundle { entry, selector_function, execution_mode }
+                if entry == "bundle.dag"
+                    && selector_function == "bundle_spec"
+                    && *execution_mode == ExecutionMode::Wet
+        ));
     }
 
     #[test]
