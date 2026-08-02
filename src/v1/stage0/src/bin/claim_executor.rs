@@ -14,10 +14,12 @@ use v1_compiler::cli_run::{
     compute_histogram_data, enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, resolve_entry_graph,
+    record_resolution_divergence_phase, reset_resolution_divergence_phase_receipt,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
-    TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    ResolutionDivergencePhase, ResolutionDivergencePhaseState, TimingPercentiles,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -5237,6 +5239,19 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
     // spawn width (wet) from the same resolved graph — this resolve was previously
     // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
+    let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
+    if resolution_divergence_receipt_armed {
+        if let Err(e) = reset_resolution_divergence_phase_receipt().and_then(|()| {
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ParentPlanResolve,
+                ResolutionDivergencePhaseState::Started,
+                &format!("{plan_entry}::{plan_function}"),
+            )
+        }) {
+            eprintln!("claim_executor: {e}");
+            return Err(ExitCode::from(1));
+        }
+    }
     let (plan_graph, plan_indices) = match resolve_entry_graph_shared(&source_roots, &plan_entry) {
         Ok(resolved) => resolved,
         Err(msg) => {
@@ -5244,6 +5259,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+    if resolution_divergence_receipt_armed {
+        if let Err(e) = record_resolution_divergence_phase(
+            ResolutionDivergencePhase::ParentPlanResolve,
+            ResolutionDivergencePhaseState::Completed,
+            &format!("{plan_entry}::{plan_function}"),
+        ) {
+            eprintln!("claim_executor: {e}");
+            return Err(ExitCode::from(1));
+        }
+    }
     phase_mark("plan resolve");
 
     let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);

@@ -1,6 +1,7 @@
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -26188,6 +26189,180 @@ pub fn bare_ref_reachability_for_name(
 // Read-only inventory: compare `lookup_resolved_sig` (first-hit over func_env.parents)
 // against the landed SymbolIndex containment walk (lexical + global-unique only).
 // Method: direct observation of each mechanism's return value — NOT diagnostics.
+
+pub const RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH: &str =
+    "target/resolution-divergence-phase-receipt.tsv";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolutionDivergencePhase {
+    ParentPlanResolve,
+    ChildLaunch,
+    ChildWholeTreeResolve,
+    ParentWholeTreeResolve,
+    CensusTraversal,
+    OutputProjection,
+}
+
+impl ResolutionDivergencePhase {
+    fn label(self) -> &'static str {
+        match self {
+            Self::ParentPlanResolve => "parent_plan_resolve",
+            Self::ChildLaunch => "child_launch",
+            Self::ChildWholeTreeResolve => "child_whole_tree_resolve",
+            Self::ParentWholeTreeResolve => "parent_whole_tree_resolve",
+            Self::CensusTraversal => "census_traversal",
+            Self::OutputProjection => "output_projection",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolutionDivergencePhaseState {
+    Started,
+    Completed,
+    Skipped,
+}
+
+impl ResolutionDivergencePhaseState {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Completed => "completed",
+            Self::Skipped => "skipped",
+        }
+    }
+}
+
+fn resolution_divergence_phase_receipt_process_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn resolution_divergence_phase_receipt_timestamp_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn resolution_divergence_phase_receipt_sanitize(detail: &str) -> String {
+    detail
+        .replace('\t', " ")
+        .replace('\n', " ")
+        .replace('\r', " ")
+}
+
+fn write_resolution_divergence_phase_receipt_row_at(
+    path: &Path,
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+    detail: &str,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: create {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let is_new = !path.exists();
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: open {}: {e}",
+                path.display()
+            )
+        })?;
+    if is_new {
+        writeln!(file, "timestamp_ms\tpid\tprocess\tphase\tstate\tdetail")
+            .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+    }
+    writeln!(
+        file,
+        "{}\t{}\t{}\t{}\t{}\t{}",
+        resolution_divergence_phase_receipt_timestamp_ms(),
+        std::process::id(),
+        resolution_divergence_phase_receipt_process_name(),
+        phase.label(),
+        state.label(),
+        resolution_divergence_phase_receipt_sanitize(detail),
+    )
+    .map_err(|e| format!("resolution-divergence phase receipt: row write: {e}"))?;
+    file.sync_data()
+        .map_err(|e| format!("resolution-divergence phase receipt: sync {}: {e}", path.display()))
+}
+
+pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
+    let path = Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: create {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let mut file = std::fs::File::create(path).map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: reset {}: {e}",
+            path.display()
+        )
+    })?;
+    writeln!(file, "timestamp_ms\tpid\tprocess\tphase\tstate\tdetail")
+        .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+    file.sync_data().map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: reset sync {}: {e}",
+            path.display()
+        )
+    })
+}
+
+pub fn record_resolution_divergence_phase(
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+    detail: &str,
+) -> Result<(), String> {
+    write_resolution_divergence_phase_receipt_row_at(
+        Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH),
+        phase,
+        state,
+        detail,
+    )
+}
+
+/// Bootstrap bridge for the current `.dag` child-launch transport. It exists only so
+/// the pre-cut subprocess path can leave a kill-safe launch receipt; the in-process cut
+/// removes its caller and records `Skipped` from the parent instead.
+pub fn resolution_divergence_phase_child_launch(state: String) -> bool {
+    let state = match state.as_str() {
+        "started" => ResolutionDivergencePhaseState::Started,
+        "completed" => ResolutionDivergencePhaseState::Completed,
+        other => {
+            eprintln!(
+                "resolution-divergence phase receipt refused: unknown child-launch state {other:?}"
+            );
+            return false;
+        }
+    };
+    match record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ChildLaunch,
+        state,
+        "subprocess witness adapter",
+    ) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("{e}");
+            false
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContainmentResolveVia {

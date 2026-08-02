@@ -11364,6 +11364,16 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::census_corpus_roots_follow_layer_authority(),
             ))),
 
+            arm "free_call.resolution_divergence_phase_child_launch" { "resolution_divergence_phase_child_launch" } => {
+                let state = expect_str(
+                    $positional.first().copied(),
+                    "resolution_divergence_phase_child_launch",
+                )?;
+                Ok(Some(Value::Bool(
+                    crate::cli_run::resolution_divergence_phase_child_launch(state),
+                )))
+            },
+
         }
     }};
 }
