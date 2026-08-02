@@ -26352,12 +26352,12 @@ fn write_resolution_divergence_phase_receipt_row_at(
         .unwrap_or_default();
     let (host, loadavg_1m, cpu_psi_some_avg10, memory_psi_some_avg10) =
         resolution_divergence_phase_receipt_contention();
-    writeln!(
-        file,
+    let process_name = resolution_divergence_phase_receipt_process_name();
+    let row = format!(
         "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         resolution_divergence_phase_receipt_timestamp_ms(),
         std::process::id(),
-        resolution_divergence_phase_receipt_process_name(),
+        process_name,
         resolution_divergence_phase_receipt_sanitize(&host),
         loadavg_1m,
         cpu_psi_some_avg10,
@@ -26366,14 +26366,24 @@ fn write_resolution_divergence_phase_receipt_row_at(
         state.label(),
         elapsed_ms,
         resolution_divergence_phase_receipt_sanitize(detail),
-    )
-    .map_err(|e| format!("resolution-divergence phase receipt: row write: {e}"))?;
+    );
+    writeln!(file, "{row}")
+        .map_err(|e| format!("resolution-divergence phase receipt: row write: {e}"))?;
     file.sync_data().map_err(|e| {
         format!(
             "resolution-divergence phase receipt: sync {}: {e}",
             path.display()
         )
-    })
+    })?;
+    // The Actions runner worktree is ephemeral and this receipt is deliberately
+    // kill-safe. Stream each fsynced parent row to the durable job log as well as
+    // the TSV, so a deadline kill preserves phase and contention evidence without
+    // adding a generated-workflow upload side channel. Standalone adapter output
+    // remains byte-identical because only claim_executor emits this transport mark.
+    if process_name == "claim_executor" {
+        eprintln!("[resolution-divergence-phase-receipt]\t{row}");
+    }
+    Ok(())
 }
 
 pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
