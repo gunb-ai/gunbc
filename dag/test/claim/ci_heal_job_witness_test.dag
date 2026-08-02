@@ -226,7 +226,8 @@ test fn heal_author_commit_upload_step_enrolled() -> Bool {
 
 test fn heal_push_targets_triggering_branch() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  string_contains(s: script, pattern: "git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}")
+  string_contains(s: script, pattern: "git push origin HEAD:${{ github.head_ref || github.ref_name }}")
+    && !string_contains(s: script, pattern: "core.hooksPath= push")
     && !string_contains(s: script, pattern: "git push origin HEAD:main")
 }
 

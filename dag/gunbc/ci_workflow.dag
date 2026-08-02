@@ -565,7 +565,7 @@ fn ci_deploy_jobs() -> List<Job> {
 }
 
 fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_heal_binary_source_skew_guard_step() -> Step {
@@ -647,7 +647,7 @@ fn ci_heal_author_commit_upload_step() -> Step {
   }
 }
 
-data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) are AuthorCommitRequired: the GitHub App lacks workflows:write, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) are AuthorCommitRequired: the GitHub App lacks workflows:write, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. Before any possible push the modeled floor-gate toolchain step installs cargo and rustfmt, so the generated pre-push hook runs repository-local config convergence and cargo fmt normally; the writer has no hook-bypass toggle. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
 
 fn ci_heal_generated_artifacts_job() -> Job {
   Job {
@@ -656,7 +656,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
       [ci_heal_branch_head_checkout_step()],
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_repo_local_git_config_step(), ci_heal_binary_source_skew_guard_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
+      [ci_floor_gate_toolchain_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_repo_local_git_config_step(), ci_heal_binary_source_skew_guard_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
     ),
     needs: ["build"],
     env: none,
