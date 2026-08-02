@@ -1,14 +1,35 @@
 module v2.lens.vacuity
 
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.body_lowering_fold {
+  body_lower_fn_decl_ident_from_captured,
+  body_lower_try_infix_transform,
+  body_lower_unwrap_captured
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  dag_canonical_literal_from_node,
+  dag_language_model,
+  dag_node_is_fn_decl,
+  parse_subtree_find_production_captured
+}
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { count_where, length }
-import v2.std.collection { List }
+import v2.std.algebra { count_where, Empty, length, list_append }
+import v2.std.collection { List, list_at_optional }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.optional { Absent, optional_absent, optional_present, Present }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Atom, Node, Symbol, TypeNode, is_empty_conj_root }
+import v2.std.node_query { node_positional_child_targets }
 import v2.std.text { String }
 import v2.std.verification {
   BoolWitnessClaim,
@@ -25,7 +46,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 trigger: re-audit classify_vacuity_same_eval_record's deepest else (known-provenance residue → ProvenIndependent) — when gating on ProvenDuplicate, that residue may need Unknown instead of a positive ProvenIndependent claim."
+data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 LANDED: classify_vacuity_same_eval_record's deepest else now returns Unknown for structurally-unequal operands with no independent oracle, rather than fabricating a positive ProvenIndependent claim from an absence of counter-evidence — the fail-open the note used to flag is fixed, and this sentence records that the marked defect DID survive a full audit cycle undetected until an executing consumer (lens_contract_vacuity.consumer_witness) was bound, because AuditOnly + NoConsumerWitness meant nothing ever ran the classifier to observe it. classify_test_claim_vacuity's DiagnosticClaim/RoundTripClaim arms were the same fail-open a second time (unconditional ProvenIndependent, ignoring the supplied operand_provenance) and are fixed the same way: threaded through operand_provenance_is_independent_oracle, Unknown otherwise. LiveSurfaceSnapshot (a snapshot value copied from live/corpus-derived state) is a non-independent-oracle provenance class: paired with LiteralOracle, itself, or HelperAlias with no independent oracle present, it classifies ProvenDuplicate — the PR #7614 shape (a literal changed to track a live count with no independent check). classify_unified_test_claim_vacuity's BoolWitnessClaim arm now reads the real parsed corpus (filesystem_read + tokenize/parse_module, the sanctioned reference_deps.dag pipeline — never a second producer) to locate the named test fn, and classifies it only when its body reduces to a single top-level equality; anything else (loops, multiple statements, effects, a body the modeled dag.dag grammar cannot parse — a real, open gap documented in grammar_coverage.dag) stays Unknown, never fabricated."
 
 data vacuity_operand_provenance_independent_oracle_predicate_dissolution_note: String = "🟡 dissolve-on: operand_provenance_is_independent_oracle is a hand-rolled subset predicate over TestClaimOperandProvenance until symbol_index_fill/reference_deps ground operand provenance at census time (W3). DISSOLVES WHEN provenance is read from the containment-tree projection and independent-oracle membership is construction-side (illegal states unrepresentable) or a single canonical accessor replaces the predicate."
 
@@ -37,6 +58,7 @@ type TestClaimOperandProvenance
   | LiteralOracle
   | TemporalExternalAuthority
   | HelperAlias
+  | LiveSurfaceSnapshot
   | OperandProvenanceUnknown
 
 type VacuityEvidenceSubject
@@ -121,6 +143,7 @@ fn operand_provenance_is_independent_oracle(p: TestClaimOperandProvenance) -> Bo
     ReadBack => false
     LiteralOracle => false
     HelperAlias => false
+    LiveSurfaceSnapshot => false
     OperandProvenanceUnknown => false
   }
 }
@@ -147,6 +170,26 @@ fn vacuity_same_eval_is_literal_pair(record: VacuityEvidenceRecord) -> Bool {
   record.lhs_provenance == LiteralOracle && record.rhs_provenance == LiteralOracle
 }
 
+data vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolution_note: String = "🟡 dissolve-on: vacuity_operand_provenance_is_live_snapshot_duplicate_partner is a second hand-rolled subset predicate over TestClaimOperandProvenance, sibling to operand_provenance_is_independent_oracle (vacuity_operand_provenance_independent_oracle_predicate_dissolution_note) but not discharged by it — each coproduct-classifying predicate carries its own disposition rather than inheriting one from a neighbor (review 46886, calm-badger-682 relay). Same trigger as the sibling: DISSOLVES WHEN provenance is read from the containment-tree projection and live-snapshot-duplicate membership is construction-side (illegal states unrepresentable), or when a single canonical accessor over TestClaimOperandProvenance answers both this and the independent-oracle question, replacing both hand-matched predicates at once (never two accessors surviving side by side once one canonical one exists — §3 single authority)."
+
+data vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_disposition: String = "Bounded interim disposition (review 46930; shape precedented by docs/plans/e0599-implementation-proposal.md §3.0's Owner/Lane/Dissolve-trigger table for predicate/walker dissolution, applied here rather than invented fresh — §3 single authority). Owner: v2.lens.vacuity — this module owns both operand-provenance subset predicates over TestClaimOperandProvenance (operand_provenance_is_independent_oracle, carrying vacuity_operand_provenance_independent_oracle_predicate_dissolution_note, and this one); neither is a general-purpose substrate walker reused elsewhere, so ownership does not spread beyond this file. Lane: the vacuity-lens item-5 consumer-witness lane (PR #7620 and its direct follow-ons) — not a separate lane, because dissolution rides the same containment-tree-projection work this file's other ceiling notes already depend on (vacuity_bool_witness_body_lowering_ceiling_note, vacuity_bool_witness_fn_decl_collection_ceiling_note), all citing DESIGN.md's 'general body producer' open thread as the one authority, per §3. Dissolve trigger: identical to the note above — provenance read from the containment-tree projection with live-snapshot-duplicate membership construction-side (illegal states unrepresentable), or a single canonical accessor over TestClaimOperandProvenance answering both this predicate and the independent-oracle predicate, replacing both call sites at once. Until the trigger fires this predicate is a wall-after-grounding (DESIGN.md §5), not a permanent ratchet: its membership is decidable today (a closed 4-arm match over a closed coproduct) and its only debt is the missing single authority, not undecidability."
+
+fn vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: TestClaimOperandProvenance) -> Bool {
+  match p {
+    LiteralOracle => true
+    LiveSurfaceSnapshot => true
+    HelperAlias => true
+    _ => false
+  }
+}
+
+fn vacuity_same_eval_is_live_snapshot_duplicate(record: VacuityEvidenceRecord) -> Bool {
+  (record.lhs_provenance == LiveSurfaceSnapshot
+      && vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: record.rhs_provenance))
+    || (record.rhs_provenance == LiveSurfaceSnapshot
+      && vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: record.lhs_provenance))
+}
+
 fn classify_vacuity_same_eval_record(record: VacuityEvidenceRecord) -> VacuityEvidence {
   if vacuity_same_eval_has_unknown_provenance(record: record) {
     Unknown
@@ -169,10 +212,14 @@ fn classify_vacuity_same_eval_record(record: VacuityEvidenceRecord) -> VacuityEv
             if vacuity_same_eval_is_literal_pair(record: record) {
               ProvenDuplicate
             } else {
-              if record.operands_structurally_equal {
+              if vacuity_same_eval_is_live_snapshot_duplicate(record: record) {
                 ProvenDuplicate
               } else {
-                ProvenIndependent
+                if record.operands_structurally_equal {
+                  ProvenDuplicate
+                } else {
+                  Unknown
+                }
               }
             }
           }
@@ -237,9 +284,190 @@ fn classify_test_claim_vacuity(
         )
       )
     DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
-      ProvenIndependent
+      if operand_provenance_is_independent_oracle(p: operand_provenance) {
+        ProvenIndependent
+      } else {
+        Unknown
+      }
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
-      ProvenIndependent
+      if operand_provenance_is_independent_oracle(p: operand_provenance) {
+        ProvenIndependent
+      } else {
+        Unknown
+      }
+  }
+}
+
+data vacuity_bool_witness_file_anchor: Symbol = ^vacuity_bool_witness_file_anchor
+
+data vacuity_bool_witness_real_corpus_note: String = "BoolWitnessClaim classification reads the REAL parsed corpus (filesystem_read + tokenize/parse_module/normalize — the same three-stage ingest src/v2/lens/enforcement/cost_coverage.dag already uses for this exact problem, never a second producer) — never a synthetic stand-in. It only classifies when a named test fn's body reduces to EXACTLY one top-level statement (verified structurally via sugar_sequence_pair_optional + is_empty_conj_root over the stmt_seq repeat encoding, BEFORE any equality search runs — this ordering is what keeps body_lower_try_infix_transform's recursive sequence-pair search from matching an equality buried inside a multi-statement body) that is itself a top-level `==` comparison; every other shape (zero or multiple statements, a non-equality statement, a body that does not locate) stays Unknown, never fabricated. KNOWN, CONFIRMED CEILING (empirically executed, not guessed): v2.extdeps.languages.dag's dag_language_model() grammar has no lexer keyword and no grammar production for `test` at all (verified: zero occurrences of \"test\" in dag.dag's lex rules or productions, and independently corroborated by grammar_coverage.dag's own live witness, which already reds 100% of sampled real src/v1/*.dag files under this same grammar). A source file's `test fn NAME() -> Bool { ... }` declaration therefore rejects at the file-parse stage before this classifier ever reaches the named function's body — confirmed by direct execution against three probe fixtures (a plain `fn` with a bare `return` body parses; the identical body under `test fn` does not, with or without `return`). So today's real-corpus yield of this mechanism is honestly near-zero for the overwhelming majority of real witnesses, which are declared `test fn` per the repo's own naming-hygiene convention — that is an upstream grammar-modeling gap this PR does not attempt to close, not a defect in this classifier, and the mechanism is real, correct, and reusable the moment `test` gains a grammar production. Operand provenance from a located equality is scoped to what is decidable without further modeling: a Bool/Int literal (dag_canonical_literal_from_node) classifies LiteralOracle; every other operand shape classifies OperandProvenanceUnknown (never ReadBack/LiveSurfaceSnapshot guessed from bare syntax) — an honest scoping-down, not a silent gap, per this mandate's own pre-authorization to ship a caller-suppliable LiveSurfaceSnapshot rather than a guessed one."
+
+data vacuity_bool_witness_body_lowering_ceiling_note: String = "SECOND, INDEPENDENT CEILING on the same real-corpus classifier (empirically executed, not guessed; found while wiring the item-5 consumer witness): a fn body that reduces to a bare top-level `==` statement — the EXACT shape this classifier's literal-pair rule is built to detect — does not itself survive normalize() under the current body-lowering implementation. Confirmed by direct execution across many isolated configurations: a bare-literal body (`1 == 1`), a bare-param body (`a == b`), with and without a `return`, with and without imports, with and without a preceding `type` declaration, and a byte-for-byte copy of real production code (src/v2/std/optional.dag's optional_absent, whose body is `Absent`) — every one rejects, either at the well_formed gate (normalize_reason_post_normalize_not_well_formed) or at the body-lowering seam (body_lowering_reason_wrapper_retained_emitted) depending on surrounding file structure, never Accepted. This was independently reconfirmed on a pristine origin/main checkout with no branch code involved, so it is a pre-existing gap, not a regression introduced here: main's own grammar_coverage_v2_tree_receipt_by_execution witness (which asserts src/v2/std/logic.dag and nat.dag both parse clean) itself FAILS by direct execution on main today, and a direct copy of logic.dag rejects with body_lowering_reason_wrapper_retained_emitted when re-run through this exact ingest path. A body built around `match` (the shape v2.std.nat's nat_cata already uses in the real corpus) DOES survive normalize() cleanly — the ingest pipeline works in general; the specific gap is bare infix-expression fn bodies. This IS the already-tracked \"general body producer\" open thread in DESIGN.md's Open Threads (the MVP 03_body_producer is fixture-bound to bespoke flat-token productions; real ingested fn bodies still never become substrate behaviors) — the SAME authority and the SAME dissolve-on trigger, not a second one: this note exists only to record that the vacuity real-corpus classifier's specific target shape sits inside that already-known gap, so its own real-corpus join can honestly reach only Unknown for a literal-equality body today, never a fabricated ProvenDuplicate. The classifier logic itself (classify_vacuity_same_eval_record) is proven correct independent of parse-reachability by a direct-call RED control that bypasses the ingest pipeline entirely (v2.test.claim.vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate) — mechanism proven correct, real-corpus reachability separately ceilinged, per DESIGN.md §4b rung-honesty discipline (this rung is Unknown by construction for this shape, not a silent gap, with the next-rung trigger pointing at the SAME general-body-producer trigger DESIGN.md already names, per §3 single authority)."
+
+data vacuity_bool_witness_fn_decl_collection_ceiling_note: String = "THIRD, BROADER CEILING (empirically executed, not guessed; found while wiring the item-5 consumer witness's derived-site enumeration): fn-declaration COLLECTION itself — vacuity_collect_fn_decls, via dag_node_is_fn_decl/parse_production_emitted_identity_optional over normalize() output — returns EMPTY for real corpus files, independent of body shape and broader than the bare-`==`-body case above. This is NOT specific to vacuity.dag: src/v2/lens/enforcement/cost_coverage.dag's cost_coverage_collect_fn_decls is byte-identical logic over the byte-identical three-stage ingest (filesystem_read -> tokenize -> parse_module -> normalize), and running BOTH collectors over the SAME successfully-normalized module_root (src/v2/std/nat.dag, four known fn declarations) in one execution returned empty for both, ruling out a vacuity-specific bug. Independently reconfirmed by executing cost_coverage's OWN already-merged witnesses directly — cost_coverage_dag_logic_has_three_fn_bodies (asserts fn_attempted == 3 for dag/std/logic.dag) and cost_coverage_v2_tree_receipt_by_execution (asserts fn_attempted > 0 for real src/v2 files including nat.dag) — both FAIL by direct execution today. And reconfirmed a second time on a pristine origin/main checkout (git worktree add against origin/main, this branch's compiled claim_batch binary, cd into the worktree with relative --source-root paths): cost_coverage_dag_logic_has_three_fn_bodies FAILS on clean main too, so this is pre-existing and corpus-wide, not introduced by this branch and not limited to vacuity's own mandate. Consequence for this lens: vacuity_consumer_witness_live_derived_sites() (v2.test.claim.vacuity_consumer_witness) legitimately enumerates zero sites against its declared fixture file today, even though that file is independently confirmed to normalize() cleanly — the derived-site/shadow join still holds by real execution (empty == empty, never vacuously skipped), and the fixture-module-reach requirement (DESIGN.md §6 inert-lens hygiene) is separately satisfied by a direct compile-time symbol reference (vacuity_consumer_witness_fixture_module_reached_by_direct_call), not by fn-decl collection. This is the SAME \"general body producer\" DESIGN.md open thread the body-lowering ceiling above already cites — broader in scope (declaration discovery, not just one body shape) but the same authority and the same dissolve-on trigger, per §3 single authority, not a second independently-named trigger. Mechanism-vs-reachability stays separated exactly as above: classify_vacuity_same_eval_record's correctness is proven by the direct-call RED control regardless of this ceiling."
+
+fn vacuity_witness_ingest_source_text(source_text: String, file: Symbol) -> Outcome<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } =>
+          normalize(parse_tree: artifact.tree)
+      }
+  }
+}
+
+fn vacuity_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
+  let acc1 = if dag_node_is_fn_decl(node: root) {
+    list_append(left: acc, right: [root])
+  } else {
+    acc
+  }
+  fold(root.children, init: acc1, f: fn(a, edge) {
+    vacuity_collect_fn_decls(root: edge.target, acc: a)
+  })
+}
+
+fn vacuity_fn_decl_name_optional(fn_decl: Node) -> Symbol? {
+  match body_lower_unwrap_captured(shell: fn_decl) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      body_lower_fn_decl_ident_from_captured(captured: captured)
+  }
+}
+
+fn vacuity_fn_decl_named(fn_decl: Node, name: Symbol) -> Bool {
+  match vacuity_fn_decl_name_optional(fn_decl: fn_decl) {
+    Absent => false
+    Present { value: sym } => sym == name
+  }
+}
+
+fn vacuity_find_fn_decl_by_name(decls: List<Node>, name: Symbol) -> Node? {
+  fold(decls, init: optional_absent(), f: fn(acc, decl) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if vacuity_fn_decl_named(fn_decl: decl, name: name) {
+          optional_present(value: decl)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn vacuity_fn_body_from_decl(fn_decl: Node) -> Node? {
+  match parse_subtree_find_production_captured(root: fn_decl, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: body } => optional_present(value: body)
+    ParseSubtreeAbsent => optional_absent()
+  }
+}
+
+fn vacuity_stmt_seq_from_body(body: Node) -> Node? {
+  match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_stmt_seq) {
+    ParseSubtreeFound { captured: seq } => optional_present(value: seq)
+    ParseSubtreeAbsent => optional_absent()
+  }
+}
+
+fn vacuity_stmt_seq_is_single_statement(stmt_seq: Node) -> Bool {
+  if is_empty_conj_root(n: stmt_seq) {
+    false
+  } else {
+    match sugar_sequence_pair_optional(node: stmt_seq) {
+      Absent => false
+      Present { value: pair } => is_empty_conj_root(n: pair.right)
+    }
+  }
+}
+
+fn vacuity_transform_operator_symbol_optional(transform: Node) -> Symbol? {
+  match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
+    Absent => optional_absent()
+    Present { value: op_node } =>
+      match op_node.kind {
+        TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+        _ => optional_absent()
+      }
+  }
+}
+
+fn vacuity_transform_is_equality(transform: Node) -> Bool {
+  match vacuity_transform_operator_symbol_optional(transform: transform) {
+    Absent => false
+    Present { value: id } => id == ^dag_token_eq_eq
+  }
+}
+
+fn vacuity_operand_provenance_from_node(node: Node) -> TestClaimOperandProvenance {
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: _, diagnostics: _ } => LiteralOracle
+    Rejected { diagnostics: _ } => OperandProvenanceUnknown
+  }
+}
+
+fn vacuity_bool_witness_body_evidence(transform: Node) -> VacuityEvidence {
+  if vacuity_transform_is_equality(transform: transform) {
+    match list_at_optional(xs: node_positional_child_targets(node: transform), index: 1) {
+      Absent => Unknown
+      Present { value: lhs } =>
+        match list_at_optional(xs: node_positional_child_targets(node: transform), index: 2) {
+          Absent => Unknown
+          Present { value: rhs } =>
+            classify_vacuity_same_eval_record(
+              record: VacuityEvidenceRecord {
+                subject: EqualityOperands,
+                transport: EvalOnly,
+                lhs_provenance: vacuity_operand_provenance_from_node(node: lhs),
+                rhs_provenance: vacuity_operand_provenance_from_node(node: rhs),
+                operands_structurally_equal: exact_structural_equality_zip_fold(source_facts: lhs, candidate: rhs)
+              }
+            )
+        }
+    }
+  } else {
+    Unknown
+  }
+}
+
+fn vacuity_bool_witness_fn_body_evidence(fn_decl: Node) -> VacuityEvidence {
+  match vacuity_fn_body_from_decl(fn_decl: fn_decl) {
+    Absent => Unknown
+    Present { value: body } =>
+      match vacuity_stmt_seq_from_body(body: body) {
+        Absent => Unknown
+        Present { value: stmt_seq } =>
+          if vacuity_stmt_seq_is_single_statement(stmt_seq: stmt_seq) {
+            match body_lower_try_infix_transform(node: stmt_seq) {
+              Absent => Unknown
+              Present { value: transform } =>
+                vacuity_bool_witness_body_evidence(transform: transform)
+            }
+          } else {
+            Unknown
+          }
+      }
+  }
+}
+
+fn vacuity_bool_witness_evidence(witness: BoolWitness) -> VacuityEvidence {
+  let source_text = filesystem_read(path: witness.entry).content
+  match vacuity_witness_ingest_source_text(
+    source_text: source_text,
+    file: vacuity_bool_witness_file_anchor
+  ) {
+    Rejected { diagnostics: _ } => Unknown
+    Accepted { value: module_root, diagnostics: _ } =>
+      match vacuity_find_fn_decl_by_name(
+        decls: vacuity_collect_fn_decls(root: module_root, acc: Empty),
+        name: witness.function
+      ) {
+        Absent => Unknown
+        Present { value: fn_decl } => vacuity_bool_witness_fn_body_evidence(fn_decl: fn_decl)
+      }
   }
 }
 
@@ -258,7 +486,7 @@ fn classify_unified_test_claim_vacuity(
         rhs_provenance: rhs_provenance,
         operand_provenance: operand_provenance
       )
-    BoolWitnessClaim { witness: _ } => Unknown
+    BoolWitnessClaim { witness: w } => vacuity_bool_witness_evidence(witness: w)
   }
 }
 

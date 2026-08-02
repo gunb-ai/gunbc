@@ -11,6 +11,7 @@ import gunbc.guarantee_measurement {
   ProbeObservationFold, probe_observation_fold,
   observed_is_verdict,
   GuaranteeMeasurementReceipt,
+  MeasurementRevision, GitRevision,
   GuaranteePathResolution, PathResolved, PathUnknown, PathDuplicate,
   resolve_guarantee_path,
   ReceiptJoin, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
@@ -53,8 +54,8 @@ fn synth_receipt(path_id: String) -> GuaranteeMeasurementReceipt {
     class: "call-shape" as GuaranteeClassId,
     path: path_id as GuaranteePathId,
     probe: "call-shape-mislabel-red" as GuaranteeProbeId,
-    subject_revision: "0000000000000000000000000000000000000000" as CommitSha,
-    harness_revision: "1111111111111111111111111111111111111111" as CommitSha,
+    subject_revision: GitRevision { commit: "0000000000000000000000000000000000000000" as CommitSha },
+    harness_revision: GitRevision { commit: "1111111111111111111111111111111111111111" as CommitSha },
     probe_set_digest: probe_set_digest(probe_ids: ["call-shape-mislabel-red" as GuaranteeProbeId]),
     observed: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 1 },
   }

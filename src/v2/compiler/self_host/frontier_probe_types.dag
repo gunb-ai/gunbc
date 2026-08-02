@@ -8,6 +8,10 @@ data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forwa
 
 type FrontierBlockerClass
   = SelfEmitReady
+  | UpstreamSemanticRefusal {
+      diagnostic_class: Symbol,
+      diagnostic_name: Symbol
+    }
   | NameResolutionGap
   | EmitSurfaceGap
   | RealizationGap
@@ -16,7 +20,14 @@ type FrontierBlockerClass
 
 type FrontierProbeStage
   = ProbeStageAssemble
+  | ProbeStageSemanticDerivation
   | ProbeStageEmit
+
+data upstream_semantic_refusal_vocabulary_note: String = "UNRESOLVED_CompilerError at emit establishes upstream semantic refusal, not inference failure and not emit-surface gap: the emitter plants compile_error when is_compiler_error(n.inferred) — the underlying refusal may originate in parse, normalize, resolve, infer, or translate. UpstreamSemanticRefusal names the ORIGINAL typed diagnostic (class + name); the UNRESOLVED marker is a consistency control after pre-emit capture lands, not the classification source. ProbeStageSemanticDerivation is the interim located stage — not ProbeStageEmit. gunbc.bootstrap.CompilerStage is the compiler-pipeline authority (Tokenize|Parse|…|Emit); FrontierProbeStage names harness positions (Assemble is not a compiler stage). Dissolve-on (interim): frontier_probe_pre_emit_upstream_semantic_scan binds infer-tree CompilerError messages before emit. Dissolve-on (durable): ProbeStageSemanticDerivation grounds compiler-stage provenance on CompilerStage when the probe can supply it; until then do not fabricate stage labels."
+
+data frontier_probe_pre_emit_upstream_semantic_scan_dissolve_trigger: String = "migrate_when_frontier_probe_pre_emit_upstream_semantic_scan — infer-tree walk binds CompilerError message into UpstreamSemanticRefusal.diagnostic_name before emit; UNRESOLVED_CompilerError becomes a consistency control only after this lands."
+
+data upstream_semantic_compiler_error_class: Symbol = ^CompilerError
 
 type FrontierProbeReceipt {
   module_path: String
@@ -55,6 +66,50 @@ fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
   reason == ^compiler_import_closure_cyclic
     || reason == ^self_host_runner_not_realized
     || reason == ^emit_host_run_transport_unrealized
+}
+
+fn frontier_blocker_is_upstream_semantic_marker_reason(reason: Symbol) -> Bool {
+  reason == gate_a_flip_probe_unresolved_compiler_error_reason
+}
+
+fn frontier_upstream_semantic_refusal_from_marker_reason(
+  reason: Symbol
+) -> FrontierBlockerClass {
+  UpstreamSemanticRefusal {
+    diagnostic_class: upstream_semantic_compiler_error_class,
+    diagnostic_name: reason
+  }
+}
+
+fn frontier_probe_located_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
+  match blocker {
+    NameResolutionGap => ProbeStageAssemble
+    UnknownProbeCause { reason: _ } => ProbeStageAssemble
+    UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } =>
+      ProbeStageSemanticDerivation
+    FixtureCemented => ProbeStageEmit
+    SelfEmitReady => ProbeStageEmit
+    EmitSurfaceGap => ProbeStageEmit
+    RealizationGap => ProbeStageEmit
+  }
+}
+
+data frontier_probe_located_stage_projection_note: String = "frontier_probe_located_stage_for_blocker is a blocker-class projection for roster knowledge rows and rank helpers — NOT the live probe receipt authority. Live frontier_probe_emit_from_ingest MUST bind located_stage from the observed execution position: assemble arm → ProbeStageAssemble; emit arm → frontier_probe_located_stage_for_emit_outcome (UpstreamSemanticRefusal alone keeps ProbeStageSemanticDerivation). Mapping every UnknownProbeCause to Assemble fabricates provenance when assemble+emit both succeeded (review 46694)."
+
+fn frontier_probe_located_stage_for_assemble_outcome(
+  blocker: FrontierBlockerClass
+) -> FrontierProbeStage {
+  ProbeStageAssemble
+}
+
+fn frontier_probe_located_stage_for_emit_outcome(
+  blocker: FrontierBlockerClass
+) -> FrontierProbeStage {
+  match blocker {
+    UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } =>
+      ProbeStageSemanticDerivation
+    _ => ProbeStageEmit
+  }
 }
 
 data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `frontier_probe_survey` bin emits UnknownProbeCause with these located_reason symbols when per-module probe fails or emit-accept is unverified; not classified by frontier_classify_rejection_reason (assemble/emit diagnostics only). Dissolves with the P5 bin."
@@ -126,6 +181,8 @@ fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
 fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
   if frontier_blocker_is_name_resolution_reason(reason: reason) {
     NameResolutionGap
+  } else if frontier_blocker_is_upstream_semantic_marker_reason(reason: reason) {
+    frontier_upstream_semantic_refusal_from_marker_reason(reason: reason)
   } else if frontier_blocker_is_emit_surface_reason(reason: reason) {
     EmitSurfaceGap
   } else if frontier_blocker_is_realization_reason(reason: reason) {
@@ -140,11 +197,12 @@ fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
 fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
   match blocker {
     SelfEmitReady => 0
-    EmitSurfaceGap => 1
-    NameResolutionGap => 2
-    RealizationGap => 3
-    FixtureCemented => 4
-    UnknownProbeCause { reason: _ } => 5
+    UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => 1
+    EmitSurfaceGap => 2
+    NameResolutionGap => 3
+    RealizationGap => 4
+    FixtureCemented => 5
+    UnknownProbeCause { reason: _ } => 6
   }
 }
 
@@ -178,6 +236,25 @@ fn frontier_blocker_class_matches(
         FixtureCemented => true
         _ => false
       }
+    UpstreamSemanticRefusal { diagnostic_class: lc, diagnostic_name: ln } =>
+      match target {
+        UpstreamSemanticRefusal { diagnostic_class: rc, diagnostic_name: rn } =>
+          (lc == rc) && (ln == rn)
+        _ => false
+      }
     UnknownProbeCause { reason: _ } => false
+  }
+}
+
+fn frontier_located_reason_is_stale_knowledge_attributed(symbol: Symbol) -> Bool {
+  symbol == gate_a_flip_probe_witness_std_dup_reason
+}
+
+fn frontier_upstream_semantic_refusal_located_reason(
+  refusal: FrontierBlockerClass
+) -> Symbol {
+  match refusal {
+    UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: name } => name
+    _ => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
   }
 }

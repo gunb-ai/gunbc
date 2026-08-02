@@ -634,3 +634,7 @@ row 3's shape (a located refusal), while rows 1 and 2 must stay green.
 
 Nothing lands from this section either — it is a receipt. Dispatch 2's branch
 is left in place as evidence.
+
+**N2 design (quiet-hawk-219):** the follow-on design for the containment binding
+path is [containment binding for cross-module type references](containment-binding-cross-module-type-references-design.md)
+(import-deletion graph node N2; depends on N1 refusal floor).

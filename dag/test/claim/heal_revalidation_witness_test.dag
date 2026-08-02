@@ -8,7 +8,7 @@ import gunbc.merge_admission {
   CoveredGateConclusion
 }
 import gunbc.heal_revalidation {
-  HealOutcome, HealNoChange, HealProduced,
+  HealOutcome, HealNoChange, HealProduced, HealAuthorCommitRequired,
   HealDispatchPending, HealDispatchAccepted, HealDispatchRefused,
   HealRevalidationNotRequired, HealRevalidationRequired, HealRevalidationCoverageObserved,
   PriorRunStillCurrent, SupersededByHealedHead,
@@ -51,6 +51,27 @@ test fn heal_no_change_creates_no_revalidation_obligation() -> Bool {
     required_roster: required_roster,
     required_gates: [required_gate]
   )
+}
+
+test fn heal_author_commit_required_creates_no_revalidation_obligation() -> Bool {
+  heal_revalidation_admits(
+    state: heal_revalidation_initial(outcome: HealAuthorCommitRequired {
+      head: prior_head,
+      author_commit_paths: [".github/workflows/ci.yml"]
+    }),
+    required_roster: required_roster,
+    required_gates: [required_gate]
+  )
+}
+
+test fn author_commit_required_does_not_supersede_prior_run() -> Bool {
+  match prior_run_disposition(outcome: HealAuthorCommitRequired {
+    head: prior_head,
+    author_commit_paths: [".github/workflows/ci.yml", ".github/workflows/falsifier.yml"]
+  }) {
+    PriorRunStillCurrent { head } => head == prior_head
+    SupersededByHealedHead { prior_head: _, healed_head: _ } => false
+  }
 }
 
 test fn heal_produced_is_immediately_revalidation_required() -> Bool {
@@ -191,4 +212,4 @@ test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool 
   }
 }
 
-data heal_revalidation_closed_denominator_witness_note: String = "These executing witnesses enumerate both current HealOutcome arms and every HealDispatchOutcome arm through exhaustive matches. A newly added heal path or dispatch classification makes this file and the admission folds fail to compile until it is explicitly classified; unclassified cannot become success. The RED controls discriminate dispatch accepted from coverage complete, refused dispatch from an in-flight run, old-head green from healed-head green, and ordinary manual dispatch from heal revalidation."
+data heal_revalidation_closed_denominator_witness_note: String = "These executing witnesses enumerate every current HealOutcome arm (including HealAuthorCommitRequired) and every HealDispatchOutcome arm through exhaustive matches. A newly added heal path or dispatch classification makes this file and the admission folds fail to compile until it is explicitly classified; unclassified cannot become success. The RED controls discriminate dispatch accepted from coverage complete, refused dispatch from an in-flight run, old-head green from healed-head green, ordinary manual dispatch from heal revalidation, and author-commit-required workflow drift from produced heal heads."

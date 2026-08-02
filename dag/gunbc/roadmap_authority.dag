@@ -266,7 +266,7 @@ fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
 
 data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
 
-data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT CLOSES A NODE, so it can only be authored once that validation exists. A node without one stays ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make a lane look dispatchable produces exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The closing validation is written as part of the node's first slice; the contract follows the witness, never precedes it.\n\nTHE ROSTER IS NOT TRANSCRIBED HERE. This row previously carried a hand survey — 'two of six startable roots are bindable' plus the four names and why each lacked a validation — and it rotted exactly as a hand-maintained count must: two of the four it named (v1-test-hygiene-producer-retirement, pderive-typesafe-nullary-reflection) were accepted while the sentence still listed them as unbound, and the leading count was edited twice by unrelated changes. startable_nodes_missing_closing_contract() computes the same set from the nodes themselves, so read it there and delete nothing by hand. What stays here is the RULE, which does not change when the roster does.\n\nOne bound node was removed rather than added by this correction: see v1_test_migration_unbound_note. A contract whose validation cannot fail on zero progress is worse than no contract, because it reports done over undone work."
+data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT CLOSES A NODE, so it can only be authored once that validation exists. A node without one stays ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make a lane look dispatchable produces exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The closing validation is written as part of the node's first slice; the contract follows the witness, never precedes it.\n\nTHE ROSTER IS NOT TRANSCRIBED HERE. This row previously carried a hand survey — 'two of six startable roots are bindable' plus the four names and why each lacked a validation — and it rotted exactly as a hand-maintained count must: two of the four it named (v1-test-hygiene-producer-retirement, pderive-typesafe-nullary-reflection) were accepted while the sentence still listed them as unbound, and the leading count was edited twice by unrelated changes. startable_nodes_missing_closing_contract() computes the same set from the nodes themselves, so read it there and delete nothing by hand. What stays here is the RULE, which does not change when the roster does.\n\nv1-test-migration records both sides of that rule: its false-green deletion-guard contract was removed, then a behavior-grain validation that can fail on zero progress was authored and bound. See v1_test_migration_binding_history_note for that history and v1_test_migration_contract_note for the current completion authority."
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -277,7 +277,25 @@ fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContr
 
 data v2_emitter_producer_provenance_contract_note: String = "The validation is this node's red control stated almost verbatim. The ticket demands that 'a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write', and witness_restored_binding_without_executed_receipt_does_not_authorize_reds asserts exactly that: a restored binding without an executed receipt does not authorize an emitter-produced claim. It is chosen over the suite's other twenty-six claims because it is the one that fails if the unrepresentability itself lapses, rather than one that checks a roster stayed in step."
 
-data v1_test_migration_unbound_note: String = "v1-test-migration IS DELIBERATELY UNBOUND, and rebinding it to test_migration_delete_guard_holds would restore a false green. That binding existed and was removed here after reading what the guard actually computes.\n\nThe guard is DIFF-SCOPED. cli_run.rs test_migration_delete_guard_uncovered_deletes_inner resolves a (base, head) pair, returns an empty violation list when base_rev == head_rev, returns an empty list again when neither rev resolves and GUNBC_CI_DIFF_BASE is unset, and otherwise inspects only the v1 test paths DELETED between those revs. Violations are empty whenever a change deletes no uncovered legacy test file, so the guard answers true. Measured on the tree that carried it: the guard passes today while test_migration_debt_live_module_count() is 81, so a dispatched agent could do no migration work at all and Verify would still go green. A validation that cannot fail on zero progress cannot close a node (DESIGN 5 — a wrong answer must be loud, and 'done' asserted over undone work is exactly the silent wrong answer).\n\nThe guard is KEPT, unchanged, as what it actually is: a per-change deletion wall, wired through test_migration_delete_guard_holds in the debt witness module, refusing an unsafe deletion in the diff that attempts it. That role is correct and load-bearing. It simply does not authorize completion.\n\nThe node's own bar — 'the per-file coverage mapping with nothing unmatched' — needs a closing validation at the grain of legacy test BEHAVIOR, not modules: an admitted typed disposition for every discovered legacy test function, with unclassified as the derived set difference reaching zero. The module count is a trend metric that overstates debt by construction, because classification is exact-stem filename matching (chosen fail-closed after fuzzy matching wrongly reported an unrelated witness as covering `pipeline`), so a real witness under a different name still reads as debt. Until that behavioral disposition graph exists, this node is honestly ClosingContractMissing and appears in startable_nodes_missing_closing_contract, which is where a node whose completion nothing can check belongs."
+fn v1_seed_honesty_decision_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag" as FilePath,
+    function: "v1_seed_honesty_decision_closing_contract_holds" as NonEmptyStr,
+  )
+}
+
+data v1_seed_honesty_decision_contract_note: String = "The validation names v1-seed-honesty-decision and executes the node's whole handback. Feeding one artifact identity as both claim and check refuses with bootstrap_self_verify_same_artifact; feeding separately identified artifacts with planted divergent content refuses with bootstrap_self_verify_diverged; mismatched source/compiler/hash-pin provenance refuses with bootstrap_self_verify_provenance_mismatch; separately identified artifacts with equal content and equal provenance admit, proving the refusals are discriminating rather than unconditional. The final conjunct requires seed_honesty_decision to carry one of the two operator verdicts whose rationale is NonEmptyStr by construction. It is SeedHonestyUndecided today, so this closing validation is deliberately red and QuarantineProbeExpectRed until the decision lands; it cannot report done over the missing half. PRODUCTION-WIRING TRIGGER: the realized-comparison and regen paths do not yet route their artifact identities through seed_self_verify_check. This contract proves the decision procedure and gates completion, but it is not yet the live trust-path authority. If the operator requires the independent rebuild first, the implementation slice must route the executed artifacts through this check before discharge; if fixed-point trust is ruled sufficient, the rationale must explicitly dispose of that unwired path rather than implying it is protected. The full independent rebuild remains out of scope here."
+
+data v1_test_migration_binding_history_note: String = "v1-test-migration WAS DELIBERATELY UNBOUND after its former binding to test_migration_delete_guard_holds was removed: that binding produced a false green, as reading what the guard actually computes showed.\n\nThe guard is DIFF-SCOPED. cli_run.rs test_migration_delete_guard_uncovered_deletes_inner resolves a (base, head) pair, returns an empty violation list when base_rev == head_rev, returns an empty list again when neither rev resolves and GUNBC_CI_DIFF_BASE is unset, and otherwise inspects only the v1 test paths DELETED between those revs. Violations are empty whenever a change deletes no uncovered legacy test file, so the guard answers true. Measured on the tree that carried it: the guard passes today while test_migration_debt_live_module_count() is 81, so a dispatched agent could do no migration work at all and Verify would still go green. A validation that cannot fail on zero progress cannot close a node (DESIGN 5 — a wrong answer must be loud, and 'done' asserted over undone work is exactly the silent wrong answer).\n\nThe guard is KEPT, unchanged, as what it actually is: a per-change deletion wall, wired through test_migration_delete_guard_holds in the debt witness module, refusing an unsafe deletion in the diff that attempts it. That role is correct and load-bearing. It simply does not authorize completion.\n\nThe node's own bar — 'the per-file coverage mapping with nothing unmatched' — required a closing validation at the grain of legacy test BEHAVIOR, not modules: an admitted typed disposition for every discovered legacy test function, with unclassified as the derived set difference reaching zero. The module count is a trend metric that overstates debt by construction, because classification is exact-stem filename matching (chosen fail-closed after fuzzy matching wrongly reported an unrelated witness as covering `pipeline`), so a real witness under a different name still reads as debt. That missing graph once made the node honestly ClosingContractMissing in startable_nodes_missing_closing_contract. It now exists and the node is bound to it by v1_test_migration_execution_contract; v1_test_migration_contract_note records why that validation, rather than the deletion guard, is the completion authority."
+
+fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag" as FilePath,
+    function: "legacy_test_behavior_unclassified_frontier_is_zero" as NonEmptyStr,
+  )
+}
+
+data v1_test_migration_contract_note: String = "THE BEHAVIOR-GRAIN CLOSING DISCRIMINATOR. This deliberately does not bind the diff-scoped test_migration_delete_guard_holds: that guard stays load-bearing for changes that delete a legacy test file, but it passes whenever a change deletes none and therefore cannot authorize completion. The chosen validation derives every legacy #[test] function from the live tree, joins it by file+function identity to exactly one typed disposition, resolves CoveredByWitness references against discovered floor `test fn`s, and requires the derived unclassified set plus stale, duplicate, and unresolved residues all to be empty. It is RED today and enrolled QuarantineProbeExpectRed; the green mechanism suite executes a complete fixture plus planted unclassified, unresolved-witness, and discovery-refusal controls. Thus zero progress stays red, while the final migration greens this same validation without relaxing it."
 
 fn with_execution(rn: RoadmapNode, e: WorkItemExecutionContract) -> RoadmapNode {
   RoadmapNode {
@@ -1235,7 +1253,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shorter queue, the replacements running, and the reasons for whatever stays."
       )
     ),
-    active(
+    with_execution(
+      e: v1_test_migration_execution_contract(),
+      rn: active(
       identity: "rn_0X0GRWB1KQ6KR0SAK1HDKEDGPR",
       id: "v1-test-migration",
       owner: "self-host",
@@ -1249,8 +1269,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No line-by-line rewriting of the old tests. Adding a new test written only in Rust, with no authority the substrate owns, is out of bounds here: it grows the very population this node exists to drain, so it counts against the finish line rather than toward it.",
         handback: "The per-file coverage mapping with nothing unmatched."
       )
-    ),
-    active_small(
+    )),
+    with_execution(
+      e: v1_seed_honesty_decision_execution_contract(),
+      rn: active_small(
       identity: "rn_HZJEM68DT207HQH449FPR3VZPA",
       id: "v1-seed-honesty-decision",
       owner: "operator",
@@ -1264,6 +1286,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No building the full independent rebuild before the decision is made.",
         handback: "A check that can fail, plus the decision recorded either way."
       )
+    )
     ),
     active(
       identity: "rn_C99CKWVBCHDQ35TQRST1AT3N8V",
@@ -2061,8 +2084,27 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       accepted_by: "operator",
       accepted_on: "2026-08-01",
     },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "v2-emitter-producer-provenance"),
+      criteria_digest: chash(s: "f1c76111c83a0a60"),
+      red_control: RedControlExecuted {
+        witness_module: "v2.test.claim.self_host.emitter_producer_provenance_witness_test",
+        witness_fn: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds",
+        executed_on: "2026-08-02",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "src/v2/compiler/self_host/frontier.dag",
+        further_artifacts: [
+          "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-08-02",
+    },
   ]
 }
+
+data v2_emitter_producer_provenance_acceptance_note: String = "ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing is the Gate-A oracle (#7408, operator-merged): SelfEmitted requires an executed probe receipt, so an emitter-produced claim without a receipt from the run that made it is unrepresentable — the ticket's own red control. Evidence, executed 2026-08-02 on the tree carrying this receipt: all 27 witness fns in the contract's entry file pass, including the bound closing validation (a restored binding without an executed receipt does not authorize) and its sibling refusal controls (hand-forged authorization, minted executed verdicts, synthesized digests, fabricated build-greens all red). The digest f1c76111c83a0a60 was DERIVED BY EXECUTION — node_criteria_digest run against the live node on this tree, not transcribed. The handback's three elements are on main: the relabelled roster (every frontier row producer-qualified), the retired single count (per-producer baselines, witness_producer_qualified_baselines_holds), and the refusal demonstration (the _reds suite). Acceptance is the operator's merge of the change adding this receipt; the receipt is authored by the roadmap steward as the vehicle, never as the act."
 
 fn accepted_roadmap_nodes() -> List<RoadmapNode> {
   let receipts = roadmap_acceptance_receipts()

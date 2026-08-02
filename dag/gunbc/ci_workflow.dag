@@ -13,6 +13,7 @@ import gunbc.ci_spec {
   ci_release_bins_archive_name,
   gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
   gunbc_ci_heal_binary_source_skew_guard_script,
+  ci_heal_author_commit_artifact_dir, ci_heal_author_commit_artifact_name,
 }
 import v2.workflow.ci_merge_admission_gate_emit {
   ci_merge_admission_gate_script,
@@ -563,7 +564,7 @@ fn ci_deploy_jobs() -> List<Job> {
 }
 
 fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_heal_binary_source_skew_guard_step() -> Step {
@@ -596,7 +597,7 @@ fn ci_heal_regen_step() -> Step {
 
 fn ci_heal_commit_push_step() -> Step {
   RunStep {
-    name: Present { value: "Commit + push regenerated artifacts to the triggering branch (only when drifted; byte-idempotent fixed point terminates the loop)" },
+    name: Present { value: "Commit + push auto-push-eligible regenerated artifacts (workflow paths are author-commit-required)" },
     id: none,
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
@@ -610,7 +611,28 @@ fn ci_heal_commit_push_step() -> Step {
   }
 }
 
-data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci, because the drift gate that triggers it can stop ci's dependent witness population. When regeneration changes a registered artifact, the job pushes the new PR head and explicitly workflow_dispatches CI with expected_healed_sha. The old run is SupersededByHealedHead and deliberately remains non-success; the dispatched run requires both its GitHub check subject (github.sha) and checkout HEAD to equal the immutable SHA before any gate. A dispatch or subject refusal leaves revalidation required and fails loudly. contents:write and actions:write are scoped to this job: contents is needed for the repair push, and Actions write is the narrowest GitHub permission that can invoke CreateWorkflowDispatch (it can start workflows, so it is not granted to build/regen/ci or the workflow default). The dispatching step explicitly binds `${{ github.token }}` into GITHUB_TOKEN, the sole environment authority consumed by github.Workflows; GitHub Actions does not implicitly export that context value as a process variable. The heal job is excluded from workflow_dispatch, preventing a dispatch loop. Main is not auto-healed. Judgment-class reds and the separate compile timeout are untouched."
+fn ci_heal_author_commit_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload author-commit-required workflow repairs (GitHub App cannot push .github/workflows/**)" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_heal_author_commit_artifact_name)),
+        kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "ignore")),
+        kv(key: "retention-days", value: yaml_int(n: 7)),
+        kv(key: "compression-level", value: yaml_int(n: 0))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) are AuthorCommitRequired: the GitHub App lacks workflows:write, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
 
 fn ci_heal_generated_artifacts_job() -> Job {
   Job {
@@ -619,7 +641,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
       [ci_heal_branch_head_checkout_step()],
-      [ci_heal_binary_source_skew_guard_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step()]
+      [ci_heal_binary_source_skew_guard_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
     ),
     needs: ["build"],
     env: none,

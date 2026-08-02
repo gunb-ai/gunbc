@@ -1,9 +1,18 @@
+use im::HashMap;
+use im::Vector;
 use std::fs;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::resolve_entry_graph;
-use v1_compiler::resolved_graph_cache::{build_valid_artifact_bytes, write, CacheWriteOutcome};
+use v1_compiler::cli_run::{
+    load_sources_for_entry, resolve_closure_request_key_from_digests,
+    resolved_graph_parts_semantic_digest,
+};
+use v1_compiler::resolved_graph_cache::{
+    build_valid_artifact_bytes, closure_content_digest, encode_resolved_graph_parts,
+    transform_content_digest, write, CacheWriteOutcome,
+};
 
 // Serialize the cap env var across tests in this binary.
 static CAP_ENV_MUTEX: Mutex<()> = Mutex::new(());
@@ -77,24 +86,61 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
 
     // A real resolved graph to persist under many synthetic content addresses.
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve fixture");
-    let one_artifact =
-        build_valid_artifact_bytes("0000000000000000", &graph, si.as_ref()).expect("artifact");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let closure_digest = closure_content_digest(&sources);
+    let compiler_digest = transform_content_digest();
+    let encoded = encode_resolved_graph_parts(
+        &graph,
+        &si.iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<HashMap<_, _>>(),
+        &Vector::new(),
+    )
+    .expect("encode");
+    let request_key = resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)
+        .expect("request key");
+    let semantic = resolved_graph_parts_semantic_digest(
+        &encoded.graph_digest,
+        encoded.graph_bytes.len() as u64,
+        &encoded.indices_digest,
+        encoded.indices_bytes.len() as u64,
+        &encoded.union_digest,
+        encoded.union_bytes.len() as u64,
+    )
+    .expect("semantic digest");
+    let one_artifact = build_valid_artifact_bytes(
+        "0000000000000000",
+        &graph,
+        si.as_ref(),
+        &Vector::new(),
+        &request_key,
+        &semantic,
+    )
+    .expect("artifact");
     let artifact_len = one_artifact.len() as u64;
 
     // Cap the cache at room for ~3 artifacts; then write 16 distinct ones.
     let cap = artifact_len * 3 + 64;
     let n = 16u64;
-    std::env::set_var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES", cap.to_string());
+    v1_compiler::resolved_graph_cache::set_resolved_graph_cache_cap_bytes_for_test(Some(cap));
 
     for i in 0..n {
         let digest = format!("{i:016x}");
-        match write(&cache_dir, &digest, &graph, si.as_ref()) {
+        match write(
+            &cache_dir,
+            &digest,
+            &graph,
+            si.as_ref(),
+            &Vector::new(),
+            &request_key,
+            &semantic,
+        ) {
             Ok(CacheWriteOutcome::Written) | Ok(CacheWriteOutcome::AlreadyExists) => {}
             other => panic!("write {digest} failed: {other:?}"),
         }
     }
 
-    std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES");
+    v1_compiler::resolved_graph_cache::set_resolved_graph_cache_cap_bytes_for_test(None);
 
     let footprint = total_bin_bytes(&cache_dir);
     assert!(
@@ -114,7 +160,7 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
 #[test]
 fn cap_matches_modeled_authority() {
     let _lock = CAP_ENV_MUTEX.lock().expect("cap env mutex");
-    std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES");
+    v1_compiler::resolved_graph_cache::set_resolved_graph_cache_cap_bytes_for_test(None);
     let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .find(|p| {
