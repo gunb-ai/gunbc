@@ -1524,7 +1524,7 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
 pub fn type_ref_binding_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T) are NOT authorized by a leaf-only import of an unrelated T (review 47295 / DESIGN §3/§5): the leaf must be import-reachable AND symbol_index_lookup(full name) must resolve to the SAME declaration (span identity) as that leaf binding — owning-module check, not qualified_last_segment alone. Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here.".to_string()
+            "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T) are NOT authorized by a leaf-only import of an unrelated T (review 47295 / DESIGN §3/§5): the leaf must be import-reachable AND symbol_index_lookup(full name) must resolve to the SAME declaration as that leaf binding — owning-module check, not qualified_last_segment alone. Same-declaration identity is span.file + authored leaf name (not raw SourceSpan equality): census vs local-binding copies of one decl can disagree on start/end while remaining the same declaration; full-span equality false-refused same-module uses (LandingRequiredClaim / LandingClaimReadinessReceipt under whole-tree compile-clean). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1540,6 +1540,25 @@ pub fn type_ref_binding_authority_leaf_binding(
     }
 }
 
+pub fn type_ref_binding_authority_same_decl(
+    env: Rc<TypeEnv>,
+    leaf: String,
+    leaf_binding: Rc<TypeBinding>,
+    indexed: Rc<Node>,
+) -> bool {
+    let leaf_authored = authored_name(env.clone(), leaf_binding.resolved.clone());
+    let indexed_authored = authored_name(env.clone(), indexed.clone());
+    let leaf_matches = (leaf_binding.name.clone() == leaf.clone())
+        || (leaf_authored.clone() == leaf.clone())
+        || (qualified_last_segment(leaf_authored.clone()) == leaf.clone());
+    let indexed_matches = (indexed_authored.clone() == leaf.clone())
+        || (qualified_last_segment(indexed_authored.clone()) == leaf.clone());
+    leaf_matches
+        && indexed_matches
+        && ((leaf_binding.resolved.clone().span.clone().file == indexed.span.clone().file)
+            || (leaf_binding.resolved.clone().span.clone() == indexed.span.clone()))
+}
+
 pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -> bool {
     if (v1_rt::map_has(&env.str_bindings.clone(), name.clone())
         || v1_rt::map_has(&env.ancestry_str_bindings.clone(), name.clone()))
@@ -1552,9 +1571,12 @@ pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -
                 match type_ref_binding_authority_leaf_binding(env.clone(), leaf.clone()) {
                     Some(leaf_binding) => {
                         match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                            Some(indexed) => {
-                                (leaf_binding.resolved.clone().span.clone() == indexed.span.clone())
-                            }
+                            Some(indexed) => type_ref_binding_authority_same_decl(
+                                env.clone(),
+                                leaf.clone(),
+                                leaf_binding.clone(),
+                                indexed.clone(),
+                            ),
                             None => false,
                         }
                     }
