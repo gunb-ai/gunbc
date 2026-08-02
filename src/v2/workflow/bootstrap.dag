@@ -114,6 +114,11 @@ type SeedHonestyDischarge {
   diverse_double_compilation: DiverseCompilationAgreement
 }
 
+type SeedSelfVerifyReceipt {
+  claim: DiverseCompilationRun
+  check: DiverseCompilationRun
+}
+
 data independent_compiler_evidence_dissolve_on_note: String = "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction."
 
 data bootstrap_seed_honesty_disconnected_digest_note: String = "The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR."
@@ -575,6 +580,30 @@ fn independent_compiler_pair_witness(
   match evidence {
     IndependentCompilerEvidenceUnavailable { correction: _ } =>
       Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+  }
+}
+
+fn seed_self_verify_check(
+  claim: DiverseCompilationRun,
+  check: DiverseCompilationRun
+) -> Outcome<SeedSelfVerifyReceipt> {
+  if claim.output == check.output {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_same_artifact)
+      )
+    }
+  } else if !(claim.output_hash.digest == check.output_hash.digest) {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_diverged)
+      )
+    }
+  } else {
+    Accepted {
+      value: SeedSelfVerifyReceipt { claim: claim, check: check },
+      diagnostics: []
+    }
   }
 }
 

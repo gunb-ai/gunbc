@@ -9,19 +9,86 @@ import v2.workflow.bootstrap {
   bootstrap_seed_honesty_discharge_witness,
   independent_compiler_evidence_unavailable,
   independent_compiler_pair_witness,
-  pinned_v4_fixed_point_hash
+  pinned_v4_fixed_point_hash,
+  seed_self_verify_check
 }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.logic { Bool }
+import v2.std.diagnostic { Accepted, Rejected }
 
-data seed_honesty_discharge_unavailable_offline_recipe_note: String = "OfflineLocalRecipe under the test/claim/execution/ exclusion: cargo run -q -p v1-compiler --bin claim_batch -- --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag --functions seed_honesty_discharge_unavailable_top_level_refuses,seed_honesty_discharge_unavailable_holds_agreement_refuses,seed_honesty_discharge_unavailable_old_magic_atom_refuses,independent_compiler_pair_unavailable_distinct_refuses,independent_compiler_pair_unavailable_matching_refuses,independent_compiler_pair_unavailable_perturbed_refuses --claim-run. Exact synchronized-head receipt: closure resolve 31.1s; all six witnesses passed. Dissolve-on: a ruled seed-honesty/DDC cadence enrolls this file, or measured closure resolve falls under the fast-lane budget and it re-enrolls in per-PR discovery."
+data seed_honesty_discharge_unavailable_offline_recipe_note: String = "OfflineLocalRecipe under the test/claim/execution/ exclusion: cargo run -q -p v1-compiler --bin claim_batch -- --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag --functions v1_seed_honesty_decision_closing_contract_holds,seed_honesty_discharge_unavailable_top_level_refuses,seed_honesty_discharge_unavailable_holds_agreement_refuses,seed_honesty_discharge_unavailable_old_magic_atom_refuses,independent_compiler_pair_unavailable_distinct_refuses,independent_compiler_pair_unavailable_matching_refuses,independent_compiler_pair_unavailable_perturbed_refuses --claim-run. v1_seed_honesty_decision_closing_contract_holds is the v1-seed-honesty-decision closing contract: a reflexive claim/check artifact refuses with a located bootstrap_self_verify_same_artifact diagnostic, a separately identified planted divergence refuses with bootstrap_self_verify_diverged, and a distinct equal-content pair passes so neither refusal is a blanket red. The remaining unavailable-evidence witnesses keep the larger DDC discharge fail-closed until the operator decides whether an independently grounded compiler is required and such a compiler exists. Dissolve-on: a ruled seed-honesty/DDC cadence enrolls this file, or measured closure resolve falls under the fast-lane budget and it re-enrolls in per-PR discovery."
 
 data seed_honesty_primary_compiler: Symbol = ^seed_honesty_primary_compiler
 data seed_honesty_secondary_compiler: Symbol = ^seed_honesty_secondary_compiler
 data seed_honesty_shared_compiler: Symbol = ^seed_honesty_shared_compiler
 data seed_honesty_perturbed_primary_compiler: Symbol = ^seed_honesty_perturbed_primary_compiler
 data seed_honesty_perturbed_secondary_compiler: Symbol = ^seed_honesty_perturbed_secondary_compiler
+
+fn seed_self_verify_run(output: Symbol, digest: Symbol) -> DiverseCompilationRun {
+  DiverseCompilationRun {
+    source: ^seed_honesty_fabricated_source,
+    compiler: seed_honesty_shared_compiler,
+    output: output,
+    output_hash: BootstrapHashPin {
+      digest: digest,
+      pin: ^seed_honesty_closing_contract_hash_pin
+    }
+  }
+}
+
+fn seed_self_verify_same_artifact_refuses() -> Bool {
+  let same = seed_self_verify_run(
+    output: ^seed_honesty_same_artifact,
+    digest: ^seed_honesty_matching_digest
+  )
+  match seed_self_verify_check(
+    claim: same,
+    check: same
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_same_artifact
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn seed_self_verify_planted_divergence_refuses() -> Bool {
+  match seed_self_verify_check(
+    claim: seed_self_verify_run(
+      output: ^seed_honesty_claim_artifact,
+      digest: ^seed_honesty_matching_digest
+    ),
+    check: seed_self_verify_run(
+      output: ^seed_honesty_check_artifact,
+      digest: ^seed_honesty_perturbed_digest
+    )
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_diverged
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn seed_self_verify_distinct_equal_artifacts_hold() -> Bool {
+  match seed_self_verify_check(
+    claim: seed_self_verify_run(
+      output: ^seed_honesty_claim_artifact,
+      digest: ^seed_honesty_matching_digest
+    ),
+    check: seed_self_verify_run(
+      output: ^seed_honesty_check_artifact,
+      digest: ^seed_honesty_matching_digest
+    )
+  ) {
+    Accepted { value: receipt, diagnostics: d } =>
+      d == [] && !(receipt.claim.output == receipt.check.output)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn v1_seed_honesty_decision_closing_contract_holds() -> Bool {
+  seed_self_verify_same_artifact_refuses()
+    && seed_self_verify_planted_divergence_refuses()
+    && seed_self_verify_distinct_equal_artifacts_hold()
+}
 
 fn seed_honesty_fabricated_agreement(
   primary_compiler: Symbol,
