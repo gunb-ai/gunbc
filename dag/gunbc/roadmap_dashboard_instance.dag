@@ -77,9 +77,17 @@ type DashboardProviderStateBinding
 
 data dispatch_state_scope_note: String = "WHOSE STATE THE DISPATCH ROOTS ARE IS A DECLARATION, NOT AN INFERENCE, and it is the axis this record was missing when blue/green landed. An instance owns two roots a dispatch WRITES — the worktree root and the published attempt-state root — and until now both were derived from instance_root for every instance, which silently answered a question nobody had asked: that dispatch evidence belongs to the SLOT.\\n\\nFor an isolated lab that answer is right and load-bearing. A lab exists to be disjoint from production, and handing it the host-shared roots would let one lab's apply or retract disturb another lab's live worktrees and published attempts. For a production blue/green SLOT the same answer is wrong, and wrong in two directions at once. The cutover retracts the retiring slot, so slot-scoped roots put a teardown of live dispatch evidence on the per-push path — the empty-directory wall then refuses, correctly, and every main push reds (measured 2026-08-01: seven consecutive deploy jobs, alternating by candidate, both directions failing once each slot had served long enough to accumulate evidence). And because each slot reads its OWN roots, a flip moves the dashboard to a process that cannot see the attempts dispatched under its predecessor.\\n\\nThe defect is not that either answer is wrong. It is that ONE derivation answered for both kinds of instance, so the two could not disagree. Making it a field with no default means an instance cannot come into existence without stating which it is, and the two laws below read the declaration rather than guessing from instance_root, instance_id, or actuation posture — none of which separate a lab from a production slot, since labs and slots are both DashboardActuating.\\n\\nTHIS DOES NOT REOPEN isolated_instance_own_binary_note (operator ruling, 2026-07-30). That ruling is about serve_binary and its argument is mutual exclusion of PROCESSES: a lab testing a new seed must not overwrite the binary production executes, and retract tears Owned members down. Nothing here touches serve_binary, which stays instance-derived for labs and instance-declared for production under both scopes. The two rulings partition cleanly because they are about different members with opposite sharing requirements — the binary must NOT be shared because a retract would delete a running program, and the dispatch state MUST be shared across production slots because a flip would otherwise orphan live agent sessions."
 
+data dispatch_state_scope_carries_its_roots_note: String = "THE SCOPE AND THE ROOTS TRAVEL TOGETHER, because as three independent fields they could disagree and the model could only NOTICE that afterwards (codex review 47405, #7637 follow-up). The first cut declared a bare two-variant scope beside dispatch_worktree_root and dispatch_attempt_state_root, so a slot could be labelled host-shared while carrying roots derived from its own instance root — exactly the state the change existed to eliminate. The tell was in the evidence: the RED witness had to CONSTRUCT that combination to prove the law caught it, which is DESIGN §4b rung two, mechanically preventable, standing where rung four was available.\\n\\nCarrying the roots in the variant moves it up. An instance-owned scope carries the CHILD NAMES its roots hang under, and the roots are derived beneath instance_root; a host-shared scope carries the layout roots themselves. There is no third field to contradict either, so the mislabelled slot has no representation rather than a check that finds it.\\n\\nTHE CHILD NAMES ARE CARRIED RATHER THAN FIXED, and that is not incidental: production hangs its worktrees under dispatch-worktrees while isolated labs use attempts. A uniform derivation would have silently RENAMED production's live worktree root — the kind of quiet migration a refactor produces when it assumes regularity the corpus does not have."
+
 type DispatchStateScope
-  = DispatchStateInstanceOwned
-  | DispatchStateHostShared
+  = DispatchStateInstanceOwned {
+      worktree_child: NonEmptyStr,
+      attempt_state_child: NonEmptyStr,
+    }
+  | DispatchStateHostShared {
+      worktree_root: FilePath,
+      attempt_state_root: FilePath,
+    }
 
 type HostDashboardInstance {
   instance_id: NonEmptyStr
@@ -91,8 +99,6 @@ type HostDashboardInstance {
   repo_root: FilePath
   dispatch_base_ref: NonEmptyStr
   dispatch_state_scope: DispatchStateScope
-  dispatch_worktree_root: FilePath
-  dispatch_attempt_state_root: FilePath
   execution_environment: DispatchHostEnvironment
   provider_state: DashboardProviderStateBinding
   serve_binary: FilePath
