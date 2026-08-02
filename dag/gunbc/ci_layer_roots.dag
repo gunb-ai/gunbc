@@ -144,6 +144,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "every required KernelAcceptanceCapability has a passing executing scenario — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall"
   },
   WitnessExclusionRow {
+    pattern: "namespace_reference_derived_closure_acceptance_test.dag",
+    classification: QuarantineProbeExpectRed,
+    reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
+    dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
+  },
+  WitnessExclusionRow {
     pattern: "seed_honesty_discharge_unavailable_test.dag",
     classification: QuarantineProbeExpectRed,
     reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node v1-seed-honesty-decision. Its three self-verify falsification poles hold, but the aggregate is RED BY DESIGN while seed_honesty_decision is SeedHonestyUndecided, because the node's handback requires both a check that can fail and the operator decision recorded either way. Binding only the green three-pole check would report completion over the missing decision.",
@@ -794,6 +800,7 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag", f: "legacy_test_behavior_unclassified_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds"),
+  probe_red(entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag", f: "witness_namespace_reference_derived_closure_closing_contract_holds"),
   probe_red(entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag", f: "v1_seed_honesty_decision_closing_contract_holds")
 ]
 
