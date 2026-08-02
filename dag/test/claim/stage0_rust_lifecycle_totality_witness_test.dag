@@ -1,102 +1,77 @@
 module test.claim.stage0_rust_lifecycle_totality_witness
 
 import gunbc.stage0_rust_lifecycle_totality {
-  NotProductReachable,
-  ProductReachabilityUndetermined,
-  ProductReachableFromEntry,
-  derived_prefix_test_harness_repo_paths,
-  derived_prefix_tooling_repo_paths,
-  first_unclassified_tracked_path,
-  lifecycle_classification_totality_for_observation,
-  lifecycle_classification_totality_holds,
+  LifecycleTotalityDerived,
+  exact_unclassified_tracked_paths,
+  lifecycle_decision_complete,
+  lifecycle_discovery_complete,
+  lifecycle_totality_receipt,
   lifecycle_totality_witness_observation,
-  product_reachability_for_path,
-  product_reachability_totality_holds,
   stage0_rust_lifecycle_totality_note
 }
+import gunbc.stage0_rust_host_observation { RustManifestObserved }
+import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { length }
 
-test fn lifecycle_totality_note_cites_lane_c_and_product_reachability() -> Bool {
-  string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "Lane C")
-    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "ProductReachability")
-    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "HandAuthoredLOC")
+test fn lifecycle_totality_note_cites_identity_join() -> Bool {
+  string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "identity join")
+    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "C1 carrier")
 }
 
-test fn lifecycle_totality_prefix_test_harness_derivation() -> Bool {
-  derived_prefix_test_harness_repo_paths(
-    tracked_paths: ["src/v1/tests/foo.rs", "src/v1/stage0/src/main.rs"]
-  ) == ["src/v1/tests/foo.rs"]
-}
-
-test fn lifecycle_totality_prefix_tooling_derivation() -> Bool {
-  derived_prefix_tooling_repo_paths(
-    tracked_paths: ["dag/tools/foo/witness_main.rs", "src/v1/tests/bar.rs"]
-  ) == ["dag/tools/foo/witness_main.rs"]
-}
-
-test fn lifecycle_totality_positive_control_holds() -> Bool {
-  lifecycle_classification_totality_holds(
-    tracked_paths: ["src/v1/tests/a.rs", "dag/tools/b/witness_main.rs"],
-    classified_paths: ["src/v1/tests/a.rs", "dag/tools/b/witness_main.rs"]
-  )
-}
-
-test fn lifecycle_totality_red_control_unclassified_path() -> Bool {
-  first_unclassified_tracked_path(
-    tracked_paths: ["classified.rs", "orphan.rs"],
+test fn lifecycle_totality_exact_unclassified_preserves_identity() -> Bool {
+  exact_unclassified_tracked_paths(
+    tracked_paths: ["a.rs", "classified.rs", "b.rs"],
     classified_paths: ["classified.rs"]
-  ) == "orphan.rs"
-    && !lifecycle_classification_totality_holds(
-      tracked_paths: ["classified.rs", "orphan.rs"],
-      classified_paths: ["classified.rs"]
+  ) == ["a.rs", "b.rs"]
+}
+
+test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool {
+  match lifecycle_totality_receipt(
+    observation: RustManifestObserved {
+      repository_revision: "deadbeef",
+      manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+      tracked_rust_repo_paths: ["classified.rs", "orphan.rs"],
+      prior_tracked_rust_repo_paths: ["classified.rs"],
+      cargo_bin_repo_paths: ["classified.rs"]
+    }
+  ) {
+    LifecycleTotalityDerived {
+      tracked_paths: tracked_paths,
+      generated_paths: generated_paths,
+      maintenance_disposition_paths: maintenance_disposition_paths,
+      unclassified_paths: paths,
+      stale_disposition_paths: stale_disposition_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      role_without_disposition_paths: role_without_disposition_paths,
+      disposition_without_retirement_trigger_paths: disposition_without_retirement_trigger_paths
+    } =>
+      paths == ["orphan.rs"] && !lifecycle_decision_complete(
+        receipt: lifecycle_totality_receipt(
+          observation: RustManifestObserved {
+            repository_revision: "deadbeef",
+            manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+            tracked_rust_repo_paths: ["classified.rs", "orphan.rs"],
+            prior_tracked_rust_repo_paths: ["classified.rs"],
+            cargo_bin_repo_paths: ["classified.rs"]
+          }
+        )
+      )
+    _ => false
+  }
+}
+
+test fn lifecycle_totality_discovery_and_decision_are_separate() -> Bool {
+  let receipt = lifecycle_totality_receipt(
+    observation: lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
+  )
+  lifecycle_discovery_complete(receipt: receipt)
+    && !lifecycle_decision_complete(receipt: receipt)
+}
+
+test fn lifecycle_totality_positive_control_decision_complete() -> Bool {
+  lifecycle_decision_complete(
+    receipt: lifecycle_totality_receipt(
+      observation: lifecycle_totality_witness_observation(extra_paths: [])
     )
-}
-
-test fn lifecycle_totality_witness_fixture_classifies_prefix_paths() -> Bool {
-  let observation = lifecycle_totality_witness_observation(extra_paths: [
-    "src/v1/tests/a.rs",
-    "dag/tools/foo/witness_main.rs"
-  ])
-  lifecycle_classification_totality_for_observation(observation: observation)
-}
-
-test fn product_reachability_cargo_bin_is_entry() -> Bool {
-  match product_reachability_for_path(
-    path: "src/v1/stage0/src/bin/claim_executor.rs",
-    cargo_bin_repo_paths: ["src/v1/stage0/src/bin/claim_executor.rs"]
-  ) {
-    ProductReachableFromEntry { entry_path: path } => path == "src/v1/stage0/src/bin/claim_executor.rs"
-    _ => false
-  }
-}
-
-test fn product_reachability_test_harness_not_product() -> Bool {
-  match product_reachability_for_path(
-    path: "src/v1/tests/foo.rs",
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
-  ) {
-    NotProductReachable { reason: reason } => reason != ""
-    _ => false
-  }
-}
-
-test fn product_reachability_red_control_undetermined() -> Bool {
-  match product_reachability_for_path(
-    path: "src/v1/stage0/src/synthetic_unclassified.rs",
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
-  ) {
-    ProductReachabilityUndetermined { path: path } => path == "src/v1/stage0/src/synthetic_unclassified.rs"
-    _ => false
-  }
-}
-
-test fn product_reachability_totality_positive_control() -> Bool {
-  product_reachability_totality_holds(
-    tracked_paths: [
-      "src/v1/stage0/src/main.rs",
-      "src/v1/tests/foo.rs",
-      "dag/tools/bar/witness_main.rs"
-    ],
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   )
 }

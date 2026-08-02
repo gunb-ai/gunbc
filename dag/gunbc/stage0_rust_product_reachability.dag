@@ -1,0 +1,203 @@
+module gunbc.stage0_rust_product_reachability
+
+import gunbc.stage0_rust_host_observation {
+  RustManifestObserved,
+  RustSourceHostObservation
+}
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  path_has_prefix,
+  path_in_list
+}
+import std.content_hash { Fnv1a64Structural }
+import v2.std.algebra { filter, fold_list, list_map, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data stage0_rust_product_reachability_note: String = "C2 carrier (Lane C / v1-honest-frontier): product reachability from observed shipping Cargo bin roots. A path being tracked, generated, test-imported, or textually referenced is NOT proof of product reachability. Module-dependency closure is not modeled yet; unresolved edges refuse with ReachabilityRefused naming the missing edge. Test harness paths are TestOnlyReachable — reachable for tests, not for shipping products."
+
+data rust_module_dependency_graph_unresolved_edge: String = "Rust module dependency graph not modeled — cannot walk from cargo bin roots to dependent source files"
+
+data prefix_test_harness_repo_prefix: String = "src/v1/tests/"
+
+data prefix_stage0_test_repo_prefix: String = "src/v1/stage0/tests/"
+
+data prefix_stage0_example_repo_prefix: String = "src/v1/stage0/examples/"
+
+data prefix_tooling_repo_prefix: String = "dag/tools/"
+
+type RustProductReachabilityVerdict
+  = ProductReachable { path: String, entry_path: String }
+  | TestOnlyReachable { path: String }
+  | NotProductReachable { path: String, reason: String }
+  | ReachabilityRefused { path: String, unresolved_edge: String }
+
+type ProductReachabilityReceipt
+  = ProductReachabilityDerived {
+      cargo_root_paths: List<String>,
+      verdicts: List<RustProductReachabilityVerdict>
+    }
+  | ProductReachabilityObservationRefused
+
+fn path_is_test_harness(path: String) -> Bool {
+  path_has_prefix(path: path, prefix: prefix_test_harness_repo_prefix)
+    || path_has_prefix(path: path, prefix: prefix_stage0_test_repo_prefix)
+}
+
+fn path_is_example_harness(path: String) -> Bool {
+  path_has_prefix(path: path, prefix: prefix_stage0_example_repo_prefix)
+}
+
+fn path_is_tooling_shim(path: String) -> Bool {
+  path_has_prefix(path: path, prefix: prefix_tooling_repo_prefix)
+}
+
+fn product_reachability_verdict_for_path(
+  path: String,
+  cargo_bin_repo_paths: List<String>
+) -> RustProductReachabilityVerdict {
+  if path_in_list(path: path, paths: cargo_bin_repo_paths) {
+    ProductReachable { path: path, entry_path: path }
+  } else if path_is_test_harness(path: path) {
+    TestOnlyReachable { path: path }
+  } else if path_is_example_harness(path: path) {
+    NotProductReachable {
+      path: path,
+      reason: "stage0 example binary — not a shipped product entry"
+    }
+  } else if path_is_tooling_shim(path: path) {
+    NotProductReachable {
+      path: path,
+      reason: "dag/tools witness shim — not a shipped product entry"
+    }
+  } else {
+    ReachabilityRefused {
+      path: path,
+      unresolved_edge: rust_module_dependency_graph_unresolved_edge
+    }
+  }
+}
+
+fn product_reachability_verdicts_for_paths(
+  tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> List<RustProductReachabilityVerdict> {
+  list_map(
+    xs: tracked_paths,
+    f: fn(path) {
+      product_reachability_verdict_for_path(
+        path: path,
+        cargo_bin_repo_paths: cargo_bin_repo_paths
+      )
+    }
+  )
+}
+
+fn product_reachability_receipt(
+  observation: RustSourceHostObservation
+) -> ProductReachabilityReceipt {
+  match observation {
+    RustManifestObserved {
+      repository_revision: revision,
+      tracked_rust_repo_paths: tracked_paths,
+      cargo_bin_repo_paths: cargo_bin_repo_paths,
+      manifest_content_identity: _,
+      prior_tracked_rust_repo_paths: _
+    } =>
+      if revision == "" {
+        ProductReachabilityObservationRefused
+      } else {
+        ProductReachabilityDerived {
+          cargo_root_paths: cargo_bin_repo_paths,
+          verdicts: product_reachability_verdicts_for_paths(
+            tracked_paths: tracked_paths,
+            cargo_bin_repo_paths: cargo_bin_repo_paths
+          )
+        }
+      }
+    _ => ProductReachabilityObservationRefused
+  }
+}
+
+fn exact_product_reachable_paths(receipt: ProductReachabilityReceipt) -> List<String> {
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      fold_list(
+        xs: verdicts,
+        empty: [],
+        cons: fn(acc, verdict) {
+          match verdict {
+            ProductReachable { path: path, entry_path: _ } =>
+              list_snoc_item(xs: acc, item: path)
+            _ => acc
+          }
+        }
+      )
+    ProductReachabilityObservationRefused => []
+  }
+}
+
+fn exact_test_only_reachable_paths(receipt: ProductReachabilityReceipt) -> List<String> {
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      fold_list(
+        xs: verdicts,
+        empty: [],
+        cons: fn(acc, verdict) {
+          match verdict {
+            TestOnlyReachable { path: path } => list_snoc_item(xs: acc, item: path)
+            _ => acc
+          }
+        }
+      )
+    ProductReachabilityObservationRefused => []
+  }
+}
+
+fn exact_not_product_reachable_paths(receipt: ProductReachabilityReceipt) -> List<String> {
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      fold_list(
+        xs: verdicts,
+        empty: [],
+        cons: fn(acc, verdict) {
+          match verdict {
+            NotProductReachable { path: path, reason: _ } =>
+              list_snoc_item(xs: acc, item: path)
+            _ => acc
+          }
+        }
+      )
+    ProductReachabilityObservationRefused => []
+  }
+}
+
+fn exact_reachability_refused_paths(receipt: ProductReachabilityReceipt) -> List<String> {
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      fold_list(
+        xs: verdicts,
+        empty: [],
+        cons: fn(acc, verdict) {
+          match verdict {
+            ReachabilityRefused { path: path, unresolved_edge: _ } =>
+              list_snoc_item(xs: acc, item: path)
+            _ => acc
+          }
+        }
+      )
+    ProductReachabilityObservationRefused => []
+  }
+}
+
+fn product_reachability_witness_observation(
+  tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> RustManifestObserved {
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: tracked_paths,
+    prior_tracked_rust_repo_paths: tracked_paths,
+    cargo_bin_repo_paths: cargo_bin_repo_paths
+  }
+}

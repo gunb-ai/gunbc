@@ -1,18 +1,20 @@
 module test.claim.stage0_rust_honest_frontier_projection_witness
 
-import gunbc.stage0_rust_honest_frontier_projection {
-  HandAuthoredLOC,
-  HandCapability,
+import gunbc.stage0_rust_honest_frontier_integration {
   TrackedRustProjectionGitRefused,
   TrackedRustProjectionReadRefused,
   TrackedRustUnclassifiedPaths,
-  exact_unclassified_tracked_rust_paths,
-  honest_frontier_projection_witness_observation,
-  stage0_rust_honest_frontier_deferred_axes,
-  stage0_rust_honest_frontier_projection_note,
   tracked_rust_unclassified_projection
 }
+import gunbc.stage0_rust_honest_frontier_projection {
+  HandAuthoredLOC,
+  HandCapability,
+  honest_frontier_projection_witness_observation,
+  stage0_rust_honest_frontier_deferred_axes,
+  stage0_rust_honest_frontier_projection_note
+}
 import gunbc.stage0_rust_host_observation { GitObservationRefused, RustManifestObserved }
+import gunbc.stage0_rust_lifecycle_totality { exact_unclassified_tracked_paths }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_hand_maintained_stage0_repo_paths,
   path_in_list
@@ -21,7 +23,7 @@ import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { any, length }
 
 test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool {
-  exact_unclassified_tracked_rust_paths(
+  exact_unclassified_tracked_paths(
     tracked_paths: ["a.rs", "generated.rs", "disposition.rs", "b.rs"],
     classified_paths: ["generated.rs", "disposition.rs"]
   ) == ["a.rs", "b.rs"]
@@ -90,8 +92,6 @@ test fn honest_frontier_projection_declares_deferred_axes() -> Bool {
     HandAuthoredLOC,
     HandCapability
   ]
-    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "ProductReachability")
     && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandAuthoredLOC")
-    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandCapability")
-    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "stage0_rust_lifecycle_totality")
+    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "stage0_rust_honest_frontier_integration")
 }

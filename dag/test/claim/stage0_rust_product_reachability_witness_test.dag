@@ -1,0 +1,85 @@
+module test.claim.stage0_rust_product_reachability_witness
+
+import gunbc.stage0_rust_product_reachability {
+  NotProductReachable,
+  ProductReachabilityDerived,
+  ProductReachable,
+  ReachabilityRefused,
+  TestOnlyReachable,
+  exact_product_reachable_paths,
+  exact_reachability_refused_paths,
+  product_reachability_receipt,
+  product_reachability_verdict_for_path,
+  product_reachability_witness_observation,
+  stage0_rust_product_reachability_note
+}
+import v2.std.algebra { length }
+
+test fn product_reachability_note_forbids_tracking_as_proof() -> Bool {
+  string_contains(s: stage0_rust_product_reachability_note, pattern: "NOT proof")
+    && string_contains(s: stage0_rust_product_reachability_note, pattern: "C2 carrier")
+}
+
+test fn product_reachability_cargo_bin_is_product_entry() -> Bool {
+  match product_reachability_verdict_for_path(
+    path: "src/v1/stage0/src/bin/claim_executor.rs",
+    cargo_bin_repo_paths: ["src/v1/stage0/src/bin/claim_executor.rs"]
+  ) {
+    ProductReachable { path: path, entry_path: entry } =>
+      path == "src/v1/stage0/src/bin/claim_executor.rs"
+        && entry == "src/v1/stage0/src/bin/claim_executor.rs"
+    _ => false
+  }
+}
+
+test fn product_reachability_test_harness_is_test_only() -> Bool {
+  match product_reachability_verdict_for_path(
+    path: "src/v1/tests/foo.rs",
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  ) {
+    TestOnlyReachable { path: path } => path == "src/v1/tests/foo.rs"
+    _ => false
+  }
+}
+
+test fn product_reachability_tooling_is_not_product() -> Bool {
+  match product_reachability_verdict_for_path(
+    path: "dag/tools/foo/witness_main.rs",
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  ) {
+    NotProductReachable { path: path, reason: reason } =>
+      path == "dag/tools/foo/witness_main.rs" && reason != ""
+    _ => false
+  }
+}
+
+test fn product_reachability_red_control_refuses_unresolved_edge() -> Bool {
+  match product_reachability_verdict_for_path(
+    path: "src/v1/stage0/src/cli_run.rs",
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  ) {
+    ReachabilityRefused { path: path, unresolved_edge: edge } =>
+      path == "src/v1/stage0/src/cli_run.rs" && edge != ""
+    _ => false
+  }
+}
+
+test fn product_reachability_exact_sets_partition_verdicts() -> Bool {
+  let receipt = product_reachability_receipt(
+    observation: product_reachability_witness_observation(
+      tracked_paths: [
+        "src/v1/stage0/src/main.rs",
+        "src/v1/tests/foo.rs",
+        "src/v1/stage0/src/cli_run.rs"
+      ],
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    )
+  )
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      length(xs: exact_product_reachable_paths(receipt: receipt)) == 1
+        && length(xs: exact_reachability_refused_paths(receipt: receipt)) == 1
+        && length(xs: verdicts) == 3
+    _ => false
+  }
+}

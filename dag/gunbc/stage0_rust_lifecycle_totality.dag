@@ -8,242 +8,211 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_generated_stage0_repo_paths,
   derived_hand_maintained_stage0_repo_paths,
   derived_partition_crate_lib_repo_paths,
+  lifecycle_row_well_formed,
   list_concat_unique,
-  path_has_prefix,
   path_in_list,
-  residue_lifecycle_repo_paths
+  path_occurrence_count,
+  residue_lifecycle_repo_paths,
+  rust_source_lifecycle_residue_rows,
+  RustMaintenanceDisposition,
+  RustSourceLifecycleRow
 }
 import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { any, filter, fold_list, length }
+import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_lifecycle_totality_note: String = "Lane C (v1-honest-frontier): lifecycle classification totality and product reachability over the revision-addressed tracked-Rust population. Prefix-derived rows cover test, tooling, example, and stage0-test harness paths that the file-grain scaffold deliberately excluded. Cargo bin repo paths receive an independent maintenance-disposition axis (the CargoBin ROLE still never supplies one). ProductReachability is modeled here; HandAuthoredLOC and HandCapability remain deferred on gunbc.stage0_rust_honest_frontier_projection. Totality is an identity join over exact paths — not a count oracle."
+data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate, role-without-disposition, disposition-without-retirement-trigger. Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery (did we find every tracked path?) and decision (does every found path carry a disposition?) stay separate axes."
 
-data prefix_test_harness_repo_prefix: String = "src/v1/tests/"
+type LifecycleTotalityReceipt
+  = LifecycleTotalityDerived {
+      tracked_paths: List<String>,
+      generated_paths: List<String>,
+      maintenance_disposition_paths: List<String>,
+      unclassified_paths: List<String>,
+      stale_disposition_paths: List<String>,
+      duplicate_disposition_paths: List<String>,
+      role_without_disposition_paths: List<String>,
+      disposition_without_retirement_trigger_paths: List<String>
+    }
+  | LifecycleTotalityObservationRefused
 
-data prefix_tooling_repo_prefix: String = "dag/tools/"
-
-data prefix_stage0_test_repo_prefix: String = "src/v1/stage0/tests/"
-
-data prefix_stage0_example_repo_prefix: String = "src/v1/stage0/examples/"
-
-fn tracked_paths_matching_prefix(
-  tracked_paths: List<String>,
-  prefix: String
-) -> List<String> {
-  filter(
-    xs: tracked_paths,
-    predicate: fn(path) { path_has_prefix(path: path, prefix: prefix) }
+fn well_formed_maintenance_disposition_paths() -> List<String> {
+  list_map(
+    xs: filter(
+      xs: rust_source_lifecycle_residue_rows,
+      predicate: fn(row) { lifecycle_row_well_formed(row: row) }
+    ),
+    f: fn(row) { row.path }
   )
 }
 
-fn derived_prefix_test_harness_repo_paths(tracked_paths: List<String>) -> List<String> {
-  tracked_paths_matching_prefix(tracked_paths: tracked_paths, prefix: prefix_test_harness_repo_prefix)
-}
-
-fn derived_prefix_tooling_repo_paths(tracked_paths: List<String>) -> List<String> {
-  tracked_paths_matching_prefix(tracked_paths: tracked_paths, prefix: prefix_tooling_repo_prefix)
-}
-
-fn derived_prefix_stage0_test_repo_paths(tracked_paths: List<String>) -> List<String> {
-  tracked_paths_matching_prefix(tracked_paths: tracked_paths, prefix: prefix_stage0_test_repo_prefix)
-}
-
-fn derived_prefix_stage0_example_repo_paths(tracked_paths: List<String>) -> List<String> {
-  tracked_paths_matching_prefix(tracked_paths: tracked_paths, prefix: prefix_stage0_example_repo_prefix)
-}
-
-fn derived_prefix_lifecycle_repo_paths(tracked_paths: List<String>) -> List<String> {
-  let from_tests = derived_prefix_test_harness_repo_paths(tracked_paths: tracked_paths)
-  let with_tooling = list_concat_unique(
-    acc: from_tests,
-    items: derived_prefix_tooling_repo_paths(tracked_paths: tracked_paths)
-  )
-  let with_stage0_tests = list_concat_unique(
-    acc: with_tooling,
-    items: derived_prefix_stage0_test_repo_paths(tracked_paths: tracked_paths)
-  )
-  list_concat_unique(
-    acc: with_stage0_tests,
-    items: derived_prefix_stage0_example_repo_paths(tracked_paths: tracked_paths)
-  )
-}
-
-fn derived_authority_and_prefix_lifecycle_repo_paths(tracked_paths: List<String>) -> List<String> {
+fn derived_file_grain_classified_repo_paths() -> List<String> {
   let from_generated = derived_generated_stage0_repo_paths()
   let with_hand = list_concat_unique(
     acc: from_generated,
     items: derived_hand_maintained_stage0_repo_paths()
   )
   let with_residue = list_concat_unique(acc: with_hand, items: residue_lifecycle_repo_paths())
-  let with_partition = list_concat_unique(
-    acc: with_residue,
-    items: derived_partition_crate_lib_repo_paths()
-  )
-  list_concat_unique(
-    acc: with_partition,
-    items: derived_prefix_lifecycle_repo_paths(tracked_paths: tracked_paths)
-  )
+  list_concat_unique(acc: with_residue, items: derived_partition_crate_lib_repo_paths())
 }
 
-fn derived_cargo_bin_disposition_repo_paths(cargo_bin_repo_paths: List<String>) -> List<String> {
-  cargo_bin_repo_paths
-}
-
-fn derived_full_lifecycle_classified_repo_paths(
-  tracked_paths: List<String>,
-  cargo_bin_repo_paths: List<String>
-) -> List<String> {
-  list_concat_unique(
-    acc: derived_authority_and_prefix_lifecycle_repo_paths(tracked_paths: tracked_paths),
-    items: derived_cargo_bin_disposition_repo_paths(cargo_bin_repo_paths: cargo_bin_repo_paths)
-  )
-}
-
-fn first_unclassified_tracked_path(
+fn exact_unclassified_tracked_paths(
   tracked_paths: List<String>,
   classified_paths: List<String>
-) -> String {
-  fold_list(
+) -> List<String> {
+  filter(
     xs: tracked_paths,
-    empty: "",
-    cons: fn(first, path) {
-      if first != "" {
-        first
-      } else if path_in_list(path: path, paths: classified_paths) {
-        ""
+    predicate: fn(path) { !path_in_list(path: path, paths: classified_paths) }
+  )
+}
+
+fn exact_stale_disposition_paths(
+  tracked_paths: List<String>,
+  lifecycle_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: lifecycle_paths,
+    predicate: fn(path) { !path_in_list(path: path, paths: tracked_paths) }
+  )
+}
+
+fn exact_duplicate_disposition_paths(lifecycle_paths: List<String>) -> List<String> {
+  fold_list(
+    xs: lifecycle_paths,
+    empty: [],
+    cons: fn(acc, path) {
+      if path_occurrence_count(paths: lifecycle_paths, needle: path) > 1
+        && !path_in_list(path: path, paths: acc) {
+        list_snoc_item(xs: acc, item: path)
       } else {
-        path
+        acc
       }
     }
   )
 }
 
-fn lifecycle_classification_totality_holds(
-  tracked_paths: List<String>,
-  classified_paths: List<String>
-) -> Bool {
-  first_unclassified_tracked_path(tracked_paths: tracked_paths, classified_paths: classified_paths) == ""
+fn exact_role_without_disposition_paths(
+  cargo_bin_repo_paths: List<String>,
+  disposition_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: cargo_bin_repo_paths,
+    predicate: fn(path) { !path_in_list(path: path, paths: disposition_paths) }
+  )
 }
 
-fn lifecycle_classification_totality_for_observation(
-  observation: RustSourceHostObservation
+fn maintenance_disposition_has_retirement_trigger(
+  disposition: RustMaintenanceDisposition
 ) -> Bool {
+  match disposition {
+    Generated { authority: _ } => true
+    EmitFrom { authority: _ } => true
+    DeleteWith { roadmap_node: node } => !((node as String) == "")
+    RetainedKernel { reason: reason } => !(reason == "")
+    HandScaffold { reason: reason, dissolve_on: dissolve_on } =>
+      !(reason == "") && !(dissolve_on == "")
+  }
+}
+
+fn row_lacks_retirement_trigger(row: RustSourceLifecycleRow) -> Bool {
+  any(
+    xs: row.maintenance_dispositions,
+    predicate: fn(disposition) {
+      !maintenance_disposition_has_retirement_trigger(disposition: disposition)
+    }
+  )
+}
+
+fn exact_disposition_without_retirement_trigger_paths() -> List<String> {
+  list_map(
+    xs: filter(
+      xs: rust_source_lifecycle_residue_rows,
+      predicate: fn(row) { row_lacks_retirement_trigger(row: row) }
+    ),
+    f: fn(row) { row.path }
+  )
+}
+
+fn lifecycle_totality_receipt(
+  observation: RustSourceHostObservation
+) -> LifecycleTotalityReceipt {
   match observation {
     RustManifestObserved {
+      repository_revision: revision,
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
-      repository_revision: revision,
       manifest_content_identity: _,
       prior_tracked_rust_repo_paths: _
     } =>
       if revision == "" {
-        false
+        LifecycleTotalityObservationRefused
       } else {
-        lifecycle_classification_totality_holds(
+        let generated_paths = derived_generated_stage0_repo_paths()
+        let maintenance_disposition_paths = well_formed_maintenance_disposition_paths()
+        let classified_paths = derived_file_grain_classified_repo_paths()
+        let lifecycle_paths = classified_paths
+        LifecycleTotalityDerived {
           tracked_paths: tracked_paths,
-          classified_paths: derived_full_lifecycle_classified_repo_paths(
+          generated_paths: generated_paths,
+          maintenance_disposition_paths: maintenance_disposition_paths,
+          unclassified_paths: exact_unclassified_tracked_paths(
             tracked_paths: tracked_paths,
-            cargo_bin_repo_paths: cargo_bin_repo_paths
-          )
-        )
-      }
-    _ => false
-  }
-}
-
-type RustProductReachability
-  = ProductReachableFromEntry { entry_path: String }
-  | NotProductReachable { reason: String }
-  | ProductReachabilityUndetermined { path: String }
-
-data product_kernel_seed_repo_paths: List<String> = [
-  "src/v1/stage0/src/main.rs",
-  "src/v1/stage0/src/cli_run.rs",
-  "src/v1/stage0/src/v1_interpreter.rs",
-  "src/v1/stage0/src/coproduct_reflection.rs",
-  "src/v1/stage0/src/memory_governor.rs"
-]
-
-fn path_is_product_kernel_seed(path: String) -> Bool {
-  path_in_list(path: path, paths: product_kernel_seed_repo_paths)
-}
-
-fn product_reachability_for_path(
-  path: String,
-  cargo_bin_repo_paths: List<String>
-) -> RustProductReachability {
-  if path_in_list(path: path, paths: cargo_bin_repo_paths) {
-    ProductReachableFromEntry { entry_path: path }
-  } else if path_is_product_kernel_seed(path: path) {
-    ProductReachableFromEntry { entry_path: path }
-  } else if path_has_prefix(path: path, prefix: prefix_test_harness_repo_prefix)
-    || path_has_prefix(path: path, prefix: prefix_stage0_test_repo_prefix)
-    || path_has_prefix(path: path, prefix: prefix_stage0_example_repo_prefix) {
-    NotProductReachable { reason: "test or example harness path — not a shipped product entry" }
-  } else if path_has_prefix(path: path, prefix: prefix_tooling_repo_prefix) {
-    NotProductReachable { reason: "dag/tools shim or witness transport — not a shipped product entry" }
-  } else if any(
-    xs: derived_generated_stage0_repo_paths(),
-    predicate: fn(generated_path) { generated_path == path }
-  ) {
-    ProductReachableFromEntry { entry_path: "src/v1/stage0/src/lib.rs" }
-  } else if any(
-    xs: derived_hand_maintained_stage0_repo_paths(),
-    predicate: fn(hand_path) { hand_path == path }
-  ) {
-    ProductReachableFromEntry { entry_path: "src/v1/stage0/src/main.rs" }
-  } else if any(
-    xs: derived_partition_crate_lib_repo_paths(),
-    predicate: fn(crate_path) { crate_path == path }
-  ) {
-    ProductReachableFromEntry { entry_path: "src/v1/stage0/src/main.rs" }
-  } else if path_in_list(path: path, paths: residue_lifecycle_repo_paths()) {
-    ProductReachabilityUndetermined { path: path }
-  } else {
-    ProductReachabilityUndetermined { path: path }
-  }
-}
-
-fn product_reachability_totality_holds(
-  tracked_paths: List<String>,
-  cargo_bin_repo_paths: List<String>
-) -> Bool {
-  fold_list(
-    xs: tracked_paths,
-    empty: true,
-    cons: fn(ok, path) {
-      if !ok {
-        false
-      } else {
-        match product_reachability_for_path(path: path, cargo_bin_repo_paths: cargo_bin_repo_paths) {
-          ProductReachabilityUndetermined { path: _ } => false
-          _ => true
+            classified_paths: classified_paths
+          ),
+          stale_disposition_paths: exact_stale_disposition_paths(
+            tracked_paths: tracked_paths,
+            lifecycle_paths: lifecycle_paths
+          ),
+          duplicate_disposition_paths: exact_duplicate_disposition_paths(
+            lifecycle_paths: lifecycle_paths
+          ),
+          role_without_disposition_paths: exact_role_without_disposition_paths(
+            cargo_bin_repo_paths: cargo_bin_repo_paths,
+            disposition_paths: maintenance_disposition_paths
+          ),
+          disposition_without_retirement_trigger_paths: exact_disposition_without_retirement_trigger_paths()
         }
       }
-    }
-  )
+    _ => LifecycleTotalityObservationRefused
+  }
 }
 
-fn count_product_reachability_undetermined(
-  tracked_paths: List<String>,
-  cargo_bin_repo_paths: List<String>
-) -> Int {
-  fold_list(
-    xs: tracked_paths,
-    empty: 0,
-    cons: fn(count, path) {
-      match product_reachability_for_path(path: path, cargo_bin_repo_paths: cargo_bin_repo_paths) {
-        ProductReachabilityUndetermined { path: _ } => count + 1
-        _ => count
-      }
-    }
-  )
+fn lifecycle_discovery_complete(receipt: LifecycleTotalityReceipt) -> Bool {
+  match receipt {
+    LifecycleTotalityDerived {
+      tracked_paths: tracked,
+      generated_paths: generated_paths,
+      maintenance_disposition_paths: maintenance_disposition_paths,
+      unclassified_paths: unclassified_paths,
+      stale_disposition_paths: stale_disposition_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      role_without_disposition_paths: role_without_disposition_paths,
+      disposition_without_retirement_trigger_paths: disposition_without_retirement_trigger_paths
+    } => length(xs: tracked) > 0
+    LifecycleTotalityObservationRefused => false
+  }
+}
+
+fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
+  match receipt {
+    LifecycleTotalityDerived {
+      tracked_paths: tracked_paths,
+      generated_paths: generated_paths,
+      maintenance_disposition_paths: maintenance_disposition_paths,
+      unclassified_paths: unclassified,
+      stale_disposition_paths: stale_disposition_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      role_without_disposition_paths: role_without_disposition_paths,
+      disposition_without_retirement_trigger_paths: disposition_without_retirement_trigger_paths
+    } =>
+      length(xs: unclassified) == 0
+    LifecycleTotalityObservationRefused => false
+  }
 }
 
 fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustManifestObserved {
-  let classified = derived_authority_and_prefix_lifecycle_repo_paths(tracked_paths: extra_paths)
+  let classified = derived_file_grain_classified_repo_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },

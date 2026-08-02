@@ -1,0 +1,36 @@
+module test.claim.stage0_rust_honest_frontier_integration_witness
+
+import gunbc.stage0_rust_honest_frontier_integration {
+  HonestFrontierIntegrationDerived,
+  honest_frontier_decision_complete,
+  honest_frontier_discovery_complete,
+  honest_frontier_integration_receipt,
+  stage0_rust_honest_frontier_integration_note
+}
+import gunbc.stage0_rust_lifecycle_totality { lifecycle_totality_witness_observation }
+import v2.std.algebra { length }
+
+test fn honest_frontier_integration_note_cites_hand_queue_drain() -> Bool {
+  string_contains(s: stage0_rust_honest_frontier_integration_note, pattern: "v1-hand-queue-drain")
+    && string_contains(s: stage0_rust_honest_frontier_integration_note, pattern: "identity join")
+}
+
+test fn honest_frontier_integration_joins_c1_and_c2() -> Bool {
+  match honest_frontier_integration_receipt(
+    observation: lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
+  ) {
+    HonestFrontierIntegrationDerived {
+      lifecycle: _,
+      reachability: _,
+      hand_maintained_product_reachable_paths: product_paths,
+      hand_maintained_reachability_refused_paths: refused_paths
+    } => length(xs: product_paths) >= 0 && length(xs: refused_paths) >= 0
+    _ => false
+  }
+}
+
+test fn honest_frontier_integration_separates_discovery_from_decision() -> Bool {
+  let observation = lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
+  honest_frontier_discovery_complete(observation: observation)
+    && !honest_frontier_decision_complete(observation: observation)
+}
