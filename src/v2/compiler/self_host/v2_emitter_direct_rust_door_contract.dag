@@ -11,7 +11,7 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_target_model
 }
 import v2.compiler.self_host.emitter_producer_provenance {
-  v2_interpreted_emitter_closure
+  v2_interpreted_emitter_closure_authority
 }
 import v2.compiler.translate {
   target_serialize_source_from_model,
@@ -101,7 +101,7 @@ fn assess_written_source_independent_of_seed_emitter() -> DirectRustDoorAdmissio
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    realized_closure: v2_interpreted_emitter_closure
+    realized_closure: v2_interpreted_emitter_closure_authority()
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
       if artifact.source.carried == direct_rust_door_expected_source

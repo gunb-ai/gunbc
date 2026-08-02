@@ -166,6 +166,14 @@ fn seed_emit_rust_reachable(closure: RealizedEmitterClosure) -> Bool {
   )
 }
 
+fn v2_interpreted_emitter_closure_seed_free_holds() -> Bool {
+  !seed_emit_rust_reachable(closure: v2_interpreted_emitter_closure)
+}
+
+fn v2_interpreted_emitter_closure_authority() -> RealizedEmitterClosure {
+  v2_interpreted_emitter_closure
+}
+
 data v2_emitter_in_seed_emit_rust_closure: String = "V2Emitter* producer mint refused: realized_closure contains v1.compiler.emit_rust (structural construction wall, calm-badger-682 ruling 2026-07-29)"
 
 type EmitterProducerMintAdmission

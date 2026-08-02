@@ -1,8 +1,11 @@
 module v2.test.claim.self_host.direct_rust_door_emission_witness_test
 
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.self_host.candidate_generation {
   mint_provenanced_rust_artifact,
-  provenanced_rust_artifact_seed_independent
+  mint_written_provenanced_rust_artifact,
+  provenanced_rust_artifact_seed_independent,
+  written_provenanced_rust_artifact_ok
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_expected_source,
@@ -11,26 +14,33 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_target_model
 }
 import v2.compiler.self_host.emitter_producer_provenance {
-  cssl_harness_realized_closure,
+  mint_v2_interpreted_receipt_with_seed_closure_refuses,
   V2EmitterInterpreted,
-  v2_interpreted_emitter_closure,
-  v1_seed_emit_rust_qualified_module,
-  seed_emit_rust_reachable
+  v2_interpreted_emitter_closure_authority,
+  v2_interpreted_emitter_closure_seed_free_holds
 }
-import v2.std.algebra { any }
-import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data direct_rust_door_emission_witness_note: String = "Lane B discriminating witness: mint_provenanced_rust_artifact emits rust add source through v2.compiler.emit with a V2EmitterInterpreted producer receipt whose realized closure excludes v1.compiler.emit_rust."
+data direct_rust_door_emission_witness_note: String = "Lane B discriminating witness: mint_provenanced_rust_artifact emits rust add source through v2.compiler.emit with a V2EmitterInterpreted producer receipt whose realized closure excludes v1.compiler.emit_rust; mint_written_provenanced_rust_artifact writes the emitted source to disk via Filesystem.Write."
+
+data direct_rust_door_write_witness_path: String = "/tmp/gunbc_direct_rust_door_write_witness.rs"
+
+data direct_rust_door_write_workspace_dir: String = "/tmp/gunbc_direct_rust_door_workspace"
+
+fn direct_rust_door_roundtrip_write_read(source: String, path: String) -> Bool {
+  let write = Filesystem.Write(path: path, content: source)
+  let read = Filesystem.Read(path: path)
+  write.success && read.success && (read.content == source)
+}
 
 test fn witness_direct_rust_door_provenanced_artifact_holds() -> Bool {
   match mint_provenanced_rust_artifact(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    realized_closure: v2_interpreted_emitter_closure
+    realized_closure: v2_interpreted_emitter_closure_authority()
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
       (artifact.source.carried == direct_rust_door_expected_source)
@@ -40,28 +50,43 @@ test fn witness_direct_rust_door_provenanced_artifact_holds() -> Bool {
   }
 }
 
-test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool {
+test fn witness_written_provenanced_rust_artifact_holds() -> Bool {
+  match mint_written_provenanced_rust_artifact(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    realized_closure: v2_interpreted_emitter_closure_authority(),
+    workspace_dir: direct_rust_door_write_workspace_dir
+  ) {
+    Accepted { value: written, diagnostics: _ } =>
+      written_provenanced_rust_artifact_ok(written: written)
+        && (written.artifact.source.carried == direct_rust_door_expected_source)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_written_rust_source_roundtrip_holds() -> Bool {
   match mint_provenanced_rust_artifact(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    realized_closure: cssl_harness_realized_closure
+    realized_closure: v2_interpreted_emitter_closure_authority()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Accepted { value: artifact, diagnostics: _ } =>
+      direct_rust_door_roundtrip_write_read(
+        source: artifact.source.carried,
+        path: direct_rust_door_write_witness_path
+      )
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn witness_closure_contains_seed_emit_rust(paths: List<String>) -> Bool {
-  any(
-    xs: paths,
-    predicate: fn(path) { path == v1_seed_emit_rust_qualified_module }
+test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool {
+  mint_v2_interpreted_receipt_with_seed_closure_refuses(
+    module_path: direct_rust_door_module_path
   )
 }
 
 test fn witness_v2_closure_excludes_seed_emit_rust_holds() -> Bool {
-  !seed_emit_rust_reachable(closure: v2_interpreted_emitter_closure)
-    && !witness_closure_contains_seed_emit_rust(
-      paths: v2_interpreted_emitter_closure.emitter_module_paths
-    )
+  v2_interpreted_emitter_closure_seed_free_holds()
 }

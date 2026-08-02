@@ -1,0 +1,74 @@
+module tools.direct_rust_door_transport
+
+import extdeps.cargo_build
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import v2.compiler.self_host.candidate_generation {
+  direct_rust_door_cargo_toml,
+  mint_provenanced_rust_artifact,
+  provenanced_rust_artifact_seed_independent
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_inferred_tree,
+  direct_rust_door_module_path,
+  direct_rust_door_target_model
+}
+import v2.compiler.self_host.emitter_producer_provenance {
+  v2_interpreted_emitter_closure_authority
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data direct_rust_door_transport_note: String = "Lane B wet transport: mint v2-emitted Rust source, write workspace files to disk, and compile with cargo.Build.BuildManifest — the compile receipt for roadmap node v2-emitter-direct-rust-door. Closure excludes v1.compiler.emit_rust via v2_interpreted_emitter_closure."
+
+fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
+  let build = cargo.Build.BuildManifest(
+    workdir: workspace_dir,
+    manifest_path: concat(workspace_dir, "/Cargo.toml"),
+    target_dir: concat(workspace_dir, "/target"),
+    extra_args: ["--quiet"]
+  )
+  build.success
+}
+
+fn direct_rust_door_write_compile_from_source(
+  workspace_dir: String,
+  source: String
+) -> Bool {
+  let manifest = Filesystem.Write(
+    path: concat(workspace_dir, "/Cargo.toml"),
+    content: direct_rust_door_cargo_toml
+  )
+  let main_rs = Filesystem.Write(
+    path: concat(workspace_dir, "/src/main.rs"),
+    content: source
+  )
+  manifest.success
+    && main_rs.success
+    && direct_rust_door_compile_workspace(workspace_dir: workspace_dir)
+}
+
+fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
+  let pipeline_ok = match mint_provenanced_rust_artifact(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    realized_closure: v2_interpreted_emitter_closure_authority()
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      provenanced_rust_artifact_seed_independent(artifact: artifact)
+        && direct_rust_door_write_compile_from_source(
+          workspace_dir: dir.path,
+          source: artifact.source.carried
+        )
+    Rejected { diagnostics: _ } => false
+  }
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && src_dir.success
+    && pipeline_ok
+    && cleanup.success
+}
