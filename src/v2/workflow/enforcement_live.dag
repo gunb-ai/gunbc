@@ -26,12 +26,21 @@ import v2.lens.enforcement.standing_intent {
   whole_corpus_scope, standing_intent_complexity_repo_wide
 }
 import v2.lens.enforcement.gate { lens_closure_question_zero_holds }
+import gunbc.ci_layer_roots { witness_exclusion_frontier }
 import v2.lens.enforcement.inventory {
   derive_lens_enforcement_inventory, LensEnforcementInventoryRow,
+  derive_witness_admission_inventory, WitnessAdmissionInventoryRow,
   inventory_reconciles_registry_both_ways,
   inventory_unbound_rows_match_contract_unbound, inventory_contains_lens_id,
   find_inventory_row, inventory_application_count_for_lens,
-  InventoryRowAbsent, InventoryRowFound, EvaluatedScopeAbsent, EvaluatedScopePresent,
+  find_witness_admission_row_for_pattern,
+  inventory_row_evaluated_scope_absent,
+  cadence_disposition_for_pr_floor, cadence_disposition_for_main_push,
+  cadence_disposition_for_offline_recipe,
+  scheduling_disposition_is_enrolled, scheduling_disposition_is_excluded,
+  InventoryRowAbsent, InventoryRowFound, WitnessAdmissionRowFound, WitnessAdmissionRowAbsent,
+  ExclusionRowFound, ExclusionRowAbsent,
+  EvaluatedScopeAbsent, EvaluatedScopePresent,
   SupportHeld, SupportGap
 }
 import v2.lens.enforcement.standing_intent { standing_intent_registry }
@@ -142,5 +151,13 @@ fn lens_enforcement_inventory_live() -> List<LensEnforcementInventoryRow> {
     facts: facts,
     ci_entries: ci_entries,
     prepush_entries: prepush_entries
+  )
+}
+
+fn witness_admission_inventory_live() -> List<WitnessAdmissionInventoryRow> {
+  derive_witness_admission_inventory(
+    exclusion_rows: witness_exclusion_frontier,
+    ci_entries: enforcement_ci_witness_entries(),
+    prepush_entries: enforcement_prepush_witness_entries()
   )
 }

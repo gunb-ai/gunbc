@@ -133,17 +133,11 @@ fn scheduling_disposition_for_primary_cadence(
   }
 }
 
-fn cadence_scheduling_rows_for_witness(
-  entry: String,
-  function: String,
+fn cadence_scheduling_rows_for_primary(
+  primary: WitnessConsumerCadence,
   ci_enrolled: Bool,
   prepush_enrolled: Bool
 ) -> List<CadenceSchedulingRow> {
-  let primary = witness_consumer_cadence_for_row(
-    entry: entry,
-    function: function,
-    excluded_from_discovery: witness_row_excluded_from_discovery(entry: entry)
-  )
   [
     CadenceSchedulingRow {
       cadence: PrFloorDiscovery,
@@ -218,6 +212,24 @@ fn cadence_scheduling_rows_for_witness(
       )
     }
   ]
+}
+
+fn cadence_scheduling_rows_for_witness(
+  entry: String,
+  function: String,
+  ci_enrolled: Bool,
+  prepush_enrolled: Bool
+) -> List<CadenceSchedulingRow> {
+  let primary = witness_consumer_cadence_for_row(
+    entry: entry,
+    function: function,
+    excluded_from_discovery: witness_row_excluded_from_discovery(entry: entry)
+  )
+  cadence_scheduling_rows_for_primary(
+    primary: primary,
+    ci_enrolled: ci_enrolled,
+    prepush_enrolled: prepush_enrolled
+  )
 }
 
 fn cadence_rows_unbound() -> List<CadenceSchedulingRow> {
@@ -494,4 +506,113 @@ fn inventory_row_evaluated_scope_absent(row: LensEnforcementInventoryRow) -> Boo
       EvaluatedScopePresent { roster: _ } => false
     }
   })
+}
+
+type WitnessExclusionLookup = ExclusionRowFound { value: WitnessExclusionRow } | ExclusionRowAbsent
+
+type WitnessAdmissionInventoryRow {
+  witness_entry: String
+  exclusion: WitnessExclusionLookup
+  primary_cadence: WitnessConsumerCadence
+  cadence_rows: List<CadenceSchedulingRow>
+}
+
+data witness_admission_inventory_authority_note: String = "Phase 0B witness admission inventory: every row is derived from gunbc.ci_layer_roots witness_exclusion_frontier (pattern, classification, reason, dissolve_on) plus witness-admission cadence projection — never hand-authored scheduling. First specimen: enforcement_live_witness_test.dag (0A red-control probes) is OfflineLocalRecipe at the offline-recipe cadence, SchedulingExcluded at PR-floor/main-push, with dissolve_on from the frontier row. 0A fabrication removal is construction in the production fold; discriminating evidence runs at offline cadence only (operator status correction 2026-08-02)."
+
+fn schedule_entries_cover_pattern(xs: List<ScheduleWitnessEntry>, pattern: String) -> Bool {
+  any(xs: xs, predicate: fn(w) { string_contains(s: w.entry, pattern: pattern) })
+}
+
+fn witness_admission_inventory_row_for_exclusion_row(
+  row: WitnessExclusionRow,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> WitnessAdmissionInventoryRow {
+  WitnessAdmissionInventoryRow {
+    witness_entry: row.pattern,
+    exclusion: ExclusionRowFound { value: row },
+    primary_cadence: row.classification,
+    cadence_rows: cadence_scheduling_rows_for_primary(
+      primary: row.classification,
+      ci_enrolled: schedule_entries_cover_pattern(xs: ci_entries, pattern: row.pattern),
+      prepush_enrolled: schedule_entries_cover_pattern(xs: prepush_entries, pattern: row.pattern)
+    )
+  }
+}
+
+fn derive_witness_admission_inventory(
+  exclusion_rows: List<WitnessExclusionRow>,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> List<WitnessAdmissionInventoryRow> {
+  fold(exclusion_rows, init: [], f: fn(acc, row) {
+    list_append(
+      left: [witness_admission_inventory_row_for_exclusion_row(
+        row: row,
+        ci_entries: ci_entries,
+        prepush_entries: prepush_entries
+      )],
+      right: acc
+    )
+  })
+}
+
+type WitnessAdmissionRowLookup = WitnessAdmissionRowFound { value: WitnessAdmissionInventoryRow } | WitnessAdmissionRowAbsent
+
+fn witness_admission_row_matches_pattern(row: WitnessAdmissionInventoryRow, pattern: String) -> Bool {
+  match row.exclusion {
+    ExclusionRowFound { value: excl } => excl.pattern == pattern
+    ExclusionRowAbsent => false
+  }
+}
+
+fn find_witness_admission_row_for_pattern(
+  inventory: List<WitnessAdmissionInventoryRow>,
+  pattern: String
+) -> WitnessAdmissionRowLookup {
+  match list_head(xs: filter(xs: inventory, predicate: fn(row) { witness_admission_row_matches_pattern(row: row, pattern: pattern) })) {
+    HeadFound { value: row } => WitnessAdmissionRowFound { value: row }
+    HeadAbsent => WitnessAdmissionRowAbsent
+  }
+}
+
+fn cadence_row_is_pr_floor_discovery(row: CadenceSchedulingRow) -> Bool {
+  match row.cadence { PrFloorDiscovery => true _ => false }
+}
+
+fn cadence_row_is_main_push_floor(row: CadenceSchedulingRow) -> Bool {
+  match row.cadence { MainPushFloor => true _ => false }
+}
+
+fn cadence_row_is_offline_local_recipe(row: CadenceSchedulingRow) -> Bool {
+  match row.cadence { OfflineLocalRecipe => true _ => false }
+}
+
+fn scheduling_disposition_is_enrolled(disposition: SchedulingDisposition) -> Bool {
+  match disposition { SchedulingEnrolled => true _ => false }
+}
+
+fn scheduling_disposition_is_excluded(disposition: SchedulingDisposition) -> Bool {
+  match disposition { SchedulingExcluded => true _ => false }
+}
+
+fn cadence_disposition_for_pr_floor(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
+  match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_pr_floor_discovery(row: r) })) {
+    HeadFound { value: row } => row.disposition
+    HeadAbsent => SchedulingExcluded
+  }
+}
+
+fn cadence_disposition_for_main_push(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
+  match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_main_push_floor(row: r) })) {
+    HeadFound { value: row } => row.disposition
+    HeadAbsent => SchedulingExcluded
+  }
+}
+
+fn cadence_disposition_for_offline_recipe(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
+  match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_offline_local_recipe(row: r) })) {
+    HeadFound { value: row } => row.disposition
+    HeadAbsent => SchedulingExcluded
+  }
 }
