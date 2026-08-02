@@ -15,7 +15,7 @@ import v2.workflow.bootstrap {
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.logic { Bool }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, None }
 
 data seed_honesty_discharge_unavailable_offline_recipe_note: String = "OfflineLocalRecipe under the test/claim/execution/ exclusion: cargo run -q -p v1-compiler --bin claim_batch -- --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag --functions v1_seed_honesty_decision_closing_contract_holds,seed_honesty_discharge_unavailable_top_level_refuses,seed_honesty_discharge_unavailable_holds_agreement_refuses,seed_honesty_discharge_unavailable_old_magic_atom_refuses,independent_compiler_pair_unavailable_distinct_refuses,independent_compiler_pair_unavailable_matching_refuses,independent_compiler_pair_unavailable_perturbed_refuses --claim-run. v1_seed_honesty_decision_closing_contract_holds is the v1-seed-honesty-decision closing contract: a reflexive claim/check artifact refuses with a located bootstrap_self_verify_same_artifact diagnostic, a separately identified planted divergence refuses with bootstrap_self_verify_diverged, and a distinct equal-content pair passes so neither refusal is a blanket red. The remaining unavailable-evidence witnesses keep the larger DDC discharge fail-closed until the operator decides whether an independently grounded compiler is required and such a compiler exists. Dissolve-on: a ruled seed-honesty/DDC cadence enrolls this file, or measured closure resolve falls under the fast-lane budget and it re-enrolls in per-PR discovery."
 
@@ -78,8 +78,9 @@ fn seed_self_verify_distinct_equal_artifacts_hold() -> Bool {
       digest: ^seed_honesty_matching_digest
     )
   ) {
-    Accepted { value: receipt, diagnostics: d } =>
-      d == [] && !(receipt.claim.output == receipt.check.output)
+    Accepted { value: receipt, diagnostics: None } =>
+      !(receipt.claim.output == receipt.check.output)
+    Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
   }
 }

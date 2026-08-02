@@ -602,7 +602,7 @@ fn seed_self_verify_check(
   } else {
     Accepted {
       value: SeedSelfVerifyReceipt { claim: claim, check: check },
-      diagnostics: []
+      diagnostics: None
     }
   }
 }
