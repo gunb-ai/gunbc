@@ -237,7 +237,7 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
   )
 }
 
-data v1_rust_source_observation_execution_contract_note: String = "The node closes only on the nullary wet claim that reads the runner's GITHUB_SHA independently through shell.Env.Get, observes checkout HEAD through the existing Git path, and admits only their exact match. Binding the contract to the pure fold would permit constructed constants to stand in for liveness; binding it to the older population-only witness would prove only that Git returned paths, not that the paths belonged to the workflow subject."
+data v1_rust_source_observation_execution_contract_note: String = "The node closes only on the nullary wet claim that reads the runner's GITHUB_SHA independently through shell.Env.Get, observes checkout HEAD through the existing Git path, and admits only their exact match — with a grep-visible executed pass line in a real CI job log (not enrollment alone). Binding the contract to the pure fold would permit constructed constants to stand in for liveness; binding it to the older population-only witness would prove only that Git returned paths, not that the paths belonged to the workflow subject. Per-row wet-batch execution is currently unobservable in Actions job logs after discovery corpus completes (gunbc.ci_layer_roots bin_witness_wet_per_row_actions_log_observation_gap_note); dissolve-on is coordinator replay of per-row outcomes."
 
 fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
