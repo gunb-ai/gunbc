@@ -387,6 +387,21 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "test_migration_legacy_behavior_ids".to_string(),
+            list_of_type_variable("test_migration_legacy_behavior_id_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_witness_behavior_ids".to_string(),
+            list_of_type_variable("test_migration_witness_behavior_id_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_behavior_discovery_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "test_migration_delete_guard_holds".to_string(),
             bool_type(),
         );
