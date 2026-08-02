@@ -1623,6 +1623,16 @@ fn write_native_transition_receipt(body: &str) -> Result<(), String> {
     fs::write(path, body).map_err(|e| format!("native transition receipt write: {e}"))
 }
 
+fn native_transition_decision(
+    native_ok: bool,
+    oracle_green: bool,
+    planted_red_equivalent: bool,
+) -> (bool, bool) {
+    let accepted = native_ok && oracle_green && planted_red_equivalent;
+    let fallback = !native_ok && oracle_green && planted_red_equivalent;
+    (accepted, fallback)
+}
+
 fn run_native_bundle_unit(
     source_roots: &[String],
     entry: String,
@@ -1696,8 +1706,8 @@ fn run_native_bundle_unit(
         .zip(planted_native.as_ref().ok())
         .map(|(spec, obs)| obs.success && obs.stdout == spec.expected_stdout && planted_oracle)
         .unwrap_or(false);
-    let accepted = native_ok && oracle_green && planted_red_equivalent;
-    let fallback = !native_ok && oracle_green;
+    let (accepted, fallback) =
+        native_transition_decision(native_ok, oracle_green, planted_red_equivalent);
     let selected = primary.selected_count;
     let native_count = if native_ok { selected } else { 0 };
     let interpreted_count = if native_ok { 0 } else { selected };
@@ -7843,6 +7853,15 @@ mod tests {
                     && selector_function == "bundle_spec"
                     && *execution_mode == ExecutionMode::Wet
         ));
+    }
+
+    #[test]
+    fn native_bundle_fallback_requires_planted_red_equivalence() {
+        assert_eq!(
+            native_transition_decision(false, true, false),
+            (false, false)
+        );
+        assert_eq!(native_transition_decision(false, true, true), (false, true));
     }
 
     #[test]
