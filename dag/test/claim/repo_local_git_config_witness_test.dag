@@ -24,8 +24,11 @@ import gunbc.membership_reconcile {
 import extdeps.git {
   shape_git_config_local_argv,
   shape_git_config_local_get_argv,
+  shape_git_config_local_in_repo_argv,
+  shape_git_config_local_get_in_repo_argv,
   shape_git_config_get_argv,
 }
+import std.types { FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -82,6 +85,17 @@ test fn witness_install_argv_uses_extdeps_shape_holds() -> Bool {
     && reconcile_read_back_argv(binding: binding) == shape_git_config_local_get_argv(key: core_hooks_path_key)
 }
 
+test fn witness_actuator_in_repo_argv_derives_from_extdeps_shape_holds() -> Bool {
+  let repo = "/tmp/gunbc-repo-local-git-config-witness" as FilePath
+  let binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
+  shape_git_config_local_in_repo_argv(repo: repo, key: binding.key, value: binding.value)
+    == ["git", "-C", repo as String, "config", "--local", binding.key, binding.value]
+    && shape_git_config_local_get_in_repo_argv(repo: repo, key: binding.key)
+    == ["git", "-C", repo as String, "config", "--local", "--get", binding.key]
+    && reconcile_install_argv(binding: binding)
+    == shape_git_config_local_argv(key: binding.key, value: binding.value)
+}
+
 test fn witness_red_global_get_argv_not_read_back_authority_holds() -> Bool {
   let binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
   reconcile_read_back_argv(binding: binding) != shape_git_config_get_argv(key: core_hooks_path_key)
@@ -96,5 +110,6 @@ test fn witness_holds() -> Bool {
     && witness_red_wrong_value_fails_read_back_holds()
     && witness_red_wrong_value_not_converged_holds()
     && witness_install_argv_uses_extdeps_shape_holds()
+    && witness_actuator_in_repo_argv_derives_from_extdeps_shape_holds()
     && witness_red_global_get_argv_not_read_back_authority_holds()
 }

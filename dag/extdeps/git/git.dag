@@ -531,11 +531,11 @@ fn shape_git_config_local_get_argv(key: String) -> List<String> {
 }
 
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
-  ["-C", repo as String, "config", "--local", key, value]
+  ["git", "-C", repo as String, "config", "--local", key, value]
 }
 
 fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
-  ["-C", repo as String, "config", "--local", "--get", key]
+  ["git", "-C", repo as String, "config", "--local", "--get", key]
 }
 
 fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
@@ -763,7 +763,7 @@ service git.Core {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "config", "--local", "--get", "{key}"] }
+    transport shell { argv: shape_git_config_local_get_argv(key: key) }
     exit {
       0 => Unit
       1 => String "Key not found in local config"
@@ -777,7 +777,7 @@ service git.Core {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["git", "config", "--local", "{key}", "{value}"] }
+    transport shell { argv: shape_git_config_local_argv(key: key, value: value) }
     exit {
       0 => Unit
       nonzero => String "Config set failed"
@@ -792,7 +792,7 @@ service git.Core {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "-C", "{repo}", "config", "--local", "--get", "{key}"] }
+    transport shell { argv: shape_git_config_local_get_in_repo_argv(repo: repo, key: key) }
     exit {
       0 => Unit
       1 => String "Key not found in local config"
@@ -806,7 +806,7 @@ service git.Core {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["git", "-C", "{repo}", "config", "--local", "{key}", "{value}"] }
+    transport shell { argv: shape_git_config_local_in_repo_argv(repo: repo, key: key, value: value) }
     exit {
       0 => Unit
       nonzero => String "Config set failed"
