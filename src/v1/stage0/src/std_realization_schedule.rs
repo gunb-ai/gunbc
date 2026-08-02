@@ -407,7 +407,7 @@ pub type FloorWorkerObservationReceiptPath = String;
 pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptPath {
     thread_local! {
         static CACHED: FloorWorkerObservationReceiptPath = {
-            serde_json::from_value(serde_json::json!("compile_error!(unsupported mock expression)"))
+            serde_json::from_value(serde_json::json!("target/floor-worker-observation-receipt.tsv"))
                 .expect("valid data definition")
         };
     }
@@ -419,7 +419,7 @@ pub type ScopedWitnessBatchManifestPath = String;
 pub fn scoped_witness_batch_manifest_path() -> ScopedWitnessBatchManifestPath {
     thread_local! {
         static CACHED: ScopedWitnessBatchManifestPath = {
-            serde_json::from_value(serde_json::json!("compile_error!(unsupported mock expression)"))
+            serde_json::from_value(serde_json::json!("target/scoped-witness-batch-manifest.tsv"))
                 .expect("valid data definition")
         };
     }
@@ -517,7 +517,7 @@ pub type ScopedWitnessExecutionReceiptPath = String;
 pub fn scoped_witness_execution_receipt_path() -> ScopedWitnessExecutionReceiptPath {
     thread_local! {
         static CACHED: ScopedWitnessExecutionReceiptPath = {
-            serde_json::from_value(serde_json::json!("compile_error!(unsupported mock expression)"))
+            serde_json::from_value(serde_json::json!("target/scoped-witness-execution-receipt.tsv"))
                 .expect("valid data definition")
         };
     }

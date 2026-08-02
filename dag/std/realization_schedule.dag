@@ -181,11 +181,11 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
 
 type FloorWorkerObservationReceiptPath = NonEmptyStr where brand("FloorWorkerObservationReceiptPath")
 
-data floor_worker_observation_receipt_path: FloorWorkerObservationReceiptPath = "target/floor-worker-observation-receipt.tsv" as FloorWorkerObservationReceiptPath
+data floor_worker_observation_receipt_path: FloorWorkerObservationReceiptPath = "target/floor-worker-observation-receipt.tsv"
 
 type ScopedWitnessBatchManifestPath = NonEmptyStr where brand("ScopedWitnessBatchManifestPath")
 
-data scoped_witness_batch_manifest_path: ScopedWitnessBatchManifestPath = "target/scoped-witness-batch-manifest.tsv" as ScopedWitnessBatchManifestPath
+data scoped_witness_batch_manifest_path: ScopedWitnessBatchManifestPath = "target/scoped-witness-batch-manifest.tsv"
 
 data floor_worker_observation_note: String = "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. The ordinary worker projects the plan's ScopedWitnessBatch identities into scoped_witness_batch_manifest_path, then the coordinator waits for that worker to EXIT before spawning any SequentialChildProcess scoped worker, so their substantial live sets never overlap. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. FreshJobProcess is intentionally uninhabited and refuses until a workflow realization supplies its distinct cgroup, timeout, and scheduling semantics. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the manifest and observation storage projections from List<ScopedWitnessBatchId> and FloorWorkerObservation, deleting the seed wire labels while preserving both branded paths."
 
@@ -252,7 +252,7 @@ type ScopedWitnessExecutionReceiptDecode
 
 type ScopedWitnessExecutionReceiptPath = NonEmptyStr where brand("ScopedWitnessExecutionReceiptPath")
 
-data scoped_witness_execution_receipt_path: ScopedWitnessExecutionReceiptPath = "target/scoped-witness-execution-receipt.tsv" as ScopedWitnessExecutionReceiptPath
+data scoped_witness_execution_receipt_path: ScopedWitnessExecutionReceiptPath = "target/scoped-witness-execution-receipt.tsv"
 
 data scoped_witness_execution_receipt_header: String = "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail"
 
