@@ -515,6 +515,7 @@ jobs:
             CHANGED_ARTIFACTS=$(git diff --cached --name-only)
             git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
             HEALED_HEAD=$(git rev-parse HEAD)
+            # 🟡 dissolve-on: generated-file conflict policy Lane 1 commit-writer admission supplies a typed HealCommitWriter identity to githooks_repo_local_git_config_emit, and the generated pre-push hook consumes that identity through a modeled SkipRepoLocalGitConfigConverge predicate; then delete caller-side git -c core.hooksPath= and witness both ordinary-push convergence and heal-writer non-recursion
             git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
             ROOT=$(git rev-parse --show-toplevel)

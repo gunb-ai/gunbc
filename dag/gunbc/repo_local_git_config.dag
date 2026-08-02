@@ -50,7 +50,7 @@ data core_hooks_path_value: String = ".githooks"
 
 data repo_local_git_config_converge_entry: String = "dag/gunbc/repo_local_git_config.dag"
 data repo_local_git_config_converge_function: String = "converge"
-data repo_local_git_config_lane2_followup_typed_readback_refusal: String = "🟡 dissolve-on: repo_local_git_config read-back — collapse absence / wrong value / read failure into RepoLocalGitConfigApplyReceipt { all_success, first_failure } only; upgrade to typed refusals per charter (operator nonblocking 2026-08-01, crisp-bat-830 second-pass). Countable follow-up slice; not lane-2 PR boundary."
+data repo_local_git_config_lane2_followup_typed_readback_refusal: String = "🟡 dissolve-on: generated-file conflict policy Lane 2 repo-local-config read-back introduces typed RepoLocalGitConfigApplyRefusal variants for Absent, WrongValue, and ReadFailed and carries them through converge instead of RepoLocalGitConfigApplyReceipt { all_success, first_failure }; owner: charter Lane 2 membership-reconcile actuator; trigger: observe_binding_at_repo returns the typed refusal coproduct and the real-execution witness discriminates all three arms (operator nonblocking 2026-08-01, crisp-bat-830 second-pass)."
 
 data repo_local_git_config_lane2_followup_in_repo_argv_helpers: String = "🟡 dissolve-on: extdeps.git in-repo argv helpers omitting leading 'git' — delete or give one witnessed contract beside shape_git_config_local_* (operator nonblocking 2026-08-01). Countable follow-up slice; not lane-2 PR boundary."
 
