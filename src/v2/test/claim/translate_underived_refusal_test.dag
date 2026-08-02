@@ -4,6 +4,10 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go { go_target_model }
+import v2.extdeps.languages.python {
+  python_emitted_add_fn_node,
+  python_target_model
+}
 import v2.extdeps.languages.rust {
   rust_inhabitant_atom,
   rust_named_edge,
@@ -140,6 +144,38 @@ fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<I
 data translate_absent_parent_underived_child_tree: InferredTree = InferredTree {
   root: translate_mixed_tree_root(),
   facts: Map { lookup: translate_absent_parent_underived_child_facts_lookup }
+}
+
+fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
+  node_rebuild(
+    n: python_emitted_add_fn_node(),
+    children: list_snoc_item(
+      xs: python_emitted_add_fn_node().children,
+      item: Edge { label: Positional, target: translate_underived_value_specimen }
+    )
+  )
+}
+
+fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<InferredFacts> {
+  match infer(tree: python_emitted_add_fn_node()) {
+    Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
+    translate_underived_value_specimen_facts()
+  } else if content_hash(n: key) == content_hash(n: translate_bodyless_emission_root_with_poison_child_root()) {
+    translate_bodyless_emission_root_facts_for(node: python_emitted_add_fn_node())
+  } else {
+    translate_bodyless_emission_root_facts_for(node: key)
+  }
+}
+
+data translate_bodyless_emission_root_with_poison_child_tree: InferredTree = InferredTree {
+  root: translate_bodyless_emission_root_with_poison_child_root(),
+  facts: Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
 
 fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
@@ -295,6 +331,17 @@ fn translate_refuses_absent_parent_underived_child() -> Bool {
   }
 }
 
+fn translate_refuses_bodyless_emission_root_with_poison_child() -> Bool {
+  match translate(
+    tree: translate_bodyless_emission_root_with_poison_child_tree,
+    target: python_target_model()
+  ) {
+    Rejected { diagnostics: d } =>
+      translate_refused_canonical_grounding(d: d)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 fn translate_refuses_bodied_arrow_shortcut_underived_descendant() -> Bool {
   match translate_bodied_arrow_shortcut_underived_descendant_tree() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -370,6 +417,10 @@ test fn translate_refuses_mixed_derived_root_underived_child_holds() -> Bool {
 
 test fn translate_refuses_absent_parent_underived_child_holds() -> Bool {
   translate_refuses_absent_parent_underived_child()
+}
+
+test fn translate_refuses_bodyless_emission_root_with_poison_child_holds() -> Bool {
+  translate_refuses_bodyless_emission_root_with_poison_child()
 }
 
 test fn translate_refuses_bodied_arrow_shortcut_underived_descendant_holds() -> Bool {
