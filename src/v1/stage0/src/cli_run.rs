@@ -2429,13 +2429,12 @@ fn compile_clean_policy_read_refuses_gate() -> bool {
 
 /// Type-ref binding-authority debt (N1 / import-strip §14).
 ///
-/// PROVISIONAL_UNFROZEN until witty-badger-200 peel fix + census re-run freezes the
-/// universe (quiet-hawk-219 sequencing). The arm always emits typed UnresolvedType
-/// (never FloorNotYet class-wide advisory). Compile-clean admits:
+/// FROZEN at `type_ref_census_sha` (authority.dag). The arm always emits typed
+/// UnresolvedType (never FloorNotYet class-wide advisory). Compile-clean admits:
 ///   - incidental sites on `provisional_debt_roster.tsv` (TYPE×site identity)
 ///   - deliberate expect-red controls on `expect_red_controls.tsv`
-/// New-sites-refuse against a closed universe arms only when freeze flips to Frozen.
-/// Census is a LOWER BOUND (peel-suppressed sites excluded). Same TSVs feed N5.
+/// New-sites-refuse: identities absent from both sets block (universe closed).
+/// Same TSVs feed N5.
 const TYPE_REF_BINDING_AUTHORITY_DEBT_ROSTER_REL: &str =
     "dag/gunbc/type_ref_binding_authority_debt/provisional_debt_roster.tsv";
 const TYPE_REF_BINDING_AUTHORITY_EXPECT_RED_REL: &str =

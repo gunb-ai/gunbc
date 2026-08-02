@@ -1,0 +1,72 @@
+module gunbc.type_ref_binding_authority_debt.roster_pure_regen
+
+import std.types { String, Int, Bool }
+
+type TypeRefSiteIdentity {
+  name: String,
+  file: String,
+  span_start: Int,
+  span_end: Int
+}
+
+type TypeRefSiteDisposition
+  = IncidentalDebt
+  | ExpectRed { reason: String }
+  | Unclassified { reason: String }
+
+type TypeRefLabeledSite {
+  site: TypeRefSiteIdentity,
+  disposition: TypeRefSiteDisposition
+}
+
+type TypeRefRosterBuckets {
+  incidental: List<TypeRefSiteIdentity>,
+  expect_red: List<TypeRefLabeledSite>,
+  unclassified: List<TypeRefLabeledSite>
+}
+
+fn type_ref_fold_one_labeled_site(
+  acc: TypeRefRosterBuckets,
+  row: TypeRefLabeledSite
+) -> TypeRefRosterBuckets {
+  match row.disposition {
+    IncidentalDebt => TypeRefRosterBuckets {
+      incidental: concat(acc.incidental, [row.site]),
+      expect_red: acc.expect_red,
+      unclassified: acc.unclassified
+    }
+    ExpectRed { reason: r } => TypeRefRosterBuckets {
+      incidental: acc.incidental,
+      expect_red: concat(acc.expect_red, [row]),
+      unclassified: acc.unclassified
+    }
+    Unclassified { reason: r } => TypeRefRosterBuckets {
+      incidental: acc.incidental,
+      expect_red: acc.expect_red,
+      unclassified: concat(acc.unclassified, [row])
+    }
+  }
+}
+
+fn type_ref_fold_labeled_sites_to_roster_buckets(
+  labeled: List<TypeRefLabeledSite>
+) -> TypeRefRosterBuckets {
+  fold(
+    labeled,
+    init: TypeRefRosterBuckets {
+      incidental: [],
+      expect_red: [],
+      unclassified: []
+    },
+    f: type_ref_fold_one_labeled_site
+  )
+}
+
+fn type_ref_roster_buckets_partition_complete(
+  labeled: List<TypeRefLabeledSite>,
+  buckets: TypeRefRosterBuckets
+) -> Bool {
+  count(labeled) == count(buckets.incidental) + count(buckets.expect_red) + count(buckets.unclassified)
+}
+
+data type_ref_roster_pure_regen_authority_note: String = "HALF 1 PURE fold: type_ref_fold_labeled_sites_to_roster_buckets. Checked floor artifacts remain the SHA-pinned TSVs plus type_ref_census_sha. Witness: type_ref_roster_pure_regen_witness_test."

@@ -1,29 +1,21 @@
 #!/usr/bin/env python3
-"""OFFLINE AUTHORING TOOL — choice (b), two halves (quiet-hawk-219 refinement).
+"""OFFLINE AUTHORING TOOL — HALF 2 host-effect + TSV host serialization.
 
 NEVER invoked from CI, claim_executor, compile-clean, or any enrolled floor
 consumer. Checked artifacts are the OUTPUT rows (SHA-pinned TSVs +
 type_ref_census_sha in authority.dag).
 
-HALF 1 PURE — census-rows → roster-rows fold over typed diagnostics at the
-pinned SHA, applying already-decided classification labels.
-  Scaffold: type_ref_roster_pure_regen_dissolve_trigger
-  Dissolves to a .dag fold at the next debt-contract regeneration touch.
+HALF 1 PURE — DISSOLVED: census→bucket partition is
+  gunbc.type_ref_binding_authority_debt.roster_pure_regen
+  type_ref_fold_labeled_sites_to_roster_buckets
+Do not re-implement that fold here.
 
 HALF 2 HOST-EFFECT — deliberate/incidental execution discriminator
 (compile as-is vs bind-patched scratch). Documented authoring-time measurement
-PROCEDURE, not a Scaffold. Typed OUTPUT (classification rows + bind-outcome
-evidence) is the artifact. No dissolve obligation. Optional only:
-type_ref_roster_host_effect_classify_optional_trigger if Wet/host_effect
-someday models it as a witness — not promised at peel re-census.
+PROCEDURE. This script may run that discriminator and host-serialize TSV
+outputs that mirror the .dag fold's buckets.
 
 Authority: gunbc.type_ref_binding_authority_debt
-  type_ref_roster_regenerator_choice
-  type_ref_roster_pure_regen_dissolve_trigger
-  type_ref_roster_host_effect_classify_procedure_note
-
-Census input: SITE\\tUnresolvedType\\tTYPE\\tfile\\tstart\\tend (or full histogram).
-Requires --census-sha. Does NOT freeze the roster.
 """
 from __future__ import annotations
 
@@ -52,7 +44,6 @@ def load_sites(path: Path) -> list[tuple[str, str, int, int]]:
             continue
         parts = line.split("\t")
         if len(parts) >= 4 and not line.startswith("#"):
-            # TYPE file start end
             try:
                 sites.append((parts[0], parts[1], int(parts[2]), int(parts[3])))
             except ValueError:
@@ -99,10 +90,7 @@ def unresolved_count(err: str, needle: str) -> int:
     )
 
 
-def exec_fixture(
-    root: Path, gunbc: Path, name: str, file: str
-) -> str:
-    """Return disposition reason for a §14 probe fixture site."""
+def exec_fixture(root: Path, gunbc: Path, name: str, file: str) -> str:
     entry = root / file
     probe = root / "dag/test/fixture/type_ref_fail_open_probe"
     with tempfile.TemporaryDirectory(prefix="tr-class-") as td:
@@ -161,17 +149,10 @@ def exec_fixture(
 
 
 def exec_nonfixture(root: Path, gunbc: Path, name: str, file: str) -> str:
-    """Execution discriminator for non-fixture subset sites.
-
-    Question: does any enrolled control fail if the reference binds?
-    No applicable control that depends on unbound → incidental (not deliberate).
-    Cannot run the discriminator → unclassified.
-    """
     src_path = root / file
     if not src_path.exists():
         return "undecidable_missing_file"
     text = src_path.read_text()
-    # Deliberate only if this file asserts unboundness for THIS type.
     asserts_this = bool(
         re.search(
             rf"unresolved type['\"]?\s*{re.escape(name)}|"
@@ -182,26 +163,24 @@ def exec_nonfixture(root: Path, gunbc: Path, name: str, file: str) -> str:
         )
     )
     if not asserts_this:
-        # Vocab matched for another reason (e.g. prose 'unresolved type name').
-        # No control depends on THIS site being unbound → incidental by execution.
         return "exec_no_control_depends_on_unbound"
-    # Would need bind+re-run of the asserting control — refuse if we cannot.
     return "undecidable_asserting_control_harness"
 
 
-def write_typed(
+def host_serialize_buckets(
     path: Path,
     rows: list[tuple],
     census_sha: str,
     disposition: str,
     with_reason: bool,
 ) -> None:
+    """Host TSV write mirroring roster_pure_regen buckets (not a second fold)."""
     by_type: dict[str, list] = defaultdict(list)
     for row in rows:
         by_type[row[0]].append(row)
     lines = [
         f"# census_sha\t{census_sha}",
-        "# PROVISIONAL_UNFROZEN — freeze waits witty-badger-200 peel fix + re-census",
+        "# FROZEN — type_ref_debt_roster_freeze_state = Frozen; new-sites-refuse armed",
         "# key grain: TYPE x (file, span_start, span_end)",
         f"# disposition\t{disposition}",
         f"# types\t{len(by_type)}\tsites\t{len(rows)}",
@@ -229,25 +208,17 @@ def main() -> None:
     args = ap.parse_args()
     root = Path(".").resolve()
     sites = load_sites(args.census)
+    # HALF 2: produce disposition labels (then host-serialize bucket TSVs).
     deliberate: list[tuple] = []
     incidental: list[tuple] = []
     unclassified: list[tuple] = []
 
     for name, file, start, end in sites:
         if not in_subset(root, file):
-            incidental.append(
-                (
-                    name,
-                    file,
-                    start,
-                    end,
-                    "incidental_outside_unbound_vocab_subset_by_subset_rule",
-                )
-            )
+            incidental.append((name, file, start, end))
             continue
         if "type_ref_fail_open_probe" in file:
             reason = exec_fixture(root, args.gunbc, name, file)
-            bucket = deliberate if reason.startswith("exec_expect_red") else unclassified
             if reason == "exec_expect_red_fails_if_binds":
                 deliberate.append((name, file, start, end, reason))
             else:
@@ -255,29 +226,28 @@ def main() -> None:
             continue
         reason = exec_nonfixture(root, args.gunbc, name, file)
         if reason.startswith("exec_no_control"):
-            incidental.append((name, file, start, end, reason))
+            incidental.append((name, file, start, end))
         elif reason.startswith("exec_"):
-            # future: deliberate from exec
             deliberate.append((name, file, start, end, reason))
         else:
             unclassified.append((name, file, start, end, reason))
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    write_typed(
+    host_serialize_buckets(
         args.out_dir / "provisional_debt_roster.tsv",
         incidental,
         args.census_sha,
-        "provisional_incidental_debt",
+        "incidental_debt",
         False,
     )
-    write_typed(
+    host_serialize_buckets(
         args.out_dir / "expect_red_controls.tsv",
         deliberate,
         args.census_sha,
         "deliberate_expect_red",
         True,
     )
-    write_typed(
+    host_serialize_buckets(
         args.out_dir / "unclassified_sites.tsv",
         unclassified,
         args.census_sha,
@@ -287,7 +257,8 @@ def main() -> None:
     by_type = Counter(r[0] for r in incidental)
     rank = [
         f"# census_sha\t{args.census_sha}",
-        "# type\tsite_count\tdisposition=provisional_incidental_debt",
+        "# FROZEN — type_ref_debt_roster_freeze_state = Frozen",
+        "# type\tsite_count\tdisposition=incidental_debt",
     ]
     for t, c in sorted(by_type.items(), key=lambda x: (-x[1], x[0])):
         rank.append(f"{t}\t{c}")
