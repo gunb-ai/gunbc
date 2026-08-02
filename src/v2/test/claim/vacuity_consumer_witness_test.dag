@@ -180,7 +180,7 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           lhs: operand,
           rhs: operand,
-          classification: TestClassification { tier: Tier1, layer: Unit }
+          classification: TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
         },
         transport: EvalOnly
       },
