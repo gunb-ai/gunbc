@@ -146,6 +146,24 @@ fn v1_emit_enum_derives(children: List<Node>, source_indices: Map<String, Newlin
   }
 }
 
+fn v1_type_expr_contains_param_name(
+  param_name: String,
+  type_expr: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  if authored_name_at(source_indices: source_indices, node: type_expr) == param_name {
+    true
+  } else {
+    type_expr.children |> any(c =>
+      v1_type_expr_contains_param_name(
+        param_name: param_name,
+        type_expr: c,
+        source_indices: source_indices
+      )
+    )
+  }
+}
+
 fn v1_generic_param_used_as_collection_element(
   param_name: String,
   value_params: List<Node>,
@@ -154,7 +172,40 @@ fn v1_generic_param_used_as_collection_element(
   value_params |> any(vp =>
     let te = param_node_type_expr(n: vp)
     is_container_type(name: authored_name_at(source_indices: source_indices, node: te))
-      && (te.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name))
+      && te.children |> any(c =>
+        v1_type_expr_contains_param_name(
+          param_name: param_name,
+          type_expr: c,
+          source_indices: source_indices
+        )
+      )
+  )
+}
+
+fn v1_generic_param_used_as_bare_value_param_type(
+  param_name: String,
+  value_params: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  value_params |> any(vp =>
+    let te = param_node_type_expr(n: vp)
+    authored_name_at(source_indices: source_indices, node: te) == param_name
+      && te.connective == NoConnective
+      && (te.children |> count) == 0
+  )
+}
+
+fn v1_generic_param_used_in_value_param_type_surface(
+  param_name: String,
+  value_params: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  value_params |> any(vp =>
+    v1_type_expr_contains_param_name(
+      param_name: param_name,
+      type_expr: param_node_type_expr(n: vp),
+      source_indices: source_indices
+    )
   )
 }
 
@@ -168,7 +219,35 @@ fn v1_type_param_needs_clone_bound(
 ) -> Bool {
   let structural = (return_is_bare_generic && !body_is_param_ref && param_name == ret_name)
     || v1_generic_param_used_as_collection_element(param_name: param_name, value_params: value_params, source_indices: source_indices)
+    || v1_generic_param_used_as_bare_value_param_type(param_name: param_name, value_params: value_params, source_indices: source_indices)
+    || v1_generic_param_used_in_value_param_type_surface(param_name: param_name, value_params: value_params, source_indices: source_indices)
   structural
+}
+
+fn v1_fn_param_type_needs_clone_bound(
+  param_name: String,
+  value_params: List<Node>,
+  bounds: Map<String, Set<String>>,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  value_params |> any(vp =>
+    let te = param_node_type_expr(n: vp)
+    v1_type_expr_is_bare_param(param_name: param_name, type_expr: te, source_indices: source_indices)
+      || v1_type_expr_clone_impl_needs_param(
+        param_name: param_name,
+        type_expr: te,
+        type_decl_items: type_decl_items,
+        source_indices: source_indices
+      )
+      || v1_type_expr_wf_needs_clone_param(
+        param_name: param_name,
+        type_expr: te,
+        bounds: bounds,
+        type_decl_items: type_decl_items,
+        source_indices: source_indices
+      )
+  )
 }
 
 fn v1_generic_params_needing_clone_bound(
@@ -194,6 +273,13 @@ fn v1_generic_params_needing_clone_bound(
       param_name: g,
       value_params: value_params,
       ret: ret,
+      bounds: bounds,
+      type_decl_items: type_decl_items,
+      source_indices: source_indices
+    )
+    || v1_fn_param_type_needs_clone_bound(
+      param_name: g,
+      value_params: value_params,
       bounds: bounds,
       type_decl_items: type_decl_items,
       source_indices: source_indices
