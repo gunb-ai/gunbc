@@ -773,7 +773,7 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds"),
   probe_red(entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag", f: "compiler_closure_scoped_ingest_module_count_ok_holds"),
   probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
-  probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds")
+  probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds"),
   probe_red(entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag", f: "witness_namespace_reference_derived_closure_closing_contract_holds")
 ]
 
