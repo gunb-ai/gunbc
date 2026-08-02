@@ -7877,7 +7877,26 @@ fn rest_auth_identity_value(
                 variant_name: ctx.sym("RestAuthenticated"),
                 fields: Rc::new(sorted_fields(vec![
                     (ctx.sym("scheme"), Value::Str(scheme)),
-                    (ctx.sym("digest"), Value::Str(digest)),
+                    (
+                        // Same grounding as RestBoundOperationInvocation.input_digest below:
+                        // rest.dag declares RestAuthenticated.digest as Fnv1a64Structural, and the
+                        // value here is a 16-hex fnv1a64 fingerprint by construction
+                        // (value_hash_public formatted {:016x}), so the family is a fact about the
+                        // producer rather than a choice. Emitting bare text here would leave the
+                        // model/realization fork intact for the authenticated arm alone, where it
+                        // is *harder* to notice than the input_digest case: no witness in the
+                        // corpus constructs RestAuthenticated today, so the mismatch would sit
+                        // silent until the first authenticated fixture was authored and then
+                        // never match.
+                        ctx.sym("digest"),
+                        Value::Record {
+                            type_name: ctx.sym("Fnv1a64Structural"),
+                            fields: Rc::new(sorted_fields(vec![(
+                                ctx.sym("digest"),
+                                Value::Str(digest),
+                            )])),
+                        },
+                    ),
                 ])),
             }
         }
