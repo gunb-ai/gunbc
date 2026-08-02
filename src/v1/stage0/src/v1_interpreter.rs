@@ -7903,6 +7903,31 @@ fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
     })
 }
 
+/// Seed bridge for the `.dag`-owned `ContentHash` family carrier. REST input identity is
+/// the structural FNV-1a digest produced by `content_hash_service_inputs`; the interpreter
+/// must realize that modeled value, not leak its wire string across the typed dispatch seam.
+///
+/// This is the model↔realization fork DESIGN's open threads name: `#7480` made `ContentHash`
+/// a coproduct in `.dag` while this site kept minting the pre-#7480 branded string, so a
+/// fixture invocation built in `.dag` could never equal one built here. Every
+/// `rest_exchange_replay` witness that requires a fixture to MATCH failed; the ones requiring
+/// no match passed, which is the signature of an equality that is always false rather than of
+/// a broken lookup. Recovered from the closed PR #7650, which had this right.
+///
+/// DISSOLVE-ON: REST service dispatch is evaluated by the emitted transport handler and this
+/// host-side `RestBoundOperationInvocation` construction is deleted.
+fn rest_structural_content_hash_value(digest: String, ctx: &InterpContext) -> Value {
+    let structural = Value::Record {
+        type_name: ctx.sym("Fnv1a64Structural"),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+    };
+    Value::Variant {
+        type_name: ctx.sym("ContentHash"),
+        variant_name: ctx.sym("Fnv1a64"),
+        fields: Rc::new(vec![(ctx.sym("0"), structural)]),
+    }
+}
+
 fn rest_bound_invocation_value(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -7918,31 +7943,16 @@ fn rest_bound_invocation_value(
     let at = operation_ref_value(&op_node.span.file, &service, &operation, ctx);
     let input_digest =
         crate::recorded_fixture::content_hash_service_inputs(op_node, param_env, ctx);
-    // std.content_hash grounded ContentHash on hash family (#7480): the model-side
-    // carrier is the Fnv1a64(Fnv1a64Structural) coproduct arm, so the invocation
-    // identity must mint that shape — a bare Str here silently fails every
-    // rest_bound_invocation_eq digest comparison against model-constructed fixtures.
-    let input_digest_value = Value::Variant {
-        type_name: ctx.sym("ContentHash"),
-        variant_name: ctx.sym("Fnv1a64"),
-        fields: Rc::new(vec![(
-            ctx.sym("0"),
-            Value::Record {
-                type_name: ctx.sym("Fnv1a64Structural"),
-                fields: Rc::new(sorted_fields(vec![(
-                    ctx.sym("digest"),
-                    Value::Str(input_digest),
-                )])),
-            },
-        )]),
-    };
     Ok(Value::Record {
         type_name: ctx.sym("RestBoundOperationInvocation"),
         fields: Rc::new(sorted_fields(vec![
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
-            (ctx.sym("input_digest"), input_digest_value),
+            (
+                ctx.sym("input_digest"),
+                rest_structural_content_hash_value(input_digest, ctx),
+            ),
             (
                 ctx.sym("auth_identity"),
                 rest_auth_identity_value(auth, basic_header, ctx),
