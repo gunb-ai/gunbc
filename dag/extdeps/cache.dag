@@ -43,7 +43,8 @@ import std.cache_interface {
   CasContentEncoding,
   NativeInternalEncoding,
 }
-import std.types { ContentHash, List }
+import std.types { List }
+import std.content_hash { ContentHash }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

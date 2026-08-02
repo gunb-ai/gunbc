@@ -1,6 +1,7 @@
 module std.cache_identity
 
-import std.types { NonEmptyStr, ContentHash }
+import std.types { NonEmptyStr }
+import std.content_hash { ContentHash }
 
 type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
 type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")

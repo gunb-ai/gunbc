@@ -1,6 +1,7 @@
 module test.claim.source_integration_landing_spine_witness
 
-import std.types { Bool, ContentHash, List, NonEmptyStr, String, Timestamp }
+import std.types { Bool, List, NonEmptyStr, String, Timestamp }
+import std.content_hash { ContentHash, content_hash_of_value }
 import std.measure { minute_count }
 import std.claim_evidence {
   Claim,
@@ -379,7 +380,7 @@ fn p0_refusal(
     plain_reason: reason,
     responsible_party: "workspace owner",
     next_action: "update the requested outcome and submit again",
-    receipt: "p0-refusal-receipt",
+    receipt: content_hash_of_value(value: "p0-refusal-receipt"),
   }
 }
 
@@ -397,25 +398,25 @@ fn p0_continuation(
 fn p0_closure_evidence() -> LandingClosureEvidence {
   LandingClosureEvidence {
     capture_completeness: LandingCaptureCompletenessReceipt {
-      receipt: "capture-completeness-receipt",
+      receipt: content_hash_of_value(value: "capture-completeness-receipt"),
     },
     affected_scope: LandingAffectedScopeReceipt {
-      receipt: "affected-scope-receipt",
+      receipt: content_hash_of_value(value: "affected-scope-receipt"),
     },
     rule_closure: LandingRuleClosureReceipt {
-      receipt: "rule-closure-receipt",
+      receipt: content_hash_of_value(value: "rule-closure-receipt"),
     },
     candidate_generation: LandingCandidateGenerationReceipt {
-      receipt: "candidate-generation-receipt",
+      receipt: content_hash_of_value(value: "candidate-generation-receipt"),
     },
     admissibility: LandingAdmissibilityReceipt {
-      receipt: "admissibility-receipt",
+      receipt: content_hash_of_value(value: "admissibility-receipt"),
     },
     equivalence_quotient: LandingEquivalenceQuotientReceipt {
-      receipt: "equivalence-quotient-receipt",
+      receipt: content_hash_of_value(value: "equivalence-quotient-receipt"),
     },
     multiplicity: LandingMultiplicityReceipt {
-      receipt: "multiplicity-receipt",
+      receipt: content_hash_of_value(value: "multiplicity-receipt"),
     },
   }
 }
@@ -431,7 +432,7 @@ fn p0_closed_receipt(
         observer: "independent-read-back",
         admission_contract: "p0-admission-contract",
         established_by: "fixture-admission-authority",
-        receipt: "read-back-authority-receipt",
+        receipt: content_hash_of_value(value: "read-back-authority-receipt"),
       },
       equivalence: "p0-declared-equivalence",
       candidates: candidates,
@@ -472,7 +473,7 @@ fn p0_admitted() -> LandingAdmittedResult {
       receipt: LandingAdmissionReceipt {
         semantic: semantic,
         authority: "fixture-author",
-        receipt: "admission-receipt-42",
+        receipt: content_hash_of_value(value: "admission-receipt-42"),
       },
     },
   ) {
@@ -800,7 +801,9 @@ test fn witness_p0_closed_zero_is_closure_qualified() -> Bool {
       disposition: _,
     } =>
       closed_space.subject.ready_evidence.policy == "p0-exact-guarantee-policy"
-        && closed_space.closure.multiplicity.receipt == "multiplicity-receipt"
+        && closed_space.closure.multiplicity.receipt == content_hash_of_value(
+          value: "multiplicity-receipt",
+        )
     _ => false
   }
 }
@@ -904,7 +907,7 @@ fn p0_incomplete_closure_stays_machine_owned(
       observer: "independent-read-back",
       admission_contract: "p0-admission-contract",
       established_by: "fixture-admission-authority",
-      receipt: "read-back-authority-receipt",
+      receipt: content_hash_of_value(value: "read-back-authority-receipt"),
     },
     equivalence: "p0-declared-equivalence",
     candidates: LandingOneResultClass {
@@ -1025,7 +1028,7 @@ test fn witness_p0_cross_paired_projection_refuses() -> Bool {
         binding: LandingCompatibilityTargetBinding {
           semantic_target: "another-semantic-target",
           native_target: projection.target,
-          receipt: "semantic-native-target-binding",
+          receipt: content_hash_of_value(value: "semantic-native-target-binding"),
         },
         projection: projection,
       ) {
@@ -1065,7 +1068,7 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
         binding: LandingCompatibilityTargetBinding {
           semantic_target: "accepted-main",
           native_target: projection.target,
-          receipt: "semantic-native-target-binding",
+          receipt: content_hash_of_value(value: "semantic-native-target-binding"),
         },
         projection: projection,
       ) {
@@ -1114,7 +1117,7 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
         binding: LandingCompatibilityTargetBinding {
           semantic_target: "accepted-main",
           native_target: projection.target,
-          receipt: "semantic-native-target-binding",
+          receipt: content_hash_of_value(value: "semantic-native-target-binding"),
         },
         projection: projection,
       ) {
@@ -1161,7 +1164,7 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
     target: LandingCompatibilityTargetBinding {
       semantic_target: "accepted-main",
       native_target: "refs/heads/main",
-      receipt: "semantic-native-target-binding",
+      receipt: content_hash_of_value(value: "semantic-native-target-binding"),
     },
     cause: "the compatibility view will be retried",
   }
@@ -1349,7 +1352,7 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
     plain_reason: "The target rejected this update.",
     responsible_party: "workspace owner",
     next_action: "review the target policy",
-    receipt: "private-refusal-receipt",
+    receipt: content_hash_of_value(value: "private-refusal-receipt"),
   }
   match landing_user_boundary(
     receipt: LandingTransitionSpine {

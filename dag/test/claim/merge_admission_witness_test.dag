@@ -11,11 +11,10 @@ data roster_surface_only_variant: List<CommitCheckEnrollment> = concat(
   commit_gate_roster.skip(n: 1)
 )
 
-data scenario_base_b0: ContentHash = "merge-admission-witness-base-b0"
-data scenario_base_b1: ContentHash = "merge-admission-witness-base-b1"
-data scenario_roster_r0: ContentHash = "merge-admission-witness-roster-r0"
-data scenario_roster_r1: ContentHash = "merge-admission-witness-roster-r1"
-
+data scenario_base_b0: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
+data scenario_base_b1: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b1")
+data scenario_roster_r0: GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-witness-roster-r0")
+data scenario_roster_r1: GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-witness-roster-r1")
 data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: "abc1234def5678901234567890abcd1234567890",

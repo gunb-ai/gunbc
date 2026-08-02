@@ -1,7 +1,21 @@
 module extdeps.git.object_store
 
-import std.types { ContentHash, NonEmptyStr, Bytes, Map }
-import std.integer { UInt8, NonNegativeInt }
+import std.types { NonEmptyStr, Bytes, Map }
+import std.content_hash {
+  ContentHash,
+  Sha1Digest,
+  Sha1DigestHex,
+  Sha256Digest,
+  Sha256DigestHex,
+  as_content_hash_sha1,
+  as_content_hash_cryptographic,
+  sha1_hex_digest,
+  sha256_hex_digest,
+  content_hash_eq_sha1,
+  content_hash_eq_cryptographic,
+}
+import std.integer { UInt8, NonNegativeInt, PositiveInt }
+import std.render_repeat_string_bootstrap { repeat_string }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import std.cache_interface { ContentAddressedByValue, WriteOnce }
@@ -35,6 +49,13 @@ data git_ls_files_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-ls-files"
+  }
+}
+
+data git_gitattributes_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/gitattributes#_conflict_marker_size"
   }
 }
 
@@ -296,55 +317,39 @@ type GitObjectFormat
   = GitObjectFormatSha1
   | GitObjectFormatSha256
 
-type GitSha1Digest = ContentHash where brand("GitSha1Digest")
-type GitSha256Digest = ContentHash where brand("GitSha256Digest")
-
 type GitObjectId
-  = GitSha1ObjectId { digest: GitSha1Digest }
-  | GitSha256ObjectId { digest: GitSha256Digest }
+  = GitSha1ObjectId { digest: Sha1Digest }
+  | GitSha256ObjectId { digest: Sha256Digest }
 
-data git_object_id_text_note: String = "THE VALIDATING CONSTRUCTORS. The brands GitSha1Digest and GitSha256Digest are ContentHash brands, and a brand alone admits any string: before these existed, a consumer casting text into one could produce a GitSha1ObjectId carrying \"x\", a 64-digit value labelled sha1, or arbitrary non-hex, and every one of those typechecked as a Git object id (review 2026-07-30, on the merge-admission wire parser that did exactly this). Family is not enough — LENGTH and SYNTAX are what make an object id an object id, and they differ per family, which is precisely why the discriminant exists.
+data git_object_id_text_note: String = "THE VALIDATING CONSTRUCTORS. A bare string cast into Sha1Digest or Sha256Digest admits any string: before these existed, a consumer casting text into one could produce a GitSha1ObjectId carrying \"x\", a 64-digit value labelled sha1, or arbitrary non-hex, and every one of those typechecked as a Git object id (review 2026-07-30, on the merge-admission wire parser that did exactly this). Family is not enough — LENGTH and SYNTAX are what make an object id an object id, and they differ per family, which is precisely why the discriminant exists.
 
 These reuse git_decode_lower_hex_octets rather than introducing a second hex reader, so the canonical form is one authority: git spells object ids in LOWERCASE hex, and an uppercase or mixed-case spelling refuses rather than being folded, because folding would make two textual forms name one object and quietly break the round trip. A caller holding a foreign-cased id normalizes deliberately at its own boundary."
 
 fn git_sha1_object_id(hex: String) -> GitObjectId? {
-  if hex.length() != 40 {
-    none
-  } else {
-    match git_decode_lower_hex_octets(text: hex) {
-      Absent => none
-      Present { value: _ } => Present { value: GitSha1ObjectId { digest: hex as GitSha1Digest } }
-    }
+  match sha1_hex_digest(hex: hex) {
+    Present { value: digest } =>
+      Present {
+        value: GitSha1ObjectId {
+          digest: digest,
+        }
+      }
+    Absent => none
   }
 }
 
 fn git_sha256_object_id(hex: String) -> GitObjectId? {
-  if hex.length() != 64 {
-    none
-  } else {
-    match git_decode_lower_hex_octets(text: hex) {
-      Absent => none
-      Present { value: _ } => Present { value: GitSha256ObjectId { digest: hex as GitSha256Digest } }
-    }
+  match sha256_hex_digest(hex: hex) {
+    Present { value: digest } =>
+      Present {
+        value: GitSha256ObjectId {
+          digest: digest,
+        }
+      }
+    Absent => none
   }
 }
 
 data git_object_id_eq_note: String = "Format-aware equality, held beside the type rather than in a consumer: two ids of different families are never equal, so a repository mid SHA-1/SHA-256 transition cannot produce a false match on hex alone. It lived briefly in gunbc.merge_admission, which is generic Git behaviour sitting in one consumer — the §3 fork this move closes."
-
-fn git_object_id_eq(left: GitObjectId, right: GitObjectId) -> Bool {
-  match left {
-    GitSha1ObjectId { digest: l } =>
-      match right {
-        GitSha1ObjectId { digest: r } => (l as ContentHash) == (r as ContentHash)
-        GitSha256ObjectId { digest: _ } => false
-      }
-    GitSha256ObjectId { digest: l } =>
-      match right {
-        GitSha256ObjectId { digest: r } => (l as ContentHash) == (r as ContentHash)
-        GitSha1ObjectId { digest: _ } => false
-      }
-  }
-}
 
 fn git_object_id_format(oid: GitObjectId) -> GitObjectFormat {
   match oid {
@@ -353,12 +358,36 @@ fn git_object_id_format(oid: GitObjectId) -> GitObjectFormat {
   }
 }
 
-fn git_object_id_content_hash(oid: GitObjectId) -> ContentHash {
+fn git_object_id_wire_hex(oid: GitObjectId) -> NonEmptyStr {
   match oid {
-    GitSha1ObjectId { digest } => digest as ContentHash
-    GitSha256ObjectId { digest } => digest as ContentHash
+    GitSha1ObjectId { digest } => digest.hex
+    GitSha256ObjectId { digest } => digest.hex
   }
 }
+
+fn git_object_id_content_hash(oid: GitObjectId) -> ContentHash {
+  match oid {
+    GitSha1ObjectId { digest } => as_content_hash_sha1(digest: digest)
+    GitSha256ObjectId { digest } => as_content_hash_cryptographic(digest: digest)
+  }
+}
+
+fn git_object_id_eq(left: GitObjectId, right: GitObjectId) -> Bool {
+  match left {
+    GitSha1ObjectId { digest: l } =>
+      match right {
+        GitSha1ObjectId { digest: r } => content_hash_eq_sha1(left: l, right: r)
+        GitSha256ObjectId { digest: _ } => false
+      }
+    GitSha256ObjectId { digest: l } =>
+      match right {
+        GitSha1ObjectId { digest: _ } => false
+        GitSha256ObjectId { digest: r } => content_hash_eq_cryptographic(left: l, right: r)
+      }
+  }
+}
+
+data git_sha1_oid_deleted_note: String = "git_sha1_oid and git_sha256_oid deleted (review 45376): GitObjectId is constructed only through git_sha1_object_id / git_sha256_object_id, which enforce length and lowercase-hex invariants. Witness and merge-admission fixture helpers that need a total GitObjectId from known-valid corpus literals live beside their consumers."
 
 type Blob {
   content: Bytes
@@ -522,6 +551,24 @@ type GitIndexStage
   | GitIndexStageOurs
   | GitIndexStageTheirs
 
+type GitEffectiveConflictMarkerGrammar {
+  size: PositiveInt
+}
+
+data git_effective_conflict_marker_grammar_note: String = "Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another positive width for a path; consumers must observe the effective value rather than assume the default. The upstream fact is stored once as std.integer.PositiveInt and all three tokens derive from it, so empty, mismatched, and non-marker grammars are unwritable."
+
+fn git_conflict_marker_begin(grammar: GitEffectiveConflictMarkerGrammar) -> String {
+  repeat_string(s: "<", n: grammar.size)
+}
+
+fn git_conflict_marker_separator(grammar: GitEffectiveConflictMarkerGrammar) -> String {
+  repeat_string(s: "=", n: grammar.size)
+}
+
+fn git_conflict_marker_end(grammar: GitEffectiveConflictMarkerGrammar) -> String {
+  repeat_string(s: ">", n: grammar.size)
+}
+
 type GitIndexEntry {
   path: GitPath
   mode: GitTreeMode
@@ -657,7 +704,7 @@ fn git_decode_lower_hex_octets(text: String) -> List<UInt8>? {
 }
 
 fn git_object_id_raw_octets(oid: GitObjectId) -> List<UInt8>? {
-  let text = git_object_id_content_hash(oid: oid) as String
+  let text = git_object_id_wire_hex(oid: oid) as String
   let expected = git_object_id_raw_size(oid: oid)
   if text.length() != expected * 2 {
     none
@@ -801,7 +848,7 @@ fn git_commit_canonical_payload(
     |> map(parent => join(
       [
         "parent ",
-        git_object_id_content_hash(oid: parent) as String,
+        git_object_id_wire_hex(oid: parent) as String,
         "\n",
       ],
       "",
@@ -810,7 +857,7 @@ fn git_commit_canonical_payload(
   let header = join(
     [
       "tree ",
-      git_object_id_content_hash(oid: commit.tree) as String,
+      git_object_id_wire_hex(oid: commit.tree) as String,
       "\n",
       parent_lines,
       git_author_wire_line(role: "author", author: commit.author),
@@ -849,7 +896,7 @@ fn git_tag_canonical_payload(
   let header = join(
     [
       "object ",
-      git_object_id_content_hash(oid: tag.target) as String,
+      git_object_id_wire_hex(oid: tag.target) as String,
       "\n",
       "type ",
       git_object_type_wire_name(object_type: tag.target_type),
@@ -1850,10 +1897,14 @@ fn git_decode_object_id_text(
   } else {
     match format {
       GitObjectFormatSha1 => GitObjectIdTextDecoded {
-        oid: GitSha1ObjectId { digest: text as GitSha1Digest }
+        oid: GitSha1ObjectId {
+          digest: Sha1Digest { hex: text as Sha1DigestHex },
+        }
       }
       GitObjectFormatSha256 => GitObjectIdTextDecoded {
-        oid: GitSha256ObjectId { digest: text as GitSha256Digest }
+        oid: GitSha256ObjectId {
+          digest: Sha256Digest { hex: text as Sha256DigestHex },
+        }
       }
     }
   }

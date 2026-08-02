@@ -2,12 +2,20 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
+pub use crate::extdeps_container_oci_digest::{
+    oci_other_digest_algorithm, oci_other_digest_encoded,
+};
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_content_hash::{content_hash_atom, content_hash_combine, content_hash_tagged};
+use crate::std_content_hash::ContentHash::*;
+pub use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
+    content_hash_validate_lower_hex_length,
+};
+pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -35,7 +43,7 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
-pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
+pub use crate::std_types::{NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -1915,7 +1923,13 @@ pub fn where_refinement_is_int_literal_predicate(pred_name: String) -> bool {
 }
 
 pub fn where_refinement_is_string_literal_predicate(pred_name: String) -> bool {
-    (pred_name.clone() == "non_empty".to_string())
+    (((((((pred_name.clone() == "non_empty".to_string())
+        || (pred_name.clone() == "lower_hex_64".to_string()))
+        || (pred_name.clone() == "lower_hex_40".to_string()))
+        || (pred_name.clone() == "lower_hex_128".to_string()))
+        || (pred_name.clone() == "lower_hex_16".to_string()))
+        || (pred_name.clone() == "oci_other_digest_algorithm".to_string()))
+        || (pred_name.clone() == "oci_other_digest_encoded".to_string()))
 }
 
 pub fn where_refinement_is_deferred_predicate(pred_name: String) -> bool {
@@ -1933,7 +1947,31 @@ pub fn decidable_where_string_predicate_holds(pred_name: String, value: String) 
     if (pred_name.clone() == "non_empty".to_string()) {
         Some((v1_rt::string_length(&value) > 0))
     } else {
-        None
+        if (pred_name.clone() == "lower_hex_64".to_string()) {
+            Some(content_hash_validate_lower_hex_length(value.clone(), 64))
+        } else {
+            if (pred_name.clone() == "lower_hex_40".to_string()) {
+                Some(content_hash_validate_lower_hex_length(value.clone(), 40))
+            } else {
+                if (pred_name.clone() == "lower_hex_128".to_string()) {
+                    Some(content_hash_validate_lower_hex_length(value.clone(), 128))
+                } else {
+                    if (pred_name.clone() == "lower_hex_16".to_string()) {
+                        Some(content_hash_validate_lower_hex_length(value.clone(), 16))
+                    } else {
+                        if (pred_name.clone() == "oci_other_digest_algorithm".to_string()) {
+                            Some(oci_other_digest_algorithm(value.clone()))
+                        } else {
+                            if (pred_name.clone() == "oci_other_digest_encoded".to_string()) {
+                                Some(oci_other_digest_encoded(value.clone()))
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -4735,9 +4773,12 @@ pub fn infer_expr_body(
                     let base_typed = base_result.typed.clone();
                     let base_diags = base_result.diagnostics.clone();
                     let base_rt = resolved_type(base_typed.clone());
-                    let resolved_base =
+                    let base_expansion =
                         if is_deferred_field_access_base(base_rt.clone(), scope.type_env.clone()) {
-                            base_rt.clone()
+                            Rc::new(NodeResolveResult {
+                                resolved: base_rt.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            })
                         } else {
                             expand_type_for_field_access(
                                 base_rt.clone(),
@@ -4745,6 +4786,8 @@ pub fn infer_expr_body(
                                 scope.module_name.clone(),
                             )
                         };
+                    let resolved_base = base_expansion.resolved.clone();
+                    let resolved_base_diags = base_expansion.diagnostics.clone();
                     let resolved_base_is_error = if (resolved_base.inferred.clone() != None) {
                         is_compiler_error(resolved_base.inferred.clone().clone().unwrap())
                     } else {
@@ -4757,7 +4800,10 @@ pub fn infer_expr_body(
                                 "error type cascade".to_string(),
                                 span.clone(),
                             ),
-                            diagnostics: base_diags.clone(),
+                            diagnostics: v1_rt::concat(
+                                base_diags.clone(),
+                                resolved_base_diags.clone(),
+                            ),
                         })
                     } else {
                         {
@@ -4799,7 +4845,10 @@ pub fn infer_expr_body(
                                     );
                                     Rc::new(InferResult {
                                         typed: fa_texpr.clone(),
-                                        diagnostics: base_diags.clone(),
+                                        diagnostics: v1_rt::concat(
+                                            base_diags.clone(),
+                                            resolved_base_diags.clone(),
+                                        ),
                                     })
                                 }
                                 None => {
@@ -4826,7 +4875,10 @@ pub fn infer_expr_body(
                                             );
                                             Rc::new(InferResult {
                                                 typed: fa_texpr.clone(),
-                                                diagnostics: base_diags.clone(),
+                                                diagnostics: v1_rt::concat(
+                                                    base_diags.clone(),
+                                                    resolved_base_diags.clone(),
+                                                ),
                                             })
                                         }
                                     } else {
@@ -4856,7 +4908,10 @@ pub fn infer_expr_body(
                                                 );
                                                 Rc::new(InferResult {
                                                     typed: fa_texpr.clone(),
-                                                    diagnostics: base_diags.clone(),
+                                                    diagnostics: v1_rt::concat(
+                                                        base_diags.clone(),
+                                                        resolved_base_diags.clone(),
+                                                    ),
                                                 })
                                             }
                                             None => {
@@ -4888,7 +4943,10 @@ pub fn infer_expr_body(
                                                 Rc::new(InferResult {
                                                     typed: fa_texpr.clone(),
                                                     diagnostics: v1_rt::concat(
-                                                        base_diags.clone(),
+                                                        v1_rt::concat(
+                                                            base_diags.clone(),
+                                                            resolved_base_diags.clone(),
+                                                        ),
                                                         Rc::new(vec![inference_error(
                                                             error_message.clone(),
                                                             span.clone(),
@@ -7418,44 +7476,52 @@ pub fn call_locals_shadow_note() -> String {
 pub fn peel_alias_fixpoint_guard_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated.".to_string()
+            "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 pub fn peel_alias_once_for_field_access(
-    mut n: Rc<Node>,
-    mut env: Rc<TypeEnv>,
-    mut module_name: String,
-) -> Rc<Node> {
-    loop {
-        let once = resolve_node(n.clone(), env.clone(), module_name.clone())
-            .resolved
-            .clone();
-        if ((once.connective.clone() == Connective::Conj)
-            || (once.connective.clone() == Connective::Disj))
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<NodeResolveResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let once = resolve_node(n.clone(), env.clone(), module_name.clone());
+        let resolved_once = once.resolved.clone();
+        if ((resolved_once.connective.clone() == Connective::Conj)
+            || (resolved_once.connective.clone() == Connective::Disj))
         {
-            break once.clone();
+            once
         } else {
-            if (((once.connective.clone() == Connective::NoConnective)
-                && ((once.children.clone().len() as i64) > 0))
-                && (once.inferred.clone() == None))
+            if (((resolved_once.connective.clone() == Connective::NoConnective)
+                && ((resolved_once.children.clone().len() as i64) > 0))
+                && (resolved_once.inferred.clone() == None))
             {
-                if (once.clone() == n.clone()) {
-                    break once.clone();
+                if (resolved_once.clone() == n.clone()) {
+                    once
                 } else {
                     {
-                        let __tco_0 = once.clone();
-                        n = __tco_0;
-                        continue;
+                        let rest = peel_alias_once_for_field_access(
+                            resolved_once.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                        );
+                        Rc::new(NodeResolveResult {
+                            resolved: rest.resolved.clone(),
+                            diagnostics: v1_rt::concat(
+                                once.diagnostics.clone(),
+                                rest.diagnostics.clone(),
+                            ),
+                        })
                     }
                 }
             } else {
-                break once.clone();
+                once
             }
         }
-    }
+    })
 }
 
 pub fn structural_from_expanded_type(normed: Rc<Node>) -> Rc<Node> {
@@ -7640,13 +7706,17 @@ pub fn expand_alias_chain_for_field_access(
     origin_name: String,
     seen: Rc<HashMap<String, bool>>,
     lossy: bool,
-) -> Rc<Node> {
+) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
+        let peel_result = if needs_alias_field_expansion(n.clone(), env.clone()) {
             peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
         } else {
-            n.clone()
+            Rc::new(NodeResolveResult {
+                resolved: n.clone(),
+                diagnostics: Rc::new(vec![]),
+            })
         };
+        let peeled = peel_result.resolved.clone();
         let carrier = alias_chain_carrier(peeled.clone());
         let carrier_name = if (carrier.name.clone() != "".to_string()) {
             carrier.name.clone()
@@ -7686,9 +7756,15 @@ pub fn expand_alias_chain_for_field_access(
                 let fail_closed = (lossy.clone()
                     && record_has_unresolved_param_field(resolved_record.clone(), env.clone()));
                 if fail_closed.clone() {
-                    nominal_type_ref(origin_name.clone())
+                    Rc::new(NodeResolveResult {
+                        resolved: nominal_type_ref(origin_name.clone()),
+                        diagnostics: peel_result.diagnostics.clone(),
+                    })
                 } else {
-                    resolved_record.clone()
+                    Rc::new(NodeResolveResult {
+                        resolved: resolved_record.clone(),
+                        diagnostics: peel_result.diagnostics.clone(),
+                    })
                 }
             }
         } else {
@@ -7706,14 +7782,23 @@ pub fn expand_alias_chain_for_field_access(
                             seen.clone(),
                             lossy.clone(),
                         );
-                        with_optional_cardinality(expanded_inner.clone())
+                        Rc::new(NodeResolveResult {
+                            resolved: with_optional_cardinality(expanded_inner.resolved.clone()),
+                            diagnostics: v1_rt::concat(
+                                peel_result.diagnostics.clone(),
+                                expanded_inner.diagnostics.clone(),
+                            ),
+                        })
                     }
                 } else {
                     {
                         let stop = ((next_name.clone() == "".to_string())
                             || emit_map_has(seen.clone(), next_name.clone()));
                         if stop.clone() {
-                            structural.clone()
+                            Rc::new(NodeResolveResult {
+                                resolved: structural.clone(),
+                                diagnostics: peel_result.diagnostics.clone(),
+                            })
                         } else {
                             match lookup_type_by_name(env.clone(), next_name.clone()) {
                                 Some(target) => {
@@ -7741,16 +7826,26 @@ pub fn expand_alias_chain_for_field_access(
                                     } else {
                                         target.clone()
                                     };
-                                    expand_alias_chain_for_field_access(
+                                    let expanded_next = expand_alias_chain_for_field_access(
                                         next_n.clone(),
                                         env.clone(),
                                         module_name.clone(),
                                         origin_name.clone(),
                                         next_seen.clone(),
                                         next_lossy.clone(),
-                                    )
+                                    );
+                                    Rc::new(NodeResolveResult {
+                                        resolved: expanded_next.resolved.clone(),
+                                        diagnostics: v1_rt::concat(
+                                            peel_result.diagnostics.clone(),
+                                            expanded_next.diagnostics.clone(),
+                                        ),
+                                    })
                                 }
-                                None => structural.clone(),
+                                None => Rc::new(NodeResolveResult {
+                                    resolved: structural.clone(),
+                                    diagnostics: peel_result.diagnostics.clone(),
+                                }),
                             }
                         }
                     }
@@ -7765,9 +7860,12 @@ pub fn expand_type_for_field_access_with_seen(
     env: Rc<TypeEnv>,
     module_name: String,
     seen: Rc<HashMap<String, bool>>,
-) -> Rc<Node> {
+) -> Rc<NodeResolveResult> {
     if is_deferred_field_access_base(n.clone(), env.clone()) {
-        n.clone()
+        Rc::new(NodeResolveResult {
+            resolved: n.clone(),
+            diagnostics: Rc::new(vec![]),
+        })
     } else {
         {
             let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
@@ -7787,7 +7885,7 @@ pub fn expand_type_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
-) -> Rc<Node> {
+) -> Rc<NodeResolveResult> {
     expand_type_for_field_access_with_seen(
         n.clone(),
         env.clone(),
@@ -7796,10 +7894,10 @@ pub fn expand_type_for_field_access(
     )
 }
 
-pub fn record_lit_alias_struct_fields(
+pub fn record_lit_alias_struct_expansion(
     type_name: String,
     scope: Rc<InferScope>,
-) -> Option<Rc<Vec<Rc<Node>>>> {
+) -> Option<Rc<NodeResolveResult>> {
     match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
         Some(decl) => {
             let to_expand = if (((decl.connective.clone() == Connective::NoConnective)
@@ -7813,18 +7911,11 @@ pub fn record_lit_alias_struct_fields(
             } else {
                 decl.clone()
             };
-            let expanded = expand_type_for_field_access(
+            Some(expand_type_for_field_access(
                 to_expand.clone(),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
-            );
-            if ((expanded.connective.clone() == Connective::Conj)
-                && ((expanded.children.clone().len() as i64) > 0))
-            {
-                Some(expanded.children.clone())
-            } else {
-                None
-            }
+            ))
         }
         None => None,
     }
@@ -7871,7 +7962,9 @@ pub fn field_in_any_variant_named(type_name: String, field: String, scope: Rc<In
                                 arm.clone(),
                                 scope.type_env.clone(),
                                 scope.module_name.clone(),
-                            );
+                            )
+                            .resolved
+                            .clone();
                             let fields = if (ea.connective.clone() == Connective::Conj) {
                                 ea.children.clone()
                             } else {
@@ -7945,30 +8038,63 @@ pub fn infer_record_lit(
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
-        let struct_fields = match type_name.clone() {
-            Some(tn) => match record_lit_instantiated_fields(
-                type_name.clone(),
-                expected.clone(),
-                scope.clone(),
-            ) {
-                Some(fields) => fields.clone(),
-                None => match record_lit_fields_from_expected(
+        let instantiated_struct_fields =
+            record_lit_instantiated_fields(type_name.clone(), expected.clone(), scope.clone());
+        let expected_struct_fields = if (instantiated_struct_fields.clone() == None) {
+            record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
+        } else {
+            None
+        };
+        let expected_variant_node = if ((instantiated_struct_fields.clone() == None)
+            && (expected_struct_fields.clone() == None))
+        {
+            match type_name.clone() {
+                Some(_) => record_lit_variant_from_expected(
                     type_name.clone(),
                     expected.clone(),
                     scope.clone(),
-                ) {
+                ),
+                None => None,
+            }
+        } else {
+            None
+        };
+        let alias_struct_expansion = match type_name.clone() {
+            Some(tn) => {
+                if ((((instantiated_struct_fields.clone() == None)
+                    && (expected_struct_fields.clone() == None))
+                    && (expected_variant_node.clone() == None))
+                    && (expected.clone() == None))
+                {
+                    record_lit_alias_struct_expansion(tn.clone(), scope.clone())
+                } else {
+                    None
+                }
+            }
+            None => None,
+        };
+        let struct_fields = match type_name.clone() {
+            Some(_) => match instantiated_struct_fields.clone() {
+                Some(fields) => fields.clone(),
+                None => match expected_struct_fields.clone() {
                     Some(fields) => fields.clone(),
-                    None => match record_lit_variant_from_expected(
-                        type_name.clone(),
-                        expected.clone(),
-                        scope.clone(),
-                    ) {
+                    None => match expected_variant_node.clone() {
                         Some(variant_node) => variant_node.children.clone(),
                         None => match expected.clone() {
                             Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
-                            None => match record_lit_alias_struct_fields(tn.clone(), scope.clone())
-                            {
-                                Some(fields) => fields.clone(),
+                            None => match alias_struct_expansion.clone() {
+                                Some(expansion) => {
+                                    if ((expansion.resolved.clone().connective.clone()
+                                        == Connective::Conj)
+                                        && ((expansion.resolved.clone().children.clone().len()
+                                            as i64)
+                                            > 0))
+                                    {
+                                        expansion.resolved.clone().children.clone()
+                                    } else {
+                                        record_lit_expected_fields(type_name.clone(), scope.clone())
+                                    }
+                                }
                                 None => {
                                     record_lit_expected_fields(type_name.clone(), scope.clone())
                                 }
@@ -7977,21 +8103,17 @@ pub fn infer_record_lit(
                     },
                 },
             },
-            None => match record_lit_instantiated_fields(
-                type_name.clone(),
-                expected.clone(),
-                scope.clone(),
-            ) {
+            None => match instantiated_struct_fields.clone() {
                 Some(fields) => fields.clone(),
-                None => match record_lit_fields_from_expected(
-                    type_name.clone(),
-                    expected.clone(),
-                    scope.clone(),
-                ) {
+                None => match expected_struct_fields.clone() {
                     Some(fields) => fields.clone(),
                     None => record_lit_expected_fields(type_name.clone(), scope.clone()),
                 },
             },
+        };
+        let alias_struct_diags = match alias_struct_expansion.clone() {
+            Some(expansion) => expansion.diagnostics.clone(),
+            None => Rc::new(vec![]),
         };
         let construction_field_names = match type_name.clone() {
             Some(tn) => record_lit_construction_field_names(tn.clone(), scope.clone()),
@@ -8383,7 +8505,7 @@ pub fn infer_record_lit(
                 );
                 Rc::new(InferResult {
                     typed: texpr.clone(),
-                    diagnostics: fi_diags.clone(),
+                    diagnostics: v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
                 })
             }
         } else {
@@ -8547,7 +8669,10 @@ pub fn infer_record_lit(
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(fi_diags.clone(), type_diags.clone()),
+                                v1_rt::concat(
+                                    v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                                    type_diags.clone(),
+                                ),
                                 sole_ctor_diags.clone(),
                             ),
                             missing_field_diags.clone(),
@@ -14668,19 +14793,19 @@ pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
 pub fn fn_signature_fingerprint(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> NonEmptyStr {
+) -> Rc<Fnv1a64Structural> {
     {
         let params_acc = item.params.clone().iter().cloned().fold(
             content_hash_atom("v1-interface-fn-sig-v0".to_string()),
-            |acc: NonEmptyStr, p: Rc<Node>| {
-                content_hash_combine(
+            |acc: Rc<Fnv1a64Structural>, p: Rc<Node>| {
+                content_hash_combine_structural(
                     acc,
                     content_hash_atom(resolved_type_name(p.clone(), source_indices.clone())),
                 )
             },
         );
         match item.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => content_hash_combine(
+            Some(InferredNode::Resolved { node: rt, .. }) => content_hash_combine_structural(
                 params_acc.clone(),
                 content_hash_atom(authored_name_at(source_indices.clone(), rt.clone())),
             ),
@@ -14702,9 +14827,9 @@ pub fn export_entry_from_item(
                 ExportKind::ExportFn => Some(Rc::new(ExportEntry {
                     name: name.clone(),
                     kind: kind.clone(),
-                    contract: signature_contract(content_hash_tagged(
+                    contract: signature_contract(content_hash_tagged_structural(
                         "v1-interface-fn-sig-v0".to_string(),
-                        content_hash_combine(
+                        content_hash_combine_structural(
                             content_hash_atom(name.clone()),
                             fn_signature_fingerprint(item.clone(), source_indices.clone()),
                         ),
@@ -14714,9 +14839,9 @@ pub fn export_entry_from_item(
                     Some(binding) => Some(Rc::new(ExportEntry {
                         name: name.clone(),
                         kind: kind.clone(),
-                        contract: signature_contract(content_hash_tagged(
+                        contract: signature_contract(content_hash_tagged_structural(
                             "v1-interface-sig-v0".to_string(),
-                            content_hash_combine(
+                            content_hash_combine_structural(
                                 content_hash_atom(binding.name.clone()),
                                 content_hash_atom(authored_name_at(
                                     source_indices.clone(),
