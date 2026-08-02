@@ -58,6 +58,13 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_induction",
         "std_iteration",
         "std_graph",
+        "extdeps_uri",
+        "extdeps_external_authority",
+        "extdeps_container_oci_digest",
+        "extdeps_units_dimensionless",
+        "extdeps_units_iec_80000_13",
+        "extdeps_units_iso8601",
+        "std_occurrence_identity",
         "v1_std_core"
       ],
       reexport_packages: [
@@ -74,27 +81,12 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_execution_mode",
         "std_interface_summary",
         "std_pareto",
-        "std_realization_schedule"
+        "std_realization_schedule",
+        "std_trait_derive_shape"
       ],
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core"
-      ],
-      carries_non_empty_wrappers: false
-    },
-    GeneratedPartitionCrateRow {
-      package_name: "v1-stage0-extdeps-base",
-      crate_dir: "src/v1/stage0_extdeps_base",
-      kind: GeneratedLayeredCoreCrate,
-      modules: [
-        "extdeps_container_oci_digest",
-        "extdeps_external_authority",
-        "extdeps_uri"
-      ],
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface"
       ],
       carries_non_empty_wrappers: false
     },
@@ -119,8 +111,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps-base"
+        "v1-stage0-std-surface"
       ],
       carries_non_empty_wrappers: false
     },
@@ -132,6 +123,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "v1_compiler_infer_emit_info",
         "v1_compiler_infer_env",
         "v1_compiler_infer_items",
+        "v1_compiler_infer_occurrence_binding",
         "v1_compiler_infer_service",
         "v1_compiler_infer_sigs",
         "v1_compiler_infer_types"
@@ -140,7 +132,6 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
         "v1-stage0-std-surface",
-        "v1-stage0-extdeps-base",
         "v1-stage0-extdeps-languages"
       ],
       carries_non_empty_wrappers: false
@@ -157,7 +148,6 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
         "v1-stage0-std-surface",
-        "v1-stage0-extdeps-base",
         "v1-stage0-extdeps-languages",
         "v1-stage0-v1-infer"
       ],

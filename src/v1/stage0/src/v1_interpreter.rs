@@ -7868,20 +7868,57 @@ fn rest_auth_identity_value(
         Some((scheme, secret)) => {
             // Only the hash crosses into the authored fixture carrier. The secret is
             // never persisted in, or made displayable through, a replay identity.
-            let digest = format!(
-                "{:016x}",
-                value_hash_public(&Value::Str(format!("{}\0{}", scheme, secret)))
-            );
+            //
+            // The digest is minted through `v1_rt::atom_identity_hash` — the SAME fnv1a64
+            // primitive `std.content_hash.content_hash_atom` is realized by — for two
+            // load-bearing reasons: (1) the model types `RestAuthenticated.digest` as
+            // `Fnv1a64Structural`, and a `DefaultHasher` (SipHash) hex here would be a value
+            // from outside that family wearing the family's carrier (the labeling the
+            // constructor-wall note forbids); (2) an authored fixture can reproduce this
+            // digest through the modeled surface — `content_hash_atom(value:
+            // "<scheme>\0<secret>")` — so authenticated replay identities are expressible
+            // in .dag without pinning opaque literals. Pinned by
+            // `rest_authenticated_identity_matches_dag_constructed_value` in
+            // src/v1/tests/src/cross_representation_equality_test.rs.
+            let digest = v1_rt::atom_identity_hash(format!("{}\0{}", scheme, secret));
             Value::Variant {
                 type_name: ctx.sym("RestAuthSensitiveIdentity"),
                 variant_name: ctx.sym("RestAuthenticated"),
                 fields: Rc::new(sorted_fields(vec![
                     (ctx.sym("scheme"), Value::Str(scheme)),
-                    (ctx.sym("digest"), Value::Str(digest)),
+                    (ctx.sym("digest"), fnv1a64_structural_value(digest, ctx)),
                 ])),
             }
         }
     }
+}
+
+/// The runtime `Value` shape of `std.content_hash.Fnv1a64Structural` — the single mint
+/// for every seed-side crossing into a `Fnv1a64Structural`-typed carrier of the REST
+/// replay model (`RestBoundOperationInvocation.input_digest`, `RestAuthenticated.digest`).
+/// A bare `Value::Str` at either position is the model↔realization fork: fixture matching
+/// compares a record against a string and silently never matches (DESIGN §5).
+fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Fnv1a64Structural"),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+    }
+}
+
+/// Witness export: lets the tests crate pin `rest_auth_identity_value`'s authenticated arm
+/// `==`-equal to a dag-authored `RestAuthenticated { scheme, digest: content_hash_atom(…) }`,
+/// so a drift on either side of the seam (mint shape, hash family, or preimage layout) goes
+/// red instead of silently failing every authenticated fixture match.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn rest_authenticated_identity_for_witness(token: &str, ctx: &InterpContext) -> Value {
+    rest_auth_identity_value(
+        &AuthResolution::Resolved {
+            header: "Authorization".to_string(),
+            token: token.to_string(),
+        },
+        None,
+        ctx,
+    )
 }
 
 fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
@@ -7924,7 +7961,15 @@ fn rest_bound_invocation_value(
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
-            (ctx.sym("input_digest"), Value::Str(input_digest)),
+            (
+                ctx.sym("input_digest"),
+                // Grounding, gunbc#7480 Phase A: RestBoundOperationInvocation.input_digest is
+                // modelled as std.content_hash Fnv1a64Structural (the structural family member
+                // content_hash_service_inputs actually produces), not as bare text. The realization
+                // must construct the SAME shape the model declares, or fixture matching compares a
+                // record against a string and silently never matches -- the model/realization fork.
+                fnv1a64_structural_value(input_digest, ctx),
+            ),
             (
                 ctx.sym("auth_identity"),
                 rest_auth_identity_value(auth, basic_header, ctx),
@@ -10662,6 +10707,23 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveElapsedAtSubject realization seam: a process-relative monotonic
+            // reading. Only differences between two observations are meaningful.
+            arm "free_call.observed_monotonic_nanos" { "observed_monotonic_nanos" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => {
+                    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+                    let nanos = EPOCH
+                        .get_or_init(std::time::Instant::now)
+                        .elapsed()
+                        .as_nanos()
+                        .min(i64::MAX as u128) as i64;
+                    Ok(Some(Value::Int(nanos)))
+                }
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_monotonic_nanos takes exactly one boundary label".to_string(),
+                }),
+            },
+
             arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
@@ -11225,6 +11287,19 @@ macro_rules! v1_builtin_arms {
             },
             arm "free_call.test_migration_debt_known_covered_module_is_not_debt" { "test_migration_debt_known_covered_module_is_not_debt" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
+            ))),
+            arm "free_call.test_migration_legacy_behavior_ids" { "test_migration_legacy_behavior_ids" } => {
+                let ids = crate::cli_run::test_migration_legacy_behavior_ids();
+                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            arm "free_call.test_migration_witness_behavior_ids" { "test_migration_witness_behavior_ids" } => {
+                let ids = crate::cli_run::test_migration_witness_behavior_ids();
+                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            arm "free_call.test_migration_behavior_discovery_holds" { "test_migration_behavior_discovery_holds" } => Ok(Some(Value::Bool(
+                crate::cli_run::test_migration_behavior_discovery_holds(),
             ))),
             arm "free_call.test_migration_delete_guard_holds" { "test_migration_delete_guard_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_delete_guard_holds(),

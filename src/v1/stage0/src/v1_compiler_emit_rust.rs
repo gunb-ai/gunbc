@@ -6434,6 +6434,34 @@ pub fn expand_variant_payload_struct_imports(
     })
 }
 
+pub fn reference_derived_authored_source_gate_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "reference_derived_use_lines synthesizes a use-line only when the candidate name appears in this module's authored source text (NewlineIndex char_codes). A name that enters the candidate set only via inferred/type-summary over-collection — never spelled in the module — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable; variant-parent enums that appear only via from_variant still require their parent spelling OR an authored variant ctor whose parent is harvested — parent-only imports without any authored spelling of parent or variant remain a separate gap, not this gate's subject. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-presence gate is the conservative interim, not the destination.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn module_authored_source_text(
+    module: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match v1_rt::map_get(&source_indices, module.span.clone().file.clone()) {
+        Some(index) => v1_rt::chars_to_string(
+            &index.char_codes.clone(),
+            0,
+            (index.char_codes.clone().len() as i64),
+        ),
+        None => "".to_string(),
+    }
+}
+
+pub fn reference_derived_candidate_spelled_in_module(module_source: String, name: String) -> bool {
+    ((module_source.clone() != "".to_string())
+        && v1_rt::string_contains(&module_source, name.clone()))
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -6448,6 +6476,23 @@ pub fn reference_derived_use_lines(
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
     {
+        let module_source = match Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed_modules.clone().iter().cloned() {
+                if (authored_name_at(source_indices.clone(), tm.module.clone())
+                    == this_module_name.clone())
+                {
+                    __result.push(tm);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(tm) => module_authored_source_text(tm.module.clone(), source_indices.clone()),
+            None => "".to_string(),
+        };
         let value_names = unique_strings(Rc::new({
             let mut __result = Vec::new();
             for item in items.clone().iter().cloned() {
@@ -6489,16 +6534,30 @@ pub fn reference_derived_use_lines(
             emit_info.type_summaries.clone(),
             emit_info.variant_to_enum.clone(),
         );
-        let candidates = unique_strings(v1_rt::concat(
-            v1_rt::concat(
+        let candidates = Rc::new({
+            let mut __result = Vec::new();
+            for name in unique_strings(v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                    type_surface_names.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                        type_surface_names.clone(),
+                    ),
+                    field_surface_names.clone(),
                 ),
-                field_surface_names.clone(),
-            ),
-            variant_payload_structs.clone(),
-        ));
+                variant_payload_structs.clone(),
+            ))
+            .iter()
+            .cloned()
+            {
+                if reference_derived_candidate_spelled_in_module(
+                    module_source.clone(),
+                    name.clone(),
+                ) {
+                    __result.push(name);
+                }
+            }
+            __result
+        });
         let local_decl_names = Rc::new({
             let mut __result = Vec::new();
             for item in items.clone().iter().cloned() {
@@ -17320,7 +17379,9 @@ pub fn field_access_field_is_boxed(
             resolved_type(base.clone()),
             scope.type_env.clone(),
             scope.module_name.clone(),
-        );
+        )
+        .resolved
+        .clone();
         match find_child_named(
             base_struct.clone(),
             field.clone(),
@@ -18152,7 +18213,9 @@ pub fn emit_rust_expr_record_lit(
                 resolved_rt.clone(),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
-            );
+            )
+            .resolved
+            .clone();
             let variant_name = match tn.clone() {
                 Some(n) => n.clone(),
                 None => "".to_string(),

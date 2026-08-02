@@ -23,6 +23,7 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
+import std.types { NonEmptyStr }
 
 data v2_stage0_hash: Hash = v2_stage0_hash
 data v2_stage1_hash: Hash = v2_stage1_hash
@@ -113,6 +114,18 @@ type SeedHonestyDischarge {
   seed_honesty_axiom: Symbol
   diverse_double_compilation: DiverseCompilationAgreement
 }
+
+type SeedSelfVerifyReceipt {
+  claim: DiverseCompilationRun
+  check: DiverseCompilationRun
+}
+
+type SeedHonestyDecision
+  = SeedHonestyUndecided
+  | IndependentRebuildRequiredFirst { rationale: NonEmptyStr }
+  | FixedPointTrustSufficient { rationale: NonEmptyStr }
+
+data seed_honesty_decision: SeedHonestyDecision = SeedHonestyUndecided
 
 data independent_compiler_evidence_dissolve_on_note: String = "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction."
 
@@ -575,6 +588,38 @@ fn independent_compiler_pair_witness(
   match evidence {
     IndependentCompilerEvidenceUnavailable { correction: _ } =>
       Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+  }
+}
+
+fn seed_self_verify_check(
+  claim: DiverseCompilationRun,
+  check: DiverseCompilationRun
+) -> Outcome<SeedSelfVerifyReceipt> {
+  if claim.output == check.output {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_same_artifact)
+      )
+    }
+  } else if !(claim.source == check.source)
+    || !(claim.compiler == check.compiler)
+    || !(claim.output_hash.pin == check.output_hash.pin) {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_provenance_mismatch)
+      )
+    }
+  } else if !(claim.output_hash.digest == check.output_hash.digest) {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_diverged)
+      )
+    }
+  } else {
+    Accepted {
+      value: SeedSelfVerifyReceipt { claim: claim, check: check },
+      diagnostics: None
+    }
   }
 }
 

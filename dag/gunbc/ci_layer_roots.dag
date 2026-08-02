@@ -119,6 +119,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "manual suites migrate under test/claim with declared consumers; row deletes"
   },
   WitnessExclusionRow {
+    pattern: "legacy_test_behavior_disposition_acceptance_test.dag",
+    classification: QuarantineProbeExpectRed,
+    reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress. Covered dispositions must resolve to discovered floor test functions; stale, duplicate, unresolved, and unclassified identities all refuse.",
+    dissolve_on: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall"
+  },
+  WitnessExclusionRow {
     pattern: "observation_raw_print_retirement_acceptance_test.dag",
     classification: QuarantineProbeExpectRed,
     reason: "PAIRED with a known_red_probe_entries row (Phase 0(b) admission: an excluded witness must name an EXECUTING consumer — the exclusion alone is orphaned enrollment, and the discovery corpus refuses it as UnexecutedDeferredWitness). Measured: shipping the exclusion without the probe row reded the floor with exactly that cause, which is the invariant working. The acceptance test for roadmap node observation-raw-print-retirement, red BY DESIGN: it asserts observation_emit_frontier_count() == 0 (that node's handback, 'the classified zero-residue progress census') while the census counts 8 unmigrated emit sites today. It is the discriminating validation on that node's WorkItemExecutionContract, so dispatch's Verify segment has a target that can actually FAIL — without a red validation somewhere, a green Verify proves only that the plumbing ran. Not a broken witness and not relaxable: the only edit that may green it is migrating the sites it counts.",
@@ -129,6 +135,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: QuarantineProbeExpectRed,
     reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node 2-scm-p1-proof-kernel, RED BY DESIGN while the derived KernelAcceptanceCapability frontier is nonzero. The first slice supplies the bounded candidate-generation model check; the one public fold, occurrence dedup, context transport, commuting squares, batch invariance, n-way safety, order honesty, all seven closure certificates, and data-only invariant extension stay missing until executing scenarios establish them. The validation cannot pass on zero progress and is bound directly by scm_p1_proof_kernel_execution_contract.",
     dissolve_on: "every required KernelAcceptanceCapability has a passing executing scenario — then this expect-red row and its known_red_probe_entries row delete in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall"
+  },
+  WitnessExclusionRow {
+    pattern: "seed_honesty_discharge_unavailable_test.dag",
+    classification: QuarantineProbeExpectRed,
+    reason: "PAIRED with the known_red_probe_entries row below. This is the discriminating closing validation for roadmap node v1-seed-honesty-decision. Its three self-verify falsification poles hold, but the aggregate is RED BY DESIGN while seed_honesty_decision is SeedHonestyUndecided, because the node's handback requires both a check that can fail and the operator decision recorded either way. Binding only the green three-pole check would report completion over the missing decision.",
+    dissolve_on: "the operator records IndependentRebuildRequiredFirst or FixedPointTrustSufficient with a nonempty rationale; this row and its known_red_probe_entries row delete in that same change, promoting the unchanged closing witness to ordinary discovery"
   },
   WitnessExclusionRow {
     pattern: "glob_discovery.dag",
@@ -766,8 +778,10 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_ingest_round_trip_holds"),
   probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds"),
   probe_red(entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag", f: "compiler_closure_scoped_ingest_module_count_ok_holds"),
+  probe_red(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag", f: "legacy_test_behavior_unclassified_frontier_is_zero"),
   probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
-  probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds")
+  probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds"),
+  probe_red(entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag", f: "v1_seed_honesty_decision_closing_contract_holds")
 ]
 
 fn known_red_probe_roster() -> List<ScheduleWitnessEntry> {
@@ -1051,6 +1065,30 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "fallback_arm_census_self_applies_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds (lens self-application: zero AnswersOnOpen on fallback_arm_census.dag)",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
+    function: "vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution",
+    reason: "review 47233 (PR #7620): this is the exact ScheduleWitnessEntry lens_contract_vacuity.consumer_witness binds to (src/v2/lens/enforcement/contract.dag). Before this row it had no scheduled CI path at all — test/claim/long/ is excluded from per-PR discovery and no falsifier row named it — so consumer_observed_for resolved WitnessOnly with no execution behind it, exactly the DESIGN §5 specification-without-execution class the vacuity lens exists to catch, recreated in its own binding. Measured 88996ms cold (17.8x the 5s fast-lane budget): corpus_ingest_fixture_module ingests a live snapshot through tokenize->parse_module->normalize->resolve, genuine corpus-breadth cost, not a fixture-shaped one-off",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
+    function: "vacuity_consumer_witness_fixture_ingest_is_accepted_by_execution",
+    reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): proves the fixture module itself ingests Accepted before the gap witness relies on that precondition. Measured 88996ms cold, same corpus_ingest_fixture_module cost as its sibling",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
+    function: "vacuity_consumer_witness_derived_equals_classified_sites",
+    reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): the live-derived-sites vs classified-sites reconciliation. Measured 32423ms cold",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
+    function: "vacuity_consumer_witness_shadows_reconcile_with_admitted_exceptions",
+    reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): live-shadow reconciliation against admitted exceptions. Measured 29754ms cold",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   }
 ]
 

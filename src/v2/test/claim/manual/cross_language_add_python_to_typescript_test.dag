@@ -103,7 +103,7 @@ test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
   }
 }
 
-test fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
+test fn cross_language_emit_inhabitant_neutralization_refuses_underived_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: ts_target_model()
@@ -112,8 +112,9 @@ test fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: ts_target_model()) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: d } =>
+              d.head.reason == ^infer_grounding_not_derived
+            Accepted { value: _, diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -133,7 +134,7 @@ test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
         Accepted { value: python_core, diagnostics: _ } =>
           python_core == python_emitted_add_fn_node()
 
-            && cross_language_compile_on_real_tree_holds(parse_tree: python_parse_tree)
+            && cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: python_parse_tree)
             && ts_effect_io_emit_holds()
         Rejected { diagnostics: _ } => false
       }
@@ -141,15 +142,15 @@ test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
   }
 }
 
-fn cross_language_compile_on_real_tree_holds(parse_tree: ParseTree) -> Bool {
+fn cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: ParseTree) -> Bool {
   match cross_language_compile(
     parse_tree: parse_tree,
     source_model: python_target_model(),
     target_model: ts_target_model()
   ) {
-    Accepted { value: ts_source, diagnostics: _ } =>
-      string_is_empty(s: ts_source.carried) == false
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^infer_grounding_not_derived
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -175,7 +176,7 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
   CrossLanguageEmitMatrixRow {
     source_language: ^python,
     target_language: ^typescript,
-    status: ChainProven {}
+    status: ChainFailsClosedAtCheck { check: ^infer_grounding_not_derived }
   },
 
   CrossLanguageEmitMatrixRow {
