@@ -374,8 +374,15 @@ test fn harness_revision_tracks_expectation_not_probe_id_alone() -> Bool {
     Present { value: mislabel } =>
       match active_probe_row(probe: call_shape_green_probe) {
         Present { value: green } =>
-          v1_compile_harness_revision(probe: call_mislabel_red_probe, expectation: mislabel.expectation)
-            != v1_compile_harness_revision(probe: call_mislabel_red_probe, expectation: green.expectation)
+          let mislabel_harness = v1_compile_harness_revision(
+            probe: call_mislabel_red_probe,
+            expectation: mislabel.expectation,
+          )
+          let green_harness = v1_compile_harness_revision(
+            probe: call_mislabel_red_probe,
+            expectation: green.expectation,
+          )
+          mislabel_harness != green_harness
         Absent => false
       }
     Absent => false
@@ -433,9 +440,14 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
       empty: 0,
       cons: fn(acc, d) {
         match d {
-          MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: gate } =>
-            acc + count(probes)
-              + if (gate as String) == "gap-analysis-sec-11-item-9-finite-classification" { 0 } else { 1000 }
+          MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: gate } => {
+            let gate_penalty = if (gate as String) == "gap-analysis-sec-11-item-9-finite-classification" {
+              0
+            } else {
+              1000
+            }
+            acc + count(probes) + gate_penalty
+          }
         }
       },
     ) == 7
