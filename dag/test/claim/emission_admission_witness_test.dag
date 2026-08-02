@@ -1,0 +1,217 @@
+module test.claim.emission_admission_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.bootstrap { CompilerStage, Emit, Infer }
+import gunbc.generated_artifact { GeneratedArtifact, CiYamlArtifact }
+import gunbc.emission_admission {
+  PipelinePhase, RegenPhase, FloorPhase,
+  EmissionSurface, Stage0SeedFile, GeneratedArtifactSurface, StageProduced, UpstreamRefusalEmbedded,
+  StageStamp, StageContribution,
+  DeclaredChangeSet, DeclaredChangeEvidence, AuthorExplicit,
+  EmissionDelta,
+  EmissionAdmissionVerdict,
+  AdmittedDeclared, RefusedRegression, RefusedUndeclaredDelta, RefusedStageMismatch,
+  UpstreamRefusalMaskedAtEmit,
+  EmissionAdmissionVerdictFold, emission_admission_verdict_fold,
+  emission_admission_is_admitted,
+  admit_emission_delta,
+}
+import gunbc.guarantee_measurement {
+  MeasurementRevision, ContentFingerprint, GitRevision,
+}
+
+data emission_admission_witness_scope_note: String = "SYNTHETIC ROWS ONLY, by the Stage 1 charter: these witnesses prove admit_emission_delta discriminates declared moves from regressions using invented fingerprints and surfaces — no PR facts, no regen execution, no warm receipts. When Stage 2 lands declared_change_set_from_pr_facts, real rows execute through THIS vocabulary and these witnesses stay as permanent regression controls (design sec 7)."
+
+fn fp(tag: String) -> ContentFingerprint {
+  ContentFingerprint { digest: content_hash_atom(value: tag as NonEmptyStr) }
+}
+
+fn synth_stamp(stage: CompilerStage, with_upstream_refusal: Bool) -> StageStamp {
+  let base = [
+    StageProduced { stage: stage },
+  ]
+  let contribs = if with_upstream_refusal {
+    concat(
+      base,
+      [UpstreamRefusalEmbedded { origin_stage: Infer, diagnostic: "CompilerError planted at emit" as NonEmptyStr }],
+    )
+  } else {
+    base
+  }
+  StageStamp {
+    phase: RegenPhase,
+    contributions: contribs,
+    substrate_revision: fp(tag: "substrate-a"),
+  }
+}
+
+fn synth_declared(
+  surfaces: List<EmissionSurface>,
+  stages: List<CompilerStage>
+) -> DeclaredChangeSet {
+  DeclaredChangeSet {
+    subject_revision: GitRevision { commit: "0000000000000000000000000000000000000000" as CommitSha },
+    allowed_stage_moves: stages,
+    allowed_surface_moves: surfaces,
+    derivation_evidence: AuthorExplicit { reason: "synthetic witness fixture" as NonEmptyStr },
+  }
+}
+
+fn synth_delta(
+  surface: EmissionSurface,
+  before_tag: String,
+  after_tag: String,
+  stage: CompilerStage,
+  with_upstream_refusal: Bool
+) -> EmissionDelta {
+  EmissionDelta {
+    surface: surface,
+    before: fp(tag: before_tag),
+    after: fp(tag: after_tag),
+    stage_stamp: synth_stamp(stage: stage, with_upstream_refusal: with_upstream_refusal),
+    observed_at_phase: RegenPhase,
+  }
+}
+
+test fn no_op_delta_admits_even_without_surface_declaration() -> Bool {
+  let surface = GeneratedArtifactSurface { artifact: CiYamlArtifact }
+  let delta = synth_delta(
+    surface: surface,
+    before_tag: "same",
+    after_tag: "same",
+    stage: Emit,
+    with_upstream_refusal: false,
+  )
+  let declared = synth_declared(surfaces: [], stages: [])
+  emission_admission_is_admitted(v: admit_emission_delta(delta: delta, declared: declared))
+}
+
+test fn declared_surface_and_stage_move_admits() -> Bool {
+  let surface = GeneratedArtifactSurface { artifact: CiYamlArtifact }
+  let declared = synth_declared(
+    surfaces: [surface],
+    stages: [Emit],
+  )
+  let delta = synth_delta(
+    surface: surface,
+    before_tag: "before",
+    after_tag: "after",
+    stage: Emit,
+    with_upstream_refusal: false,
+  )
+  match admit_emission_delta(delta: delta, declared: declared) {
+    AdmittedDeclared { delta: _, matched_declaration: _ } => true
+    RefusedRegression { delta: _, cause: _ } => false
+    RefusedUndeclaredDelta { delta: _, missing_from_declaration: _ } => false
+    RefusedStageMismatch { delta: _, declared_stages: _, observed_stage: _ } => false
+    RefusedStaleSubstrate { stamp: _, cause: _ } => false
+  }
+}
+
+test fn undeclared_surface_move_refuses() -> Bool {
+  let surface = GeneratedArtifactSurface { artifact: CiYamlArtifact }
+  let declared = synth_declared(surfaces: [], stages: [Emit])
+  let delta = synth_delta(
+    surface: surface,
+    before_tag: "before",
+    after_tag: "after",
+    stage: Emit,
+    with_upstream_refusal: false,
+  )
+  match admit_emission_delta(delta: delta, declared: declared) {
+    AdmittedDeclared { delta: _, matched_declaration: _ } => false
+    RefusedRegression { delta: _, cause: _ } => false
+    RefusedUndeclaredDelta { delta: _, missing_from_declaration: s } =>
+      match s {
+        GeneratedArtifactSurface { artifact: CiYamlArtifact } => true
+        _ => false
+      }
+    RefusedStageMismatch { delta: _, declared_stages: _, observed_stage: _ } => false
+    RefusedStaleSubstrate { stamp: _, cause: _ } => false
+  }
+}
+
+test fn stage_mismatch_refuses_when_emit_not_declared() -> Bool {
+  let surface = GeneratedArtifactSurface { artifact: CiYamlArtifact }
+  let declared = synth_declared(surfaces: [surface], stages: [Infer])
+  let delta = synth_delta(
+    surface: surface,
+    before_tag: "before",
+    after_tag: "after",
+    stage: Emit,
+    with_upstream_refusal: false,
+  )
+  match admit_emission_delta(delta: delta, declared: declared) {
+    AdmittedDeclared { delta: _, matched_declaration: _ } => false
+    RefusedRegression { delta: _, cause: _ } => false
+    RefusedUndeclaredDelta { delta: _, missing_from_declaration: _ } => false
+    RefusedStageMismatch { delta: _, declared_stages: _, observed_stage: os } => os == Emit
+    RefusedStaleSubstrate { stamp: _, cause: _ } => false
+  }
+}
+
+test fn upstream_refusal_with_byte_move_refuses_regression() -> Bool {
+  let surface = Stage0SeedFile { rel_path: "src/v1/stage0/src/lib.rs" as FilePath }
+  let declared = synth_declared(surfaces: [surface], stages: [Emit, Infer])
+  let delta = synth_delta(
+    surface: surface,
+    before_tag: "before",
+    after_tag: "after",
+    stage: Emit,
+    with_upstream_refusal: true,
+  )
+  match admit_emission_delta(delta: delta, declared: declared) {
+    AdmittedDeclared { delta: _, matched_declaration: _ } => false
+    RefusedRegression { delta: _, cause: c } => c == UpstreamRefusalMaskedAtEmit
+    RefusedUndeclaredDelta { delta: _, missing_from_declaration: _ } => false
+    RefusedStageMismatch { delta: _, declared_stages: _, observed_stage: _ } => false
+    RefusedStaleSubstrate { stamp: _, cause: _ } => false
+  }
+}
+
+fn verdict_tag(v: EmissionAdmissionVerdict) -> Int {
+  emission_admission_verdict_fold(
+    v: v,
+    fold: EmissionAdmissionVerdictFold {
+      admitted_declared: fn(_, _) { 1 },
+      refused_regression: fn(_, _) { 2 },
+      refused_undeclared: fn(_, _) { 3 },
+      refused_stage_mismatch: fn(_, _, _) { 4 },
+      refused_stale_substrate: fn(_, _) { 5 },
+    },
+  )
+}
+
+test fn verdict_fold_discriminates_every_arm() -> Bool {
+  let surface = GeneratedArtifactSurface { artifact: CiYamlArtifact }
+  let declared = synth_declared(surfaces: [surface], stages: [Emit])
+  let moving = synth_delta(
+    surface: surface,
+    before_tag: "b",
+    after_tag: "a",
+    stage: Emit,
+    with_upstream_refusal: false,
+  )
+  let no_op = synth_delta(
+    surface: surface,
+    before_tag: "x",
+    after_tag: "x",
+    stage: Emit,
+    with_upstream_refusal: false,
+  )
+  verdict_tag(v: admit_emission_delta(delta: moving, declared: declared)) == 1
+    && verdict_tag(
+      v: admit_emission_delta(
+        delta: moving,
+        declared: synth_declared(surfaces: [], stages: [Emit]),
+      ),
+    ) == 3
+    && verdict_tag(
+      v: admit_emission_delta(
+        delta: moving,
+        declared: synth_declared(surfaces: [surface], stages: [Infer]),
+      ),
+    ) == 4
+    && verdict_tag(v: admit_emission_delta(delta: no_op, declared: synth_declared(surfaces: [], stages: []))) == 1
+}
