@@ -1,11 +1,10 @@
 module tools.merge_admission_capture
 
-import std.types { FilePath, GitRef, NonEmptyStr, String }
+import std.types { FilePath, GitRef, NonEmptyStr, String, Bool }
 import extdeps.git.inspect
 import extdeps.git.object_store {
   GitObjectId,
-  git_sha1_object_id,
-  git_sha256_object_id,
+  git_object_id_from_untagged_hex,
 }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -21,6 +20,8 @@ import gunbc.merge_admission_subject {
 }
 
 data merge_admission_capture_profile_note: String = "This wet capture entry imports only the walk-attempt/tested-subject identity carrier plus typed git/filesystem services. Merge classification, commit-roster hashing, and CI failure taxonomy are deliberately downstream and absent from this closure. The entry runs in the plan's typed pre-walk claim_batch subprocess, so its evaluator arena dies before the ordinary floor and discovery cannot retain it."
+
+data merge_admission_capture_refusal_wire_note: String = "TYPED CAUSE ACROSS THE CLAIM BOUNDARY (review 47517, §5). The pre-walk transport's channel is a Bool claim result, which cannot carry the refusal cause — so the capture core returns the typed sum below, and the Bool projection durably writes the labeled cause to target/merge-admission-capture-refusal.txt (the floor-population-budget-refusal.txt pattern) BEFORE returning false; claim_executor's run_pre_walk_execution reads that wire into its located PRE-WALK-REFUSED line. The wire is best-effort-cleared at capture start so a stale cause from a prior attempt cannot masquerade as this attempt's; a false result with no wire is itself a distinct reported state (child died before writing), never silently folded into a generic failure."
 
 fn env_var(name: NonEmptyStr) -> String? {
   let env = shell.Env.Get(name: name)
@@ -70,41 +71,57 @@ fn current_event_name() -> String {
   }
 }
 
-fn observed_git_object_id(raw: String) -> GitObjectId? {
-  let hex = trim(raw)
-  if hex.length() == 40 {
-    git_sha1_object_id(hex: hex)
-  } else if hex.length() == 64 {
-    git_sha256_object_id(hex: hex)
-  } else {
-    none
+type TestedSubjectCaptureRefusal
+  = CaptureAttemptIdentityAbsent
+  | CaptureHeadCommitRefused
+  | CaptureBaseTreeRefused
+  | CaptureBaseTreeOidUnparseable { observed: String }
+  | CaptureAttemptDirClearRefused
+  | CaptureAttemptDirCreateRefused
+  | CaptureSubjectWriteRefused
+
+type TestedSubjectCapture
+  = TestedSubjectCaptured
+  | TestedSubjectCaptureRefused { cause: TestedSubjectCaptureRefusal }
+
+fn tested_subject_capture_refusal_label(cause: TestedSubjectCaptureRefusal) -> String {
+  match cause {
+    CaptureAttemptIdentityAbsent => "attempt-identity-absent"
+    CaptureHeadCommitRefused => "head-commit-refused"
+    CaptureBaseTreeRefused => "base-tree-refused"
+    CaptureBaseTreeOidUnparseable { observed: observed } => concat("base-tree-oid-unparseable observed=", observed)
+    CaptureAttemptDirClearRefused => "attempt-dir-clear-refused"
+    CaptureAttemptDirCreateRefused => "attempt-dir-create-refused"
+    CaptureSubjectWriteRefused => "subject-write-refused"
   }
 }
 
-func capture_tested_subject() -> Bool {
+data merge_admission_capture_refusal_wire_relpath: String = "target/merge-admission-capture-refusal.txt"
+
+func tested_subject_capture() -> TestedSubjectCapture {
   match current_walk_attempt_id() {
-    Absent => false
+    Absent => TestedSubjectCaptureRefused { cause: CaptureAttemptIdentityAbsent }
     Present { value: attempt_id } =>
       let head = git.Inspect.HeadCommit()
       if !head.success {
-        false
+        TestedSubjectCaptureRefused { cause: CaptureHeadCommitRefused }
       } else {
         let base = git.Inspect.ShowTree(ref: tested_checkout_base_ref(event_name: current_event_name()))
         if !base.success {
-          false
+          TestedSubjectCaptureRefused { cause: CaptureBaseTreeRefused }
         } else {
-          match observed_git_object_id(raw: base.tree) {
-            Absent => false
+          match git_object_id_from_untagged_hex(hex: base.tree) {
+            Absent => TestedSubjectCaptureRefused { cause: CaptureBaseTreeOidUnparseable { observed: trim(base.tree) } }
             Present { value: base_tree } =>
               let root = git.Inspect.Toplevel().path as String
               let attempt_dir = merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
               let cleared = shell.Remove.RecursiveForce(path: attempt_dir as FilePath)
               if !cleared.success {
-                false
+                TestedSubjectCaptureRefused { cause: CaptureAttemptDirClearRefused }
               } else {
                 let ready = shell.Mkdir.Parents(path: attempt_dir as FilePath)
                 if !ready.success {
-                  false
+                  TestedSubjectCaptureRefused { cause: CaptureAttemptDirCreateRefused }
                 } else {
                   let subject = TestedSubject {
                     attempt_id: attempt_id,
@@ -112,14 +129,41 @@ func capture_tested_subject() -> Bool {
                     base_ref: merge_admission_merge_base_ref,
                     base_tree_hash: base_tree,
                   }
-                  Filesystem.Write(
+                  let written = Filesystem.Write(
                     path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id),
                     content: render_tested_subject_wire(subject: subject)
-                  ).success
+                  )
+                  if written.success {
+                    TestedSubjectCaptured
+                  } else {
+                    TestedSubjectCaptureRefused { cause: CaptureSubjectWriteRefused }
+                  }
                 }
               }
           }
         }
       }
+  }
+}
+
+func capture_refusal_wire_path() -> FilePath {
+  let root = git.Inspect.Toplevel().path as String
+  concat(concat(root, "/"), merge_admission_capture_refusal_wire_relpath) as FilePath
+}
+
+func write_capture_refusal_wire(cause: TestedSubjectCaptureRefusal) -> Bool {
+  Filesystem.Write(
+    path: capture_refusal_wire_path(),
+    content: concat(concat("cause=", tested_subject_capture_refusal_label(cause: cause)), "\n")
+  ).success
+}
+
+func capture_tested_subject() -> Bool {
+  let _ = shell.Remove.RecursiveForce(path: capture_refusal_wire_path())
+  match tested_subject_capture() {
+    TestedSubjectCaptured => true
+    TestedSubjectCaptureRefused { cause: cause } =>
+      let _ = write_capture_refusal_wire(cause: cause)
+      false
   }
 }

@@ -2991,9 +2991,20 @@ fn run_pre_walk_execution(
     );
     match result {
         Ok(Value::Bool(true)) => Ok(()),
-        Ok(Value::Bool(false)) => Err(format!(
-            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: typed child returned false"
-        )),
+        Ok(Value::Bool(false)) => {
+            // The claim channel is a Bool, so the typed cause crosses as the durable
+            // refusal wire the capture writes before returning false (the
+            // floor-population-budget-refusal.txt pattern; merge_admission_capture
+            // merge_admission_capture_refusal_wire_note). Wire-absent is its own
+            // reported state, never folded into a generic failure.
+            let cause = match fs::read_to_string("target/merge-admission-capture-refusal.txt") {
+                Ok(wire) => format!("capture refusal wire: {}", wire.trim()),
+                Err(_) => "typed child returned false with no capture-refusal wire (child died before writing its cause)".to_string(),
+            };
+            Err(format!(
+                "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: {cause}"
+            ))
+        }
         Ok(other) => Err(format!(
             "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport returned {other:?}, expected Bool"
         )),
