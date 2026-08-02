@@ -1,8 +1,0 @@
-module v2.test.lens_cited_symbol_resolution.cited_symbol_resolution_test
-
-import v2.lens.cited_symbol_resolution { cited_symbol_resolution_violation_count }
-import v2.std.logic { Bool }
-
-test fn cited_symbol_resolution_lens_is_green_on_live_corpus() -> Bool {
-  cited_symbol_resolution_violation_count() == 0
-}

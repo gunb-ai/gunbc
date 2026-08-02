@@ -1,0 +1,40 @@
+module test.claim.long.cited_symbol_resolution_witness_test
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.doc_graph_roots {
+  hand_authored_doc_declaration_refs,
+  hand_authored_works_refs_all_resolve,
+}
+import v2.lens.cited_symbol_resolution { cited_symbol_resolution_violation_count }
+import v2.lens.module_graph { module_declaration_facts_live }
+import v2.std.decl_index { decl_facts }
+import v2.std.decl_ref_resolution { declaration_ref_resolution_census }
+
+data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-symbol resolution witnesses — hand-authored DeclarationRef census over live decl_facts + module_declaration_facts. Long lane only: each witness pays one full witness-layer decl_facts scan (operator 5s fast-lane rule 2026-07-12)."
+
+test fn cited_symbol_hand_authored_binds_all_resolve() -> Bool {
+  hand_authored_works_refs_all_resolve()
+}
+
+test fn cited_symbol_hand_authored_census_is_zero_refusals() -> Bool {
+  let facts = decl_facts(pool_roots: witness_layer_roots)
+  let modules = module_declaration_facts_live(pool_roots: witness_layer_roots)
+  let census = declaration_ref_resolution_census(
+    refs: hand_authored_doc_declaration_refs(),
+    facts: facts,
+    modules: modules
+  )
+  census.module_absent_count == 0
+    && census.declaration_absent_count == 0
+    && census.field_absent_count == 0
+    && census.ambiguous_count == 0
+    && census.resolved_count == length(xs: hand_authored_doc_declaration_refs())
+}
+
+test fn cited_symbol_resolution_lens_is_green_on_live_corpus() -> Bool {
+  cited_symbol_resolution_violation_count() == 0
+}
+
+test fn doc_graph_works_refs_all_resolve() -> Bool {
+  hand_authored_works_refs_all_resolve()
+}

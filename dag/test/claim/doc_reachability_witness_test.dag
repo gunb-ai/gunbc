@@ -5,7 +5,6 @@ import gunbc.doc_graph_roots {
   hand_authored_slugs_all_unregistered,
   hand_authored_plan_slug_is_unregistered,
   hand_authored_works_refs_all_carry_symbols,
-  hand_authored_works_refs_all_resolve,
   hand_authored_bind_works,
   hand_authored_bind_identities_unique,
   hand_authored_key_collision_count,
@@ -49,10 +48,6 @@ data works_construction_wall_note: String = "The empty-works RED control and the
 
 test fn doc_graph_works_refs_carry_symbols() -> Bool {
   return hand_authored_works_refs_all_carry_symbols()
-}
-
-test fn doc_graph_works_refs_all_resolve() -> Bool {
-  return hand_authored_works_refs_all_resolve()
 }
 
 test fn doc_graph_bind_identities_unique() -> Bool {

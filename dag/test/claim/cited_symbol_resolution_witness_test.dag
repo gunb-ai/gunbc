@@ -1,18 +1,13 @@
 module test.claim.cited_symbol_resolution_witness_test
 
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.doc_graph_roots {
-  hand_authored_doc_declaration_refs,
-  hand_authored_works_refs_all_resolve,
-}
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
-import v2.lens.module_graph { module_declaration_facts_live }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.std.decl_index { DeclFact, FnItem, decl_facts }
 import v2.std.decl_ref_resolution {
   resolve_declaration_ref,
   cited_declaration_ref_refusal_count,
-  declaration_ref_resolution_census,
   DeclarationRefResolved,
   DeclarationRefModuleAbsent,
   DeclarationRefDeclarationAbsent,
@@ -20,7 +15,12 @@ import v2.std.decl_ref_resolution {
   DeclarationRefAmbiguous,
 }
 
-data cited_symbol_resolution_witness_note: String = "G1 feature:cited-symbol-resolution — resolve_declaration_ref is the single authority over decl_facts + module_declaration_facts: exactly one declaration_identity, or one of four typed refusal arms (module absent / declaration absent / field absent / ambiguous). Positive controls use live production symbols and the hand-authored doc bind census; RED controls plant each refusal arm on synthetic refs without mutating the corpus."
+data cited_symbol_resolution_witness_note: String = "G1 feature:cited-symbol-resolution — fast per-PR controls over cached witness-layer decl_facts + module_declaration_facts rows, or synthetic fixtures. Corpus-scale hand-authored census witnesses live in test.claim.long.cited_symbol_resolution_witness_test (operator 5s fast-lane rule)."
+
+data cited_symbol_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
+
+data cited_symbol_witness_layer_modules: List<ModuleDeclarationFact> =
+  module_declaration_facts_live(pool_roots: witness_layer_roots)
 
 test fn cited_symbol_resolves_node_kind_authority() -> Bool {
   match resolve_declaration_ref(
@@ -29,8 +29,8 @@ test fn cited_symbol_resolves_node_kind_authority() -> Bool {
       decl_name: "NodeKind",
       field: WholeDeclaration,
     },
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: cited_symbol_witness_layer_facts,
+    modules: cited_symbol_witness_layer_modules
   ) {
     DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
     DeclarationRefModuleAbsent { reference: _ } => false
@@ -43,8 +43,8 @@ test fn cited_symbol_resolves_node_kind_authority() -> Bool {
 test fn cited_symbol_resolves_decl_ref_constructor() -> Bool {
   match resolve_declaration_ref(
     ref: decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: cited_symbol_witness_layer_facts,
+    modules: cited_symbol_witness_layer_modules
   ) {
     DeclarationRefResolved { declaration_identity: _ } => true
     DeclarationRefModuleAbsent { reference: _ } => false
@@ -61,8 +61,8 @@ test fn cited_symbol_refuses_module_absent() -> Bool {
       decl_name: "any",
       field: WholeDeclaration,
     },
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: cited_symbol_witness_layer_facts,
+    modules: cited_symbol_witness_layer_modules
   ) {
     DeclarationRefModuleAbsent { reference: _ } => true
     DeclarationRefResolved { declaration_identity: _ } => false
@@ -79,8 +79,8 @@ test fn cited_symbol_refuses_declaration_absent() -> Bool {
       decl_name: "NoSuchDecl_G1_RED",
       field: WholeDeclaration,
     },
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: cited_symbol_witness_layer_facts,
+    modules: cited_symbol_witness_layer_modules
   ) {
     DeclarationRefDeclarationAbsent { reference: _ } => true
     DeclarationRefResolved { declaration_identity: _ } => false
@@ -114,7 +114,7 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
       field: WholeDeclaration,
     },
     facts: facts,
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    modules: cited_symbol_witness_layer_modules
   ) {
     DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
     DeclarationRefResolved { declaration_identity: _ } => false
@@ -131,8 +131,8 @@ test fn cited_symbol_refuses_named_field_absent() -> Bool {
       decl_name: "NodeKind",
       field: NamedField { field_name: "NoSuchField_G1_RED" },
     },
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: cited_symbol_witness_layer_facts,
+    modules: cited_symbol_witness_layer_modules
   ) {
     DeclarationRefFieldAbsent { reference: _ } => true
     DeclarationRefResolved { declaration_identity: _ } => false
@@ -142,28 +142,7 @@ test fn cited_symbol_refuses_named_field_absent() -> Bool {
   }
 }
 
-test fn cited_symbol_hand_authored_binds_all_resolve() -> Bool {
-  hand_authored_works_refs_all_resolve()
-}
-
-test fn cited_symbol_hand_authored_census_is_zero_refusals() -> Bool {
-  let facts = decl_facts(pool_roots: witness_layer_roots)
-  let modules = module_declaration_facts_live(pool_roots: witness_layer_roots)
-  let census = declaration_ref_resolution_census(
-    refs: hand_authored_doc_declaration_refs(),
-    facts: facts,
-    modules: modules
-  )
-  census.module_absent_count == 0
-    && census.declaration_absent_count == 0
-    && census.field_absent_count == 0
-    && census.ambiguous_count == 0
-    && census.resolved_count == length(xs: hand_authored_doc_declaration_refs())
-}
-
 test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
-  let facts = decl_facts(pool_roots: witness_layer_roots)
-  let modules = module_declaration_facts_live(pool_roots: witness_layer_roots)
   let dangling = [
     DeclarationRef {
       module_path: "v2.std.node",
@@ -171,5 +150,9 @@ test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
       field: WholeDeclaration,
     },
   ]
-  cited_declaration_ref_refusal_count(refs: dangling, facts: facts, modules: modules) == 1
+  cited_declaration_ref_refusal_count(
+    refs: dangling,
+    facts: cited_symbol_witness_layer_facts,
+    modules: cited_symbol_witness_layer_modules
+  ) == 1
 }
