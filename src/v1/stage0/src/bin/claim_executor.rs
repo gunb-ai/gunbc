@@ -5900,12 +5900,11 @@ fn run_walk(
                         // merge_admission_refresh_refusal_wire_note — the same pattern
                         // as the pre-walk capture). Read fresh per failure; absent wire
                         // is its own reported state.
-                        let stage_cause = match fs::read_to_string(
-                            MERGE_ADMISSION_REFRESH_REFUSAL_WIRE,
-                        ) {
-                            Ok(wire) => format!("; refusal wire: {}", wire.trim()),
-                            Err(_) => String::new(),
-                        };
+                        let stage_cause =
+                            match fs::read_to_string(MERGE_ADMISSION_REFRESH_REFUSAL_WIRE) {
+                                Ok(wire) => format!("; refusal wire: {}", wire.trim()),
+                                Err(_) => String::new(),
+                            };
                         println!(
                             "{}",
                             paint(
