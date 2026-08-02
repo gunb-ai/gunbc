@@ -343,8 +343,6 @@ pub type CommentId = String;
 
 pub type SignalKey = String;
 
-pub type ContentHash = String;
-
 pub type WorkflowProducerId = String;
 
 pub type WorkflowObserverId = String;

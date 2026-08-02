@@ -163,6 +163,9 @@ import gunbc.roadmap_validation_oracle {
   validation_oracle_observe_from_source,
   validation_oracle_set_observe,
   validation_oracle_gate,
+  validation_oracle_parse_pinned_identity_wire,
+  validation_oracle_parse_pinned_revision_wire,
+  validation_oracle_pin_recorded,
   validation_verdict_key,
   validation_verdict_detail,
   validation_receipt_json,
@@ -170,7 +173,13 @@ import gunbc.roadmap_validation_oracle {
 import extdeps.git { shape_git_rev_parse_head_args }
 import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
-import std.types { ContentHash }
+import std.content_hash {
+  ContentHash,
+  serialize_content_hash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  as_content_hash_structural,
+}
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
@@ -195,7 +204,6 @@ import extdeps.llm.cli {
   claude_workspace_trust_seeded,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { content_hash_atom, content_hash_combine }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -544,7 +552,7 @@ fn belt_persist_oracle_pin_for_instance(
           node_id: node.node,
           attempt_key: attempt_key,
         ),
-        content: identity as String,
+        content: serialize_content_hash(hash: identity) as String,
       )
       let revision_write = Filesystem.Write(
         path: dispatch_attempt_oracle_revision_path_for_instance(
@@ -1276,11 +1284,11 @@ fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
 
 fn belt_uuid_hex32(node_id: String, probed_at: String) -> String {
   concat(
-    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)) as String,
-    content_hash_combine(
+    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)).digest as String,
+    content_hash_combine_structural(
       left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)),
       right: content_hash_atom(value: belt_session_uuid_salt),
-    ) as String,
+    ).digest as String,
   )
 }
 
@@ -2232,17 +2240,23 @@ fn belt_verify_attempt_for_instance(
               contract: node.execution,
               worktree: worktree,
             )
-            let pinned_identity = belt_read_or_empty(
+            let pinned_identity_wire = belt_read_or_empty(
               path: dispatch_current_attempt_oracle_identity_path_for_instance(
                 instance: instance,
                 node_id: node_id,
               ),
             )
-            let pinned_revision = belt_read_or_empty(
+            let pinned_revision_wire = belt_read_or_empty(
               path: dispatch_current_attempt_oracle_revision_path_for_instance(
                 instance: instance,
                 node_id: node_id,
               ),
+            )
+            let pinned_identity = validation_oracle_parse_pinned_identity_wire(
+              text: pinned_identity_wire,
+            )
+            let pinned_revision = validation_oracle_parse_pinned_revision_wire(
+              text: pinned_revision_wire,
             )
             let pin_refusal = belt_read_or_empty(
               path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
@@ -2250,13 +2264,25 @@ fn belt_verify_attempt_for_instance(
                 node_id: node_id,
               ),
             )
-            let pin_recorded = pinned_identity != "" && pinned_revision != ""
+            let pin_recorded = validation_oracle_pin_recorded(
+              identity: pinned_identity,
+              revision: pinned_revision,
+            )
             let verdict = match validation_oracle_gate(
               contract: node.execution,
               observations: observations,
               pin_recorded: pin_recorded,
-              expected_identity: pinned_identity as ContentHash,
-              revision: pinned_revision as VersionIdentity,
+              expected_identity: match pinned_identity {
+                Present { value: identity } => identity
+                Absent =>
+                  as_content_hash_structural(
+                    structural: content_hash_atom(value: "oracle-pin-unreadable")
+                  )
+              },
+              revision: match pinned_revision {
+                Present { value: revision } => revision
+                Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
+              },
               pin_read_detail: if pin_refusal == "" {
                 "no oracle identity was recorded for this attempt at dispatch"
               } else {

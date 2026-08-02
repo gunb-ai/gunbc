@@ -1,7 +1,8 @@
 module test.claim.roadmap_static_site_witness
 
 import std.content_hash { content_hash_atom }
-import std.types { NonEmptyStr, ContentHash }
+import std.types { NonEmptyStr }
+import std.content_hash { ContentHash }
 import std.disposition { Scaffold, Terminal }
 import extdeps.http.server { media_type_wire_label }
 import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }

@@ -1,7 +1,8 @@
 module gunbc.roadmap_model
 
-import std.types { NonEmptyStr, ContentHash }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.types { NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
+import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap_status {
   RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
   TicketFields, line_ticket,
@@ -115,18 +116,18 @@ data roadmap_acceptance_receipt_note: String = "Acceptance is a durable typed fa
 
 type RoadmapAcceptanceReceipt {
   node: RoadmapNodeId
-  criteria_digest: ContentHash
+  criteria_digest: Fnv1a64Structural
   red_control: RedControlEvidence
   handback: HandbackEvidence
   accepted_by: NonEmptyStr
   accepted_on: NonEmptyStr
 }
 
-fn roadmap_criteria_digest(t: TicketFields) -> ContentHash {
-  content_hash_tagged(
+fn roadmap_criteria_digest(t: TicketFields) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
     tag: "roadmap-acceptance-criteria-v1",
-    payload: content_hash_combine(
-      left: content_hash_combine(
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
         left: content_hash_atom(value: t.brief as NonEmptyStr),
         right: content_hash_atom(value: t.red_control as NonEmptyStr),
       ),
@@ -135,7 +136,7 @@ fn roadmap_criteria_digest(t: TicketFields) -> ContentHash {
   )
 }
 
-fn node_criteria_digest(rn: RoadmapNode) -> ContentHash? {
+fn node_criteria_digest(rn: RoadmapNode) -> Fnv1a64Structural? {
   match line_ticket(item: rn.line) {
     Present { value } => Present { value: roadmap_criteria_digest(t: value) }
     Absent => Absent
@@ -151,7 +152,7 @@ fn receipt_matches_node(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> Bool {
   r.node == rn.node
     && receipt_evidence_complete(r: r)
     && match node_criteria_digest(rn: rn) {
-      Present { value } => value == r.criteria_digest
+      Present { value } => content_hash_eq_structural(left: value, right: r.criteria_digest)
       Absent => false
     }
 }

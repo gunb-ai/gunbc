@@ -38,6 +38,7 @@ import gunbc.commit_workflow {
   commit_writer_refused_artifact_classification_receipt,
   admit_commit_writer,
 }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.git.object_store {
   GitPath,
   GitPathDecoded,
@@ -100,11 +101,11 @@ fn fallback_path() -> GitPath {
 }
 
 fn blob_oid() -> GitObjectId {
-  GitSha1ObjectId { digest: "1111111111111111111111111111111111111111" }
+  GitSha1ObjectId { digest: Sha1Digest { hex: "1111111111111111111111111111111111111111" as Sha1DigestHex } }
 }
 
 fn other_blob_oid() -> GitObjectId {
-  GitSha1ObjectId { digest: "2222222222222222222222222222222222222222" }
+  GitSha1ObjectId { digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" as Sha1DigestHex } }
 }
 
 fn source_artifact() -> Artifact {

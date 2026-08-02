@@ -13,7 +13,7 @@ The sharpest such assumption is **acyclicity**. Rust crates (and Go packages) fo
 
 ## 2. The locked shared interface (recap — owned by the home, not redefined here)
 
-- `CompilationUnit { members, interface (R5-derived), deps (R5-derived), artifact (opaque agnostic id) }`
+- `CompilationUnit { id (the one agnostic logical identity), members, interface (R5-derived), deps (R5-derived) }` — **no separate agnostic artifact identity** (corrected 2026-08-01, review on gunbc#7480; the `artifact` field was a second independently writable representation of `id` and was deleted from the carrier)
 - `CompilationUnitId` — agnostic.
 - `partition_fold(module_dag, Map<ModuleId, CompilationUnitId>) -> List<CompilationUnit>` — the shared kernel; sole producer of `interface`/`deps` from boundary-crossing module edges.
 - Per-target **R4 validity-predicate interface** — realized once per target.
@@ -51,7 +51,7 @@ A C `.c` file plus everything it transitively `#include`s **is** the translation
 
 ### 3.4 Artifact spelling
 
-`CompilationUnit.artifact` (the opaque agnostic id) realizes, for C, as: the unit's `.o` object file, produced by `cc -c <unit>.c -o <unit>.o`, and the **link step** that combines every unit's `.o` (plus any unit whose `deps` are satisfied only at link time, e.g. a forward-declared function called across a link-cyclic pair — see §4) into the final binary via `cc <unit1>.o <unit2>.o ... -o <program>`. This composes with the existing `cc` host transport already registered for the cpp/C target (`#6650`) — no new transport, just a multi-file argv instead of single-file.
+`CompilationUnit.id` — the unit's one agnostic logical identity — realizes, for C, through `c_translation_unit_basename` (the reversible, hostile-character-safe spelling that also derives the `.h` and `.c` names) as: the unit's `.o` object file, produced by `cc -c <unit>.c -o <unit>.o`, and the **link step** that combines every unit's `.o` (plus any unit whose `deps` are satisfied only at link time, e.g. a forward-declared function called across a link-cyclic pair — see §4) into the final binary via `cc <unit1>.o <unit2>.o ... -o <program>`. This composes with the existing `cc` host transport already registered for the cpp/C target (`#6650`) — no new transport, just a multi-file argv instead of single-file.
 
 ## 4. C R4 — the validity predicate (the key contrast with Rust)
 
@@ -83,7 +83,7 @@ Precedent for the execution harness: `#6650`'s cpp-model-through-`cc` offline wi
 
 - The `.h`/`.c` split needs no shape change: it is C R3's rendering of the existing `members`(input)/`interface`(derived-output) fields, which is precisely what those fields were specified to mean (§3.1).
 - The link-cyclic axis needs no shape change: it is a C R4 predicate that accepts what Rust R4's predicate refuses, over the identical `CompilationUnit` values — R4 was designated per-target for exactly this reason, and the contrast is clean, not forced.
-- `artifact` as an opaque id needs no shape change: it realizes as `.o` + link-step for C exactly as it realizes as crate-name + `rustc` invocation for Rust (§3.4).
+- `id` as the single agnostic identity needs no shape change: C derives `.h`/`.c`/`.o` from it via `c_translation_unit_basename` and adds the link step, exactly as Rust derives a crate name from the same `id` for its `rustc` invocation (§3.4). Neither spelling is stored on the unit.
 
 **One non-blocking call-out to the home author (not a shape gap, a richness requirement):** `partition_fold`'s derivation of `interface` must be able to carry a **full type definition**, not only a declared name/signature, for any type crossing a unit boundary by value (§3.1). If the home's current draft models `interface` as a flat set of symbol names, C R3 has nothing correct to lower into a header for by-value crossings and would have to reconstruct the definition out-of-band — that *would* be a contortion. Since `interface`'s carrier was specified as an opaque `Node` (not a name list), this is expected to already be expressible; flagging so the home author can confirm the derivation actually walks to full definitions where the crossing is by-value, not just symbol identity. No escalation filed — this is a confirmable detail, not a discovered shape break.
 
@@ -106,5 +106,5 @@ Precedent for the execution harness: `#6650`'s cpp-model-through-`cc` offline wi
 
 - **Code against (shared home, sibling lane authors):** `CompilationUnit` + `partition_fold(module_dag, Map) -> List<CompilationUnit>` + `Provenance` + the R4 validity-predicate interface.
 - **Own (this doc / C realization):** C R3 (`.h`/`.c` split render, `#include`/forward-decl cross-reference render, include-closure identity, `.o`+link artifact render) + C R4 (permissive-cyclic predicate; refuse only on cyclic by-value type containment or split-definition).
-- **Do not:** bake acyclicity into the shared shape or into `partition_fold`; hand-set `interface`/`deps`; put a `.o`/header filename in the shared `artifact` field; treat C's "permissive" R4 as "no R4" (the by-value-cycle and split-definition refusals are real and must fire).
+- **Do not:** bake acyclicity into the shared shape or into `partition_fold`; hand-set `interface`/`deps`; store a `.o`/header filename on the shared unit — derive it from `id` via `c_translation_unit_basename`; treat C's "permissive" R4 as "no R4" (the by-value-cycle and split-definition refusals are real and must fire).
 - **Prove by execution (§5/§7):** the four discriminating witnesses in §5 — 1-unit, N-unit-acyclic, N-unit-**cyclic** (the load-bearing one), and a genuinely-invalid partition's typed refusal — each run through the real `cc` transport, not asserted structurally.

@@ -343,7 +343,7 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
 data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch and worktree carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash; the Claude provider also derives its required session-id from that stamp, while Codex mints its own persisted thread identity and does not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt."
 
 fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
-  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr) as String
+  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr).digest as String
 }
 
 fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {

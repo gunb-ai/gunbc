@@ -1,6 +1,7 @@
 module test.claim.roadmap_authority
 
-import std.types { ContentHash, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.types { NonEmptyStr, String }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
 import gunbc.roadmap_authority {
   roadmap_authority_for,
@@ -92,9 +93,9 @@ fn active_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
 fn active_edges() -> List<RoadmapEdge> { active_roadmap_edges() }
 
 fn tnid(s: String) -> RoadmapNodeId { s }
-fn tchash(s: String) -> ContentHash { s }
+fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
 
-fn digest_or_zero(rn: RoadmapNode) -> ContentHash {
+fn digest_or_zero(rn: RoadmapNode) -> Fnv1a64Structural {
   match node_criteria_digest(rn: rn) {
     Present { value } => value
     Absent => tchash(s: "0000000000000000")
@@ -105,7 +106,7 @@ fn declared_node(id: String) -> List<RoadmapNode> {
   nodes() |> filter(n => n.node == id)
 }
 
-fn receipt_fixture(node: String, digest: ContentHash) -> RoadmapAcceptanceReceipt {
+fn receipt_fixture(node: String, digest: Fnv1a64Structural) -> RoadmapAcceptanceReceipt {
   RoadmapAcceptanceReceipt {
     node: tnid(s: node),
     criteria_digest: digest,

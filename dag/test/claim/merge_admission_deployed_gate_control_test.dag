@@ -3,10 +3,9 @@ module test.claim.merge_admission_deployed_gate_control
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data control_base_b0: ContentHash = "merge-admission-deployed-gate-control-base-b0"
-data control_base_b1: ContentHash = "merge-admission-deployed-gate-control-base-b1"
-data control_roster_r0: ContentHash = "merge-admission-deployed-gate-control-roster-r0"
-
+data control_base_b0: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-deployed-gate-control-base-b0")
+data control_base_b1: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-deployed-gate-control-base-b1")
+data control_roster_r0: GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-deployed-gate-control-roster-r0")
 data control_stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   pr_number: Present { value: 6100 },
   head_sha: "feedfacefeedfacefeedfacefeedfacefeedface",
