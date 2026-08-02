@@ -45,7 +45,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, bare_name_miss_diagnostic
+  env_with_type_variable_bindings, bare_name_miss_diagnostic, type_ref_has_binding_authority
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -582,12 +582,31 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
               _ => resolved
             }
           } else { resolved }
-          let is_optional = n.return_cardinality == CardOptional
-          let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
-          let unlisted_diags = if masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: authored_name(env: env, node: n)) == false {
-            [make_error_node(diagnostic: UnlistedImportUse { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
-          } else { [] }
-          NodeResolveResult { resolved: final_resolved, diagnostics: unlisted_diags }
+          let type_name = authored_name(env: env, node: n)
+          // import-strip §14.3 / DESIGN §5: at a USE-SITE type position (masked), a
+          // lookup hit without binding authority must REFUSE like an absent-from-pool
+          // miss — never fabricate Product(<anon>). Admission =
+          // type_ref_has_binding_authority (interim: import/local; N2 swaps the
+          // predicate body to containment). Honest asymmetry: values/fns bind
+          // namespace-only since #7178; types refuse-unless-imported until N2.
+          // Grounding (masked=false) keeps the prior peel: defining-module structure
+          // is that module's import responsibility. Keep the pool hit's structure
+          // while emitting UnresolvedType — debt admission covers this class only.
+          if masked && type_ref_has_binding_authority(env: env, name: type_name) == false && is_kernel_type(name: type_name) == false && is_kernel_type(name: qualified_last_segment(name: type_name)) == false {
+            let is_optional = n.return_cardinality == CardOptional
+            let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
+            NodeResolveResult {
+              resolved: final_resolved,
+              diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: type_name, span: n.span), module_name: module_name)]
+            }
+          } else {
+            let is_optional = n.return_cardinality == CardOptional
+            let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
+            let unlisted_diags = if masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: type_name) == false {
+              [make_error_node(diagnostic: UnlistedImportUse { name: type_name, span: n.span }, module_name: module_name)]
+            } else { [] }
+            NodeResolveResult { resolved: final_resolved, diagnostics: unlisted_diags }
+          }
         Absent =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0

@@ -8431,7 +8431,18 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let env_cache = env_result.cache
   let env_diags = env_result.diagnostics
 
-  let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+  // UnresolvedType must not abort typecheck via emptied func_env (items: [], local
+  // sigs gone) — that yields declared:[] / Primitive(callee) cascades. UnlistedImportUse
+  // is already excluded from is_error_diagnostic for the same reason; treat UnresolvedType
+  // the same at this boundary. Debt/expect-red admission still governs whether the
+  // diagnostic *blocks* compile-clean / resolve / run; this only preserves func_env.
+  // Diagnostics remain in env_diags either way.
+  let env_errors = env_diags |> filter(d =>
+    match d.diagnostic {
+      UnresolvedType { name: _, span: _ } => false
+      _ => is_error_diagnostic(d: d.diagnostic)
+    }
+  )
   let seed_diags = builtin_kernel_seed_diagnostics()
   if env_errors |> count > 0 {
     return TypecheckModuleResult {

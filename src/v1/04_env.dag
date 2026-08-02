@@ -1,6 +1,6 @@
 module v1.compiler.infer_env
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType, qualified_last_segment }
 
 import std.types { SourceSpan, is_kernel_type }
 
@@ -845,6 +845,23 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
       }
     Absent => Absent
   }
+}
+
+data type_ref_binding_authority_note: String = "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (str_bindings ∪ ancestry_str_bindings, plus qualified-leaf). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here."
+
+fn type_ref_binding_authority_import_local(env: TypeEnv, name: String) -> Bool {
+  if map_has(m: env.str_bindings, key: name) || map_has(m: env.ancestry_str_bindings, key: name) {
+    true
+  } else if contains(name, ".") {
+    let leaf = qualified_last_segment(name: name)
+    map_has(m: env.str_bindings, key: leaf) || map_has(m: env.ancestry_str_bindings, key: leaf)
+  } else {
+    false
+  }
+}
+
+fn type_ref_has_binding_authority(env: TypeEnv, name: String) -> Bool {
+  type_ref_binding_authority_import_local(env: env, name: name)
 }
 
 fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node? {

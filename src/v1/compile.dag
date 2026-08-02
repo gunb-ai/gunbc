@@ -12,7 +12,7 @@ import v1.std.core {
   import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
   Resolved, CompilerError, TypeVariable, VarBindingKind, CallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, ExprErrorKind,
-  OccurrenceTransportViolation,
+  OccurrenceTransportViolation, UnresolvedType,
   ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
   arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
   UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
@@ -907,8 +907,17 @@ type EmittableGraph sole_constructor {
   graph: ResolvedGraph
 }
 
+data emittable_unresolved_type_admit_note: String = "Emit/self-compile treats UnresolvedType as non-blocking so the frozen type-ref debt population does not stop regen_stage0. New-sites-refuse for UnresolvedType remains on compile-clean / resolve / run via type_ref_unresolved_admitted_for_compile_clean (cli_run). Dissolve-on: model that admission predicate in .dag so emit and floor share one ErrorNode-taking authority (charter: regen shares identity-grain debt admission)."
+
+fn is_emittable_blocking_diagnostic(d: ErrorNode) -> Bool {
+  match d.diagnostic {
+    UnresolvedType { name: _, span: _ } => false
+    _ => is_interpreter_blocking_diagnostic(d: d.diagnostic)
+  }
+}
+
 fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
-  let blocking = resolved.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+  let blocking = resolved.diagnostics |> filter(d => is_emittable_blocking_diagnostic(d: d))
   if blocking |> count > 0 {
     none
   } else {
@@ -1128,7 +1137,7 @@ fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget,
 
 fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
   diagnostics
-    |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+    |> filter(d => is_emittable_blocking_diagnostic(d: d))
     |> map(d => {
       let span = diagnostic_to_span(d: d.diagnostic)
       concat(
