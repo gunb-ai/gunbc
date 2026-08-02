@@ -42,7 +42,7 @@ data standing_intent_complexity_repo_wide: StandingIntent = {
   desired_scope: whole_corpus_scope,
   required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "v1.compiler.infer.build_type_env")] },
   default_mode: v2.lens.enforcement.vocab.Blocking,
-  required_consumer: v2.lens.enforcement.vocab.Exact { kind: FloorGate },
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
@@ -74,7 +74,7 @@ data standing_intent_lens_closure_question_zero: StandingIntent = {
   desired_scope: whole_corpus_scope,
   required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
   default_mode: v2.lens.enforcement.vocab.Blocking,
-  required_consumer: v2.lens.enforcement.vocab.Exact { kind: FloorGate },
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: false,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
