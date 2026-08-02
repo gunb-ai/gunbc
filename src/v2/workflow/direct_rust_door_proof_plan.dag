@@ -1,48 +1,55 @@
 module v2.workflow.direct_rust_door_proof_plan
 
 import std.realization_schedule {
+  NoFinalizationDeclared,
+  NoWalkFinalization,
   Runnable,
   RunnableSingleClaim,
+  WalkPlan,
   runnable_resource_profile_negligible
 }
 import std.types { List }
 
-fn direct_rust_door_proof_batches() -> List<List<Runnable>> {
-  [[
-    RunnableSingleClaim {
-      entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
-      function: "witness_direct_rust_door_provenanced_artifact_holds",
-      profile: runnable_resource_profile_negligible()
-    },
-    RunnableSingleClaim {
-      entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
-      function: "witness_written_provenanced_rust_artifact_holds",
-      profile: runnable_resource_profile_negligible()
-    },
-    RunnableSingleClaim {
-      entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
-      function: "witness_written_rust_source_roundtrip_holds",
-      profile: runnable_resource_profile_negligible()
-    },
-    RunnableSingleClaim {
-      entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
-      function: "witness_seed_closure_poison_refuses_v2_producer_reds",
-      profile: runnable_resource_profile_negligible()
-    },
-    RunnableSingleClaim {
-      entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
-      function: "witness_v2_closure_excludes_seed_emit_rust_holds",
-      profile: runnable_resource_profile_negligible()
-    },
-    RunnableSingleClaim {
-      entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_contract_test.dag",
-      function: "witness_production_admissions_close_contract_holds",
-      profile: runnable_resource_profile_negligible()
-    },
-    RunnableSingleClaim {
-      entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_acceptance_test.dag",
-      function: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
-      profile: runnable_resource_profile_negligible()
-    }
-  ]]
+fn direct_rust_door_proof_batches() -> WalkPlan<NoWalkFinalization> {
+  WalkPlan {
+    batches: [[
+      RunnableSingleClaim {
+        entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
+        function: "witness_direct_rust_door_provenanced_artifact_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
+        function: "witness_written_provenanced_rust_artifact_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
+        function: "witness_written_rust_source_roundtrip_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
+        function: "witness_seed_closure_poison_refuses_v2_producer_reds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
+        function: "witness_v2_closure_excludes_seed_emit_rust_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_contract_test.dag",
+        function: "witness_production_admissions_close_contract_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_acceptance_test.dag",
+        function: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
+        profile: runnable_resource_profile_negligible()
+      }
+    ]],
+    finalization: NoFinalizationDeclared {},
+    on_success_stages: []
+  }
 }
