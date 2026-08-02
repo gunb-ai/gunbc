@@ -8,9 +8,7 @@ import extdeps.systemd.systemctl {
   systemctl_enable_argv,
   systemctl_restart_argv,
   systemctl_disable_now_argv,
-  systemctl_show_load_state_argv,
 }
-import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 
 data live_deploy_operations_note: String = "Package-ensure and systemd unit-upsert argv spellings are derived from extdeps operation transport rows (dpkg.Package.Status, apt.PackageManager.Install, systemd.Systemctl daemon-reload/enable/restart/disable) — not hand-concatenated shell in emit.dag. Per shell-emission-model CUT: no minted EnsurePackage/UnitUpsert verb; emit composes inline If-Not-ExitZero(dpkg -s) then apt-install intent from these authorities. Privileged ops prefix sudo -n at the orchestration leaf (deploy access grant), never a root shell."
 
@@ -64,18 +62,4 @@ fn systemctl_disable_now_command(unit: NonEmptyStr, privileged: Bool) -> String 
   } else {
     argv_join(argv: systemctl_disable_now_argv(unit: unit))
   }
-}
-
-data systemctl_disable_now_if_present_note: String = "Runtime retirement is idempotent only for the explicit systemd LoadState=not-found observation. The show command is a separate fail-fast assignment: if systemctl cannot read state, set -e refuses before the conditional; every observed state other than not-found must execute disable --now successfully. This replaces the former `2>/dev/null || true`, which collapsed permission, manager, and stop failures into convergence while a runtime could remain active."
-
-fn systemctl_disable_now_if_present_command(unit: NonEmptyStr, privileged: Bool) -> String {
-  join([
-    "_gunbc_load_state=$(",
-    argv_join(argv: systemctl_show_load_state_argv(unit: unit)),
-    "); if [ \"$_gunbc_load_state\" != \"",
-    systemd_unit_load_state_not_found_wire as String,
-    "\" ]; then ",
-    systemctl_disable_now_command(unit: unit, privileged: privileged),
-    "; fi",
-  ], "")
 }

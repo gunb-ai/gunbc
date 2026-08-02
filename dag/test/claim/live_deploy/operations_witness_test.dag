@@ -17,7 +17,6 @@ import gunbc.live_deploy.operations {
   systemctl_enable_command,
   systemctl_restart_command,
   systemctl_disable_now_command,
-  systemctl_disable_now_if_present_command,
   privileged_command,
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
@@ -147,11 +146,6 @@ test fn witness_systemctl_enable_command_matches_transport() -> Bool {
 
 test fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
   systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl disable --now gunbc-roadmap.service"
-}
-
-test fn witness_systemctl_disable_now_if_present_is_fail_closed_except_not_found() -> Bool {
-  let command = systemctl_disable_now_if_present_command(unit: gunbc_roadmap_unit_name, privileged: true)
-  command == "_gunbc_load_state=$(systemctl show gunbc-roadmap.service --property=LoadState --value); if [ \"$_gunbc_load_state\" != \"not-found\" ]; then sudo -n systemctl disable --now gunbc-roadmap.service; fi"
 }
 
 test fn witness_privileged_command_prefixes_sudo_n() -> Bool {
