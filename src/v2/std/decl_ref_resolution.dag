@@ -51,16 +51,16 @@ fn decl_facts_matching_qualified_name(qn: String, facts: List<DeclFact>) -> List
 }
 
 fn declaration_identities_from_facts(facts: List<DeclFact>) -> List<DeclarationIdentity> {
-  map(facts, f: fn(fact) { declaration_identity_from_fact(fact: fact) })
+  list_map(xs: facts, f: fn(fact) { declaration_identity_from_fact(fact: fact) })
 }
 
 fn decl_ref_named_field_present(ref: DeclarationRef, fact: DeclFact) -> Bool {
   match ref.field {
     WholeDeclaration => true
-    NamedField { field_name: fn } =>
+    NamedField { field_name: f } =>
       any(
         xs: node_labeled_child_edges(node: fact.node),
-        predicate: fn(e) { named_edge_sort_key(e: e) == fn as String }
+        predicate: fn(e) { named_edge_sort_key(e: e) == f as String }
       )
   }
 }
