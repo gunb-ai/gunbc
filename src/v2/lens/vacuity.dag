@@ -490,50 +490,6 @@ fn classify_unified_test_claim_vacuity(
   }
 }
 
-type VacuityClassificationRefusal
-  = FnDeclarationCollectionUnavailable { target: Symbol }
-
-type VacuityClassificationOutcome
-  = Classified { evidence: VacuityEvidence }
-  | Refused { cause: VacuityClassificationRefusal }
-
-fn vacuity_fn_decl_collection_ceiling_blocks_target(target: Symbol) -> Bool {
-  target == ^vacuity_self_application_probe
-}
-
-fn classify_bool_witness_outcome(witness: BoolWitness) -> VacuityClassificationOutcome {
-  let source_text = filesystem_read(path: witness.entry).content
-  match vacuity_witness_ingest_source_text(
-    source_text: source_text,
-    file: vacuity_bool_witness_file_anchor
-  ) {
-    Rejected { diagnostics: _ } => Classified { evidence: Unknown }
-    Accepted { value: module_root, diagnostics: _ } =>
-      match vacuity_find_fn_decl_by_name(
-        decls: vacuity_collect_fn_decls(root: module_root, acc: Empty),
-        name: witness.function
-      ) {
-        Present { value: fn_decl } =>
-          Classified { evidence: vacuity_bool_witness_fn_body_evidence(fn_decl: fn_decl) }
-        Absent =>
-          if vacuity_fn_decl_collection_ceiling_blocks_target(target: witness.function) {
-            Refused { cause: FnDeclarationCollectionUnavailable { target: witness.function } }
-          } else {
-            Classified { evidence: Unknown }
-          }
-      }
-  }
-}
-
-fn vacuity_classification_outcome_is_refused_fn_collection_unavailable(o: VacuityClassificationOutcome) -> Bool {
-  match o {
-    Refused { cause } => match cause {
-      FnDeclarationCollectionUnavailable { target: _ } => true
-    }
-    Classified { evidence: _ } => false
-  }
-}
-
 fn vacuity_carries_parallel_authority_debt(
   lhs_provenance: TestClaimOperandProvenance,
   rhs_provenance: TestClaimOperandProvenance
