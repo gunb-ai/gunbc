@@ -839,10 +839,10 @@ fn provider_disposition_four_arm_matrix() {
     )
     .expect("legacy write");
     match probe(&legacy_dir, &subject) {
-        CacheProbeResult::Hit(hit) => {
-            assert!(hit.parts.is_none(), "legacy v1 must not expose v3 parts");
+        CacheProbeResult::LegacyMigrationRequired { format_version } => {
+            assert_eq!(format_version, 1, "legacy v1 must not expose v3 parts");
         }
-        other => panic!("legacy v1 must probe as Hit without parts: {other:?}"),
+        other => panic!("legacy v1 must probe as LegacyMigrationRequired: {other:?}"),
     }
     with_cache_env(&legacy_dir, || {
         let decodes_before = decode_count();
@@ -922,11 +922,8 @@ fn legacy_v1_cold_rebuild_migrates_to_v3_on_fresh_index() {
         resolve_entry_with_index(&index, &a).expect("legacy cold rebuild must migrate");
     });
     match probe(&legacy_dir, &subject) {
-        CacheProbeResult::Hit(hit) => {
-            assert!(
-                hit.parts.is_some(),
-                "cold rebuild must replace legacy v1 with v3 on disk"
-            );
+        CacheProbeResult::Hit(_hit) => {
+            // cold rebuild replaced legacy v1 with v3 on disk
         }
         other => panic!("expected v3 probe after migration: {other:?}"),
     }

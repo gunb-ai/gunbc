@@ -74,12 +74,16 @@ pub struct CacheProbeHit {
     pub payload_byte_count: u64,
     pub stored_request_key: Hash,
     pub stored_semantic_digest: Hash,
-    pub parts: Option<FaithfulResolvedGraphProbeParts>,
+    pub parts: FaithfulResolvedGraphProbeParts,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheProbeResult {
     Hit(CacheProbeHit),
+    /// Pre-v3 on-disk row for this subject — cold rebuild is the migration disposition.
+    LegacyMigrationRequired {
+        format_version: u32,
+    },
     Miss,
     RejectedHit(CacheRejectReason),
 }
@@ -531,10 +535,7 @@ fn approved_probe_matches_v3_header(
     if header.stored_semantic_digest != approved.stored_semantic_digest {
         return Err(CacheRejectReason::BackendKeyMalformed);
     }
-    let approved_parts = approved
-        .parts
-        .as_ref()
-        .ok_or(CacheRejectReason::BackendKeyMalformed)?;
+    let approved_parts = &approved.parts;
     let header_parts = faithful_parts_from_v3_header(header);
     if header_parts.graph_digest != approved_parts.graph_digest
         || header_parts.graph_bytes != approved_parts.graph_bytes
@@ -656,14 +657,9 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
         if subject != expected_subject {
             return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
         }
-        return CacheProbeResult::Hit(CacheProbeHit {
+        return CacheProbeResult::LegacyMigrationRequired {
             format_version: version,
-            payload_integrity_digest: String::new(),
-            payload_byte_count: 0,
-            stored_request_key: String::new(),
-            stored_semantic_digest: String::new(),
-            parts: None,
-        });
+        };
     }
     if version != FORMAT_VERSION {
         return CacheProbeResult::Miss;
@@ -682,7 +678,7 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
                 payload_byte_count: parsed.payload_len,
                 stored_request_key: parsed.stored_request_key,
                 stored_semantic_digest: parsed.stored_semantic_digest,
-                parts: Some(parts),
+                parts,
             })
         }
         Err(reason) => CacheProbeResult::RejectedHit(reason),

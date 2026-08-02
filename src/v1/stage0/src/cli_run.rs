@@ -10251,54 +10251,46 @@ fn resolved_graph_from_sources_with_index(
                             faithful_probe_unavailable_gap()
                         ));
                     }
-                    if probe.parts.is_none() {
-                        // LegacyFormatMiss: pre-v3 on-disk encoding (v1 today). Cold
-                        // rebuild is the declared migration disposition — never route
-                        // through the v3 provider probe.
-                    } else {
-                        let parts = probe
-                            .parts
-                            .as_ref()
-                            .expect("v3 faithful probe carries parts");
-                        let closure_digest = closure_content_digest(&sources);
-                        let compiler_digest = transform_content_digest();
-                        match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
-                            &closure_digest,
-                            &compiler_digest,
-                            &probe.stored_request_key,
-                            &probe.stored_semantic_digest,
-                            &parts,
-                        ) {
-                            Ok(ResolvedGraphProviderOutcome::Hit) => {
-                                match cross_process_lookup_verified_probe(
-                                    &cache_root,
-                                    &subject,
-                                    &probe,
-                                ) {
-                                    CacheLookupResult::Hit(cached) => {
-                                        return Ok(install_cross_process_materialization_hit(
-                                            index, &subject, cached, memo_share,
-                                        ));
-                                    }
-                                    CacheLookupResult::RejectedHit(reason) => {
-                                        return Err(cross_process_cache_integrity_refusal(reason));
-                                    }
-                                    CacheLookupResult::Miss => {
-                                        return Err(
-                                            "resolved-graph-cache lookup miss after provider hit"
-                                                .to_string(),
-                                        );
-                                    }
+                    let parts = &probe.parts;
+                    let closure_digest = closure_content_digest(&sources);
+                    let compiler_digest = transform_content_digest();
+                    match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
+                        &closure_digest,
+                        &compiler_digest,
+                        &probe.stored_request_key,
+                        &probe.stored_semantic_digest,
+                        parts,
+                    ) {
+                        Ok(ResolvedGraphProviderOutcome::Hit) => {
+                            match cross_process_lookup_verified_probe(&cache_root, &subject, &probe)
+                            {
+                                CacheLookupResult::Hit(cached) => {
+                                    return Ok(install_cross_process_materialization_hit(
+                                        index, &subject, cached, memo_share,
+                                    ));
+                                }
+                                CacheLookupResult::RejectedHit(reason) => {
+                                    return Err(cross_process_cache_integrity_refusal(reason));
+                                }
+                                CacheLookupResult::Miss => {
+                                    return Err(
+                                        "resolved-graph-cache lookup miss after provider hit"
+                                            .to_string(),
+                                    );
                                 }
                             }
-                            Ok(other) => {
-                                if let Some(msg) = provider_integrity_refusal_message(other) {
-                                    return Err(msg);
-                                }
-                            }
-                            Err(e) => return Err(e),
                         }
+                        Ok(other) => {
+                            if let Some(msg) = provider_integrity_refusal_message(other) {
+                                return Err(msg);
+                            }
+                        }
+                        Err(e) => return Err(e),
                     }
+                }
+                CacheProbeResult::LegacyMigrationRequired { .. } => {
+                    // Cold rebuild is the declared migration disposition — never route
+                    // legacy on-disk rows through the v3 provider probe.
                 }
                 CacheProbeResult::RejectedHit(CacheRejectReason::ContentDigestMismatch) => {
                     return Err(cross_process_cache_integrity_refusal(
