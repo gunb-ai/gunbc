@@ -1,0 +1,214 @@
+module gunbc.legacy_test_behavior_disposition
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+
+type LegacyTestBehavior {
+  source_file: FilePath
+  test_fn: NonEmptyStr
+}
+
+type TestBehaviorWitness {
+  entry: FilePath
+  test_fn: NonEmptyStr
+}
+
+type LegacyTestBehaviorDisposition
+  = CoveredByWitness {
+      behavior: LegacyTestBehavior,
+      witness: TestBehaviorWitness,
+      distinguishing_failure: NonEmptyStr,
+    }
+  | DeleteLowValueBehavior {
+      behavior: LegacyTestBehavior,
+      reason: NonEmptyStr,
+    }
+  | RetainedNonMigratableBehavior {
+      behavior: LegacyTestBehavior,
+      reason: NonEmptyStr,
+      dissolution_trigger: NonEmptyStr,
+    }
+
+data legacy_test_behavior_disposition_authority_note: String = "BEHAVIOR GRAIN, NOT MODULE GRAIN. The discovered subject is every line-anchored #[test] function under src/v1/tests/src, identified by its source file and function name. A disposition is admitted only for one such identity. CoveredByWitness additionally names a discovered `test fn` in the floor corpus and the failure that distinguishes equivalent coverage from a guard that merely stays quiet. DeleteLowValueBehavior and RetainedNonMigratableBehavior require their own reasons; retention also names its dissolution trigger and never authorizes deletion. Unclassified is deliberately not a disposition someone can author: it is the set difference discovered legacy behaviors minus disposition identities. Completion is that difference at zero together with no stale or duplicate dispositions and no unresolved witness reference. No numeric snapshot is an oracle."
+
+data legacy_test_behavior_discovery_scaffold_note: String = "DECLARED SEED SCAFFOLD for the missing list-directory effect. cli_run.rs test_migration_behavior_discovery_report walks the legacy Rust test directory and the existing corpus_dag_files floor population, extracting line-anchored #[test] and `test fn` declarations. Discovery errors make test_migration_behavior_discovery_holds false rather than fabricating an empty population. The identities cross the interpreter boundary as canonical source-file::function strings; this module derives the same serialization from typed fields. DISSOLVES WHEN .dag can enumerate repository files and read the parsed Rust/DAG declaration trees directly; the graph and its dispositions stay, only the host observation bridge deletes."
+
+fn legacy_test_behavior_id(behavior: LegacyTestBehavior) -> String {
+  concat(concat(behavior.source_file as String, "::"), behavior.test_fn as String)
+}
+
+fn test_behavior_witness_id(witness: TestBehaviorWitness) -> String {
+  concat(concat(witness.entry as String, "::"), witness.test_fn as String)
+}
+
+fn legacy_test_disposition_behavior(
+  disposition: LegacyTestBehaviorDisposition,
+) -> LegacyTestBehavior {
+  match disposition {
+    CoveredByWitness { behavior, witness: _, distinguishing_failure: _ } => behavior
+    DeleteLowValueBehavior { behavior, reason: _ } => behavior
+    RetainedNonMigratableBehavior {
+      behavior,
+      reason: _,
+      dissolution_trigger: _,
+    } => behavior
+  }
+}
+
+fn legacy_test_disposition_id(disposition: LegacyTestBehaviorDisposition) -> String {
+  legacy_test_behavior_id(
+    behavior: legacy_test_disposition_behavior(disposition: disposition),
+  )
+}
+
+fn legacy_test_disposition_same_behavior(
+  a: LegacyTestBehaviorDisposition,
+  b: LegacyTestBehaviorDisposition,
+) -> Bool {
+  legacy_test_disposition_id(disposition: a) == legacy_test_disposition_id(disposition: b)
+}
+
+fn legacy_test_disposition_witness_resolves(
+  disposition: LegacyTestBehaviorDisposition,
+  discovered_witnesses: List<String>,
+) -> Bool {
+  match disposition {
+    CoveredByWitness { behavior: _, witness, distinguishing_failure: _ } =>
+      discovered_witnesses |> any(id => id == test_behavior_witness_id(witness: witness))
+    DeleteLowValueBehavior { behavior: _, reason: _ } => true
+    RetainedNonMigratableBehavior {
+      behavior: _,
+      reason: _,
+      dissolution_trigger: _,
+    } => true
+  }
+}
+
+fn legacy_test_behavior_unclassified(
+  discovered_legacy: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<String> {
+  discovered_legacy
+    |> filter(id => !(dispositions |> any(d => legacy_test_disposition_id(disposition: d) == id)))
+}
+
+fn legacy_test_behavior_stale_dispositions(
+  discovered_legacy: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => !(discovered_legacy |> any(id => id == legacy_test_disposition_id(disposition: d))))
+}
+
+fn legacy_test_behavior_duplicate_dispositions(
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => count(
+      dispositions
+        |> filter(peer => legacy_test_disposition_same_behavior(a: peer, b: d))
+    ) > 1)
+}
+
+fn legacy_test_behavior_unresolved_witness_dispositions(
+  discovered_witnesses: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => !legacy_test_disposition_witness_resolves(
+      disposition: d,
+      discovered_witnesses: discovered_witnesses,
+    ))
+}
+
+fn legacy_test_behavior_disposition_graph_holds(
+  discovery_holds: Bool,
+  discovered_legacy: List<String>,
+  discovered_witnesses: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> Bool {
+  discovery_holds
+    && count(legacy_test_behavior_unclassified(
+      discovered_legacy: discovered_legacy,
+      dispositions: dispositions,
+    )) == 0
+    && count(legacy_test_behavior_stale_dispositions(
+      discovered_legacy: discovered_legacy,
+      dispositions: dispositions,
+    )) == 0
+    && count(legacy_test_behavior_duplicate_dispositions(dispositions: dispositions)) == 0
+    && count(legacy_test_behavior_unresolved_witness_dispositions(
+      discovered_witnesses: discovered_witnesses,
+      dispositions: dispositions,
+    )) == 0
+}
+
+data c_compilation_unit_leaf_behavior: LegacyTestBehavior = LegacyTestBehavior {
+  source_file: "src/v1/tests/src/c_compilation_unit_witness_test.rs" as FilePath,
+  test_fn: "c_compilation_unit_leaf_witness_green_by_execution" as NonEmptyStr,
+}
+
+data c_compilation_unit_leaf_witness: TestBehaviorWitness = TestBehaviorWitness {
+  entry: "src/v2/test/claim/c_compilation_unit_witness_test.dag" as FilePath,
+  test_fn: "witness_r3_header_source_object_paths" as NonEmptyStr,
+}
+
+data c_compilation_unit_leaf_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+  behavior: c_compilation_unit_leaf_behavior,
+  witness: c_compilation_unit_leaf_witness,
+  distinguishing_failure: "The legacy Rust test is only a wrapper that resolves this exact .dag entry and requires witness_r3_header_source_object_paths to pass. That witness checks the R3 header/source/object path split; collapsing a path arm or changing the unit spelling makes the .dag witness return false, so deleting the wrapper removes no independent oracle." as NonEmptyStr,
+}
+
+fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
+  [c_compilation_unit_leaf_disposition]
+}
+
+fn legacy_test_behavior_ids_live() -> List<String> {
+  test_migration_legacy_behavior_ids()
+}
+
+fn test_behavior_witness_ids_live() -> List<String> {
+  test_migration_witness_behavior_ids()
+}
+
+fn legacy_test_behavior_unclassified_live() -> List<String> {
+  legacy_test_behavior_unclassified(
+    discovered_legacy: legacy_test_behavior_ids_live(),
+    dispositions: legacy_test_behavior_dispositions(),
+  )
+}
+
+fn legacy_test_behavior_unclassified_count_live() -> Int {
+  count(legacy_test_behavior_unclassified_live())
+}
+
+fn legacy_test_behavior_declared_slice_holds() -> Bool {
+  let discovered_legacy = legacy_test_behavior_ids_live()
+  let discovered_witnesses = test_behavior_witness_ids_live()
+  test_migration_behavior_discovery_holds()
+    && discovered_legacy |> any(id => id == legacy_test_behavior_id(
+      behavior: c_compilation_unit_leaf_behavior,
+    ))
+    && discovered_witnesses |> any(id => id == test_behavior_witness_id(
+      witness: c_compilation_unit_leaf_witness,
+    ))
+    && count(legacy_test_behavior_stale_dispositions(
+      discovered_legacy: discovered_legacy,
+      dispositions: legacy_test_behavior_dispositions(),
+    )) == 0
+    && count(legacy_test_behavior_duplicate_dispositions(
+      dispositions: legacy_test_behavior_dispositions(),
+    )) == 0
+    && count(legacy_test_behavior_unresolved_witness_dispositions(
+      discovered_witnesses: discovered_witnesses,
+      dispositions: legacy_test_behavior_dispositions(),
+    )) == 0
+}
+
+fn legacy_test_behavior_closing_contract_holds() -> Bool {
+  legacy_test_behavior_disposition_graph_holds(
+    discovery_holds: test_migration_behavior_discovery_holds(),
+    discovered_legacy: legacy_test_behavior_ids_live(),
+    discovered_witnesses: test_behavior_witness_ids_live(),
+    dispositions: legacy_test_behavior_dispositions(),
+  )
+}

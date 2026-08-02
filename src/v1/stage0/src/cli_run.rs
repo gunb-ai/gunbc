@@ -31118,11 +31118,8 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
                     .replace('\\', "/");
                 match std::fs::read_to_string(&path) {
                     Ok(content) => match test_migration_rust_test_fn_names(&content) {
-                        Ok(names) => legacy_behavior_ids.extend(
-                            names
-                                .into_iter()
-                                .map(|name| format!("{repo_path}::{name}")),
-                        ),
+                        Ok(names) => legacy_behavior_ids
+                            .extend(names.into_iter().map(|name| format!("{repo_path}::{name}"))),
                         Err(err) => errors.push(format!("{repo_path}: {err}")),
                     },
                     Err(err) => errors.push(format!("read {repo_path}: {err}")),
