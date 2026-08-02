@@ -1,5 +1,6 @@
 module gunbc.assimilate.bmc_token_federation
 
+import gunbc.repository { gunbc_repository }
 import extdeps.cloud.gcp.gcp {
   ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
   wif_provider_resource, wif_principal_set_for_repo
@@ -81,7 +82,7 @@ data bmc_srv3_secret_name: String = "bmc-srv3-admin"
 
 data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
-data bmc_federated_github_repo: String = "gunb-ai/gunbc"
+data bmc_federated_github_repo: String = gunbc_repository.full_name
 
 data bmc_wif_pool_id: NonEmptyStr = "github-actions"
 

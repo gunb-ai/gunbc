@@ -108,6 +108,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "TWO triggers, either deletes this row: (a) the wet lane un-darkens and admits live integration rows under its own budget (the wet_integration_offline_note trigger) — this file's fns enroll there as declared execution rows; or (b) the ExternalModelScope requirement is promoted to its v2.lens.mandatory_tag region (gunbc.extdeps_scope_frontier legacy_manifest_shape_note dissolve-on) — the storage-grain cover deletes outright, file and row together. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/external_model_scope_live_cover_witness_test.dag --functions frontier_cover_of_live_extdeps_tree_holds,red_cover_walker_refuses_missing_root,manifest_rows_all_predate_freeze_sha"
   },
   WitnessExclusionRow {
+    pattern: "served_surface_browser_artifact_integrity_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture), substantiated by CI run 30719890594: witness_checked_in_screenshots_match_receipts executes sha256sum and wc shell transports against checked-in PNG bytes; their real execution reaches shell.Mktemp.Dir and other host effects with no mock_response, so hermetic discovery correctly REFUSES rather than fabricating a temporary directory or file result. The pure FileByteCountVerification coproduct controls are split into wc_byte_count_verification_witness_test.dag and remain ordinary per-PR discovery; only the live artifact observation is excluded.",
+    dissolve_on: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag --function witness_checked_in_screenshots_match_receipts"
+  },
+  WitnessExclusionRow {
     pattern: "emit_source_store_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,

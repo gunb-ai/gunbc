@@ -13,7 +13,8 @@ import extdeps.toolchain.types {
   Wasi,
   Windows,
 }
-import std.types { ContentHash, FilePath, NonEmptyStr, Port, SemVer, String }
+import std.types { FilePath, NonEmptyStr, Port, SemVer, String }
+import std.content_hash { ContentHash }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

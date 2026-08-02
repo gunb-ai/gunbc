@@ -43,7 +43,8 @@ import v2.std.optional {
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
-import std.types { ContentHash, Int }
+import std.types { Int }
+import std.content_hash { ContentHash, content_hash_of_value }
 import std.nat { Nat }
 import std.measure { Second, second, second_count, millisecond_count }
 import std.realization_width { width_fold_objective_goals }
@@ -92,8 +93,7 @@ import v2.workflow.realization_runner {
   runner_schedule_store_covers_nodes
 }
 
-data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
-
+data ci_floor_target_digest: ContentHash = content_hash_of_value(value: "gunbc-ci-floor-v1")
 data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
 
 data floor_gate_witness_entry: String = "dag/tools/floor_effect_gate_witness.dag"

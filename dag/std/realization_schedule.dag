@@ -1,6 +1,11 @@
 module std.realization_schedule
 
+<<<<<<< HEAD
 import std.types { ContentHash, CommitSha, NonEmptyStr, Bool, String, List, Int }
+=======
+import std.types { Bool, String, List, Int }
+import std.content_hash { ContentHash }
+>>>>>>> origin/main
 import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
 import std.nat { Nat }
 import std.measure {
