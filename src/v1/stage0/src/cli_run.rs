@@ -8830,6 +8830,31 @@ impl ResolveStageNanos {
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
+
+    /// Exclusive rows nested inside one reconcile span. Callers must subtract a
+    /// pre-span snapshot: the thread-local slot can already contain assembly work
+    /// performed while loading the entry (notably whole-tree census preparation).
+    fn reconcile_attributed_total(&self) -> u128 {
+        self.typecheck_compute
+            + self.parent_envs
+            + self.assembly_schedule
+            + self.assembly_probe
+            + self.assembly_graph
+            + self.assembly_symbol_index
+            + self.assembly_pool_fill
+            + self.assembly_symbol_index_merge
+            + self.assembly_variant_base
+            + self.assembly_root_symbol_index
+            + self.assembly_root_variant_base
+            + self.assembly_environment
+            + self.assembly_diagnostics
+            + self.assembly_registry
+            + self.assembly_services
+            + self.assembly_rewire_type_env
+            + self.assembly_rewire_import_str
+            + self.assembly_rewire_func_env
+            + self.assembly_emit_info
+    }
 }
 
 thread_local! {
@@ -9863,6 +9888,7 @@ fn resolved_graph_from_sources_with_index(
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
     set_phase(FloorPhase::Typecheck, entry_file);
+    let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
@@ -9871,25 +9897,15 @@ fn resolved_graph_from_sources_with_index(
     // saturating clamp to a plausible zero.
     let reconcile_total = reconcile_started.elapsed().as_nanos();
     let measured = resolve_stage_slot_snapshot();
-    let reconcile_attributed = measured.typecheck_compute
-        + measured.parent_envs
-        + measured.assembly_schedule
-        + measured.assembly_probe
-        + measured.assembly_graph
-        + measured.assembly_symbol_index
-        + measured.assembly_pool_fill
-        + measured.assembly_symbol_index_merge
-        + measured.assembly_variant_base
-        + measured.assembly_root_symbol_index
-        + measured.assembly_root_variant_base
-        + measured.assembly_environment
-        + measured.assembly_diagnostics
-        + measured.assembly_registry
-        + measured.assembly_services
-        + measured.assembly_rewire_type_env
-        + measured.assembly_rewire_import_str
-        + measured.assembly_rewire_func_env
-        + measured.assembly_emit_info;
+    let reconcile_attributed_after = measured.reconcile_attributed_total();
+    let reconcile_attributed = reconcile_attributed_after
+        .checked_sub(reconcile_attributed_before)
+        .ok_or_else(|| {
+            format!(
+                "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
+             {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
+            )
+        })?;
     let assembly_other = reconcile_total
         .checked_sub(reconcile_attributed)
         .ok_or_else(|| {
