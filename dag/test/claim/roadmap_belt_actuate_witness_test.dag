@@ -104,6 +104,13 @@ import gunbc.roadmap_belt_actuate {
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable,
   PublishWriteFailed, PublishDeferred,
+  BeltPassOutcome,
+  BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
+  BeltTickReceipt,
+  belt_tick_receipt_from_result,
+  belt_tick_empty_reconcile,
+  BeltTickResult,
+  Running,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -899,6 +906,66 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && oracle_refs_projection_runs_and_selects_pinnable_scopes()
     && unreadable_validation_receipt_refuses_instead_of_rerunning()
     && agent_incomplete_attempt_defers_verification()
+    && observe_refused_spawn_does_not_zero_verify_pass()
+    && observe_refused_with_empty_verify_is_deferred_not_recorded()
+}
+
+data belt_tick_decouple_witness_note: String = "RED control (operator P1, 2026-08-02): a tmux-list refusal must NOT zero the verify pass. The defect class was belt_tick returning empty verify_outcomes on ObserveRefused — an absorbing fallback that made the whole tick look like verification never ran. The witness constructs the post-fix shape synthetically: spawn_pass is Refused while verify_pass is still Recorded when verify outcomes exist."
+
+test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
+  let result = BeltTickResult {
+    observe_refused: true,
+    observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
+    reconcile: belt_tick_empty_reconcile(state: Running),
+    spawn_outcomes: [],
+    teardown_outcomes: [],
+    verify_outcomes: [
+      VerifyRecorded {
+        node_id: "v2-emitter-producer-provenance",
+        verdict_key: "refused",
+        detail: "validation refused",
+      },
+    ],
+    publish_outcomes: [],
+  }
+  let receipt = belt_tick_receipt_from_result(
+    result: result,
+    observed_at: "2026-08-02T02:00:00Z",
+  )
+  match receipt.spawn_pass {
+    BeltPassRefused { reason: _ } => true
+    _ => false
+  }
+    && match receipt.verify_pass {
+      BeltPassRecorded => true
+      _ => false
+    }
+}
+
+test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
+  let result = BeltTickResult {
+    observe_refused: true,
+    observe_refusal_reason: "tmux refused",
+    reconcile: belt_tick_empty_reconcile(state: Running),
+    spawn_outcomes: [],
+    teardown_outcomes: [],
+    verify_outcomes: [
+      VerifyDeferred {
+        node_id: "node-a",
+        reason: "agent obligation is not satisfied",
+      },
+    ],
+    publish_outcomes: [],
+  }
+  match belt_tick_receipt_from_result(
+    result: result,
+    observed_at: "2026-08-02T02:00:00Z",
+  ).verify_pass {
+    BeltPassDeferred { reason: _ } => true
+    BeltPassRecorded => false
+    BeltPassRefused { reason: _ } => false
+    BeltPassFailed { reason: _ } => false
+  }
 }
 
 data attempt_grain_home_note: String = "The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host commands; a pure row parked here is enrolled with zero executing consumers, which is exactly what the Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION the row needs, never of the module it happens to name."

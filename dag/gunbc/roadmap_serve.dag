@@ -61,6 +61,7 @@ import gunbc.roadmap_belt_actuate {
   belt_attempts_observed_json, belt_attempts_http_status,
   belt_workflow_attempts_observe_for_instance,
   belt_workflow_attempts_observed_json,
+  belt_workflow_attempts_observed_json_for_instance,
   belt_workflow_attempts_http_status,
   BeltWorkflowAttempts, WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
@@ -550,7 +551,10 @@ fn serve_workflow_response_for_instance(
   serve_text_response(
     status: belt_workflow_attempts_http_status(observed: observed),
     content_type: application_json_utf8,
-    body: belt_workflow_attempts_observed_json(observed: observed),
+    body: belt_workflow_attempts_observed_json_for_instance(
+      instance: instance,
+      observed: observed,
+    ),
   )
 }
 
