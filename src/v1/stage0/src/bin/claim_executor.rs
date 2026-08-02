@@ -5918,9 +5918,32 @@ fn spawn_floor_worker(
         command.arg("--scoped-batch-id").arg(id);
     }
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
-    let status = command
-        .status()
+    // The worker's post-walk ledger harvest can spend minutes dropping its memo
+    // contexts after the final discovery line.  A blocking `Command::status`
+    // made that whole interval silent: the worker's own heartbeat shares its
+    // allocator and can stop making progress during the drop, while the thin
+    // coordinator had no chance to say that the child was still alive.  Keep
+    // the execution and receipt ordering unchanged, but let the coordinator
+    // observe the wait and emit a pulse from its independent process.
+    let mut child = command
+        .spawn()
         .map_err(|e| format!("spawn floor worker `{worker}`: {e}"))?;
+    let wait_started = Instant::now();
+    let status = loop {
+        match child
+            .try_wait()
+            .map_err(|e| format!("observe floor worker `{worker}`: {e}"))?
+        {
+            Some(status) => break status,
+            None => {
+                eprintln!(
+                    "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
+                    wait_started.elapsed().as_secs()
+                );
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+        }
+    };
     let observed = observe_floor_worker(&worker, status, &terminal_path);
     append_floor_worker_observation(&observed)?;
     let outcome = floor_worker_observation_outcome(&observed);
