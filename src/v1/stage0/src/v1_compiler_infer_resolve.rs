@@ -773,7 +773,16 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
 pub fn type_ref_pool_present_refusal_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "import-strip §14.3 / DESIGN §5: at a USE-SITE type position (masked), a lookup hit without binding authority must REFUSE like an absent-from-pool miss — never fabricate Product(<anon>). Admission = type_ref_has_binding_authority (interim: import/local; N2 swaps the predicate body to containment). Honest asymmetry: values/fns bind namespace-only since #7178; types refuse-unless-imported until N2. Grounding (masked=false) keeps the prior peel. Keep the pool hit's structure while emitting UnresolvedType — debt admission covers this diagnostic class only.".to_string()
+            "import-strip §14.3 / DESIGN §5: at a USE-SITE type position (masked), a lookup hit without binding authority must REFUSE like an absent-from-pool miss — never fabricate Product(<anon>). Admission = type_ref_has_binding_authority (interim: import/local; N2 swaps the predicate body to containment). Honest asymmetry: values/fns bind namespace-only since #7178; types refuse-unless-imported until N2. Grounding (masked=false) keeps the prior peel. Keep the pool hit's structure while emitting UnresolvedType — debt admission covers this diagnostic class only. N1 SCOPE: leaf type-ref path only — the f531ba548d freeze was cut for that arm. is_user_generic_use_site remains fail-open under N1 (pool hit expands without binding-authority UnresolvedType).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_ref_generic_use_site_follow_up_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DECLARED FOLLOW-UP (not N1): review 47291 correctly named that is_user_generic_use_site skips the binding-authority gate. Closing that arm widens the UnresolvedType population past the f531ba548d freeze census and was stripped from #7622 per quiet-hawk charter (decline mid-PR scope growth). Land as its own tranche: census under the widened arm → execution-decided classification → freeze (or wait for N2 containment binding to close those sites by construction). Do NOT re-admit via import-adding repairs (N5/N7).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1153,23 +1162,6 @@ pub fn resolve_node_bounded(
             {
                 {
                     let type_name = authored_name(env.clone(), n.clone());
-                    let binding_authority_diags = if (((masked.clone()
-                        && (type_ref_has_binding_authority(env.clone(), type_name.clone())
-                            == false))
-                        && (is_kernel_type(type_name.clone()) == false))
-                        && (is_kernel_type(qualified_last_segment(type_name.clone())) == false))
-                    {
-                        Rc::new(vec![make_error_node(
-                            bare_name_miss_diagnostic(
-                                env.clone(),
-                                type_name.clone(),
-                                n.span.clone(),
-                            ),
-                            module_name.clone(),
-                        )])
-                    } else {
-                        Rc::new(vec![])
-                    };
                     let decl = resolve_generic_use_decl(env.clone(), n.clone());
                     let expected_arity = (decl.params.clone().len() as i64);
                     let actual_arity = (n.children.clone().len() as i64);
@@ -1341,10 +1333,7 @@ pub fn resolve_node_bounded(
                             Rc::new(NodeResolveResult {
                                 resolved: resolved_node.clone(),
                                 diagnostics: v1_rt::concat(
-                                    v1_rt::concat(
-                                        binding_authority_diags.clone(),
-                                        v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
-                                    ),
+                                    v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
                                     target_result.diagnostics.clone(),
                                 ),
                             })
@@ -1408,10 +1397,7 @@ pub fn resolve_node_bounded(
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 }),
-                                diagnostics: v1_rt::concat(
-                                    binding_authority_diags.clone(),
-                                    v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
-                                ),
+                                diagnostics: v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
                             });
                             result
                         }
