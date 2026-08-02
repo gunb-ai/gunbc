@@ -3,12 +3,8 @@ module extdeps.network.ipv6
 import std.types { Int, String, Bool, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier {
-  FrontierRow,
-  TriggerDeclExists,
-  decl_ref,
-  frontier_row_decl,
-}
+import std.roster_frontier { FrontierRow, TriggerDeclExists, frontier_row_decl }
+import std.decl_ref { decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
