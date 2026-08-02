@@ -288,7 +288,7 @@ data v2_emitter_producer_provenance_contract_note: String = "The validation is t
 
 fn v1_seed_honesty_decision_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag" as FilePath,
+    entry: "dag/test/claim/seed_honesty_discharge_unavailable_test.dag" as FilePath,
     function: "v1_seed_honesty_decision_closing_contract_holds" as NonEmptyStr,
   )
 }
@@ -2115,14 +2115,14 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       node: nid(s: "v1-seed-honesty-decision"),
       criteria_digest: chash(s: "1717cfe258d9afe1"),
       red_control: RedControlExecuted {
-        witness_module: "v2.test.claim.execution.seed_honesty_discharge_unavailable_test",
+        witness_module: "test.claim.seed_honesty_discharge_unavailable_test",
         witness_fn: "seed_honesty_undecided_would_keep_closing_contract_red",
         executed_on: "2026-08-02",
       },
       handback: HandbackDelivered {
         first_artifact: "src/v2/workflow/bootstrap.dag",
         further_artifacts: [
-          "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag",
+          "dag/test/claim/seed_honesty_discharge_unavailable_test.dag",
           "dag/gunbc/ci_layer_roots.dag",
         ],
       },

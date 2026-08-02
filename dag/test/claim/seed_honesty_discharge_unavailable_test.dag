@@ -1,4 +1,4 @@
-module v2.test.claim.execution.seed_honesty_discharge_unavailable_test
+module test.claim.seed_honesty_discharge_unavailable_test
 
 import v2.workflow.bootstrap {
   BootstrapHashPin,
