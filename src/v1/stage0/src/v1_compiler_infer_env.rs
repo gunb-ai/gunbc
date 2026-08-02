@@ -1524,10 +1524,20 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
 pub fn type_ref_binding_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (str_bindings ∪ ancestry_str_bindings, plus qualified-leaf). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here.".to_string()
+            "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T) are NOT authorized by a leaf-only import of an unrelated T (review 47295 / DESIGN §3/§5): the leaf must be import-reachable AND symbol_index_lookup(full name) must resolve to the SAME declaration (span identity) as that leaf binding — owning-module check, not qualified_last_segment alone. Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_ref_binding_authority_leaf_binding(
+    env: Rc<TypeEnv>,
+    leaf: String,
+) -> Option<Rc<TypeBinding>> {
+    match v1_rt::map_get(&env.str_bindings.clone(), leaf.clone()) {
+        Some(b) => Some(b.clone()),
+        None => v1_rt::map_get(&env.ancestry_str_bindings.clone(), leaf.clone()),
+    }
 }
 
 pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -> bool {
@@ -1539,8 +1549,18 @@ pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -
         if v1_rt::contains(name.clone(), ".".to_string()) {
             {
                 let leaf = qualified_last_segment(name.clone());
-                (v1_rt::map_has(&env.str_bindings.clone(), leaf.clone())
-                    || v1_rt::map_has(&env.ancestry_str_bindings.clone(), leaf.clone()))
+                match type_ref_binding_authority_leaf_binding(env.clone(), leaf.clone()) {
+                    Some(leaf_binding) => {
+                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                            Some(indexed) => {
+                                (leaf_binding.resolved.clone().span.clone()
+                                    == indexed.span.clone())
+                            }
+                            None => false,
+                        }
+                    }
+                    None => false,
+                }
             }
         } else {
             false

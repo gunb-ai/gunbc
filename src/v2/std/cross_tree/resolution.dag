@@ -1,4 +1,15 @@
 module v2.std.cross_tree.resolution
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.cross_tree.import_model {
+  CrossTreeImport,
+  SourceRootRef,
+  SourceRootSet,
+  TreeFundamentalityOrder
+}
+import v2.std.layer { LayerPrefix }
+import v2.std.qualified_name { QualifiedName }
+
 type SourceRootBinding {
   module: QualifiedName
   root: SourceRootRef

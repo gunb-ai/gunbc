@@ -1,5 +1,8 @@
 module extdeps.communication.fidelity_carriers
 
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

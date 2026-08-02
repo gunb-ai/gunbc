@@ -847,14 +847,28 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   }
 }
 
-data type_ref_binding_authority_note: String = "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (str_bindings ∪ ancestry_str_bindings, plus qualified-leaf). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here."
+data type_ref_binding_authority_note: String = "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (exact key in str_bindings ∪ ancestry_str_bindings). Qualified names (a.b.T) are NOT authorized by a leaf-only import of an unrelated T (review 47295 / DESIGN §3/§5): the leaf must be import-reachable AND symbol_index_lookup(full name) must resolve to the SAME declaration (span identity) as that leaf binding — owning-module check, not qualified_last_segment alone. Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here."
+
+fn type_ref_binding_authority_leaf_binding(env: TypeEnv, leaf: String) -> TypeBinding? {
+  match map_get(env.str_bindings, leaf) {
+    Present { value: b } => Present { value: b }
+    Absent => map_get(env.ancestry_str_bindings, leaf)
+  }
+}
 
 fn type_ref_binding_authority_import_local(env: TypeEnv, name: String) -> Bool {
   if map_has(m: env.str_bindings, key: name) || map_has(m: env.ancestry_str_bindings, key: name) {
     true
   } else if contains(name, ".") {
     let leaf = qualified_last_segment(name: name)
-    map_has(m: env.str_bindings, key: leaf) || map_has(m: env.ancestry_str_bindings, key: leaf)
+    match type_ref_binding_authority_leaf_binding(env: env, leaf: leaf) {
+      Present { value: leaf_binding } =>
+        match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+          Present { value: indexed } => leaf_binding.resolved.span == indexed.span
+          Absent => false
+        }
+      Absent => false
+    }
   } else {
     false
   }

@@ -31,7 +31,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data type_ref_fail_open_witness_note: String = "import-strip section 14.1 acceptance probes as synthetic census sources (same observation surface as compile_diagnostic_census_witness). Row 1 GREEN (own import from std.content_hash). Rows 3/4/5 RED blocking UnresolvedType: absent-from-pool, pool-present bare unreachable, and pool-present qualified unreachable share one refusal shape. Row 6 RED: pool-present user-generic Optional<Int> without import (covers the Generic<T> resolve arm — review 47291). Row 6b GREEN: same with own Optional import. Row 2 (transitive) stays a fixture-level control under dag/test/fixture/type_ref_fail_open_probe — advisory UnlistedImportUse is orthogonal. Admission predicate is type_ref_has_binding_authority (swappable; interim import/local)."
+data type_ref_fail_open_witness_note: String = "import-strip section 14.1 acceptance probes as synthetic census sources (same observation surface as compile_diagnostic_census_witness). Row 1 GREEN (own import from std.content_hash). Rows 3/4/5 RED blocking UnresolvedType: absent-from-pool, pool-present bare unreachable, and pool-present qualified unreachable share one refusal shape. Row 6 RED: pool-present user-generic Compose<Int, Int> without import (covers is_user_generic_use_site arm — review 47291; Optional is excluded because kernel paramless Optional forces the children==1 container-shaped path). Row 6b GREEN: same with own Compose import. Row 7 GREEN: leaf import authorizes the SAME module's qualified spelling via symbol_index span identity (review 47295 — not a bare leaf-name shortcut). Row 2 (transitive) stays a fixture-level control under dag/test/fixture/type_ref_fail_open_probe — advisory UnlistedImportUse is orthogonal. Admission predicate is type_ref_has_binding_authority (swappable; interim import/local)."
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -58,9 +58,11 @@ data row4_bare_pool_present_source: String = "module type_ref_row4\nfn f(x: Cont
 
 data row5_qualified_pool_present_source: String = "module type_ref_row5\nfn f(x: std.content_hash.ContentHash) -> std.content_hash.ContentHash { x }\n"
 
-data row6_bare_generic_pool_present_source: String = "module type_ref_row6\nfn f(x: Optional<Int>) -> Optional<Int> { x }\n"
+data row6_bare_generic_pool_present_source: String = "module type_ref_row6\nfn f(x: Compose<Int, Int>) -> Compose<Int, Int> { x }\n"
 
-data row6b_generic_own_import_source: String = "module type_ref_row6b\nimport v2.std.optional { Optional }\nfn f(x: Optional<Int>) -> Optional<Int> { x }\n"
+data row6b_generic_own_import_source: String = "module type_ref_row6b\nimport std.machine_constraints { Compose }\nfn f(x: Compose<Int, Int>) -> Compose<Int, Int> { x }\n"
+
+data row7_qualified_same_module_after_leaf_import_source: String = "module type_ref_row7\nimport std.content_hash { ContentHash }\nfn f(x: std.content_hash.ContentHash) -> std.content_hash.ContentHash { x }\n"
 
 test fn row1_own_import_stays_green() -> Bool {
   unresolved_blocking_count(source: row1_own_import_source) == 0
@@ -84,6 +86,10 @@ test fn row6_bare_generic_pool_present_unreachable_matches_row3_shape() -> Bool 
 
 test fn row6b_generic_own_import_stays_green() -> Bool {
   unresolved_blocking_count(source: row6b_generic_own_import_source) == 0
+}
+
+test fn row7_qualified_same_module_after_leaf_import_stays_green() -> Bool {
+  unresolved_blocking_count(source: row7_qualified_same_module_after_leaf_import_source) == 0
 }
 
 test fn debt_dissolve_trigger_names_n2() -> Bool {
