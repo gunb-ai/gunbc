@@ -5,9 +5,16 @@ operator-signed product boundary, six sub-lanes, and the **dependency sequence**
 in `gunbc.roadmap_authority` so dispatch, witnesses, and receipts share one
 program identity.
 
-**Product boundary (verbatim):** an ordinary source edit reaches a required CI
-verdict in five minutes without recomputing any semantic fact whose inputs did
-not change.
+**Product boundary (re-anchored by operator ruling 2026-08-02):** every required
+operation performs the bare minimum computation needed to serve it — an ordinary
+source edit's verdict recomputes no semantic fact whose inputs did not change,
+and its cost is the touched closure's delta, not the corpus. **Five minutes is
+not the contract** — the operator's words: the earlier sentence presenting it as
+the contract was a mistake; five minutes is the distress ceiling ("holy crap
+this is hard / not working well"), retained only as the Stage C checkpoint
+bound. Reaching 5:00 does not complete the program while redundant computation
+remains on a required path; the bar is scoped by the realization/materialization
+goals, and wall-clock falls out of them.
 
 **This is a program, not a PR.** Each sub-lane is independently dispatchable;
 the parent carries the end-to-end contract and the ordered sequence below.
