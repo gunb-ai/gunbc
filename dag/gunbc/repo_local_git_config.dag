@@ -6,6 +6,8 @@ import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
   MemberUpsert,
+  MemberTeardown,
+  MemberTeardownRefused,
   membership_reconcile,
   membership_upsert_count,
   membership_teardown_count,
@@ -176,7 +178,14 @@ fn apply_repo_local_git_config_action_at_repo(
           }
         }
       }
-      _ => acc
+      MemberTeardown { member: binding } => RepoLocalGitConfigApplyReceipt {
+        all_success: false,
+        first_failure: concat("repo-local git config teardown is not authorized for Ensured binding ", binding.key),
+      }
+      MemberTeardownRefused { member: binding, cause: _ } => RepoLocalGitConfigApplyReceipt {
+        all_success: false,
+        first_failure: concat("repo-local git config plan refusal cannot be applied for binding ", binding.key),
+      }
     }
   }
 }
