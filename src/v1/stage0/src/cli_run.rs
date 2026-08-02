@@ -1,6 +1,7 @@
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -6587,7 +6588,11 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// per (thread, canonical roots) and reused, so consumers that resolve distinct entries
 /// against it share one typed_module_cache — the union closure typechecks once per node.
 /// Roots are canonicalized (`canonical_shared_index_roots`) before both keying and
-/// building, so path-spelling variants of the same pool cannot fork the universe.
+/// building, so path-spelling variants of the same pool cannot fork the INDEX.
+/// This does not canonicalize independently-read `SourceFile` objects: a consumer
+/// that joins absolute-path reads to this relative-path index can still fork source
+/// identity. The divergence census walls that site with parent-owned `Rc` identity;
+/// the class-wide next rung is canonical `SourceFile` identity at construction.
 fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
@@ -12083,6 +12088,14 @@ pub(crate) fn prime_witness_execution_legs<'a>(
     index: &MultiEntryIndex,
     entries: impl IntoIterator<Item = &'a str>,
 ) {
+    prime_witness_execution_legs_from_authority(index, None, entries)
+}
+
+fn prime_witness_execution_legs_from_authority<'a>(
+    subject_index: &MultiEntryIndex,
+    inherited_authority_roots: Option<&[String]>,
+    entries: impl IntoIterator<Item = &'a str>,
+) {
     let mut distinct: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for entry in entries {
         let rel = repo_relative_dag_path(entry);
@@ -12093,14 +12106,21 @@ pub(crate) fn prime_witness_execution_legs<'a>(
     if distinct.is_empty() {
         return;
     }
-    let (graph, indices) =
-        resolve_entry_with_index(index, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "witness execution leg: resolve census authority \
+    let resolved = match inherited_authority_roots {
+        None => resolve_entry_with_index(
+            subject_index,
+            WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY,
+        ),
+        Some(roots) => {
+            resolve_entry_graph_shared(roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
+        }
+    };
+    let (graph, indices) = resolved.unwrap_or_else(|e| {
+        panic!(
+            "witness execution leg: resolve census authority \
                      {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY}: {e} (refuse)"
-                )
-            });
+        )
+    });
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     for rel in distinct {
         let leg = match eval_census_string_fn(&ctx, "census_execution_leg_label", &rel) {
@@ -14613,6 +14633,13 @@ pub struct DiscoveryWitnessOutcome {
     pub execution_leg: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionSkippedDiscoveryRow {
+    pub entry: String,
+    pub function: String,
+    pub provenance: String,
+}
+
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
 /// Counted and logged at roster build — never a silent skip (§5 deferred-and-detected).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14641,6 +14668,9 @@ pub struct DiscoverySummary {
     pub deferred_rows: Vec<DeferredDiscoveryRow>,
     /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
     pub predicted_unaffected: Vec<(String, String)>,
+    /// Applied mode: enrolled rows retained with the provenance by which affected-set
+    /// selection declined execution. This is an honest nonfailure, never absence-as-pass.
+    pub selection_skipped_rows: Vec<SelectionSkippedDiscoveryRow>,
     /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
     /// counted, typed attribution of a missing selection edge (never a rerun trigger).
     pub divergences: Vec<String>,
@@ -16768,6 +16798,10 @@ pub enum NodeFrontierSelectionMode {
 
 pub struct DiscoveryCorpusOptions {
     pub node_frontier_selection: NodeFrontierSelectionMode,
+    /// Module universe that owns executor decisions such as affected-set selection and witness
+    /// execution-leg classification. Normally identical to `source_roots`; scoped batches
+    /// inherit the enclosing walk roots so executor machinery does not widen the witness subject.
+    pub execution_authority_source_roots: Vec<String>,
     pub explicit_roster_only: bool,
     /// Path-substring exclusion list. Non-plan callers default to
     /// `witness_exclusion_substrings()`; plan-driven paths supply this from
@@ -16808,6 +16842,7 @@ impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
             node_frontier_selection: NodeFrontierSelectionMode::Off,
+            execution_authority_source_roots: vec![],
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
@@ -18812,6 +18847,12 @@ pub fn run_discovery_corpus_with_options(
     out
 }
 
+pub fn expand_explicit_witness_entries(
+    explicit_entries: &[(String, String)],
+) -> Result<Vec<(String, String)>, String> {
+    test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
+}
+
 fn run_discovery_corpus_with_options_inner(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -18873,6 +18914,13 @@ fn run_discovery_corpus_with_options_inner(
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
     let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
+    if options.execution_authority_source_roots.is_empty() {
+        return Err(
+            "discovery execution requires an explicit executor-authority source-root universe"
+                .to_string(),
+        );
+    }
+    let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
     // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
@@ -18943,7 +18991,7 @@ fn run_discovery_corpus_with_options_inner(
     // the post-resolve union so this pre-resolve count stays paired with calibration.
     let preresolve_calibration_started = std::time::Instant::now();
     let pre_resolve_closure_nodes = {
-        let prefix_entries: &[&str] = if selection_enabled {
+        let prefix_entries: &[&str] = if selection_enabled && execution_authority_is_subject {
             &[FLOOR_RUNNER_ENTRY]
         } else {
             &[]
@@ -18991,10 +19039,20 @@ fn run_discovery_corpus_with_options_inner(
     );
     let runner_resolve_started = std::time::Instant::now();
     let floor_runner_ctx = if selection_enabled {
-        // Resolve the floor runner through the SAME shared index as the rows (union-resolve
-        // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
-        // with the roster, so co-resolving here means that prefix is not typechecked twice.
-        match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+        let resolved = if execution_authority_is_subject {
+            // Ordinary discovery consumes one source-root authority, so preserve the shared
+            // prefix resolve and its measured retention behavior.
+            resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
+        } else {
+            // Scoped discovery keeps its subject universe narrow. The selector is an enclosing
+            // walk authority and resolves against that walk's roots without entering the subject
+            // index, digest, or clamp population.
+            resolve_entry_graph(
+                &options.execution_authority_source_roots,
+                FLOOR_RUNNER_ENTRY,
+            )
+        };
+        match resolved {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
@@ -19074,7 +19132,12 @@ fn run_discovery_corpus_with_options_inner(
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
     // per worker — and width is adaptive, so "n is small here" is not a fact that stays
     // true (§6). One build covers the run; workers only read the process-wide memo.
-    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
+    prime_witness_execution_legs_from_authority(
+        &index,
+        (!execution_authority_is_subject)
+            .then_some(options.execution_authority_source_roots.as_slice()),
+        rows.iter().map(|row| row.entry.as_str()),
+    );
 
     // Arm the observation heartbeat's entry total at the same grain the drain walks
     // (entry-groups), now that the roster is known — never a fabricated 0-of-0, and
@@ -19097,6 +19160,7 @@ fn run_discovery_corpus_with_options_inner(
                 &changed_paths,
                 &diff_edits,
                 floor_runner_ctx.as_ref(),
+                execution_authority_is_subject,
                 whole_tree_published_keys.clone(),
                 options.witness_budget_policy(),
                 ShardStyle {
@@ -19210,6 +19274,7 @@ fn run_discovery_corpus_with_options_inner(
                         &changed_paths,
                         &diff_edits,
                         floor_runner_ctx.as_ref(),
+                        execution_authority_is_subject,
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
@@ -19253,6 +19318,8 @@ fn run_discovery_corpus_with_options_inner(
                 ));
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
+            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
+            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
             let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::new();
@@ -19272,6 +19339,7 @@ fn run_discovery_corpus_with_options_inner(
                 let abort_for_worker = abort.clone();
                 let governor_for_worker = governor.clone();
                 let roots = source_roots_owned.clone();
+                let execution_authority_roots = execution_authority_roots_owned.clone();
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
@@ -19312,7 +19380,12 @@ fn run_discovery_corpus_with_options_inner(
                             None => build_multi_entry_index(&roots),
                         };
                         let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                            match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+                            let resolved = if execution_authority_is_subject_for_workers {
+                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
+                            } else {
+                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
+                            };
+                            match resolved {
                                 Ok((graph, source_indices)) => {
                                     Some(make_eval_context(&graph, source_indices, execution_mode))
                                 }
@@ -19352,6 +19425,7 @@ fn run_discovery_corpus_with_options_inner(
                                 &paths,
                                 &seeds,
                                 runner.as_ref(),
+                                execution_authority_is_subject_for_workers,
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
@@ -19440,6 +19514,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         skipped: 0,
         deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
+        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
@@ -19457,6 +19532,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged
             .predicted_unaffected
             .extend(summary.predicted_unaffected);
+        merged
+            .selection_skipped_rows
+            .extend(summary.selection_skipped_rows);
         merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
@@ -19689,6 +19767,7 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
+    execution_authority_is_subject: bool,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
     budgets: WitnessBudgetPolicy,
     style: ShardStyle,
@@ -19699,6 +19778,7 @@ fn run_discovery_rows(
         skipped: 0,
         deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
+        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
@@ -19709,18 +19789,17 @@ fn run_discovery_rows(
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
     };
-    // One context build for the whole roster, on this thread, while its shared index is warm.
-    prime_witness_execution_legs(&index, rows.iter().map(|row| row.entry.as_str()));
-
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
-    // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
-    // context: the floor runner closure is resolved once per shard and its modules are resident
-    // for the shard's lifetime, so they are part of the memory this count is paired against
-    // (the entry-selection prefix context was retired with the import-closure reground — the
-    // entry_file_touched decision now reads the module-graph facts, no interpreter context).
+    // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
+    // batch's floor-runner prefix shares that subject universe and is included; a scoped batch's
+    // inherited selector authority is deliberately excluded from the subject digest/clamp grain.
     // Row closures fold in below as each entry resolves.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx].into_iter().flatten() {
+    for prefix_ctx in [floor_runner_ctx]
+        .into_iter()
+        .flatten()
+        .filter(|_| execution_authority_is_subject)
+    {
         collect_typed_module_names(
             prefix_ctx.modules.iter().cloned(),
             &prefix_ctx.source_indices,
@@ -19803,6 +19882,13 @@ fn run_discovery_rows(
                 ctx = None;
             }
             summary.skipped += 1;
+            summary
+                .selection_skipped_rows
+                .push(SelectionSkippedDiscoveryRow {
+                    entry: row.entry.clone(),
+                    function: row.function.clone(),
+                    provenance: "skip-before-resolve-fast-path".to_string(),
+                });
             if floor_verbose() {
                 eprintln!(
                     "SKIP [assumed-green node-frontier] {} ({})",
@@ -19915,6 +20001,13 @@ fn run_discovery_rows(
             match selection {
                 NodeFrontierSelectionMode::Applied => {
                     summary.skipped += 1;
+                    summary
+                        .selection_skipped_rows
+                        .push(SelectionSkippedDiscoveryRow {
+                            entry: row.entry.clone(),
+                            function: row.function.clone(),
+                            provenance: "node-frontier-selection".to_string(),
+                        });
                     if floor_verbose() {
                         eprintln!(
                             "SKIP [assumed-green node-frontier] {} ({})",
@@ -24118,6 +24211,7 @@ mod discovery_summary_merge_tests {
             skipped: 0,
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
+            selection_skipped_rows: Vec::new(),
             divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![
@@ -24331,6 +24425,7 @@ mod discovery_summary_merge_tests {
             DiscoveryWidthPolicy::Serial,
             DiscoveryCorpusOptions {
                 node_frontier_selection: NodeFrontierSelectionMode::Off,
+                execution_authority_source_roots: roots.clone(),
                 explicit_roster_only: true,
                 exclude_substrings: Vec::new(),
                 ..Default::default()
@@ -25544,6 +25639,310 @@ pub fn bare_ref_reachability_for_name(
 // against the landed SymbolIndex containment walk (lexical + global-unique only).
 // Method: direct observation of each mechanism's return value — NOT diagnostics.
 
+pub const RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH: &str =
+    "target/resolution-divergence-phase-receipt.tsv";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolutionDivergencePhase {
+    ParentPlanResolve,
+    ChildLaunch,
+    ChildWholeTreeResolve,
+    ParentWholeTreeResolve,
+    CensusTraversal,
+    OutputProjection,
+}
+
+impl ResolutionDivergencePhase {
+    fn label(self) -> &'static str {
+        match self {
+            Self::ParentPlanResolve => "parent_plan_resolve",
+            Self::ChildLaunch => "child_launch",
+            Self::ChildWholeTreeResolve => "child_whole_tree_resolve",
+            Self::ParentWholeTreeResolve => "parent_whole_tree_resolve",
+            Self::CensusTraversal => "census_traversal",
+            Self::OutputProjection => "output_projection",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolutionDivergencePhaseState {
+    Started,
+    Completed,
+    Skipped,
+}
+
+impl ResolutionDivergencePhaseState {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Completed => "completed",
+            Self::Skipped => "skipped",
+        }
+    }
+}
+
+fn resolution_divergence_phase_receipt_process_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn resolution_divergence_phase_receipt_timestamp_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn resolution_divergence_phase_receipt_pressure_avg10(path: &str) -> String {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|body| {
+            body.lines()
+                .find(|line| line.starts_with("some "))
+                .and_then(|line| {
+                    line.split_whitespace()
+                        .find(|field| field.starts_with("avg10="))
+                })
+                .and_then(|field| field.strip_prefix("avg10="))
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unavailable".to_string())
+}
+
+fn resolution_divergence_phase_receipt_contention() -> (String, String, String, String) {
+    let host = std::env::var("RUNNER_NAME")
+        .ok()
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            std::fs::read_to_string("/etc/hostname")
+                .ok()
+                .map(|name| name.trim().to_string())
+                .filter(|name| !name.is_empty())
+        })
+        .unwrap_or_else(|| "unavailable".to_string());
+    let loadavg_1m = std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|body| body.split_whitespace().next().map(str::to_string))
+        .unwrap_or_else(|| "unavailable".to_string());
+    (
+        host,
+        loadavg_1m,
+        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/cpu"),
+        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/memory"),
+    )
+}
+
+fn resolution_divergence_phase_elapsed_ms(
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+) -> Option<u128> {
+    static STARTS: OnceLock<Mutex<std::collections::HashMap<&'static str, std::time::Instant>>> =
+        OnceLock::new();
+    let mut starts = STARTS
+        .get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .expect("resolution-divergence phase start lock poisoned");
+    match state {
+        ResolutionDivergencePhaseState::Started => {
+            starts.insert(phase.label(), std::time::Instant::now());
+            None
+        }
+        ResolutionDivergencePhaseState::Completed => starts
+            .remove(phase.label())
+            .map(|started| started.elapsed().as_millis()),
+        ResolutionDivergencePhaseState::Skipped => Some(0),
+    }
+}
+
+fn resolution_divergence_phase_receipt_sanitize(detail: &str) -> String {
+    detail
+        .replace('\t', " ")
+        .replace('\n', " ")
+        .replace('\r', " ")
+}
+
+fn write_resolution_divergence_phase_receipt_row_at(
+    path: &Path,
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+    detail: &str,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: create {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let is_new = !path.exists();
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: open {}: {e}",
+                path.display()
+            )
+        })?;
+    if is_new {
+        writeln!(
+            file,
+            "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
+        )
+        .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+    }
+    let elapsed_ms = resolution_divergence_phase_elapsed_ms(phase, state)
+        .map(|n| n.to_string())
+        .unwrap_or_default();
+    let (host, loadavg_1m, cpu_psi_some_avg10, memory_psi_some_avg10) =
+        resolution_divergence_phase_receipt_contention();
+    let process_name = resolution_divergence_phase_receipt_process_name();
+    let row = format!(
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        resolution_divergence_phase_receipt_timestamp_ms(),
+        std::process::id(),
+        process_name,
+        resolution_divergence_phase_receipt_sanitize(&host),
+        loadavg_1m,
+        cpu_psi_some_avg10,
+        memory_psi_some_avg10,
+        phase.label(),
+        state.label(),
+        elapsed_ms,
+        resolution_divergence_phase_receipt_sanitize(detail),
+    );
+    writeln!(file, "{row}")
+        .map_err(|e| format!("resolution-divergence phase receipt: row write: {e}"))?;
+    file.sync_data().map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: sync {}: {e}",
+            path.display()
+        )
+    })?;
+    // The Actions runner worktree is ephemeral and this receipt is deliberately
+    // kill-safe. Stream each fsynced parent row to the durable job log as well as
+    // the TSV, so a deadline kill preserves phase and contention evidence without
+    // adding a generated-workflow upload side channel. Standalone adapter output
+    // remains byte-identical because only claim_executor emits this transport mark.
+    if process_name == "claim_executor" {
+        eprintln!("[resolution-divergence-phase-receipt]\t{row}");
+    }
+    Ok(())
+}
+
+pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
+    let path = Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "resolution-divergence phase receipt: create {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let mut file = std::fs::File::create(path).map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: reset {}: {e}",
+            path.display()
+        )
+    })?;
+    writeln!(
+        file,
+        "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
+    )
+    .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
+    file.sync_data().map_err(|e| {
+        format!(
+            "resolution-divergence phase receipt: reset sync {}: {e}",
+            path.display()
+        )
+    })
+}
+
+pub fn record_resolution_divergence_phase(
+    phase: ResolutionDivergencePhase,
+    state: ResolutionDivergencePhaseState,
+    detail: &str,
+) -> Result<(), String> {
+    write_resolution_divergence_phase_receipt_row_at(
+        Path::new(RESOLUTION_DIVERGENCE_PHASE_RECEIPT_PATH),
+        phase,
+        state,
+        detail,
+    )
+}
+
+static RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS: Mutex<Option<SilentPickTelemetry>> =
+    Mutex::new(None);
+
+/// Arm the telemetry that the divergence census consumes before the parent-owned
+/// plan graph is resolved. The subprocess used to arm the same observation around
+/// its duplicate cold resolve; retaining it here makes the cut observational rather
+/// than a silent loss of the gate's resolution evidence.
+pub fn resolution_divergence_parent_plan_capture_begin() -> Result<(), String> {
+    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
+        None;
+    crate::v1_rt::resolution_silent_pick_enable();
+    Ok(())
+}
+
+/// Seal the parent plan's telemetry after its single resolve and make it available
+/// to the later read-only witness traversal, regardless of which executor thread
+/// evaluates that witness.
+pub fn resolution_divergence_parent_plan_capture_finish() -> Result<(), String> {
+    let telemetry = crate::v1_rt::resolution_silent_pick_disable();
+    *RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())? =
+        Some(telemetry);
+    // Continue recording on the pump thread after the plan. Modules resolved by
+    // intervening falsifier work may be cache hits by the time this witness runs;
+    // keeping the observation armed preserves those first-resolution rows without
+    // asking the shared index to recompute them.
+    crate::v1_rt::resolution_silent_pick_enable();
+    Ok(())
+}
+
+fn resolution_divergence_parent_plan_silent_picks() -> Result<SilentPickTelemetry, String> {
+    RESOLUTION_DIVERGENCE_PARENT_PLAN_SILENT_PICKS
+        .lock()
+        .map_err(|_| "resolution-divergence parent-plan telemetry lock poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| {
+            "resolution-divergence census refused: parent plan telemetry was not captured"
+                .to_string()
+        })
+}
+
+fn resolution_divergence_combine_silent_pick_telemetry(
+    mut earlier: SilentPickTelemetry,
+    later: SilentPickTelemetry,
+) -> SilentPickTelemetry {
+    for row in later.global_bare_lcp_picks {
+        if !earlier.global_bare_lcp_picks.contains(&row) {
+            earlier.global_bare_lcp_picks.push(row);
+        }
+    }
+    for row in later.global_bare_lcp_ties {
+        if !earlier.global_bare_lcp_ties.contains(&row) {
+            earlier.global_bare_lcp_ties.push(row);
+        }
+    }
+    for row in later.fn_parent_first_hits {
+        if !earlier.fn_parent_first_hits.contains(&row) {
+            earlier.fn_parent_first_hits.push(row);
+        }
+    }
+    earlier
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContainmentResolveVia {
     Lexical,
@@ -26273,14 +26672,23 @@ pub fn resolution_divergence_census_live(
 /// or any other consumer.
 pub fn resolution_divergence_census_live_closure_scoped(
 ) -> Result<ResolutionDivergenceCensus, String> {
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ChildWholeTreeResolve,
+        ResolutionDivergencePhaseState::Started,
+        "closure-scoped source load + resolve",
+    )?;
     let roots = default_source_roots();
-    let mei = build_multi_entry_index_primary_precedence(&roots);
-    let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
+    let sources = resolution_divergence_closure_scoped_sources(&roots)?;
     let modules_resolved = sources.len();
     crate::v1_rt::resolution_silent_pick_enable();
     let resolve_result = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
     let (graph, source_indices) = resolve_result?;
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ChildWholeTreeResolve,
+        ResolutionDivergencePhaseState::Completed,
+        &format!("modules={modules_resolved}"),
+    )?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         graph.as_ref(),
         source_indices,
@@ -26288,11 +26696,76 @@ pub fn resolution_divergence_census_live_closure_scoped(
         None,
         None,
     );
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::CensusTraversal,
+        ResolutionDivergencePhaseState::Started,
+        &format!("modules={modules_resolved}"),
+    )?;
     let mut census = resolution_divergence_census_from_ctx(&ctx);
     census.modules_resolved = modules_resolved;
     census.modules_excluded = 0;
     merge_silent_pick_telemetry(&mut census, silent_picks);
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::CensusTraversal,
+        ResolutionDivergencePhaseState::Completed,
+        &format!("sites_checked={}", census.sites_checked),
+    )?;
     Ok(census)
+}
+
+/// Cold closure membership for the standalone adapter. It has no parent index, so
+/// it retains the declared primary-precedence pool build used before the in-process
+/// cut.
+fn resolution_divergence_closure_scoped_sources(
+    roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let membership_index = build_multi_entry_index_primary_precedence(roots);
+    load_compile_clean_entry_sources(roots, &membership_index, None)
+}
+
+/// Closure membership over source objects the parent index already owns.
+///
+/// `process_shared_index` canonicalizes absolute CI roots to workspace-relative
+/// spellings. Re-reading every first-root file from `default_source_roots` creates
+/// new absolute-path `SourceFile`s; resolving imports then pulls the same modules'
+/// relative-path objects from the index, so every declaration appears twice. Seed
+/// the closure from the index's existing `Rc<SourceFile>` values instead. This is a
+/// read-only index walk: no second whole-tree disk load and no second index build.
+/// The executable frozen control walls this consumer with `Rc::ptr_eq`; other
+/// `default_source_roots` consumers remain an explicitly separate construction-time
+/// identity class, tracked by `node://adhoc-0c214548-ded` and dissolved when
+/// `SourceFile` construction canonicalizes paths. Content equality is NOT an oracle
+/// for this class: the forked objects have identical bytes, so only object identity
+/// distinguishes the bad state. Keep the pointer-identity control enrolled when the
+/// construction wall lands as evidence that the higher rung is real.
+fn resolution_divergence_closure_scoped_sources_from_shared_index(
+    index: &MultiEntryIndex,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let first_root = index.source_roots.first().ok_or_else(|| {
+        "resolution-divergence census refused: parent shared index has no source roots".to_string()
+    })?;
+    let first_root_only = std::slice::from_ref(first_root);
+    let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .source_files
+        .values()
+        .filter(|sf| {
+            let rel = workspace_relative_repo_path(&sf.path);
+            source_tree_root_of(first_root_only, &rel).is_some()
+        })
+        .cloned()
+        .collect();
+    entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
+    if entry_sources.is_empty() {
+        return Err(format!(
+            "resolution-divergence census refused: parent shared index has no modules under first root '{first_root}'"
+        ));
+    }
+    let sources = resolve_transitively(
+        entry_sources,
+        &index.source_files,
+        &index.module_graph_facts,
+    )?;
+    extend_sources_to_both_closure_fixpoint(sources, index)
 }
 
 /// A silent-pick row that also lands in the census's own containment_ambiguous
@@ -26701,6 +27174,168 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
     lines.join("\n")
 }
 
+/// Byte projection and gate verdict shared by the in-process CI witness and the
+/// standalone adapter. Keeping both consumers on this value prevents the process
+/// cut from growing a second verdict or output-format authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolutionDivergenceCensusProjection {
+    pub stdout: String,
+    pub stderr: Option<String>,
+    pub exit_code: u8,
+    pub receipt_detail: &'static str,
+}
+
+pub fn project_resolution_divergence_census(
+    census: &ResolutionDivergenceCensus,
+) -> ResolutionDivergenceCensusProjection {
+    let report = format_resolution_divergence_census(census);
+    if census.sites_checked == 0 {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(
+                "resolution_divergence_census: no bare call sites in resolved corpus".to_string(),
+            ),
+            exit_code: 2,
+            receipt_detail: "refused: no bare call sites",
+        };
+    }
+    if let Some(refusal) = resolution_divergence_fn_parent_first_hit_subset_refusal(census) {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(refusal),
+            exit_code: 1,
+            receipt_detail: "refused: fn-parent subset violation",
+        };
+    }
+    if let Some(refusal) = resolution_divergence_silent_pick_refusal(census) {
+        return ResolutionDivergenceCensusProjection {
+            stdout: report,
+            stderr: Some(refusal),
+            exit_code: 1,
+            receipt_detail: "refused: genuine silent pick",
+        };
+    }
+    let raw_telemetry_count = census.silent_pick_global_bare_lcp_rows.len()
+        + census.silent_pick_global_bare_lcp_tie_rows.len()
+        + census.silent_pick_fn_parent_first_hit_rows.len();
+    ResolutionDivergenceCensusProjection {
+        stdout: format!(
+            "{report}\nSILENT-PICK-GATE: clean (0 genuine silent picks — {} raw telemetry site(s) filtered as benign whole-pool overlap via containment_ambiguous/diverge join, sites_checked={})",
+            raw_telemetry_count, census.sites_checked,
+        ),
+        stderr: None,
+        exit_code: 0,
+        receipt_detail: "clean gate verdict",
+    }
+}
+
+/// CI witness implementation over the parent process's shared SymbolIndex. The old
+/// adapter launched `resolution_divergence_census --closure-scoped`, which built a
+/// second index and cold-resolved the closure in a child process. This path keeps the
+/// closure-scoped source authority and resolver semantics while reusing the parent's
+/// typed-module cache; no child process or child resolve exists.
+pub fn resolution_divergence_silent_pick_gate_in_process(
+    _calling_ctx: &v1_interpreter::InterpContext,
+) -> bool {
+    let run = || -> Result<ResolutionDivergenceCensusProjection, String> {
+        // Parent-plan capture leaves observation armed so cache misses between the
+        // plan and this witness are retained. Bracket every fallible setup step and
+        // disable before propagating its result: a closure-membership or receipt-I/O
+        // refusal must not leak the global observation state into later work.
+        let resolve_setup = (|| -> Result<_, String> {
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ChildLaunch,
+                ResolutionDivergencePhaseState::Skipped,
+                "in-process witness; no child launched",
+            )?;
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ChildWholeTreeResolve,
+                ResolutionDivergencePhaseState::Skipped,
+                "in-process census uses parent-owned shared index",
+            )?;
+
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ParentWholeTreeResolve,
+                ResolutionDivergencePhaseState::Started,
+                "parent shared-index closure walk + resolve",
+            )?;
+            let roots = default_source_roots();
+            let index = process_shared_index(&roots);
+            let sources = resolution_divergence_closure_scoped_sources_from_shared_index(&index)?;
+            let modules_resolved = sources.len();
+            let (graph, source_indices, _) = resolved_graph_from_sources_with_index(
+                &index,
+                sources,
+                ResolveTypecheckGate::Strict,
+                "resolution-divergence-census-in-process",
+                ResolvedGraphMemoShare::Ephemeral,
+            )?;
+            Ok((graph, source_indices, modules_resolved))
+        })();
+        let subsequent_silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+        let (graph, source_indices, modules_resolved) = resolve_setup?;
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::ParentWholeTreeResolve,
+            ResolutionDivergencePhaseState::Completed,
+            &format!("modules={modules_resolved}; shared_index=true"),
+        )?;
+        let ctx = v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            v1_interpreter::ExecutionMode::Wet,
+            None,
+            None,
+        );
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Started,
+            &format!("modules={modules_resolved}"),
+        )?;
+        let mut census = resolution_divergence_census_from_ctx(&ctx);
+        census.modules_resolved = modules_resolved;
+        census.modules_excluded = 0;
+        let silent_picks = resolution_divergence_combine_silent_pick_telemetry(
+            resolution_divergence_parent_plan_silent_picks()?,
+            subsequent_silent_picks,
+        );
+        merge_silent_pick_telemetry(&mut census, silent_picks);
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Completed,
+            &format!("sites_checked={}", census.sites_checked),
+        )?;
+
+        record_resolution_divergence_phase(
+            ResolutionDivergencePhase::OutputProjection,
+            ResolutionDivergencePhaseState::Started,
+            "format report and gate verdict",
+        )?;
+        Ok(project_resolution_divergence_census(&census))
+    };
+
+    match run() {
+        Ok(projection) => {
+            println!("{}", projection.stdout);
+            if let Some(stderr) = &projection.stderr {
+                eprintln!("{stderr}");
+            }
+            if let Err(e) = record_resolution_divergence_phase(
+                ResolutionDivergencePhase::OutputProjection,
+                ResolutionDivergencePhaseState::Completed,
+                projection.receipt_detail,
+            ) {
+                eprintln!("resolution_divergence_census: {e}");
+                return false;
+            }
+            projection.exit_code == 0
+        }
+        Err(e) => {
+            eprintln!("resolution_divergence_census: {e}");
+            false
+        }
+    }
+}
+
 fn containment_via_label(via: &ContainmentResolveVia) -> &'static str {
     match via {
         ContainmentResolveVia::Lexical => "lexical",
@@ -27079,14 +27714,75 @@ mod resolution_divergence_census_tests {
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
         func_sig_if_resolved, import_chain_owner, lookup_resolved_sig,
         resolution_divergence_census_live, resolution_divergence_silent_pick_refusal,
-        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
+        whole_tree_resolved_ctx, write_resolution_divergence_phase_receipt_row_at,
+        ContainmentResolve, ResolutionDivergenceBucket, ResolutionDivergencePhase,
+        ResolutionDivergencePhaseState, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
+    use std::rc::Rc;
 
     fn write_fixture(root: &std::path::Path, rel: &str, content: &str) {
         let path = root.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).expect("mkdir");
         std::fs::write(&path, content).expect("write dag");
+    }
+
+    #[test]
+    fn phase_receipt_persists_started_before_completed_with_distinct_timing() {
+        let receipt = std::env::temp_dir().join(format!(
+            "gunbc-resolution-divergence-phase-receipt-{}.tsv",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&receipt);
+        write_resolution_divergence_phase_receipt_row_at(
+            &receipt,
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Started,
+            "fixture\nstart",
+        )
+        .expect("started row");
+        write_resolution_divergence_phase_receipt_row_at(
+            &receipt,
+            ResolutionDivergencePhase::CensusTraversal,
+            ResolutionDivergencePhaseState::Completed,
+            "fixture complete",
+        )
+        .expect("completed row");
+        let body = std::fs::read_to_string(&receipt).expect("read receipt");
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines.len(), 3, "header plus one row per transition");
+        assert!(lines[0].contains("elapsed_ms"));
+        assert!(lines[1].contains("\tcensus_traversal\tstarted\t\tfixture start"));
+        assert!(lines[2].contains("\tcensus_traversal\tcompleted\t"));
+        assert_eq!(lines[1].split('\t').count(), 11);
+        assert_eq!(lines[2].split('\t').count(), 11);
+        let _ = std::fs::remove_file(receipt);
+    }
+
+    #[test]
+    fn parent_and_shared_index_telemetry_join_without_cache_hit_duplicates() {
+        let parent_row = crate::v1_rt::GlobalBareLcpPickSite {
+            env_module_path: "test.parent".to_string(),
+            name: "shared".to_string(),
+            candidate_count: 2,
+            chosen_module_path: "test.choice".to_string(),
+        };
+        let later_row = crate::v1_rt::GlobalBareLcpPickSite {
+            env_module_path: "test.later".to_string(),
+            name: "shared".to_string(),
+            candidate_count: 3,
+            chosen_module_path: "test.other_choice".to_string(),
+        };
+        let earlier = crate::v1_rt::SilentPickTelemetry {
+            global_bare_lcp_picks: vec![parent_row.clone()],
+            ..Default::default()
+        };
+        let later = crate::v1_rt::SilentPickTelemetry {
+            global_bare_lcp_picks: vec![parent_row.clone(), later_row.clone()],
+            ..Default::default()
+        };
+        let joined = super::resolution_divergence_combine_silent_pick_telemetry(earlier, later);
+        assert_eq!(joined.global_bare_lcp_picks, vec![parent_row, later_row]);
     }
 
     /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
@@ -27114,6 +27810,86 @@ mod resolution_divergence_census_tests {
         super::process_workspace_root()
             .join("target")
             .join(format!("gunbc-resdiv-posctl-{}", std::process::id()))
+    }
+
+    #[test]
+    fn shared_index_cut_preserves_frozen_census_output_and_verdict() {
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-resdiv-shared-cut-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "callee.dag",
+            r#"module test.sharedcut.callee
+
+import std.types { Bool }
+
+fn identity(a: Bool) -> Bool {
+  return a
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "caller.dag",
+            r#"module test.sharedcut.caller
+
+import std.types { Bool }
+import test.sharedcut.callee { identity }
+
+fn caller() -> Bool {
+  return identity(False)
+}
+"#,
+        );
+        let roots = fixture_roots(&fixture);
+        let before = resolution_divergence_census_live(&roots, &[]).expect("legacy cold census");
+
+        // Match production exactly: derive membership from source objects the
+        // canonicalized parent index already owns, then resolve through that index.
+        // The absolute fixture roots intentionally differ in spelling from the
+        // canonical index; re-reading them would mint absolute entry objects alongside
+        // the relative provider objects and reintroduce every module twice.
+        let index = super::process_shared_index(&roots);
+        let sources =
+            super::resolution_divergence_closure_scoped_sources_from_shared_index(index.as_ref())
+                .expect("parent-owned closure-scoped fixture sources");
+        assert!(
+            sources.iter().all(|source| index
+                .source_files
+                .values()
+                .any(|owned| Rc::ptr_eq(source, owned))),
+            "the in-process cut must not reload any source outside the parent index",
+        );
+        let modules_resolved = sources.len();
+        crate::v1_rt::resolution_silent_pick_enable();
+        let resolve_result = super::resolved_graph_from_sources_with_index(
+            index.as_ref(),
+            sources,
+            super::ResolveTypecheckGate::Strict,
+            "resolution-divergence-shared-cut-control",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        );
+        let telemetry = crate::v1_rt::resolution_silent_pick_disable();
+        let (graph, source_indices, _) = resolve_result.expect("shared-index resolve");
+        let ctx = crate::v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            Wet,
+            None,
+            None,
+        );
+        let mut after = super::resolution_divergence_census_from_ctx(&ctx);
+        after.modules_resolved = modules_resolved;
+        super::merge_silent_pick_telemetry(&mut after, telemetry);
+
+        assert_eq!(
+            super::project_resolution_divergence_census(&after),
+            super::project_resolution_divergence_census(&before),
+            "the process-boundary cut must preserve census bytes and gate verdict on a frozen tree",
+        );
+        let _ = std::fs::remove_dir_all(fixture);
     }
 
     #[test]
