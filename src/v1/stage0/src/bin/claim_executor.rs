@@ -5067,13 +5067,22 @@ fn run_walk(
     }
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
+    eprintln!("[floor-phase] phase=resolve-receipt state=started");
     let resolve_receipt_ok = !emit_ordinary_floor_receipts || write_resolve_receipt(&batch_records);
+    eprintln!("[floor-phase] phase=resolve-receipt state=completed");
+    eprintln!("[floor-phase] phase=batch-wall-receipt state=started");
     let batch_wall_receipt_ok =
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
+    eprintln!("[floor-phase] phase=batch-wall-receipt state=completed");
+    eprintln!("[floor-phase] phase=gate-warm-cost-receipt state=started");
     let gate_warm_cost_receipt_ok = !emit_ordinary_floor_receipts
         || write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
+    eprintln!("[floor-phase] phase=gate-warm-cost-receipt state=completed");
+    eprintln!("[floor-phase] phase=witness-row-cost-receipt state=started");
     let witness_row_cost_receipt_ok = !emit_ordinary_floor_receipts
         || write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
+    eprintln!("[floor-phase] phase=witness-row-cost-receipt state=completed");
+    eprintln!("[floor-phase] phase=witness-row-cost-drift-receipt state=started");
     let witness_row_cost_drift_receipt_ok = if !emit_ordinary_floor_receipts {
         true
     } else if falsifier_cadence {
@@ -5086,8 +5095,10 @@ fn run_walk(
     } else {
         true
     };
+    eprintln!("[floor-phase] phase=witness-row-cost-drift-receipt state=completed");
     // Written on EVERY exit path, red included — a red run is precisely when the
     // alert needs to know which component failed (gunbc.floor_component_receipt).
+    eprintln!("[floor-phase] phase=floor-component-receipt state=started");
     let floor_component_receipt_ok = !emit_ordinary_floor_receipts
         || write_floor_component_receipt_at(
             std::path::Path::new("target"),
@@ -5095,6 +5106,7 @@ fn run_walk(
             &batch_records,
             batches.len(),
         );
+    eprintln!("[floor-phase] phase=floor-component-receipt state=completed");
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     eprintln!(
