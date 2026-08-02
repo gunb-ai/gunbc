@@ -31029,8 +31029,147 @@ struct TestMigrationDebtReport {
     entries: Vec<TestMigrationDebtEntry>,
 }
 
+struct TestMigrationBehaviorDiscoveryReport {
+    legacy_behavior_ids: Vec<String>,
+    witness_behavior_ids: Vec<String>,
+    errors: Vec<String>,
+}
+
 fn test_migration_debt_v1_test_dir() -> PathBuf {
     workspace_root().join("src/v1/tests/src")
+}
+
+fn test_migration_named_fn_after_attribute<'a, I>(lines: &mut I) -> Option<String>
+where
+    I: Iterator<Item = &'a str>,
+{
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("#[") {
+            continue;
+        }
+        let after_visibility = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
+        let after_async = after_visibility
+            .strip_prefix("async ")
+            .unwrap_or(after_visibility);
+        return after_async
+            .strip_prefix("fn ")
+            .and_then(|rest| rest.split('(').next())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string);
+    }
+    None
+}
+
+fn test_migration_rust_test_fn_names(content: &str) -> Result<Vec<String>, String> {
+    let mut lines = content.lines();
+    let mut names = Vec::new();
+    while let Some(line) = lines.next() {
+        if line.trim() != "#[test]" {
+            continue;
+        }
+        match test_migration_named_fn_after_attribute(&mut lines) {
+            Some(name) => names.push(name),
+            None => return Err("#[test] is not followed by a named Rust function".to_string()),
+        }
+    }
+    Ok(names)
+}
+
+fn test_migration_dag_test_fn_names(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("test fn ")
+                .and_then(|rest| rest.split('(').next())
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDiscoveryReport {
+    let dir = test_migration_debt_v1_test_dir();
+    let mut legacy_behavior_ids = Vec::new();
+    let mut witness_behavior_ids = Vec::new();
+    let mut errors = Vec::new();
+
+    match std::fs::read_dir(&dir) {
+        Ok(read_dir) => {
+            let mut paths: Vec<PathBuf> = read_dir
+                .filter_map(|entry| match entry {
+                    Ok(entry) => Some(entry.path()),
+                    Err(err) => {
+                        errors.push(format!("read legacy test directory entry: {err}"));
+                        None
+                    }
+                })
+                .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+                .collect();
+            paths.sort();
+            for path in paths {
+                let repo_path = path
+                    .strip_prefix(workspace_root())
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => match test_migration_rust_test_fn_names(&content) {
+                        Ok(names) => legacy_behavior_ids.extend(
+                            names
+                                .into_iter()
+                                .map(|name| format!("{repo_path}::{name}")),
+                        ),
+                        Err(err) => errors.push(format!("{repo_path}: {err}")),
+                    },
+                    Err(err) => errors.push(format!("read {repo_path}: {err}")),
+                }
+            }
+        }
+        Err(err) => errors.push(format!("read {}: {err}", dir.display())),
+    }
+
+    for (path, content) in corpus_dag_files() {
+        witness_behavior_ids.extend(
+            test_migration_dag_test_fn_names(&content)
+                .into_iter()
+                .map(|name| format!("{}::{name}", normalize_repo_path(&path))),
+        );
+    }
+
+    legacy_behavior_ids.sort();
+    legacy_behavior_ids.dedup();
+    witness_behavior_ids.sort();
+    witness_behavior_ids.dedup();
+    TestMigrationBehaviorDiscoveryReport {
+        legacy_behavior_ids,
+        witness_behavior_ids,
+        errors,
+    }
+}
+
+fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
+    static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
+    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
+}
+
+pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
+    test_migration_behavior_discovery_report()
+        .legacy_behavior_ids
+        .clone()
+}
+
+pub fn test_migration_witness_behavior_ids() -> Vec<String> {
+    test_migration_behavior_discovery_report()
+        .witness_behavior_ids
+        .clone()
+}
+
+pub fn test_migration_behavior_discovery_holds() -> bool {
+    test_migration_behavior_discovery_report().errors.is_empty()
 }
 
 fn test_migration_debt_stem(name: &str) -> String {

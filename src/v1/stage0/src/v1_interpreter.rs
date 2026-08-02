@@ -11226,6 +11226,19 @@ macro_rules! v1_builtin_arms {
             arm "free_call.test_migration_debt_known_covered_module_is_not_debt" { "test_migration_debt_known_covered_module_is_not_debt" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
             ))),
+            arm "free_call.test_migration_legacy_behavior_ids" { "test_migration_legacy_behavior_ids" } => {
+                let ids = crate::cli_run::test_migration_legacy_behavior_ids();
+                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            arm "free_call.test_migration_witness_behavior_ids" { "test_migration_witness_behavior_ids" } => {
+                let ids = crate::cli_run::test_migration_witness_behavior_ids();
+                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            arm "free_call.test_migration_behavior_discovery_holds" { "test_migration_behavior_discovery_holds" } => Ok(Some(Value::Bool(
+                crate::cli_run::test_migration_behavior_discovery_holds(),
+            ))),
             arm "free_call.test_migration_delete_guard_holds" { "test_migration_delete_guard_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_delete_guard_holds(),
             ))),
