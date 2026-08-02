@@ -7,9 +7,9 @@ import gunbc.stage0_rust_lifecycle_totality {
   lifecycle_discovery_complete,
   lifecycle_totality_receipt,
   lifecycle_totality_witness_observation,
+  lifecycle_totality_retirement_trigger_underived_reason,
   stage0_rust_lifecycle_totality_note,
-  stage0_rust_lifecycle_totality_underived_axes,
-  RetirementTrigger
+  stage0_rust_lifecycle_totality_underived_axes
 }
 import v2.std.algebra { length }
 
@@ -58,9 +58,12 @@ test fn lifecycle_totality_discovery_and_decision_are_separate() -> Bool {
 }
 
 test fn lifecycle_totality_counts_retirement_trigger_as_underived_axis() -> Bool {
-  stage0_rust_lifecycle_totality_underived_axes == [RetirementTrigger]
-    && length(xs: stage0_rust_lifecycle_totality_underived_axes) == 1
+  length(xs: stage0_rust_lifecycle_totality_underived_axes) == 1
     && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "stage0_rust_lifecycle_totality_underived_axes")
+    && string_contains(
+      s: lifecycle_totality_retirement_trigger_underived_reason,
+      pattern: "RetirementTrigger carrier not modeled"
+    )
 }
 
 test fn lifecycle_totality_positive_control_decision_complete() -> Bool {
