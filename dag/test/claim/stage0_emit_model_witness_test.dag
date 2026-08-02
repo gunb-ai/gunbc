@@ -55,7 +55,9 @@ test fn w_generated_files_classified_generated() -> Bool {
   is_generated_stage0_file(basename: "extdeps_units_iec_80000_13.rs") &&
   is_generated_stage0_file(basename: "extdeps_units_iso8601.rs") &&
   is_generated_stage0_file(basename: "lib.rs") &&
-  is_generated_stage0_file(basename: "std_algebra.rs")
+  is_generated_stage0_file(basename: "std_algebra.rs") &&
+  is_generated_stage0_file(basename: "std_keyed_row.rs") &&
+  is_generated_stage0_file(basename: "std_keyed_roster.rs")
 }
 
 test fn w_enrolled_manifest_equals_typed_emission_plan_derivation() -> Bool {
