@@ -1,3 +1,5 @@
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.resolved_graph_cache_hand_rust_scaffold;
+// witness: dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag).
 use im::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -13,10 +15,17 @@ use crate::v1_compiler_infer::{
 };
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
-use crate::v1_std_core::NewlineIndex;
+use crate::v1_std_core::{ErrorNode, NewlineIndex};
+use im::Vector;
 
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 3;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
+/// v3 header sentinel: union output not persisted in payload (semantically incomplete).
+pub const UNION_PART_ABSENT_DIGEST: &str = "ffffffffffffffff";
+const PART_COUNT: usize = 3;
+const PART_DESCRIPTOR_LEN: usize = 8 + 8 + 16; // offset, length, digest
+const V3_HEADER_LEN: usize =
+    MAGIC.len() + 4 + 16 + 16 + 16 + 16 + 8 + PART_COUNT * PART_DESCRIPTOR_LEN;
 
 /// Single-authority mirror of the modeled `SizeBounded` cap:
 /// `extdeps.realization.resolved_graph.resolved_graph_cache_cap_bytes`
@@ -24,36 +33,67 @@ const MAGIC: &[u8; 8] = b"gunbgrpc";
 /// in lockstep by `cap_matches_modeled_authority` in the size-bound test.
 const RESOLVED_GRAPH_CACHE_CAP_BYTES: u64 = 10_737_418_240;
 
-/// The byte ceiling the on-disk cache is held under. Defaults to the modeled
-/// cap; `GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES` overrides it (operator escape
-/// hatch / test injection). A malformed or zero override falls back to the
-/// modeled default rather than disabling the bound (fail-closed).
+thread_local! {
+    static RESOLVED_GRAPH_CACHE_CAP_OVERRIDE: std::cell::RefCell<Option<u64>> =
+        std::cell::RefCell::new(None);
+}
+
+/// The byte ceiling the on-disk cache is held under — always the modeled
+/// `SizeBounded` cap from `extdeps.realization.resolved_graph` (no production
+/// env override; review 47220).
 pub fn resolved_graph_cache_cap_bytes() -> u64 {
-    match std::env::var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES") {
-        Ok(s) => match s.trim().parse::<u64>() {
-            Ok(n) if n > 0 => n,
-            _ => RESOLVED_GRAPH_CACHE_CAP_BYTES,
-        },
-        Err(_) => RESOLVED_GRAPH_CACHE_CAP_BYTES,
+    if let Some(cap) = RESOLVED_GRAPH_CACHE_CAP_OVERRIDE.with(|c| *c.borrow()) {
+        if cap > 0 {
+            return cap;
+        }
     }
+    RESOLVED_GRAPH_CACHE_CAP_BYTES
+}
+
+/// Test-only cap injection — gated on `test_hooks` feature (enabled by v1-compiler-tests only).
+#[cfg(feature = "test_hooks")]
+#[doc(hidden)]
+pub fn set_resolved_graph_cache_cap_bytes_for_test(cap: Option<u64>) {
+    RESOLVED_GRAPH_CACHE_CAP_OVERRIDE.with(|c| *c.borrow_mut() = cap);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheRejectReason {
     ContentDigestMismatch,
     BackendKeyMalformed,
+    /// Per-part byte digest matched but serde decode failed — codec drift or corruption.
+    PartDecodeFailure,
+}
+
+/// Per-output digests and byte sizes for a FORMAT_VERSION 3 artifact — derived
+/// from the bounded header without reading payload bytes on the probe path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FaithfulResolvedGraphProbeParts {
+    pub graph_digest: Hash,
+    pub graph_bytes: u64,
+    pub indices_digest: Hash,
+    pub indices_bytes: u64,
+    pub union_digest: Hash,
+    pub union_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheProbeHit {
     pub format_version: u32,
-    pub content_digest: Hash,
+    pub payload_integrity_digest: Hash,
     pub payload_byte_count: u64,
+    pub stored_request_key: Hash,
+    pub stored_semantic_digest: Hash,
+    pub parts: FaithfulResolvedGraphProbeParts,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheProbeResult {
     Hit(CacheProbeHit),
+    /// Pre-v3 on-disk row for this subject — cold rebuild is the migration disposition.
+    LegacyMigrationRequired {
+        format_version: u32,
+    },
     Miss,
     RejectedHit(CacheRejectReason),
 }
@@ -69,6 +109,7 @@ pub enum CacheLookupResult {
 pub struct CachedResolvedGraph {
     pub graph: Rc<ResolvedGraph>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub compile_clean_diags: Rc<Vector<Rc<ErrorNode>>>,
     pub content_digest: Hash,
     pub payload_byte_count: u64,
 }
@@ -107,25 +148,59 @@ fn encode_cache_payload(payload: &CachePayload) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("cache payload byte encode: {e}"))
 }
 
+fn encode_graph_part(graph: &ResolvedGraph) -> Result<Vec<u8>, String> {
+    let value =
+        serde_json::to_value(graph).map_err(|e| format!("cache graph value encode: {e}"))?;
+    serde_json::to_vec(&sort_json_value(value)).map_err(|e| format!("cache graph encode: {e}"))
+}
+
+fn encode_source_indices_part(
+    source_indices: &HashMap<String, NewlineIndex>,
+) -> Result<Vec<u8>, String> {
+    let value = serde_json::to_value(source_indices)
+        .map_err(|e| format!("cache indices value encode: {e}"))?;
+    serde_json::to_vec(&sort_json_value(value)).map_err(|e| format!("cache indices encode: {e}"))
+}
+
+fn encode_compile_clean_union_part(
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+) -> Result<Vec<u8>, String> {
+    let plain: Vec<ErrorNode> = compile_clean_diags.iter().map(|d| (**d).clone()).collect();
+    let value =
+        serde_json::to_value(&plain).map_err(|e| format!("cache union value encode: {e}"))?;
+    serde_json::to_vec(&sort_json_value(value)).map_err(|e| format!("cache union encode: {e}"))
+}
+
+fn decode_graph_part(bytes: &[u8]) -> Result<ResolvedGraph, String> {
+    serde_json::from_slice(bytes).map_err(|e| format!("cache graph decode failed: {e}"))
+}
+
+fn decode_source_indices_part(bytes: &[u8]) -> Result<HashMap<String, NewlineIndex>, String> {
+    serde_json::from_slice(bytes).map_err(|e| format!("cache indices decode failed: {e}"))
+}
+
+fn decode_compile_clean_union_part(bytes: &[u8]) -> Result<Vector<Rc<ErrorNode>>, String> {
+    let plain: Vec<ErrorNode> =
+        serde_json::from_slice(bytes).map_err(|e| format!("cache union decode failed: {e}"))?;
+    Ok(Vector::from(
+        plain.into_iter().map(Rc::new).collect::<Vec<_>>(),
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheWriteOutcome {
     Written,
     AlreadyExists,
 }
 
-/// The cross-process resolved-graph disk cache is **opt-in**: it activates only
-/// when `GUNBC_RESOLVED_GRAPH_CACHE_DIR` names a directory. With it unset the
-/// cache is entirely off (`None` — no read and no write).
+/// Cross-process disk cache is **opt-in**: returns `Some` only when
+/// `GUNBC_RESOLVED_GRAPH_CACHE_DIR` is set. Unset env means no cross-process tier
+/// (in-process `resolved_graph_memo` still serves same-process repeats).
 ///
-/// Why opt-in and not a `temp_dir()` default: under the CI floor the cache is a
-/// net loss. Every commit changes the compiler binary, which is part of the
-/// content digest, so the floor re-colds each run and is overwhelmingly a miss;
-/// and both paths buffer a whole cache file in memory (a hit `read_to_end`s the
-/// verbose-JSON file, ~11x the packed graph; a miss `to_vec`s the whole JSON),
-/// so multi-GiB entries resolved across concurrent shards OOM the runner. The
-/// cache pays its worst cost exactly where it collects ~no benefit. (#5789 made
-/// it always-on via a `temp_dir()` default; this reverts to opt-in — its IO
-/// realization must stream, not buffer, before it is safe to default on.)
+/// Prior always-on `temp_dir()` default was reverted (#5789): it buffered whole
+/// cache files and OOM'd concurrent floor shards on a shared host temp tree.
+/// Default-on cwd cache is likewise deferred until IO realization streams rather
+/// than buffers whole payloads (mechanism-inventory-red-controls; review 47005).
 pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
     std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
 }
@@ -287,16 +362,284 @@ fn payload_content_digest(payload_bytes: &[u8]) -> Hash {
     v1_rt::bytes_identity_hash(payload_bytes)
 }
 
-const CACHE_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
-const FAITHFUL_PROBE_FORMAT_VERSION: u32 = 2;
+fn validate_declared_artifact_len(
+    payload_len: u64,
+    total_len: usize,
+) -> Result<(), CacheRejectReason> {
+    let cap = resolved_graph_cache_cap_bytes();
+    if payload_len > cap || payload_len > MAX_PART_BYTES * PART_COUNT as u64 {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    let expected_total = (V3_HEADER_LEN as u64)
+        .checked_add(payload_len)
+        .filter(|n| *n <= cap)
+        .ok_or(CacheRejectReason::BackendKeyMalformed)?;
+    let expected_total_usize = match usize::try_from(expected_total) {
+        Ok(n) => n,
+        Err(_) => return Err(CacheRejectReason::BackendKeyMalformed),
+    };
+    if total_len != expected_total_usize {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    Ok(())
+}
+
+const FAITHFUL_PROBE_FORMAT_VERSION: u32 = 3;
+const MAX_PART_BYTES: u64 = 512 * 1024 * 1024;
+
+#[derive(Debug, Clone)]
+struct V3PartDescriptor {
+    offset: u64,
+    length: u64,
+    digest: Hash,
+}
+
+#[derive(Debug, Clone)]
+struct V3Header {
+    subject: Hash,
+    payload_integrity_digest: Hash,
+    stored_request_key: Hash,
+    stored_semantic_digest: Hash,
+    payload_len: u64,
+    parts: [V3PartDescriptor; PART_COUNT],
+}
 
 pub fn faithful_probe_unavailable_gap() -> String {
-    "faithful resolved-graph disk probe unavailable: resolved_graph_cache v1 only exposes the whole payload digest and payload byte count, not per-output digests or byte sizes for resolved_graph/source_indices; fabricating those facts would violate the derivation invariant"
+    "faithful resolved-graph disk probe unavailable: cache format version < 3 does not expose bounded per-part descriptors with stored request key and semantic digest"
         .to_string()
 }
 
 pub fn supports_faithful_probe() -> bool {
     FORMAT_VERSION >= FAITHFUL_PROBE_FORMAT_VERSION
+}
+
+fn parse_v3_part_descriptors(
+    bytes: &[u8],
+    off: &mut usize,
+) -> Result<[V3PartDescriptor; PART_COUNT], CacheRejectReason> {
+    let mut parts: [V3PartDescriptor; PART_COUNT] = [
+        V3PartDescriptor {
+            offset: 0,
+            length: 0,
+            digest: String::new(),
+        },
+        V3PartDescriptor {
+            offset: 0,
+            length: 0,
+            digest: String::new(),
+        },
+        V3PartDescriptor {
+            offset: 0,
+            length: 0,
+            digest: String::new(),
+        },
+    ];
+    for part in parts.iter_mut() {
+        if *off + PART_DESCRIPTOR_LEN > bytes.len() {
+            return Err(CacheRejectReason::BackendKeyMalformed);
+        }
+        part.offset = u64::from_le_bytes(bytes[*off..*off + 8].try_into().unwrap());
+        *off += 8;
+        part.length = u64::from_le_bytes(bytes[*off..*off + 8].try_into().unwrap());
+        *off += 8;
+        part.digest = std::str::from_utf8(&bytes[*off..*off + 16])
+            .map_err(|_| CacheRejectReason::BackendKeyMalformed)?
+            .to_string();
+        *off += 16;
+        if !v1_rt::is_hash_digest(&part.digest) || part.length > MAX_PART_BYTES {
+            return Err(CacheRejectReason::BackendKeyMalformed);
+        }
+    }
+    Ok(parts)
+}
+
+fn parse_v3_header(
+    bytes: &[u8],
+    expected_subject: &str,
+    total_len: usize,
+) -> Result<V3Header, CacheRejectReason> {
+    if bytes.len() < V3_HEADER_LEN {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    if &bytes[..MAGIC.len()] != MAGIC {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    let version = u32::from_le_bytes(bytes[MAGIC.len()..MAGIC.len() + 4].try_into().unwrap());
+    if version != FORMAT_VERSION {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    let mut off = MAGIC.len() + 4;
+    let subject = std::str::from_utf8(&bytes[off..off + 16])
+        .map_err(|_| CacheRejectReason::BackendKeyMalformed)?
+        .to_string();
+    off += 16;
+    if subject != expected_subject {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    let payload_integrity_digest = std::str::from_utf8(&bytes[off..off + 16])
+        .map_err(|_| CacheRejectReason::BackendKeyMalformed)?
+        .to_string();
+    off += 16;
+    let stored_request_key = std::str::from_utf8(&bytes[off..off + 16])
+        .map_err(|_| CacheRejectReason::BackendKeyMalformed)?
+        .to_string();
+    off += 16;
+    let stored_semantic_digest = std::str::from_utf8(&bytes[off..off + 16])
+        .map_err(|_| CacheRejectReason::BackendKeyMalformed)?
+        .to_string();
+    off += 16;
+    let payload_len = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
+    off += 8;
+    validate_declared_artifact_len(payload_len, total_len)?;
+    let parts = parse_v3_part_descriptors(bytes, &mut off)?;
+    if parts[0].offset != 0 {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    for i in 1..PART_COUNT {
+        let prev = &parts[i - 1];
+        let expected_offset = prev
+            .offset
+            .checked_add(prev.length)
+            .ok_or(CacheRejectReason::BackendKeyMalformed)?;
+        if parts[i].offset != expected_offset {
+            return Err(CacheRejectReason::BackendKeyMalformed);
+        }
+    }
+    let tail = &parts[PART_COUNT - 1];
+    let tail_end = tail
+        .offset
+        .checked_add(tail.length)
+        .ok_or(CacheRejectReason::BackendKeyMalformed)?;
+    if tail_end != payload_len {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    Ok(V3Header {
+        subject,
+        payload_integrity_digest,
+        stored_request_key,
+        stored_semantic_digest,
+        payload_len,
+        parts,
+    })
+}
+
+fn faithful_parts_from_v3_header(header: &V3Header) -> FaithfulResolvedGraphProbeParts {
+    FaithfulResolvedGraphProbeParts {
+        graph_digest: header.parts[0].digest.clone(),
+        graph_bytes: header.parts[0].length,
+        indices_digest: header.parts[1].digest.clone(),
+        indices_bytes: header.parts[1].length,
+        union_digest: header.parts[2].digest.clone(),
+        union_bytes: header.parts[2].length,
+    }
+}
+
+fn approved_probe_matches_v3_header(
+    header: &V3Header,
+    approved: &CacheProbeHit,
+) -> Result<(), CacheRejectReason> {
+    if approved.format_version != FORMAT_VERSION {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    if header.payload_integrity_digest != approved.payload_integrity_digest {
+        return Err(CacheRejectReason::ContentDigestMismatch);
+    }
+    if header.payload_len != approved.payload_byte_count {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    if header.stored_request_key != approved.stored_request_key {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    if header.stored_semantic_digest != approved.stored_semantic_digest {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    let approved_parts = &approved.parts;
+    let header_parts = faithful_parts_from_v3_header(header);
+    if header_parts.graph_digest != approved_parts.graph_digest
+        || header_parts.graph_bytes != approved_parts.graph_bytes
+        || header_parts.indices_digest != approved_parts.indices_digest
+        || header_parts.indices_bytes != approved_parts.indices_bytes
+        || header_parts.union_digest != approved_parts.union_digest
+        || header_parts.union_bytes != approved_parts.union_bytes
+    {
+        return Err(CacheRejectReason::BackendKeyMalformed);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingArtifactDisposition {
+    Absent,
+    LegacyV1Upgrade,
+    V3Present,
+    Unrecognized,
+}
+
+/// Classify an on-disk artifact at the subject path before a v3 write. Legacy v1
+/// rows are migration replaceable; complete v3 rows are write-once.
+fn classify_existing_artifact(
+    path: &Path,
+    expected_subject: &str,
+) -> Result<ExistingArtifactDisposition, String> {
+    if !path.exists() {
+        return Ok(ExistingArtifactDisposition::Absent);
+    }
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) => return Err(format!("open existing cache artifact {:?}: {e}", path)),
+    };
+    let file_len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(e) => return Err(format!("metadata for cache artifact {:?}: {e}", path)),
+    };
+    if file_len > resolved_graph_cache_cap_bytes() as usize {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    if file_len < MAGIC.len() + 4 {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    let mut prefix = [0u8; MAGIC.len() + 4];
+    if file.read_exact(&mut prefix).is_err() {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    if &prefix[..MAGIC.len()] != MAGIC {
+        return Ok(ExistingArtifactDisposition::Unrecognized);
+    }
+    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
+    const LEGACY_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
+    match version {
+        1 => {
+            if file_len < LEGACY_HEADER_LEN {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let mut legacy = vec![0u8; LEGACY_HEADER_LEN - prefix.len()];
+            if file.read_exact(&mut legacy).is_err() {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let subject = std::str::from_utf8(&legacy[0..16])
+                .map_err(|e| format!("legacy cache subject utf8: {e}"))?;
+            if subject == expected_subject {
+                Ok(ExistingArtifactDisposition::LegacyV1Upgrade)
+            } else {
+                Ok(ExistingArtifactDisposition::Unrecognized)
+            }
+        }
+        FORMAT_VERSION => {
+            if file_len < V3_HEADER_LEN {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let mut header_rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
+            if file.read_exact(&mut header_rest).is_err() {
+                return Ok(ExistingArtifactDisposition::Unrecognized);
+            }
+            let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
+            match parse_v3_header(&header_bytes, expected_subject, file_len) {
+                Ok(_) => Ok(ExistingArtifactDisposition::V3Present),
+                Err(_) => Ok(ExistingArtifactDisposition::Unrecognized),
+            }
+        }
+        _ => Ok(ExistingArtifactDisposition::Unrecognized),
+    }
 }
 
 fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
@@ -305,89 +648,113 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheProbeResult::Miss,
         Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
     };
-    let mut header = [0u8; CACHE_HEADER_LEN];
-    if file.read_exact(&mut header).is_err() {
-        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-    }
-    if &header[..MAGIC.len()] != MAGIC {
-        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-    }
-    let version = u32::from_le_bytes(header[MAGIC.len()..MAGIC.len() + 4].try_into().unwrap());
-    let mut off = MAGIC.len() + 4;
-    let subject = match std::str::from_utf8(&header[off..off + 16]) {
-        Ok(s) => s.to_string(),
+    let file_len = match file.metadata() {
+        Ok(m) => m.len() as usize,
         Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
     };
-    off += 16;
-    if subject != expected_subject {
+    if file_len > resolved_graph_cache_cap_bytes() as usize {
         return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
-    let stored_content_digest = match std::str::from_utf8(&header[off..off + 16]) {
-        Ok(s) => s.to_string(),
-        Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
-    };
-    off += 16;
-    let payload_len = u64::from_le_bytes(header[off..off + 8].try_into().unwrap());
-    CacheProbeResult::Hit(CacheProbeHit {
-        format_version: version,
-        content_digest: stored_content_digest,
-        payload_byte_count: payload_len,
-    })
+    let mut prefix = [0u8; MAGIC.len() + 4];
+    if file.read_exact(&mut prefix).is_err() {
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    if &prefix[..MAGIC.len()] != MAGIC {
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
+    const LEGACY_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
+    if version == 1 {
+        let mut legacy = vec![0u8; LEGACY_HEADER_LEN - prefix.len()];
+        if file.read_exact(&mut legacy).is_err() {
+            return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+        let subject = std::str::from_utf8(&legacy[0..16])
+            .map_err(|_| CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed))
+            .unwrap_or("");
+        if subject != expected_subject {
+            return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+        return CacheProbeResult::LegacyMigrationRequired {
+            format_version: version,
+        };
+    }
+    if version != FORMAT_VERSION {
+        return CacheProbeResult::Miss;
+    }
+    let mut rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
+    if file.read_exact(&mut rest).is_err() {
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let header_bytes: Vec<u8> = [prefix.as_ref(), rest.as_ref()].concat();
+    match parse_v3_header(&header_bytes, expected_subject, file_len) {
+        Ok(parsed) => {
+            let parts = faithful_parts_from_v3_header(&parsed);
+            CacheProbeResult::Hit(CacheProbeHit {
+                format_version: version,
+                payload_integrity_digest: parsed.payload_integrity_digest,
+                payload_byte_count: parsed.payload_len,
+                stored_request_key: parsed.stored_request_key,
+                stored_semantic_digest: parsed.stored_semantic_digest,
+                parts,
+            })
+        }
+        Err(reason) => CacheProbeResult::RejectedHit(reason),
+    }
 }
 
-fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
-    let mut file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => return CacheLookupResult::Miss,
+fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookupResult {
+    let payload_len = match usize::try_from(header.payload_len) {
+        Ok(n) => n,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
     };
-    let mut bytes = Vec::new();
-    if file.read_to_end(&mut bytes).is_err() {
-        return CacheLookupResult::Miss;
-    }
-    if bytes.len() < MAGIC.len() + 4 + 16 + 16 + 8 {
-        return CacheLookupResult::Miss;
-    }
-    if &bytes[..MAGIC.len()] != MAGIC {
-        return CacheLookupResult::Miss;
-    }
-    let version = u32::from_le_bytes(bytes[MAGIC.len()..MAGIC.len() + 4].try_into().unwrap());
-    if version != FORMAT_VERSION {
-        return CacheLookupResult::Miss;
-    }
-    let mut off = MAGIC.len() + 4;
-    let subject = std::str::from_utf8(&bytes[off..off + 16])
-        .unwrap_or("")
-        .to_string();
-    off += 16;
-    if subject != expected_subject {
+    let mut payload_bytes = vec![0u8; payload_len];
+    if file.read_exact(&mut payload_bytes).is_err() {
         return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
-    let stored_content_digest = std::str::from_utf8(&bytes[off..off + 16])
-        .unwrap_or("")
-        .to_string();
-    off += 16;
-    let payload_len = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap()) as usize;
-    off += 8;
-    if off + payload_len > bytes.len() {
-        return CacheLookupResult::Miss;
-    }
-    let payload_bytes = &bytes[off..off + payload_len];
-    let computed = payload_content_digest(payload_bytes);
-    if computed != stored_content_digest {
+    let computed_integrity = payload_content_digest(&payload_bytes);
+    if computed_integrity != header.payload_integrity_digest {
         return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
     }
-    let payload: CachePayload = match serde_json::from_slice(payload_bytes) {
-        Ok(p) => p,
-        Err(_) => return CacheLookupResult::Miss,
+    let mut part_slices: [Vec<u8>; PART_COUNT] = [Vec::new(), Vec::new(), Vec::new()];
+    for (i, part) in header.parts.iter().enumerate() {
+        let start = part.offset as usize;
+        let end = start + part.length as usize;
+        if end > payload_bytes.len() {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+        let slice = &payload_bytes[start..end];
+        if v1_rt::bytes_identity_hash(slice) != part.digest {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
+        }
+        part_slices[i] = slice.to_vec();
+    }
+    let graph_bytes = &part_slices[0];
+    let indices_bytes = &part_slices[1];
+    let union_bytes = &part_slices[2];
+    let decoded_graph = match decode_graph_part(graph_bytes) {
+        Ok(g) => g,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure);
+        }
     };
-    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
-        payload
-            .source_indices
-            .into_iter()
-            .map(|(k, v)| (k, Rc::new(v)))
-            .collect(),
-    );
-    let decoded = Rc::new(payload.graph);
+    let si_plain = match decode_source_indices_part(indices_bytes) {
+        Ok(si) => si,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure);
+        }
+    };
+    let compile_clean_diags = match decode_compile_clean_union_part(union_bytes) {
+        Ok(d) => d,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure);
+        }
+    };
+    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> =
+        Rc::new(si_plain.into_iter().map(|(k, v)| (k, Rc::new(v))).collect());
+    let decoded = Rc::new(decoded_graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
     let modules =
         rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
@@ -402,9 +769,93 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     CacheLookupResult::Hit(CachedResolvedGraph {
         graph,
         source_indices,
-        content_digest: computed,
-        payload_byte_count: payload_bytes.len() as u64,
+        compile_clean_diags: Rc::new(compile_clean_diags),
+        content_digest: header.stored_semantic_digest.clone(),
+        payload_byte_count: header.payload_len,
     })
+}
+
+fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheLookupResult::Miss,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+    };
+    let file_len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(_) => return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
+    if file_len > resolved_graph_cache_cap_bytes() as usize {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    if file_len < MAGIC.len() + 4 {
+        return CacheLookupResult::Miss;
+    }
+    let mut prefix = [0u8; MAGIC.len() + 4];
+    if file.read_exact(&mut prefix).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
+    if version != FORMAT_VERSION {
+        return CacheLookupResult::Miss;
+    }
+    let mut header_rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
+    if file.read_exact(&mut header_rest).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
+    let header = match parse_v3_header(&header_bytes, expected_subject, file_len) {
+        Ok(h) => h,
+        Err(reason) => return CacheLookupResult::RejectedHit(reason),
+    };
+    decode_v3_payload_from_file(&mut file, header)
+}
+
+fn read_cached_file_verified_probe(
+    path: &Path,
+    expected_subject: &str,
+    approved: &CacheProbeHit,
+) -> CacheLookupResult {
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheLookupResult::Miss,
+        Err(_) => {
+            return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+        }
+    };
+    let file_len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(_) => return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
+    if file_len > resolved_graph_cache_cap_bytes() as usize {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    if file_len < MAGIC.len() + 4 {
+        return CacheLookupResult::Miss;
+    }
+    let mut prefix = [0u8; MAGIC.len() + 4];
+    if file.read_exact(&mut prefix).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
+    if version != FORMAT_VERSION {
+        return CacheLookupResult::Miss;
+    }
+    let mut header_rest = vec![0u8; V3_HEADER_LEN - prefix.len()];
+    if file.read_exact(&mut header_rest).is_err() {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let header_bytes: Vec<u8> = [prefix.as_ref(), header_rest.as_ref()].concat();
+    let header = match parse_v3_header(&header_bytes, expected_subject, file_len) {
+        Ok(h) => h,
+        Err(reason) => return CacheLookupResult::RejectedHit(reason),
+    };
+    match approved_probe_matches_v3_header(&header, approved) {
+        Ok(()) => decode_v3_payload_from_file(&mut file, header),
+        Err(reason) => CacheLookupResult::RejectedHit(reason),
+    }
 }
 
 pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
@@ -412,6 +863,24 @@ pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
         return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
     read_cached_file(&artifact_path(cache_root, subject_digest), subject_digest)
+}
+
+/// Decode a provider-approved v3 probe from disk. The reopened artifact header must
+/// match the approved probe exactly before payload bytes are read — closing the TOCTOU
+/// gap between logical provider verification and materialization install.
+pub fn lookup_verified_probe(
+    cache_root: &Path,
+    subject_digest: &str,
+    approved: &CacheProbeHit,
+) -> CacheLookupResult {
+    if !v1_rt::is_hash_digest(subject_digest) {
+        return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    read_cached_file_verified_probe(
+        &artifact_path(cache_root, subject_digest),
+        subject_digest,
+        approved,
+    )
 }
 
 pub fn probe(cache_root: &Path, subject_digest: &str) -> CacheProbeResult {
@@ -464,34 +933,93 @@ pub fn enforce_size_bound(cache_root: &Path, cap_bytes: u64) {
     }
 }
 
+pub struct EncodedResolvedGraphParts {
+    pub graph_digest: Hash,
+    pub graph_bytes: Vec<u8>,
+    pub indices_digest: Hash,
+    pub indices_bytes: Vec<u8>,
+    pub union_digest: Hash,
+    pub union_bytes: Vec<u8>,
+}
+
+pub fn encode_resolved_graph_parts(
+    graph: &ResolvedGraph,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+) -> Result<EncodedResolvedGraphParts, String> {
+    let si_plain: HashMap<String, NewlineIndex> = source_indices
+        .iter()
+        .map(|(k, v)| (k.clone(), (**v).clone()))
+        .collect();
+    let graph_bytes = encode_graph_part(graph)?;
+    let indices_bytes = encode_source_indices_part(&si_plain)?;
+    let union_bytes = encode_compile_clean_union_part(compile_clean_diags)?;
+    Ok(EncodedResolvedGraphParts {
+        graph_digest: v1_rt::bytes_identity_hash(&graph_bytes),
+        graph_bytes,
+        indices_digest: v1_rt::bytes_identity_hash(&indices_bytes),
+        indices_bytes,
+        union_digest: v1_rt::bytes_identity_hash(&union_bytes),
+        union_bytes,
+    })
+}
+
 pub fn write(
     cache_root: &Path,
     subject_digest: &str,
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
 ) -> Result<CacheWriteOutcome, String> {
     if !v1_rt::is_hash_digest(subject_digest) {
         return Err("subject_digest must be a 16-char hex hash".to_string());
     }
+    if !v1_rt::is_hash_digest(stored_request_key) || !v1_rt::is_hash_digest(stored_semantic_digest)
+    {
+        return Err("stored provider keys must be 16-char hex hashes".to_string());
+    }
     let final_path = artifact_path(cache_root, subject_digest);
-    if final_path.exists() {
-        return Ok(CacheWriteOutcome::AlreadyExists);
+    match classify_existing_artifact(&final_path, subject_digest)? {
+        ExistingArtifactDisposition::V3Present => return Ok(CacheWriteOutcome::AlreadyExists),
+        ExistingArtifactDisposition::Unrecognized => {
+            return Err(format!(
+                "refusing v3 write: unrecognized cache artifact at {:?}",
+                final_path
+            ));
+        }
+        ExistingArtifactDisposition::Absent | ExistingArtifactDisposition::LegacyV1Upgrade => {}
     }
     if let Some(parent) = final_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("failed to create cache dir {:?}: {}", parent, e))?;
     }
-    let si_plain: HashMap<String, NewlineIndex> = source_indices
-        .iter()
-        .map(|(k, v)| (k.clone(), (**v).clone()))
-        .collect();
-    let payload = CachePayload {
-        graph: graph.clone(),
-        source_indices: si_plain,
-    };
-    let payload_bytes =
-        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
-    let content_digest = payload_content_digest(&payload_bytes);
+    let encoded = encode_resolved_graph_parts(graph, source_indices, compile_clean_diags)?;
+    let payload_bytes = [
+        encoded.graph_bytes.as_slice(),
+        encoded.indices_bytes.as_slice(),
+        encoded.union_bytes.as_slice(),
+    ]
+    .concat();
+    let payload_integrity_digest = payload_content_digest(&payload_bytes);
+    let parts = [
+        V3PartDescriptor {
+            offset: 0,
+            length: encoded.graph_bytes.len() as u64,
+            digest: encoded.graph_digest.clone(),
+        },
+        V3PartDescriptor {
+            offset: encoded.graph_bytes.len() as u64,
+            length: encoded.indices_bytes.len() as u64,
+            digest: encoded.indices_digest.clone(),
+        },
+        V3PartDescriptor {
+            offset: (encoded.graph_bytes.len() + encoded.indices_bytes.len()) as u64,
+            length: encoded.union_bytes.len() as u64,
+            digest: encoded.union_digest.clone(),
+        },
+    ];
 
     reclaim_stale_temp(&final_path);
     let temp_path = unique_temp_path(&final_path);
@@ -507,28 +1035,99 @@ pub fn write(
             .map_err(|e| format!("cache write failed: {e}"))?;
         file.write_all(subject_digest.as_bytes())
             .map_err(|e| format!("cache write failed: {e}"))?;
-        file.write_all(content_digest.as_bytes())
+        file.write_all(payload_integrity_digest.as_bytes())
+            .map_err(|e| format!("cache write failed: {e}"))?;
+        file.write_all(stored_request_key.as_bytes())
+            .map_err(|e| format!("cache write failed: {e}"))?;
+        file.write_all(stored_semantic_digest.as_bytes())
             .map_err(|e| format!("cache write failed: {e}"))?;
         file.write_all(&(payload_bytes.len() as u64).to_le_bytes())
             .map_err(|e| format!("cache write failed: {e}"))?;
+        for part in parts {
+            file.write_all(&part.offset.to_le_bytes())
+                .map_err(|e| format!("cache write failed: {e}"))?;
+            file.write_all(&part.length.to_le_bytes())
+                .map_err(|e| format!("cache write failed: {e}"))?;
+            file.write_all(part.digest.as_bytes())
+                .map_err(|e| format!("cache write failed: {e}"))?;
+        }
         file.write_all(&payload_bytes)
             .map_err(|e| format!("cache write failed: {e}"))?;
         file.sync_all()
             .map_err(|e| format!("cache fsync failed: {e}"))?;
     }
-    match fs::rename(&temp_path, &final_path) {
-        Ok(()) => {
-            enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
-            Ok(CacheWriteOutcome::Written)
-        }
-        Err(_) if final_path.exists() => {
+    match commit_v3_temp_artifact(&temp_path, &final_path, subject_digest, cache_root) {
+        Ok(outcome) => Ok(outcome),
+        Err(e) => {
             let _ = fs::remove_file(&temp_path);
-            Ok(CacheWriteOutcome::AlreadyExists)
+            Err(e)
         }
-        Err(e) => Err(format!(
-            "cache rename {:?} -> {:?}: {}",
-            temp_path, final_path, e
+    }
+}
+
+fn publish_temp_without_replace(temp_path: &Path, final_path: &Path) -> std::io::Result<()> {
+    match fs::hard_link(temp_path, final_path) {
+        Ok(()) => {
+            let _ = fs::remove_file(temp_path);
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn commit_v3_temp_artifact(
+    temp_path: &Path,
+    final_path: &Path,
+    subject_digest: &str,
+    cache_root: &Path,
+) -> Result<CacheWriteOutcome, String> {
+    match classify_existing_artifact(final_path, subject_digest)? {
+        ExistingArtifactDisposition::V3Present => Ok(CacheWriteOutcome::AlreadyExists),
+        ExistingArtifactDisposition::Unrecognized => Err(format!(
+            "refusing v3 commit: unrecognized cache artifact at {:?}",
+            final_path
         )),
+        ExistingArtifactDisposition::LegacyV1Upgrade => {
+            fs::remove_file(final_path).map_err(|e| {
+                format!(
+                    "refusing v3 commit: failed to remove legacy cache artifact {:?}: {e}",
+                    final_path
+                )
+            })?;
+            match publish_temp_without_replace(temp_path, final_path) {
+                Ok(()) => {
+                    enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
+                    Ok(CacheWriteOutcome::Written)
+                }
+                Err(e) => Err(format!(
+                    "cache publish {:?} -> {:?}: {e}",
+                    temp_path, final_path
+                )),
+            }
+        }
+        ExistingArtifactDisposition::Absent => {
+            match publish_temp_without_replace(temp_path, final_path) {
+                Ok(()) => {
+                    enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
+                    Ok(CacheWriteOutcome::Written)
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    match classify_existing_artifact(final_path, subject_digest)? {
+                        ExistingArtifactDisposition::V3Present => {
+                            Ok(CacheWriteOutcome::AlreadyExists)
+                        }
+                        other => Err(format!(
+                            "cache publish {:?} -> {:?} lost race ({other:?}): {e}",
+                            temp_path, final_path
+                        )),
+                    }
+                }
+                Err(e) => Err(format!(
+                    "cache publish {:?} -> {:?}: {e}",
+                    temp_path, final_path
+                )),
+            }
+        }
     }
 }
 
@@ -549,23 +1148,90 @@ pub fn build_valid_artifact_bytes(
     subject_digest: &str,
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
 ) -> Result<Vec<u8>, String> {
-    let si_plain: HashMap<String, NewlineIndex> = source_indices
-        .iter()
-        .map(|(k, v)| (k.clone(), (**v).clone()))
-        .collect();
-    let payload = CachePayload {
-        graph: graph.clone(),
-        source_indices: si_plain,
-    };
-    let payload_bytes = encode_cache_payload(&payload)?;
-    let content_digest = payload_content_digest(&payload_bytes);
+    let encoded = encode_resolved_graph_parts(graph, source_indices, compile_clean_diags)?;
+    let payload_bytes = [
+        encoded.graph_bytes.as_slice(),
+        encoded.indices_bytes.as_slice(),
+        encoded.union_bytes.as_slice(),
+    ]
+    .concat();
+    let payload_integrity_digest = payload_content_digest(&payload_bytes);
+    let parts = [
+        (0u64, encoded.graph_bytes.len() as u64, encoded.graph_digest),
+        (
+            encoded.graph_bytes.len() as u64,
+            encoded.indices_bytes.len() as u64,
+            encoded.indices_digest,
+        ),
+        (
+            (encoded.graph_bytes.len() + encoded.indices_bytes.len()) as u64,
+            encoded.union_bytes.len() as u64,
+            encoded.union_digest,
+        ),
+    ];
     let mut bytes = Vec::new();
     bytes.extend_from_slice(MAGIC);
     bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
     bytes.extend_from_slice(subject_digest.as_bytes());
-    bytes.extend_from_slice(content_digest.as_bytes());
+    bytes.extend_from_slice(payload_integrity_digest.as_bytes());
+    bytes.extend_from_slice(stored_request_key.as_bytes());
+    bytes.extend_from_slice(stored_semantic_digest.as_bytes());
     bytes.extend_from_slice(&(payload_bytes.len() as u64).to_le_bytes());
+    for (offset, length, digest) in parts {
+        bytes.extend_from_slice(&offset.to_le_bytes());
+        bytes.extend_from_slice(&length.to_le_bytes());
+        bytes.extend_from_slice(digest.as_bytes());
+    }
+    bytes.extend_from_slice(&payload_bytes);
+    Ok(bytes)
+}
+
+pub fn is_union_part_absent(parts: &FaithfulResolvedGraphProbeParts) -> bool {
+    parts.union_bytes == 0 && parts.union_digest == UNION_PART_ABSENT_DIGEST
+}
+
+pub fn build_incomplete_v3_artifact_bytes(
+    subject_digest: &str,
+    graph: &ResolvedGraph,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
+) -> Result<Vec<u8>, String> {
+    let encoded = encode_resolved_graph_parts(graph, source_indices, compile_clean_diags)?;
+    let payload_bytes = [
+        encoded.graph_bytes.as_slice(),
+        encoded.indices_bytes.as_slice(),
+    ]
+    .concat();
+    let payload_integrity_digest = payload_content_digest(&payload_bytes);
+    let union_offset = (encoded.graph_bytes.len() + encoded.indices_bytes.len()) as u64;
+    let parts = [
+        (0u64, encoded.graph_bytes.len() as u64, encoded.graph_digest),
+        (
+            encoded.graph_bytes.len() as u64,
+            encoded.indices_bytes.len() as u64,
+            encoded.indices_digest,
+        ),
+        (union_offset, 0u64, UNION_PART_ABSENT_DIGEST.to_string()),
+    ];
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(MAGIC);
+    bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+    bytes.extend_from_slice(subject_digest.as_bytes());
+    bytes.extend_from_slice(payload_integrity_digest.as_bytes());
+    bytes.extend_from_slice(stored_request_key.as_bytes());
+    bytes.extend_from_slice(stored_semantic_digest.as_bytes());
+    bytes.extend_from_slice(&(payload_bytes.len() as u64).to_le_bytes());
+    for (offset, length, digest) in parts {
+        bytes.extend_from_slice(&offset.to_le_bytes());
+        bytes.extend_from_slice(&length.to_le_bytes());
+        bytes.extend_from_slice(digest.as_bytes());
+    }
     bytes.extend_from_slice(&payload_bytes);
     Ok(bytes)
 }
@@ -608,6 +1274,7 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
             emit_graph_info: decoded.emit_graph_info.clone(),
         }),
         source_indices,
+        compile_clean_diags: Rc::new(Vector::new()),
         content_digest: payload_content_digest(bytes),
         payload_byte_count: bytes.len() as u64,
     })
