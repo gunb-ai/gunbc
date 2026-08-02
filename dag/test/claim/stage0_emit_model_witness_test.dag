@@ -31,9 +31,9 @@ import gunbc.stage0_emit_plan_emit {
   stage0_emit_plan_generation_from_outcome
 }
 import std.types { List, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_plan -> enrolled gunbc.stage0_emit_plan_generated projection. Positives catch missing derived basenames; negatives prove frontier-classified seed-retained files stay out. Regen's independent EmitResult agreement rejects both modeled-but-not-produced and produced-but-unmodeled paths."
 
