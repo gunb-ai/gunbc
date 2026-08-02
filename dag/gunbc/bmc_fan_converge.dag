@@ -133,8 +133,9 @@ import gunbc.fleet_intent {
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import std.bmc { BmcFirmwareFamily, OpenBmc }
 import std.content_hash {
+  ContentHash,
   content_hash_atom,
-  content_hash_combine,
+  content_hash_combine_structural,
   content_hash_tagged,
 }
 import std.measure {
@@ -158,7 +159,6 @@ import product.placement_supply { HostIdentity }
 import std.state_durability { StatePerturbationGeneration }
 import std.types {
   Bool,
-  ContentHash,
   EpochMs,
   Int,
   List,
@@ -363,31 +363,31 @@ fn bmc_fan_backup_manifest_identity(
 ) -> ContentHash {
   content_hash_tagged(
     tag: "BmcFanBackupManifest",
-    payload: content_hash_combine(
+    payload: content_hash_combine_structural(
       content_hash_atom(value: manifest.target as NonEmptyStr),
-      content_hash_combine(
+      content_hash_combine_structural(
         content_hash_atom(value: manifest.stable_bmc_identity),
-        content_hash_combine(
+        content_hash_combine_structural(
           bmc_firmware_family_content_hash(family: manifest.firmware.family),
-          content_hash_combine(
+          content_hash_combine_structural(
             content_hash_atom(
               value: to_string(manifest.firmware.version.major) as NonEmptyStr,
             ),
-            content_hash_combine(
+            content_hash_combine_structural(
               content_hash_atom(
                 value: to_string(manifest.firmware.version.minor) as NonEmptyStr,
               ),
-              content_hash_combine(
+              content_hash_combine_structural(
                 content_hash_atom(
                   value: to_string(manifest.firmware.version.patch) as NonEmptyStr,
                 ),
-                content_hash_combine(
+                content_hash_combine_structural(
                   content_hash_atom(value: manifest.config_path),
-                  content_hash_combine(
+                  content_hash_combine_structural(
                     content_hash_atom(value: manifest.before_digest.hex),
-                    content_hash_combine(
+                    content_hash_combine_structural(
                       content_hash_atom(value: manifest.backup_digest.hex),
-                      content_hash_combine(
+                      content_hash_combine_structural(
                         content_hash_atom(
                           value: to_string(manifest.creation_generation) as NonEmptyStr,
                         ),

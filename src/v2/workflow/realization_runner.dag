@@ -4,7 +4,8 @@ import v2.std.algebra { contains, list_append, list_snoc_item, non_empty }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView }
 import std.measure { ByteSize, byte_size, measure_add }
-import std.types { ContentHash, Int }
+import std.types { Int }
+import std.content_hash { ContentHash }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.workflow.executor {

@@ -86,6 +86,7 @@ test fn gate_still_invokes_the_declared_admission_tool() -> Bool {
         "'"
       )
     )
+    && string_contains(s: script, pattern: "'--source-root' 'src/v2'")
 }
 
 test fn gate_fail_fast_is_visible_in_the_emitted_chain() -> Bool {
