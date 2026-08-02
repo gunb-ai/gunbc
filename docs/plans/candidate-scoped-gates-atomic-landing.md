@@ -268,9 +268,13 @@ witness-realization plan's native rest-transport bridge, which deletes this seed
 mint wholesale.** (Receipt form per review 47097; the class argument below says why
 no separable schedule exists beyond those triggers.)
 
-This PR touches `v1_interpreter.rs` `rest_bound_invocation_value` (review 47056
-asked for this receipt). The class: a **model-conformance repair to an existing seed
-bridge**, not a new decision surface chosen in Rust. #7480 (landed) made
+This receipt was authored when this PR carried the `v1_interpreter.rs`
+`rest_bound_invocation_value` repair (review 47056 asked for it); the hunk itself
+landed on main via the piecemeal heal chain — #7656 (import + scope carrier), #7663
+(fixture rehydration), #7665 (the interpreter mint, factored as
+`rest_structural_content_hash_value`) — and the receipt remains here as the program
+record of that repair's class and triggers. The class: a **model-conformance repair
+to an existing seed bridge**, not a new decision surface chosen in Rust. #7480 (landed) made
 `std.content_hash` `ContentHash` a family coproduct; the seed's replay-fixture
 bridge kept minting `input_digest` as a bare host string, so fixture-identity
 structural `==` silently compared a string against the modeled coproduct — the
