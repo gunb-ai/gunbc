@@ -18149,20 +18149,19 @@ pub fn typecheck_module(
         let env_errors = Rc::new({
             let mut __result = Vec::new();
             for d in env_diags.clone().iter().cloned() {
-                // UnresolvedType aborts typecheck via emptied func_env (items: [],
-                // local sigs gone) — callers then see declared:[] / Primitive(callee)
-                // cascades that debt admission cannot cover. UnlistedImportUse was
-                // already excluded from is_error_diagnostic for the same reason.
-                // Debt/expect-red UnresolvedType keeps pool-hit structure (N1 arm)
-                // and must likewise continue typecheck; non-admitted UnresolvedType
-                // still aborts so new sites stay fail-closed at the module boundary.
+                // UnresolvedType must not abort typecheck via emptied func_env
+                // (items: [], local sigs gone) — that yields declared:[] /
+                // Primitive(callee) cascades. UnlistedImportUse is already
+                // excluded from is_error_diagnostic for the same reason; treat
+                // UnresolvedType the same at this boundary. Debt/expect-red
+                // admission still governs whether the diagnostic *blocks*
+                // compile-clean / resolve / run; this only preserves func_env.
                 // Diagnostics remain in env_diags either way.
-                let ut_debt_admitted = matches!(
+                let is_unresolved_type = matches!(
                     d.diagnostic.as_ref(),
                     CompilerDiagnostic::UnresolvedType { .. }
-                )
-                    && crate::cli_run::type_ref_unresolved_admitted_for_compile_clean(&d);
-                if is_error_diagnostic(d.diagnostic.clone()) && !ut_debt_admitted {
+                );
+                if is_error_diagnostic(d.diagnostic.clone()) && !is_unresolved_type {
                     __result.push(d);
                 }
             }

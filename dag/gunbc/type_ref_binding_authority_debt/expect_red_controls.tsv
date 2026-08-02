@@ -1,13 +1,14 @@
-# census_sha	89dbea7d896b3ae95195117374a8c0c9454f341e
-# PROVISIONAL_UNFROZEN — freeze waits witty-badger-200 peel fix + re-census
+# census_sha	88ec0b0f149068d226ee02ac34d095e9cf242edf
+# PROVISIONAL_UNFROZEN — freeze waits peel #7630 merge + re-census pin
 # key grain: TYPE x (file, span_start, span_end)
 # disposition	deliberate_expect_red
+# note	post-main-merge (#7656/#7480) re-census at HEAD; byte spans refreshed after ContentHash/family drift
 # types	2	sites	6
 # TYPE	ContentHash	4
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	32	43	exec_expect_red_fails_if_binds
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	48	59	exec_expect_red_fails_if_binds
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	69	80	exec_expect_red_fails_if_binds
-ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	85	96	exec_expect_red_fails_if_binds
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	32	43	exec_expect_red_fails_if_binds_preserved_post_main_merge
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row3_only/entry.dag	48	59	exec_expect_red_fails_if_binds_preserved_post_main_merge
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	69	80	exec_expect_red_fails_if_binds_preserved_post_main_merge
+ContentHash	dag/test/fixture/type_ref_fail_open_probe/row4_entry.dag	85	96	exec_expect_red_fails_if_binds_preserved_post_main_merge
 # TYPE	probe.shared.types.ContentHash	2
-probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	69	99	exec_expect_red_fails_if_binds
-probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	104	134	exec_expect_red_fails_if_binds
+probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	69	99	exec_expect_red_fails_if_binds_preserved_post_main_merge
+probe.shared.types.ContentHash	dag/test/fixture/type_ref_fail_open_probe/row5_entry.dag	104	134	exec_expect_red_fails_if_binds_preserved_post_main_merge
