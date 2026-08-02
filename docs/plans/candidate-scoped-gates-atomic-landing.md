@@ -35,9 +35,9 @@ No shared generic "base" carrier. The three facts:
 
 ```dag
 type IntegrationCandidate {
-  base_tree: GitObjectId
+  base_commit: CommitSha
+  candidate_commit: CommitSha
   candidate_tree: GitObjectId
-  subject_commit: CommitSha
 }
 
 type CandidateAddedPathsObservation
@@ -46,9 +46,9 @@ type CandidateAddedPathsObservation
   | CandidateAddedPathsParseTruncated { candidate: IntegrationCandidate }
 
 type LegacyFreezeObservation
-  = LegacyPostFreezePathsObserved { freeze_commit: CommitSha, candidate_tree: GitObjectId, paths: List<String> }
-  | LegacyFreezeDiffRefused { freeze_commit: CommitSha, candidate_tree: GitObjectId, cause: String }
-  | LegacyFreezeParseTruncated { freeze_commit: CommitSha, candidate_tree: GitObjectId }
+  = LegacyPostFreezePathsObserved { freeze_commit: CommitSha, candidate_commit: CommitSha, paths: List<String> }
+  | LegacyFreezeDiffRefused { freeze_commit: CommitSha, candidate_commit: CommitSha, cause: String }
+  | LegacyFreezeParseTruncated { freeze_commit: CommitSha, candidate_commit: CommitSha }
 
 type LegacyManifestDeltaObservation
   = LegacyManifestUntouched
@@ -57,9 +57,17 @@ type LegacyManifestDeltaObservation
   | LegacyManifestDeltaRefused { candidate: IntegrationCandidate, cause: String }
 ```
 
-Observation laws: candidate paths = `merge-base(base_tree, candidate_tree)...candidate_tree`;
-freeze = `legacy_manifest_freeze_sha..candidate_tree`; manifest delta =
-`base_tree...candidate_tree`. The candidate observation **reuses** the existing
+The commit identities carry the *ancestry* subjects — `merge-base` computes over
+commit ancestry, which tree objects do not have, and a bare `GitObjectId` could denote
+a blob or tag (review 46971 caught the earlier sketch feeding trees to `merge-base`,
+an unrealizable law). `candidate_tree` is retained separately as the *exact-tree
+admission* subject — the thing the landing boundary tests and lands — and is the
+tree of `candidate_commit`, carried so tree-identity claims never re-derive it
+through a revision walk at the admission boundary.
+
+Observation laws: candidate paths = `merge-base(base_commit, candidate_commit)...candidate_commit`;
+freeze = `legacy_manifest_freeze_sha..candidate_commit`; manifest delta =
+`base_commit...candidate_commit`. The candidate observation **reuses** the existing
 `gunbc.diff_baseline` / `v2.workflow.floor_diff_observe` authority (real PR target,
 merge-group handling, refuses unknown event shapes) — never a second
 `origin/main...HEAD` reader inside the scope gate.
@@ -82,12 +90,12 @@ One scheduled gate (cost), three independently typed laws, refusals accumulated:
 ```dag
 type ExtdepsScopeRefusal
   = AddedExtdepsPathUnenrolled { path: String, candidate: IntegrationCandidate }
-  | LegacyManifestNamesPostFreezePath { path: String, freeze_commit: CommitSha, candidate_tree: GitObjectId }
+  | LegacyManifestNamesPostFreezePath { path: String, freeze_commit: CommitSha, candidate_commit: CommitSha }
   | LegacyManifestRowAdded { row: String, candidate: IntegrationCandidate }
   | CandidateDiffUnreadable { candidate: IntegrationCandidate, cause: String }
   | CandidateDiffParseTruncated { candidate: IntegrationCandidate }
-  | FreezeDiffUnreadable { freeze_commit: CommitSha, candidate_tree: GitObjectId, cause: String }
-  | FreezeDiffParseTruncated { freeze_commit: CommitSha, candidate_tree: GitObjectId }
+  | FreezeDiffUnreadable { freeze_commit: CommitSha, candidate_commit: CommitSha, cause: String }
+  | FreezeDiffParseTruncated { freeze_commit: CommitSha, candidate_commit: CommitSha }
   | ManifestDeltaUnreadable { candidate: IntegrationCandidate, cause: String }
 
 type ExtdepsScopeVerdict
