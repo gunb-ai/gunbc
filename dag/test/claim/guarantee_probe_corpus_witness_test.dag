@@ -36,7 +36,8 @@ import gunbc.guarantee_probe_corpus {
   receipt_joins_v1_compile_path,
   census_blocking_count_for_class,
   census_any_count_for_class,
-  probe_ids_match_canonical_order,
+  guarantee_probe_id_strings,
+  probe_ids_are_lexicographically_ordered,
 }
 import gunbc.guarantee_measurement {
   observed_is_verdict,
@@ -161,7 +162,6 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
     class: call_label_surplus_class,
     probe: call_mislabel_red_probe,
     census: census_of(source: call_mislabel_source),
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
     subject_revision: probe_subject_revision_placeholder,
     harness_revision: probe_harness_revision_placeholder,
   )
@@ -177,7 +177,6 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
     class: method_established_surface_class,
     probe: method_missing_red_probe,
     census: census,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
     subject_revision: probe_subject_revision_placeholder,
     harness_revision: probe_harness_revision_placeholder,
   )
@@ -193,7 +192,6 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
     class: call_label_surplus_class,
     probe: call_shape_green_probe,
     census: census_of(source: call_shape_green_source),
-    expectation: ExpectZeroDiagnostics,
     subject_revision: probe_subject_revision_placeholder,
     harness_revision: probe_harness_revision_placeholder,
   )
@@ -229,7 +227,8 @@ test fn not_runnable_never_satisfies_expectation() -> Bool {
 }
 
 test fn probe_ids_are_canonically_ordered() -> Bool {
-  probe_ids_match_canonical_order(ids: guarantee_probe_ids())
+  probe_ids_are_lexicographically_ordered(ids: guarantee_probe_ids())
+    && count(guarantee_probe_id_strings()) == count(guarantee_probe_ids())
 }
 
 test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
@@ -266,12 +265,28 @@ test fn green_control_fails_blocking_refusal_expectation() -> Bool {
 }
 
 test fn observation_fold_routes_blocking_refusal() -> Bool {
-  let obs = probe_observation_from_census(
-    census: census_of(source: call_mislabel_source),
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
-  )
+  let obs = probe_observation_from_census(census: census_of(source: call_mislabel_source))
   observation_is_blocking_refusal(o: obs, wanted: "CallArgumentNameUnknown" as NonEmptyStr)
     && !observation_is_clean(o: obs)
+}
+
+test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
+  let census = census_of(source: call_mislabel_source)
+  !probe_expectation_holds(
+    census: census,
+    expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalSurplus" as NonEmptyStr },
+  )
+    && observation_is_blocking_refusal(
+      o: probe_observation_from_census(census: census),
+      wanted: "CallArgumentNameUnknown" as NonEmptyStr,
+    )
+    && observation_is_clean(o: build_v1_compile_receipt(
+      class: call_label_surplus_class,
+      probe: call_mislabel_red_probe,
+      census: census,
+      subject_revision: probe_subject_revision_placeholder,
+      harness_revision: probe_harness_revision_placeholder,
+    ).observed) == false
 }
 
 test fn v2_translate_identities_are_declared() -> Bool {

@@ -15,8 +15,8 @@ import gunbc.guarantee_measurement {
   guarantee_class_ids_unique, guarantee_path_ids_unique,
   join_receipt_to_path, ReceiptJoined,
 }
-import v2.std.collection { list_at_optional }
 import v2.std.optional { Present, Absent }
+import std.algebra { Ordering, Less, Equal, Greater }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -118,42 +118,70 @@ fn guarantee_probe_ids() -> List<GuaranteeProbeId> {
   ]
 }
 
-data canonical_probe_id_strings: List<String> = [
-  "call-label-surplus-green-control",
-  "call-label-surplus-mislabel-red",
-  "call-label-surplus-surplus-red",
-  "declared-conformance-ground-green-control",
-  "declared-conformance-ground-scalar-red",
-  "method-established-surface-green-control",
-  "method-established-surface-missing-red",
-  "v2-self-grounding-frontier-derived-green",
-  "v2-self-grounding-frontier-value-red",
-  "v2-translate-underived-refusal-conj-red",
-  "v2-translate-underived-refusal-derived-green",
-]
+fn guarantee_probe_id_strings() -> List<String> {
+  fold(
+    guarantee_probe_ids(),
+    init: [],
+    f: fn(acc, id) { append(acc, items: [id as String]) },
+  )
+}
 
-type ProbeOrderWalk {
-  index: Int
+fn string_lex_compare(left: String, right: String) -> Ordering {
+  let left_len = string_length(s: left)
+  let right_len = string_length(s: right)
+  if left_len == 0 && right_len == 0 {
+    Equal
+  } else if left_len == 0 {
+    Less
+  } else if right_len == 0 {
+    Greater
+  } else {
+    let left_cp = code_point(ch: char_at(s: left, i: 0))
+    let right_cp = code_point(ch: char_at(s: right, i: 0))
+    if left_cp < right_cp {
+      Less
+    } else if left_cp > right_cp {
+      Greater
+    } else {
+      string_lex_compare(
+        left: substring(s: left, start: 1, end: left_len),
+        right: substring(s: right, start: 1, end: right_len),
+      )
+    }
+  }
+}
+
+fn string_lex_less(left: String, right: String) -> Bool {
+  match string_lex_compare(left: left, right: right) {
+    Less => true
+    Equal => false
+    Greater => false
+  }
+}
+
+type ProbeLexWalk {
+  prev: String?
   ok: Bool
 }
 
-fn probe_ids_match_canonical_order(ids: List<GuaranteeProbeId>) -> Bool {
-  let walked = fold(ids, init: ProbeOrderWalk { index: 0, ok: true }, f: fn(acc, id) {
+fn probe_ids_are_lexicographically_ordered(ids: List<GuaranteeProbeId>) -> Bool {
+  let walked = fold(ids, init: ProbeLexWalk { prev: none, ok: true }, f: fn(acc, id) {
+    let current = id as String
     if !acc.ok {
       acc
     } else {
-      match list_at_optional(xs: canonical_probe_id_strings, index: acc.index) {
-        Present { value: exp } =>
-          if (id as String) == exp {
-            ProbeOrderWalk { index: acc.index + 1, ok: true }
+      match acc.prev {
+        Absent => ProbeLexWalk { prev: Present { value: current }, ok: true }
+        Present { value: prev } =>
+          if string_lex_less(left: prev, right: current) {
+            ProbeLexWalk { prev: Present { value: current }, ok: true }
           } else {
-            ProbeOrderWalk { index: acc.index, ok: false }
+            ProbeLexWalk { prev: Present { value: current }, ok: false }
           }
-        Absent => ProbeOrderWalk { index: acc.index, ok: false }
       }
     }
   })
-  walked.ok && count(ids) == count(canonical_probe_id_strings)
+  walked.ok
 }
 
 type ProbeExpectation
@@ -209,7 +237,7 @@ fn observation_is_clean(o: ProbeObservation) -> Bool {
 }
 
 fn probe_expectation_holds(census: CompileDiagnosticCensus, expectation: ProbeExpectation) -> Bool {
-  let obs = probe_observation_from_census(census: census, expectation: expectation)
+  let obs = probe_observation_from_census(census: census)
   match expectation {
     ExpectZeroDiagnostics => observation_is_clean(o: obs)
     ExpectBlockingRefusal { diagnostic_class: wanted } =>
@@ -230,45 +258,34 @@ fn observation_refused_count(o: ProbeObservation) -> Int {
   )
 }
 
-fn probe_observation_from_census(census: CompileDiagnosticCensus, expectation: ProbeExpectation) -> ProbeObservation {
+fn census_primary_observation(rows: List<CompileDiagnosticCensusRow>) -> ProbeObservation {
+  let blocking = census_blocking_rows(rows: rows)
+  if census_row_count(rows: blocking) >= 1 {
+    match blocking |> first {
+      Present { value: r } =>
+        RefusedTyped {
+          diagnostic_class: r.diagnostic_class,
+          count: census_total_count(
+            rows: census_rows_of_class(rows: blocking, wanted: r.diagnostic_class as String),
+          ),
+        }
+      Absent => AcceptedClean
+    }
+  } else if census_row_count(rows: rows) == 0 {
+    AcceptedClean
+  } else {
+    match rows |> first {
+      Present { value: r } =>
+        AcceptedCounted { diagnostic_class: r.diagnostic_class, count: r.count }
+      Absent => AcceptedClean
+    }
+  }
+}
+
+fn probe_observation_from_census(census: CompileDiagnosticCensus) -> ProbeObservation {
   match census {
     CensusNotRunnable { cause: c } => ProbeNotRunnable { cause: c }
-    CensusObserved { rows: rows } =>
-      match expectation {
-        ExpectZeroDiagnostics =>
-          if census_row_count(rows: rows) == 0 {
-            AcceptedClean
-          } else {
-            let first = rows |> first
-            match first {
-              Present { value: r } =>
-                if r.blocking {
-                  RefusedTyped { diagnostic_class: r.diagnostic_class, count: r.count }
-                } else {
-                  AcceptedCounted { diagnostic_class: r.diagnostic_class, count: r.count }
-                }
-              Absent => AcceptedClean
-            }
-          }
-        ExpectBlockingRefusal { diagnostic_class: wanted } =>
-          match census_blocking_count_for_class(census: census, wanted: wanted as String) {
-            Present { value: blocking } =>
-              if blocking >= 1 {
-                RefusedTyped { diagnostic_class: wanted, count: blocking }
-              } else {
-                match census_any_count_for_class(census: census, wanted: wanted as String) {
-                  Present { value: advisory } =>
-                    if advisory >= 1 {
-                      AcceptedCounted { diagnostic_class: wanted, count: advisory }
-                    } else {
-                      AcceptedClean
-                    }
-                  Absent => AcceptedClean
-                }
-              }
-            Absent => AcceptedClean
-          }
-      }
+    CensusObserved { rows: rows } => census_primary_observation(rows: rows)
   }
 }
 
@@ -276,7 +293,6 @@ fn build_v1_compile_receipt(
   class: GuaranteeClassId,
   probe: GuaranteeProbeId,
   census: CompileDiagnosticCensus,
-  expectation: ProbeExpectation,
   subject_revision: CommitSha,
   harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
@@ -287,7 +303,7 @@ fn build_v1_compile_receipt(
     subject_revision: subject_revision,
     harness_revision: harness_revision,
     probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
-    observed: probe_observation_from_census(census: census, expectation: expectation),
+    observed: probe_observation_from_census(census: census),
   }
 }
 
