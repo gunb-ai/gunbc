@@ -180,11 +180,13 @@ test fn debt_universe_openness_is_declared_interim() -> Bool {
 }
 
 test fn admission_path_coverage_names_mock_precompute_gap() -> Bool {
-  string_contains(s: type_ref_admission_path_coverage_note, pattern: "KNOWN-UNCOVERED PATH")
+  string_contains(s: type_ref_admission_path_coverage_note, pattern: "is_resolve_typecheck_blocking")
     && string_contains(s: type_ref_admission_path_coverage_note, pattern: "PublishedMockCase")
-    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "local tooling only")
+    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "precompute_whole_tree_published_mock_keys")
     && string_contains(s: type_ref_admission_path_coverage_note, pattern: "resolve_published_mock_keys")
     && string_contains(s: type_ref_admission_path_coverage_note, pattern: "type_ref_unresolved_admitted_for_compile_clean")
+    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "NO separate missing-wiring gap")
+    && string_contains(s: type_ref_admission_path_coverage_note, pattern: "review 47403")
 }
 
 test fn import_add_discriminator_is_explicitation_vs_padding() -> Bool {
