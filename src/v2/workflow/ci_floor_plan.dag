@@ -866,7 +866,13 @@ fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
 }
 
 fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
-  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
+  let base = gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
+  RealizationPlan {
+    target: base.target
+    objective: base.objective
+    schedule: gunbc_ci_floor_ordinary_batches()
+    total: base.total
+  }
 }
 
 fn gunbc_falsifier_predict_only_batch() -> Runnable {
@@ -1186,7 +1192,7 @@ fn gunbc_pr_native_batch() -> Runnable {
 
 fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
   let ordinary = falsifier_batches_append_if_enrolled(
-    acc: gunbc_ci_floor_realization_plan().schedule,
+    acc: gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec).schedule,
     enrolled: gunbc_pr_native_batch_enrolled(),
     batch: gunbc_pr_native_batch()
   )

@@ -421,17 +421,20 @@ fn scoped_witness_execution_receipt_decode(text: String) -> ScopedWitnessExecuti
     } else {
       body
     }
-    let parsed = fold(rows, init: ScopedWitnessExecutionReceiptDecoded { rows: [] }, f: fn(state, line) {
-      match state {
-        ScopedWitnessExecutionReceiptRefused { detail: detail } => ScopedWitnessExecutionReceiptRefused { detail: detail }
-        ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
-          match scoped_witness_execution_result_from_columns(columns: split(s: line, delimiter: "\t")) {
-            Absent => ScopedWitnessExecutionReceiptRefused { detail: "malformed scoped witness execution result row" }
-            Present { value: row } => ScopedWitnessExecutionReceiptDecoded { rows: concat(rows, [row]) }
-          }
-      }
-    })
-    parsed
+    if length(rows) == 0 {
+      ScopedWitnessExecutionReceiptRefused { detail: "receipt has no scoped witness execution result rows" }
+    } else {
+      fold(rows, init: ScopedWitnessExecutionReceiptDecoded { rows: [] }, f: fn(state, line) {
+        match state {
+          ScopedWitnessExecutionReceiptRefused { detail: detail } => ScopedWitnessExecutionReceiptRefused { detail: detail }
+          ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
+            match scoped_witness_execution_result_from_columns(columns: split(s: line, delimiter: "\t")) {
+              Absent => ScopedWitnessExecutionReceiptRefused { detail: "malformed scoped witness execution result row" }
+              Present { value: row } => ScopedWitnessExecutionReceiptDecoded { rows: concat(rows, [row]) }
+            }
+        }
+      })
+    }
   }
 }
 
