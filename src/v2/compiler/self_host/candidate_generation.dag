@@ -1,28 +1,60 @@
 module v2.compiler.self_host.candidate_generation
 
-import v2.compiler.infer { infer }
+import extdeps.communication.medium { Medium }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.self_host.emitter_producer_provenance {
+  behavioral_equivalent_qualifications,
+  mint_producer_emission_receipt,
+  ProducerEmissionReceipt,
+  RealizedEmitterClosure,
+  seed_emit_rust_reachable,
+  v2_interpreted_emitter_closure,
+  V2EmitterInterpreted,
+  BuildRefused
+}
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
   Outcome,
+  Unavailable,
   bind_outcome,
-  outcome_accepted
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
 }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import v2.std.text { String }
 
 type StageEmissionCandidate {
   emitted: Node
 }
 
-data candidate_generation_serializes_written_source_note: String = "DISSOLVE-ON: wire serialize_target composed with translate in generate_stage_candidate_from_ingest (CandidateGenerationSerializeTargetWiring). Until then StageEmissionCandidate carries translate output only — no serialized Rust source to receipt against producer provenance."
-
-fn candidate_generation_serializes_written_source() -> Bool {
-  false
+type RustEmissionCandidate {
+  source: Medium<String>
+  emitted: Node
 }
+
+type ProvenancedRustArtifact {
+  source: Medium<String>
+  emitted: Node
+  producer_receipt: ProducerEmissionReceipt
+}
+
+data candidate_generation_serialize_target_note: String = "Lane B direct v2 Rust door: generate_rust_emission_candidate wires serialize_target composed with translate (v2.compiler.emit) so candidate_generation stops at translate-only emission."
+
+data direct_rust_door_scaffold_build_cause: Symbol = ^direct_rust_door_scaffold_build
+
+data direct_rust_door_probe_entry: String = "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag"
+
+data direct_rust_door_probe_function: String = "witness_direct_rust_door_provenanced_artifact_holds"
 
 fn generate_stage_candidate_from_ingest(
   ingest: SourceRootIngest,
@@ -67,4 +99,67 @@ fn generate_translate_self_emit_candidate(
       )
     }
   )
+}
+
+fn generate_rust_emission_candidate(
+  inferred: InferredTree,
+  target: TargetModel
+) -> Outcome<RustEmissionCandidate> {
+  bind_outcome(
+    o: emit(tree: inferred, target: target),
+    f: fn(source) {
+      outcome_accepted(
+        value: RustEmissionCandidate {
+          source: source,
+          emitted: inferred.root
+        }
+      )
+    }
+  )
+}
+
+fn mint_provenanced_rust_artifact(
+  inferred: InferredTree,
+  target: TargetModel,
+  module_path: String,
+  realized_closure: RealizedEmitterClosure
+) -> Outcome<ProvenancedRustArtifact> {
+  bind_outcome(
+    o: generate_rust_emission_candidate(inferred: inferred, target: target),
+    f: fn(candidate) {
+      match mint_producer_emission_receipt(
+        module_path: module_path,
+        producer: V2EmitterInterpreted,
+        qualifications: behavioral_equivalent_qualifications,
+        build_result: BuildRefused { cause: direct_rust_door_scaffold_build_cause },
+        behavioral_probe_entry: direct_rust_door_probe_entry,
+        behavioral_probe_function: direct_rust_door_probe_function,
+        realized_closure: realized_closure
+      ) {
+        Present { value: receipt } =>
+          outcome_accepted(
+            value: ProvenancedRustArtifact {
+              source: candidate.source,
+              emitted: candidate.emitted,
+              producer_receipt: receipt
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: Diagnostic {
+              reason: ^direct_rust_door_producer_receipt_refused,
+              at: port_locus(port: ^candidate_generation),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+      }
+    }
+  )
+}
+
+fn provenanced_rust_artifact_seed_independent(
+  artifact: ProvenancedRustArtifact
+) -> Bool {
+  artifact.producer_receipt.producer == V2EmitterInterpreted
+    && !seed_emit_rust_reachable(closure: artifact.producer_receipt.realized_closure)
 }
