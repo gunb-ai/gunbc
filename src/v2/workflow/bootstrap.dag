@@ -23,6 +23,7 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
+import std.types { NonEmptyStr }
 
 data v2_stage0_hash: Hash = v2_stage0_hash
 data v2_stage1_hash: Hash = v2_stage1_hash
@@ -121,8 +122,8 @@ type SeedSelfVerifyReceipt {
 
 type SeedHonestyDecision
   = SeedHonestyUndecided
-  | IndependentRebuildRequiredFirst { rationale: String }
-  | FixedPointTrustSufficient { rationale: String }
+  | IndependentRebuildRequiredFirst { rationale: NonEmptyStr }
+  | FixedPointTrustSufficient { rationale: NonEmptyStr }
 
 data seed_honesty_decision: SeedHonestyDecision = SeedHonestyUndecided
 
@@ -598,6 +599,14 @@ fn seed_self_verify_check(
     Rejected {
       diagnostics: diagnostics_singleton(
         d: bs_diagnostic(reason: ^bootstrap_self_verify_same_artifact)
+      )
+    }
+  } else if !(claim.source == check.source)
+    || !(claim.compiler == check.compiler)
+    || !(claim.output_hash.pin == check.output_hash.pin) {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_provenance_mismatch)
       )
     }
   } else if !(claim.output_hash.digest == check.output_hash.digest) {

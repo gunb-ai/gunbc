@@ -21,7 +21,7 @@ import v2.std.witness { Holds, Violates, Witness }
 import v2.std.logic { Bool }
 import v2.std.diagnostic { Accepted, Rejected, None }
 
-data seed_honesty_discharge_unavailable_offline_recipe_note: String = "The file remains under the test/claim/execution/ OfflineLocalRecipe home except for v1_seed_honesty_decision_closing_contract_holds, which is explicitly enrolled QuarantineProbeExpectRed while seed_honesty_decision is SeedHonestyUndecided. The closing contract executes four conjuncts: a reflexive claim/check artifact refuses with a located bootstrap_self_verify_same_artifact diagnostic, a separately identified planted divergence refuses with bootstrap_self_verify_diverged, a distinct equal-content pair passes so neither refusal is a blanket red, and the operator decision carries a nonempty rationale in one of the two decided arms. The first three are green now; the fourth deliberately keeps the aggregate red until the operator records the node's remaining handback. The unavailable-evidence witnesses keep the larger DDC discharge fail-closed if that decision requires an independently grounded compiler."
+data seed_honesty_discharge_unavailable_offline_recipe_note: String = "The file remains under the test/claim/execution/ OfflineLocalRecipe home except for v1_seed_honesty_decision_closing_contract_holds, which is explicitly enrolled QuarantineProbeExpectRed while seed_honesty_decision is SeedHonestyUndecided. The closing contract executes five conjuncts: a reflexive claim/check artifact refuses with a located bootstrap_self_verify_same_artifact diagnostic, a separately identified planted divergence refuses with bootstrap_self_verify_diverged, mismatched source/compiler/hash-pin provenance refuses with bootstrap_self_verify_provenance_mismatch, a distinct equal-content pair with equal provenance passes so none of the refusals is a blanket red, and the operator decision carries a NonEmptyStr rationale in one of the two decided arms. The first four are green now; the fifth deliberately keeps the aggregate red until the operator records the node's remaining handback. The unavailable-evidence witnesses keep the larger DDC discharge fail-closed if that decision requires an independently grounded compiler."
 
 data seed_honesty_primary_compiler: Symbol = ^seed_honesty_primary_compiler
 data seed_honesty_secondary_compiler: Symbol = ^seed_honesty_secondary_compiler
@@ -29,16 +29,32 @@ data seed_honesty_shared_compiler: Symbol = ^seed_honesty_shared_compiler
 data seed_honesty_perturbed_primary_compiler: Symbol = ^seed_honesty_perturbed_primary_compiler
 data seed_honesty_perturbed_secondary_compiler: Symbol = ^seed_honesty_perturbed_secondary_compiler
 
-fn seed_self_verify_run(output: Symbol, digest: Symbol) -> DiverseCompilationRun {
+fn seed_self_verify_run_with_provenance(
+  output: Symbol,
+  digest: Symbol,
+  source: Symbol,
+  compiler: Symbol,
+  pin: Symbol
+) -> DiverseCompilationRun {
   DiverseCompilationRun {
-    source: ^seed_honesty_fabricated_source,
-    compiler: seed_honesty_shared_compiler,
+    source: source,
+    compiler: compiler,
     output: output,
     output_hash: BootstrapHashPin {
       digest: digest,
-      pin: ^seed_honesty_closing_contract_hash_pin
+      pin: pin
     }
   }
+}
+
+fn seed_self_verify_run(output: Symbol, digest: Symbol) -> DiverseCompilationRun {
+  seed_self_verify_run_with_provenance(
+    output: output,
+    digest: digest,
+    source: ^seed_honesty_fabricated_source,
+    compiler: seed_honesty_shared_compiler,
+    pin: ^seed_honesty_closing_contract_hash_pin
+  )
 }
 
 fn seed_self_verify_same_artifact_refuses() -> Bool {
@@ -71,6 +87,25 @@ fn seed_self_verify_planted_divergence_refuses() -> Bool {
   }
 }
 
+fn seed_self_verify_provenance_mismatch_refuses() -> Bool {
+  match seed_self_verify_check(
+    claim: seed_self_verify_run(
+      output: ^seed_honesty_claim_artifact,
+      digest: ^seed_honesty_matching_digest
+    ),
+    check: seed_self_verify_run_with_provenance(
+      output: ^seed_honesty_check_artifact,
+      digest: ^seed_honesty_matching_digest,
+      source: ^seed_honesty_other_source,
+      compiler: seed_honesty_shared_compiler,
+      pin: ^seed_honesty_closing_contract_hash_pin
+    )
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_provenance_mismatch
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 fn seed_self_verify_distinct_equal_artifacts_hold() -> Bool {
   match seed_self_verify_check(
     claim: seed_self_verify_run(
@@ -92,17 +127,19 @@ fn seed_self_verify_distinct_equal_artifacts_hold() -> Bool {
 test fn v1_seed_honesty_decision_closing_contract_holds() -> Bool {
   seed_self_verify_same_artifact_refuses()
     && seed_self_verify_planted_divergence_refuses()
+    && seed_self_verify_provenance_mismatch_refuses()
     && seed_self_verify_distinct_equal_artifacts_hold()
     && match seed_honesty_decision {
       SeedHonestyUndecided => false
-      IndependentRebuildRequiredFirst { rationale: rationale } => !(rationale == "")
-      FixedPointTrustSufficient { rationale: rationale } => !(rationale == "")
+      IndependentRebuildRequiredFirst { rationale: _ } => true
+      FixedPointTrustSufficient { rationale: _ } => true
     }
 }
 
-test fn seed_honesty_check_three_poles_hold_before_decision() -> Bool {
+test fn seed_honesty_check_four_poles_hold_before_decision() -> Bool {
   seed_self_verify_same_artifact_refuses()
     && seed_self_verify_planted_divergence_refuses()
+    && seed_self_verify_provenance_mismatch_refuses()
     && seed_self_verify_distinct_equal_artifacts_hold()
 }
 
