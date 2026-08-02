@@ -1,20 +1,25 @@
 module extdeps.session_dashboard
 
 import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/gunb-ai/session-dashboard" }
 }
 
+type SessionDashboard
+  = | GunbSessionDashboard
+
+data session_dashboard: SessionDashboard = GunbSessionDashboard
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.session_dashboard",
-      decl_name: "session_dashboard.Api",
+      decl_name: "session_dashboard",
       field: WholeDeclaration
     }
   },
