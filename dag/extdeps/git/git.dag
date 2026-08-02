@@ -763,7 +763,7 @@ service git.Core {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: shape_git_config_local_get_argv(key: key) }
+    transport shell { argv: [shape_git_config_local_get_argv(key: key)] }
     exit {
       0 => Unit
       1 => String "Key not found in local config"
@@ -777,7 +777,7 @@ service git.Core {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: shape_git_config_local_argv(key: key, value: value) }
+    transport shell { argv: [shape_git_config_local_argv(key: key, value: value)] }
     exit {
       0 => Unit
       nonzero => String "Config set failed"
@@ -792,7 +792,7 @@ service git.Core {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: shape_git_config_local_get_in_repo_argv(repo: repo, key: key) }
+    transport shell { argv: [shape_git_config_local_get_in_repo_argv(repo: repo, key: key)] }
     exit {
       0 => Unit
       1 => String "Key not found in local config"
@@ -806,7 +806,7 @@ service git.Core {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: shape_git_config_local_in_repo_argv(repo: repo, key: key, value: value) }
+    transport shell { argv: [shape_git_config_local_in_repo_argv(repo: repo, key: key, value: value)] }
     exit {
       0 => Unit
       nonzero => String "Config set failed"
