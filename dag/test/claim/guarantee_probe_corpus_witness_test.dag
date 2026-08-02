@@ -6,9 +6,11 @@ import gunbc.guarantee_probe_corpus {
   v2_infer_eval_path_id,
   v2_infer_translate_path_id,
   guarantee_probe_paths,
+  guarantee_probe_paths_reserved,
   guarantee_probe_rows,
   guarantee_probe_rows_reserved,
   guarantee_probe_class_ids,
+  guarantee_probe_class_ids_reserved,
   guarantee_probe_ids,
   guarantee_probe_ids_reserved,
   call_label_surplus_class,
@@ -414,9 +416,19 @@ test fn v2_translate_identities_are_declared() -> Bool {
     && (v2_translate_underived_refusal_class as String) == "v2-translate-underived-refusal"
     && (v2_translate_underived_red_probe as String) == "v2-translate-underived-refusal-conj-red"
     && count(guarantee_probe_ids_reserved()) == 2
+    && count(guarantee_probe_paths_reserved()) == 1
+    && count(guarantee_probe_class_ids_reserved()) == 1
     && count(
       guarantee_probe_ids()
         |> filter(id => (id as String) == (v2_translate_underived_red_probe as String)),
+    ) == 0
+    && count(
+      guarantee_probe_paths()
+        |> filter(p => (p.id as String) == (v2_infer_translate_path_id as String)),
+    ) == 0
+    && count(
+      guarantee_probe_class_ids()
+        |> filter(id => (id as String) == (v2_translate_underived_refusal_class as String)),
     ) == 0
 }
 
