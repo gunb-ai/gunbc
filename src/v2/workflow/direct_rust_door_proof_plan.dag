@@ -20,16 +20,6 @@ fn direct_rust_door_proof_batches() -> WalkPlan<NoWalkFinalization> {
       },
       RunnableSingleClaim {
         entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
-        function: "witness_written_provenanced_rust_artifact_holds",
-        profile: runnable_resource_profile_negligible()
-      },
-      RunnableSingleClaim {
-        entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
-        function: "witness_written_rust_source_roundtrip_holds",
-        profile: runnable_resource_profile_negligible()
-      },
-      RunnableSingleClaim {
-        entry: "src/v2/test/claim/self_host/direct_rust_door_emission_witness_test.dag",
         function: "witness_seed_closure_poison_refuses_v2_producer_reds",
         profile: runnable_resource_profile_negligible()
       },
