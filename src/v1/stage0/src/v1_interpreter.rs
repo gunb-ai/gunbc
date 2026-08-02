@@ -7903,6 +7903,31 @@ fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
     })
 }
 
+/// Seed bridge for the `.dag`-owned `ContentHash` family carrier. REST input identity is
+/// the structural FNV-1a digest produced by `content_hash_service_inputs`; the interpreter
+/// must realize that modeled value, not leak its wire string across the typed dispatch seam.
+///
+/// This is the model↔realization fork DESIGN's open threads name: `#7480` made `ContentHash`
+/// a coproduct in `.dag` while this site kept minting the pre-#7480 branded string, so a
+/// fixture invocation built in `.dag` could never equal one built here. Every
+/// `rest_exchange_replay` witness that requires a fixture to MATCH failed; the ones requiring
+/// no match passed, which is the signature of an equality that is always false rather than of
+/// a broken lookup. Recovered from the closed PR #7650, which had this right.
+///
+/// DISSOLVE-ON: REST service dispatch is evaluated by the emitted transport handler and this
+/// host-side `RestBoundOperationInvocation` construction is deleted.
+fn rest_structural_content_hash_value(digest: String, ctx: &InterpContext) -> Value {
+    let structural = Value::Record {
+        type_name: ctx.sym("Fnv1a64Structural"),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+    };
+    Value::Variant {
+        type_name: ctx.sym("ContentHash"),
+        variant_name: ctx.sym("Fnv1a64"),
+        fields: Rc::new(vec![(ctx.sym("0"), structural)]),
+    }
+}
+
 fn rest_bound_invocation_value(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -7918,34 +7943,16 @@ fn rest_bound_invocation_value(
     let at = operation_ref_value(&op_node.span.file, &service, &operation, ctx);
     let input_digest =
         crate::recorded_fixture::content_hash_service_inputs(op_node, param_env, ctx);
-    // HAND-RUST GATE receipt — model-conformance repair to the existing seed bridge,
-    // not a new Rust decision surface. std.content_hash grounded ContentHash on hash
-    // family (#7480), so this mint must project Fnv1a64(Fnv1a64Structural); the old
-    // bare Str made 6/9 rest_exchange_replay witnesses red, while this shape makes
-    // 9/9 pass. Function/arm census is unchanged. Explicit deferral: ROADMAP v1-exit
-    // finish lines "interpreter deleted" / "zero hand-maintained Rust"; this code
-    // deletes with the seed rest-transport bridge on witness-realization/v2 adoption.
-    let input_digest_value = Value::Variant {
-        type_name: ctx.sym("ContentHash"),
-        variant_name: ctx.sym("Fnv1a64"),
-        fields: Rc::new(vec![(
-            ctx.sym("0"),
-            Value::Record {
-                type_name: ctx.sym("Fnv1a64Structural"),
-                fields: Rc::new(sorted_fields(vec![(
-                    ctx.sym("digest"),
-                    Value::Str(input_digest),
-                )])),
-            },
-        )]),
-    };
     Ok(Value::Record {
         type_name: ctx.sym("RestBoundOperationInvocation"),
         fields: Rc::new(sorted_fields(vec![
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
-            (ctx.sym("input_digest"), input_digest_value),
+            (
+                ctx.sym("input_digest"),
+                rest_structural_content_hash_value(input_digest, ctx),
+            ),
             (
                 ctx.sym("auth_identity"),
                 rest_auth_identity_value(auth, basic_header, ctx),
@@ -10226,52 +10233,6 @@ macro_rules! v1_builtin_arms {
                     }
                 };
                 Ok(Some(variant))
-            },
-
-            // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
-            // It parses cli_run::regen_input_sources through the module-binding authority path;
-            // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
-            // v2.compiler.source_authority.ModuleStorageIndex.
-            arm "free_call.stage0_emission_source_identities_host" { "stage0_emission_source_identities_host" } => {
-                if !$positional.is_empty() {
-                    return Err(InterpError::TypeError {
-                        msg: "stage0_emission_source_identities_host takes no arguments".to_string(),
-                    });
-                }
-                let workspace = crate::cli_run::workspace_root();
-                let identities = crate::cli_run::stage0_emission_source_identities(&workspace)
-                    .map_err(|msg| InterpError::TypeError { msg })?;
-                let items = identities
-                    .into_iter()
-                    .map(|identity| Value::Record {
-                        type_name: $ctx.sym("Stage0SourceModuleIdentity"),
-                        fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("module_path"), Value::Str(identity.module_path)),
-                            (
-                                $ctx.sym("provenance"),
-                                Value::Variant {
-                                    type_name: $ctx.sym("Stage0SourceIdentityProvenance"),
-                                    variant_name: $ctx.sym("ParsedFromRegenSourceClosure"),
-                                    fields: Rc::new(Vec::new()),
-                                },
-                            ),
-                            (
-                                $ctx.sym("source_tree"),
-                                Value::Variant {
-                                    type_name: $ctx.sym("Stage0SourceTree"),
-                                    variant_name: $ctx.sym(identity.source_tree),
-                                    fields: Rc::new(Vec::new()),
-                                },
-                            ),
-                            ($ctx.sym("storage_path"), Value::Str(identity.storage_path)),
-                        ])),
-                    })
-                    .collect::<Vec<_>>();
-                Ok(Some(Value::Variant {
-                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
-                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
-                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
-                }))
             },
 
             arm "free_call.to_string" { "to_string" } => {
