@@ -192,3 +192,30 @@ test fn live_corpus_is_currently_all_body_unavailable() -> Bool {
   (fn_item_count_of(facts: facts) > 500)
     && (body_unavailable_count_of(facts: facts) == fn_item_count_of(facts: facts))
 }
+
+test fn pending_inventory_derived_from_registry() -> Bool {
+  lens_contract_pending_inventory_holds()
+    && lens_contracts_pending_fn_body_reflection_count() > 0
+    && lens_contracts_receipted_count() > 0
+}
+
+test fn pending_plus_receipted_partitions_registry() -> Bool {
+  lens_contracts_pending_fn_body_reflection_count() + lens_contracts_receipted_count()
+    == length(xs: lens_contract_registry)
+}
+
+test fn bound_consumer_contracts_are_receipted_live() -> Bool {
+  !lens_id_pending_fn_body_reflection(id: Cost)
+    && !lens_id_pending_fn_body_reflection(id: EmittedBinaryEffectConfinement)
+    && !lens_id_pending_fn_body_reflection(id: ScheduleLens)
+    && !lens_id_pending_fn_body_reflection(id: Vacuity)
+}
+
+test fn no_consumer_contracts_are_pending_frontier() -> Bool {
+  lens_id_pending_fn_body_reflection(id: Complexity)
+    && lens_id_pending_fn_body_reflection(id: EffectReach)
+}
+
+test fn pending_contracts_omit_fabricated_live_receipts() -> Bool {
+  length(xs: coverage_receipts_live()) == lens_contracts_receipted_count()
+}
