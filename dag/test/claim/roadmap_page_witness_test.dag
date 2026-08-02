@@ -586,16 +586,30 @@ test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
     && string_contains(s: h, pattern: " open")
 }
 
-data a2_hierarchy_closeout_witnesses_note: String = "The A2 hierarchy-closeout receipts (operator gap ruling 2026-08-02), each pinning a decided fact rather than accidental composition: the selection grammar ships in the emitted client asset (selection and activation distinct — interactive elements never move selection; Escape clears; exactly the selected row's primary action earns action-live); the three observation channels join ONE impact region (each channel's located row appends into the shared disclosure and the painter no longer prepends free-standing banners to main); and the stylesheet carries the quiet-rest pair, the action-live band restore on the family's DERIVED rest-band vars, and the header's shared composition frame. The axis pins on the dispatch button itself (ready renders action-primary/available; review and out-of-order render action-secondary/override; done and superseded render no button at all) live with the existing per-fixture witnesses above."
+data a2_hierarchy_closeout_witnesses_note: String = "The A2 hierarchy-closeout receipts (operator gap ruling 2026-08-02; S0 amendments, operator recalibration 2026-08-02), each pinning a decided fact rather than accidental composition: the selection grammar ships in the emitted client asset (selection and activation distinct — interactive elements never move selection through the click channel; Escape clears; exactly the selected row's primary action earns action-focal, the class renamed from action-live because live means sessions/observation elsewhere in this product); selection has KEYBOARD PARITY (rows carry tabindex, keyboard focus is gated on :focus-visible so pointer clicks on inner controls cannot move selection through the focus channel, Enter/Space on the focused row toggles, and every path funnels through the one gunbcSelectRow); the three observation channels join ONE impact region (each channel's located row appends into the shared disclosure and the painter no longer prepends free-standing banners to main); and the stylesheet carries the quiet-rest pair, the action-focal band restore on the family's DERIVED rest-band vars, the li.node:focus-visible outline, and the header's shared composition frame. The axis pins on the dispatch button itself (ready renders action-primary/available; review and out-of-order render action-secondary/override; done and superseded render no button at all) live with the existing per-fixture witnesses above. The action-live spellings below are DISCRIMINATING NEGATIVES: the retired name reappearing means the rename regressed or a second prominence authority stood up."
 
 test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "const gunbcClearSelection")
+    && string_contains(s: js, pattern: "const gunbcSelectRow")
     && string_contains(s: js, pattern: "classList.add('node-selected')")
     && string_contains(s: js, pattern: ".node-head .dispatch-btn.action-primary")
-    && string_contains(s: js, pattern: "classList.add('action-live')")
+    && string_contains(s: js, pattern: "classList.add('action-focal')")
     && string_contains(s: js, pattern: "e.key === 'Escape'")
     && string_contains(s: js, pattern: "closest('button, a, details, input, select, textarea')")
+    && !string_contains(s: js, pattern: "action-live")
+}
+
+test fn witness_selection_has_keyboard_parity() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: dispatch_doc_html_for(rn: ready_dispatch_node()), pattern: "tabindex=\"0\"")
+    && string_contains(s: js, pattern: "addEventListener('focusin'")
+    && string_contains(s: js, pattern: "matches(':focus-visible')")
+    && string_contains(s: js, pattern: "matches('li.node')")
+    && string_contains(s: js, pattern: "e.key !== 'Enter' && e.key !== ' '")
+    && string_contains(s: js, pattern: "e.preventDefault()")
+    && string_contains(s: js, pattern: "gunbcSelectRow(t)")
+    && string_contains(s: js, pattern: "gunbcSelectRow(li)")
 }
 
 test fn witness_observation_channels_join_one_impact_region() -> Bool {
@@ -611,6 +625,8 @@ test fn witness_observation_channels_join_one_impact_region() -> Bool {
 
 test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
   string_contains(s: roadmap_css(), pattern: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary { color: var(--text-dim); background: var(--surface); border-color: var(--border) }")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn.action-live { color: var(--band-invite-ink); background: var(--band-invite); border-color: var(--band-invite) }")
+    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn.action-focal { color: var(--band-invite-ink); background: var(--band-invite); border-color: var(--band-invite) }")
+    && string_contains(s: roadmap_css(), pattern: "li.node:focus-visible { outline: var(--border-2) solid var(--focus) }")
+    && !string_contains(s: roadmap_css(), pattern: "action-live")
     && string_contains(s: roadmap_css(), pattern: ".header-inner { max-width: var(--measure); margin-left: auto; margin-right: auto; display: flex; align-items: center; gap: var(--space-12) }")
 }

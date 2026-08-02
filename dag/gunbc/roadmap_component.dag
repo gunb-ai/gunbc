@@ -2716,10 +2716,10 @@ fn workflow_fetch_statements() -> List<TsStmt> {
   ]
 }
 
-data row_selection_note: String = "SELECTION IS CLIENT STATE; PROMINENCE IS ITS PROJECTION (A2 hierarchy closeout, operator gap ruling 2026-08-02: only the selected subject normally exposes the primary operation prominently). Clicking a row's non-interactive surface selects it — exactly one row at a time; clicking the selected row again, or pressing Escape, clears; clicking any control, link, or disclosure activates WITHOUT changing selection, keeping selection and activation distinct operations. Selection grants action-live to the row's own primary action only — the first .node-head under the row li is its own head in document order, so a nested child row's control can never inherit the parent's grant — and the clear pass strips every node-selected and action-live in one sweep, so two live controls cannot coexist. The stylesheet side of this grammar is action_prominence_rules_note (quiet rest, invite band on action-live, status classes always winning). No selection state is persisted: prominence is a session-local reading aid, not a fact about the work."
+data row_selection_note: String = "SELECTION IS CLIENT STATE; PROMINENCE IS ITS PROJECTION (A2 hierarchy closeout, operator gap ruling 2026-08-02: only the selected subject normally exposes the primary operation prominently). Selecting a row — by clicking its non-interactive surface, by keyboard focus reaching it (focus-visible only, so pointer clicks on inner controls never move selection through the focus channel), or by Enter/Space on the focused row — selects exactly one row at a time; re-selecting the selected row, or pressing Escape, clears; activating any control, link, or disclosure acts WITHOUT changing selection, keeping selection and activation distinct operations. Every input path funnels through ONE gunbcSelectRow, so keyboard and pointer cannot drift apart. Selection grants action-focal to the row's own primary action only (the class named for what it means — selection-granted focal prominence, never liveness; see action_prominence_rules_note) — the first .node-head under the row li is its own head in document order, so a nested child row's control can never inherit the parent's grant — and the clear pass strips every node-selected and action-focal in one sweep, so two focal controls cannot coexist. No selection state is persisted: prominence is a session-local reading aid, not a fact about the work. DECLARED FOLLOW-UP (S0 handback, operator recalibration 2026-08-02): in the instrument composition, secondary override controls LEAVE the resting row entirely — they move into the contextual inspector/disclosure and the resting row keeps at most a small affordance; this production page keeps them in-row until that composition lands."
 
 data row_selected_class: String = "node-selected"
-data action_live_class: String = "action-live"
+data action_focal_class: String = "action-focal"
 
 fn row_selection_bind_statements() -> List<TsStmt> {
   [
@@ -2727,15 +2727,38 @@ fn row_selection_bind_statements() -> List<TsStmt> {
       callee: ts_member(
         object: ts_call(
           callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-          args: [ts_lit_str(value: join([".", row_selected_class, ", .", action_live_class], ""))],
+          args: [ts_lit_str(value: join([".", row_selected_class, ", .", action_focal_class], ""))],
         ),
         property: "forEach",
       ),
       args: [ts_arrow(params: ["n"], body: ts_expr_stmt(expr: ts_call(
         callee: ts_member(object: ts_member(object: ts_ident(name: "n"), property: "classList"), property: "remove"),
-        args: [ts_lit_str(value: row_selected_class), ts_lit_str(value: action_live_class)],
+        args: [ts_lit_str(value: row_selected_class), ts_lit_str(value: action_focal_class)],
       )))],
     )))),
+    ts_const(name: "gunbcSelectRow", value: ts_arrow(params: ["li"], body: ts_block(stmts: [
+      ts_if(
+        cond: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "contains"),
+          args: [ts_lit_str(value: row_selected_class)]),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "add"),
+        args: [ts_lit_str(value: row_selected_class)])),
+      ts_const(name: "b", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "li"), property: "querySelector"),
+        args: [ts_lit_str(value: ".node-head .dispatch-btn.action-primary")])),
+      ts_if(
+        cond: ts_ident(name: "b"),
+        then: ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "b"), property: "classList"), property: "add"),
+          args: [ts_lit_str(value: action_focal_class)])),
+        else_stmt: none,
+      ),
+    ]))),
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
       args: [ts_lit_str(value: "click"), ts_arrow(params: ["e"], body: ts_block(stmts: [
@@ -2764,17 +2787,37 @@ fn row_selection_bind_statements() -> List<TsStmt> {
           args: [ts_lit_str(value: row_selected_class)])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
         ts_if(cond: ts_ident(name: "was"), then: ts_return(expr: none), else_stmt: none),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "add"),
-          args: [ts_lit_str(value: row_selected_class)])),
-        ts_const(name: "b", value: ts_call(
-          callee: ts_member(object: ts_ident(name: "li"), property: "querySelector"),
-          args: [ts_lit_str(value: ".node-head .dispatch-btn.action-primary")])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "li")])),
+      ]))],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+      args: [ts_lit_str(value: "focusin"), ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
         ts_if(
-          cond: ts_ident(name: "b"),
-          then: ts_expr_stmt(expr: ts_call(
-            callee: ts_member(object: ts_member(object: ts_ident(name: "b"), property: "classList"), property: "add"),
-            args: [ts_lit_str(value: action_live_class)])),
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+              op: "||",
+              right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches"))),
+            op: "||",
+            right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest"))),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
+            args: [ts_lit_str(value: ":focus-visible")])),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_const(name: "li", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+          args: [ts_lit_str(value: "li.node")])),
+        ts_if(
+          cond: ts_ident(name: "li"),
+          then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "li")])),
           else_stmt: none,
         ),
       ]))],
@@ -2790,6 +2833,45 @@ fn row_selection_bind_statements() -> List<TsStmt> {
           then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
           else_stmt: none,
         ),
+        ts_if(
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_member(object: ts_ident(name: "e"), property: "key"),
+              op: "!==",
+              right: ts_lit_str(value: "Enter")),
+            op: "&&",
+            right: ts_binop(
+              left: ts_member(object: ts_ident(name: "e"), property: "key"),
+              op: "!==",
+              right: ts_lit_str(value: " "))),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+        ts_if(
+          cond: ts_binop(
+            left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+            op: "||",
+            right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches"))),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
+            args: [ts_lit_str(value: "li.node")])),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"),
+          args: [])),
+        ts_const(name: "was", value: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "t"), property: "classList"), property: "contains"),
+          args: [ts_lit_str(value: row_selected_class)])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
+        ts_if(cond: ts_ident(name: "was"), then: ts_return(expr: none), else_stmt: none),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "t")])),
       ]))],
     )),
   ]

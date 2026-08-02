@@ -317,7 +317,7 @@ fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
   })
 }
 
-data dispatch_button_axes_note: String = "THE BUTTON CARRIES ITS DECIDED AXES (A2 hierarchy closeout, operator gap ruling 2026-08-02: 'action prominence derives from selection and priority, not mere availability'). The seam already decided priority and availability per action (action_axes_note); this renderer used to flatten both into one identical class, which is exactly how fourteen equally loud pills reached the desktop fold while LANDED rows kept the ready-row treatment. The class now carries the decided priority (action-primary / action-secondary) and data-availability carries the admission fact, so the stylesheet can rest every in-row control quiet and the client program can raise ONLY the selected row's primary action to the invite band (the action-live class — selection is client state, prominence is its projection). Status classes keep winning in the cascade: emphasis never overrides truth. No-JS visitors see every control quiet but present, labeled, and operable — honest-before-JS forbids blankness, not calm."
+data dispatch_button_axes_note: String = "THE BUTTON CARRIES ITS DECIDED AXES (A2 hierarchy closeout, operator gap ruling 2026-08-02: 'action prominence derives from selection and priority, not mere availability'). The seam already decided priority and availability per action (action_axes_note); this renderer used to flatten both into one identical class, which is exactly how fourteen equally loud pills reached the desktop fold while LANDED rows kept the ready-row treatment. The class now carries the decided priority (action-primary / action-secondary) and data-availability carries the admission fact, so the stylesheet can rest every in-row control quiet and the client program can raise ONLY the selected row's primary action to the invite band (the action-focal class — selection is client state, prominence is its projection; named for the grant, not for liveness). Status classes keep winning in the cascade: emphasis never overrides truth. No-JS visitors see every control quiet but present, labeled, and operable — honest-before-JS forbids blankness, not calm."
 
 fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
   map(view_dispatch_actions(view: view), a =>
@@ -497,6 +497,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
   [
     attr(name: "class", value: concat("node node-", work_lifecycle_key(l: view.lifecycle))),
     attr(name: "data-node", value: view.node_id),
+    attr(name: "tabindex", value: "0"),
   ]
 }
 
