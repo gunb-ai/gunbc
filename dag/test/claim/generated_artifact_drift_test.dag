@@ -5,11 +5,14 @@ import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
-  HealPolicy, AutoHealable, AuthorCommitRequired,
+  HealPolicy, AutoPushEligible, AuthorCommitRequired,
+  HealRepairDisposition, HealRepairNoDrift, HealRepairAutoPushEligibleOnly,
+  HealRepairAuthorCommitRequired, HealRepairMixed,
   generated_artifact_registry,
   committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed,
-  artifact_heal_policy, artifact_is_auto_healable,
-  auto_healable_committed_artifacts, author_commit_required_committed_artifacts,
+  artifact_heal_policy, artifact_is_auto_push_eligible,
+  auto_push_eligible_committed_artifacts, author_commit_required_committed_artifacts,
+  classify_heal_repair_paths, path_requires_author_commit,
   registry_contains
 }
 import gunbc.generated_artifact_emit { artifact_generate, artifact_extra_valid }
@@ -160,7 +163,7 @@ test fn witness_commit_policy_reasons() -> Bool {
 
 fn heal_policy_is(a: GeneratedArtifact, expected: HealPolicy) -> Bool {
   match artifact_heal_policy(a: a) {
-    AutoHealable => match expected { AutoHealable => true  _ => false }
+    AutoPushEligible => match expected { AutoPushEligible => true  _ => false }
     AuthorCommitRequired { consumer } => match expected {
       AuthorCommitRequired { consumer: expected_consumer } =>
         match consumer {
@@ -169,7 +172,7 @@ fn heal_policy_is(a: GeneratedArtifact, expected: HealPolicy) -> Bool {
           ProjectDocumentation => match expected_consumer { ProjectDocumentation => true  _ => false }
           HostReconciler => match expected_consumer { HostReconciler => true  _ => false }
         }
-      AutoHealable => false
+      AutoPushEligible => false
     }
   }
 }
@@ -177,12 +180,15 @@ fn heal_policy_is(a: GeneratedArtifact, expected: HealPolicy) -> Bool {
 test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
   heal_policy_is(a: CiYamlArtifact, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
     && heal_policy_is(a: FalsifierYamlArtifact, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
-    && heal_policy_is(a: GitignoreArtifact, expected: AutoHealable)
-    && heal_policy_is(a: DesignArtifact, expected: AutoHealable)
+    && heal_policy_is(a: GitignoreArtifact, expected: AutoPushEligible)
+    && heal_policy_is(a: DesignArtifact, expected: AutoPushEligible)
     && (count(author_commit_required_committed_artifacts()) == 2)
-    && (count(auto_healable_committed_artifacts()) == count(committed_generated_artifacts()) - 2)
-    && artifact_is_auto_healable(a: CiYamlArtifact) == false
-    && artifact_is_auto_healable(a: GitignoreArtifact) == true
+    && (count(auto_push_eligible_committed_artifacts()) == count(committed_generated_artifacts()) - 2)
+    && artifact_is_auto_push_eligible(a: CiYamlArtifact) == false
+    && artifact_is_auto_push_eligible(a: GitignoreArtifact) == true
+    && path_requires_author_commit(path: ".github/workflows/ci.yml")
+    && path_requires_author_commit(path: ".github/workflows/falsifier.yml")
+    && !path_requires_author_commit(path: ".gitignore")
 }
 
 test fn witness_extra_validation_wired() -> Bool {

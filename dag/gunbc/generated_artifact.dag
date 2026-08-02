@@ -45,7 +45,7 @@ type CommitPolicy
   | NotCommitted
 
 type HealPolicy
-  = AutoHealable
+  = AutoPushEligible
   | AuthorCommitRequired { consumer: RepoConsumer }
 
 data github_app_workflows_write_absent_note: String = "The GitHub App installation token used by CI carries contents:write but NOT workflows:write. GitHub therefore rejects any push that modifies .github/workflows/** (GH013 / repository-rule violation on workflow paths). Workflow generated artifacts remain CommitRequired — they must land in the repo — but the heal job must not attempt an auto-push the token cannot perform. AuthorCommitRequired is the typed outcome: regeneration may still run locally (main_wet), but committing workflow drift is the PR author's obligation."
@@ -111,32 +111,59 @@ fn artifact_heal_policy(a: GeneratedArtifact) -> HealPolicy {
   match artifact_commit_policy(a: a) {
     CommitRequired { consumer: GithubActionsWorkflow } =>
       AuthorCommitRequired { consumer: GithubActionsWorkflow }
-    CommitRequired { consumer: _ } => AutoHealable
-    NotCommitted => AutoHealable
+    CommitRequired { consumer: _ } => AutoPushEligible
+    NotCommitted => AutoPushEligible
   }
 }
 
-fn artifact_is_auto_healable(a: GeneratedArtifact) -> Bool {
+fn artifact_is_auto_push_eligible(a: GeneratedArtifact) -> Bool {
   match artifact_heal_policy(a: a) {
-    AutoHealable => true
+    AutoPushEligible => true
     AuthorCommitRequired { consumer: _ } => false
   }
 }
 
-fn auto_healable_committed_artifacts() -> List<GeneratedArtifact> {
-  filter(committed_generated_artifacts(), a => artifact_is_auto_healable(a: a))
+fn auto_push_eligible_committed_artifacts() -> List<GeneratedArtifact> {
+  filter(committed_generated_artifacts(), a => artifact_is_auto_push_eligible(a: a))
 }
 
 fn author_commit_required_committed_artifacts() -> List<GeneratedArtifact> {
-  filter(committed_generated_artifacts(), a => !artifact_is_auto_healable(a: a))
+  filter(committed_generated_artifacts(), a => !artifact_is_auto_push_eligible(a: a))
 }
 
-fn auto_healable_committed_artifact_paths() -> List<String> {
-  map(auto_healable_committed_artifacts(), a => artifact_path(a: a))
+fn auto_push_eligible_committed_artifact_paths() -> List<String> {
+  map(auto_push_eligible_committed_artifacts(), a => artifact_path(a: a))
 }
 
 fn author_commit_required_committed_artifact_paths() -> List<String> {
   map(author_commit_required_committed_artifacts(), a => artifact_path(a: a))
+}
+
+fn path_requires_author_commit(path: String) -> Bool {
+  any(author_commit_required_committed_artifact_paths(), p => p == path)
+}
+
+type HealRepairDisposition
+  = HealRepairNoDrift
+  | HealRepairAutoPushEligibleOnly { paths: List<String> }
+  | HealRepairAuthorCommitRequired { paths: List<String> }
+  | HealRepairMixed {
+      auto_push_paths: List<String>,
+      author_commit_paths: List<String>
+    }
+
+fn classify_heal_repair_paths(changed_paths: List<String>) -> HealRepairDisposition {
+  let author = filter(changed_paths, p => path_requires_author_commit(path: p))
+  let auto_push = filter(changed_paths, p => !path_requires_author_commit(path: p))
+  if count(changed_paths) == 0 {
+    HealRepairNoDrift
+  } else if count(author) == 0 {
+    HealRepairAutoPushEligibleOnly { paths: auto_push }
+  } else if count(auto_push) == 0 {
+    HealRepairAuthorCommitRequired { paths: author }
+  } else {
+    HealRepairMixed { auto_push_paths: auto_push, author_commit_paths: author }
+  }
 }
 
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
