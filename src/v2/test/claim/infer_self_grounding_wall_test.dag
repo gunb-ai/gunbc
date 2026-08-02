@@ -12,6 +12,7 @@ import gunbc.guarantee_probe_corpus {
   receipt_matches_v2_infer_eval_probe_row,
   synthetic_infer_eval_subject_revision_from_node,
   v2_infer_eval_harness_revision,
+  v2_infer_eval_harness_source_paths,
   ProbeExpectation,
   ExpectAcceptedCounted,
   ExpectZeroDiagnostics,
@@ -43,7 +44,7 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_pick_if_body_
 import v2.std.algebra { list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected, Some, None, NonEmptyDiagnostics }
 import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node {
   Node,
   Edge,
@@ -58,18 +59,39 @@ import v2.std.node {
   Named,
 }
 import v2.std.witness { Holds, Violates }
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String, List }
+import v2.std.algebra { fold_list }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn measured_infer_eval_harness_source() -> NonEmptyStr {
+  fold_list(
+    xs: v2_infer_eval_harness_source_paths(),
+    empty: "guarantee-probe-harness-source" as NonEmptyStr,
+    cons: fn(acc, path) {
+      let read = filesystem_read(path: path)
+      concat(
+        concat(concat(acc as String, "\n=== "), path as String),
+        concat(" ===\n", read.content as String),
+      ) as NonEmptyStr
+    },
+  )
+}
 
 fn infer_wall_harness_revision(probe: GuaranteeProbeId) -> MeasurementRevision {
+  let harness_source = measured_infer_eval_harness_source()
   match active_v2_infer_eval_probe_row(probe: probe) {
     Present { value: row } =>
-      v2_infer_eval_harness_revision(probe: probe, expectation: row.expectation)
+      v2_infer_eval_harness_revision(
+        probe: probe,
+        expectation: row.expectation,
+        harness_source: harness_source,
+      )
     Absent =>
       v2_infer_eval_harness_revision(
         probe: probe,
         expectation: ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as NonEmptyStr },
+        harness_source: harness_source,
       )
   }
 }

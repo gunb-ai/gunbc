@@ -39,7 +39,7 @@ data guarantee_probe_corpus_path_scope_note: String = "TWO LANDED PATHS IN THE C
 
 data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. guarantee_probe_ids_reserved holds OPEN follow-on identities (gunbc#7555) outside the digest until their control merges. Callers must not re-sort; the active roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt as MeasurementRevision (GitRevision | ContentFingerprint). build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures mint ContentFingerprint revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision_from_node fingerprints the executed Node fixture via v2.std.node.content_hash; v1_compile_harness_revision and v2_infer_eval_harness_revision fingerprint the executing harness spine plus the registry row's ProbeExpectation (never prose scope notes). dissolve-on ladder-baseline stage naming real GitRevision subject_revision/harness_revision commits."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt as MeasurementRevision (GitRevision | ContentFingerprint). build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures mint ContentFingerprint revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision_from_node fingerprints the executed Node fixture via v2.std.node.content_hash; v1_compile_harness_revision and v2_infer_eval_harness_revision fingerprint filesystem_read harness source material (v1_compile_harness_source_paths / v2_infer_eval_harness_source_paths) plus the registry row's ProbeExpectation — never symbol-name spines or prose scope notes. dissolve-on ladder-baseline stage naming real GitRevision subject_revision/harness_revision commits."
 
 fn synthetic_program_subject_revision(source: String) -> MeasurementRevision {
   ContentFingerprint { digest: content_hash_atom(value: source as NonEmptyStr) }
@@ -158,9 +158,60 @@ fn probe_expectation_fold<R>(e: ProbeExpectation, fold: ProbeExpectationFold<R>)
   }
 }
 
-data v1_compile_probe_harness_spine: NonEmptyStr = "compile_dag_diagnostic_census|probe_observation_from_census|probe_row_expectation_holds|probe_expectation_fold" as NonEmptyStr
+fn harness_digest_from_material_and_expectation(
+  harness_material: NonEmptyStr,
+  expectation: ProbeExpectation,
+) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: harness_material),
+    right: expectation_harness_digest(e: expectation),
+  )
+}
 
-data v2_infer_eval_probe_harness_spine: NonEmptyStr = "infer|probe_observation_from_accepted_infer_diagnostics|receipt_matches_v2_infer_eval_probe_row|join_receipt_to_path" as NonEmptyStr
+fn v1_compile_harness_source_paths() -> List<String> {
+  [
+    "dag/gunbc/guarantee_probe_corpus.dag",
+    "dag/gunbc/guarantee_measurement.dag",
+    "src/v1/stage0/src/cli_run.rs",
+  ]
+}
+
+fn v2_infer_eval_harness_source_paths() -> List<String> {
+  [
+    "dag/gunbc/guarantee_probe_corpus.dag",
+    "dag/gunbc/guarantee_measurement.dag",
+    "src/v2/compiler/04_infer.dag",
+    "src/v2/test/claim/infer_self_grounding_wall_test.dag",
+  ]
+}
+
+fn v1_compile_harness_revision(
+  probe: GuaranteeProbeId,
+  expectation: ProbeExpectation,
+  harness_source: NonEmptyStr,
+) -> MeasurementRevision {
+  synthetic_program_harness_revision_from_digest(
+    probe: probe,
+    digest: harness_digest_from_material_and_expectation(
+      harness_material: harness_source,
+      expectation: expectation,
+    ),
+  )
+}
+
+fn v2_infer_eval_harness_revision(
+  probe: GuaranteeProbeId,
+  expectation: ProbeExpectation,
+  harness_source: NonEmptyStr,
+) -> MeasurementRevision {
+  synthetic_program_harness_revision_from_digest(
+    probe: probe,
+    digest: harness_digest_from_material_and_expectation(
+      harness_material: harness_source,
+      expectation: expectation,
+    ),
+  )
+}
 
 fn expectation_harness_digest(e: ProbeExpectation) -> Fnv1a64Structural {
   probe_expectation_fold(
@@ -183,13 +234,6 @@ fn expectation_harness_digest(e: ProbeExpectation) -> Fnv1a64Structural {
   )
 }
 
-fn harness_digest_from_spine_and_expectation(spine: NonEmptyStr, expectation: ProbeExpectation) -> Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_atom(value: spine),
-    right: expectation_harness_digest(e: expectation),
-  )
-}
-
 fn synthetic_program_harness_revision_from_digest(probe: GuaranteeProbeId, digest: Fnv1a64Structural) -> MeasurementRevision {
   ContentFingerprint {
     digest: content_hash_tagged_structural(
@@ -200,26 +244,6 @@ fn synthetic_program_harness_revision_from_digest(probe: GuaranteeProbeId, diges
       ),
     ),
   }
-}
-
-fn v1_compile_harness_revision(probe: GuaranteeProbeId, expectation: ProbeExpectation) -> MeasurementRevision {
-  synthetic_program_harness_revision_from_digest(
-    probe: probe,
-    digest: harness_digest_from_spine_and_expectation(
-      spine: v1_compile_probe_harness_spine,
-      expectation: expectation,
-    ),
-  )
-}
-
-fn v2_infer_eval_harness_revision(probe: GuaranteeProbeId, expectation: ProbeExpectation) -> MeasurementRevision {
-  synthetic_program_harness_revision_from_digest(
-    probe: probe,
-    digest: harness_digest_from_spine_and_expectation(
-      spine: v2_infer_eval_probe_harness_spine,
-      expectation: expectation,
-    ),
-  )
 }
 
 fn synthetic_infer_eval_subject_revision_from_node(node: Node) -> MeasurementRevision {
