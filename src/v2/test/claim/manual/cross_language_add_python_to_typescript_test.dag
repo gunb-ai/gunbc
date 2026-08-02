@@ -18,7 +18,7 @@ import v2.compiler.ingest {
   parse_tree_to_target_model_bridge
 }
 
-import v2.compiler.infer { infer, infer_emit_staging_inferred_tree }
+import v2.compiler.infer { infer, infer_emit_shape_frontier_inferred_tree }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.compiler.emit { emit }
 import v2.extdeps.languages.python {
@@ -110,9 +110,9 @@ test fn cross_language_emit_inhabitant_neutralization_holds() -> Bool {
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
+        Accepted { value: _inferred, diagnostics: _ } =>
           match emit(
-            tree: infer_emit_staging_inferred_tree(canonical: inferred),
+            tree: infer_emit_shape_frontier_inferred_tree(root: neutralized),
             target: ts_target_model()
           ) {
             Accepted { value: _, diagnostics: _ } => true

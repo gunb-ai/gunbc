@@ -2,7 +2,7 @@ module v2.test.manual.inhabitant_neutralization
 
 import v2.compiler.emit { emit }
 import v2.compiler.ingest { cross_language_compile }
-import v2.compiler.infer { infer, infer_emit_staging_inferred_tree }
+import v2.compiler.infer { infer, infer_emit_shape_frontier_inferred_tree }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go {
   go_facts_float64,
@@ -141,9 +141,9 @@ fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
+        Accepted { value: _inferred, diagnostics: _ } =>
           match emit(
-            tree: infer_emit_staging_inferred_tree(canonical: inferred),
+            tree: infer_emit_shape_frontier_inferred_tree(root: neutralized),
             target: ts_target_model()
           ) {
             Accepted { value: _, diagnostics: _ } => true
@@ -183,9 +183,9 @@ test fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
+        Accepted { value: _inferred, diagnostics: _ } =>
           match emit(
-            tree: infer_emit_staging_inferred_tree(canonical: inferred),
+            tree: infer_emit_shape_frontier_inferred_tree(root: neutralized),
             target: ts_target_model()
           ) {
             Accepted { value: _, diagnostics: _ } => true
@@ -219,9 +219,9 @@ fn inhabitant_neutralization_same_flavor_python_emit_holds() -> Bool {
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
+        Accepted { value: _inferred, diagnostics: _ } =>
           match emit(
-            tree: infer_emit_staging_inferred_tree(canonical: inferred),
+            tree: infer_emit_shape_frontier_inferred_tree(root: neutralized),
             target: python_target_model()
           ) {
             Accepted { value: _, diagnostics: _ } => true
