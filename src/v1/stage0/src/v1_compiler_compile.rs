@@ -2215,7 +2215,7 @@ pub struct EmittableGraph {
 pub fn emittable_unresolved_type_admit_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Emit/self-compile treats UnresolvedType as non-blocking so the frozen type-ref debt population does not stop regen_stage0. New-sites-refuse for UnresolvedType remains on compile-clean / resolve / run via type_ref_unresolved_admitted_for_compile_clean (cli_run). Dissolve-on: model that admission predicate in .dag so emit and floor share one ErrorNode-taking authority (charter: regen shares identity-grain debt admission).".to_string()
+            "Emit/self-compile shares type_ref_unresolved_admitted_for_compile_clean with compile-clean / resolve / run (identity-grain debt + expect-red). UnresolvedType blocks emit unless that predicate admits the site. Host authority: cli_run::type_ref_unresolved_admitted_for_compile_clean, reached via the v1_rt bridge of the same name so the .dag emit path and the floor gates share one decision (review 47232 / review 47241).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -2223,7 +2223,9 @@ pub fn emittable_unresolved_type_admit_note() -> String {
 
 pub fn is_emittable_blocking_diagnostic(d: Rc<ErrorNode>) -> bool {
     match (*d.diagnostic.clone()).clone() {
-        CompilerDiagnostic::UnresolvedType { .. } => false,
+        CompilerDiagnostic::UnresolvedType { .. } => {
+            (v1_rt::type_ref_unresolved_admitted_for_compile_clean(&d) == false)
+        }
         _ => is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
     }
 }

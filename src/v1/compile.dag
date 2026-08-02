@@ -907,11 +907,12 @@ type EmittableGraph sole_constructor {
   graph: ResolvedGraph
 }
 
-data emittable_unresolved_type_admit_note: String = "Emit/self-compile treats UnresolvedType as non-blocking so the frozen type-ref debt population does not stop regen_stage0. New-sites-refuse for UnresolvedType remains on compile-clean / resolve / run via type_ref_unresolved_admitted_for_compile_clean (cli_run). Dissolve-on: model that admission predicate in .dag so emit and floor share one ErrorNode-taking authority (charter: regen shares identity-grain debt admission)."
+data emittable_unresolved_type_admit_note: String = "Emit/self-compile shares type_ref_unresolved_admitted_for_compile_clean with compile-clean / resolve / run (identity-grain debt + expect-red). UnresolvedType blocks emit unless that predicate admits the site. Host authority: cli_run::type_ref_unresolved_admitted_for_compile_clean, reached via the v1_rt bridge of the same name so the .dag emit path and the floor gates share one decision (review 47232 / review 47241)."
 
 fn is_emittable_blocking_diagnostic(d: ErrorNode) -> Bool {
   match d.diagnostic {
-    UnresolvedType { name: _, span: _ } => false
+    UnresolvedType { name: _, span: _ } =>
+      type_ref_unresolved_admitted_for_compile_clean(d: d) == false
     _ => is_interpreter_blocking_diagnostic(d: d.diagnostic)
   }
 }

@@ -10528,6 +10528,13 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(v1_rt::is_emoji_ident(cp))))
             },
 
+            // Fail-closed when interpreting: ErrorNode is not a host Value, so
+            // identity-grain admission cannot be evaluated here. Never admit.
+            // Compiled emit uses v1_rt → cli_run (review 47241).
+            arm "free_call.type_ref_unresolved_admitted_for_compile_clean" {
+                "type_ref_unresolved_admitted_for_compile_clean"
+            } => Ok(Some(Value::Bool(false))),
+
             arm "free_call.list_push" { "list_push" | "append" } => match $positional.as_slice() {
                 [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
                 [list_val, item] => match value_to_list_carrier(list_val) {

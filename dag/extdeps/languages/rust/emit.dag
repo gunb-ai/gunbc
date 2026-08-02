@@ -244,7 +244,8 @@ data rt_function_registry: List<RuntimeFunction> = [
 
   { name: "is_xid_start",       bridge_name: "is_xid_start",     passes_by_ref: false, wraps_result: false },
   { name: "is_xid_continue",    bridge_name: "is_xid_continue",  passes_by_ref: false, wraps_result: false },
-  { name: "is_emoji_ident",     bridge_name: "is_emoji_ident",   passes_by_ref: false, wraps_result: false }
+  { name: "is_emoji_ident",     bridge_name: "is_emoji_ident",   passes_by_ref: false, wraps_result: false },
+  { name: "type_ref_unresolved_admitted_for_compile_clean", bridge_name: "type_ref_unresolved_admitted_for_compile_clean", passes_by_ref: true, wraps_result: false }
 ]
 
 fn rt_functions() -> Map<String, Bool> {

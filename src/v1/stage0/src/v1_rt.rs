@@ -113,6 +113,14 @@ pub fn resolution_silent_pick_is_enabled() -> bool {
     RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.get())
 }
 
+/// Bridge: emit/self-compile shares identity-grain type-ref debt admission with
+/// compile-clean / resolve / run (cli_run::type_ref_unresolved_admitted_for_compile_clean).
+pub fn type_ref_unresolved_admitted_for_compile_clean(
+    d: &Rc<crate::v1_std_core::ErrorNode>,
+) -> bool {
+    crate::cli_run::type_ref_unresolved_admitted_for_compile_clean(d)
+}
+
 pub fn resolution_silent_pick_record_global_bare_lcp_pick(
     env_module_path: String,
     name: String,
