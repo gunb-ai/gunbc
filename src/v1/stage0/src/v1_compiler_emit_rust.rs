@@ -17379,7 +17379,9 @@ pub fn field_access_field_is_boxed(
             resolved_type(base.clone()),
             scope.type_env.clone(),
             scope.module_name.clone(),
-        );
+        )
+        .resolved
+        .clone();
         match find_child_named(
             base_struct.clone(),
             field.clone(),
@@ -18211,7 +18213,9 @@ pub fn emit_rust_expr_record_lit(
                 resolved_rt.clone(),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
-            );
+            )
+            .resolved
+            .clone();
             let variant_name = match tn.clone() {
                 Some(n) => n.clone(),
                 None => "".to_string(),
