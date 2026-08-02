@@ -337,6 +337,8 @@ type NativeWitnessProductionTransitionReceipt {
   planted_red_equivalent: Bool
 }
 
+data native_production_transition_population_note: String = "🟡 The population law is a VALIDATOR over the flat-count receipt (review 47496): counts and verdict are authored separately, so an inconsistent pair is representable and this fn is what discriminates it. Executing consumers: the witness-unit controls in v2.test.claim.pr_native_batch_test — an accepted positive control plus discriminating REDs per verdict arm, enrolled in per-PR discovery. The seed's TSV transition-receipt projection does not yet route through this law; that wire belongs to native_selected_bundle_process_seed_deferral. dissolve-on: counts carried on the verdict variants so an inconsistent receipt is unwritable, or the executor walk emitting receipts from .dag — whichever lands first; then this validator and this note delete together."
+
 fn native_production_transition_population_holds(
   receipt: NativeWitnessProductionTransitionReceipt
 ) -> Bool {
