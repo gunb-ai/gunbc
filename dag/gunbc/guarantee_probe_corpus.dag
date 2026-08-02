@@ -16,6 +16,7 @@ import gunbc.guarantee_measurement {
   join_receipt_to_path, ReceiptJoined,
 }
 import v2.std.collection { list_at_optional }
+import v2.std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -163,19 +164,21 @@ fn census_row_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
   count(rows)
 }
 
-fn census_blocking_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int {
+fn census_blocking_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
-    CensusNotRunnable { cause: _ } => 0 - 1
+      Present {
+        value: census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+      }
+    CensusNotRunnable { cause: _ } => none
   }
 }
 
-fn census_any_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int {
+fn census_any_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
-    CensusNotRunnable { cause: _ } => 0 - 1
+      Present { value: census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted)) }
+    CensusNotRunnable { cause: _ } => none
   }
 }
 
@@ -248,16 +251,22 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus, expectation: P
             }
           }
         ExpectBlockingRefusal { diagnostic_class: wanted } =>
-          let blocking = census_blocking_count_for_class(census: census, wanted: wanted as String)
-          if blocking >= 1 {
-            RefusedTyped { diagnostic_class: wanted, count: blocking }
-          } else {
-            let advisory = census_any_count_for_class(census: census, wanted: wanted as String)
-            if advisory >= 1 {
-              AcceptedCounted { diagnostic_class: wanted, count: advisory }
-            } else {
-              AcceptedClean
-            }
+          match census_blocking_count_for_class(census: census, wanted: wanted as String) {
+            Present { value: blocking } =>
+              if blocking >= 1 {
+                RefusedTyped { diagnostic_class: wanted, count: blocking }
+              } else {
+                match census_any_count_for_class(census: census, wanted: wanted as String) {
+                  Present { value: advisory } =>
+                    if advisory >= 1 {
+                      AcceptedCounted { diagnostic_class: wanted, count: advisory }
+                    } else {
+                      AcceptedClean
+                    }
+                  Absent => AcceptedClean
+                }
+              }
+            Absent => AcceptedClean
           }
       }
   }

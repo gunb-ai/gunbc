@@ -53,6 +53,7 @@ import gunbc.compile_diagnostic_census {
 }
 import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -96,7 +97,10 @@ test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool 
     census: census,
     expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
   )
-    && census_blocking_count_for_class(census: census, wanted: "CallArgumentNameUnknown") >= 1
+    && match census_blocking_count_for_class(census: census, wanted: "CallArgumentNameUnknown") {
+      Present { value: n } => n >= 1
+      Absent => false
+    }
 }
 
 test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
@@ -120,7 +124,10 @@ test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
     census: census,
     expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
   )
-    && census_blocking_count_for_class(census: census, wanted: "MethodNotFound") >= 3
+    && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
+      Present { value: n } => n >= 3
+      Absent => false
+    }
 }
 
 test fn method_green_control_has_zero_diagnostics() -> Bool {
@@ -136,7 +143,10 @@ test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
     census: census,
     expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
   )
-    && census_blocking_count_for_class(census: census, wanted: "TypeMismatch") >= 2
+    && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+      Present { value: n } => n >= 2
+      Absent => false
+    }
 }
 
 test fn conformance_green_control_has_zero_diagnostics() -> Bool {
@@ -172,7 +182,10 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
     harness_revision: probe_harness_revision_placeholder,
   )
   observed_is_verdict(o: receipt.observed)
-    && observation_refused_count(o: receipt.observed) == census_blocking_count_for_class(census: census, wanted: "MethodNotFound")
+    && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
+      Present { value: n } => observation_refused_count(o: receipt.observed) == n
+      Absent => false
+    }
 }
 
 test fn green_control_observation_is_accepted_clean() -> Bool {
@@ -200,7 +213,10 @@ test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
     census: advisory_only,
     expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
   )
-    && census_any_count_for_class(census: advisory_only, wanted: "CallArgumentNameUnknown") >= 1
+    && match census_any_count_for_class(census: advisory_only, wanted: "CallArgumentNameUnknown") {
+      Present { value: n } => n >= 1
+      Absent => false
+    }
 }
 
 test fn not_runnable_never_satisfies_expectation() -> Bool {
