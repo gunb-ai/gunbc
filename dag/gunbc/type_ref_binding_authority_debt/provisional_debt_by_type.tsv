@@ -1,26 +1,30 @@
-# census_sha	88ec0b0f149068d226ee02ac34d095e9cf242edf
-# types	406	sites	1958
-NonEmptyStr	363
+# census_sha	38cbcd2917d33cbd094498dacb0fd5dd3da8936a
+# types	416	sites	2133
+NonEmptyStr	392
 LiveTreeDisposition	215
+ExternalAuthority	61
 ByteSize	45
-ExternalAuthority	44
-Disposition	31
-Time	30
+FilePath	43
+Disposition	32
+Time	31
 HostIdentity	27
+One	26
+GitRef	25
+FermiDepth	23
+Nano	22
 PublishedMockCase	22
-One	21
-Nano	19
+Symbol	19
+CommitSha	16
 ProcessExit	16
 OomdEffectiveRead	15
 ContentHash	14
 DnsLabel	14
-CommitSha	13
 MarkdownBlock	13
+Memory	13
 Timestamp	13
 std.resources.Network	13
 BudgetNode	12
 DecodeFidelity	12
-FilePath	12
 HardwareThreadCount	12
 HostEffectEvidence	12
 HostEffectIntent	12
@@ -29,7 +33,6 @@ std.types.FilePath	11
 CacheGeometryCitation	10
 CacheProvider	10
 GcpProjectId	10
-Symbol	10
 TestModuleRetirement	10
 std.nat.Nat	10
 AcceleratorDemoProgram	9
@@ -42,12 +45,13 @@ OciMediaType	9
 ComputeOffer	8
 CpuModelCatalogRow	8
 MarkdownDocument	8
-Memory	8
 NodeControlPlane	8
+SourceRootRef	8
 DeployAccess	7
 DramModuleCatalogRow	7
 FloorOutcome	7
 MoneyAmountMicro	7
+QualifiedName	7
 std.materialization_ladder.Frame	7
 Argument	6
 BmcGroundedHostObservations	6
@@ -95,6 +99,7 @@ HostConverge	4
 MarkdownSpellings	4
 MemoryConfig	4
 Micro	4
+Milliseconds	4
 Pep440ReleaseSegments	4
 ProcessIdentity	4
 RunnerUnitLiveReadRow	4
@@ -131,10 +136,10 @@ JsSitePageId	3
 LayoutProtocol	3
 LevelId	3
 Milli	3
-Milliseconds	3
 ObservationCurrency	3
 OomKillObservation	3
 OperatingSystemSurface	3
+PathTemplate	3
 Percent	3
 PhaseDisposition	3
 Proposition	3
@@ -203,7 +208,6 @@ OsInstallActuationObservations	2
 Placement	2
 ProcessNodeId	2
 PullReview	2
-QualifiedName	2
 RealizedStep	2
 RedfishPowerControl	2
 RedfishPowerSubsystem	2
@@ -218,7 +222,6 @@ Seconds	2
 SemVerConstraint	2
 SemVerIdentity	2
 SerialField	2
-SourceRootRef	2
 SourceRootRole	2
 Summary	2
 TsExpr	2
@@ -230,6 +233,7 @@ std.integer.UInt8	2
 std.occurrence_identity.NodeOccurrenceIdentity	2
 std.render.RenderFrame	2
 std.types.NonEmptyStr	2
+v2.std.layer.LayerPrefix	2
 AccessMode	1
 AuthScheme	1
 Axiom	1
@@ -269,6 +273,7 @@ DataRate	1
 DemandNature	1
 DeployedIntentV1	1
 DescriptorRejectReason	1
+Diagnostic	1
 Document	1
 DomainId	1
 DominanceVerdict	1
@@ -281,7 +286,6 @@ ExecutableFormat	1
 ExecutionReceiptDigest	1
 ExpectedOutcome	1
 ExpressionTemplate	1
-FermiDepth	1
 FilePathParts	1
 FileTreeScope	1
 Frequency	1
@@ -289,7 +293,6 @@ Gibi	1
 GitDiffStatusEntry	1
 GitHubActionsRuntime	1
 GitHubUser	1
-GitRef	1
 GoMvsProperty	1
 GpuModelCatalogRow	1
 GraphEdge	1
@@ -312,6 +315,7 @@ Kibi	1
 KvmObservedScreen	1
 LinuxPlatform	1
 LocalDevRuntime	1
+Locus	1
 MacosDistributionCatalogRow	1
 Materialization	1
 MaterializedSecret	1
@@ -320,6 +324,7 @@ MergeReadinessVerdict	1
 MetadataRuntime	1
 Millisecond	1
 Motherboard	1
+NbdProxyWebsocatParams	1
 NbdServePortObservation	1
 NbdServeProcessObservation	1
 NetworkSettings	1
@@ -331,6 +336,7 @@ OciRuntimeVersion	1
 Os	1
 OutputDecision	1
 Ownership	1
+PathParamBinding	1
 Permission	1
 PermissionAssignment	1
 PerturbationReading	1
@@ -371,6 +377,7 @@ SecretRef	1
 ServerBaseboard	1
 Sixty	1
 SolConsoleContentObservation	1
+SourceRootSet	1
 Span	1
 StampClass	1
 StorageDevice	1
@@ -382,10 +389,13 @@ TailscaleGrant	1
 TailscaleNodeAttr	1
 TailscaleSshRule	1
 TailscaleTagOwnerRow	1
+Temperature	1
 TemperatureDifference	1
+TreeFundamentalityOrder	1
 UbuntuDistributionCatalogRow	1
 VersionConstraint	1
 Viewport	1
+VirtualMediaIntent	1
 WindowsDistributionCatalogRow	1
 WorkflowRun	1
 WorkflowRunList	1
