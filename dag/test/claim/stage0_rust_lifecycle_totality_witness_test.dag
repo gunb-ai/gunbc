@@ -1,0 +1,102 @@
+module test.claim.stage0_rust_lifecycle_totality_witness
+
+import gunbc.stage0_rust_lifecycle_totality {
+  NotProductReachable,
+  ProductReachabilityUndetermined,
+  ProductReachableFromEntry,
+  derived_prefix_test_harness_repo_paths,
+  derived_prefix_tooling_repo_paths,
+  first_unclassified_tracked_path,
+  lifecycle_classification_totality_for_observation,
+  lifecycle_classification_totality_holds,
+  lifecycle_totality_witness_observation,
+  product_reachability_for_path,
+  product_reachability_totality_holds,
+  stage0_rust_lifecycle_totality_note
+}
+import v2.std.algebra { length }
+
+test fn lifecycle_totality_note_cites_lane_c_and_product_reachability() -> Bool {
+  string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "Lane C")
+    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "ProductReachability")
+    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "HandAuthoredLOC")
+}
+
+test fn lifecycle_totality_prefix_test_harness_derivation() -> Bool {
+  derived_prefix_test_harness_repo_paths(
+    tracked_paths: ["src/v1/tests/foo.rs", "src/v1/stage0/src/main.rs"]
+  ) == ["src/v1/tests/foo.rs"]
+}
+
+test fn lifecycle_totality_prefix_tooling_derivation() -> Bool {
+  derived_prefix_tooling_repo_paths(
+    tracked_paths: ["dag/tools/foo/witness_main.rs", "src/v1/tests/bar.rs"]
+  ) == ["dag/tools/foo/witness_main.rs"]
+}
+
+test fn lifecycle_totality_positive_control_holds() -> Bool {
+  lifecycle_classification_totality_holds(
+    tracked_paths: ["src/v1/tests/a.rs", "dag/tools/b/witness_main.rs"],
+    classified_paths: ["src/v1/tests/a.rs", "dag/tools/b/witness_main.rs"]
+  )
+}
+
+test fn lifecycle_totality_red_control_unclassified_path() -> Bool {
+  first_unclassified_tracked_path(
+    tracked_paths: ["classified.rs", "orphan.rs"],
+    classified_paths: ["classified.rs"]
+  ) == "orphan.rs"
+    && !lifecycle_classification_totality_holds(
+      tracked_paths: ["classified.rs", "orphan.rs"],
+      classified_paths: ["classified.rs"]
+    )
+}
+
+test fn lifecycle_totality_witness_fixture_classifies_prefix_paths() -> Bool {
+  let observation = lifecycle_totality_witness_observation(extra_paths: [
+    "src/v1/tests/a.rs",
+    "dag/tools/foo/witness_main.rs"
+  ])
+  lifecycle_classification_totality_for_observation(observation: observation)
+}
+
+test fn product_reachability_cargo_bin_is_entry() -> Bool {
+  match product_reachability_for_path(
+    path: "src/v1/stage0/src/bin/claim_executor.rs",
+    cargo_bin_repo_paths: ["src/v1/stage0/src/bin/claim_executor.rs"]
+  ) {
+    ProductReachableFromEntry { entry_path: path } => path == "src/v1/stage0/src/bin/claim_executor.rs"
+    _ => false
+  }
+}
+
+test fn product_reachability_test_harness_not_product() -> Bool {
+  match product_reachability_for_path(
+    path: "src/v1/tests/foo.rs",
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  ) {
+    NotProductReachable { reason: reason } => reason != ""
+    _ => false
+  }
+}
+
+test fn product_reachability_red_control_undetermined() -> Bool {
+  match product_reachability_for_path(
+    path: "src/v1/stage0/src/synthetic_unclassified.rs",
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  ) {
+    ProductReachabilityUndetermined { path: path } => path == "src/v1/stage0/src/synthetic_unclassified.rs"
+    _ => false
+  }
+}
+
+test fn product_reachability_totality_positive_control() -> Bool {
+  product_reachability_totality_holds(
+    tracked_paths: [
+      "src/v1/stage0/src/main.rs",
+      "src/v1/tests/foo.rs",
+      "dag/tools/bar/witness_main.rs"
+    ],
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  )
+}

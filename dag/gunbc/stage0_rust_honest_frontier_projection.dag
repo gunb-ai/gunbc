@@ -7,27 +7,25 @@ import gunbc.stage0_rust_host_observation {
   RustManifestReadRefused,
   RustSourceHostObservation
 }
+import gunbc.stage0_rust_lifecycle_totality {
+  derived_full_lifecycle_classified_repo_paths
+}
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_generated_stage0_repo_paths,
-  lifecycle_row_well_formed,
-  list_concat_unique,
-  path_in_list,
-  rust_source_lifecycle_residue_rows
+  list_concat_unique
 }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { filter, list_map }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_honest_frontier_projection_note: String = "FIRST PROJECTION ONLY. The revision-addressed tracked-Rust population comes from gunbc.stage0_rust_host_observation. Generated paths and paths with an admitted maintenance disposition remain independent subtraction axes derived from gunbc.stage0_rust_source_lifecycle_scaffold; source roles never supply a disposition. This projection preserves the exact ordered remainder rather than collapsing identity to a count. RustSourceRole, MaintenanceDisposition, GenerationAuthority, and RetirementTrigger remain independent facts. ProductReachability, HandAuthoredLOC, and HandCapability are explicitly deferred to the v1-honest-frontier follow-on; this first slice does not claim them."
+data stage0_rust_honest_frontier_projection_note: String = "SECOND PROJECTION (Lane C): exact unclassified tracked-Rust paths subtract generated paths and every path admitted by gunbc.stage0_rust_lifecycle_totality derived_full_lifecycle_classified_repo_paths — prefix harness rows, partition crate libs, cargo-bin disposition paths, and the authority join. ProductReachability is modeled on gunbc.stage0_rust_lifecycle_totality; HandAuthoredLOC and HandCapability remain deferred. RustSourceRole, MaintenanceDisposition, GenerationAuthority, and RetirementTrigger remain independent facts. Source roles never supply a maintenance disposition."
 
 type RustHonestFrontierDeferredAxis
-  = ProductReachability
-  | HandAuthoredLOC
+  = HandAuthoredLOC
   | HandCapability
 
 data stage0_rust_honest_frontier_deferred_axes: List<RustHonestFrontierDeferredAxis> = [
-  ProductReachability,
   HandAuthoredLOC,
   HandCapability
 ]
@@ -40,25 +38,21 @@ type TrackedRustUnclassifiedProjection
 
 fn exact_unclassified_tracked_rust_paths(
   tracked_paths: List<String>,
-  generated_paths: List<String>,
-  maintenance_disposition_paths: List<String>
+  classified_paths: List<String>
 ) -> List<String> {
   filter(
     xs: tracked_paths,
-    predicate: fn(path) {
-      !path_in_list(path: path, paths: generated_paths)
-        && !path_in_list(path: path, paths: maintenance_disposition_paths)
-    }
+    predicate: fn(path) { !path_in_list(path: path, paths: classified_paths) }
   )
 }
 
-fn admitted_maintenance_disposition_paths() -> List<String> {
-  list_map(
-    xs: filter(
-      xs: rust_source_lifecycle_residue_rows,
-      predicate: fn(row) { lifecycle_row_well_formed(row: row) }
-    ),
-    f: fn(row) { row.path }
+fn admitted_lifecycle_classified_paths(
+  tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> List<String> {
+  derived_full_lifecycle_classified_repo_paths(
+    tracked_paths: tracked_paths,
+    cargo_bin_repo_paths: cargo_bin_repo_paths
   )
 }
 
@@ -77,15 +71,17 @@ fn tracked_rust_unclassified_projection(
       manifest_content_identity: _,
       tracked_rust_repo_paths: tracked_paths,
       prior_tracked_rust_repo_paths: _,
-      cargo_bin_repo_paths: _
+      cargo_bin_repo_paths: cargo_bin_repo_paths
     } => if repository_revision == "" {
       TrackedRustProjectionReadRefused { detail: "observed manifest missing repository_revision" }
     } else {
       TrackedRustUnclassifiedPaths {
         paths: exact_unclassified_tracked_rust_paths(
           tracked_paths: tracked_paths,
-          generated_paths: derived_generated_stage0_repo_paths(),
-          maintenance_disposition_paths: admitted_maintenance_disposition_paths()
+          classified_paths: admitted_lifecycle_classified_paths(
+            tracked_paths: tracked_paths,
+            cargo_bin_repo_paths: cargo_bin_repo_paths
+          )
         )
       }
     }
@@ -96,9 +92,9 @@ fn honest_frontier_projection_witness_observation(
   extra_paths: List<String>
 ) -> RustManifestObserved {
   let generated_paths = derived_generated_stage0_repo_paths()
-  let classified_paths = list_concat_unique(
-    acc: generated_paths,
-    items: admitted_maintenance_disposition_paths()
+  let classified_paths = admitted_lifecycle_classified_paths(
+    tracked_paths: extra_paths,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
