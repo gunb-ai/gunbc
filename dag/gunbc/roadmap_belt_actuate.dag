@@ -68,6 +68,8 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_current_attempt_validation_receipt_path_for_instance,
   dispatch_worktree_path_for_instance,
+  dispatch_verification_checkout_path_for_instance,
+  git_worktree_add_detached_argv_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
   dispatch_current_attempt_events_projection_argv_for_instance,
@@ -584,6 +586,93 @@ fn belt_worktree_head_revision(
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
     WorktreeHeadObserved { revision } => revision as String
     WorktreeHeadUnobserved { reason: _ } => ""
+  }
+}
+
+fn belt_verify_detached_worktree(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  let checkout_path = dispatch_verification_checkout_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    head_sha: head_sha,
+  )
+  match belt_worktree_head_observe(instance: instance, worktree: checkout_path) {
+    WorktreeHeadObserved { revision } =>
+      if (revision as String) == head_sha {
+        checkout_path
+      } else {
+        ""
+      }
+    WorktreeHeadUnobserved { reason: _ } =>
+      match belt_exec(
+        cmd: git_worktree_add_detached_argv_for_instance(
+          instance: instance,
+          worktree_path: checkout_path,
+          commit_sha: head_sha,
+        ),
+        workdir: instance.repo_root as String,
+      ) {
+        ExecOk { stdout: _ } => checkout_path
+        ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+        ExecRefused { program: _, reason: _ } => ""
+      }
+  }
+}
+
+fn belt_verify_detached_worktree_refusal(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  let checkout_path = dispatch_verification_checkout_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    head_sha: head_sha,
+  )
+  match belt_worktree_head_observe(instance: instance, worktree: checkout_path) {
+    WorktreeHeadObserved { revision } =>
+      join([
+        "a verification checkout already exists at ",
+        checkout_path,
+        " but its head is ",
+        revision as String,
+        " instead of the observed ",
+        head_sha,
+      ], "")
+    WorktreeHeadUnobserved { reason: _ } =>
+      match belt_exec(
+        cmd: git_worktree_add_detached_argv_for_instance(
+          instance: instance,
+          worktree_path: checkout_path,
+          commit_sha: head_sha,
+        ),
+        workdir: instance.repo_root as String,
+      ) {
+        ExecOk { stdout: _ } => ""
+        ExecFailed { program, exit_code, stderr } =>
+          join([
+            program,
+            " could not create a detached verification checkout at ",
+            head_sha,
+            " (exit ",
+            to_string(exit_code),
+            "): ",
+            stderr,
+          ], "")
+        ExecRefused { program, reason } =>
+          join([
+            program,
+            " was not available to create a detached verification checkout: ",
+            reason,
+          ], "")
+      }
   }
 }
 
@@ -2816,6 +2905,8 @@ fn belt_workflow_progress_for_attempt_ref(
 
 data belt_verify_pass_note: String = "The workflow's own verification actuation, and the reason it lives on the belt rather than in the /workflow.json handler: running a declared validation is an EFFECT that takes as long as the validation takes, while the progress route is a synchronous read that the browser polls every two seconds. Producing the verdict on the read path would make the lamp's own observation the thing that runs cargo. So the belt produces the receipt and the projection reads it — the same split the environment-admission receipt already uses, and the reason Verify can move without the observer changing shape. Idempotence comes from the receipt's presence, exactly as spawn idempotence comes from the observed session: a recorded verdict is not recomputed, so re-ticking neither re-runs the validation nor overwrites a verdict with a later one taken against a tree the agent has since touched. Agent completion is read from the reconciled provider state, so a turn that completed while its pane still runs, or completed with a nonzero exit, does not reach verification at all — the obligation order is preserved rather than restated."
 
+data belt_verification_detached_checkout_note: String = "Validations run in a detached checkout of the observed head, never in the mutable implementation worktree. The checkout path is head-addressed and idempotent: an existing tree at the same revision is reused; a tree at a different revision refuses rather than validating the wrong commit."
+
 type BeltVerifyOutcome
   = VerifyDeferred { node_id: String, reason: String }
   | VerifyRecorded {
@@ -3030,14 +3121,11 @@ fn belt_verify_run_and_persist(
   subject: VerificationSubject,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
-  let worktree = dispatch_worktree_path_for_instance(
+  let worktree = belt_verify_detached_worktree(
     instance: instance,
     node_id: node_id,
     attempt_key: progress.attempt_key,
-  )
-  let observations = belt_oracle_observations_in_worktree(
-    contract: node.execution,
-    worktree: worktree,
+    head_sha: subject.head_sha as String,
   )
   let pinned_identity_wire = belt_read_or_empty(
     path: dispatch_current_attempt_oracle_identity_path_for_instance(
@@ -3067,81 +3155,135 @@ fn belt_verify_run_and_persist(
     identity: pinned_identity,
     revision: pinned_revision,
   )
-  let run = match validation_oracle_gate(
-    contract: node.execution,
-    observations: observations,
-    pin_recorded: pin_recorded,
-    expected_identity: match pinned_identity {
-      Present { value: identity } => identity
-      Absent =>
-        as_content_hash_structural(
-          structural: content_hash_atom(value: "oracle-pin-unreadable")
-        )
-    },
-    revision: match pinned_revision {
-      Present { value: revision } => revision
-      Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
-    },
-    pin_read_detail: if pin_refusal == "" {
-      "no oracle identity was recorded for this attempt at dispatch"
-    } else {
-      pin_refusal
-    },
-  ) {
-    ValidationOracleGateRefused { cause } =>
-      BeltValidationRun {
-        executions: [],
-        verdict: ValidationRefused { cause: cause },
-      }
-    ValidationOracleAdmitted { identity } =>
-      match node.execution {
-        ExecutionContractUnspecified =>
-          BeltValidationRun {
-            executions: [],
-            verdict: ValidationRefused {
-              cause: ValidationContractUnspecified,
-            },
-          }
-        ExecutionContract { validations, extra_capabilities: _ } =>
-          belt_run_validation_operations(
+  if worktree == "" {
+    let run = BeltValidationRun {
+      executions: [],
+      verdict: ValidationRefused {
+        cause: ValidationCommandRefused {
+          program: "git",
+          reason: belt_verify_detached_worktree_refusal(
             instance: instance,
-            validations: validations,
-            worktree: worktree,
-            oracle_identity: identity,
+            node_id: node_id,
+            attempt_key: progress.attempt_key,
+            head_sha: subject.head_sha as String,
+          ),
+        },
+      },
+    }
+    let receipt = VerificationReceipt {
+      subject: subject,
+      oracle_identity: match pinned_identity {
+        Present { value: identity } => identity
+        Absent =>
+          as_content_hash_structural(
+            structural: content_hash_atom(value: "oracle-pin-unreadable")
           )
+      },
+      executions: run.executions,
+      verdict: run.verdict,
+    }
+    let write = Filesystem.Write(
+      path: dispatch_attempt_verification_receipt_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: progress.attempt_key,
+        head_sha: subject.head_sha as String,
+      ),
+      content: verification_receipt_json(receipt: receipt),
+    )
+    if write.success {
+      VerifyRecorded {
+        node_id: progress.node_id,
+        verdict_key: validation_verdict_key(verdict: run.verdict),
+        detail: validation_verdict_detail(verdict: run.verdict),
       }
-  }
-  let receipt = VerificationReceipt {
-    subject: subject,
-    oracle_identity: match pinned_identity {
-      Present { value: identity } => identity
-      Absent =>
-        as_content_hash_structural(
-          structural: content_hash_atom(value: "oracle-pin-unreadable")
-        )
-    },
-    executions: run.executions,
-    verdict: run.verdict,
-  }
-  let write = Filesystem.Write(
-    path: dispatch_attempt_verification_receipt_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: progress.attempt_key,
-      head_sha: subject.head_sha as String,
-    ),
-    content: verification_receipt_json(receipt: receipt),
-  )
-  if write.success {
-    VerifyRecorded {
-      node_id: progress.node_id,
-      verdict_key: validation_verdict_key(verdict: run.verdict),
-      detail: validation_verdict_detail(verdict: run.verdict),
+    } else {
+      VerifyWriteFailed {
+        node_id: progress.node_id,
+        detail: write.error,
+      }
     }
   } else {
-    VerifyWriteFailed {
-      node_id: progress.node_id,
-      detail: write.error,
+    let observations = belt_oracle_observations_in_worktree(
+      contract: node.execution,
+      worktree: worktree,
+    )
+    let run = match validation_oracle_gate(
+      contract: node.execution,
+      observations: observations,
+      pin_recorded: pin_recorded,
+      expected_identity: match pinned_identity {
+        Present { value: identity } => identity
+        Absent =>
+          as_content_hash_structural(
+            structural: content_hash_atom(value: "oracle-pin-unreadable")
+          )
+      },
+      revision: match pinned_revision {
+        Present { value: revision } => revision
+        Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
+      },
+      pin_read_detail: if pin_refusal == "" {
+        "no oracle identity was recorded for this attempt at dispatch"
+      } else {
+        pin_refusal
+      },
+    ) {
+      ValidationOracleGateRefused { cause } =>
+        BeltValidationRun {
+          executions: [],
+          verdict: ValidationRefused { cause: cause },
+        }
+      ValidationOracleAdmitted { identity } =>
+        match node.execution {
+          ExecutionContractUnspecified =>
+            BeltValidationRun {
+              executions: [],
+              verdict: ValidationRefused {
+                cause: ValidationContractUnspecified,
+              },
+            }
+          ExecutionContract { validations, extra_capabilities: _ } =>
+            belt_run_validation_operations(
+              instance: instance,
+              validations: validations,
+              worktree: worktree,
+              oracle_identity: identity,
+            )
+        }
+    }
+    let receipt = VerificationReceipt {
+      subject: subject,
+      oracle_identity: match pinned_identity {
+        Present { value: identity } => identity
+        Absent =>
+          as_content_hash_structural(
+            structural: content_hash_atom(value: "oracle-pin-unreadable")
+          )
+      },
+      executions: run.executions,
+      verdict: run.verdict,
+    }
+    let write = Filesystem.Write(
+      path: dispatch_attempt_verification_receipt_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: progress.attempt_key,
+        head_sha: subject.head_sha as String,
+      ),
+      content: verification_receipt_json(receipt: receipt),
+    )
+    if write.success {
+      VerifyRecorded {
+        node_id: progress.node_id,
+        verdict_key: validation_verdict_key(verdict: run.verdict),
+        detail: validation_verdict_detail(verdict: run.verdict),
+      }
+    } else {
+      VerifyWriteFailed {
+        node_id: progress.node_id,
+        detail: write.error,
+      }
     }
   }
 }
