@@ -1,7 +1,7 @@
 module v2.test.claim.compilation_unit_witness
 
 import std.algebra { Empty }
-import std.types { NonEmptyStr, ContentHash, List }
+import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
@@ -21,7 +21,6 @@ import v2.std.compilers.compilation_unit {
   PartitionR4ValidityVerdict,
   PolicyDerived,
   partition_r4_witness_refused_scc_split,
-  compilation_unit_artifact_id,
   partition_fold,
   partition_fold_deps_match_boundary_edges,
   partition_fold_outcome,
@@ -54,9 +53,9 @@ data witness_mod_a: ModuleId = "mod.a" as NonEmptyStr
 data witness_mod_b: ModuleId = "mod.b" as NonEmptyStr
 data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
 
-data witness_unit_one: CompilationUnitId = "cu-one" as ContentHash
-data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
-data witness_unit_all: CompilationUnitId = "cu-all" as ContentHash
+data witness_unit_one: CompilationUnitId = "cu-one" as CompilationUnitId
+data witness_unit_two: CompilationUnitId = "cu-two" as CompilationUnitId
+data witness_unit_all: CompilationUnitId = "cu-all" as CompilationUnitId
 
 data witness_type_point: Symbol = ^witness_cu_point
 data witness_type_int: Symbol = ^witness_cu_int
@@ -173,7 +172,6 @@ test fn witness_unit_one_members_and_deps() -> Bool {
     Present { value: unit } =>
       (unit.members == [witness_mod_a, witness_mod_b])
         && (unit.deps == [witness_unit_two])
-        && (unit.artifact == compilation_unit_artifact_id(unit_id: witness_unit_one))
     Absent => false
   }
 }
@@ -322,3 +320,31 @@ test fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
   }
 }
 
+
+data compilation_unit_artifact_unwritable_note: String = "Review 2026-08-01 finding 2. CompilationUnit previously carried an artifact field of type CompilationUnitArtifactId, always populated by rebranding id. It claimed independent information while carrying none, so a literal naming id unit-a and artifact unit-b was writable and made one unit claim two target identities: unit-a.h and unit-a.c against unit-b.o. The repair REMOVES the field, so that specimen is unwritable rather than refused — the climb is to structural impossibility, and per DESIGN section 4b the discriminating evidence stays enrolled even though the production machinery is deleted. A runtime falsifier can no longer be constructed because there is nothing left to mismatch, so the retained evidence is a compile-refusal pair: a record literal carrying a field its declaration does not have must NOT compile clean, while the same literal without it must. Both poles execute."
+
+fn w_extra_derived_field_is_unwritable() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module cuartifact_extra\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn mismatched() -> Unit {\n  Unit { id: \"unit-a\" as UnitId, artifact: \"unit-b\" as UnitId }\n}\n",
+    "src/cuartifact_extra.rs",
+    [],
+    []
+  )
+}
+
+fn w_declared_fields_only_compiles_clean() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n",
+    "src/cuartifact_ok.rs",
+    ["fn consistent"],
+    []
+  )
+}
+
+test fn mismatched_artifact_identity_is_unwritable() -> Bool {
+  w_extra_derived_field_is_unwritable()
+}
+
+test fn declared_fields_only_is_the_accepted_control() -> Bool {
+  w_declared_fields_only_compiles_clean()
+}

@@ -18,7 +18,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_hand_maintained_stage0_repo_paths,
   path_in_list
 }
-import std.types { ContentHash }
+import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { any, length }
 
 test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool {
@@ -76,7 +76,7 @@ test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> 
   match tracked_rust_unclassified_projection(
     observation: RustManifestObserved {
       repository_revision: "",
-      manifest_content_identity: "witness-abc123" as ContentHash,
+      manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["synthetic/a.rs"],
       prior_tracked_rust_repo_paths: [],
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]

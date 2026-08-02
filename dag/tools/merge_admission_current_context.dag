@@ -113,7 +113,7 @@ func main() -> ProcessExit {
     return exit_failure(reason: "merge_admission_current_context: current merge target tree observation refused")
   }
   let target = match git_decode_object_id_text(
-    format: git_object_id_format(oid: receipt.tested_base_tree),
+    format: git_object_id_format(oid: receipt.tested_base_tree_hash),
     text: shell_stdout_line(raw: observed.tree),
   ) {
     GitObjectIdTextDecoded { oid: oid } => oid
@@ -124,7 +124,7 @@ func main() -> ProcessExit {
     current_attempt_id: attempt,
     tested_subject: subject,
     receipt: receipt,
-    merge_target_tree: target,
+    merge_target_tree_hash: target,
     current_roster_hash: current_gate_roster_hash,
   )
   match verdict {

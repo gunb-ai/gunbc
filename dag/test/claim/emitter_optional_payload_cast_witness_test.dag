@@ -1,0 +1,94 @@
+module test.claim.emitter_optional_payload_cast_witness_test
+
+data emitter_optional_payload_cast_witness_note: String = "Permanent regression control for optional-payload cast lowering (gunbc#7480). THE DEFECT, now repaired: a cast reaching an optional-variant payload -- Present { value: <expr> as T } -- gave the record literal a concrete resolved type, which made the concrete-type peel in v1.compiler.emit_rust emit_rust_expr_record_lit overwrite the AUTHORED name `Present` with the payload's concrete type name. emit_typed_record_lit then no longer recognised the literal as an optional constructor, fell through to the generic arm, and fabricated `Optional::String { value: .. }` -- not a Rust constructor -- so the emitted crate failed to compile with E0433 (use of undeclared type `Optional`). THE CONFIRMED NAME-LOSS POINT is that peel in the CALLER, established by INSTRUMENTATION rather than by reading: a probe printed variant_name/tn/peeled at the call site and showed the authored name arriving intact and then being replaced. It was NOT emit_typed_record_lit's variant_surface_name fallback, which was the standing hypothesis. That fallback is nonetheless a real SECOND contributor -- with the peel fixed, optional_variant still keyed off the resolved struct name until variant_surface_name was in the seed -- so BOTH were required and neither alone sufficed; the single-cause hypothesis was wrong in both directions. POLARITY: poles 2 and 3 were known-red receipts asserting the deficit was PRESENT; the repair flipped them, and per DESIGN section 4b a probe that greens when its wall lands becomes a PERMANENT regression control rather than retiring, which is what they are now. Pole 3 is the one that refuted the obvious workaround -- hoisting the cast to a `let` did NOT avoid the defect, so no respelling could have dodged it and the emitter repair was required rather than optional. The two negative controls are the load-bearing half of the gate: user_enum_cast_payload proves an ordinary enum variant still peels to Wrap::Holds, and user_defined_present proves an enum declaring its OWN `Present` variant is unaffected -- the suppression keys on the resolved parent genuinely being the built-in Optional, because variant_belongs_to_enum finds a user-declared Present and lets the peel proceed, never on the spelling alone. This file does NOT cover nested-refinement lowering, a separate open deficit tracked by emitter_nested_refinement_cast_witness_test.dag."
+
+fn w_optional_payload_cast_lowers_to_some() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_cast\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> Carrier? {\n  if ok(v: text) {\n    Present { value: text as Carrier }\n  } else {\n    none\n  }\n}\n",
+    "src/optc_cast.rs",
+    ["Some("],
+    ["Optional::"]
+  )
+}
+
+fn w_plain_return_with_cast_lowers_to_some() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_castplain\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> String? {\n  if ok(v: text) {\n    Present { value: text as Carrier }\n  } else {\n    none\n  }\n}\n",
+    "src/optc_castplain.rs",
+    ["Some("],
+    ["Optional::"]
+  )
+}
+
+fn w_hoisted_cast_lowers_to_some() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_hoist\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> Carrier? {\n  if ok(v: text) {\n    let c = text as Carrier\n    Present { value: c }\n  } else {\n    none\n  }\n}\n",
+    "src/optc_hoist.rs",
+    ["Some("],
+    ["Optional::"]
+  )
+}
+
+fn w_refined_return_no_cast_lowers_to_some() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_refret\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\nfn f(text: String) -> Carrier? {\n  if ok(v: text) {\n    Present { value: text }\n  } else {\n    none\n  }\n}\n",
+    "src/optc_refret.rs",
+    ["Some("],
+    ["Optional::"]
+  )
+}
+
+fn w_user_enum_cast_payload_still_peels() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_ue\n\nimport std.types { Bool, String }\n\nfn ok(v: String) -> Bool {\n  !(v == \"\")\n}\n\ntype Carrier = String where ok\n\ntype Wrap\n  = Holds { value: Carrier }\n  | Empty\n\nfn g(text: String) -> Wrap {\n  Holds { value: text as Carrier }\n}\n",
+    "src/optc_ue.rs",
+    ["Wrap::Holds"],
+    []
+  )
+}
+
+fn w_user_defined_present_still_peels() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_upresent\n\nimport std.types { String }\n\ntype MyOpt\n  = Present { value: String }\n  | Missing\n\nfn h(text: String) -> MyOpt {\n  Present { value: text }\n}\n",
+    "src/optc_upresent.rs",
+    ["MyOpt::Present"],
+    []
+  )
+}
+
+fn w_user_present_inside_optional_fn_still_peels() -> Bool {
+  compile_dag_rust_emit_check(
+    "module optc_upinopt\n\nimport std.types { Bool, String }\n\ntype MyOpt\n  = Present { value: String }\n  | Missing\n\nfn consume(value: MyOpt) -> Bool {\n  true\n}\n\nfn f(text: String) -> String? {\n  let used = consume(value: Present { value: text })\n  none\n}\n",
+    "src/optc_upinopt.rs",
+    ["MyOpt::Present"],
+    ["Some("]
+  )
+}
+
+test fn user_defined_present_inside_optional_returning_fn_is_unaffected() -> Bool {
+  w_user_present_inside_optional_fn_still_peels()
+}
+
+test fn optional_payload_cast_lowers_to_some() -> Bool {
+  w_optional_payload_cast_lowers_to_some()
+}
+
+test fn plain_return_with_cast_lowers_to_some() -> Bool {
+  w_plain_return_with_cast_lowers_to_some()
+}
+
+test fn hoisted_cast_lowers_to_some() -> Bool {
+  w_hoisted_cast_lowers_to_some()
+}
+
+test fn refined_return_without_cast_lowers_to_some() -> Bool {
+  w_refined_return_no_cast_lowers_to_some()
+}
+
+test fn user_enum_cast_payload_keeps_variant_name() -> Bool {
+  w_user_enum_cast_payload_still_peels()
+}
+
+test fn user_defined_present_variant_is_unaffected() -> Bool {
+  w_user_defined_present_still_peels()
+}

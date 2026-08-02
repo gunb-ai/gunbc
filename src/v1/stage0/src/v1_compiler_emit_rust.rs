@@ -18119,6 +18119,15 @@ pub fn emit_rust_expr_let(
     }
 }
 
+pub fn concrete_peel_optional_ctor_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The concrete-type peel below replaces the AUTHORED record-literal name with the resolved concrete type name, which is right for an ordinary record literal whose type resolved to a nominal carrier. It was WRONG for the built-in optional constructors: a cast reaching the payload (Present { value: text as Carrier }) gives the literal a concrete resolved type, so the peel fired and overwrote the authored `Present` with the payload's concrete name, and emit_typed_record_lit then never recognised the literal as an optional constructor. The lowering fell through to the generic arm and fabricated `Optional::String { value: .. }` — not a Rust constructor, so the emitted crate failed with E0433. This was the actual name-loss point (gunbc#7480); it is in the CALLER, not in emit_typed_record_lit's variant_surface_name fallback, which was the standing hypothesis until the peel was read. The gate is deliberately narrow: the peel is suppressed ONLY when the authored name is a built-in optional constructor AND the concrete type does not itself declare a variant of that name. A user-defined enum that declares its own `Present` still peels exactly as before, because variant_belongs_to_enum finds it there — so the special case keys on the resolved parent genuinely being the built-in Optional rather than on the spelling alone. Ordinary variants are untouched: is_optional_variant_name is false for them, so the guard collapses and the peel proceeds unchanged. The variant identity is preserved rather than inferred from the payload type. Evidence: dag/test/claim/emitter_optional_payload_cast_witness_test.dag, whose cast poles flip from known-red to green with this repair, alongside the ordinary-enum Wrap::Holds control that must stay green. A SECOND, independently required narrowing landed beside the peel guard (review on gunbc#7480, 2026-08-01): the optional classification in emit_typed_record_lit briefly carried a function-wide `fn_returns_optional` disjunct, read off emit_info.fn_return_type. That is a fact about the ENCLOSING FUNCTION, not about this record literal's position, so it misclassified any optional-looking user constructor appearing anywhere inside an optional-returning function -- MyOpt::Present built inside `fn f(..) -> String?` emitted `Some(..)`, overriding an effective_parent that had ALREADY correctly resolved to the user enum. It also falsified this note's own claim to key on the resolved parent rather than the spelling. The disjunct was deleted rather than gated: `resolved_type.return_cardinality == CardOptional` is the expression-local statement of the same fact, and executing all seven poles with the function-wide arm removed showed it was load-bearing for NONE of them -- it was a second representation of an expression-local fact (DESIGN section 3), not a needed fallback. Its negative control is user_defined_present_inside_optional_returning_fn_is_unaffected, which requires MyOpt::Present and forbids `Some(`, and which was confirmed RED against the emitter before the removal. This does NOT address nested-refinement lowering, which remains separately tracked by emitter_nested_refinement_cast_witness_test.dag.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn emit_rust_expr_record_lit(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -18148,9 +18157,17 @@ pub fn emit_rust_expr_record_lit(
                 Some(n) => n.clone(),
                 None => "".to_string(),
             };
-            let peeled_type_name = if (((parent_enum.clone() == None)
+            let concrete_peel_would_erase_optional_ctor =
+                (is_optional_variant_name(variant_name.clone())
+                    && !variant_belongs_to_enum(
+                        emit_info.type_summaries.clone(),
+                        variant_name.clone(),
+                        authored_name_at(si.clone(), expanded_rt.clone()),
+                    ));
+            let peeled_type_name = if ((((parent_enum.clone() == None)
                 && (expanded_rt.connective.clone() == Connective::Conj))
                 && (expanded_rt.ident_span.clone() != None))
+                && !concrete_peel_would_erase_optional_ctor.clone())
             {
                 {
                     let concrete = authored_name_at(si.clone(), expanded_rt.clone());
@@ -23426,6 +23443,13 @@ pub fn emit_typed_record_lit(
             Some(pe) => Some(qualified_last_segment(pe.clone())),
             None => None,
         };
+        let variant_surface_name = match type_name.clone() {
+            Some(n) => n.clone(),
+            None => match bare_qualified_name.clone() {
+                Some(qn) => qn.clone(),
+                None => "".to_string(),
+            },
+        };
         match bare_qualified_name.clone() {
             None => {
                 let is_product = is_product_type(resolved_type.clone());
@@ -23693,7 +23717,7 @@ pub fn emit_typed_record_lit(
                 };
                 let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
                 let context_lookup = contextual_variant_parent(
-                    tn.clone(),
+                    variant_surface_name.clone(),
                     bare_parent_enum.clone(),
                     resolved_type.clone(),
                     emit_info.clone(),
@@ -23712,12 +23736,12 @@ pub fn emit_typed_record_lit(
                             resolved_type.clone(),
                         ));
                         if (((((resolved_type.ident_span.clone() != None)
-                            && (rt_name.clone() != tn.clone()))
+                            && (rt_name.clone() != variant_surface_name.clone()))
                             && !rt_is_type_var.clone())
                             && (rt_name.clone() != "Error".to_string()))
                             && variant_belongs_to_enum(
                                 emit_info.type_summaries.clone(),
-                                tn.clone(),
+                                variant_surface_name.clone(),
                                 rt_name.clone(),
                             ))
                         {
@@ -23803,13 +23827,13 @@ pub fn emit_typed_record_lit(
                         );
                     }
                 }
-                let optional_variant = (is_optional_variant_name(tn.clone())
+                let optional_variant = (is_optional_variant_name(variant_surface_name.clone())
                     && ((is_optional_parent(bare_parent_enum.clone())
                         || is_optional_parent(effective_parent.clone()))
                         || (resolved_type.return_cardinality.clone()
                             == Cardinality::CardOptional)));
                 let rust_tn = if optional_variant.clone() {
-                    if is_some_like_variant_name(tn.clone()) {
+                    if is_some_like_variant_name(variant_surface_name.clone()) {
                         "Some".to_string()
                     } else {
                         "None".to_string()
@@ -23831,7 +23855,8 @@ pub fn emit_typed_record_lit(
                         si.clone(),
                     )
                 };
-                if ((optional_variant.clone() && is_some_like_variant_name(tn.clone()))
+                if ((optional_variant.clone()
+                    && is_some_like_variant_name(variant_surface_name.clone()))
                     && ((fields.clone().len() as i64) == 1))
                 {
                     match fields.clone().first().cloned() {
