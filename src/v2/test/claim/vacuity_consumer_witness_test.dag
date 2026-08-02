@@ -75,7 +75,7 @@ fn vacuity_consumer_witness_classified_sites() -> List<VacuitySiteKey> {
       match vacuity_consumer_witness_evidence_for_site(site: site) {
         ProvenDuplicate => list_append(left: acc, right: [site])
         ProvenIndependent => list_append(left: acc, right: [site])
-        Unknown => list_append(left: acc, right: [site])
+        Unknown => acc
       }
     }
   )
@@ -133,13 +133,23 @@ test fn vacuity_consumer_witness_fixture_module_reached_by_direct_call() -> Bool
     && (vacuity_self_application_probe(tag: VacuitySelfApplicationProbeNo) == false)
 }
 
-data vacuity_consumer_witness_real_test_fn_gap_distinguishes_failure_note: String = "Correction (review 46947): the prior version of this witness asserted only classify_unified_test_claim_vacuity(...) == Unknown, which is the SAME output produced by an ingest Rejected, a missing fn declaration, AND a genuinely-classified-but-inconclusive body (vacuity_bool_witness_evidence's three independent Unknown-producing branches) — so the witness stayed green under a total pipeline breakage, not only under honest fail-closed classification, which is exactly the specification-without-execution failure DESIGN.md §5 forbids applied to this consumer-witness slot. Fixed by asserting the three facts separately rather than only their collapsed result: (1) real ingest of the target file succeeds (Accepted, not Rejected) — a corpus-discovery regression reds here; (2) the target fn symbol is genuinely Absent from vacuity_find_fn_decl_by_name over vacuity_collect_fn_decls on that SAME parsed module — the actual, named reason classification cannot proceed, not a silently-assumed one, and a future fn-decl-collection fix that made this Present would red here rather than being masked; (3) classify_unified_test_claim_vacuity on the identical BoolWitnessClaim still returns exactly Unknown — a classifier bug that fabricated ProvenDuplicate/ProvenIndependent despite genuine Absent reds here. A witness reaching a genuinely non-Unknown real-corpus classification (the reviewer's most literal ask) is not honestly constructible today: vacuity_bool_witness_fn_decl_collection_ceiling_note documents, by direct execution on this branch AND a pristine origin/main checkout, that fn-declaration collection returns empty for every real corpus file regardless of body shape — so no real file/function pair exists today for which the classifier can honestly reach its body-evidence path at all. Asserting a non-Unknown result would itself be the fabricated-plausible-output failure DESIGN.md §5 forbids. This three-part shape is the strongest honest witness available at the current ceiling: it fails (reds) under every one of ingest regression, fn-decl-collection change, and classifier misbehavior, and only stays green when all three hold exactly as documented."
+data vacuity_consumer_witness_real_test_fn_gap_distinguishes_failure_note: String = "Correction (review 46947): the prior version of this witness asserted only classify_unified_test_claim_vacuity(...) == Unknown, which is the SAME output produced by an ingest Rejected, a missing fn declaration, AND a genuinely-classified-but-inconclusive body (vacuity_bool_witness_evidence's three independent Unknown-producing branches) — so the witness stayed green under a total pipeline breakage, not only under honest fail-closed classification, which is exactly the specification-without-execution failure DESIGN.md §5 forbids applied to this consumer-witness slot. Fixed by asserting the three facts separately rather than only their collapsed result: (1) real ingest of the target file succeeds (Accepted, not Rejected) — a corpus-discovery regression reds here; (2) the target fn symbol is genuinely Absent from vacuity_find_fn_decl_by_name over vacuity_collect_fn_decls on that SAME parsed module — the actual, named reason classification cannot proceed, not a silently-assumed one, and a future fn-decl-collection fix that made this Present would red here rather than being masked; (3) classify_unified_test_claim_vacuity on the identical BoolWitnessClaim still returns exactly Unknown — a classifier bug that fabricated ProvenDuplicate/ProvenIndependent despite genuine Absent reds here. A witness reaching a genuinely non-Unknown real-corpus classification (the reviewer's most literal ask) is not honestly constructible today: vacuity_bool_witness_fn_decl_collection_ceiling_note documents, by direct execution on this branch AND a pristine origin/main checkout, that fn-declaration collection returns empty for every real corpus file regardless of body shape — so no real file/function pair exists today for which the classifier can honestly reach its body-evidence path at all. Asserting a non-Unknown result would itself be the fabricated-plausible-output failure DESIGN.md §5 forbids. This three-part shape is the strongest honest witness available at the current ceiling for the BoolWitnessClaim path specifically: it fails (reds) under every one of ingest regression, fn-decl-collection change, and classifier misbehavior on that path, and only stays green when all three hold exactly as documented."
+
+data vacuity_consumer_witness_constant_unknown_collapse_control_note: String = "Correction (review 47124): the three-part shape above still could not distinguish a genuinely working classifier from classify_unified_test_claim_vacuity being replaced wholesale with a function that unconditionally returns Unknown — every one of its three assertions is equally satisfied by that degenerate collapse, because the ONLY path this witness drove through the dispatcher was the Absent-fn arm, whose real behavior IS Unknown. A collapsed constant-Unknown dispatcher is indistinguishable from the honest one along that single path. Fixed by adding a fourth, independent assertion that drives the SAME public dispatcher (classify_unified_test_claim_vacuity — not a different function, and not a bypass of it) through its NodeCorpus{EqualsClaim} arm with lhs_provenance: LiveSurfaceSnapshot / rhs_provenance: LiteralOracle — the PR #7614 shape, which classify_vacuity_same_eval_record's vacuity_same_eval_is_live_snapshot_duplicate branch classifies ProvenDuplicate by construction, independent of the operand Node values themselves (that branch is reached before operands_structurally_equal is ever consulted). This does not reintroduce the fabrication DESIGN.md §5 forbids: the record shape here is intentionally synthetic (a hand-built claim reaching a known dispatcher branch), the same license already exercised by the pre-existing PR7614 RED control (vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate) — the difference is that control calls classify_vacuity_same_eval_record directly, bypassing classify_unified_test_claim_vacuity's own dispatch, so it never previously proved the DISPATCHER (the thing the contract actually binds to) does anything but return Unknown. With this fourth assertion ANDed into the same bound witness, a wholesale collapse of classify_unified_test_claim_vacuity to `_ => Unknown` now reds here (ProvenDuplicate != Unknown), so the witness is no longer indistinguishable from that degenerate case. Paired with vacuity_consumer_witness_classified_sites no longer appending Unknown-classified sites unconditionally (review 47124's second finding, fixed at its own definition site) so the derived/classified set check is no longer invariant to classifier output either."
+
+fn vacuity_consumer_witness_synthetic_equals_operand() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
 
 test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -> Bool {
   let target_file = vacuity_consumer_witness_scan_file()
   let target_fn = ^vacuity_consumer_witness_nonexistent_probe_target
   let source_text = filesystem_read(path: target_file).content
-  match vacuity_witness_ingest_source_text(
+  let absent_fn_path_holds = match vacuity_witness_ingest_source_text(
     source_text: source_text,
     file: vacuity_bool_witness_file_anchor
   ) {
@@ -161,6 +171,26 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
       )
       fn_genuinely_absent && vacuity_evidence_eq(a: classified, b: Unknown)
   }
+  let operand = vacuity_consumer_witness_synthetic_equals_operand()
+  let dispatcher_reaches_proven_duplicate = vacuity_evidence_eq(
+    a: classify_unified_test_claim_vacuity(
+      claim: NodeCorpus {
+        claim: EqualsClaim {
+          label: "vacuity_consumer_witness: dispatcher reaches ProvenDuplicate via NodeCorpus, not just Unknown",
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          lhs: operand,
+          rhs: operand,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        transport: EvalOnly
+      },
+      lhs_provenance: LiveSurfaceSnapshot,
+      rhs_provenance: LiteralOracle,
+      operand_provenance: OperandProvenanceUnknown
+    ),
+    b: ProvenDuplicate
+  )
+  absent_fn_path_holds && dispatcher_reaches_proven_duplicate
 }
 
 test fn vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate() -> Bool {
