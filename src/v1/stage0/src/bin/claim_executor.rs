@@ -5097,7 +5097,12 @@ fn run_walk(
         );
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
+    eprintln!(
+        "[floor-phase] phase=materialization-ledger-harvest state=started contexts={}",
+        walk_memo.len()
+    );
     drop(walk_memo);
+    eprintln!("[floor-phase] phase=materialization-ledger-harvest state=completed");
     let materialization_receipt_ok =
         !emit_ordinary_floor_receipts || write_materialization_receipt();
     // Ordinary-floor verdict INCLUDING receipt construction: a receipt-write failure
